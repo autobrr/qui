@@ -257,6 +257,10 @@ func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
 
 func (c *Client) request(ctx context.Context, method, endpoint string, params url.Values) ([]byte, int, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
+		if ctx.Err() == nil {
+			// Wait fails at once when the queue would pass the deadline of ctx.
+			err = fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
+		}
 		return nil, 0, fmt.Errorf("rate limit wait failed: %w", err)
 	}
 	reqURL := fmt.Sprintf("%s/%s", strings.TrimSuffix(c.baseURL, "/"), endpoint)

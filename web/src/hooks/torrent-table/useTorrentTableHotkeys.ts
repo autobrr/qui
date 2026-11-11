@@ -4,15 +4,11 @@
  */
 
 import type { Torrent } from "@/types"
-import type { RowSelectionState } from "@tanstack/react-table"
-import { type Dispatch, type RefObject, type SetStateAction, useCallback, useMemo } from "react"
+import { useCallback, useMemo } from "react"
 
 export interface UseTorrentTableHotkeysParams {
   sortedTorrents: Torrent[]
-  setIsAllSelected: Dispatch<SetStateAction<boolean>>
-  setExcludedFromSelectAll: Dispatch<SetStateAction<Set<string>>>
-  setRowSelection: Dispatch<SetStateAction<RowSelectionState>>
-  lastSelectedIndexRef: RefObject<number | null>
+  selectAll: () => void
 }
 
 /**
@@ -21,10 +17,7 @@ export interface UseTorrentTableHotkeysParams {
  */
 export function useTorrentTableHotkeys({
   sortedTorrents,
-  setIsAllSelected,
-  setExcludedFromSelectAll,
-  setRowSelection,
-  lastSelectedIndexRef,
+  selectAll,
 }: UseTorrentTableHotkeysParams) {
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -37,11 +30,8 @@ export function useTorrentTableHotkeys({
       return
     }
 
-    setIsAllSelected(true)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null
-  }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection, lastSelectedIndexRef])
+    selectAll()
+  }, [sortedTorrents.length, selectAll])
 
   return { isMac, selectAllWithShortcut }
 }

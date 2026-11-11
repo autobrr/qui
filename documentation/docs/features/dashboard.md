@@ -75,13 +75,13 @@ qui stores these choices and the collapsed state of Server Statistics and Tracke
 
 ## Live updates
 
-qui streams statistics changes to the browser over Server-Sent Events (SSE). The Dashboard applies stream updates every 2 seconds. If the stream is down, the Dashboard polls a lightweight endpoint every 5 seconds instead.
+qui streams statistics changes to the browser over Server-Sent Events (SSE). The Dashboard applies stream updates every 2 seconds. If the stream connection is down, the Dashboard polls a lightweight endpoint every 5 seconds instead. If the stream sends no data for 2 minutes, the Dashboard polls every 30 seconds until data comes again. If qBittorrent returns an error, the Dashboard does not poll. The open stream sends the new numbers when qBittorrent answers again.
 
 A status icon next to the instance name indicates that the numbers are not live:
 
 | Icon | Meaning |
 |------|---------|
-| Red alert circle | The stream failed. qui refreshes over the polling fallback. |
+| Red alert circle | The stream failed. If the connection to qui dropped, qui refreshes over polling. If qBittorrent returned an error, qui waits for the stream. |
 | Database | qui shows a cached snapshot. If the snapshot is stale, the icon turns amber. |
 | Circular arrows | qui refreshes the statistics over polling. |
 

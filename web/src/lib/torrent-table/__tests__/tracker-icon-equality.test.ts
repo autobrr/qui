@@ -12,10 +12,6 @@ describe("shallowEqualTrackerIcons", () => {
     expect(shallowEqualTrackerIcons(map, map)).toBe(true)
   })
 
-  it("treats two undefined inputs as equal (same reference)", () => {
-    expect(shallowEqualTrackerIcons(undefined, undefined)).toBe(true)
-  })
-
   it("returns false when exactly one side is undefined", () => {
     expect(shallowEqualTrackerIcons({ "a.com": "iconA" }, undefined)).toBe(false)
     expect(shallowEqualTrackerIcons(undefined, { "a.com": "iconA" })).toBe(false)

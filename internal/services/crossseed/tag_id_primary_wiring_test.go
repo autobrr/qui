@@ -139,7 +139,7 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 	// The MKV path behind the ID retry is resolved through the instance's backend.
 	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
 
-	resp, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, mediaIDWiringSourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}}, nil)
+	resp, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, mediaIDWiringSourceHash, TorrentSearchOptions{}, searchScope{torznabIndexerIDs: []int{1, 2}}, nil)
 	require.NoError(t, err)
 	require.Empty(t, resp.QueryDegraded,
 		"a tag-sourced ID primary must clear the searched-by-title-only notice")

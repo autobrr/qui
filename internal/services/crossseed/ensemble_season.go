@@ -128,7 +128,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 
 	for i := range torrents {
 		torrent := &torrents[i]
-		if torrent.Progress < 1.0 {
+		if s.sourceGate().check(torrent, sourceFilter{}) != sourcePass {
 			continue
 		}
 		release := s.releaseCache.Parse(torrent.Name)
@@ -202,33 +202,20 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		return false, nil
 	}
 
-	if state.opts.DisableTorznab || state.resolvedTorznabIndexerErr != nil || len(state.resolvedTorznabIndexerIDs) == 0 {
-		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, "no eligible indexers")
+	if state.opts.DisableTorznab || len(state.resolvedTorznabIndexerIDs) == 0 {
+		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, noEligibleIndexersSkipReason)
 		return false, nil
 	}
 
-	release := s.releaseCache.Parse(torrent.Name)
-	searchQuery := BuildTorznabQuery(torrent.Name, release, false)
-	contentInfo := DetermineContentType(release)
+	source := s.matcher().readName(torrent.Name)
+	searchReq := s.matcher().buildTorznabRequest(torznabRequestInput{
+		torrentName: torrent.Name,
+		source:      source,
+		contentInfo: DetermineContentType(source.release),
+		indexerIDs:  state.resolvedTorznabIndexerIDs,
+	}).req
 
-	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, false)
-	if searchCancel != nil {
-		defer searchCancel()
-	}
-
-	searchReq := &jackett.TorznabSearchRequest{
-		Query:            searchQuery.Query,
-		ReleaseName:      torrent.Name,
-		Limit:            effectiveTorznabCrossSeedSearchLimit(0),
-		IndexerIDs:       state.resolvedTorznabIndexerIDs,
-		ReturnAllResults: true,
-	}
-	if len(contentInfo.Categories) > 0 {
-		searchReq.Categories = contentInfo.Categories
-	}
-	if searchQuery.Season != nil {
-		searchReq.Season = searchQuery.Season
-	}
+	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
 
 	resp, err := s.searchOnce(searchCtx, searchReq)
 	if err != nil {
@@ -236,7 +223,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 			return false, ctx.Err()
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
-			s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, fmt.Sprintf("search timed out after %s", searchTimeout))
+			s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, "search timed out")
 			return true, nil
 		}
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusFailed, fmt.Sprintf("search failed: %v", err))
@@ -252,7 +239,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		}
 	}
 
-	s.applyEnsembleSearchResults(ctx, state, torrent, key, searchQuery.Query, resp, processedAt)
+	s.applyEnsembleSearchResults(ctx, state, torrent, key, searchReq.Query, resp, processedAt)
 	return true, nil
 }
 
@@ -307,7 +294,7 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 		}
 
 		match := torrentSearchResultFromJackett(res, "season pack from seeded episodes", 0, searchDecisionProvenance{Class: searchCandidateClassStrict})
-		attemptResult, attemptErr := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
+		attemptResult, attemptErr := s.executeCrossSeedSearchAttempt(ctx, state.opts.InstanceID, state.opts.triggerDefaults, torrent, match, processedAt)
 		if attemptResult != nil {
 			switch attemptResult.Status {
 			case models.CrossSeedSearchResultStatusAdded:

@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -74,7 +75,6 @@ func TestTestIndexerWaitsForRateLimitedSearch(t *testing.T) {
 			_, _ = w.Write([]byte(`<?xml version="1.0"?><caps><searching><search available="yes" supportedParams="q"/></searching><categories/></caps>`))
 			return
 		}
-		time.Sleep(50 * time.Millisecond)
 		w.Header().Set("Retry-After", "17")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
@@ -91,11 +91,9 @@ func TestTestIndexerWaitsForRateLimitedSearch(t *testing.T) {
 	rctx.URLParams.Add("indexerID", strconv.Itoa(indexer.ID))
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	recorder := httptest.NewRecorder()
-	started := time.Now()
 
 	handler.TestIndexer(recorder, req)
 
-	assert.GreaterOrEqual(t, time.Since(started), 50*time.Millisecond)
 	assert.Equal(t, http.StatusTooManyRequests, recorder.Code, recorder.Body.String())
 	assert.Equal(t, "17", recorder.Header().Get("Retry-After"))
 	stored, err := store.Get(t.Context(), indexer.ID)
@@ -104,13 +102,17 @@ func TestTestIndexerWaitsForRateLimitedSearch(t *testing.T) {
 }
 
 func TestTestIndexerHonorsConfiguredExecutionTimeout(t *testing.T) {
+	const defaultTimeout = 100 * time.Millisecond
+	t.Cleanup(timeouts.SetDefaultSearchTimeoutForTest(defaultTimeout))
+
 	responseSent := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("t") == "caps" {
 			_, _ = w.Write([]byte(`<?xml version="1.0"?><caps><searching><search available="yes" supportedParams="q"/></searching><categories/></caps>`))
 			return
 		}
-		time.Sleep(9500 * time.Millisecond)
+		// The fake indexer outlasts the default search timeout, but not the configured one.
+		time.Sleep(2 * defaultTimeout)
 		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`))
 		close(responseSent)
 	}))

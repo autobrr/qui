@@ -962,10 +962,15 @@ func TestValidateRule(t *testing.T) {
 			r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: FieldName, Operator: models.OperatorMatches, Value: "(?=x)"}}}
 		}},
 		{name: "missing files without local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}),
-			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
+			wantMsg: "File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first."},
 		{name: "missing files with local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHasMissingFiles)}}), instance: local},
 		{name: "hardlink scope without local access", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}),
-			wantMsg: "File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first."},
+			wantMsg: "This file condition requires Local Filesystem Access. Enable it in instance settings first."},
+		{name: "missing files and hardlink scope without local access: the local-only field decides", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{
+			Operator:   models.OperatorAnd,
+			Conditions: []*models.RuleCondition{cond(FieldHasMissingFiles), cond(FieldHardlinkScope)},
+		}}}),
+			wantMsg: "This file condition requires Local Filesystem Access. Enable it in instance settings first."},
 		{name: "hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScope)}}), instance: remoteExec,
 			wantMsg: "This file condition is not available on remote instances."},
 		{name: "cross-instance hardlink scope on a remote exec instance", edit: withConditions(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: cond(FieldHardlinkScopeCross)}}), instance: remoteExec,
@@ -986,6 +991,14 @@ func TestValidateRule(t *testing.T) {
 			wantMsg: "External program action requires a valid program selection"},
 		{name: "invalid sorting config", edit: func(r *models.Automation) { r.SortingConfig = &models.SortingConfig{SchemaVersion: "2"} },
 			wantMsg: "Invalid sorting config: invalid schema version: 2"},
+		{name: "sort by a field that cannot sort", edit: func(r *models.Automation) {
+			r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: FieldHash}
+		}, wantMsg: "Invalid sorting config: unknown sort field: HASH"},
+		{name: "score rule on a text field", edit: func(r *models.Automation) {
+			r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionASC, ScoreRules: []models.ScoreRule{{
+				Type: models.ScoreRuleTypeFieldMultiplier, FieldMultiplier: &models.FieldMultiplierScoreRule{Field: FieldName, Multiplier: 1},
+			}}}
+		}, wantMsg: "Invalid sorting config: field multiplier requires numeric field, got: NAME"},
 		{name: "keep-files delete on free space", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeKeepFiles, Condition: freeSpaceBelow}}),
 			wantMsg: "Free Space delete rules must use 'Remove with files' or 'Preserve cross-seeds'. Keep-files mode cannot satisfy a free space target because no disk space is freed."},
 		{name: "delete group outside keep files", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: models.DeleteModeWithFiles, GroupID: "cross_seed_content_save_path", Condition: cond(FieldSize)}}),

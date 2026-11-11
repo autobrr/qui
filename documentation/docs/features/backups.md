@@ -9,6 +9,8 @@ description: Schedule and restore qBittorrent instance backups.
 
 qui creates scheduled and manual snapshots of a [qBittorrent instance](./instance-settings.md). Each snapshot includes the torrent archive, tags, categories with their save paths, and cached `.torrent` blobs. You can restore the torrents, categories, and tags from a snapshot at any time.
 
+Scheduled backups pause while an instance is disabled. They resume after you enable the instance. You do not need to change the backup settings.
+
 If you manage multiple instances, the Backups page provides **Save changes to all instances**. This action copies the current backup schedule and settings to every compatible instance in one step.
 
 ## Counters and limits that a snapshot does not contain

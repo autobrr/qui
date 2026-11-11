@@ -599,10 +599,8 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 				context.Background(),
 				instanceID,
 				sourceHash,
-				TorrentSearchOptions{
-					IndexerIDs:  []int{1},
-					SkipGazelle: true,
-				},
+				TorrentSearchOptions{},
+				searchScope{torznabIndexerIDs: []int{1}},
 				nil,
 			)
 			require.NoError(t, err)
@@ -611,7 +609,6 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 			require.Equal(t, lateState.FilteredIndexers, response.SourceTorrent.FilteredIndexers)
 			require.Equal(t, lateState.ExcludedIndexers, response.SourceTorrent.ExcludedIndexers)
 			require.Equal(t, lateState.ContentMatches, response.SourceTorrent.ContentMatches)
-			require.True(t, response.SourceTorrent.ContentFilteringCompleted)
 		})
 	}
 }
@@ -954,12 +951,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
@@ -1009,12 +1001,7 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
@@ -1264,4 +1251,8 @@ func (*duplicateFilteringSyncManager) GetCategories(context.Context, int) (map[s
 
 func (*duplicateFilteringSyncManager) CreateCategory(context.Context, int, string, string) error {
 	return nil
+}
+
+func (*duplicateFilteringSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

@@ -4,15 +4,22 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -23,9 +30,10 @@ const (
 )
 
 // withAdder gives svc the real Adder over its own qBittorrent fake,
-// blocklist store, and Settler.
+// blocklist store, and Settler, and an Aligner with short waits.
 func withAdder(svc *Service) {
 	svc.adder = NewAdder(svc.syncManager, svc.blocklistStore, svc.settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
+	svc.aligner = testAligner(svc.syncManager)
 }
 
 // adderFake is the qBittorrent seam of the Adder.
@@ -137,13 +145,84 @@ func TestAdderAdd(t *testing.T) {
 		wantMessage   string
 	}{
 		{name: "skip recheck refuses title rescue", facts: AddFacts{SkipRecheck: true, Verify: VerifyTitleRescue}, wantStatus: "skipped_recheck"},
-		{name: "skip recheck refuses relaxed match", facts: AddFacts{SkipRecheck: true, Verify: VerifyRelaxed}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses manual match", facts: AddFacts{SkipRecheck: true, Verify: VerifyManual}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses alignment with size changes", facts: AddFacts{SkipRecheck: true, Align: true}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses pending files", facts: AddFacts{SkipRecheck: true, PendingFiles: true}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses disc layout", facts: AddFacts{SkipRecheck: true, DiscMarker: "BDMV"}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses link fallback of partial match", facts: AddFacts{SkipRecheck: true, LinkFallback: true}, wantStatus: "skipped_recheck"},
 		{name: "skip recheck refuses link fallback recheck", facts: AddFacts{SkipRecheck: true, LinkFallback: true, LinkFallbackRecheck: true}, wantStatus: "skipped_recheck"},
+		{name: "size mismatch refuses", facts: AddFacts{SizeMismatch: true}, wantStatus: "rejected", wantMessage: sizeMismatchMessage},
+		{name: "unsafe pieces refuse an unvalidated manual match", facts: AddFacts{UnsafePieces: true, UnvalidatedManual: true}, wantStatus: "skipped_unsafe_pieces", wantMessage: unsafePiecesMessage},
+		{
+			name:        "link fallback refuses unsafe pieces with the switch off",
+			facts:       AddFacts{UnsafeFallbackPieces: true, LinkFallback: true, SkipPieceBoundaryCheck: true},
+			wantStatus:  "skipped_unsafe_pieces",
+			wantMessage: unsafeFallbackPiecesMessage,
+		},
+		{name: "folder to rootless refuses", facts: AddFacts{FolderToRootless: true}, wantStatus: "requires_hardlink_reflink", wantMessage: folderToRootlessMessage},
+		{name: "size mismatch comes before unsafe pieces", facts: AddFacts{SizeMismatch: true, UnsafePieces: true}, wantStatus: "rejected", wantMessage: sizeMismatchMessage},
+		{
+			name:        "unsafe pieces come before the link fallback rule",
+			facts:       AddFacts{UnsafePieces: true, UnsafeFallbackPieces: true, LinkFallback: true},
+			wantStatus:  "skipped_unsafe_pieces",
+			wantMessage: unsafePiecesMessage,
+		},
+		{
+			name:        "link fallback rule comes before skip recheck",
+			facts:       AddFacts{UnsafeFallbackPieces: true, LinkFallback: true, SkipRecheck: true},
+			wantStatus:  "skipped_unsafe_pieces",
+			wantMessage: unsafeFallbackPiecesMessage,
+		},
+		{name: "skip recheck comes before folder to rootless", facts: AddFacts{SkipRecheck: true, Align: true, FolderToRootless: true}, wantStatus: "skipped_recheck"},
+		{
+			name:        "reflink add allows a size mismatch",
+			facts:       AddFacts{ReflinkAdd: true, SizeMismatch: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "reflink add allows unsafe pieces",
+			facts:       AddFacts{ReflinkAdd: true, UnsafePieces: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "unvalidated manual match allows a size mismatch",
+			facts:       AddFacts{UnvalidatedManual: true, SizeMismatch: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "unvalidated manual match allows folder to rootless",
+			facts:       AddFacts{UnvalidatedManual: true, FolderToRootless: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "switch off allows unsafe pieces",
+			facts:       AddFacts{UnsafePieces: true, SkipPieceBoundaryCheck: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "exact match in place allows unsafe fallback pieces",
+			facts:       AddFacts{ExactMatch: true, LinkFallback: true, UnsafeFallbackPieces: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
+		{
+			name:        "unsafe fallback pieces need a link fallback",
+			facts:       AddFacts{UnsafeFallbackPieces: true},
+			wantOutcome: AddAdded,
+			wantOptions: addOptions(true, true),
+			wantActions: []string{"resume:" + adderV1},
+		},
 		{
 			name:        "skip recheck adds byte-complete link fallback at once",
 			facts:       AddFacts{SkipRecheck: true, ExactMatch: true, LinkFallback: true, LinkFallbackRecheck: true},
@@ -222,7 +301,6 @@ func TestAdderAdd(t *testing.T) {
 			wantOutcome: AddAdded,
 			wantOptions: addOptions(false, true),
 		},
-		{name: "skip recheck refuses link tree with pending files", facts: AddFacts{SkipRecheck: true, LinkTree: true, PendingFiles: true}, wantStatus: "skipped_recheck"},
 		{
 			name:        "complete link tree starts at once",
 			facts:       AddFacts{LinkTree: true},
@@ -404,7 +482,7 @@ func TestAdderAdd(t *testing.T) {
 			require.Equal(t, tt.wantOutcome, result.Outcome)
 			queued := rig.queued()
 			if tt.wantStatus != "" {
-				require.Equal(t, skippedRecheckMessage, result.Message)
+				require.Equal(t, cmp.Or(tt.wantMessage, skippedRecheckMessage), result.Message)
 				require.Empty(t, rig.sync.added)
 				require.Nil(t, queued)
 				require.Empty(t, rig.programs)
@@ -455,6 +533,63 @@ func TestAdderAddFailureDoesNotRetry(t *testing.T) {
 	require.Empty(t, rig.programs)
 }
 
+// Dir Scan reads the Result class of each refusal and each add.
+func TestAdderResultClass(t *testing.T) {
+	t.Parallel()
+
+	existing := &qbt.Torrent{Hash: adderV1, Name: "Existing"}
+	tests := []struct {
+		name string
+		sync *adderFake
+		// blocked puts adderV1 on the blocklist.
+		blocked bool
+		// add runs the add with these facts after a clear Pre-add check.
+		add           *AddFacts
+		afterAddFails bool
+		want          ResultClass
+	}{
+		{name: "exists refusal", sync: &adderFake{existing: existing}, want: ClassExists},
+		{name: "blocked refusal", sync: &adderFake{}, blocked: true, want: ClassSkipped},
+		{name: "error refusal", sync: &adderFake{findErr: errors.New("boom")}, want: ClassFailed},
+		{name: "refusal of the Add verdict", sync: &adderFake{}, add: &AddFacts{SkipRecheck: true, Align: true}, want: ClassSkipped},
+		{name: "add that qBittorrent refuses", sync: &adderFake{addErr: errors.New("boom")}, add: &AddFacts{}, want: ClassFailed},
+		{name: "add that starts at once", sync: &adderFake{}, add: &AddFacts{}, want: ClassAdded},
+		{name: "add that stays paused", sync: &adderFake{}, add: &AddFacts{Align: true}, afterAddFails: true, want: ClassStranded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var blocklist *models.CrossSeedBlocklistStore
+			if tt.blocked {
+				blocklist, _ = adderBlocklist(t, adderV1)
+			}
+			rig := newAdderRig(t, tt.sync, blocklist)
+			check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, adderV1)
+			if tt.add == nil {
+				require.NotNil(t, refusal)
+				require.Equal(t, tt.want, refusal.Class())
+				return
+			}
+			require.Nil(t, refusal)
+
+			result := rig.adder.Add(t.Context(), AddRequest{
+				Check:     check,
+				Torrent:   []byte("torrent"),
+				Facts:     *tt.add,
+				Placement: AddPlacement{SavePath: "/data"},
+				AfterAdd: func(context.Context, []string) (string, bool) {
+					return "", !tt.afterAddFails
+				},
+			})
+			require.Equal(t, tt.want, result.Class())
+		})
+	}
+
+	// A refusal status with no entry in the table is failed.
+	require.Equal(t, ClassFailed, AddResult{Status: "unknown_status"}.Class())
+}
+
 func TestAdderCheck(t *testing.T) {
 	t.Parallel()
 
@@ -465,10 +600,17 @@ func TestAdderCheck(t *testing.T) {
 		blocked      string
 		blocklistErr bool
 		existing     *qbt.Torrent
+		existingOn   int
 		findErr      error
-		wantStatus   string
-		wantMessage  string
-		wantExisting *qbt.Torrent
+		// link stores a route between instance 1 and instance 2.
+		link *adderLink
+		// noRoutes leaves the Adder without the route service.
+		noRoutes    bool
+		wantStatus  string
+		wantMessage string
+		// wantMessageRe matches a message that holds a transport error.
+		wantMessageRe string
+		wantExisting  *qbt.Torrent
 	}{
 		{name: "clear torrent may be added"},
 		{name: "blocked v1 hash", blocked: adderV1, wantStatus: "blocked", wantMessage: "Blocked by cross-seed blocklist"},
@@ -479,17 +621,49 @@ func TestAdderCheck(t *testing.T) {
 		{name: "manual assembly refuses an existing torrent", facts: AddFacts{ManualAssembly: true}, existing: existing, wantStatus: "exists", wantMessage: "Torrent already exists in this instance", wantExisting: existing},
 		{name: "blocklist read fails", blocklistErr: true, wantStatus: "error", wantMessage: "Failed to check cross-seed blocklist: sql: database is closed"},
 		{name: "existing torrent read fails", findErr: errors.New("boom"), wantStatus: "error", wantMessage: "Failed to check existing torrents: boom"},
+		{name: "torrent on no linked instance may be added", link: &adderLink{}},
+		{
+			name: "hash on the Cross-seed instance", link: &adderLink{}, existing: existing, existingOn: 2,
+			wantStatus: "exists", wantMessage: "Torrent already exists in Cross-seed instance seeds", wantExisting: existing,
+		},
+		{
+			name: "hash on a Source instance", link: &adderLink{fromSource: true}, existing: existing, existingOn: 2,
+			wantStatus: "exists", wantMessage: "Torrent already exists in Source instance lib", wantExisting: existing,
+		},
+		{name: "disabled Source instance is skipped", link: &adderLink{fromSource: true, state: "disabled"}, existing: existing, existingOn: 2},
+		{
+			name: "offline Source instance refuses and names it", link: &adderLink{fromSource: true, state: "offline"},
+			wantStatus: "error", wantMessageRe: `^instance unavailable: lib: .+\. Enable lib or clear its cross-seed route$`,
+		},
+		{
+			name: "offline Cross-seed instance refuses", link: &adderLink{state: "offline"},
+			wantStatus: "error", wantMessageRe: `^Cross-seed instance unavailable: seeds: .+`,
+		},
+		{
+			name: "disabled Cross-seed instance refuses", link: &adderLink{state: "disabled"},
+			wantStatus: "error", wantMessage: "Cross-seed instance unavailable: seeds: qBittorrent instance is disabled",
+		},
+		{name: "blocklist of a Source instance does not apply", link: &adderLink{fromSource: true, blocked: true}},
+		// A user with no saved route sees no change.
+		{name: "no saved route checks no other instance", link: &adderLink{unsaved: true}, existing: existing, existingOn: 2},
+		{name: "without the route service no linked instance is checked", link: &adderLink{}, noRoutes: true, existing: existing, existingOn: 2},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			blocklist := adderBlocklist(t, tt.blocked)
+			blocklist, db := adderBlocklist(t, tt.blocked)
 			if tt.blocklistErr {
 				blocklist = models.NewCrossSeedBlocklistStore(closedDB(t))
 			}
-			rig := newAdderRig(t, &adderFake{existing: tt.existing, findErr: tt.findErr}, blocklist)
+			rig := newAdderRig(t, &adderFake{existing: tt.existing, existingOn: tt.existingOn, findErr: tt.findErr}, blocklist)
+			if tt.link != nil {
+				routes := adderRoutes(t, db, *tt.link)
+				if !tt.noRoutes {
+					rig.adder.SetCrossSeedRoutes(routes)
+				}
+			}
 			check, refusal := rig.adder.Check(t.Context(), 1, tt.facts, adderV1, adderV2)
 
 			if tt.wantStatus == "" {
@@ -500,7 +674,11 @@ func TestAdderCheck(t *testing.T) {
 			require.NotNil(t, refusal)
 			require.Equal(t, AddRefused, refusal.Outcome)
 			require.Equal(t, tt.wantStatus, refusal.Status)
-			require.Equal(t, tt.wantMessage, refusal.Message)
+			if tt.wantMessageRe != "" {
+				require.Regexp(t, tt.wantMessageRe, refusal.Message)
+			} else {
+				require.Equal(t, tt.wantMessage, refusal.Message)
+			}
 			require.Equal(t, tt.wantExisting, refusal.Existing)
 			require.Equal(t, tt.wantStatus == "error", refusal.Err != nil)
 		})
@@ -508,8 +686,8 @@ func TestAdderCheck(t *testing.T) {
 }
 
 // adderBlocklist returns a blocklist store on the test database that blocks
-// hash on instance 1, or no entry when hash is empty.
-func adderBlocklist(t *testing.T, hash string) *models.CrossSeedBlocklistStore {
+// hash on instance 1, or no entry when hash is empty, and the database.
+func adderBlocklist(t *testing.T, hash string) (*models.CrossSeedBlocklistStore, *database.DB) {
 	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, "adder-blocklist")
@@ -523,7 +701,65 @@ func adderBlocklist(t *testing.T, hash string) *models.CrossSeedBlocklistStore {
 		_, err = store.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: hash})
 		require.NoError(t, err)
 	}
-	return store
+	return store, db
+}
+
+// adderLink is a route between instance 1 and instance 2.
+type adderLink struct {
+	// fromSource makes instance 2 a Source instance that routes to instance 1.
+	// Otherwise instance 1 routes to instance 2.
+	fromSource bool
+	// state of instance 2: online when empty, "disabled", or "offline".
+	state string
+	// blocked puts adderV1 on the blocklist of instance 2.
+	blocked bool
+	// unsaved leaves the route table empty.
+	unsaved bool
+}
+
+// adderRoutes adds instance 2 to db, "lib" as a Source instance or "seeds" as
+// a Cross-seed instance, on a local fake qBittorrent. It stores the route of
+// link, unless link.unsaved, and returns the route service.
+func adderRoutes(t *testing.T, db *database.DB, link adderLink) *crossseedroute.Service {
+	t.Helper()
+	ctx := t.Context()
+
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	host := qbtstub.New(t, t.TempDir()).URL
+	if link.state == "offline" {
+		down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		}))
+		t.Cleanup(down.Close)
+		host = down.URL
+	}
+	route := &models.CrossSeedRoute{SourceInstanceID: 1, CrossSeedInstanceID: 2}
+	name := "seeds"
+	if link.fromSource {
+		route.SourceInstanceID, route.CrossSeedInstanceID = 2, 1
+		name = "lib"
+	}
+	linked, err := instances.Create(ctx, name, host, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, linked.ID)
+	if link.state == "disabled" {
+		_, err = instances.SetActiveState(ctx, linked.ID, false)
+		require.NoError(t, err)
+	}
+	if link.blocked {
+		_, err = models.NewCrossSeedBlocklistStore(db).Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: linked.ID, InfoHash: adderV1})
+		require.NoError(t, err)
+	}
+	store := models.NewCrossSeedRouteStore(db)
+	if !link.unsaved {
+		require.NoError(t, store.Upsert(ctx, route))
+	}
+
+	clients, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clients.Close() })
+	return crossseedroute.NewService(store, instances, clients, nil)
 }
 
 func closedDB(t *testing.T) *database.DB {

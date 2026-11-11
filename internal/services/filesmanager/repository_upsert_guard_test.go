@@ -123,10 +123,10 @@ func testUpsertFilesSkipsUnchangedRows(t *testing.T, open testDBOpener) {
 		repo := NewRepository(db)
 
 		files := []CachedFile{baseFile()}
-		require.NoError(t, repo.UpsertFiles(ctx, files))
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
 
 		markCachedAt(ctx, t, db)
-		require.NoError(t, repo.UpsertFiles(ctx, files))
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
 		require.Equal(t, 1, countAtSentinel(ctx, t, db), "unchanged row should not have been rewritten")
 	})
 }
@@ -156,12 +156,12 @@ func testUpsertFilesWritesChangedRows(t *testing.T, open testDBOpener) {
 			withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 				repo := NewRepository(db)
 
-				require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{baseFile()}))
+				require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
 				markCachedAt(ctx, t, db)
 
 				changed := baseFile()
 				tt.mutate(&changed)
-				require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{changed}))
+				require.NoError(t, repo.UpsertCache(ctx, []CachedFile{changed}, nil))
 
 				require.Zero(t, countAtSentinel(ctx, t, db), "changed %s should have been written", tt.name)
 
@@ -195,10 +195,10 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 
 			nullSeed := baseFile()
 			nullSeed.IsSeed = nil
-			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{nullSeed}))
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
 
 			markCachedAt(ctx, t, db)
-			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{nullSeed}))
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
 			require.Equal(t, 1, countAtSentinel(ctx, t, db), "null-to-null should not have been rewritten")
 		})
 	})
@@ -211,10 +211,10 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 
 			nullSeed := baseFile()
 			nullSeed.IsSeed = nil
-			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{nullSeed}))
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
 			markCachedAt(ctx, t, db)
 
-			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{baseFile()}))
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
 			require.Zero(t, countAtSentinel(ctx, t, db), "null-to-value should have been written")
 
 			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
@@ -231,12 +231,12 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 		withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 			repo := NewRepository(db)
 
-			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{baseFile()}))
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
 			markCachedAt(ctx, t, db)
 
 			nullSeed := baseFile()
 			nullSeed.IsSeed = nil
-			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{nullSeed}))
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
 			require.Zero(t, countAtSentinel(ctx, t, db), "value-to-null should have been written")
 
 			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
@@ -265,7 +265,7 @@ func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) 
 			f.FileIndex = i
 			files[i] = f
 		}
-		require.NoError(t, repo.UpsertFiles(ctx, files))
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
 
 		markCachedAt(ctx, t, db)
 
@@ -275,7 +275,7 @@ func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) 
 		for _, i := range []int{0, fileBatchSize, total - 1} {
 			changed[i].Progress = 0.5
 		}
-		require.NoError(t, repo.UpsertFiles(ctx, changed))
+		require.NoError(t, repo.UpsertCache(ctx, changed, nil))
 
 		require.Equal(t, total-3, countAtSentinel(ctx, t, db), "only the three changed rows should have been written")
 	})
@@ -298,8 +298,8 @@ func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener)
 			f.FileIndex = i
 			files[i] = f
 		}
-		require.NoError(t, repo.UpsertFiles(ctx, files))
-		require.NoError(t, repo.UpsertFiles(ctx, files))
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
 
 		var stored int
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache`).Scan(&stored))
@@ -322,7 +322,7 @@ func testUpsertFileRowsGuardSkipsRowsAlreadyStored(t *testing.T, open testDBOpen
 		unchanged := baseFile()
 		changed := baseFile()
 		changed.FileIndex = 1
-		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{unchanged, changed}))
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{unchanged, changed}, nil))
 		markCachedAt(ctx, t, db)
 
 		tx, err := db.BeginTx(ctx, nil)
@@ -372,14 +372,14 @@ func testUpsertFilesComparesWithinInstance(t *testing.T, open testDBOpener) {
 		second := baseFile()
 		second.InstanceID = 2
 		second.Progress = 0.5
-		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first, second}))
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{first, second}, nil))
 		markCachedAt(ctx, t, db)
 
-		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first}))
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{first}, nil))
 		require.Equal(t, 2, countAtSentinel(ctx, t, db), "unchanged row should not have been rewritten")
 
 		first.Progress = 0.5
-		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{first}))
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{first}, nil))
 		require.Equal(t, 1, countAtSentinel(ctx, t, db), "only the first instance's row should have been written")
 	})
 }
@@ -420,7 +420,7 @@ func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 		}
 
 		require.NoError(t, runOverlapping(ctx, workers, rounds, func(ctx context.Context, w, r int) error {
-			return svc.CacheFilesBatch(ctx, 1, batches[(w+r)%2])
+			return svc.CacheFilesBatch(ctx, 1, unprinted(batches[(w+r)%2]))
 		}))
 	})
 }
@@ -444,7 +444,7 @@ func testUpsertSyncInfoBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 			for h := range hashes {
 				infos = append(infos, SyncInfo{InstanceID: 1, TorrentHash: h, LastSyncedAt: time.Now(), FileCount: 1})
 			}
-			return repo.UpsertSyncInfoBatch(ctx, infos)
+			return repo.UpsertCache(ctx, nil, infos)
 		}))
 	})
 }

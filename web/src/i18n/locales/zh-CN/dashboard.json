@@ -58,7 +58,6 @@
     "errors": "错误",
     "reannounceTooltip": "已启用自动 Tracker 重新汇报",
     "altSpeedLimits": "备用速度限制：{{status}}",
-    "localFileAccess": "已启用本地文件访问",
     "connectable": "可连接",
     "portInfo": "。端口：{{port}}",
     "connectionStatus": "qBittorrent 连接状态：{{status}}",

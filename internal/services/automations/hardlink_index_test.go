@@ -5,11 +5,14 @@ package automations
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -768,38 +771,86 @@ func newHardlinkIndexService(t *testing.T, instanceID int, backend fsops.Backend
 	}
 }
 
-// hardlinkIndexRig is a Service wired to a stub qBittorrent over HTTP, a real
-// SyncManager with the real files cache on a test SQLite, and a local backend.
-// Only the tests that pin the files-cache age contract need it; the others use
-// newHardlinkIndexService.
-type hardlinkIndexRig struct {
-	service    *Service
-	instanceID int
-	db         *database.DB
+// fakeQbit is a qBittorrent over HTTP whose maindata answer a test can change.
+// Nothing syncs on its own: the client pool syncs once when it connects.
+type fakeQbit struct {
+	*httptest.Server
+	mu       sync.Mutex
+	torrents map[string]qbt.Torrent
+	syncs    atomic.Int32
 }
 
-// newHardlinkIndexRig builds the rig. filesHandler answers /api/v2/torrents/files.
-func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, filesHandler http.HandlerFunc) *hardlinkIndexRig {
+// newFakeQbit starts a qBittorrent with torrents in its maindata.
+// filesHandler answers /api/v2/torrents/files.
+func newFakeQbit(t *testing.T, torrents []qbt.Torrent, filesHandler http.HandlerFunc) *fakeQbit {
 	t.Helper()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	q := &fakeQbit{torrents: make(map[string]qbt.Torrent, len(torrents))}
+	for _, torrent := range torrents {
+		q.torrents[torrent.Hash] = torrent
+	}
+	q.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.10.0"))
 		case "/api/v2/sync/maindata":
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+			q.syncs.Add(1)
+			q.writeMaindata(w)
 		case "/api/v2/torrents/files":
 			filesHandler(w, r)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
-	t.Cleanup(server.Close)
+	t.Cleanup(q.Close)
+	return q
+}
+
+func (q *fakeQbit) writeMaindata(w http.ResponseWriter) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	rows := make(map[string]any, len(q.torrents))
+	for hash, torrent := range q.torrents {
+		rows[hash] = map[string]any{
+			"name": torrent.Name, "save_path": torrent.SavePath, "content_path": torrent.ContentPath,
+			"size": torrent.Size, "total_size": torrent.TotalSize, "progress": 1,
+		}
+	}
+	_ = json.MarshalWrite(w, map[string]any{"rid": 1, "full_update": true, "torrents": rows})
+}
+
+// set replaces the maindata entry of the torrent's hash.
+func (q *fakeQbit) set(torrent qbt.Torrent) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.torrents[torrent.Hash] = torrent
+}
+
+// hardlinkIndexRig is a Service wired to a fake qBittorrent over HTTP, a real
+// SyncManager with the real files cache on a test SQLite, and a local backend.
+// Only the tests that pin the files-cache contract need it; the others use
+// newHardlinkIndexService.
+type hardlinkIndexRig struct {
+	service    *Service
+	instanceID int
+	db         *database.DB
+	qbit       *fakeQbit
+	clients    *qbittorrent.ClientPool
+}
+
+// newHardlinkIndexRig builds the rig. maindata holds an entry for each torrent
+// of the test from the first sync, because the files cache reads its print
+// there and never syncs. filesHandler answers /api/v2/torrents/files.
+func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, maindata []qbt.Torrent, filesHandler http.HandlerFunc) *hardlinkIndexRig {
+	t.Helper()
+
+	qbit := newFakeQbit(t, maindata, filesHandler)
 
 	db := testdb.NewMigratedSQLite(t, name)
 	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(t.Context(), name, server.URL, "", "", nil, nil, false, new(true))
+	instance, err := instanceStore.Create(t.Context(), name, qbit.URL, "", "", nil, nil, false, new(true))
 	require.NoError(t, err)
 
 	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
@@ -825,10 +876,70 @@ func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, files
 		},
 		instanceID: instance.ID,
 		db:         db,
+		qbit:       qbit,
+		clients:    clientPool,
 	}
 }
 
-func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
+// moveMaindata replaces a maindata entry in qBittorrent and syncs, as the
+// next sync of a running qui would.
+func (r *hardlinkIndexRig) moveMaindata(t *testing.T, torrent qbt.Torrent) {
+	t.Helper()
+	r.qbit.set(torrent)
+	client, err := r.clients.GetClient(t.Context(), r.instanceID)
+	require.NoError(t, err)
+	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+}
+
+// ageFilesCache moves the write of every cached file list back by d. It sets
+// print_synced_at with last_synced_at, because a row whose stamps differ reads
+// as written by an image that knows no print.
+func ageFilesCache(t *testing.T, db *database.DB, d time.Duration) {
+	t.Helper()
+	at := time.Now().UTC().Add(-d)
+	_, err := db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?, print_synced_at = ?", at, at)
+	require.NoError(t, err)
+}
+
+// shiftFilesCache moves each write stamp of every cached file list back by d,
+// from its own stored value. Unlike ageFilesCache, it keeps a print that the
+// write stored as invalid invalid.
+func shiftFilesCache(t *testing.T, db *database.DB, d time.Duration) {
+	t.Helper()
+	type stamps struct {
+		instanceID, hashID int64
+		synced             time.Time
+		printSynced        sql.NullTime
+	}
+	rows, err := db.QueryContext(t.Context(), "SELECT instance_id, torrent_hash_id, last_synced_at, print_synced_at FROM torrent_files_sync")
+	require.NoError(t, err)
+	var all []stamps
+	for rows.Next() {
+		var row stamps
+		require.NoError(t, rows.Scan(&row.instanceID, &row.hashID, &row.synced, &row.printSynced))
+		all = append(all, row)
+	}
+	require.NoError(t, rows.Close())
+	require.NoError(t, rows.Err())
+	require.NotEmpty(t, all)
+
+	for _, row := range all {
+		var printSynced any
+		if row.printSynced.Valid {
+			printSynced = row.printSynced.Time.Add(-d)
+		}
+		_, err := db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?, print_synced_at = ? WHERE instance_id = ? AND torrent_hash_id = ?",
+			row.synced.Add(-d), printSynced, row.instanceID, row.hashID)
+		require.NoError(t, err)
+	}
+}
+
+// singleFileTorrent is a maindata entry of a one-file torrent in dir.
+func singleFileTorrent(hash, dir, file string) qbt.Torrent {
+	return qbt.Torrent{Hash: hash, Name: file, SavePath: dir, ContentPath: filepath.Join(dir, file), Size: 1, TotalSize: 1}
+}
+
+func TestDeletionSelection_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 	const instanceID = 902
 	service := newHardlinkIndexService(t, instanceID, localbackend.NewBackend(), qbt.TorrentFiles{{Name: "data.bin", Priority: 1}})
 	dir := t.TempDir()
@@ -849,16 +960,16 @@ func TestProcessTorrents_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 		}},
 	}
 	evalCtx := &EvalContext{InstanceHasTrustedIdentity: true, HardlinkScopeByHash: index.ScopeByHash}
-	require.Empty(t, processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil))
+	require.Empty(t, selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers)
 
 	// Known unlinked torrents still match the same delete rule.
 	for _, torrent := range torrents {
 		index.ScopeByHash[torrent.Hash] = HardlinkScopeNone
 	}
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
-	require.Len(t, states, len(torrents))
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
+	require.Len(t, selection.triggers, len(torrents))
 	for _, torrent := range torrents {
-		require.True(t, states[torrent.Hash].shouldDelete)
+		require.Contains(t, selection.byHash, torrent.Hash)
 	}
 }
 
@@ -881,29 +992,30 @@ func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[stale])
 	require.NoError(t, os.Remove(filepath.Join(torrents[1].SavePath, "data.bin")))
 	torrentByHash := map[string]qbt.Torrent{unknown: torrents[0], stale: torrents[1], readable: torrents[2]}
-	deleteHashes := map[string][]string{DeleteModeWithFiles: {unknown, stale, readable}}
-	pending := map[string]pendingDeletion{unknown: {ruleID: 1}, stale: {ruleID: 1}, readable: {ruleID: 1}}
+	pending := &deletionSelection{byHash: map[string]selectedDeletion{
+		unknown: {rule: ruleRef{id: 1}}, stale: {rule: ruleRef{id: 1}}, readable: {rule: ruleRef{id: 1}},
+	}}
 	scope := &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeNone}
 	category := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "movies"}
 	rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: scope}}}
 	rules := map[int]*models.Automation{1: rule}
 
-	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
 	require.Equal(t, map[string]string{unknown: "hardlink scope unknown", stale: "files no longer readable"}, blocked)
 
 	// An independent OR match still requires verification when the rule uses hardlink data.
 	rule.Conditions.Delete.Condition = &RuleCondition{Operator: OperatorOr, Conditions: []*RuleCondition{scope, category}}
 	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasTrustedIdentity: true}, 0))
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules)
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
 	require.Contains(t, blocked, unknown)
 
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, deleteHashes, pending, rules)
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, pending, rules)
 	require.Len(t, blocked, len(torrents))
 
 	// Rules without hardlink data do not need a scope or a filesystem rescan.
 	rule.Conditions.Delete.Condition = category
 	for _, index := range []*HardlinkIndex{index, nil} {
-		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, deleteHashes, pending, rules))
+		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules))
 	}
 }
 
@@ -1018,7 +1130,11 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	}
 
 	var fileRequests atomic.Int32
-	rig := newHardlinkIndexRig(t, "hardlink-index-expired-rebuild", localbackend.NewBackend(), func(w http.ResponseWriter, r *http.Request) {
+	maindata := []qbt.Torrent{
+		singleFileTorrent(hashA, dir, "a.mkv"), singleFileTorrent(hashB, dir, "b.mkv"),
+		singleFileTorrent(hashC, dir, "c.mkv"), singleFileTorrent(hashD, dir, "d.mkv"),
+	}
+	rig := newHardlinkIndexRig(t, "hardlink-index-expired-rebuild", localbackend.NewBackend(), maindata, func(w http.ResponseWriter, r *http.Request) {
 		fileRequests.Add(1)
 		_, _ = fmt.Fprintf(w, `[{"name":"%.1s.mkv","priority":1}]`, r.URL.Query().Get("hash"))
 	})
@@ -1030,13 +1146,11 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 
 	// A link appears outside the torrent set, the index ages past its TTL, and the
-	// files cache ages past its freshness window but not past the index's bound:
-	// the rebuild must still see the new link without asking qBittorrent for a
-	// single file list.
+	// files cache ages past its freshness window: the rebuild must still see the
+	// new link without asking qBittorrent for a single file list.
 	require.NoError(t, os.Link(filepath.Join(dir, "a.mkv"), filepath.Join(t.TempDir(), "a-copy.mkv")))
 	expireHardlinkIndex(t, rig.instanceID)
-	_, err := rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-hardlinkFilesCacheMaxAge/2))
-	require.NoError(t, err)
+	ageFilesCache(t, rig.db, 30*time.Minute)
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(2), fileRequests.Load())
@@ -1053,8 +1167,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	// An incremental update re-reads the torrents that share files with the new
 	// one. Their lists are cached too, so only the new torrent is fetched.
 	require.NoError(t, os.Link(filepath.Join(dir, "a.mkv"), filepath.Join(dir, "d.mkv")))
-	_, err = rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-hardlinkFilesCacheMaxAge/2))
-	require.NoError(t, err)
+	ageFilesCache(t, rig.db, 30*time.Minute)
 	torrents = all
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
@@ -1075,7 +1188,8 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 
 	var fileRequests atomic.Int32
 	names := map[string]string{hashA: "a.mkv", hashB: "b.mkv"}
-	rig := newHardlinkIndexRig(t, "hardlink-index-stale-name", localbackend.NewBackend(), func(w http.ResponseWriter, r *http.Request) {
+	maindata := []qbt.Torrent{singleFileTorrent(hashA, dir, "a.mkv"), singleFileTorrent(hashB, dir, "b.mkv")}
+	rig := newHardlinkIndexRig(t, "hardlink-index-stale-name", localbackend.NewBackend(), maindata, func(w http.ResponseWriter, r *http.Request) {
 		fileRequests.Add(1)
 		_, _ = fmt.Fprintf(w, `[{"name":%q,"priority":1}]`, names[r.URL.Query().Get("hash")])
 	})
@@ -1086,28 +1200,84 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 
 	// The file is renamed in qBittorrent's own WebUI: the disk and qBittorrent
-	// agree on the new name, the cached row still holds the old one. The expired
-	// rebuild trusts the row, cannot stat the file, and leaves the scope unknown
-	// rather than guessing. The other torrent is unaffected.
+	// agree on the new name, the cached row still holds the old one, and qui has
+	// not synced since. The expired rebuild trusts the row, cannot stat the file,
+	// and leaves the scope unknown rather than guessing. The other torrent is
+	// unaffected.
 	require.NoError(t, os.Rename(filepath.Join(dir, "a.mkv"), filepath.Join(dir, "a-renamed.mkv")))
 	names[hashA] = "a-renamed.mkv"
 	expireHardlinkIndex(t, rig.instanceID)
-	_, err := rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-hardlinkFilesCacheMaxAge/2))
-	require.NoError(t, err)
+	ageFilesCache(t, rig.db, 30*time.Minute)
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(2), fileRequests.Load())
 	require.Empty(t, index.ScopeByHash[hashA])
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashB])
 
-	// Once the rows age past the bound, the next rebuild refetches and recovers.
+	// A 2 h old row with a matching print stays current. Once a sync shows the
+	// new root, the next rebuild refetches that one list and recovers.
 	expireHardlinkIndex(t, rig.instanceID)
-	_, err = rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-2*hardlinkFilesCacheMaxAge))
-	require.NoError(t, err)
+	ageFilesCache(t, rig.db, 2*time.Hour)
+	rig.moveMaindata(t, singleFileTorrent(hashA, dir, "a-renamed.mkv"))
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
-	require.Equal(t, int32(4), fileRequests.Load())
+	require.Equal(t, int32(3), fileRequests.Load())
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashB])
+}
+
+// newTwoTorrentRig is a rig with two one-file torrents that it builds once,
+// fetching both file lists.
+func newTwoTorrentRig(t *testing.T, name string) (*hardlinkIndexRig, []qbt.Torrent, *atomic.Int32) {
+	t.Helper()
+	const (
+		hashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		hashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	dir := t.TempDir()
+	createFile(t, filepath.Join(dir, "a.mkv"))
+	createFile(t, filepath.Join(dir, "b.mkv"))
+
+	fileRequests := &atomic.Int32{}
+	maindata := []qbt.Torrent{singleFileTorrent(hashA, dir, "a.mkv"), singleFileTorrent(hashB, dir, "b.mkv")}
+	rig := newHardlinkIndexRig(t, name, localbackend.NewBackend(), maindata, func(w http.ResponseWriter, r *http.Request) {
+		fileRequests.Add(1)
+		_, _ = fmt.Fprintf(w, `[{"name":"%.1s.mkv","priority":1}]`, r.URL.Query().Get("hash"))
+	})
+	torrents := []qbt.Torrent{{Hash: hashA, SavePath: dir}, {Hash: hashB, SavePath: dir}}
+
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	require.Equal(t, int32(2), fileRequests.Load())
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
+	return rig, torrents, fileRequests
+}
+
+// The rows keep the stamps of their write, so a write that stored no valid
+// print would make them stale after 1 h.
+func TestGetHardlinkIndex_RebuildTwoHoursLaterSendsNoFileRequest(t *testing.T) {
+	rig, torrents, fileRequests := newTwoTorrentRig(t, "hardlink-index-two-hours")
+	syncs := rig.qbit.syncs.Load()
+
+	expireHardlinkIndex(t, rig.instanceID)
+	shiftFilesCache(t, rig.db, 2*time.Hour)
+
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	require.Equal(t, int32(2), fileRequests.Load())
+	require.Equal(t, syncs, rig.qbit.syncs.Load(), "the print read sends no sync/maindata")
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[torrents[0].Hash])
+}
+
+func TestGetHardlinkIndex_RowPastItsBackstopIsFetchedOnce(t *testing.T) {
+	rig, torrents, fileRequests := newTwoTorrentRig(t, "hardlink-index-backstop")
+
+	expireHardlinkIndex(t, rig.instanceID)
+	ageFilesCache(t, rig.db, 23*time.Hour)
+	rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	require.Equal(t, int32(4), fileRequests.Load())
+
+	expireHardlinkIndex(t, rig.instanceID)
+	rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	require.Equal(t, int32(4), fileRequests.Load(), "the refetched lists are current again")
 }
 
 func expireHardlinkIndex(t *testing.T, instanceID int) {
@@ -1233,8 +1403,8 @@ func TestBlockedDeleteCandidates_CrossInstanceScope(t *testing.T) {
 
 			rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: tt.condition}}}
 			blocked := service.blockedDeleteCandidates(t.Context(), instanceA.ID, index,
-				map[string]qbt.Torrent{hash: torrent}, map[string][]string{DeleteModeWithFiles: {hash}},
-				map[string]pendingDeletion{hash: {ruleID: 1}}, map[int]*models.Automation{1: rule})
+				map[string]qbt.Torrent{hash: torrent},
+				&deletionSelection{byHash: map[string]selectedDeletion{hash: {rule: ruleRef{id: 1}}}}, map[int]*models.Automation{1: rule})
 			require.Equal(t, tt.want, blocked)
 		})
 	}

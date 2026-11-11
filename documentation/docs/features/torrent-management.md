@@ -13,7 +13,7 @@ qui provides tools to manage torrent lists: tags, categories, tracker URLs, save
 
 When a delete reaches 10 torrents or more, or when Ctrl/Cmd + A selected all torrents, the delete dialog names the first three torrents and gives the number of the others. The **Delete** button shows the count, for example **Delete 7500 torrents**. After Ctrl/Cmd + A, the dialog also tells you that select all is on, and how many of the selected torrents are not loaded in the table.
 
-qBittorrent removes a torrent's own folder when you delete it with its files, but not the folders above it, and a move leaves the old folder behind. On an instance with **Local Filesystem Access**, qui removes these leftover folders after it deletes a torrent with its files, changes its location, changes its category, turns on Automatic Torrent Management, or changes a category's save path. This covers the qui UI, automations, and requests from Sonarr, Radarr, autobrr, and other clients that go through the [reverse proxy](./reverse-proxy.md), when the request is sent as a URL-encoded form. There is no setting.
+qBittorrent removes a torrent's own folder when you delete it with its files, but not the folders above it, and a move leaves the old folder behind. On an instance with **Local Filesystem Access**, and on a [remote instance](./ssh-access.md), qui removes these leftover folders after it deletes a torrent with its files, changes its location, changes its category, turns on Automatic Torrent Management, or changes a category's save path. This covers the qui UI, automations, and requests from Sonarr, Radarr, autobrr, and other clients that go through the [reverse proxy](./reverse-proxy.md), when the request is sent as a URL-encoded form. There is no setting.
 
 qui removes a folder only when it is empty, or holds nothing but `Thumbs.db`, `desktop.ini`, `.directory`, `.DS_Store`, or files whose names end in `~`. It starts at the torrent's own folder and works up, one empty folder at a time. It stops at:
 
@@ -30,7 +30,7 @@ qui waits up to two minutes for qBittorrent to finish deleting or moving the fil
 
 Before it sends a delete or move, qui checks the content for at most 5 seconds for a request that comes through the reverse proxy, and for at most 30 seconds for one from the qui UI or an automation, even when a disk or network mount stops answering. Content it has not checked by then is left to orphan scan.
 
-qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those.
+qui does not clean up after a delete made in the qBittorrent WebUI, by qBittorrent's share limits, or by a client that talks to qBittorrent directly. Orphan scan's **Delete Abandoned Directories** covers those. On a remote instance where orphan scan cannot delete, a folder that this cleanup leaves stays in place. See [Remote instances](./orphan-scan.md#remote-instances).
 
 ## Tags and categories
 
@@ -121,6 +121,22 @@ The arrow keys replace the selection with the focused row, the same as a plain c
 Drag the edge of a column header to change the width of that column. The button next to **Toggle columns** decides how the Name column gets its width.
 
 Stretch mode is the default. In stretch mode, the Name column takes the width that the other columns leave, so the table fills the window. You cannot resize the Name column in stretch mode. In scroll mode, you set the width of the Name column, and the table scrolls sideways when the columns do not fit. If the visible columns leave no room for the Name column, qui scrolls anyway and the button turns gray until you hide a column. qui remembers the choice for each instance.
+
+## Group copies
+
+A copy is a torrent of the same release on another tracker or another instance. **Group copies** shows all copies of a release as one row. The switch is off by default. In Table and Dense, it is in the **Toggle columns** menu. In Stacked, it is in the sort menu. On phones, it is in the sort menu above the cards. qui saves the switch with your other settings, so it applies in each browser that you sign in to.
+
+Two torrents are copies when qui matches them as cross-seeds and their files have the same sizes. Equal sizes keep a season pack apart from its episodes. A torrent with no file list, for example a magnet without metadata, stays a row of its own.
+
+Each group starts closed. The top row is the oldest copy, and a badge such as **+2** gives the number of hidden copies. A warning icon on the badge tells you that a hidden copy has an error, missing files, or a tracker problem. Click or tap the badge to open or close one group. **Expand all**, next to the switch, opens or closes all groups.
+
+Grouping changes only how the list looks:
+
+- Filters and the search apply to torrents before qui groups them. A group holds only the copies that match.
+- A tick, a right-click, and Shift + click select only the rows that you see. To act on all copies, use Ctrl/Cmd + A, or the cross-seed option in the delete dialog.
+- The torrent count in the status bar counts torrents, not rows.
+
+When you turn on the switch for the first time, qui reads the file lists of your torrents. Until it finishes, the list stays flat, and the status bar shows **Grouping…**. On phones, the bar above the cards shows it. **Filter Cross-Seeds** always shows flat rows.
 
 ## Live updates paused
 

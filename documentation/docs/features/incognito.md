@@ -51,9 +51,9 @@ If you export a `.torrent` file while incognito mode is on, qui renames the down
 
 ## Spreadsheet disguise themes
 
-The **Spreadsheet** and **Spreadsheet Classic** themes make qui look like a spreadsheet app. Spreadsheet Classic renders a 2003-era look and is light-only. Both are premium themes and need the same license that unlocks [custom themes](./custom-themes.md).
+The **Spreadsheet** and **Spreadsheet Classic** themes make qui look like a spreadsheet app. Spreadsheet Classic renders a 2003-era look and is light-only. Both need the same license that unlocks [custom themes](./custom-themes.md).
 
-Select them under **Settings > Premium Themes**. While one is active, qui renders spreadsheet chrome:
+Select them under **Settings → Themes**. While one is active, qui renders spreadsheet chrome:
 
 | Element | What it does |
 |---------|--------------|

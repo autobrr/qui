@@ -131,10 +131,11 @@
       "check": "Verificar"
     },
     "searching": "Verificando cross-seeds",
-    "searchingProgress": "Verificando cross-seeds ({{checked}}/{{total}})",
     "error": "Falha ao verificar cross-seeds",
     "retry": "Tentar novamente",
     "noCrossSeeds": "Nenhum cross-seed encontrado",
+    "uncheckedOffline": "Não foi possível verificar {{instance}}: o qui não consegue acessá-la.",
+    "uncheckedDisabled": "{{instance}} não foi verificada: ela está desativada no qui.",
     "deleteCrossSeeds": "Estes cross-seeds também serão excluídos",
     "deletingFilesBreaks": "Excluir os arquivos vai quebrar estes cross-seeds",
     "dataPreserved": "Cross-seeds detectados: os dados serão preservados",
@@ -730,19 +731,18 @@
     "partialResults": "Resultados parciais - alguns indexadores não responderam",
     "arrLookupFailed": "Falha na consulta de IDs de metadados - busca apenas por título, os resultados podem estar incompletos",
     "arrNoIds": "Nenhum ID de metadados encontrado para este release - busca apenas por título",
+    "gazelleTimedOut": "RED/OPS não respondeu a tempo",
+    "torznabFailed": "A busca no Torznab falhou - exibindo apenas resultados do RED/OPS",
     "searchScope": "Escopo da Pesquisa",
     "noIndexers": "Nenhum indexador Torznab disponível",
     "noIndexersHelp": "Adicione ou ative indexadores Torznab nas Configurações.",
+    "gazelleOnlySearch": "A busca consulta apenas os sites RED/OPS que têm uma chave de API.",
     "capabilityNote": "Nota de capacidade",
     "capabilityDescription": "Estes indexadores não possuem as capacidades/categorias necessárias para este torrent e serão ignorados:",
-    "contentFilteringInProgress": "Filtragem de Conteúdo em Andamento",
-    "analyzingContent": "Analisando conteúdo existente...",
     "smartFilteringActive": "Filtragem Inteligente Ativa",
     "indexersFiltered_one": "{{count}} indexador filtrado",
     "indexersFiltered_other": "{{count}} indexadores filtrados",
-    "contentFilteringDescription": "Verificando seus torrents existentes para encontrar duplicatas e excluir trackers redundantes.",
     "excludedDescription": "Você já compartilha este lançamento destes trackers, então eles foram excluídos da busca.",
-    "noContentDuplicates": "Filtragem de conteúdo concluída. Nenhum conteúdo duplicado encontrado nos seus trackers ativados.",
     "searchingIndexers": "Pesquisando indexadores…",
     "noMatchesFound": "Nenhuma correspondência encontrada em sua pesquisa.",
     "selectReleasesToAdd": "Selecione os lançamentos que deseja adicionar",
@@ -791,7 +791,6 @@
       "selectAllIndexers": "Selecionar todos",
       "clearSelection": "Limpar seleção",
       "search": "Pesquisar",
-      "filtering": "Filtrando…",
       "searching": "Pesquisando",
       "noneSelected": "Nenhum selecionado",
       "enabledIndexers": "{{count}} {{suffix}} ativado(s)",
@@ -824,7 +823,8 @@
       "fewerIndexers": "Tente pesquisar com menos indexadores selecionados",
       "useRss": "Use a automação RSS para cross-seeding contínuo",
       "checkIndexers": "Verifique a página de indexadores para ver quais estão limitados"
-    }
+    },
+    "routedTo": "Os cross-seeds vão para a instância de cross-seed {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtrar {{column}}",
@@ -1017,7 +1017,6 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} de {{total}} torrents carregados",
     "scrollForMore": "(role para mais)",
-    "loading": "Carregando...",
     "freeSpace": "Espaço Livre",
     "switchToBits": "Mudar para bits por segundo (bps)",
     "switchToBytes": "Mudar para bytes por segundo (B/s)",
@@ -1083,7 +1082,6 @@
     "closePanel": "Fechar painel de detalhes",
     "unknownError": "Erro desconhecido",
     "toast": {
-      "copied": "{{type}} copiado para a área de transferência",
       "copyFailed": "Falha ao copiar para a área de transferência",
       "peersAdded": "Peers adicionados com sucesso",
       "peersFailed": "Falha ao adicionar peers: {{error}}",
@@ -1135,20 +1133,14 @@
       "loadedSummary_other": "{{count}} torrents correspondentes encontrados em todas as instâncias",
       "deleteMatches": "Excluir Correspondências ({{count}})",
       "deleteThisTorrent": "Excluir Este Torrent",
-      "checkingMoreInstances": "Verificando outras instâncias...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "Mesmo torrent exato (mesmo info hash)",
-      "savePathMatch": "Caminho de Salvamento",
-      "savePathDescription": "Mesmo diretório e nome de arquivo",
-      "selectTorrent": "Selecionar {{name}}"
+      "selectTorrent": "Selecionar {{name}}",
+      "openTorrent": "Abrir {{name}}"
     },
     "sections": {
       "generalInformation": "Informações Gerais",
       "transferStatistics": "Estatísticas de Transferência",
-      "speed": "Velocidade",
       "queueManagement": "Gerenciamento da Fila",
       "timeInformation": "Informações de Tempo",
-      "timestamps": "Marcações de Tempo",
       "activeTrackers": "Trackers Ativos",
       "connectedPeers": "Peers Conectados",
       "fileContents": "Conteúdo do Arquivo"
@@ -1175,18 +1167,13 @@
       "added": "Adicionado",
       "completed": "Concluído",
       "created": "Criado",
-      "leechers": "Leechers",
-      "peerProgress": "Progresso do Peer",
-      "connection": "Conexão:",
-      "flags": "Bandeiras (Flags):"
+      "leechers": "Leechers"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "connectedPeers_one": "{{count}} peer conectado",
       "connectedPeers_other": "{{count}} peers conectados",
-      "httpSources_one": "{{count}} fonte",
-      "httpSources_other": "{{count}} fontes",
       "selectedFiles": "{{selected}} de {{total}} selecionados",
       "files_one": "{{count}} arquivo",
       "files_other": "{{count}} arquivos"
@@ -1194,7 +1181,6 @@
     "values": {
       "normal": "Normal",
       "queued": "Na Fila {{state}}",
-      "seeder": "Seeder",
       "unknownClient": "Cliente desconhecido"
     },
     "actions": {
@@ -1203,14 +1189,12 @@
       "selectAll": "Todos",
       "selectNone": "Nenhum"
     },
-    "peer": {
-      "flagLabel": "Bandeira {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Nenhum arquivo encontrado"
     },
     "selectAll": "Selecionar Todos",
-    "deselectAll": "Desmarcar Todos"
+    "deselectAll": "Desmarcar Todos",
+    "trackerMessageHidden": "Mensagem do tracker oculta no modo anônimo"
   },
   "generalTab": {
     "name": "Nome:",
@@ -1255,6 +1239,7 @@
     "status": "Status",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Peers",
     "leeches": "Leeches",
     "downloaded": "DLs",
     "message": "Mensagem",
@@ -1370,11 +1355,7 @@
       }
     },
     "noMatches": "Nenhum torrent correspondente encontrado em outras instâncias",
-    "loadFailed": "Não foi possível verificar correspondências de cross-seed. Recarregue para tentar novamente.",
-    "toast": {
-      "savePathCopied": "Caminho de salvamento copiado",
-      "copyFailed": "Falha ao copiar"
-    }
+    "loadFailed": "Não foi possível verificar correspondências de cross-seed. Recarregue para tentar novamente."
   },
   "addTorrentDialog": {
     "title": "Adicionar Novo Torrent",
@@ -1522,7 +1503,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Pesquisa automática ao digitar"
     },
-    "ratio": "Ratio:"
+    "ratio": "Ratio:",
+    "added": "Adicionado {{time}}"
   },
   "tableView": {
     "ascending": "crescente",
@@ -1655,6 +1637,7 @@
     "tags": "Tags",
     "newTagPlaceholder": "Adicione uma tag e pressione Enter",
     "savePath": "Caminho de salvamento (destino efetivo)",
+    "routedTo": "O cross-seed vai para a instância de cross-seed {{instance}}.",
     "cancel": "Cancelar",
     "apply": "Adicionar cross-seed",
     "applying": "Adicionando...",
@@ -1676,12 +1659,14 @@
       "dropped": "Pacote adicionado. Destinos descartados: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Esta instância precisa de acesso ao sistema de arquivos local para montar um pacote.",
+        "no_filesystem_access": "Esta instância precisa de acesso de escrita ao sistema de arquivos para montar um pacote. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
         "no_link_mode": "Ative hardlinks ou reflinks nesta instância para selecionar vários destinos.",
         "no_base_directory": "Configure um diretório base para os links desta instância.",
         "no_episode_files": "Nenhum arquivo de episódio reproduzível foi encontrado neste pacote.",
         "target_not_found": "Destino não encontrado nesta instância.",
         "incomplete": "O download do destino está incompleto.",
+        "not_settled": "Este torrent ainda está sendo movido ou verificado. Tente novamente quando terminar.",
+        "errored": "Este torrent tem um erro ou arquivos ausentes. Corrija o problema e tente novamente.",
         "no_episode_identity": "Não foi possível reconhecer o número do episódio.",
         "file_list_unavailable": "A lista de arquivos do destino não está disponível.",
         "episode_file_invalid": "O destino deve conter um arquivo reproduzível com a identidade do episódio selecionado.",
@@ -1696,5 +1681,21 @@
         "add_failed": "Falha ao adicionar o torrent."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "Mais {{count}} cópia de {{name}}",
+    "copies_other": "Mais {{count}} cópias de {{name}}",
+    "copiesWithProblem_one": "Mais {{count}} cópia de {{name}}. Uma cópia oculta tem um problema",
+    "copiesWithProblem_other": "Mais {{count}} cópias de {{name}}. Uma cópia oculta tem um problema",
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} selecionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} selecionadas",
+    "hiddenTicked_one": "{{count}} cópia oculta está selecionada",
+    "hiddenTicked_other": "{{count}} cópias ocultas estão selecionadas",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupar cópias",
+    "expandAll": "Expandir tudo",
+    "collapseAll": "Recolher tudo",
+    "grouping": "Agrupando…"
   }
 }

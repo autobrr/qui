@@ -43,7 +43,7 @@ func linkPair(t *testing.T, dir string) (string, string) {
 // as a full build or an incremental update does.
 func indexFrom(scans map[string]*torrentFileInfo) *HardlinkIndex {
 	index := &HardlinkIndex{}
-	index.applyLinkState(deriveLinkCounts(nil, scans))
+	index.applyLinkState(deriveLinkCounts(nil, scans, nil))
 	return index
 }
 
@@ -315,7 +315,7 @@ func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 	stale.linkedFiles[0].nlink = 2
 	fresh.linkedFiles[0].nlink = 9
 
-	state := deriveLinkCounts(nil, map[string]*torrentFileInfo{"stale": stale, "fresh": fresh})
+	state := deriveLinkCounts(nil, map[string]*torrentFileInfo{"stale": stale, "fresh": fresh}, nil)
 
 	tracker := state.globalFileIDMap[testFileKey(fresh.fileIDs[0], state.instance)]
 	require.NotNil(t, tracker)

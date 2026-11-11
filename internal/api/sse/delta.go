@@ -54,7 +54,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	if isCross {
 		order, changedIdx, newFP = computeRowDelta(resp.CrossInstanceTorrents, crossRowKey, crossRowFingerprint, g.baselineFP)
 	} else {
-		order, changedIdx, newFP = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprint, g.baselineFP)
+		order, changedIdx, newFP = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprintFor(opts), g.baselineFP)
 	}
 
 	forceFull := g.baselineSnapshot == nil
@@ -78,6 +78,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	g.baselineOrder = order
 	g.baselineSnapshot = &snapshot
 	g.rebuildFailed = false
+	g.lastFrame = time.Now()
 	g.version.Minor++
 
 	if forceFull {
@@ -128,7 +129,8 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 }
 
 // buildServerStatePayload sends a new server state with the rows and counts of the
-// last frame, as a delta with no changed rows. It returns nil when the view must
+// last frame, as a delta with no changed rows. A nil serverState keeps the server
+// state of the last frame, for an idle tick. It returns nil when the view must
 // be rebuilt: the group has no baseline yet, the last rebuild failed, or the
 // subcategory mode changed, which changes the category counts.
 func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState, instanceMeta *qbittorrent.InstanceMeta, activeTaskCount int, meta *StreamMeta) *StreamPayload {
@@ -139,7 +141,9 @@ func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState
 	if prev == nil || g.rebuildFailed {
 		return nil
 	}
-	if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
+	if serverState == nil {
+		serverState = prev.ServerState
+	} else if prevSubcategories := prev.ServerState != nil && prev.ServerState.UseSubcategories; prevSubcategories != serverState.UseSubcategories {
 		return nil
 	}
 
@@ -149,7 +153,37 @@ func (g *subscriptionGroup) buildServerStatePayload(serverState *qbt.ServerState
 	snapshot.ActiveTaskCount = activeTaskCount
 	// The tick comes from a successful sync, so the rows are fresh again.
 	snapshot.CacheMetadata = qbittorrent.NewCacheMetadata(meta.Timestamp, time.Now())
+	return g.resendBaselineLocked(snapshot, meta)
+}
+
+// baselineVersions is the Web API version of each instance in the last frame.
+func (g *subscriptionGroup) baselineVersions() map[int]string {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+	if g.baselineSnapshot == nil {
+		return nil
+	}
+	return g.baselineSnapshot.WebAPIVersions
+}
+
+// buildIdlePayload sends the last frame of a cross-instance view again, as a delta
+// with no changed rows. It returns nil when the view must be rebuilt: the group
+// has no baseline yet, or the last rebuild failed.
+func (g *subscriptionGroup) buildIdlePayload(meta *StreamMeta) *StreamPayload {
+	g.baselineMu.Lock()
+	defer g.baselineMu.Unlock()
+
+	if g.baselineSnapshot == nil || g.rebuildFailed {
+		return nil
+	}
+	return g.resendBaselineLocked(*g.baselineSnapshot, meta)
+}
+
+// resendBaselineLocked keeps snapshot as the baseline and returns it as a delta
+// with no changed rows. The caller holds baselineMu.
+func (g *subscriptionGroup) resendBaselineLocked(snapshot qbittorrent.TorrentResponse, meta *StreamMeta) *StreamPayload {
 	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
 	baseVersion := g.version
 	g.version.Minor++
 
@@ -195,7 +229,7 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	if opts.isMultiInstance() {
 		order, _, fp = computeRowDelta(resp.CrossInstanceTorrents, crossRowKey, crossRowFingerprint, nil)
 	} else {
-		order, _, fp = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprint, nil)
+		order, _, fp = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprintFor(opts), nil)
 	}
 
 	g.baselineFP = fp
@@ -203,6 +237,7 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	snapshot := *resp
 	detachSnapshotRows(&snapshot)
 	g.baselineSnapshot = &snapshot
+	g.lastFrame = time.Now()
 	g.version.Minor++
 
 	return &StreamPayload{
@@ -213,13 +248,36 @@ func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorre
 	}
 }
 
+// optionalValues holds a row's own copies of Reannounce, Popularity and
+// Private. The row builder stores them for all rows in one allocation.
+type optionalValues struct {
+	reannounce int64
+	popularity float64
+	private    bool
+}
+
+func (v *optionalValues) own(tv *qbittorrent.TorrentView) {
+	if tv.Reannounce != nil {
+		v.reannounce, tv.Reannounce = *tv.Reannounce, &v.reannounce
+	}
+	if tv.Popularity != nil {
+		v.popularity, tv.Popularity = *tv.Popularity, &v.popularity
+	}
+	if tv.Private != nil {
+		v.private, tv.Private = *tv.Private, &v.private
+	}
+}
+
 // Page rows can point into a full library allocation. Retain only the page.
 func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
 	snapshot.Torrents = slices.Clone(snapshot.Torrents)
 	snapshot.CrossInstanceTorrents = slices.Clone(snapshot.CrossInstanceTorrents)
 	torrents := make([]qbt.Torrent, len(snapshot.Torrents)+len(snapshot.CrossInstanceTorrents))
+	values := make([]optionalValues, len(torrents))
 	for i := range snapshot.Torrents {
-		if row := &snapshot.Torrents[i]; row.Torrent != nil {
+		row := &snapshot.Torrents[i]
+		values[i].own(row)
+		if row.Torrent != nil {
 			torrents[i] = *row.Torrent
 			row.Torrent = &torrents[i]
 		}
@@ -231,8 +289,9 @@ func detachSnapshotRows(snapshot *qbittorrent.TorrentResponse) {
 			continue
 		}
 		views[i] = *row.TorrentView
+		idx := len(snapshot.Torrents) + i
+		values[idx].own(&views[i])
 		if row.Torrent != nil {
-			idx := len(snapshot.Torrents) + i
 			torrents[idx] = *row.Torrent
 			views[i].Torrent = &torrents[idx]
 		}
@@ -284,14 +343,16 @@ func (b *fpBuf) bit(v bool) {
 // torrent appends every change-relevant torrent field. The per-second counters and
 // swarm/peer-count jitter that move on an otherwise-idle torrent every tick
 // (Reannounce, TimeActive, SeedingTime, ETA, LastActivity, SeenComplete, Popularity,
-// Availability, NumComplete, NumIncomplete, NumLeechs, NumSeeds) are deliberately
-// left out: on a mostly-idle instance they are the sole fields that change each tick,
-// so including them would flag nearly every row as changed and make each "delta"
-// almost as large as a full snapshot (the root cause of the stream saturating an
-// HTTP/2 connection). The excluded fields still ride along with their current value
-// whenever a row is sent for a real change; they are just not on their own a reason
-// to resend a row. MagnetURI and HasMetadata are also left out, for a different
-// reason: TorrentView shadows them out of the serialized payload entirely, so
+// Availability, NumComplete, NumIncomplete, NumLeechs, NumSeeds, ConnectionsCount)
+// are deliberately left out: on a mostly-idle instance they are the sole fields that
+// change each tick, so including them would flag nearly every row as changed and make
+// each "delta" almost as large as a full snapshot (the root cause of the stream
+// saturating an HTTP/2 connection). PiecesHave is left out because Progress already
+// resends the row during a download. The excluded fields still ride along with their
+// current value whenever a row is sent for a real change; they are just not on their
+// own a reason to resend a row (oneRowFingerprint adds some of them back). MagnetURI and
+// HasMetadata are also left out, for a different reason: TorrentView shadows
+// them out of the serialized payload entirely, so
 // changes to them have nothing to update and must not resend a row (issue #2328).
 // TestTorrentFingerprintCoversEveryField pins this partition, so a
 // go-qbittorrent bump that adds a field fails until the field is categorized here.
@@ -306,7 +367,9 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.str(t.Comment)
 	b.i64(t.Completed)
 	b.i64(t.CompletionOn)
+	b.i64(t.ConnectionsLimit)
 	b.str(t.CreatedBy)
+	b.i64(t.CreationDate)
 	b.str(t.ContentPath)
 	b.i64(t.DlLimit)
 	b.i64(t.DlSpeed)
@@ -323,6 +386,8 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.i64(t.MaxSeedingTime)
 	b.i64(t.MaxInactiveSeedingTime)
 	b.str(t.Name)
+	b.i64(t.PieceSize)
+	b.i64(t.PiecesNum)
 	b.i64(t.Priority)
 	b.f64(t.Progress)
 	b.f64(t.Ratio)
@@ -338,6 +403,7 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.bit(t.SuperSeeding)
 	b.str(t.Tags)
 	b.i64(t.TotalSize)
+	b.i64(t.TotalWasted)
 	b.str(t.Tracker)
 	b.i64(t.TrackersCount)
 	b.i64(t.UpLimit)
@@ -357,6 +423,30 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	}
 }
 
+// optional appends whether the row has each optional value. A version read, or
+// metadata that arrives for a magnet link, can add or remove one with no other
+// change in the torrent.
+func (b *fpBuf) optional(tv *qbittorrent.TorrentView) {
+	b.bit(tv.Reannounce != nil)
+	b.bit(tv.Popularity != nil)
+	b.bit(tv.Private != nil)
+}
+
+// copyGroup appends the Copy group of the row. A rebuild of the groups changes it
+// with no change in the torrent.
+func (b *fpBuf) copyGroup(g *qbittorrent.CopyGroupRow) {
+	b.bit(g != nil)
+	if g == nil {
+		return
+	}
+	b.str(g.ID)
+	b.bit(g.FirstSorted != nil)
+	if g.FirstSorted != nil {
+		b.i64(int64(g.FirstSorted.InstanceID))
+		b.str(g.FirstSorted.Hash)
+	}
+}
+
 func (b fpBuf) sum() uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write(b)
@@ -366,11 +456,45 @@ func (b fpBuf) sum() uint64 {
 // singleRowFingerprint hashes a single-instance row's change-relevant content.
 // The caller owns the buffer so a page of rows hashes with one allocation
 // instead of one per row; it is reset here, so callers may pass a zero fpBuf.
+// It hashes whether the row has each optional value (Reannounce, Popularity,
+// Private), which a version read can change with no change in the torrent.
 func singleRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
 	*b = (*b)[:0]
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
+	b.optional(&tv)
+	b.copyGroup(tv.CopyGroup)
 	return b.sum()
+}
+
+// oneRowFingerprint is singleRowFingerprint for a one-row view, the details row.
+// It also hashes the counters that the General tab shows live. One row costs
+// little to resend, so the reason to leave them out of a list does not apply.
+func oneRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
+	*b = (*b)[:0]
+	b.torrent(tv.Torrent)
+	b.str(string(tv.TrackerHealth))
+	b.optional(&tv)
+	b.copyGroup(tv.CopyGroup)
+	if t := tv.Torrent; t != nil {
+		b.i64(t.TimeActive)
+		b.i64(t.SeedingTime)
+		b.i64(t.NumSeeds)
+		b.i64(t.NumLeechs)
+		b.i64(t.NumComplete)
+		b.i64(t.NumIncomplete)
+		b.i64(t.ConnectionsCount)
+		b.i64(t.PiecesHave)
+		b.i64(t.Reannounce)
+	}
+	return b.sum()
+}
+
+func singleRowFingerprintFor(opts StreamOptions) func(*fpBuf, qbittorrent.TorrentView) uint64 {
+	if opts.View.Limit == 1 {
+		return oneRowFingerprint
+	}
+	return singleRowFingerprint
 }
 
 // crossRowFingerprint hashes a cross-instance row's change-relevant content,
@@ -380,6 +504,8 @@ func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint6
 	if c.TorrentView != nil {
 		b.torrent(c.Torrent)
 		b.str(string(c.TrackerHealth))
+		b.optional(c.TorrentView)
+		b.copyGroup(c.CopyGroup)
 	}
 	b.i64(int64(c.InstanceID))
 	b.str(c.InstanceName)

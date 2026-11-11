@@ -132,7 +132,11 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	}
 	// A missing root errors before the goroutine, so the caller sees
 	// fs.ErrNotExist from the call rather than as a lone channel entry.
-	fi, err := lstat(ctx, client, root)
+	rootStat := lstat
+	if opts.FollowRoot {
+		rootStat = stat
+	}
+	fi, err := rootStat(ctx, client, root)
 	if err != nil {
 		return nil, err
 	}

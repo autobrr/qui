@@ -23,7 +23,7 @@ There are two ways to install qui. The MSI is the easier one. Use the zip when y
 
 The MSI installs qui for your Windows account only. It needs no administrator rights and shows no setup wizard. It does these things:
 
-- It puts `qui.exe` and `qui-tray.exe` in `%LOCALAPPDATA%\Programs\qui`.
+- It puts `qui.exe`, `qui-tray.exe`, and `THIRD_PARTY_NOTICES` in `%LOCALAPPDATA%\Programs\qui`.
 - It adds a **qui** entry to the Start Menu. The entry starts the Tray.
 - It adds the install folder to your `PATH`, so `qui.exe` works in a new terminal.
 - It adds qui to **Settings → Apps → Installed apps**, where you can uninstall it.
@@ -124,7 +124,7 @@ To restart the service, click **End** and then **Run** in the right sidebar of T
 
 ## Restart from qui
 
-qui can restart itself through the API (`POST /api/system/restart`). On Windows, `qui serve` starts two `qui.exe` processes. The first process only supervises. The second process serves qui. When qui restarts, only the second process stops and starts again.
+qui can restart itself through the API (`POST /api/system/restart`). This route needs a signed-in browser, or authentication turned off, and returns `403` to an API key. On Windows, `qui serve` starts two `qui.exe` processes. The first process only supervises. The second process serves qui. When qui restarts, only the second process stops and starts again.
 
 - The task shows **Running** during and after the restart.
 - **End** stops both processes.

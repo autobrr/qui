@@ -30,7 +30,6 @@ function render(overrides: Partial<UseCompactViewSortParams> = {}) {
     activeSortField: "name",
     activeSortOrder: "desc",
     setSorting: vi.fn(),
-    setLastUserAction: vi.fn(),
     ...overrides,
   }
   return { params, ...renderHook((p: UseCompactViewSortParams) => useCompactViewSort(p), { initialProps: params }) }
@@ -58,12 +57,11 @@ describe("useCompactViewSort", () => {
     expect(result.current.currentCompactSortLabel).toBe("Status")
   })
 
-  it("changes the sort field and flags a user sort action", () => {
+  it("changes the sort field", () => {
     const { params, result } = render({ activeSortField: "name" })
     act(() => result.current.handleCompactSortFieldChange("size"))
     // "size" is numeric, so getDefaultSortOrder("size") === "desc".
     expect(params.setSorting).toHaveBeenCalledWith([{ id: "size", desc: true }])
-    expect(params.setLastUserAction).toHaveBeenCalledWith({ type: "sort", timestamp: expect.any(Number) })
   })
 
   it("ignores a no-op field change", () => {

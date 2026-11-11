@@ -1642,47 +1642,51 @@ func (h *hungLstat) Lstat(_ context.Context, _ string) (*fsops.LstatInfo, error)
 // after stopWait and leaves the worker to its call.
 func TestFolderCleanupStopReturnsPastAHungLstat(t *testing.T) {
 	t.Parallel()
-	backend := &hungLstat{memTree: newMemTree(), entered: make(chan struct{}, 1), release: make(chan struct{})}
-	t.Cleanup(func() { close(backend.release) })
-	fc := NewFolderCleanup(&fakeRequirer{backend: backend, instance: models.Instance{HasLocalFilesystemAccess: true}}, &fakeView{}, &fakeIgnores{})
-	fc.tick = time.Millisecond
-	fc.stopWait = 100 * time.Millisecond
-	fc.Start(t.Context())
-	fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: hashA, SavePath: "/data", ContentPath: "/data/Rel-GRP",
-		Layout: layoutRootFolder, ContentExisted: true}}, 0)
-	<-backend.entered
+	synctest.Test(t, func(t *testing.T) {
+		backend := &hungLstat{memTree: newMemTree(), entered: make(chan struct{}, 1), release: make(chan struct{})}
+		// The bubble ends only once the worker leaves its call.
+		defer close(backend.release)
+		fc := NewFolderCleanup(&fakeRequirer{backend: backend, instance: models.Instance{HasLocalFilesystemAccess: true}}, &fakeView{}, &fakeIgnores{})
+		fc.Start(t.Context())
+		fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: hashA, SavePath: "/data", ContentPath: "/data/Rel-GRP",
+			Layout: layoutRootFolder, ContentExisted: true}}, 0)
+		<-backend.entered
 
-	start := time.Now()
-	fc.Stop()
-	require.Less(t, time.Since(start), 2*time.Second)
+		start := time.Now()
+		fc.Stop()
+		require.Equal(t, fc.stopWait, time.Since(start))
+	})
 }
 
 // Run once with -race: the worker ticks while many callers hand over work.
+// Each caller wakes on a tick, so it runs alongside the worker.
 func TestFolderCleanupConcurrentEnqueue(t *testing.T) {
-	root := t.TempDir()
-	tree := localTree{Backend: local.NewBackend(), t: t}
-	view := &fakeView{folders: InstanceFolders{DefaultSavePath: root}}
-	fc := NewFolderCleanup(&fakeRequirer{backend: tree, instance: models.Instance{HasLocalFilesystemAccess: true}}, view, &fakeIgnores{})
-	fc.tick = time.Millisecond
-	fc.Start(t.Context())
-	t.Cleanup(fc.Stop)
+	synctest.Test(t, func(t *testing.T) {
+		root := t.TempDir()
+		tree := localTree{Backend: local.NewBackend(), t: t}
+		view := &fakeView{folders: InstanceFolders{DefaultSavePath: root}}
+		fc := NewFolderCleanup(&fakeRequirer{backend: tree, instance: models.Instance{HasLocalFilesystemAccess: true}}, view, &fakeIgnores{})
+		fc.Start(t.Context())
+		t.Cleanup(fc.Stop)
 
-	d := fsops.HostPaths
-	var wg sync.WaitGroup
-	dirs := make([]string, 0, 16)
-	for i := range 16 {
-		dir := d.Join(root, fmt.Sprintf("Rel%d-GRP", i))
-		tree.mkdir(dir)
-		dirs = append(dirs, dir)
-		wg.Go(func() {
-			fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: strconv.Itoa(i), SavePath: dir, ContentPath: dir,
-				Layout: layoutNoRootFolder, Files: []string{"a.mkv"}, ContentExisted: true}}, 0)
-		})
-	}
-	wg.Wait()
-	require.Eventually(t, func() bool {
-		return !slices.ContainsFunc(dirs, tree.exists)
-	}, 5*time.Second, 5*time.Millisecond)
+		d := fsops.HostPaths
+		var wg sync.WaitGroup
+		dirs := make([]string, 0, 16)
+		for i := range 16 {
+			dir := d.Join(root, fmt.Sprintf("Rel%d-GRP", i))
+			tree.mkdir(dir)
+			dirs = append(dirs, dir)
+			wg.Go(func() {
+				time.Sleep(time.Duration(i%4) * fc.tick)
+				fc.enqueue([]folderSnapshot{{InstanceID: 1, Hash: strconv.Itoa(i), SavePath: dir, ContentPath: dir,
+					Layout: layoutNoRootFolder, Files: []string{"a.mkv"}, ContentExisted: true}}, 0)
+			})
+		}
+		wg.Wait()
+		time.Sleep(fc.tick)
+		synctest.Wait()
+		require.False(t, slices.ContainsFunc(dirs, tree.exists))
+	})
 }
 
 func TestCleanTorrentFileName(t *testing.T) {

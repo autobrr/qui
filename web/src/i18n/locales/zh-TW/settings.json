@@ -12,7 +12,7 @@
     "externalPrograms": "外部程式",
     "notifications": "通知",
     "dateTime": "時間與語言",
-    "premiumThemes": "進階主題",
+    "premiumThemes": "主題",
     "security": "安全",
     "logs": "日誌"
   },
@@ -102,7 +102,6 @@
       "proxyUrl": "代理 URL",
       "showProxyUrl": "顯示代理 URL",
       "hideProxyUrl": "隱藏代理 URL",
-      "copyProxyUrl": "複製代理 URL",
       "done": "完成"
     },
     "deleteDialog": {
@@ -118,9 +117,7 @@
       "deleted": "用戶端 API 金鑰已刪除",
       "deleteFailed": "刪除用戶端 API 金鑰失敗：{{error}}",
       "clientNameRequired": "用戶端名稱為必填項",
-      "selectInstance": "請選擇一個 qBittorrent 實例",
-      "proxyCopied": "代理 URL 已複製到剪貼簿",
-      "copyFailed": "複製到剪貼簿失敗"
+      "selectInstance": "請選擇一個 qBittorrent 實例"
     }
   },
   "apiKeys": {
@@ -132,21 +129,77 @@
     "apiDocs": "API 文件",
     "description": "API 金鑰允許外部應用程式存取您的 qBittorrent 實例。",
     "createButton": "建立 API 金鑰",
+    "editButton": "編輯 {{name}}",
+    "deleteButton": "刪除 {{name}}",
     "loading": "正在載入 API 金鑰...",
     "empty": "尚未建立任何 API 金鑰",
     "createDialog": {
       "title": "建立 API 金鑰",
-      "description": "為您的 API 金鑰取一個描述性名稱，以便記住其用途。",
+      "description": "為金鑰命名，並只選擇它需要的存取權限。",
       "nameLabel": "名稱",
       "namePlaceholder": "例如：自動化指令碼",
       "nameRequired": "名稱為必填項",
       "submit": "建立 API 金鑰",
       "creating": "建立中..."
     },
+    "editDialog": {
+      "title": "編輯 API 金鑰",
+      "description": "變更從此金鑰的下一個請求起生效。qui 不會再次顯示金鑰本身。",
+      "submit": "儲存變更",
+      "saving": "正在儲存..."
+    },
+    "permissions": {
+      "title": "權限",
+      "help": "寫入包含讀取和執行。執行不包含讀取，因為設定中保存著憑證。",
+      "required": "請至少選擇一項權限。",
+      "access": "存取",
+      "allAreas": "全部區域",
+      "allAreasExcept": "除{{areas}}外的全部區域",
+      "refusedByLimit": "輔種和目錄掃描器拒絕帶實例限制的金鑰，因此 qui 不會儲存這些權限。",
+      "entry": "{{area}}：{{level}}",
+      "showByArea": "依區域顯示 {{name}} 的存取權限",
+      "partialArea": "{{area}}（僅{{levels}}）",
+      "legend": {
+        "title": "每個權限區域一個方塊：",
+        "none": "無權限"
+      },
+      "levels": {
+        "read": "讀取",
+        "run": "執行",
+        "write": "寫入"
+      },
+      "areas": {
+        "instances": "實例",
+        "torrents": "種子",
+        "crossSeed": "輔種",
+        "dirScan": "目錄掃描器",
+        "automations": "自動化",
+        "rss": "RSS",
+        "backups": "備份",
+        "orphanScan": "孤立項目掃描",
+        "externalPrograms": "外部程式",
+        "indexers": "索引器",
+        "arr": "Arr",
+        "notifications": "通知",
+        "settings": "設定",
+        "logs": "日誌",
+        "system": "系統"
+      }
+    },
+    "instanceLimit": {
+      "title": "實例限制",
+      "help": "選擇此金鑰可以存取的實例。不選擇表示所有實例，包括之後新增的實例。",
+      "reaches": "可存取",
+      "all": "所有實例",
+      "only": "僅 {{instances}}",
+      "none": "無實例。此限制只包含已刪除的實例。",
+      "deleted": "已刪除的實例 {{id}}"
+    },
     "newKey": {
       "label": "您的新 API 金鑰",
       "warning": "請立即儲存此金鑰。之後將無法再次檢視。",
-      "done": "完成"
+      "done": "完成",
+      "apiKey": "API 金鑰"
     },
     "deleteDialog": {
       "title": "刪除 API 金鑰？",
@@ -159,8 +212,8 @@
       "createFailed": "建立 API 金鑰失敗",
       "deleted": "API 金鑰已刪除",
       "deleteFailed": "刪除 API 金鑰失敗",
-      "copied": "API 金鑰已複製到剪貼簿",
-      "copyFailed": "複製到剪貼簿失敗"
+      "updated": "API 金鑰更新成功",
+      "updateFailed": "更新 API 金鑰失敗"
     }
   },
   "externalPrograms": {
@@ -422,38 +475,37 @@
     "selector": {
       "title": "主題選擇",
       "loadingDescription": "正在載入可用主題...",
-      "description": "從可用主題中選擇。進階主題需要有效的授權。",
-      "verificationUnavailable": "授權驗證不可用。進階主題切換暫時停用。",
-      "notLoaded": "進階主題未載入",
-      "notLoadedDescription": "配置",
-      "notLoadedAnd": "並執行",
-      "premium": "進階",
-      "pro": "Pro",
+      "description": "從可用主題中選擇。部分主題需要有效的授權。",
+      "verificationUnavailable": "授權驗證不可用。切換到需要授權的主題暫時停用。",
+      "notLoaded": "需要授權的主題未載入",
+      "notLoadedDescription": "執行",
       "free": "免費",
       "locked": "已鎖定",
-      "lock": "鎖定"
+      "lock": "鎖定",
+      "showTheme": "顯示",
+      "hideTheme": "隱藏"
     },
     "toasts": {
-      "premiumRequired": "需要進階授權",
-      "premiumRequiredDescription": "新增有效的進階授權以解鎖進階主題。"
+      "premiumRequired": "需要授權",
+      "premiumRequiredDescription": "新增有效的授權以解鎖所有主題。"
     },
     "license": {
       "loadingTitle": "授權管理",
       "loadingDescription": "正在載入主題授權...",
       "managementTitle": "授權管理",
-      "managementDescription": "管理您的主題授權和進階存取權限",
+      "managementDescription": "管理您的主題授權",
       "providers": {
         "licensePortal": "授權門戶"
       },
       "status": {
-        "unlockTitle": "解鎖進階主題",
+        "unlockTitle": "解鎖所有主題",
         "unlockDescription": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
-        "activeTitle": "進階存取已啟用",
-        "activeDescription": "您可以存取所有目前和未來的進階主題",
+        "activeTitle": "授權已啟用",
+        "activeDescription": "您可以使用所有目前和未來的主題",
         "activationRequiredTitle": "需要啟用授權",
         "activationRequiredDescription": "您的授權需要在此裝置上啟用",
         "offlineTitle": "無法連線至授權服務",
-        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此進階主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
+        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此需要授權的主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 購買，然後在此輸入您的授權金鑰。如果丟失了金鑰，可透過",
@@ -505,7 +557,7 @@
         "addLicense": "新增授權",
         "remove": "移除",
         "removing": "移除中...",
-        "getPremium": "獲取進階版",
+        "getPremium": "取得授權",
         "reactivate": "重新啟用授權",
         "activating": "啟用中...",
         "copyLicenseKey": "複製授權金鑰",
@@ -521,17 +573,17 @@
         "recoverPrefix": "如有需要，您可以稍後從"
       },
       "addDialog": {
-        "title": "新增進階授權",
-        "description": "輸入您的進階主題授權金鑰以解鎖所有進階主題。",
+        "title": "新增授權",
+        "description": "輸入您的授權金鑰以解鎖所有主題。",
         "label": "授權金鑰",
-        "placeholder": "輸入您的進階主題授權金鑰",
+        "placeholder": "輸入您的授權金鑰",
         "recoverKey": "找回金鑰？",
         "validation": {
           "required": "授權金鑰為必填項"
         }
       },
       "paymentDialog": {
-        "title": "獲取進階授權",
+        "title": "取得授權",
         "description": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
         "steps": {
           "choosePaymentMethod": {
@@ -563,10 +615,10 @@
       "copiedVerify": "驗證命令已複製",
       "failedCopyVerify": "複製驗證命令失敗",
       "toasts": {
-        "activationSuccessPremium": "進階存取已啟用！感謝您的支援！",
-        "paymentCompleted": "支付完成。請新增您的進階授權金鑰以完成設定。",
+        "activationSuccessPremium": "授權已啟用！感謝您的支援！",
+        "paymentCompleted": "支付完成。請新增您的授權金鑰以完成設定。",
         "paymentNotCompleted": "支付未成功完成。",
-        "returnedFromCheckout": "已從結帳返回。準備好後請新增您的進階授權金鑰。",
+        "returnedFromCheckout": "已從結帳返回。準備好後請新增您的授權金鑰。",
         "keyCopied": "授權金鑰已複製到剪貼簿",
         "copyFailed": "複製授權金鑰失敗",
         "removedFromMachine": "授權已從此裝置移除"
@@ -575,9 +627,9 @@
     "custom": {
       "badge": "自訂",
       "title": "自訂主題",
-      "lockedTitle": "自訂主題是進階功能",
-      "lockedDescription": "解鎖進階版即可從磁碟目錄載入您自己的主題 CSS 檔案。",
-      "unlockCta": "解鎖進階版",
+      "lockedTitle": "自訂主題需要授權",
+      "lockedDescription": "取得授權即可從磁碟目錄載入您自己的主題 CSS 檔案。",
+      "unlockCta": "取得授權",
       "refresh": "重新整理",
       "detectedCount": "找到的主題：{{total}}",
       "parseErrorsTitle": "無法解析以下檔案：",
@@ -1104,11 +1156,6 @@
       "bind": "繫結位址",
       "configDir": "配置目錄",
       "dataDir": "資料目錄"
-    },
-    "copyTitle": "複製 {{label}}",
-    "toasts": {
-      "copied": "{{label}} 已複製到剪貼簿",
-      "copyFailed": "複製 {{label}} 失敗"
     }
   }
 }

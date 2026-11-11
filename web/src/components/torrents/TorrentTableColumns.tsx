@@ -22,17 +22,17 @@ import {
 } from "@/lib/incognito"
 import { formatTimestamp as formatStoredTimestamp, isNeverCompletedTimestamp } from "@/lib/dateTimeUtils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
-import { getStateLabel } from "@/lib/torrent-state-utils"
+import { formatReannounceIn, getStateLabel } from "@/lib/torrent-state-utils"
 import {
   extractTrackerHost,
   resolveTrackerDisplay,
   type TrackerCustomizationLookup
 } from "@/lib/tracker-customizations"
-import { getStatusBadgeProps, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
+import { getStatusBadgeProps, SELECT_COLUMN_WIDTH, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
-import type { CellContext, HeaderContext, RowSelectionState } from "@tanstack/react-table"
+import type { CellContext } from "@tanstack/react-table"
 import type { TorrentTableColumnDef, TorrentTableFeatures } from "./tanstackTableFeatures"
 import {
   AlertCircle,
@@ -74,32 +74,6 @@ function formatEta(seconds: number): string {
   }
 
   return `${secs}s`
-}
-
-function formatReannounce(seconds: number, t: TFunction): string {
-  // Negative values mean "never" or "not applicable"
-  if (seconds < 0) return "-"
-
-  // Zero means "now" (just announced or about to announce)
-  if (seconds === 0) return t("tableColumns.now")
-
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-
-  if (minutes < 1) {
-    return "< 1m"
-  }
-
-  if (hours < 1) {
-    return `${minutes}m`
-  }
-
-  const remainingMinutes = minutes % 60
-  if (remainingMinutes === 0) {
-    return `${hours}h`
-  }
-
-  return `${hours}h ${remainingMinutes}m`
 }
 
 // Calculate minimum column width based on header text
@@ -310,18 +284,14 @@ export type TableViewMode = "normal" | "dense" | "compact"
 
 interface CreateColumnsParams {
   incognitoMode: boolean
-  selectionEnhancers?: {
-    shiftPressedRef: { current: boolean }
-    lastSelectedIndexRef: { current: number | null }
-    customSelectAll?: {
-      onSelectAll: (checked: boolean) => void
-      isAllSelected: boolean
-      isIndeterminate: boolean
-    }
-    onRowSelection?: (selectionIdentity: string, checked: boolean, rowId?: string) => void
-    getSelectionIdentity?: (torrent: Torrent) => string
-    isAllSelected?: boolean
-    excludedFromSelectAll?: Set<string>
+  // The selection column shows only when this is set.
+  selection?: {
+    onSelectAll: () => void
+    isAllChecked: boolean
+    isIndeterminate: boolean
+    isSelected: (torrent: Torrent) => boolean
+    onCheckboxPointerDown: (event: React.PointerEvent<HTMLElement>) => void
+    onCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
   }
   speedUnit?: SpeedUnit
   trackerIcons?: Record<string, string>
@@ -331,12 +301,11 @@ interface CreateColumnsParams {
   showInstanceColumn?: boolean
   viewMode?: TableViewMode
   trackerCustomizationLookup?: TrackerCustomizationLookup
-  includeSelectionColumn?: boolean
 }
 
 export const createColumns = ({
   incognitoMode,
-  selectionEnhancers,
+  selection,
   speedUnit = "bytes",
   trackerIcons,
   formatTimestamp = formatStoredTimestamp,
@@ -345,7 +314,6 @@ export const createColumns = ({
   showInstanceColumn = false,
   viewMode = "normal",
   trackerCustomizationLookup,
-  includeSelectionColumn = true,
 }: CreateColumnsParams, t: TFunction): TorrentTableColumnDef[] => {
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
@@ -377,106 +345,30 @@ export const createColumns = ({
   }
 
   return [
-    ...(includeSelectionColumn ? [{
+    ...(selection ? [{
       id: "select",
-      header: ({ table }: HeaderContext<TorrentTableFeatures, Torrent, unknown>) => (
+      header: () => (
         <div className="flex items-center justify-center p-1 -m-1">
           <Checkbox
-            checked={selectionEnhancers?.customSelectAll?.isIndeterminate ? "indeterminate" : selectionEnhancers?.customSelectAll?.isAllSelected || false}
-            onCheckedChange={(checked) => {
-              if (selectionEnhancers?.customSelectAll?.onSelectAll) {
-                selectionEnhancers.customSelectAll.onSelectAll(!!checked)
-              } else {
-              // Fallback to default behavior
-                table.toggleAllPageRowsSelected(!!checked)
-              }
-            }}
+            checked={selection.isIndeterminate ? "indeterminate" : selection.isAllChecked}
+            onCheckedChange={() => selection.onSelectAll()}
             aria-label={selectAllRowsLabel}
             className="hover:border-ring cursor-pointer transition-colors"
           />
         </div>
       ),
-      cell: ({ row, table }: CellContext<TorrentTableFeatures, Torrent, unknown>) => {
-        const torrent = row.original
-        const hash = torrent.hash
-        const selectionIdentity = selectionEnhancers?.getSelectionIdentity?.(torrent) ?? hash
-
-        // Determine if row is selected based on custom logic
-        const isRowSelected = (() => {
-          if (selectionEnhancers?.isAllSelected) {
-          // In "select all" mode, row is selected unless excluded
-            return !selectionEnhancers.excludedFromSelectAll?.has(selectionIdentity)
-          } else {
-          // Regular mode, use table's selection state
-            return row.getIsSelected()
-          }
-        })()
-
-        return (
-          <div className="flex items-center justify-center p-1 -m-1">
-            <Checkbox
-              checked={isRowSelected}
-              onPointerDown={(e) => {
-                if (selectionEnhancers) {
-                  selectionEnhancers.shiftPressedRef.current = e.shiftKey
-                }
-              }}
-              onCheckedChange={(checked: boolean | "indeterminate") => {
-                const isShift = selectionEnhancers?.shiftPressedRef.current === true
-                const allRows = table.getRowModel().rows
-                const currentIndex = allRows.findIndex((r: { id: string }) => r.id === row.id)
-
-                if (isShift && selectionEnhancers?.lastSelectedIndexRef.current !== null) {
-                  const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
-                  const end = Math.max(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
-
-                  // For shift selection, use custom handler if available, otherwise fallback
-                  if (selectionEnhancers?.onRowSelection) {
-                    for (let i = start; i <= end; i++) {
-                      const r = allRows[i]
-                      if (r) {
-                        const rTorrent = r.original as Torrent
-                        const rSelectionIdentity = selectionEnhancers.getSelectionIdentity?.(rTorrent) ?? rTorrent.hash
-                        selectionEnhancers.onRowSelection(rSelectionIdentity, !!checked, r.id)
-                      }
-                    }
-                  } else {
-                    table.setRowSelection((prev: RowSelectionState) => {
-                      const next: RowSelectionState = { ...prev }
-                      for (let i = start; i <= end; i++) {
-                        const r = allRows[i]
-                        if (r) {
-                          if (checked) {
-                            next[r.id] = true
-                          } else {
-                            delete next[r.id]
-                          }
-                        }
-                      }
-                      return next
-                    })
-                  }
-                } else {
-                // Single row selection
-                  if (selectionEnhancers?.onRowSelection) {
-                    selectionEnhancers.onRowSelection(selectionIdentity, !!checked, row.id)
-                  } else {
-                    row.toggleSelected(!!checked)
-                  }
-                }
-
-                if (selectionEnhancers) {
-                  selectionEnhancers.lastSelectedIndexRef.current = currentIndex
-                  selectionEnhancers.shiftPressedRef.current = false
-                }
-              }}
-              aria-label={selectRowLabel}
-              className="hover:border-ring cursor-pointer transition-colors"
-            />
-          </div>
-        )
-      },
-      size: 40,
+      cell: ({ row }: CellContext<TorrentTableFeatures, Torrent, unknown>) => (
+        <div className="flex items-center justify-center p-1 -m-1">
+          <Checkbox
+            checked={selection.isSelected(row.original)}
+            onPointerDown={selection.onCheckboxPointerDown}
+            onCheckedChange={(checked) => selection.onCheckboxChange(row.original, row.id, !!checked)}
+            aria-label={selectRowLabel}
+            className="hover:border-ring cursor-pointer transition-colors"
+          />
+        </div>
+      ),
+      size: SELECT_COLUMN_WIDTH,
       enableResizing: false,
       meta: {
         headerString: selectionLabel,
@@ -725,7 +617,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {row.original.popularity.toFixed(2)}
+            {row.original.popularity?.toFixed(2) ?? "—"}
           </div>
         )
       },
@@ -1097,7 +989,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {formatReannounce(row.original.reannounce, t)}
+            {formatReannounceIn(row.original.state, row.original.reannounce, t)}
           </div>
         )
       },
@@ -1109,7 +1001,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {row.original.private ? t("tableColumns.yes") : t("tableColumns.no")}
+            {row.original.private === undefined ? "—" : row.original.private ? t("tableColumns.yes") : t("tableColumns.no")}
           </div>
         )
       },

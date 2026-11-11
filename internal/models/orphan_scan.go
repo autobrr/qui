@@ -42,7 +42,8 @@ type OrphanScanRun struct {
 	InstanceID     int        `json:"instanceId"`
 	Status         string     `json:"status"` // pending, scanning, preview_ready, deleting, completed, failed, canceled
 	TriggeredBy    string     `json:"triggeredBy"`
-	ScanPaths      []string   `json:"scanPaths"`
+	ScanPaths      []string   `json:"scanPaths,omitzero"`
+	ScanPathCount  int        `json:"scanPathCount"`
 	FilesFound     int        `json:"filesFound"`
 	FilesDeleted   int        `json:"filesDeleted"`
 	FoldersDeleted int        `json:"foldersDeleted"`
@@ -54,6 +55,11 @@ type OrphanScanRun struct {
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	// FilesystemMode is the mode the preview was walked under, not the instance's current one.
 	FilesystemMode FilesystemMode `json:"filesystemMode"`
+	// IdentityComplete is whether the walk read a file identity for every regular file it met.
+	IdentityComplete bool `json:"identityComplete"`
+	// FilesystemEndpoint is the SSH user@host:port a remote run was walked over, with digests of
+	// the host-key pin and the private key, and empty otherwise.
+	FilesystemEndpoint string `json:"-"`
 }
 
 // OrphanScanFile represents an orphan file found in a scan.
@@ -179,9 +185,10 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 // ErrRunAlreadyActive is returned when attempting to create a run while one is already active.
 var ErrRunAlreadyActive = errors.New("an active run already exists for this instance")
 
-// CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
-// This prevents race conditions between HasActiveRun and CreateRun.
-// A preview walked over SSH can never be confirmed, so the new run cancels it instead of being blocked by it.
+// CreateRunIfNoActive creates a pending run unless one is already active for the instance.
+// Concurrent calls for one instance can both insert on Postgres, so the orphan scan service serializes them.
+// A remote preview whose walk missed a file's identity can never be confirmed, so the new run cancels it
+// instead of being blocked by it.
 func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -193,9 +200,10 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 	// sees this run as active. A refused insert rolls the cancel back.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET status = 'canceled'
-		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0 AND filesystem_mode = ?
+		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0
+		  AND filesystem_mode = ? AND identity_complete = 0
 	`, instanceID, string(FilesystemModeRemote)); err != nil {
-		return 0, fmt.Errorf("cancel remote orphan scan preview: %w", err)
+		return 0, fmt.Errorf("cancel unconfirmable orphan scan preview: %w", err)
 	}
 
 	var id int64
@@ -227,7 +235,8 @@ func (s *OrphanScanStore) GetRun(ctx context.Context, runID int64) (*OrphanScanR
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE id = ?
 	`, runID)
@@ -240,7 +249,8 @@ func (s *OrphanScanStore) GetRunByInstance(ctx context.Context, instanceID int, 
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE id = ? AND instance_id = ?
 	`, runID, instanceID)
@@ -271,6 +281,8 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 		&completedAt,
 		&run.Partial,
 		&run.FilesystemMode,
+		&run.IdentityComplete,
+		&run.FilesystemEndpoint,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -279,36 +291,33 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 		return nil, err
 	}
 	run.Truncated = SQLiteIntToBool(truncated)
-	if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
-		return nil, err
-	}
-
-	return &run, nil
-}
-
-func finalizeRun(run *OrphanScanRun, scanPathsJSON, errorMessage sql.NullString, completedAt sql.NullTime) error {
 	if scanPathsJSON.Valid && scanPathsJSON.String != "" {
 		if err := json.Unmarshal([]byte(scanPathsJSON.String), &run.ScanPaths); err != nil {
-			return fmt.Errorf("unmarshal scan paths: %w", err)
+			return nil, fmt.Errorf("unmarshal scan paths: %w", err)
 		}
 	}
 	if run.ScanPaths == nil {
 		run.ScanPaths = []string{}
 	}
+	run.ScanPathCount = len(run.ScanPaths)
+	finalizeRun(&run, errorMessage, completedAt)
+
+	return &run, nil
+}
+
+func finalizeRun(run *OrphanScanRun, errorMessage sql.NullString, completedAt sql.NullTime) {
 	if errorMessage.Valid {
 		run.ErrorMessage = errorMessage.String
 	}
 	if completedAt.Valid {
 		run.CompletedAt = &completedAt.Time
 	}
-	return nil
 }
 
 func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, error) {
 	var runs []*OrphanScanRun
 	for rows.Next() {
 		var run OrphanScanRun
-		var scanPathsJSON sql.NullString
 		var errorMessage sql.NullString
 		var completedAt sql.NullTime
 		var truncated int
@@ -318,7 +327,7 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 			&run.InstanceID,
 			&run.Status,
 			&run.TriggeredBy,
-			&scanPathsJSON,
+			&run.ScanPathCount,
 			&run.FilesFound,
 			&run.FilesDeleted,
 			&run.FoldersDeleted,
@@ -329,14 +338,13 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 			&completedAt,
 			&run.Partial,
 			&run.FilesystemMode,
+			&run.IdentityComplete,
+			&run.FilesystemEndpoint,
 		); err != nil {
 			return nil, err
 		}
 		run.Truncated = SQLiteIntToBool(truncated)
-
-		if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
-			return nil, err
-		}
+		finalizeRun(&run, errorMessage, completedAt)
 
 		runs = append(runs, &run)
 	}
@@ -365,11 +373,7 @@ func (s *OrphanScanStore) ListRuns(ctx context.Context, instanceID, limit int) (
 }
 
 func (s *OrphanScanStore) listRunsRecent(ctx context.Context, instanceID, limit int) ([]*OrphanScanRun, error) {
-	query := `
-		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
-		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
-		FROM orphan_scan_runs
+	query := s.listRunsSelect() + `
 		WHERE instance_id = ?
 		ORDER BY started_at DESC
 		LIMIT ?
@@ -378,17 +382,28 @@ func (s *OrphanScanStore) listRunsRecent(ctx context.Context, instanceID, limit 
 }
 
 func (s *OrphanScanStore) listRunsActive(ctx context.Context, instanceID int) ([]*OrphanScanRun, error) {
-	query := `
-		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
-		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
-		FROM orphan_scan_runs
+	query := s.listRunsSelect() + `
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
 		       OR (status = 'preview_ready' AND files_found > 0))
 		ORDER BY started_at DESC
 	`
 	return s.scanRunsQuery(ctx, "query active runs", query, instanceID)
+}
+
+func (s *OrphanScanStore) listRunsSelect() string {
+	// UpdateRunScanPaths writes "null" for a nil slice, which Postgres cannot take the length of.
+	scanPathCount := `COALESCE(json_array_length(NULLIF(scan_paths, '')), 0)`
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		scanPathCount = `CASE WHEN json_typeof(NULLIF(scan_paths, '')::json) = 'array'
+		     THEN json_array_length(NULLIF(scan_paths, '')::json) ELSE 0 END`
+	}
+	return `
+		SELECT id, instance_id, status, triggered_by, ` + scanPathCount + `, files_found,
+		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
+		FROM orphan_scan_runs`
 }
 
 func (s *OrphanScanStore) scanRunsQuery(ctx context.Context, label, query string, args ...any) ([]*OrphanScanRun, error) {
@@ -457,7 +472,8 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ? AND status = 'completed'
 		ORDER BY completed_at DESC
@@ -468,14 +484,15 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 }
 
 // GetLastFinishedScan returns the newest completed run or preview still awaiting
-// review, the runs whose walk finished. A preview over SSH never completes,
-// so a schedule paced by completed runs alone would rescan it on every tick.
+// review, the runs whose walk finished. A preview that cannot be confirmed never
+// completes, so a schedule paced by completed runs alone would rescan it on every tick.
 // A preview has no completed_at, so it is ordered by when it started.
 func (s *OrphanScanStore) GetLastFinishedScan(ctx context.Context, instanceID int) (*OrphanScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ? AND status IN ('completed', 'preview_ready')
 		ORDER BY CASE WHEN status = 'completed' THEN completed_at ELSE started_at END DESC
@@ -490,11 +507,13 @@ func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at, partial, filesystem_mode
+		       error_message, started_at, completed_at, partial, filesystem_mode,
+		       identity_complete, filesystem_endpoint
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
-		       OR (status = 'preview_ready' AND files_found > 0 AND filesystem_mode <> ?))
+		       OR (status = 'preview_ready' AND files_found > 0
+		           AND NOT (filesystem_mode = ? AND identity_complete = 0)))
 		ORDER BY started_at DESC
 		LIMIT 1
 	`, instanceID, string(FilesystemModeRemote))
@@ -510,11 +529,19 @@ func (s *OrphanScanStore) UpdateRunStatus(ctx context.Context, runID int64, stat
 	return err
 }
 
-// UpdateRunFilesystemMode records the filesystem mode a run is walked under.
-func (s *OrphanScanStore) UpdateRunFilesystemMode(ctx context.Context, runID int64, mode FilesystemMode) error {
+// UpdateRunFilesystemMode records the filesystem mode and SSH endpoint a run is walked under.
+func (s *OrphanScanStore) UpdateRunFilesystemMode(ctx context.Context, runID int64, mode FilesystemMode, endpoint string) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE orphan_scan_runs SET filesystem_mode = ? WHERE id = ?
-	`, string(mode), runID)
+		UPDATE orphan_scan_runs SET filesystem_mode = ?, filesystem_endpoint = ? WHERE id = ?
+	`, string(mode), endpoint, runID)
+	return err
+}
+
+// UpdateRunIdentityComplete records whether a run's walk read every file's identity.
+func (s *OrphanScanStore) UpdateRunIdentityComplete(ctx context.Context, runID int64, complete bool) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE orphan_scan_runs SET identity_complete = ? WHERE id = ?
+	`, boolToInt(complete), runID)
 	return err
 }
 
@@ -579,6 +606,37 @@ func (s *OrphanScanStore) FailPreviewReadyRun(ctx context.Context, runID int64, 
 	return rows > 0, nil
 }
 
+// RemotePreviewRunIDs returns the instance's preview_ready runs walked over SSH.
+func (s *OrphanScanStore) RemotePreviewRunIDs(ctx context.Context, instanceID int) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM orphan_scan_runs
+		WHERE instance_id = ? AND status = 'preview_ready' AND filesystem_mode = ?
+	`, instanceID, string(FilesystemModeRemote))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// HasDeletingRun reports whether the instance has a run in deleting status.
+func (s *OrphanScanStore) HasDeletingRun(ctx context.Context, instanceID int) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM orphan_scan_runs WHERE instance_id = ? AND status = 'deleting'
+	`, instanceID).Scan(&n)
+	return n > 0, err
+}
+
 // StartRunDeletion moves a run from preview_ready to deleting, and reports
 // whether it did.
 func (s *OrphanScanStore) StartRunDeletion(ctx context.Context, runID int64) (bool, error) {
@@ -625,11 +683,7 @@ func (s *OrphanScanStore) MarkDeletingRunsFailed(ctx context.Context, errorMessa
 
 // MarkStuckRunsFailed marks old pending/scanning runs as failed.
 func (s *OrphanScanStore) MarkStuckRunsFailed(ctx context.Context, threshold time.Duration, statuses []string) error {
-	// orphan_scan_runs.started_at is set by SQLite using CURRENT_TIMESTAMP which yields a UTC
-	// string like "YYYY-MM-DD HH:MM:SS". Comparing against a time.Time parameter can be
-	// driver-dependent (e.g. RFC3339 with timezone), which breaks lexicographic comparisons.
-	// Use the same UTC format as SQLite to ensure correct cutoff behavior.
-	cutoff := time.Now().Add(-threshold).UTC().Format(time.DateTime)
+	cutoff := time.Now().Add(-threshold)
 
 	// Build placeholders for status list
 	var placeholders strings.Builder

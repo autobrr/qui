@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -51,11 +52,17 @@ type Torrent struct {
 	// Incomplete is a torrent still downloading, which setDownloadPath moves.
 	Incomplete bool
 	Layout     Layout
+	Tags       []string
 	Files      []string
 	// InfohashV1 and InfohashV2 are reported as the WebAPI does; Hash alone
 	// names the torrent in a request.
 	InfohashV1 string
 	InfohashV2 string
+	// Popularity and Private are sent from qBittorrent 5.0. NoMetadata is a
+	// magnet link that has no metadata yet, which sends no private value.
+	Popularity float64
+	Private    bool
+	NoMetadata bool
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
@@ -106,18 +113,29 @@ type Server struct {
 	WebAPIVersion string
 	// WebAPIVersionStatus, when set, makes app/webapiVersion answer with it.
 	WebAPIVersionStatus int
+	// HangWebAPIVersion makes app/webapiVersion answer only when the request
+	// ends, so the caller times out.
+	HangWebAPIVersion bool
+	// PartialUpdates answers a sync with a nonzero rid as a partial update, as
+	// qBittorrent does. Without it, each sync is a full update.
+	PartialUpdates bool
+	// FailSyncs makes the first FailSyncs sync/maindata requests answer 500.
+	FailSyncs int
 
-	writes    map[string]int
-	conflicts map[string]int
-	bodies    map[string]string
-	requests  int
-	syncs     int
+	calls        map[string]int
+	writes       map[string]int
+	conflicts    map[string]int
+	bodies       map[string]string
+	requests     int
+	syncs        int
+	synced       map[int]chan struct{}
+	versionReads int
 }
 
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
 	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
-		savePath: savePath, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}}
+		savePath: savePath, calls: map[string]int{}, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{}, synced: map[int]chan struct{}{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
@@ -212,6 +230,13 @@ func (s *Server) Conflicts(endpoint string) int {
 	return s.conflicts[endpoint]
 }
 
+// Calls counts the requests qBittorrent received on an endpoint.
+func (s *Server) Calls(endpoint string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls[endpoint]
+}
+
 // Requests counts every request qBittorrent received.
 func (s *Server) Requests() int {
 	s.mu.Lock()
@@ -224,6 +249,36 @@ func (s *Server) Syncs() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.syncs
+}
+
+// Synced returns a channel that closes once the stub has received n
+// sync/maindata requests.
+func (s *Server) Synced(n int) <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ch, ok := s.synced[n]
+	if !ok {
+		ch = make(chan struct{})
+		s.synced[n] = ch
+		if s.syncs >= n {
+			close(ch)
+		}
+	}
+	return ch
+}
+
+// VersionReads counts the app/webapiVersion requests qBittorrent received.
+func (s *Server) VersionReads() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.versionReads
+}
+
+// Tags returns the sorted tags of a torrent.
+func (s *Server) Tags(hash string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Sorted(slices.Values(s.torrents[hash].Tags))
 }
 
 // LastBody is the raw body of the last write to an endpoint.
@@ -370,6 +425,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	s.requests++
 	endpoint := strings.TrimPrefix(r.URL.Path, "/api/v2/")
+	s.calls[endpoint]++
 	if r.Method == http.MethodPost && endpoint != "auth/login" {
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(s.t, err)
@@ -403,6 +459,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "auth/login":
 		_, _ = io.WriteString(w, "Ok.")
 	case "app/webapiVersion":
+		s.versionReads++
+		if s.HangWebAPIVersion {
+			<-r.Context().Done()
+			return
+		}
 		if s.WebAPIVersionStatus != 0 {
 			w.WriteHeader(s.WebAPIVersionStatus)
 			return
@@ -426,6 +487,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs})
 	case "sync/maindata":
 		s.syncs++
+		if ch, ok := s.synced[s.syncs]; ok {
+			close(ch)
+		}
+		if s.syncs <= s.FailSyncs {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		s.rid++
 		torrents := map[string]any{}
 		for h, t := range s.torrents {
@@ -437,15 +505,26 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			if t.Incomplete {
 				progress = 0.5
 			}
-			torrents[h] = map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
+			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
-				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2}
+				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
+				"tags": strings.Join(t.Tags, ", ")}
+			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
+				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata
+				if t.NoMetadata {
+					row["private"] = nil
+				} else {
+					row["private"] = t.Private
+				}
+			}
+			torrents[h] = row
 		}
 		categories := map[string]any{}
 		for name := range s.categories {
 			categories[name] = s.categoryJSON(name)
 		}
-		writeJSON(w, map[string]any{"rid": s.rid, "full_update": true, "torrents": torrents, "categories": categories,
+		full := !s.PartialUpdates || param("rid") == "0"
+		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
 			"server_state": map[string]any{"connection_status": "connected"}})
 	case "torrents/files":
 		if t, ok := s.torrents[strings.ToLower(param("hash"))]; ok {
@@ -513,6 +592,38 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				t.AutoTMM = strings.EqualFold(param("enable"), "true")
 			}
 		}
+	case "torrents/addTags":
+		for _, t := range s.selected(param("hashes"), "|") {
+			for tag := range strings.SplitSeq(param("tags"), ",") {
+				if !slices.Contains(t.Tags, tag) {
+					t.Tags = append(t.Tags, tag)
+				}
+			}
+		}
+	case "torrents/removeTags":
+		for _, t := range s.selected(param("hashes"), "|") {
+			if param("tags") == "" {
+				t.Tags = nil
+				continue
+			}
+			for tag := range strings.SplitSeq(param("tags"), ",") {
+				t.Tags = slices.DeleteFunc(t.Tags, func(have string) bool { return have == tag })
+			}
+		}
+	case "torrents/setTags":
+		// qBittorrent 5.1 (WebAPI 2.11.4) added the endpoint.
+		if !s.webAPIAtLeast("2.11.4") {
+			http.NotFound(w, r)
+			return
+		}
+		for _, t := range s.selected(param("hashes"), "|") {
+			t.Tags = nil
+			if param("tags") != "" {
+				t.Tags = strings.Split(param("tags"), ",")
+			}
+		}
+	case "torrents/setShareLimits":
+		// LastBody has what qui sent.
 	case "torrents/categories":
 		if s.CategoriesStatus != 0 {
 			w.WriteHeader(s.CategoriesStatus)
@@ -587,5 +698,5 @@ func (s *Server) webAPIAtLeast(version string) bool {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v) //nolint:errchkjson // test stub: a failed write means the client went away, and the client side of the test reports a bad body
 }

@@ -61,12 +61,18 @@ func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
 	return f.pin, nil
 }
 
-// SetSSHTier writes the row Get answers with, as the store writes the column.
-func (f fakeCreds) SetSSHTier(_ context.Context, id int, tier models.SSHTier) error {
-	if f.inst == nil || f.inst.ID != id {
+// SetSSHProbe writes the row Get answers with, as the store writes the columns.
+func (f fakeCreds) SetSSHProbe(ctx context.Context, probed *models.Instance, tier models.SSHTier, hardlink bool) error {
+	if err := ctx.Err(); err != nil {
+		return err // as the store's ExecContext would
+	}
+	if f.inst == nil || f.inst.ID != probed.ID {
 		return models.ErrInstanceNotFound
 	}
-	f.inst.SSHTier = tier
+	if tier != "" {
+		f.inst.SSHTier = tier
+	}
+	f.inst.SSHHardlink = &hardlink
 	return nil
 }
 
@@ -320,16 +326,44 @@ func TestMissingSFTPExtensions(t *testing.T) {
 	assert.False(t, report.Capabilities.Hardlink)
 }
 
+// Not parallel, for the same reason as TestMissingSFTPExtensions. A pooled
+// connect reads the flag from its own sftp client, so a server without the
+// extension writes false, and a later test on a pinned host repairs the row.
+func TestPoolWritesTheHardlinkFlagFromTheExtensionList(t *testing.T) {
+	require.NoError(t, sftp.SetSFTPExtensions("posix-rename@openssh.com"))
+	t.Cleanup(func() {
+		require.NoError(t, sftp.SetSFTPExtensions("hardlink@openssh.com", "posix-rename@openssh.com", "statvfs@openssh.com"))
+	})
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecSFTPOnly)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	_, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	require.NotNil(t, inst.SSHHardlink)
+	assert.False(t, *inst.SSHHardlink)
+}
+
 func TestCancelledContextUnblocksHandshake(t *testing.T) {
 	t.Parallel()
 
-	addr := sshtest.NewHangingListener(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	listener := sshtest.NewHangingListener(t)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	go func() {
+		select {
+		case <-listener.Accepted:
+		case <-ctx.Done():
+		}
+		cancel()
+	}()
 
 	start := time.Now()
-	_, err := dialerFor(nil).Test(ctx, instanceAt(t, addr))
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	_, err := dialerFor(nil).Test(ctx, instanceAt(t, listener.Addr))
+	require.ErrorIs(t, err, context.Canceled)
 	assert.Less(t, time.Since(start), dialTimeout, "cancellation must not wait out the dial timeout")
 }
 
@@ -390,7 +424,14 @@ func TestCancellationUnblocksProbe(t *testing.T) {
 
 	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecHang)
 	ctx, cancel := context.WithCancel(t.Context())
-	time.AfterFunc(200*time.Millisecond, cancel)
+	defer cancel()
+	go func() {
+		select {
+		case <-server.Stalled():
+		case <-ctx.Done():
+		}
+		cancel()
+	}()
 
 	start := time.Now()
 	report, err := dialerWithTimeout(10*time.Second).Test(ctx, instanceAt(t, server.Addr))
@@ -459,7 +500,7 @@ func dialerWithTimeout(timeout time.Duration) *Dialer {
 func TestTimeoutBoundsHandshake(t *testing.T) {
 	t.Parallel()
 
-	addr := sshtest.NewHangingListener(t)
+	addr := sshtest.NewHangingListener(t).Addr
 
 	start := time.Now()
 	_, err := testWithin(t, dialerWithTimeout(200*time.Millisecond), instanceAt(t, addr), 10*time.Second)

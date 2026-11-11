@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -42,26 +42,25 @@ build/docker:
 build/dockerx:
 	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
-# Fetch premium themes from private repository
+# Fetch the community themes into the licensed folder. The repo is public, so no token.
+# Without network, warn and build with the free themes only.
 themes-fetch:
-	@echo "Fetching premium themes..."
-	@if [ -n "$$THEMES_REPO_TOKEN" ]; then \
-		rm -rf .themes-temp && \
-		git clone --depth=1 --filter=blob:none --sparse \
-			https://x-access-token:$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
-		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
-		mkdir -p internal/themes/assets/premium && \
-		cp .themes-temp/themes/*.css internal/themes/assets/premium/ && \
-		rm -rf .themes-temp && \
-		echo "Premium themes fetched successfully"; \
+	@echo "Fetching community themes..."
+	@rm -rf .themes-temp internal/themes/assets/premium/*.css internal/themes/assets/premium/LICENSE
+	@if git clone --quiet --depth=1 --branch main --filter=blob:none --sparse \
+			https://github.com/autobrr/qui-community-themes.git .themes-temp && \
+		git -C .themes-temp sparse-checkout set --cone themes; then \
+		cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/ && \
+		echo "Community themes fetched"; \
 	else \
-		echo "THEMES_REPO_TOKEN not set, skipping premium themes"; \
+		echo "WARNING: could not fetch the community themes, building with the free themes only"; \
 	fi
+	@rm -rf .themes-temp
 
-# Clean premium themes
+# Clean community themes
 themes-clean:
-	@echo "Cleaning premium themes..."
-	rm -f internal/themes/assets/premium/*.css
+	@echo "Cleaning community themes..."
+	rm -f internal/themes/assets/premium/*.css internal/themes/assets/premium/LICENSE
 
 # Build frontend
 frontend:
@@ -123,7 +122,47 @@ test-frontend:
 # Validate OpenAPI specification
 test-openapi:
 	@echo "Validating OpenAPI specification..."
-	go test -v ./internal/web/swagger
+	go test -count=1 -v ./internal/web/swagger
+
+# Mutation testing of the source that this branch changes against MUTATION_BASE.
+# A report, not a gate: some surviving mutants change no behaviour.
+MUTATION_BASE ?= origin/develop
+MUTATION_DIR ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/qui-mutation
+
+mutation: mutation-go mutation-web
+
+# Each run gets its own worktree of HEAD under MUTATION_DIR, so commit first.
+# The worktree goes away when the run ends, also on Ctrl-C.
+MUTATION_WORKTREE = mkdir -p "$(abspath $(MUTATION_DIR))" && \
+	run=$$(mktemp -d "$(abspath $(MUTATION_DIR))/run.XXXXXX") && \
+	trap 'cd "$(CURDIR)"; git worktree remove --force "$$run/wt" 2>/dev/null; rm -rf "$$run"' EXIT && \
+	trap 'exit 130' INT TERM && \
+	git worktree add --quiet --detach "$$run/wt" HEAD
+
+# gremlins copies the whole module once per worker, and the worktree has no
+# node_modules or build output. --diff matches files only when gremlins runs
+# on the module root, so the coverage run covers every package, and only the
+# changed lines are mutated. gremlins reads each diff hunk as one block of
+# added lines, so git must write the diff with no context lines.
+mutation-go:
+	@git diff --quiet --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '*.go' ':!*_test.go'; \
+		case $$? in 0) echo "No committed Go source changes against $(MUTATION_BASE)."; exit 0;; 1) ;; *) exit 1;; esac; \
+		$(MUTATION_WORKTREE) || exit 1; \
+		mkdir "$$run/tmp"; \
+		cd "$$run/wt" && GOFLAGS=-count=1 TMPDIR="$$run/tmp" \
+			GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.context GIT_CONFIG_VALUE_0=0 \
+			go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0 unleash \
+			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk .
+
+# Stryker changes the files in place, because a test imports a Go file from
+# outside web/. The worktree keeps those changes out of the main checkout.
+mutation-web:
+	@changed=$$(git diff --name-only --diff-filter=d --merge-base $(MUTATION_BASE) HEAD -- '$(WEB_DIR)/src/*.ts' ':!*.test.ts' ':!*.d.ts') || exit 1; \
+		files=$$(printf '%s\n' "$$changed" | sed 's|^$(WEB_DIR)/||' | paste -sd, -); \
+		if [ -z "$$files" ]; then echo "No committed TypeScript source changes against $(MUTATION_BASE)."; exit 0; fi; \
+		$(MUTATION_WORKTREE) || exit 1; \
+		cd "$$run/wt/$(WEB_DIR)" && pnpm install --frozen-lockfile --prefer-offline --silent && \
+			pnpm exec stryker run --mutate "$$files"
 
 # Format changed code only (fast, for iteration)
 fmt:
@@ -213,12 +252,12 @@ check-mojibake:
 		exit 1; \
 	fi
 
-# Write the generated files: the automation rule JSON reference in the docs and the query builder field table
+# Write the generated files: the automation rule JSON reference in the docs, the query builder field table, and the API key area table
 generate:
 	go run ./internal/automationsgen
 
 # Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, then lint
-precommit: check-mojibake generate fmt gofix-changed lint
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend
 	@echo "Pre-commit checks passed."
 
 # Lint new Go issues since the develop merge-base, then all frontend files
@@ -235,6 +274,11 @@ lint-full:
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
 
+# Type-check the frontend with the command that the frontend build runs first
+typecheck-frontend:
+	@echo "Type-checking frontend..."
+	cd $(WEB_DIR) && pnpm exec tsc -b
+
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet:
 	go run ./scripts/ratchet -base $$(git merge-base HEAD develop)
@@ -242,7 +286,7 @@ lint-ratchet:
 # Lint with JSON output (for AI agent consumption)
 lint-json:
 	@echo "Generating lint report..."
-	golangci-lint run --new-from-merge-base=main --output.json.path=./lint-report.json --timeout=5m || true
+	golangci-lint run --new-from-merge-base=develop --output.json.path=./lint-report.json --timeout=5m || true
 	@echo "Lint report saved to lint-report.json"
 
 # Lint with auto-fix where possible
@@ -294,6 +338,7 @@ help:
 	@echo "  make test-postgres  - Run Postgres integration tests with a temporary server"
 	@echo "  make test-frontend  - Run frontend vitest suite"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
+	@echo "  make mutation       - Mutation test changed Go lines and TypeScript files (MUTATION_BASE=origin/develop)"
 	@echo ""
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
@@ -306,16 +351,16 @@ help:
 	@echo "  make fmt            - Format changed files only (fast, for iteration)"
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
-	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields)"
-	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint)"
+	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields, API key areas)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type check)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"
 	@echo "  make docs-build     - Build documentation for production"
 	@echo ""
 	@echo "Other:"
-	@echo "  make themes-fetch   - Fetch premium themes from private repository"
-	@echo "  make themes-clean   - Clean premium themes"
+	@echo "  make themes-fetch   - Fetch the community themes"
+	@echo "  make themes-clean   - Clean the community themes"
 	@echo "  make clean          - Clean build artifacts"
 	@echo "  make deps           - Install dependencies"
 	@echo "  make help           - Show this help message"

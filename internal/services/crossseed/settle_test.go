@@ -202,6 +202,13 @@ func TestSettle(t *testing.T) {
 		{Name: "Movie.2024.Sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 		{Name: "Movie_sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 	}
+	// A bonus folder marks its videos, also in the plural. Each video alone
+	// exceeds the 50 MiB budget, so a mutant dropping either form fails this row.
+	bonusFolderMissing := qbt.TorrentFiles{
+		{Name: "Show.S01/Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
+		{Name: "Show.S01/Extras/Behind the Scenes.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
+		{Name: "Show.S01/Featurettes/Making Of.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
+	}
 	// "Resample" merely ends in "sample": separator-less suffix matching would
 	// forgive this real video.
 	keywordSuffixStemMissing := qbt.TorrentFiles{
@@ -355,6 +362,16 @@ func TestSettle(t *testing.T) {
 			fake: &settleFake{
 				polls: budgetDecision(120<<20, 0.9),
 				files: map[string]qbt.TorrentFiles{"hash1": dottedSampleMissing},
+			},
+			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantReads:   1,
+		},
+		{
+			name:  "videos in a bonus folder are forgiven",
+			added: budget(50 << 20),
+			fake: &settleFake{
+				polls: budgetDecision(120<<20, 0.9),
+				files: map[string]qbt.TorrentFiles{"hash1": bonusFolderMissing},
 			},
 			wantActions: []string{"recheck:hash1", "resume:hash1"},
 			wantReads:   1,

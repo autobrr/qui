@@ -5,8 +5,11 @@ package automations
 
 import (
 	"bytes"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
@@ -14,17 +17,23 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 func TestProcessTorrents_Uncategorized(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrents := []qbt.Torrent{
 		{Hash: "source", Category: "archive", SavePath: "data", ContentPath: "data/show"},
 		{Hash: "peer", Category: "protected", SavePath: "data", ContentPath: "data/show"},
 		{Hash: "uncategorized", SavePath: "other", ContentPath: "other/show"},
+	}
+	fixture := parityFixture{
+		torrents: map[string]map[string]any{
+			"source":        {"name": "source", "category": "archive", "save_path": "data", "content_path": "data/show"},
+			"peer":          {"name": "peer", "category": "protected", "save_path": "data", "content_path": "data/show"},
+			"uncategorized": {"name": "uncategorized", "save_path": "other", "content_path": "other/show"},
+		},
+		sameContent: sharingByContentPath(torrents),
 	}
 
 	for _, tc := range []struct {
@@ -54,9 +63,14 @@ func TestProcessTorrents_Uncategorized(t *testing.T) {
 					},
 				},
 			}
-			states := processTorrents(torrents, []*models.Automation{rule}, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}, sm, nil, nil, nil)
+			evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
+			svc, instanceID := newDryRunParityService(t, fixture)
+			preview, err := svc.PreviewCategoryRule(t.Context(), instanceID, rule, 100, 0)
+			require.NoError(t, err)
 			if !tc.wantMatch {
 				require.Empty(t, states)
+				require.Empty(t, previewRows(preview))
 				return
 			}
 			require.Len(t, states, 1)
@@ -64,21 +78,18 @@ func TestProcessTorrents_Uncategorized(t *testing.T) {
 			require.Empty(t, *states["source"].category)
 			require.Equal(t, tc.includeCrossSeeds, states["source"].categoryIncludeCrossSeeds)
 
-			service := &Service{syncManager: sm}
-			preview := newCategoryPreviewState("")
-			action := getCategoryAction(rule)
-			crossSeeds := testCrossSeedGroups(torrents)
-			service.findDirectCategoryMatches(rule, torrents, nil, crossSeeds, action, preview)
-			service.findCategoryCrossSeeds(torrents, crossSeeds, action, preview)
-			require.Equal(t, map[string]struct{}{"source": {}}, preview.directMatchSet)
-			_, included := preview.crossSeedSet["peer"]
-			require.Equal(t, tc.includeCrossSeeds, included)
+			want := map[string]bool{"source": false}
+			if tc.includeCrossSeeds {
+				want["peer"] = true
+			}
+			require.Equal(t, want, previewRows(preview))
+			require.Equal(t, len(want), preview.TotalMatches)
+			require.Equal(t, len(want)-1, preview.CrossSeedCount)
 		})
 	}
 }
 
 func TestProcessTorrents_UncategorizedLastRuleWins(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrents := []qbt.Torrent{{Hash: "source"}}
 	rules := []*models.Automation{
 		{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
@@ -88,20 +99,31 @@ func TestProcessTorrents_UncategorizedLastRuleWins(t *testing.T) {
 			Category: &models.CategoryAction{Enabled: true, Category: ""},
 		}},
 	}
-	states := processTorrents(torrents, rules, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, rules, nil, nil, noSkipWindow(rules...), nil, nil)
 	require.NotNil(t, states["source"].category)
 	require.Empty(t, *states["source"].category)
 	require.Equal(t, 2, states["source"].categoryRuleID)
 
-	service := &Service{syncManager: sm}
-	preview := newCategoryPreviewState("")
-	service.findDirectCategoryMatches(rules[1], torrents, nil, nil, getCategoryAction(rules[1]), preview)
-	require.Empty(t, preview.directMatchSet)
+	// The preview checks only the edited rule: the first rule still shows the torrent.
+	svc, instanceID := newDryRunParityService(t, parityFixture{torrents: map[string]map[string]any{"source": {"name": "source"}}})
+	preview, err := svc.PreviewCategoryRule(t.Context(), instanceID, rules[0], 100, 0)
+	require.NoError(t, err)
+	require.Equal(t, map[string]bool{"source": false}, previewRows(preview))
+	preview, err = svc.PreviewCategoryRule(t.Context(), instanceID, rules[1], 100, 0)
+	require.NoError(t, err)
+	require.Empty(t, previewRows(preview))
+}
+
+// previewRows maps each row of a preview to its cross-seed badge.
+func previewRows(result *PreviewResult) map[string]bool {
+	rows := make(map[string]bool, len(result.Examples))
+	for _, example := range result.Examples {
+		rows[example.Hash] = example.IsCrossSeed
+	}
+	return rows
 }
 
 func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -134,14 +156,13 @@ func TestProcessTorrents_CategoryBlockedByCrossSeedCategory(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}, sm, nil, nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	_, ok := states["a"]
 	require.False(t, ok, "expected category action to be blocked when protected cross-seed exists")
 }
 
 func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -175,7 +196,7 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when no protected cross-seed exists")
 	require.NotNil(t, state.category)
@@ -185,8 +206,6 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 }
 
 func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -219,14 +238,12 @@ func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	_, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when protected torrent is not in the same cross-seed group")
 }
 
 func TestProcessTorrents_GroupConditionsUseConditionScopedGroupIDs(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -286,15 +303,13 @@ func TestProcessTorrents_GroupConditionsUseConditionScopedGroupIDs(t *testing.T)
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "a")
 	require.Contains(t, states, "b")
 	require.NotContains(t, states, "c")
 }
 
 func TestProcessTorrents_GroupConditionWithoutGroupID_UsesDefaultFallback(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -330,7 +345,7 @@ func TestProcessTorrents_GroupConditionWithoutGroupID_UsesDefaultFallback(t *tes
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "a")
 	require.Contains(t, states, "b")
 }
@@ -359,7 +374,7 @@ func TestMoveSkippedWhenAlreadyInTargetPath(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Already in target path, move should not be set
 	require.False(t, state.shouldMove)
@@ -401,7 +416,7 @@ func TestMoveWithGroupID_SetsGroupMetadata(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	require.True(t, state.shouldMove)
 	require.Equal(t, "/data/archive", state.movePath)
@@ -438,7 +453,7 @@ func TestMovePathNormalization(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Paths should be normalized and match, so move should be skipped
 	require.False(t, state.shouldMove)
@@ -486,7 +501,7 @@ func TestMoveRequiresAbsolutePath(t *testing.T) {
 				tagActions:  make(map[string]string),
 			}
 
-			require.NoError(t, processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil))
+			processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 			require.Equal(t, tt.wantMove, state.shouldMove)
 			require.Equal(t, tt.wantTarget, state.movePath)
@@ -547,7 +562,7 @@ func TestMoveRelativePathWarnsOncePerRuleRun(t *testing.T) {
 	}
 	stats := map[int]*ruleRunStats{}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, qbittorrent.NewSyncManager(nil, nil), nil, stats, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), stats, nil)
 
 	require.Empty(t, states)
 	require.Equal(t, 1, strings.Count(logs.String(), "path is not absolute"))
@@ -555,8 +570,6 @@ func TestMoveRelativePathWarnsOncePerRuleRun(t *testing.T) {
 }
 
 func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -589,7 +602,7 @@ func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move to apply; groupId should bypass legacy cross-seed blocking")
 	require.True(t, state.shouldMove)
@@ -597,8 +610,6 @@ func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 }
 
 func TestMoveBlockedByCrossSeed(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -635,15 +646,14 @@ func TestMoveBlockedByCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}, sm, nil, nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	_, ok := states["a"]
 	require.False(t, ok, "expected move action to be blocked when cross-seed exists and BlockIfCrossSeed is true")
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
 }
 
 func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	// Test with a single torrent that has no cross-seed partner,
 	// so it won't be blocked even with BlockIfCrossSeed=true
 	torrents := []qbt.Torrent{
@@ -669,7 +679,7 @@ func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when torrent has no cross-seed partner")
 	require.True(t, state.shouldMove)
@@ -677,8 +687,6 @@ func TestMoveAllowedWhenNoCrossSeed(t *testing.T) {
 }
 
 func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -715,7 +723,7 @@ func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is false")
 	require.True(t, state.shouldMove)
@@ -723,8 +731,6 @@ func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
 }
 
 func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -761,7 +767,7 @@ func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is true but all cross-seeds meet the condition")
 	require.True(t, state.shouldMove)
@@ -769,8 +775,6 @@ func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
 }
 
 func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:        "a",
@@ -807,7 +811,8 @@ func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}, sm, nil, nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	_, ok := states["a"]
 	require.False(t, ok, "expected move action to be blocked when condition is met but cross-seed exists")
 	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
@@ -871,7 +876,6 @@ func TestRenderPathTemplate_TrackerDisplayName(t *testing.T) {
 }
 
 func TestMoveAction_WithTemplatePath(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
 	torrent := qbt.Torrent{
 		Hash:        "abc",
 		Name:        "Show.S01",
@@ -886,207 +890,14 @@ func TestMoveAction_WithTemplatePath(t *testing.T) {
 		TrackerPattern: "*",
 		Conditions:     &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/archive/{{.Category}}"}},
 	}}
-	states := processTorrents([]qbt.Torrent{torrent}, rules, nil, sm, nil, nil, nil)
+	states := processTorrents([]qbt.Torrent{torrent}, rules, nil, nil, noSkipWindow(rules...), nil, nil)
 	state, ok := states["abc"]
 	require.True(t, ok)
 	require.True(t, state.shouldMove)
 	require.Equal(t, "/archive/tv", state.movePath)
 }
 
-func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
-	t.Run("adds size for non-cross-seed torrent with deleteWithFiles", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-		}
-
-		// A torrent without a cross-seed is a group of its own.
-		torrent := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "",
-			SavePath:    "",
-		}
-
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil, true)
-
-		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-	})
-
-	t.Run("does not double-count cross-seed torrents", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-		}
-
-		// First torrent
-		torrent1 := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		// Cross-seed of first torrent (same paths, different hash)
-		torrent2 := qbt.Torrent{
-			Hash:        "def456",
-			Size:        50000000000, // Same size (cross-seed)
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent1, torrent2}
-		evalCtx.CrossSeedFilesByHash = map[string]qbt.TorrentFiles{
-			"abc123": {{Name: "movie", Size: 50000000000}},
-			"def456": {{Name: "movie", Size: 50000000000}},
-		}
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
-		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
-
-		// Should only count once
-		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.FileBytesToClear, 1)
-	})
-
-	t.Run("counts the file union of an episode and its pack", func(t *testing.T) {
-		evalCtx := &EvalContext{FilesToClear: make(map[string]int64), CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
-			"ep":   {{Name: "ep1.mkv", Size: 1000}},
-			"pack": {{Name: "Pack/ep1.mkv", Size: 1000}, {Name: "Pack/ep2.mkv", Size: 1000}},
-		}}
-		episode := qbt.Torrent{Hash: "ep", Size: 1000, ContentPath: "/data/Pack/ep1.mkv", SavePath: "/data/Pack"}
-		pack := qbt.Torrent{Hash: "pack", Size: 2000, ContentPath: "/data/Pack", SavePath: "/data"}
-		groups := buildCrossSeedGroups([]qbt.Torrent{episode, pack}, &EvalContext{
-			SameInstanceContentByHash: map[string][]string{"ep": {"pack"}, "pack": {"ep"}},
-		})
-
-		updateCumulativeFreeSpaceCleared(episode, evalCtx, DeleteModeWithFiles, groups, true)
-		updateCumulativeFreeSpaceCleared(pack, evalCtx, DeleteModeWithFiles, groups, true)
-
-		require.Equal(t, int64(2000), evalCtx.SpaceToClear, "the pack holds the episode file")
-	})
-
-	t.Run("counts different content paths separately", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-		}
-
-		torrent1 := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "/data/movie1",
-			SavePath:    "/data",
-		}
-
-		torrent2 := qbt.Torrent{
-			Hash:        "def456",
-			Size:        30000000000, // 30GB
-			ContentPath: "/data/movie2",
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent1, torrent2}
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
-		updateCumulativeFreeSpaceCleared(torrent2, evalCtx, DeleteModeWithFiles, testCrossSeedGroups(allTorrents), true)
-
-		require.Equal(t, int64(80000000000), evalCtx.SpaceToClear)
-	})
-
-	t.Run("handles nil evalCtx gracefully", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000,
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		// Should not panic
-		updateCumulativeFreeSpaceCleared(torrent, nil, DeleteModeWithFiles, nil, true)
-	})
-
-	t.Run("does not add size for DeleteModeKeepFiles", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-		}
-
-		torrent := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		// Keep-files mode should not increase SpaceToClear
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeKeepFiles, nil, true)
-
-		require.Equal(t, int64(0), evalCtx.SpaceToClear)
-		require.Empty(t, evalCtx.FilesToClear)
-	})
-
-	t.Run("does not add size for preserve-cross-seeds mode when cross-seeds exist", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-		}
-
-		// Two torrents resolve to the same file and are cross-seeds.
-		torrent1 := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		torrent2 := qbt.Torrent{
-			Hash:        "def456",
-			Size:        50000000000,
-			ContentPath: "/data/movie", // Same content path = cross-seed
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent1, torrent2}
-		evalCtx.CrossSeedFilesByHash = map[string]qbt.TorrentFiles{
-			"abc123": {{Name: "movie/main.mkv", Size: 50000000000}},
-			"def456": {{Name: "movie/main.mkv", Size: 50000000000}},
-		}
-
-		// Deleting torrent1 with preserve-cross-seeds should NOT count toward SpaceToClear
-		// because torrent2 is a cross-seed that would keep the files
-		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFilesPreserveCrossSeeds, testCrossSeedGroups(allTorrents), true)
-
-		require.Equal(t, int64(0), evalCtx.SpaceToClear)
-		require.Empty(t, evalCtx.FilesToClear)
-	})
-
-	t.Run("adds size for preserve-cross-seeds mode when no cross-seeds exist", func(t *testing.T) {
-		evalCtx := &EvalContext{
-			SpaceToClear: 0,
-			FilesToClear: make(map[string]int64),
-		}
-
-		// Only one torrent - no cross-seeds
-		torrent := qbt.Torrent{
-			Hash:        "abc123",
-			Size:        50000000000, // 50GB
-			ContentPath: "/data/movie",
-			SavePath:    "/data",
-		}
-
-		allTorrents := []qbt.Torrent{torrent}
-
-		// Deleting with preserve-cross-seeds should count toward SpaceToClear
-		// because there are no cross-seeds
-		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFilesPreserveCrossSeeds, testCrossSeedGroups(allTorrents), true)
-
-		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-		require.Empty(t, evalCtx.FilesToClear)
-	})
-}
-
-func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
+func TestDeletionSelection_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
 	// Create 5 torrents with different ages, each 20GB
 	// Oldest first: torrent1, torrent2, torrent3, torrent4, torrent5
 	torrents := []qbt.Torrent{
@@ -1120,19 +931,14 @@ func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
 	// Need to clear 40GB to reach 50GB threshold
 	// Each torrent is 20GB, so we need 2 torrents
 	evalCtx := &EvalContext{
-		FreeSpace:    10000000000, // 10GB
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
+		freeSpaceLedgers: testFreeSpaceLedgers(10000000000, rule), // 10GB
 	}
 
-	err := SortTorrents(torrents, nil, evalCtx)
-	require.NoError(t, err)
-
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
 	// Should only delete 2 torrents (oldest first: torrent1, torrent2)
-	// After torrent1: FreeSpace=10GB + SpaceToClear=20GB = 30GB < 50GB (still matches)
-	// After torrent2: FreeSpace=10GB + SpaceToClear=40GB = 50GB >= 50GB (no longer matches)
+	// After torrent1: start=10GB + freed=20GB = 30GB < 50GB (still matches)
+	// After torrent2: start=10GB + freed=40GB = 50GB >= 50GB (no longer matches)
 	require.Len(t, states, 2, "expected exactly 2 torrents to be marked for deletion")
 
 	// Verify the oldest torrents were selected
@@ -1150,9 +956,7 @@ func TestProcessTorrents_FreeSpaceConditionStopsWhenSatisfied(t *testing.T) {
 	require.False(t, hasE, "expected torrent5 to NOT be deleted")
 }
 
-func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
+func TestDeletionSelection_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 	// Create torrents where some are cross-seeds with the same resolved files.
 	// torrent1 and torrent2 are cross-seeds (same 30GB file)
 	// torrent3 is independent (20GB)
@@ -1184,9 +988,7 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 	// Current free space: 10GB
 	// Need to clear 50GB to reach 60GB threshold
 	evalCtx := &EvalContext{
-		FreeSpace:    10000000000, // 10GB
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
+		freeSpaceLedgers: testFreeSpaceLedgers(10000000000, rule), // 10GB
 	}
 
 	evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)
@@ -1194,15 +996,15 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 		"a": {{Name: "movie", Size: 30000000000}},
 		"b": {{Name: "movie", Size: 30000000000}},
 	}
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
-	// torrent1 (30GB) -> SpaceToClear = 30GB, effective = 40GB < 60GB (still matches)
-	// torrent2 is cross-seed of torrent1, so only counted once: SpaceToClear stays 30GB, effective = 40GB < 60GB (still matches)
-	// torrent3 (20GB) -> SpaceToClear = 50GB, effective = 60GB >= 60GB (no longer matches)
+	// torrent1 (30GB) -> freed = 30GB, effective = 40GB < 60GB (still matches)
+	// torrent2 is cross-seed of torrent1, so only counted once: freed bytes stay 30GB, effective = 40GB < 60GB (still matches)
+	// torrent3 (20GB) -> freed = 50GB, effective = 60GB >= 60GB (no longer matches)
 
 	// All 3 torrents should be deleted because:
 	// - After a: 10+30=40 < 60 (match)
-	// - After b: 10+30=40 < 60 (match, cross-seed doesn't add to SpaceToClear)
+	// - After b: 10+30=40 < 60 (match, cross-seed doesn't add to the Projected freed bytes)
 	// - After c: 10+50=60 >= 60 (no match) - but c matched before this update
 	require.Len(t, states, 3, "expected 3 torrents to be marked for deletion")
 
@@ -1215,7 +1017,7 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 	require.True(t, hasC, "expected torrent3 to be deleted")
 }
 
-func TestProcessTorrents_IncludeCrossSeedsFreeSpaceProjection(t *testing.T) {
+func TestDeletionSelection_IncludeCrossSeedsFreeSpaceProjection(t *testing.T) {
 	const torrentSize = int64(10_000)
 
 	tests := []struct {
@@ -1265,25 +1067,24 @@ func TestProcessTorrents_IncludeCrossSeedsFreeSpaceProjection(t *testing.T) {
 				},
 			}
 			evalCtx := &EvalContext{
-				FilesToClear:           make(map[string]int64),
-				CrossSeedHashesToClear: make(map[string]struct{}),
-				CrossSeedFilesByHash:   tc.sharedFiles,
+				freeSpaceLedgers:     testFreeSpaceLedgers(0, rule),
+				CrossSeedFilesByHash: tc.sharedFiles,
 			}
 
 			evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)
-			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+			states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 			gotHashes := make(map[string]struct{}, len(states))
 			for hash := range states {
 				gotHashes[hash] = struct{}{}
 			}
 
 			require.Equal(t, tc.wantHashes, gotHashes)
-			require.Equal(t, int64(20_000), evalCtx.SpaceToClear)
+			require.Equal(t, int64(20_000), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 		})
 	}
 }
 
-func TestProcessTorrents_IncludeCrossSeedsFreeSpaceCountsUniqueGroupFiles(t *testing.T) {
+func TestDeletionSelection_IncludeCrossSeedsFreeSpaceCountsUniqueGroupFiles(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", Name: "first", Size: 100, AddedOn: 1, SavePath: "/data", ContentPath: "/data/shared"},
 		{Hash: "b", Name: "second", Size: 100, AddedOn: 2, SavePath: "/data", ContentPath: "/data/shared"},
@@ -1306,8 +1107,7 @@ func TestProcessTorrents_IncludeCrossSeedsFreeSpaceCountsUniqueGroupFiles(t *tes
 		},
 	}
 	evalCtx := &EvalContext{
-		FilesToClear:           make(map[string]int64),
-		CrossSeedHashesToClear: make(map[string]struct{}),
+		freeSpaceLedgers: testFreeSpaceLedgers(0, rule),
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"a": {
 				{Name: "shared/common.mkv", Size: 90, Priority: 1},
@@ -1321,17 +1121,15 @@ func TestProcessTorrents_IncludeCrossSeedsFreeSpaceCountsUniqueGroupFiles(t *tes
 	}
 
 	evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
 	require.Len(t, states, 1)
 	require.Contains(t, states, "a")
 	require.NotContains(t, states, "c")
-	require.Equal(t, int64(110), evalCtx.SpaceToClear)
+	require.Equal(t, int64(110), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 }
 
-func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
+func TestDeletionSelection_SortsOldestFirst(t *testing.T) {
 	// Create torrents in random order
 	torrents := []qbt.Torrent{
 		{Hash: "c", Name: "newest", Size: 10000000000, AddedOn: 3000, SavePath: "/data", ContentPath: "/data/c"},
@@ -1359,15 +1157,10 @@ func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 	}
 
 	evalCtx := &EvalContext{
-		FreeSpace:    5000000000, // 5GB - need 10GB more to reach 15GB
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
+		freeSpaceLedgers: testFreeSpaceLedgers(5000000000, rule), // 5GB - need 10GB more to reach 15GB
 	}
 
-	err := SortTorrents(torrents, nil, evalCtx)
-	require.NoError(t, err)
-
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
 	// Should only delete 1 torrent (the oldest one)
 	require.Len(t, states, 1, "expected exactly 1 torrent to be marked for deletion")
@@ -1376,9 +1169,7 @@ func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 	require.True(t, hasA, "expected oldest torrent (a) to be deleted first")
 }
 
-func TestProcessTorrents_DeterministicOrderWithSameAddedOn(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
+func TestDeletionSelection_DeterministicOrderWithSameAddedOn(t *testing.T) {
 	// Create torrents with same AddedOn time - should sort by hash
 	torrents := []qbt.Torrent{
 		{Hash: "zzz", Name: "torrent-z", Size: 10000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/z"},
@@ -1406,38 +1197,16 @@ func TestProcessTorrents_DeterministicOrderWithSameAddedOn(t *testing.T) {
 	}
 
 	evalCtx := &EvalContext{
-		FreeSpace:    5000000000, // 5GB
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
+		freeSpaceLedgers: testFreeSpaceLedgers(5000000000, rule), // 5GB
 	}
 
-	err := SortTorrents(torrents, nil, evalCtx)
-	require.NoError(t, err)
-
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
 	// Should delete the torrent with lowest hash first (aaa)
 	require.Len(t, states, 1, "expected exactly 1 torrent to be marked for deletion")
 
 	_, hasAAA := states["aaa"]
 	require.True(t, hasAAA, "expected torrent with lowest hash (aaa) to be deleted when AddedOn is equal")
-}
-
-func TestProcessTorrents_HandlesNilFilesToClearGracefully(t *testing.T) {
-	evalCtx := &EvalContext{
-		SpaceToClear: 0,
-		FilesToClear: nil, // Not initialized because rule doesn't use FREE_SPACE
-	}
-
-	torrent := qbt.Torrent{
-		Hash:        "abc123",
-		Size:        50000000000,
-		ContentPath: "/data/movie",
-		SavePath:    "/data",
-	}
-
-	// Should not panic
-	require.NotPanics(t, func() { updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil, false) })
 }
 
 // TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly tests runtime behavior
@@ -1450,11 +1219,9 @@ func TestProcessTorrents_HandlesNilFilesToClearGracefully(t *testing.T) {
 // - Direct API calls bypassing validation
 // - Future changes to validation logic
 //
-// The correct behavior is that keep-files deletions do NOT contribute to SpaceToClear,
+// The correct behavior is that keep-files deletions do NOT contribute to the Projected freed bytes,
 // so the FREE_SPACE condition remains true and matches all eligible torrents.
-func TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
+func TestDeletionSelection_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
 	// Create 5 torrents with different ages, each 20GB
 	torrents := []qbt.Torrent{
 		{Hash: "e", Name: "torrent5", Size: 20000000000, AddedOn: 5000, SavePath: "/data", ContentPath: "/data/t5"},
@@ -1489,24 +1256,20 @@ func TestProcessTorrents_FreeSpaceWithKeepFilesDoesNotStopEarly(t *testing.T) {
 	// With deleteWithFiles, we'd need to clear 40GB (2 torrents) to reach 50GB
 	// But with keep-files, no space is freed, so ALL torrents should match
 	evalCtx := &EvalContext{
-		FreeSpace:    10000000000, // 10GB
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
+		freeSpaceLedgers: testFreeSpaceLedgers(10000000000, rule), // 10GB
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
 	// ALL 5 torrents should be marked for deletion because keep-files doesn't free space
 	// so the condition FREE_SPACE < 50GB remains true for all
 	require.Len(t, states, 5, "expected ALL torrents to be marked for deletion when using keep-files mode")
 
-	// Verify SpaceToClear was NOT incremented (since keep-files doesn't free space)
-	require.Equal(t, int64(0), evalCtx.SpaceToClear, "SpaceToClear should remain 0 for keep-files mode")
+	// Verify the Projected freed bytes did NOT grow (since keep-files doesn't free space)
+	require.Equal(t, int64(0), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes(), "the Projected freed bytes should remain 0 for keep-files mode")
 }
 
-func TestProcessTorrents_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFiles(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
+func TestDeletionSelection_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFiles(t *testing.T) {
 	// Create torrents where some are cross-seeds (same content path)
 	// torrent1, torrent2, torrent3 are ALL cross-seeds sharing the same files
 	// torrent4 is independent
@@ -1542,16 +1305,14 @@ func TestProcessTorrents_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFil
 	// Processing order (oldest first): a, b, c, d
 	//
 	// With preserve-cross-seeds:
-	// - torrent a (cross-seed with b,c): files kept, SpaceToClear += 0 -> effective = 10GB < 50GB (matches)
-	// - torrent b (cross-seed with a,c): files kept, SpaceToClear += 0 -> effective = 10GB < 50GB (matches)
-	// - torrent c (cross-seed with a,b): files kept, SpaceToClear += 0 -> effective = 10GB < 50GB (matches)
-	// - torrent d (no cross-seed): files deleted, SpaceToClear += 20GB -> effective = 30GB < 50GB (matches)
+	// - torrent a (cross-seed with b,c): files kept, freed += 0 -> effective = 10GB < 50GB (matches)
+	// - torrent b (cross-seed with a,c): files kept, freed += 0 -> effective = 10GB < 50GB (matches)
+	// - torrent c (cross-seed with a,b): files kept, freed += 0 -> effective = 10GB < 50GB (matches)
+	// - torrent d (no cross-seed): files deleted, freed += 20GB -> effective = 30GB < 50GB (matches)
 	//
-	// All 4 torrents should match because the cross-seeds don't contribute to SpaceToClear
+	// All 4 torrents should match because the cross-seeds don't contribute to the Projected freed bytes
 	evalCtx := &EvalContext{
-		FreeSpace:    10000000000, // 10GB
-		SpaceToClear: 0,
-		FilesToClear: make(map[string]int64),
+		freeSpaceLedgers: testFreeSpaceLedgers(10000000000, rule), // 10GB
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"a": {{Name: "movie/main.mkv", Size: 30000000000}},
 			"b": {{Name: "movie/main.mkv", Size: 30000000000}},
@@ -1560,18 +1321,18 @@ func TestProcessTorrents_FreeSpaceWithPreserveCrossSeedsDoesNotCountCrossSeedFil
 	}
 
 	evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
 	// All 4 torrents should be marked for deletion
 	require.Len(t, states, 4, "expected 4 torrents to be marked for deletion")
 
-	// Only torrent d (20GB) should contribute to SpaceToClear
+	// Only torrent d (20GB) should contribute to the Projected freed bytes
 	// Torrents a, b, c have cross-seeds so their files are preserved
-	require.Equal(t, int64(20000000000), evalCtx.SpaceToClear,
-		"only torrent4 (no cross-seed) should contribute to SpaceToClear")
+	require.Equal(t, int64(20000000000), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes(),
+		"only torrent4 (no cross-seed) should contribute to the Projected freed bytes")
 }
 
-func TestProcessTorrents_PreserveCrossSeedsCountsUnrelatedSharedPath(t *testing.T) {
+func TestDeletionSelection_PreserveCrossSeedsCountsUnrelatedSharedPath(t *testing.T) {
 	const torrentSize = int64(10_000)
 
 	torrents := []qbt.Torrent{
@@ -1596,20 +1357,19 @@ func TestProcessTorrents_PreserveCrossSeedsCountsUnrelatedSharedPath(t *testing.
 		},
 	}
 	evalCtx := &EvalContext{
-		FreeSpace:    0,
-		FilesToClear: make(map[string]int64),
+		freeSpaceLedgers: testFreeSpaceLedgers(0, rule),
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"a": {{Name: "Season 02/Silver Lantern - 01.mkv", Size: torrentSize}},
 			"b": {{Name: "Season 02/Paper Crane - 01.mkv", Size: torrentSize}},
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
 
 	require.Len(t, states, 2)
 	require.Contains(t, states, "a")
 	require.Contains(t, states, "b")
-	require.Equal(t, int64(20_000), evalCtx.SpaceToClear)
+	require.Equal(t, int64(20_000), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 }
 
 func TestDeleteFreesSpace(t *testing.T) {
@@ -1840,9 +1600,95 @@ func TestSortTorrents_RejectsUploadedOverSizeSorting(t *testing.T) {
 	})
 }
 
-func TestProcessTorrents_PauseResume(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
+func TestSortTorrents_SortableAndScorableFields(t *testing.T) {
+	scorable := []ConditionField{
+		FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
+		FieldAddedOn, FieldCompletionOn, FieldLastActivity, FieldSeedingTime, FieldTimeActive,
+		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
+		FieldRatio, FieldProgress, FieldAvailability, FieldDlSpeed, FieldUpSpeed,
+		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
+		models.FieldSystemHour, models.FieldSystemMinute, models.FieldSystemDayOfWeek, models.FieldSystemDay, models.FieldSystemMonth, models.FieldSystemYear,
+	}
+	sortable := append(slices.Clone(scorable),
+		FieldName, FieldCategory, FieldTags, FieldTracker, FieldState, FieldSavePath, FieldContentPath, FieldComment)
+	torrents := []qbt.Torrent{{Hash: "a"}, {Hash: "b"}}
 
+	for _, field := range slices.Sorted(maps.Keys(ConditionFields)) {
+		sortValue := ConditionFields[field].Sort
+		require.False(t, sortValue.Number != nil && sortValue.Text != nil, "%s has a number and a text reader", field)
+
+		simple := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: field}
+		if err := SortTorrents(torrents, simple, nil); slices.Contains(sortable, field) {
+			require.NoError(t, err, field)
+		} else {
+			require.EqualError(t, err, "unsupported sort field: "+string(field))
+		}
+
+		score := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionASC, ScoreRules: []models.ScoreRule{{
+			Type: models.ScoreRuleTypeFieldMultiplier, FieldMultiplier: &models.FieldMultiplierScoreRule{Field: field, Multiplier: 1},
+		}}}
+		if err := SortTorrents(torrents, score, nil); slices.Contains(scorable, field) {
+			require.NoError(t, err, field)
+		} else {
+			require.EqualError(t, err, "field multiplier requires numeric field, got: "+string(field))
+		}
+	}
+}
+
+func TestSortTorrents_TextFieldsIgnoreCase(t *testing.T) {
+	set := map[ConditionField]func(*qbt.Torrent, string){
+		FieldName:        func(t *qbt.Torrent, v string) { t.Name = v },
+		FieldCategory:    func(t *qbt.Torrent, v string) { t.Category = v },
+		FieldTags:        func(t *qbt.Torrent, v string) { t.Tags = v },
+		FieldTracker:     func(t *qbt.Torrent, v string) { t.Tracker = v },
+		FieldState:       func(t *qbt.Torrent, v string) { t.State = qbt.TorrentState(v) },
+		FieldSavePath:    func(t *qbt.Torrent, v string) { t.SavePath = v },
+		FieldContentPath: func(t *qbt.Torrent, v string) { t.ContentPath = v },
+		FieldComment:     func(t *qbt.Torrent, v string) { t.Comment = v },
+	}
+	for field, setValue := range set {
+		// Case-sensitive order puts "B" before "a".
+		upper, lower := qbt.Torrent{Hash: "upper"}, qbt.Torrent{Hash: "lower"}
+		setValue(&upper, "B")
+		setValue(&lower, "a")
+		torrents := []qbt.Torrent{upper, lower}
+		config := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: field}
+		require.NoError(t, SortTorrents(torrents, config, nil))
+		require.Equal(t, "lower", torrents[0].Hash, field)
+	}
+}
+
+// These Sort values differ from what a Condition on the same field compares.
+func TestSortValues_DifferFromCondition(t *testing.T) {
+	scoreBy := func(field ConditionField) *models.SortingConfig {
+		return &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC, ScoreRules: []models.ScoreRule{{
+			Type: models.ScoreRuleTypeFieldMultiplier, FieldMultiplier: &models.FieldMultiplierScoreRule{Field: field, Multiplier: 1},
+		}}}
+	}
+
+	t.Run("FREE_SPACE ignores the space to clear", func(t *testing.T) {
+		evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(100, 50)}
+		require.InDelta(t, 100.0, CalculateScore(qbt.Torrent{}, scoreBy(FieldFreeSpace), evalCtx), 0)
+	})
+
+	t.Run("PROGRESS scores 0 to 100", func(t *testing.T) {
+		require.InDelta(t, 50.0, CalculateScore(qbt.Torrent{Progress: 0.5}, scoreBy(FieldProgress), nil), 0)
+	})
+
+	t.Run("ADDED_ON sorts by timestamp, ADDED_ON_AGE by age", func(t *testing.T) {
+		evalCtx := &EvalContext{NowUnix: 1000}
+		sortBy := func(field ConditionField) []string {
+			torrents := []qbt.Torrent{{Hash: "new", AddedOn: 900}, {Hash: "old", AddedOn: 100}}
+			config := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Direction: models.SortDirectionASC, Field: field}
+			require.NoError(t, SortTorrents(torrents, config, evalCtx))
+			return []string{torrents[0].Hash, torrents[1].Hash}
+		}
+		require.Equal(t, []string{"old", "new"}, sortBy(FieldAddedOn))
+		require.Equal(t, []string{"new", "old"}, sortBy(FieldAddedOnAge))
+	})
+}
+
+func TestProcessTorrents_PauseResume(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{
 			Hash:  "a",
@@ -1873,7 +1719,7 @@ func TestProcessTorrents_PauseResume(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, rules, &EvalContext{}, sm, nil, nil, nil)
+	states := processTorrents(torrents, rules, &EvalContext{}, nil, noSkipWindow(rules...), nil, nil)
 
 	// Torrent is already running, so resume condition is not met
 	state, ok := states["a"]
@@ -1883,8 +1729,6 @@ func TestProcessTorrents_PauseResume(t *testing.T) {
 }
 
 func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndependently(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:    "a",
@@ -1925,7 +1769,7 @@ func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndepende
 		},
 	}
 
-	states := processTorrents(torrents, rules, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, rules, nil, nil, noSkipWindow(rules...), nil, nil)
 
 	state, ok := states["a"]
 	require.True(t, ok)
@@ -1940,8 +1784,6 @@ func TestProcessTorrents_SpeedLimits_TracksUploadAndDownloadRuleSourcesIndepende
 }
 
 func TestProcessTorrents_ShareLimits_TracksRatioAndSeedingRuleSourcesIndependently(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:             "a",
@@ -1982,7 +1824,7 @@ func TestProcessTorrents_ShareLimits_TracksRatioAndSeedingRuleSourcesIndependent
 		},
 	}
 
-	states := processTorrents(torrents, rules, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, rules, nil, nil, noSkipWindow(rules...), nil, nil)
 
 	state, ok := states["a"]
 	require.True(t, ok)
@@ -1997,8 +1839,6 @@ func TestProcessTorrents_ShareLimits_TracksRatioAndSeedingRuleSourcesIndependent
 }
 
 func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	// Torrent is currently paused
 	torrents := []qbt.Torrent{
 		{
@@ -2030,7 +1870,7 @@ func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, rules, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, rules, nil, nil, noSkipWindow(rules...), nil, nil)
 
 	// Torrent is paused, so:
 	// - Pause rule: torrent already paused, shouldPause not set
@@ -2042,8 +1882,6 @@ func TestProcessTorrents_ResumeOverridesPause_WhenPaused(t *testing.T) {
 }
 
 func TestProcessTorrents_PauseOverridesResume_WhenRunning(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	// Torrent is currently running (downloading)
 	torrents := []qbt.Torrent{
 		{
@@ -2075,7 +1913,7 @@ func TestProcessTorrents_PauseOverridesResume_WhenRunning(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, rules, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, rules, nil, nil, noSkipWindow(rules...), nil, nil)
 
 	// Torrent is running, so:
 	// - Resume rule: torrent already running, shouldResume not set
@@ -2087,8 +1925,6 @@ func TestProcessTorrents_PauseOverridesResume_WhenRunning(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_ConditionMet(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2117,7 +1953,7 @@ func TestProcessTorrents_ExternalProgram_ConditionMet(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 
 	state, ok := states["abc123"]
 	require.True(t, ok, "expected state to be recorded for torrent")
@@ -2128,8 +1964,6 @@ func TestProcessTorrents_ExternalProgram_ConditionMet(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_ConditionNotMet(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2158,14 +1992,12 @@ func TestProcessTorrents_ExternalProgram_ConditionNotMet(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	_, ok := states["abc123"]
 	require.False(t, ok, "expected no state when condition is not met")
 }
 
 func TestProcessTorrents_ExternalProgram_NoCondition(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2189,7 +2021,7 @@ func TestProcessTorrents_ExternalProgram_NoCondition(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 
 	state, ok := states["abc123"]
 	require.True(t, ok, "expected state to be recorded for torrent")
@@ -2198,8 +2030,6 @@ func TestProcessTorrents_ExternalProgram_NoCondition(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_Disabled(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2222,14 +2052,12 @@ func TestProcessTorrents_ExternalProgram_Disabled(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	_, ok := states["abc123"]
 	require.False(t, ok, "expected no state when external program action is disabled")
 }
 
 func TestProcessTorrents_ExternalProgram_LastRuleWins(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2266,7 +2094,7 @@ func TestProcessTorrents_ExternalProgram_LastRuleWins(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule1, rule2}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule1, rule2}, nil, nil, noSkipWindow(rule1, rule2), nil, nil)
 
 	state, ok := states["abc123"]
 	require.True(t, ok, "expected state to be recorded for torrent")
@@ -2277,14 +2105,13 @@ func TestProcessTorrents_ExternalProgram_LastRuleWins(t *testing.T) {
 }
 
 func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
-			Hash:    "abc123",
-			Name:    "Test Torrent",
-			Private: false,
-			Tags:    "TEST",
+			Hash:        "abc123",
+			Name:        "Test Torrent",
+			Private:     false,
+			HasMetadata: new(true),
+			Tags:        "TEST",
 		},
 	}
 
@@ -2308,7 +2135,7 @@ func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 
 	state, ok := states["abc123"]
 	require.True(t, ok, "expected state to be recorded for torrent")
@@ -2323,8 +2150,6 @@ func TestProcessTorrents_Tag_RemoveOnly_RemovesWhenConditionMatches(t *testing.T
 }
 
 func TestProcessTorrents_Tag_DeleteFromClient_ReaddsForMatchingTorrents(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash: "abc123",
@@ -2354,7 +2179,7 @@ func TestProcessTorrents_Tag_DeleteFromClient_ReaddsForMatchingTorrents(t *testi
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	state, ok := states["abc123"]
 	require.True(t, ok, "expected state to be recorded for torrent")
 
@@ -2364,8 +2189,6 @@ func TestProcessTorrents_Tag_DeleteFromClient_ReaddsForMatchingTorrents(t *testi
 }
 
 func TestProcessTorrents_Tag_FullMode_NoOpForAlreadyMatchingTag(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash: "abc123",
@@ -2394,9 +2217,237 @@ func TestProcessTorrents_Tag_FullMode_NoOpForAlreadyMatchingTag(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	_, ok := states["abc123"]
 	require.False(t, ok, "expected no state changes when managed full mode tag already matches")
+}
+
+func TestProcessTorrents_Tag_IncludeCrossSeeds_RecordsExpansionIntent(t *testing.T) {
+	tests := []struct {
+		scenario    string
+		mode        string
+		torrentName string
+		torrentTags string
+		wantAction  string
+		wantIntent  bool
+	}{
+		{
+			scenario:    "add mode records intent on matching torrent",
+			mode:        models.TagModeAdd,
+			torrentName: "Matching Torrent",
+			wantAction:  "add",
+			wantIntent:  true,
+		},
+		{
+			scenario:    "remove mode records intent on matching torrent",
+			mode:        models.TagModeRemove,
+			torrentName: "Matching Torrent",
+			torrentTags: "managed",
+			wantAction:  "remove",
+			wantIntent:  true,
+		},
+		{
+			scenario:    "full mode add records intent on matching torrent",
+			mode:        models.TagModeFull,
+			torrentName: "Matching Torrent",
+			wantAction:  "add",
+			wantIntent:  true,
+		},
+		{
+			scenario:    "full mode removal on non-matching torrent stays local",
+			mode:        models.TagModeFull,
+			torrentName: "Other Torrent",
+			torrentTags: "managed",
+			wantAction:  "remove",
+			wantIntent:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.scenario, func(t *testing.T) {
+			torrents := []qbt.Torrent{
+				{
+					Hash: "abc123",
+					Name: tc.torrentName,
+					Tags: tc.torrentTags,
+				},
+			}
+
+			rule := &models.Automation{
+				ID:             7,
+				Enabled:        true,
+				Name:           "Managed cross-seed tag",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					SchemaVersion: "1",
+					Tags: []*models.TagAction{{
+						Enabled:           true,
+						Tags:              []string{"managed"},
+						Mode:              tc.mode,
+						IncludeCrossSeeds: true,
+						Condition: &models.RuleCondition{
+							Field:    models.FieldName,
+							Operator: models.OperatorContains,
+							Value:    "Matching",
+						},
+					}},
+				},
+			}
+
+			states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+			state, ok := states["abc123"]
+			require.True(t, ok, "expected state to be recorded for torrent")
+			require.Equal(t, tc.wantAction, state.tagActions["managed"])
+			if tc.wantIntent {
+				require.Equal(t, tagExpandIntent{
+					rule:   ruleRef{id: 7, name: "Managed cross-seed tag"},
+					action: tc.wantAction,
+				}, state.tagExpandByTag["managed"])
+			} else {
+				require.NotContains(t, state.tagExpandByTag, "managed")
+			}
+		})
+	}
+}
+
+func TestProcessTorrents_Tag_SteadyStateRecordsAssertIntent(t *testing.T) {
+	// The copy matches and already has the wanted tags. No local change is
+	// needed, but the expansion intent is still recorded: a cross-seed copy
+	// added after the first run must still receive the decision, and in full
+	// mode it cancels the removals on non-matching siblings (any match wins).
+	tests := []struct {
+		name       string
+		mode       string
+		currentTag string
+		want       string
+	}{
+		{name: "full mode already tagged", mode: models.TagModeFull, currentTag: "managed", want: "add"},
+		{name: "add mode already tagged", mode: models.TagModeAdd, currentTag: "managed", want: "add"},
+		{name: "remove mode already untagged", mode: models.TagModeRemove, currentTag: "", want: "remove"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrents := []qbt.Torrent{{Hash: "abc123", Name: "Matching Torrent", Tags: tt.currentTag}}
+			rule := &models.Automation{
+				ID:             7,
+				Enabled:        true,
+				Name:           "Managed cross-seed tag",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					SchemaVersion: "1",
+					Tags: []*models.TagAction{{
+						Enabled:           true,
+						Tags:              []string{"managed"},
+						Mode:              tt.mode,
+						IncludeCrossSeeds: true,
+						Condition: &models.RuleCondition{
+							Field:    models.FieldName,
+							Operator: models.OperatorContains,
+							Value:    "Matching",
+						},
+					}},
+				},
+			}
+
+			states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+			state, ok := states["abc123"]
+			require.True(t, ok, "expected intent-only state to be kept")
+			require.NotContains(t, state.tagActions, "managed", "no local change for an already-correct copy")
+			require.Equal(t, tagExpandIntent{
+				rule:   ruleRef{id: 7, name: "Managed cross-seed tag"},
+				action: tt.want,
+			}, state.tagExpandByTag["managed"])
+		})
+	}
+}
+
+func TestProcessTorrents_Tag_IncludeCrossSeeds_TrackerAsTagNeverRecordsIntent(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "abc123",
+			Name:    "Test Torrent",
+			Tracker: "https://tracker.example.com/announce",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Tracker tag",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tags: []*models.TagAction{{
+				Enabled:           true,
+				Mode:              models.TagModeAdd,
+				UseTrackerAsTag:   true,
+				IncludeCrossSeeds: true,
+			}},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected state to be recorded for torrent")
+	require.Len(t, state.tagActions, 1, "expected tracker-derived tag action to be recorded")
+	require.Empty(t, state.tagExpandByTag, "tracker-derived tags must never record expansion intent")
+}
+
+func TestProcessTorrents_Tag_LaterRuleWithoutExpansionClearsIntent(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{
+			Hash: "abc123",
+			Name: "Matching Torrent",
+		},
+	}
+
+	rule1 := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Add with expansion",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tags: []*models.TagAction{{
+				Enabled:           true,
+				Tags:              []string{"managed"},
+				Mode:              models.TagModeAdd,
+				IncludeCrossSeeds: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldName,
+					Operator: models.OperatorContains,
+					Value:    "Matching",
+				},
+			}},
+		},
+	}
+
+	rule2 := &models.Automation{
+		ID:             2,
+		Enabled:        true,
+		Name:           "Remove without expansion",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tags: []*models.TagAction{{
+				Enabled: true,
+				Tags:    []string{"managed"},
+				Mode:    models.TagModeRemove,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldName,
+					Operator: models.OperatorContains,
+					Value:    "Matching",
+				},
+			}},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule1, rule2}, nil, nil, noSkipWindow(rule1, rule2), nil, nil)
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected state to be recorded for torrent")
+	require.Equal(t, "remove", state.tagActions["managed"], "expected later rule's decision to win")
+	require.Equal(t, ruleRef{id: 2, name: "Remove without expansion"}, state.tagRuleByTag["managed"])
+	require.NotContains(t, state.tagExpandByTag, "managed", "later rule without expansion must clear earlier intent")
 }
 
 func TestProcessTorrents_MultiBatchMerging(t *testing.T) {
@@ -2431,10 +2482,10 @@ func TestProcessTorrents_MultiBatchMerging(t *testing.T) {
 	torrent := qbt.Torrent{Hash: "abc", Name: "Test"}
 
 	// First batch
-	states := processTorrents([]qbt.Torrent{torrent}, []*models.Automation{rule1}, nil, nil, nil, nil, nil)
+	states := processTorrents([]qbt.Torrent{torrent}, []*models.Automation{rule1}, nil, nil, noSkipWindow(rule1), nil, nil)
 
 	// Second batch (pass existing states)
-	states = processTorrents([]qbt.Torrent{torrent}, []*models.Automation{rule2}, nil, nil, nil, nil, states)
+	states = processTorrents([]qbt.Torrent{torrent}, []*models.Automation{rule2}, nil, nil, noSkipWindow(rule2), nil, states)
 
 	state := states["abc"]
 	require.NotNil(t, state)
@@ -2449,8 +2500,6 @@ func TestProcessTorrents_MultiBatchMerging(t *testing.T) {
 }
 
 func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) {
-	sm := qbittorrent.NewSyncManager(nil, nil)
-
 	torrents := []qbt.Torrent{
 		{
 			Hash:     "abc123",
@@ -2480,7 +2529,7 @@ func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) 
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 
 	state, ok := states["abc123"]
 	require.True(t, ok, "expected state to be recorded for torrent")
@@ -2535,18 +2584,18 @@ func TestFieldValuesRejectCompletionSentinels(t *testing.T) {
 
 	for _, sentinel := range []int64{28800, 4294967295, -1, 0} {
 		torrent := qbt.Torrent{CompletionOn: sentinel}
-		require.Zero(t, getNumericFieldValue(torrent, models.FieldCompletionOn, evalCtx), "numeric, sentinel %d", sentinel)
+		require.Zero(t, ConditionFields[models.FieldCompletionOn].Sort.Number(torrent, evalCtx), "numeric, sentinel %d", sentinel)
 		require.Zero(t, getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, torrent), "age, sentinel %d", sentinel)
 	}
 
 	completed := qbt.Torrent{CompletionOn: 1699990000}
-	require.InDelta(t, float64(1699990000), getNumericFieldValue(completed, models.FieldCompletionOn, evalCtx), 0)
+	require.InDelta(t, float64(1699990000), ConditionFields[models.FieldCompletionOn].Sort.Number(completed, evalCtx), 0)
 	require.InDelta(t, float64(10000), getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, completed), 0)
 }
 
 // testCrossSeedGroups groups the torrents that have the same content path, as
 // if the cross-seed matcher found that they share a file.
-func testCrossSeedGroups(torrents []qbt.Torrent) crossSeedGroups {
+func testCrossSeedGroups(torrents []qbt.Torrent) *crossSeedGroups {
 	return buildCrossSeedGroups(torrents, &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)})
 }
 
@@ -2583,7 +2632,6 @@ func extraFilesCrossSeedPair() ([]qbt.Torrent, *EvalContext) {
 			SavePath: "/data/movies", ContentPath: "/data/movies"},
 	}
 	evalCtx := &EvalContext{
-		FilesToClear:              make(map[string]int64),
 		SameInstanceContentByHash: map[string][]string{"single": {"folder"}, "folder": {"single"}},
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"single": {{Name: "Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", Size: 1000}},
@@ -2596,9 +2644,8 @@ func extraFilesCrossSeedPair() ([]qbt.Torrent, *EvalContext) {
 	return torrents, evalCtx
 }
 
-func TestProcessTorrents_PreserveCrossSeedsKeepsExtraFilesSibling(t *testing.T) {
+func TestDeletionSelection_PreserveCrossSeedsKeepsExtraFilesSibling(t *testing.T) {
 	torrents, evalCtx := extraFilesCrossSeedPair()
-	evalCtx.FreeSpace = 0
 	rule := &models.Automation{
 		ID:             1,
 		Enabled:        true,
@@ -2616,10 +2663,11 @@ func TestProcessTorrents_PreserveCrossSeedsKeepsExtraFilesSibling(t *testing.T) 
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, rule)
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
 
-	require.Contains(t, states, "single")
-	require.Zero(t, evalCtx.SpaceToClear, "the delete keeps the mkv that the folder torrent still seeds")
+	require.True(t, selection.byHash["single"].filesKept())
+	require.Zero(t, evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes(), "the delete keeps the mkv that the folder torrent still seeds")
 	require.True(t, shouldPreserveCrossSeedFiles(torrents[0], buildCrossSeedGroups(torrents, evalCtx), evalCtx.CrossSeedFilesByHash))
 }
 
@@ -2643,7 +2691,7 @@ func TestMoveBlockedByExtraFilesCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 
 	require.NotContains(t, states, "single", "the folder torrent shares the mkv and does not meet the move condition")
 }
@@ -2664,7 +2712,7 @@ func TestCategoryCrossSeedExpansion_TakesExtraFilesSiblingAlong(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "single")
 	require.NotContains(t, states, "folder", "the folder torrent does not meet the condition itself")
 
@@ -2701,7 +2749,7 @@ func TestProcessTorrents_SkipUnsafeCrossSeedMovesAndCategories(t *testing.T) {
 					Category: &models.CategoryAction{Enabled: true, Category: "archive", IncludeCrossSeeds: true, Condition: condition},
 				},
 			}
-			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rule), nil, nil)
 			if !tc.wantMove && !tc.wantCategory {
 				require.NotContains(t, states, "source")
 			} else {
@@ -2721,10 +2769,10 @@ func TestProcessTorrents_SkipUnsafeCrossSeedMovesAndCategories(t *testing.T) {
 
 func mixedDeletionProjectionFixture() ([]qbt.Torrent, *EvalContext, *HardlinkIndex) {
 	torrents := []qbt.Torrent{
-		{Hash: "source", Size: 1000, SavePath: "/a", ContentPath: "/a/01.mkv"},
-		{Hash: "unrelated", Size: 1000, SavePath: "/other", ContentPath: "/other/other.mkv"},
-		{Hash: "copy", Size: 1000, SavePath: "/b", ContentPath: "/b/01.mkv"},
-		{Hash: "pack", Size: 2000, SavePath: "/b", ContentPath: "/b"},
+		{Hash: "source", Size: 1000, AddedOn: 1, SavePath: "/a", ContentPath: "/a/01.mkv"},
+		{Hash: "unrelated", Size: 1000, AddedOn: 2, SavePath: "/other", ContentPath: "/other/other.mkv"},
+		{Hash: "copy", Size: 1000, AddedOn: 3, SavePath: "/b", ContentPath: "/b/01.mkv"},
+		{Hash: "pack", Size: 2000, AddedOn: 4, SavePath: "/b", ContentPath: "/b"},
 	}
 	id := hardlink.UnixFileID(1, 1)
 	idx := &HardlinkIndex{
@@ -2737,8 +2785,6 @@ func mixedDeletionProjectionFixture() ([]qbt.Torrent, *EvalContext, *HardlinkInd
 		}},
 	}
 	evalCtx := &EvalContext{
-		FilesToClear:              make(map[string]int64),
-		CrossSeedHashesToClear:    make(map[string]struct{}),
 		SameInstanceContentByHash: map[string][]string{"copy": {"pack"}, "pack": {"copy"}},
 		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
 			"source":    {{Name: "01.mkv", Size: 1000}},
@@ -2759,46 +2805,78 @@ func TestFreeSpaceProjection_FollowsMixedDeletionGroup(t *testing.T) {
 		threshold        string
 		wantUnrelated    bool
 		wantBytes        int64
-		wantPreview      int
+		wantSelected     int
 	}{
 		{"mixed group reaches target", true, "1500", false, 2000, 3},
 		{"hardlink bytes count once", true, "2500", true, 3000, 4},
 		{"hardlink expansion disabled", false, "1500", true, 2000, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			torrents, evalCtx, idx := mixedDeletionProjectionFixture()
+			torrents, evalCtx, _ := mixedDeletionProjectionFixture()
 			rule := &models.Automation{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
 				Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds, IncludeHardlinks: tc.includeHardlinks,
 					Condition: &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: tc.threshold}},
 			}}
-			sm := qbittorrent.NewSyncManager(nil, nil)
-			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
-			require.Contains(t, states, "source")
-			require.Equal(t, tc.wantUnrelated, states["unrelated"] != nil)
-			require.Equal(t, tc.wantBytes, evalCtx.SpaceToClear)
-
-			torrents, evalCtx, _ = mixedDeletionProjectionFixture()
-			svc := &Service{syncManager: sm}
-			result, err := svc.previewDeleteIncludeCrossSeeds(rule, torrents, evalCtx, idx, 10, 0, false, nil,
-				buildCrossSeedGroups(torrents, evalCtx), cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash))
-			require.NoError(t, err)
-			require.Equal(t, tc.wantPreview, result.TotalMatches)
-			require.Equal(t, tc.wantBytes, evalCtx.SpaceToClear)
+			evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, rule)
+			selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
+			require.Contains(t, selection.triggers, "source")
+			require.Equal(t, tc.wantUnrelated, selection.isClaimed("unrelated"))
+			require.Len(t, selection.byHash, tc.wantSelected)
+			require.Equal(t, tc.wantBytes, evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
 		})
 	}
 }
 
-func TestFreeSpaceProjection_UnreadExpandedMemberDoesNotCount(t *testing.T) {
-	t.Parallel()
-	torrents, evalCtx, _ := mixedDeletionProjectionFixture()
-	evalCtx.torrentsByHash = make(map[string]qbt.Torrent)
-	for _, torrent := range torrents {
-		evalCtx.torrentsByHash[torrent.Hash] = torrent
+// A recheck drops progress to 0% until the check verifies the pieces, so a
+// delete rule must leave a checking torrent alone.
+func TestDeleteSkipsCheckingTorrents(t *testing.T) {
+	added := time.Now().Add(-3 * time.Hour).Unix()
+	torrents := []qbt.Torrent{
+		{Hash: "checking-up", State: qbt.TorrentStateCheckingUp, AddedOn: added, SavePath: "/data", ContentPath: "/data/Show.S01.1080p-GRP"},
+		{Hash: "checking-dl", State: qbt.TorrentStateCheckingDl, AddedOn: added, SavePath: "/data", ContentPath: "/data/Film.2020.1080p-GRP"},
+		{Hash: "checking-resume", State: qbt.TorrentStateCheckingResumeData, AddedOn: added, SavePath: "/data", ContentPath: "/data/Album.2019-GRP"},
+		{Hash: "stalled", State: qbt.TorrentStateStalledDl, Progress: 0.03, AddedOn: added, SavePath: "/data", ContentPath: "/data/Stuck.2021.1080p-GRP"},
 	}
-	delete(evalCtx.CrossSeedFilesByHash, "source")
-	ok := updateCumulativeFreeSpaceCleared(torrents[0], evalCtx, DeleteModeWithFilesIncludeCrossSeeds,
-		buildCrossSeedGroups(torrents, evalCtx), true)
-	require.False(t, ok)
-	require.Zero(t, evalCtx.SpaceToClear)
-	require.Empty(t, evalCtx.CrossSeedHashesToClear)
+	// A rule that deletes stalled downloads under 9.5%. "checking" makes every checking state match the condition.
+	rule := &models.Automation{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+		Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds, Condition: &models.RuleCondition{
+			Operator: models.OperatorAnd, Conditions: []*models.RuleCondition{
+				{Field: FieldAddedOn, Operator: models.OperatorGreaterThanOrEqual, Value: "7200"},
+				{Field: FieldProgress, Operator: models.OperatorLessThan, Value: "0.095"},
+				{Operator: models.OperatorOr, Conditions: []*models.RuleCondition{
+					{Field: FieldState, Operator: models.OperatorEqual, Value: "stalled_downloading"},
+					{Field: FieldState, Operator: models.OperatorEqual, Value: "uploading"},
+					{Field: FieldState, Operator: models.OperatorEqual, Value: "checking"},
+				}},
+			},
+		}},
+	}}
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, &EvalContext{})
+	require.Equal(t, map[string]struct{}{"stalled": {}}, selection.triggers)
+	require.Equal(t, []string{"stalled"}, selection.order)
+}
+
+// Only the state of the matched torrent decides, so its checking cross-seed is deleted with it.
+func TestDeleteIncludeCrossSeeds_CheckingCrossSeedFollowsMatch(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "matched", Tags: "delete-me", State: qbt.TorrentStateStalledDl, Progress: 0.03, SavePath: "/data", ContentPath: "/data/Show.S01.1080p-GRP"},
+		{Hash: "cross-seed", Tags: "delete-me", State: qbt.TorrentStateCheckingUp, SavePath: "/data", ContentPath: "/data/Show.S01.1080p-GRP"},
+	}
+	rule := &models.Automation{ID: 1, Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+		Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds,
+			Condition: &models.RuleCondition{Field: FieldTags, Operator: models.OperatorContains, Value: "delete-me"}},
+	}}
+	evalCtx := &EvalContext{
+		SameInstanceContentByHash: sharingByContentPath(torrents),
+		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
+			"matched":    {{Name: "Show.S01.1080p-GRP/e01.mkv", Size: 1_000}},
+			"cross-seed": {{Name: "Show.S01.1080p-GRP/e01.mkv", Size: 1_000}},
+		},
+	}
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
+	require.Equal(t, map[string]struct{}{"matched": {}}, selection.triggers)
+
+	result := buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
+	require.Equal(t, 2, result.TotalMatches)
+	require.Equal(t, 1, result.CrossSeedCount)
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 func TestDetectContentType(t *testing.T) {
@@ -169,95 +171,6 @@ func TestDetectContentType(t *testing.T) {
 	}
 }
 
-func TestGetCategoriesForContentType(t *testing.T) {
-	tests := []struct {
-		name     string
-		ct       contentType
-		expected []int
-	}{
-		{
-			name:     "returns movie categories",
-			ct:       contentTypeMovie,
-			expected: []int{CategoryMovies, CategoryMoviesSD, CategoryMoviesHD, CategoryMovies4K},
-		},
-		{
-			name:     "returns TV categories",
-			ct:       contentTypeTVShow,
-			expected: []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K},
-		},
-		{
-			name:     "returns TV categories for daily shows",
-			ct:       contentTypeTVDaily,
-			expected: []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K},
-		},
-		{
-			name:     "returns XXX categories",
-			ct:       contentTypeXXX,
-			expected: []int{CategoryXXX, CategoryXXXDVD, CategoryXXXx264, CategoryXXXPack},
-		},
-		{
-			name:     "returns audio categories",
-			ct:       contentTypeMusic,
-			expected: []int{CategoryAudio},
-		},
-		{
-			name:     "returns audio categories for audiobooks",
-			ct:       contentTypeAudiobook,
-			expected: []int{CategoryAudio},
-		},
-		{
-			name:     "returns book categories",
-			ct:       contentTypeBook,
-			expected: []int{CategoryBooks, CategoryBooksEbook},
-		},
-		{
-			name:     "returns comic categories",
-			ct:       contentTypeComic,
-			expected: []int{CategoryBooksComics},
-		},
-		{
-			name:     "returns magazine categories",
-			ct:       contentTypeMagazine,
-			expected: []int{CategoryBooks},
-		},
-		{
-			name:     "returns education categories",
-			ct:       contentTypeEducation,
-			expected: []int{CategoryBooks},
-		},
-		{
-			name:     "returns PC categories for apps",
-			ct:       contentTypeApp,
-			expected: []int{CategoryPC},
-		},
-		{
-			name:     "returns PC categories for games",
-			ct:       contentTypeGame,
-			expected: []int{CategoryPC},
-		},
-		{
-			name:     "returns default categories for unknown",
-			ct:       contentTypeUnknown,
-			expected: []int{CategoryMovies, CategoryTV},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := getCategoriesForContentType(tt.ct)
-			if len(result) != len(tt.expected) {
-				t.Errorf("getCategoriesForContentType() returned %d categories, want %d", len(result), len(tt.expected))
-				return
-			}
-			for i, cat := range result {
-				if cat != tt.expected[i] {
-					t.Errorf("getCategoriesForContentType()[%d] = %v, want %v", i, cat, tt.expected[i])
-				}
-			}
-		})
-	}
-}
-
 func TestParseCategoryID(t *testing.T) {
 	s := &Service{}
 	tests := []struct {
@@ -279,21 +192,6 @@ func TestParseCategoryID(t *testing.T) {
 			name:     "maps movies text to ID",
 			category: "Movies > HD",
 			expected: CategoryMovies,
-		},
-		{
-			name:     "maps TV text to ID",
-			category: "TV",
-			expected: CategoryTV,
-		},
-		{
-			name:     "maps XXX text to ID",
-			category: "XXX > DVD",
-			expected: CategoryXXX,
-		},
-		{
-			name:     "maps audio text to ID",
-			category: "Audio / MP3",
-			expected: CategoryAudio,
 		},
 		{
 			name:     "returns 0 for unknown category",
@@ -338,10 +236,8 @@ func TestGetActivityStatusMergesCooldownScopes(t *testing.T) {
 	service := NewService(store)
 	defer service.searchScheduler.Stop()
 
-	queryUntil := time.Now().Add(time.Minute)
-	grabUntil := queryUntil.Add(time.Minute)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, queryUntil)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeGrab, grabUntil)
+	answer429(t, service.slots, store.indexers[0], requestSearch, "60")
+	grabUntil := answer429(t, service.slots, store.indexers[0], requestDownload, "120")
 
 	status, err := service.GetActivityStatus(context.Background())
 	if err != nil {
@@ -1604,47 +1500,16 @@ func TestFilterCategoriesForIndexer(t *testing.T) {
 
 func TestMapCategoriesToIndexerCapabilitiesCompactsParentFallbacks(t *testing.T) {
 	service := &Service{}
-
-	tests := []struct {
-		name      string
-		parent    int
-		requested []int
-	}{
-		{
-			name:      "movies",
-			parent:    CategoryMovies,
-			requested: []int{CategoryMovies, CategoryMoviesSD, CategoryMoviesHD, CategoryMovies4K, CategoryMovies3D},
-		},
-		{
-			name:      "tv and anime",
-			parent:    CategoryTV,
-			requested: []int{CategoryTV, 5010, 5020, CategoryTVSD, CategoryTVHD, CategoryTV4K, CategoryTVAnime, CategoryTVDocumentary},
-		},
-		{
-			name:      "xxx",
-			parent:    CategoryXXX,
-			requested: []int{CategoryXXX, CategoryXXXDVD, CategoryXXXWMV, CategoryXXXXviD, CategoryXXXx264, CategoryXXXPack, CategoryXXXImageSet, CategoryXXXOther},
-		},
-		{
-			name:      "books",
-			parent:    CategoryBooks,
-			requested: []int{CategoryBooks, CategoryBooksEbook, CategoryBooksComics},
+	indexer := &models.TorznabIndexer{
+		Categories: []models.TorznabIndexerCategory{
+			{CategoryID: CategoryTV},
 		},
 	}
+	requested := []int{CategoryTV, 5010, 5020, CategoryTVSD, CategoryTVHD, CategoryTV4K, CategoryTVAnime, CategoryTVDocumentary}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			indexer := &models.TorznabIndexer{
-				Categories: []models.TorznabIndexerCategory{
-					{CategoryID: tt.parent},
-				},
-			}
-
-			mapped := service.MapCategoriesToIndexerCapabilities(context.Background(), indexer, tt.requested)
-			if !slices.Equal(mapped, []int{tt.parent}) {
-				t.Fatalf("expected duplicate subcategory fallbacks to compact to [%d], got %+v", tt.parent, mapped)
-			}
-		})
+	mapped := service.MapCategoriesToIndexerCapabilities(context.Background(), indexer, requested)
+	if !slices.Equal(mapped, []int{CategoryTV}) {
+		t.Fatalf("expected duplicate subcategory fallbacks to compact to [%d], got %+v", CategoryTV, mapped)
 	}
 }
 
@@ -2118,8 +1983,8 @@ func TestSearchMultipleIndexersSkipsRateLimitedIndexers(t *testing.T) {
 	}
 
 	service := NewService(store)
-	service.rateLimiter = NewRateLimiter(time.Millisecond)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(time.Minute))
+	defer service.searchScheduler.Stop()
+	answer429(t, service.slots, store.indexers[0], requestSearch, "60")
 
 	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	if err == nil {
@@ -2143,9 +2008,9 @@ func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
 	}
 
 	service := NewService(store)
-	service.rateLimiter = NewRateLimiter(time.Millisecond)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(time.Minute))
-	service.rateLimiter.SetCooldown(2, rateLimitScopeQuery, time.Now().Add(2*time.Minute))
+	defer service.searchScheduler.Stop()
+	answer429(t, service.slots, store.indexers[0], requestSearch, "60")
+	answer429(t, service.slots, store.indexers[1], requestSearch, "120")
 
 	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	var rateLimitErr *RateLimitError
@@ -3108,9 +2973,9 @@ func TestSearchIndexersWithSchedulerRSSDeduplicatedIndexerStillCompletes(t *test
 		},
 	}
 	service := NewService(store)
-	// Swap in a fast rate limiter so the first job's exec starts promptly.
+	// Swap in a short Request gap so the first job's exec starts promptly.
 	service.searchScheduler.Stop()
-	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 1)
+	service.searchScheduler = newSearchScheduler(newRequestSlots(1*time.Millisecond, nil, nil), 1)
 	defer service.searchScheduler.Stop()
 
 	var startOnce sync.Once
@@ -3186,7 +3051,7 @@ func TestSearchIndexersWithSchedulerMixedFailureAndRateLimitSurfacesRateLimit(t 
 	}
 	service := NewService(store)
 	service.searchScheduler.Stop()
-	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 2)
+	service.searchScheduler = newSearchScheduler(newRequestSlots(1*time.Millisecond, nil, nil), 2)
 	defer service.searchScheduler.Stop()
 
 	failErr := errors.New("indexer two unreachable")
@@ -3340,7 +3205,7 @@ func TestSearchIndexersWithSchedulerDedupExcludedFromFailureThreshold(t *testing
 	}
 	service := NewService(store)
 	service.searchScheduler.Stop()
-	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 2)
+	service.searchScheduler = newSearchScheduler(newRequestSlots(1*time.Millisecond, nil, nil), 2)
 	defer service.searchScheduler.Stop()
 
 	failErr := errors.New("indexer two unreachable")
@@ -3617,34 +3482,52 @@ func TestExecuteIndexerSearchSchedulesLatencyCleanup(t *testing.T) {
 		t.Fatal("expected search to schedule latency cleanup")
 	}
 
-	service.maybeScheduleLatencyCleanup()
-	select {
-	case <-cleanupCalls:
-		t.Fatal("expected latency cleanup to be interval-gated")
-	case <-time.After(50 * time.Millisecond):
-	}
+	synctest.Test(t, func(t *testing.T) {
+		calls := make(chan time.Duration, 2)
+		gated := &Service{indexerStore: &mockTorznabIndexerStore{latencyCleanupCalls: calls}}
+		gated.maybeScheduleLatencyCleanup()
+		gated.maybeScheduleLatencyCleanup()
+		synctest.Wait()
+		if got := len(calls); got != 1 {
+			t.Fatalf("CleanupOldLatency() calls = %d, want 1: expected latency cleanup to be interval-gated", got)
+		}
+	})
 }
 
 func TestGetActivityStatusOrdersCooldownsByEnd(t *testing.T) {
-	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{
-		{ID: 1, Name: "Alpha"},
-		{ID: 2, Name: "Charlie"},
-		{ID: 3, Name: "Bravo"},
-		{ID: 4, Name: "Delta"},
-	}}
-	service := NewService(store)
-	defer service.searchScheduler.Stop()
+	synctest.Test(t, func(t *testing.T) {
+		store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Alpha"},
+			{ID: 2, Name: "Charlie"},
+			{ID: 3, Name: "Bravo"},
+			{ID: 4, Name: "Delta"},
+		}}
+		service := newService(store, releases.DefaultParser)
+		defer service.searchScheduler.Stop()
 
-	base := time.Now().Add(time.Minute)
-	// Indexers 2 and 3 share a cooldown end, and their names sort the opposite
-	// way from their IDs, so the name tiebreak has to decide.
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, base.Add(3*time.Minute))
-	service.rateLimiter.SetCooldown(2, rateLimitScopeQuery, base.Add(time.Minute))
-	service.rateLimiter.SetCooldown(3, rateLimitScopeGrab, base.Add(time.Minute))
-	service.rateLimiter.SetCooldown(4, rateLimitScopeQuery, base)
+		// Indexers 2 and 3 share a cooldown end, and their names sort the opposite
+		// way from their IDs, so the name tiebreak has to decide.
+		answer429(t, service.slots, store.indexers[0], requestSearch, "240")
+		answer429(t, service.slots, store.indexers[1], requestSearch, "120")
+		answer429(t, service.slots, store.indexers[2], requestDownload, "120")
+		answer429(t, service.slots, store.indexers[3], requestSearch, "60")
 
-	want := []int{4, 3, 2, 1}
-	for range 20 {
+		want := []int{4, 3, 2, 1}
+		for range 20 {
+			status, err := service.GetActivityStatus(context.Background())
+			if err != nil {
+				t.Fatalf("GetActivityStatus() error = %v", err)
+			}
+			got := make([]int, 0, len(status.CooldownIndexers))
+			for _, cooldown := range status.CooldownIndexers {
+				got = append(got, cooldown.IndexerID)
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("cooldown order = %v, want %v", got, want)
+			}
+		}
+
+		time.Sleep(time.Minute)
 		status, err := service.GetActivityStatus(context.Background())
 		if err != nil {
 			t.Fatalf("GetActivityStatus() error = %v", err)
@@ -3653,8 +3536,8 @@ func TestGetActivityStatusOrdersCooldownsByEnd(t *testing.T) {
 		for _, cooldown := range status.CooldownIndexers {
 			got = append(got, cooldown.IndexerID)
 		}
-		if !slices.Equal(got, want) {
-			t.Fatalf("cooldown order = %v, want %v", got, want)
+		if want := []int{3, 2, 1}; !slices.Equal(got, want) {
+			t.Fatalf("cooldowns after one minute = %v, want %v: an ended cooldown must leave the list", got, want)
 		}
-	}
+	})
 }

@@ -17,5 +17,5 @@ A select-all payload carries the visible set: the column filters AND the filter 
 ## Consequences
 
 - A new api method that takes `filters` calls `serializeFilters` and joins the table test in `lib/__tests__/api.torrents.test.ts`.
-- A new select-all consumer uses `selectAllFilters` from `useTorrentSelectionDerivations`.
+- A new select-all consumer reads the select-all part of the Action target (ADR 0034).
 - A fold of `expandedCategories` anywhere outside `api.ts` reverses this decision and needs a new ADR.

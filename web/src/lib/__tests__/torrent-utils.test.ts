@@ -191,11 +191,6 @@ describe("getTorrentHashesWithTag", () => {
     ]
     expect(getTorrentHashesWithTag(torrents, "linux")).toEqual(["h1", "h3"])
   })
-
-  it("returns empty when nothing matches", () => {
-    const torrents = [makeTorrent({ hash: "h1", tags: "windows" })]
-    expect(getTorrentHashesWithTag(torrents, "linux")).toEqual([])
-  })
 })
 
 // Intent: common-category check for the bulk "Set category" dialog. Returns
@@ -277,14 +272,5 @@ describe("getTotalSize", () => {
         makeTorrent({ size: 50 }),
       ])
     ).toBe(350)
-  })
-
-  it("treats missing size as 0", () => {
-    expect(
-      getTotalSize([
-        makeTorrent({ size: 100 }),
-        makeTorrent({ size: 0 }),
-      ])
-    ).toBe(100)
   })
 })

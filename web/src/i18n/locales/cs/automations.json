@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "Skupina pro tuto podmínku",
     "aboutGroupSelectionAriaLabel": "O výběru skupiny pro seskupenou podmínku",
     "groupTooltip": "Tato skupina se vztahuje pouze na tuto řádku podmínky. Použijte různé skupiny na ostatních řádcích GROUP_SIZE/IS_GROUPED (velikost skupiny/je seskupená), pokud je třeba.",
+    "aboutHardlinkScopeAriaLabel": "O rozsahu pevných odkazů",
+    "hardlinkScopeTooltip": "Mimo qBittorrent znamená pevný odkaz, který nepatří žádnému torrentu. Počítá se import do knihovny i zapomenutý odkaz uvnitř složky pro stahování.",
     "min": "Min",
     "max": "Max",
     "wrappingRangeHint": "Rozsah přechází přes konec: odpovídá {{min}} a výše, potom všemu pod {{max}}.",
@@ -88,7 +90,7 @@
       "AMOUNT_LEFT": "Zbývající množství",
       "FREE_SPACE": "Volné místo",
       "ADDED_ON": "Přidáno",
-      "COMPLETION_ON": "Dokončeno",
+      "COMPLETION_ON": "Doba od dokončení",
       "LAST_ACTIVITY": "Poslední aktivita",
       "SEEN_COMPLETE": "Naposledy dokončeno",
       "ETA": "Očekávaná doba do dokončení",
@@ -100,7 +102,7 @@
       "SEEDING_TIME_LIMIT": "Limit seedování",
       "INACTIVE_SEEDING_TIME_LIMIT": "Limit neaktivního seedování",
       "ADDED_ON_AGE": "Přidáno (zastaralé)",
-      "COMPLETION_ON_AGE": "Dokončeno (zastaralé)",
+      "COMPLETION_ON_AGE": "Doba od dokončení (zastaralé)",
       "LAST_ACTIVITY_AGE": "Poslední aktivita (zastaralé)",
       "SYSTEM_HOUR": "Systémová hodina",
       "SYSTEM_MINUTE": "Systémová minuta",
@@ -217,8 +219,11 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Vyžaduje qBittorrent 5.1+",
+      "qbittorrent50": "Vyžaduje qBittorrent 5.0+",
+      "qbittorrent52": "Vyžaduje qBittorrent 5.2+",
       "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému",
-      "remoteInstance": "Není dostupné pro vzdálené instance"
+      "remoteInstance": "Není dostupné pro vzdálené instance",
+      "filesystemAccess": "Vyžaduje přístup k souborovému systému. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance."
     },
     "selectTrackerStatus": "Vybrat stav",
     "selectContentType": "Vybrat typ obsahu",
@@ -229,6 +234,7 @@
       "error": "Chyba",
       "tracker_error": "Chyba trackeru",
       "unreachable": "Nedostupné"
-    }
+    },
+    "ruleSkip": "V této instanci se nespustí: {{field}} vyžaduje {{requires}}."
   }
 }

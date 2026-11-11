@@ -62,7 +62,7 @@ export function OrphanScanPreviewDialog({
 
   const run = runQuery.data
   const totalItems = run?.filesFound ?? 0
-  const deleteUnavailable = run?.filesystemMode === "remote"
+  const deleteUnavailable = run?.filesystemMode === "remote" && !run.identityComplete
   const hasMore = files.length < totalItems
 
   const totalSize = useMemo(() => {

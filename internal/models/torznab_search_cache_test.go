@@ -87,3 +87,61 @@ func TestTorznabSearchCacheStore_RebaseTTL_CanExpireEntries(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, found, "expired entry should be pruned after TTL shrink")
 }
+
+func TestTorznabSearchCacheStore_StatsReadsTheCachedTimeRange(t *testing.T) {
+	t.Parallel()
+	checkSearchCacheStatsTimeRange(t, testdb.NewMigratedSQLite(t, "search-cache-stats"))
+}
+
+func TestTorznabSearchCacheStore_StatsReadsTheCachedTimeRangePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	checkSearchCacheStatsTimeRange(t, testdb.NewMigratedPostgres(t, "search-cache-stats"))
+}
+
+func checkSearchCacheStatsTimeRange(t *testing.T, db *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	store := models.NewTorznabSearchCacheStore(db)
+
+	newest := time.Now().UTC().Add(-time.Hour).Truncate(time.Second).Add(250 * time.Millisecond)
+	oldest := newest.Add(-2 * time.Hour)
+	for key, cachedAt := range map[string]time.Time{"oldest": oldest, "newest": newest} {
+		require.NoError(t, store.Store(ctx, &models.TorznabSearchCacheEntry{
+			CacheKey:           key,
+			Scope:              "general",
+			Query:              key,
+			Categories:         []int{1000},
+			IndexerIDs:         []int{1},
+			RequestFingerprint: key,
+			ResponseData:       []byte(`{"Results":[],"Total":0}`),
+			CachedAt:           cachedAt,
+			LastUsedAt:         cachedAt.Add(time.Minute),
+			ExpiresAt:          cachedAt.Add(24 * time.Hour),
+		}))
+	}
+
+	stats, err := store.Stats(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, stats.OldestCachedAt, "bound times")
+	require.NotNil(t, stats.NewestCachedAt, "bound times")
+	require.NotNil(t, stats.LastUsedAt, "bound times")
+	require.True(t, stats.OldestCachedAt.Equal(oldest), "oldest %s, want %s", stats.OldestCachedAt, oldest)
+	require.True(t, stats.NewestCachedAt.Equal(newest), "newest %s, want %s", stats.NewestCachedAt, newest)
+	require.True(t, stats.LastUsedAt.Equal(newest.Add(time.Minute)), "last used %s", stats.LastUsedAt)
+
+	// Rows that the database clock wrote hold whole seconds in this form.
+	for key, cachedAt := range map[string]time.Time{"oldest": oldest, "newest": newest} {
+		_, err := db.ExecContext(ctx, `UPDATE torznab_search_cache SET cached_at = ?, last_used_at = ? WHERE cache_key = ?`,
+			cachedAt.Format(time.DateTime), cachedAt.Add(time.Minute).Format(time.DateTime), key)
+		require.NoError(t, err)
+	}
+
+	stats, err = store.Stats(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, stats.OldestCachedAt, "database clock times")
+	require.NotNil(t, stats.NewestCachedAt, "database clock times")
+	require.NotNil(t, stats.LastUsedAt, "database clock times")
+	require.True(t, stats.OldestCachedAt.Equal(oldest.Truncate(time.Second)), "oldest %s", stats.OldestCachedAt)
+	require.True(t, stats.NewestCachedAt.Equal(newest.Truncate(time.Second)), "newest %s", stats.NewestCachedAt)
+	require.True(t, stats.LastUsedAt.Equal(newest.Add(time.Minute).Truncate(time.Second)), "last used %s", stats.LastUsedAt)
+}

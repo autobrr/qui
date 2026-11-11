@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Desativado",
-      "enabled": "Ativado",
       "connected": "Conectado",
       "disconnected": "Desconectado"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verificação TLS:",
       "tlsSkipped": "Ignorada",
       "tlsStrict": "Rigorosa",
-      "localFileAccess": "Acesso a Arquivo Local:",
-      "testingConnection": "Testando conexão..."
+      "testingConnection": "Testando conexão...",
+      "fileAccess": "Acesso aos arquivos:"
     },
     "deleteDialog": {
       "title": "Excluir Instância",
@@ -111,7 +110,8 @@
       "none": "Nenhuma",
       "usernamePassword": "Usuário e Senha",
       "apiKey": "Chave de API"
-    }
+    },
+    "sshAfterSave": "O acesso SSH aos arquivos da instância é configurado nas configurações da instância depois de salvar."
   },
   "settingsButton": {
     "tooltip": "Configurações da Instância"
@@ -150,7 +150,8 @@
         "downloads": "Downloads",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "Limites de Seeding"
+        },
+        "ssh": {
+          "title": "Acesso SSH",
+          "description": "Acesse os arquivos desta instância por SSH quando o qui e o qBittorrent rodam em máquinas diferentes"
         }
       }
     },
@@ -505,7 +510,6 @@
       "dryRun": "Simulação (Dry run)",
       "removed": "Removido",
       "executed": "Executado",
-      "copyHash": "Copiar hash",
       "original": "Original: {{domain}}",
       "programLabel": "Programa: {{name}}",
       "ruleLabel": "Regra: {{name}}",
@@ -556,7 +560,8 @@
         "move": "Mover",
         "externalProgram": "Programa externo",
         "dryRun": "Simulação (Dry-run)",
-        "exportToInstance": "Exportar"
+        "exportToInstance": "Exportar",
+        "ruleSkipped": "Regra não executada"
       },
       "shareLimit": {
         "global": "Global",
@@ -617,6 +622,7 @@
         "cancel": "Cancelar",
         "delete": "Excluir"
       },
+      "enableTagRule": "Ativar Regra de Tags",
       "enableDeleteRule": "Ativar Regra de Exclusão",
       "enableCategoryRule": "Ativar Mudança de Categoria → {{category}}",
       "enableRuleImmediately": "Isto ativará a regra imediatamente.",
@@ -665,10 +671,29 @@
         "exportedTorrents": "Exportados {{count}} para CSV",
         "exportFailed": "Falha no exporte",
         "deletedActivityEntries": "Apagadas {{count}} entradas",
-        "deleteActivityFailed": "Falha ao excluir histórico",
-        "hashCopied": "Hash copiado"
+        "deleteActivityFailed": "Falha ao excluir histórico"
       },
-      "exported": "Exportado"
+      "exported": "Exportado",
+      "skipped": "Ignorada"
+    },
+    "runWorkflowNow": {
+      "action": "Executar agora",
+      "title": "Executar \"{{name}}\" agora?",
+      "description": "O qui executa o workflow salvo uma vez agora e aplica as ações dele aos torrents correspondentes. Ele também é executado quando o workflow está desativado.",
+      "dryRunDescription": "Este workflow está configurado como simulação, então o qui só registra o que faria. Nenhum torrent é alterado.",
+      "actions": "Ações",
+      "cancel": "Cancelar",
+      "confirm": "Executar agora",
+      "toast": {
+        "running": "Executando \"{{name}}\"…",
+        "completed": "Execução concluída para \"{{name}}\"",
+        "noChanges": "Execução concluída para \"{{name}}\". Nenhum torrent precisava de alteração.",
+        "completedWithErrors": "Execução concluída para \"{{name}}\" com erros. Veja o registro de atividades.",
+        "dryRunCompleted": "Simulação concluída para \"{{name}}\"",
+        "inProgress": "Há uma execução em andamento. Tente novamente em instantes.",
+        "failed": "Falha ao executar o workflow",
+        "skipped": "\"{{name}}\" não foi executada. Veja o registro de atividades."
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Carregando estimativas...",
@@ -710,12 +735,10 @@
     "orphanScanOverview": {
       "title": "Varredura de Órfãos",
       "noInstancesDescription": "Nenhuma instância configurada.",
-      "tooltip": "Busca arquivos no disco que não fazem mais parte do qBittorrent.",
+      "tooltip": "Busca arquivos no disco que não estão associados a nenhum torrent no qBittorrent.\nPrecisa de acesso aos arquivos de cada instância. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
-      "noLocalAccess": "Acesso Local Ausente",
-      "noLocalAccessTooltip": "Você precisa ativar o 'Acesso ao Sistema de Arquivos Local' na configuração da instância.",
-      "remoteLimits": "A exclusão e a auto-limpeza ainda não funcionam em instâncias remotas.",
-      "remoteNoIdentity": "O qui também não consegue saber quando dois caminhos são o mesmo arquivo, então um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize.",
+      "remoteLimits": "A exclusão e a auto-limpeza em uma instância remota precisam da identidade dos arquivos, que o qui só consegue ler quando o servidor permite executar GNU find e stat.",
+      "remoteNoIdentity": "Esta instância remota não permite isso, então o qui não consegue saber quando dois caminhos são o mesmo arquivo, e um arquivo acessível por um segundo caminho, como um bind mount, pode aparecer na lista mesmo que um torrent o utilize. As varreduras aqui podem ser visualizadas e exportadas, mas não excluídas.",
       "on": "Ligado",
       "off": "Desligado",
       "summaryGrace": "Tolerância {{grace}}m",
@@ -727,7 +750,7 @@
       "cancel": "Cancelar",
       "autoCleanupEnabled": "Auto-limpeza ATIVA (≤{{max}} arquivos)",
       "autoCleanupDisabled": "Auto-limpeza INATIVA",
-      "autoCleanupRemote": "Sem auto-limpeza em instâncias remotas",
+      "autoCleanupRemote": "Sem auto-limpeza nesta instância remota",
       "pathsIgnored_one": " · {{count}} caminho ignorado",
       "pathsIgnored_other": " · {{count}} caminhos ignorados",
       "scanNow": "Escanear Agora",
@@ -739,6 +762,8 @@
       "viewPreview": "Ver Detalhes",
       "recentScans": "Escaneamentos Recentes",
       "scannedPaths": "Caminhos selecionados para verificação ({{total}})",
+      "scanPathsLoading": "Carregando caminhos de verificação...",
+      "scanPathsLoadFailed": "Falha ao carregar os caminhos de verificação",
       "zeroOrphans": "0 órfãos",
       "deletedStats": "{{deleted}} apagados · {{size}}",
       "deletedFiles_one": "{{count}} arquivo",
@@ -748,7 +773,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Falha parcial - verifique as atividades",
       "partialFailureExpand": "Falha parcial - veja detalhes",
-      "copiedToClipboard": "Copiado para área de transferência",
       "noScansYet": "Nenhum escaneamento realizado ainda. Clique em \"Escanear Agora\" para encontrar órfãos.",
       "statusClean": "Limpo",
       "statusPartial": "Verificação parcial",
@@ -768,7 +792,11 @@
         "scanStartFailed": "Falha ao iniciar",
         "scanCanceled": "Escaneamento cancelado",
         "cancelFailed": "Falha ao cancelar"
-      }
+      },
+      "errorMessage": "Mensagem de erro",
+      "scanPaths": "Caminhos de verificação",
+      "noFilesystemAccess": "Sem acesso ao sistema de arquivos",
+      "noFilesystemAccessTooltip": "A varredura de órfãos precisa de acesso aos arquivos desta instância. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância."
     },
     "orphanScanPreview": {
       "title": "Pré-Visualizar Órfãos",
@@ -788,7 +816,7 @@
       "exportCSV": "Exportar CSV",
       "close": "Fechar",
       "deleteItems": "Excluir",
-      "remoteDeleteUnavailable": "Esta varredura foi feita em uma instância remota, onde a exclusão ainda não é suportada. Exporte a lista para remover você mesmo os arquivos no servidor.",
+      "remoteDeleteUnavailable": "Esta varredura não pode excluir, porque a instância remota não informa a identidade dos arquivos ou a varredura não conseguiu lê-la para todos os arquivos. Exporte a lista para remover você mesmo os arquivos no servidor.",
       "statusLabels": {
         "pending": "Pendente",
         "deleted": "Excluído",
@@ -917,8 +945,6 @@
       "ratio": "Proporção",
       "added": "Adicionado",
       "original": "Original: {{domain}}",
-      "hashCopied": "Hash copiado",
-      "copyHash": "Copiar hash",
       "loading": "Carregando...",
       "notAvailable": "Detalhes indisponíveis (apenas mantido em memória).",
       "failedToLoad": "Falha ao carregar detalhes.",
@@ -946,7 +972,8 @@
         "external_program": "Programa rodado",
         "auto_managed": "Gerenciamento Automático",
         "dry_run_no_match": "Simulação (Sem correspondência)",
-        "exported_to_instance": "Exportado"
+        "exported_to_instance": "Exportado",
+        "rule_skipped": "Regra não executada"
       }
     },
     "reannounceOverview": {
@@ -984,8 +1011,6 @@
       "tryDifferentSearch": "Altere sua busca.",
       "eventsWillAppear": "Eventos de reanúncio aparecerão aqui.",
       "enableMonitoring": "Ligue para acompanhar o histórico.",
-      "hashCopied": "Copiado",
-      "copyHash": "Copiar hash",
       "form": {
         "instanceMissing": "Instância não encontrada",
         "settingsSaved": "Configurações atualizadas.",
@@ -1152,6 +1177,7 @@
         "title": "Ações (O que a regra fará?)",
         "addAction": "Criar ação",
         "selectAction": "Qual ação...",
+        "runOrderHelp": "As ações são executadas na ordem mostrada. Cada ação vê o torrent como ele estava quando a execução começou, então um programa externo executado após uma movimentação ainda recebe o caminho de salvamento antigo.",
         "speedLimits": "Limites de Velocidade",
         "shareLimits": "Limites de Ratio / Compartilhamento",
         "pause": "Pausar o torrent",
@@ -1204,6 +1230,7 @@
         "strategyReplace": "Substituir no cliente",
         "replaceDescription": "O modo Substituir força uma redefinição completa dessas tags em todo o cliente antes de aplicar esta regra.",
         "managedDescription": "Diferencial. Só adicionará se o torrent não possuir a Tag.",
+        "includeAffectedCrossSeeds": "Incluir os cross-seeds afetados",
         "useTrackerName": "Sincronizar a tag para o nome do tracker",
         "useDisplayName": "Usar 'Display Name'",
         "aboutDisplayNames": "Sobre Nomes",
@@ -1264,14 +1291,14 @@
         "defaultSource": "Pegar pelo próprio qBittorrent",
         "pathSource": "Localização Manual Exata",
         "pathSourceWindowsUnsupported": "Indisponível (Em Windows você deve usar pelo qBittorrent)",
-        "pathSourceLocalAccessRequired": "Localização Manual (Requer que o Acesso Local esteja ativado)",
         "pathPlaceholder": "/mnt/hd1",
         "pathHelp": "Defina onde rastrear",
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
-          "localAccessRequired": "A origem de espaço livre por caminho requer o \"Acesso ao Sistema de Arquivos Local\".",
-          "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD."
-        }
+          "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD.",
+          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)"
       },
       "grouping": {
         "title": "Grupos Personalizados (Para GROUP_SIZE)",
@@ -1348,11 +1375,13 @@
       "preview": {
         "confirmDeleteRule": "Confirmar Exclusão de Torrent",
         "previewDeleteRule": "Visualizar Exclusão de Torrent",
+        "confirmTagChange": "Confirmar Mudanças de Tags",
         "confirmCategoryChange": "Confirmar Mudança para {{category}}",
         "deleteEnabledSummary": "No ar: Afetará {{count}} arquivo.",
         "deleteEnabledSummary_other": "No ar: Afetará {{count}} arquivos.",
         "deleteDisabledSummary": "Se ligado agora: {{count}} torrent seria impactado.",
         "deleteDisabledSummary_other": "Se ligado agora: {{count}} torrents seriam impactados.",
+        "tagPrefix": "A regra atualizará as tags de",
         "categoryPrefix": "A regra realocará",
         "torrents": "{{count}} torrent",
         "torrents_other": "{{count}} torrents",
@@ -1364,8 +1393,7 @@
       "enableDryRunPrompt": {
         "title": "Ativar simulação?",
         "description": "A simulação executa todas as ações sem alterar nada. Você pode revisar os torrents afetados no histórico.",
-        "enableWithout": "Não, Ativar Direto",
-        "enableWith": "Sim, Modo Simulação (Recomendado)"
+        "saveAndEnable": "Salvar e ativar"
       },
       "customGroup": {
         "title": "Customizar Grupamento",
@@ -1414,7 +1442,8 @@
           "moved": "Mover",
           "externalProgram": "Programa externo",
           "noMatches": "Nenhuma correspondência",
-          "exportedToInstance": "Exportar"
+          "exportedToInstance": "Exportar",
+          "ruleSkipped": "Regra não executada"
         },
         "actionFallback": "Ação desconhecida ({{action}})",
         "summary": {
@@ -1460,7 +1489,6 @@
         "switchedIntervalForFreeSpace": "Foi trocado seu Intervalo para ~5m, pois é o tempo de recarga que a libtorrent exige.",
         "pathSourceUnsupportedWindows": "Voltamos a opção de Verificação de HD para (Pegar pelo próprio qB). Windows é incompatível.",
         "switchFreeSpaceSourceDefault": "Ajustado ao original (qB).",
-        "enableLocalAccessOrDefault": "Ative o Acesso ao Sistema de Arquivos Local nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\"",
         "enterPathOrDefault": "Você precisa de um caminho na caixa para usar esta opção.",
         "addScoreRule": "Adicione as regras da sua prioridade.",
         "fieldMultiplierInvalid": "O multiplicador de campo deve ser um número válido.",
@@ -1477,7 +1505,8 @@
         "groupIdInvalid": "Apague os espaços e use underlines nesse Id Customizado.",
         "selectGroupKey": "Requer chaves.",
         "groupExists": "O nome já está sendo usado por outro grupamento.",
-        "customGroupAdded": "Grupo personalizado adicionado"
+        "customGroupAdded": "Grupo personalizado adicionado",
+        "setUpFilesystemAccessOrDefault": "Configure o acesso ao sistema de arquivos local ou via SSH nas configurações da instância, ou use \"Pegar pelo próprio qBittorrent\""
       },
       "trackerMatchInclude": "Vai Pegar (Incluir)",
       "trackerMatchExclude": "Ignorará Totalmente (Excluir)"
@@ -1727,6 +1756,92 @@
       "testEmailQueued": "O qBittorrent colocou o e-mail de teste na fila",
       "testEmailQueuedDescription": "O qBittorrent usa as configurações salvas. Verifique sua caixa de entrada e o log do qBittorrent para ver erros.",
       "testEmailFailed": "Falha ao enviar o e-mail de teste"
+    },
+    "ssh": {
+      "localWins": "O Acesso ao Sistema de Arquivos Local está ativado, então o qui lê os arquivos desta instância localmente e não usa estas configurações SSH.",
+      "labels": {
+        "host": "Host SSH",
+        "hostDescription": "Nome do host ou endereço IP da máquina que guarda os arquivos desta instância, sem esquema nem porta. Alterar o host ou a porta descarta a chave do host fixada, e o próximo teste volta a ser um primeiro contato.",
+        "port": "Porta",
+        "username": "Usuário",
+        "privateKey": "Chave privada",
+        "privateKeyDescription": "Uma chave privada OpenSSH sem senha. O qui a armazena criptografada e nunca a mostra de novo. Ela é necessária novamente quando o host, a porta ou o usuário mudam."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Uma chave está armazenada. Cole uma nova para substituí-la."
+      },
+      "validation": {
+        "hostRequired": "O host SSH é obrigatório",
+        "portRange": "A porta deve estar entre 1 e 65535",
+        "usernameRequired": "O usuário é obrigatório",
+        "keyRequired": "A chave privada é necessária quando o host, a porta ou o usuário mudam"
+      },
+      "buttons": {
+        "save": "Salvar configurações SSH",
+        "clear": "Remover acesso SSH",
+        "test": "Testar conexão",
+        "testing": "Testando...",
+        "confirm": "Confirmar chave do host",
+        "replace": "Substituir chave do host"
+      },
+      "test": {
+        "title": "Conexão",
+        "pinnedAtRest": "Chave do host fixada. Teste a conexão para ver o que o host permite.",
+        "unpinnedAtRest": "Nenhuma chave do host fixada ainda. Teste a conexão para confirmar a impressão digital do host.",
+        "saveFirst": "Salve as alterações primeiro. O teste usa as credenciais salvas."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Primeiro contato",
+          "text": "Compare esta impressão digital com a do host antes de confirmar. As próximas conexões recusarão qualquer outra chave."
+        },
+        "pinned": {
+          "title": "Chave do host fixada"
+        },
+        "mismatch": {
+          "title": "Chave do host alterada",
+          "text": "O host apresentou uma chave diferente da fixada. Substitua a chave fixada apenas se você espera a mudança, por exemplo depois de reinstalar o servidor."
+        },
+        "pinUnreadable": {
+          "title": "Chave fixada ilegível",
+          "text": "A chave fixada não pode ser descriptografada, geralmente porque a chave de criptografia do qui mudou. Substitua-a para continuar.",
+          "noKey": "O host não respondeu, então não há chave para substituí-la."
+        },
+        "error": {
+          "title": "Falha na conexão"
+        }
+      },
+      "fingerprint": {
+        "label": "Impressão digital",
+        "pinned": "Fixada",
+        "presented": "Apresentada"
+      },
+      "probes": {
+        "tier": "Nível: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + comandos",
+        "tierHint": "Os comandos precisam de um shell POSIX com GNU find e stat no host. Sem eles, o qui usa apenas SFTP e não consegue ler a identidade dos arquivos.",
+        "sftp": "SFTP",
+        "statvfs": "Espaço livre (statvfs)",
+        "hardlink": "Hardlinks (hardlink@openssh.com)",
+        "limits": "Extensão limits",
+        "exec": "Comandos",
+        "gnuUserland": "GNU find e stat",
+        "yes": "Disponível",
+        "no": "Indisponível"
+      },
+      "replaceDialog": {
+        "title": "Substituir a chave do host fixada?",
+        "description": "A partir de agora o qui confiará na chave apresentada para este host e recusará a chave fixada.",
+        "cancel": "Cancelar",
+        "confirm": "Substituir"
+      },
+      "toast": {
+        "saved": "Configurações SSH salvas",
+        "cleared": "Acesso SSH removido"
+      }
     }
   },
   "backups": {
@@ -1975,6 +2090,17 @@
       "failedToDeleteBackup": "Falha ao excluir execução de backup",
       "allBackupsDeleted": "Todos os backups excluídos",
       "failedToDeleteBackups": "Falha ao excluir backups"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Via SSH",
+    "none": "Nenhum",
+    "localFull": "O qui lê e grava os arquivos desta instância nesta máquina.",
+    "limits": {
+      "noIdentity": "Sem identidade dos arquivos: o qui não consegue saber quando dois caminhos são o mesmo arquivo. A varredura de órfãos não pode excluir aqui, e um destino de hardlink existente interrompe uma adição por hardlink.",
+      "noReflinks": "Sem reflinks em uma instância remota.",
+      "noHardlinkExtension": "Sem hardlinks: o servidor não anuncia hardlink@openssh.com. Uma adição de cross-seed por hardlink falha aqui, ou adiciona no modo regular quando \"Retornar ao modo regular em caso de erro\" está ativado."
     }
   }
 }

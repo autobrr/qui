@@ -5,6 +5,8 @@ package orphanscan
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -25,10 +27,12 @@ import (
 	"github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // switchableInstance is instance 1 as both the pool and the service read it,
@@ -36,9 +40,15 @@ import (
 type switchableInstance struct {
 	mu   sync.Mutex
 	inst models.Instance
+	// onGet, when set, runs before each read, so a test can change the row
+	// at the moment the pool loads it.
+	onGet func()
 }
 
 func (s *switchableInstance) Get(_ context.Context, _ int) (*models.Instance, error) {
+	if s.onGet != nil {
+		s.onGet()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	inst := s.inst
@@ -56,15 +66,59 @@ func (s *switchableInstance) set(mode models.FilesystemMode) {
 }
 
 // countingBackend is a backend that can really delete, so a refusal that
-// fails to hold shows up as a Remove call and a missing file.
+// fails to hold shows up as a Remove call and a missing file. It passes the
+// batch reads through, as the backend it wraps answers them, so the exec tier
+// takes the find batch it takes in production. batches, when set, counts the
+// StatBatch calls the wrapped backend answers in one request.
 type countingBackend struct {
 	fsops.Backend
 	removes *atomic.Int32
+	batches *atomic.Int32
 }
+
+var _ fsops.BatchStater = countingBackend{}
 
 func (b countingBackend) Remove(ctx context.Context, path string, opts fsops.RemoveOptions) error {
 	b.removes.Add(1)
 	return b.Backend.Remove(ctx, path, opts)
+}
+
+func (b countingBackend) StatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	if _, ok := b.Backend.(fsops.BatchStater); ok && b.batches != nil {
+		b.batches.Add(1)
+	}
+	return fsops.StatAll(ctx, b.Backend, paths)
+}
+
+func (b countingBackend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
+	return fsops.LstatAll(ctx, b.Backend, paths)
+}
+
+// noIdentityBackend reports files without their identity, as the sftp tier does.
+type noIdentityBackend struct{ fsops.Backend }
+
+func (b noIdentityBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	in, err := b.Backend.WalkDir(ctx, root, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan fsops.WalkEntry)
+	go func() {
+		defer close(out)
+		for e := range in {
+			if !e.IsDir {
+				e.FileID, e.Nlinks, e.FileIDErr = hardlink.FileID{}, 0, errors.New("no identity over sftp")
+			}
+			select {
+			case out <- e:
+			case <-ctx.Done():
+				for range in { //nolint:revive // drain to release the inner walk
+				}
+				return
+			}
+		}
+	}()
+	return out, nil
 }
 
 type modeFixture struct {
@@ -73,6 +127,7 @@ type modeFixture struct {
 	db       *database.DB
 	instance *switchableInstance
 	removes  *atomic.Int32
+	batches  *atomic.Int32
 	events   chan notifications.Event
 	orphan   string
 	owned    string
@@ -103,7 +158,12 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 	removes := &atomic.Int32{}
 	local := countingBackend{Backend: newTestBackend(), removes: removes}
 	if remoteBackend == nil {
-		remoteBackend = func(*models.Instance) fsops.Backend { return local }
+		remoteBackend = func(inst *models.Instance) fsops.Backend {
+			if inst.SSHTier == models.SSHTierExec {
+				return local
+			}
+			return noIdentityBackend{local}
+		}
 	}
 
 	events := make(chan notifications.Event, 4)
@@ -122,6 +182,10 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
+	// Registered after the database, so it runs first: a run goroutine still
+	// holds the database after the test saw its status, and Windows cannot
+	// remove an open file.
+	t.Cleanup(svc.runs.Wait)
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
@@ -155,6 +219,26 @@ func (f *modeFixture) run(t *testing.T, runID int64) *models.OrphanScanRun {
 	require.NoError(t, err)
 	require.NotNil(t, run)
 	return run
+}
+
+func (f *modeFixture) setTier(tier models.SSHTier) {
+	f.instance.mu.Lock()
+	defer f.instance.mu.Unlock()
+	f.instance.inst.SSHTier = tier
+}
+
+// requireCompleted waits for the deletion the test started to finish.
+func (f *modeFixture) requireCompleted(t *testing.T) notifications.Event {
+	t.Helper()
+
+	select {
+	case event := <-f.events:
+		require.Equal(t, notifications.EventOrphanScanCompleted, event.Type, event.ErrorMessage)
+		return event
+	case <-time.After(10 * time.Second):
+		t.Fatal("deletion did not finish")
+		return notifications.Event{}
+	}
 }
 
 func (f *modeFixture) requireNothingDeleted(t *testing.T) {
@@ -191,8 +275,10 @@ func (c sftpCreds) Get(ctx context.Context, id int) (*models.Instance, error) {
 func (c sftpCreds) GetDecryptedSSHKey(*models.Instance) (string, error) { return c.key, nil }
 func (c sftpCreds) GetHostKeyPin(*models.Instance) ([]byte, error)      { return c.pin, nil }
 
-// SetSSHTier keeps the fixture on the sftp tier, which these tests cover.
-func (sftpCreds) SetSSHTier(context.Context, int, models.SSHTier) error { return nil }
+// SetSSHProbe keeps the fixture on the sftp tier, which these tests cover.
+func (sftpCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, bool) error {
+	return nil
+}
 
 // sftpPath is p as pkg/sftp names it: on Windows it serves C:\x as /C:/x.
 func sftpPath(p string) string {
@@ -202,40 +288,160 @@ func sftpPath(p string) string {
 	return p
 }
 
-func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
-	t.Parallel()
+// newSSHFixture is newModeFixture reached through a test SSH server that
+// serves the fixture's tree, with the row's tier set to tier.
+func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode, tier models.SSHTier) (*modeFixture, *sshtest.Server) {
+	t.Helper()
+	if exec == sshtest.ExecGNU && runtime.GOOS != "linux" {
+		t.Skip("the fake exec handler runs the local GNU find and stat")
+	}
 
 	hostKey := sshtest.NewSigner()
-	server := sshtest.NewServer(t, hostKey, sshtest.ExecSFTPOnly)
+	server := sshtest.NewServer(t, hostKey, exec)
 	host, portText, err := net.SplitHostPort(server.Addr)
 	require.NoError(t, err)
 	port, err := strconv.Atoi(portText)
 	require.NoError(t, err)
 
 	var pool *sshpool.Pool
-	f := newModeFixture(t, "orphanscan-remote-e2e", models.FilesystemModeRemote, func(inst *models.Instance) fsops.Backend {
-		return remote.New(pool, inst)
+	removes, batches := &atomic.Int32{}, &atomic.Int32{}
+	f := newModeFixture(t, name, models.FilesystemModeRemote, func(inst *models.Instance) fsops.Backend {
+		return countingBackend{Backend: remote.New(pool, inst), removes: removes, batches: batches}
 	})
+	f.removes, f.batches = removes, batches
 	pool = sshpool.NewPool(sshpool.NewDialer(sftpCreds{rows: f.instance, key: sshtest.PrivateKey(""), pin: hostKey.PublicKey().Marshal()}))
 	t.Cleanup(pool.Close)
 	f.instance.mu.Lock()
 	f.instance.inst.SSHHost, f.instance.inst.SSHPort, f.instance.inst.SSHUsername = host, port, "qui"
+	f.instance.inst.SSHTier = tier
 	f.instance.mu.Unlock()
 	root := sftpPath(filepath.Dir(f.orphan))
 	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
+	return f, server
+}
+
+func TestExecuteScan_RemoteInstanceScansOverSFTP(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-e2e", sshtest.ExecSFTPOnly, models.SSHTierSFTP)
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 	require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode)
 	require.Positive(t, server.Accepts(), "the walk must go over SSH")
+	require.False(t, run.IdentityComplete, "sftp reports no file identity")
+	require.NotContains(t, run.ErrorMessage, IdentityIncompleteMessage, "the sftp tier never claims identity, so its preview needs no warning")
 
 	files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, sftpPath(f.orphan), files[0].FilePath)
+}
+
+// The run records what its walk read and the server it read it from, from the
+// row the backend was built from (#3236).
+func TestExecuteScan_RecordsIdentityAndEndpoint(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-exec-identity", sshtest.ExecGNU, models.SSHTierExec)
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.True(t, run.IdentityComplete)
+	require.Empty(t, run.ErrorMessage)
+	pin := sha256.Sum256([]byte(f.instance.inst.SSHHostKeyEncrypted))
+	key := sha256.Sum256([]byte(f.instance.inst.SSHKeyEncrypted))
+	require.Equal(t, "qui@"+server.Addr+"#"+hex.EncodeToString(pin[:8])+"."+hex.EncodeToString(key[:8]), run.FilesystemEndpoint)
+}
+
+// A row on the exec tier whose find is refused walks over sftp, so the row's
+// Identity says nothing about what the preview read (#3236).
+func TestExecuteScan_ExecTierFallbackLeavesIdentityIncomplete(t *testing.T) {
+	t.Parallel()
+
+	f, _ := newSSHFixture(t, "orphanscan-remote-exec-fallback", sshtest.ExecSFTPOnly, models.SSHTierExec)
+	require.True(t, models.FilesystemCapabilitiesOf(&f.instance.inst).Identity, "the row claims identity")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.False(t, run.IdentityComplete)
+	require.Contains(t, run.ErrorMessage, IdentityIncompleteMessage)
+	require.False(t, run.Partial, "every path was read, so the run is not partial")
+	f.requireNothingDeleted(t)
+}
+
+// The cut fails the run with no preview, and the next run reads every identity.
+// regression: #3838
+func TestExecuteScan_FindLosingTheConnectionFailsTheRun(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-find-lost", sshtest.ExecGNU, models.SSHTierExec)
+	server.DropOnExec("-mindepth", "")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "failed", run.Status, "run message: %s", run.ErrorMessage)
+	require.Contains(t, run.ErrorMessage, fsops.ErrConnectionLost.Error())
+	files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Empty(t, files)
+	f.requireNothingDeleted(t)
+
+	// The pool hands out the dropped client until its watcher clears the entry.
+	backend, _, err := f.svc.backendPool.Require(t.Context(), 1, models.CapabilityRead)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		_, err := backend.Lstat(t.Context(), sftpPath(f.owned))
+		return err == nil
+	}, 5*time.Second, 5*time.Millisecond)
+
+	next := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", next.Status, "run message: %s", next.ErrorMessage)
+	require.True(t, next.IdentityComplete)
+}
+
+// regression: #3838
+func TestExecuteScan_FindLosingTheConnectionOnALaterRootLeavesAPartialPreview(t *testing.T) {
+	t.Parallel()
+
+	f, server := newSSHFixture(t, "orphanscan-remote-find-lost-later-root", sshtest.ExecGNU, models.SSHTierExec)
+	first, cut := filepath.Dir(f.orphan), t.TempDir()
+	cutOrphan := filepath.Join(cut, "orphan.mkv")
+	require.NoError(t, os.WriteFile(filepath.Join(cut, "owned.mkv"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(cutOrphan, []byte("orphan"), 0o600))
+	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{
+			{Hash: "owned", SavePath: first, State: qbt.TorrentStatePausedUp},
+			{Hash: "cut", SavePath: cut, State: qbt.TorrentStatePausedUp},
+		}, nil
+	}
+	stubSync(f.svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		files := qbt.TorrentFiles{{Name: "owned.mkv", Size: 1}}
+		return map[string]qbt.TorrentFiles{"owned": files, "cut": files}, nil
+	}
+	// Roots walk in sorted order, and a read right after a cut can land on the dying client and cut the next root too.
+	require.Less(t, first, cut)
+	server.DropOnExec(cut+"' '-mindepth'", "")
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run message: %s", run.ErrorMessage)
+	require.True(t, run.Partial)
+	require.False(t, run.IdentityComplete)
+	require.Contains(t, run.ErrorMessage, "Partial scan: 1 path(s) inaccessible")
+	require.Contains(t, run.ErrorMessage, cut)
+	require.Contains(t, run.ErrorMessage, fsops.ErrConnectionLost.Error())
+
+	files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, f.orphan, files[0].FilePath)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
+	f.requireNothingDeleted(t)
+	require.FileExists(t, cutOrphan)
 }
 
 // flippingBackend calls flip once root has handed out enough entries that the
@@ -355,7 +561,8 @@ func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 	}
 }
 
-func TestConfirmDeletion_RemoteRunIsRefusedAndKeepsItsPreview(t *testing.T) {
+// The sftp tier reports no file identity, so its preview can be exported but not deleted.
+func TestConfirmDeletion_RemoteSFTPTierRunIsRefusedAndKeepsItsPreview(t *testing.T) {
 	t.Parallel()
 
 	f := newModeFixture(t, "orphanscan-remote-refuse", models.FilesystemModeRemote, nil)
@@ -485,14 +692,14 @@ func TestConfirmDeletion_RunWithoutARecordedModeConfirmsAsLocal(t *testing.T) {
 	require.FileExists(t, f.owned)
 }
 
-func TestMaybeAutoCleanup_RemoteRunKeepsItsPreviewWithAWarning(t *testing.T) {
+func TestMaybeAutoCleanup_RemoteSFTPTierRunKeepsItsPreviewWithAWarning(t *testing.T) {
 	t.Parallel()
 
 	f := newModeFixture(t, "orphanscan-remote-autoclean", models.FilesystemModeRemote, nil)
 	run := f.scan(t, "scheduled")
 
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
-	require.Contains(t, run.ErrorMessage, "Automatic cleanup does not run for remote instances")
+	require.Equal(t, AutoCleanupNoIdentityMessage, run.ErrorMessage)
 	f.requireNothingDeleted(t)
 	f.requireNoFailureEvent(t)
 }
@@ -562,7 +769,7 @@ func TestCheckScheduledScans_AdmitsLocalAndRemoteInstances(t *testing.T) {
 	}
 }
 
-// An SSH preview never completes, and the next scan replaces it, so pacing by
+// An sftp-tier preview never completes, and the next scan replaces it, so pacing by
 // completed runs alone scheduled a remote instance on every tick.
 func TestCheckScheduledScans_RemotePreviewWaitsForTheInterval(t *testing.T) {
 	t.Parallel()
@@ -717,7 +924,12 @@ func TestMaybeAutoCleanup_ModeChangedOnACanceledRunDoesNotNotify(t *testing.T) {
 	f.requireNoFailureEvent(t)
 }
 
-// An SSH preview can never be confirmed, so it must not strand later scans.
+// runChanges hands each activity event of the service to the test.
+type runChanges chan activity.Event
+
+func (c runChanges) Publish(event activity.Event) { c <- event }
+
+// An sftp-tier preview can never be confirmed, so it must not strand later scans.
 func TestTriggerScan_ReplacesARemotePreview(t *testing.T) {
 	t.Parallel()
 
@@ -739,12 +951,20 @@ func TestTriggerScan_ReplacesARemotePreview(t *testing.T) {
 			require.Positive(t, old.FilesFound)
 
 			f.instance.set(tc.modeNow)
+			// A preview sends no notification, but each status change of a
+			// run publishes an activity event, so the run is read again only
+			// after it changed.
+			changes := make(runChanges, 64)
+			f.svc.SetActivityPublisher(changes)
 			runID, err := f.svc.TriggerScan(t.Context(), 1, tc.triggeredBy)
 			require.NoError(t, err)
-			require.Eventually(t, func() bool {
-				status := f.run(t, runID).Status
-				return status != "pending" && status != "scanning"
-			}, 10*time.Second, 10*time.Millisecond)
+			for status := f.run(t, runID).Status; status == "pending" || status == "scanning"; status = f.run(t, runID).Status {
+				select {
+				case <-changes:
+				case <-time.After(10 * time.Second):
+					t.Fatalf("the replacement scan is still %s", status)
+				}
+			}
 
 			require.Equal(t, "canceled", f.run(t, old.ID).Status)
 			replacement := f.run(t, runID)
@@ -874,24 +1094,21 @@ func TestExecuteScan_PairsPeersByTheRowItWalks(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
-// With Write (#2942) and the exec tier's Identity, canDeleteOrphans passes on a
-// remote instance, so the recorded-mode gate is what keeps remote deletes off
-// until #3236 turns them on. A remote run on an exec-tier instance is still
-// refused at confirm and keeps its preview.
-func TestConfirmDeletion_RemoteExecTierRunIsStillRefused(t *testing.T) {
+// An exec-tier run whose walk read every file's identity is confirmed like a
+// local one (#3236), and keeps the files a torrent owns.
+func TestConfirmDeletion_RemoteExecTierRunDeletes(t *testing.T) {
 	t.Parallel()
 
-	f := newModeFixture(t, "orphanscan-remote-exec-refuse", models.FilesystemModeRemote, nil)
-	f.instance.mu.Lock()
-	f.instance.inst.SSHTier = models.SSHTierExec
-	f.instance.mu.Unlock()
-	require.True(t, canDeleteOrphans(models.FilesystemCapabilitiesOf(&f.instance.inst)), "the capability gate alone would admit this instance")
+	f := newModeFixture(t, "orphanscan-remote-exec-delete", models.FilesystemModeRemote, nil)
+	f.setTier(models.SSHTierExec)
 
 	run := f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 	require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode)
+	require.True(t, run.IdentityComplete)
 
-	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
-	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
-	f.requireNothingDeleted(t)
+	require.NoError(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID))
+	f.requireCompleted(t)
+	require.NoFileExists(t, f.orphan)
+	require.FileExists(t, f.owned)
 }

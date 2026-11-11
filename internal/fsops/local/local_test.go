@@ -331,6 +331,40 @@ func TestWalkDir_IgnoredRootWalksNothing(t *testing.T) {
 	assert.Empty(t, relPaths)
 }
 
+// A followed root is reported under its own path, and the filters match that path.
+func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
+	b := newBackend()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "target", "sub", "inside.txt"), "i")
+	writeFile(t, filepath.Join(dir, "target", "skip", "ignored.txt"), "s")
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(filepath.Join(dir, "target"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	for _, follow := range []bool{false, true} {
+		ch, err := b.WalkDir(context.Background(), link, fsops.WalkOptions{FollowRoot: follow, IgnorePaths: []string{filepath.Join(link, "skip")}})
+		require.NoError(t, err)
+
+		var paths, relPaths []string
+		for e := range ch {
+			require.NoError(t, e.Err)
+			if e.Path == link {
+				assert.Equal(t, follow, e.IsDir, "FollowRoot %v", follow)
+				assert.Equal(t, !follow, e.IsSymlink, "FollowRoot %v", follow)
+			}
+			paths = append(paths, e.Path)
+			relPaths = append(relPaths, e.RelPath)
+		}
+		if !follow {
+			assert.Equal(t, []string{link}, paths)
+			continue
+		}
+		assert.Equal(t, []string{link, filepath.Join(link, "sub"), filepath.Join(link, "sub", "inside.txt")}, paths)
+		assert.Equal(t, []string{".", "sub", filepath.Join("sub", "inside.txt")}, relPaths)
+	}
+}
+
 func TestWalkDir_ContextCancellation(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()

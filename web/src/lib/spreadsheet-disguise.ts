@@ -57,7 +57,7 @@ const STRING_OVERRIDES: Record<string, string> = {
   "common:nav.crossSeed": "Reconcile",
   "common:nav.instances": "Workbooks",
   "common:sidebar.instances": "Workbooks",
-  "common:header.searchTorrents": "Find in sheet ({{shortcutKey}})",
+  "common:header.searchTorrents": "Find in sheet...",
   "common:header.globPattern": "Find pattern",
   "dashboard:title": "Overview",
   "torrents:tableColumns.seeds": "Sources",

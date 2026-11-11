@@ -127,10 +127,11 @@
       "check": "확인"
     },
     "searching": "cross-seed 확인 중",
-    "searchingProgress": "cross-seed 확인 중 ({{checked}}/{{total}})",
     "error": "cross-seed를 확인하지 못했습니다",
     "retry": "다시 시도",
     "noCrossSeeds": "cross-seed를 찾을 수 없습니다",
+    "uncheckedOffline": "{{instance}}을(를) 확인할 수 없습니다: qui가 연결할 수 없습니다.",
+    "uncheckedDisabled": "{{instance}}을(를) 확인하지 않았습니다: qui에서 꺼져 있습니다.",
     "deleteCrossSeeds": "이 cross-seed도 함께 삭제됩니다",
     "deletingFilesBreaks": "파일을 삭제하면 이 cross-seed가 손상됩니다",
     "dataPreserved": "cross-seed 감지됨: 데이터가 보존됩니다",
@@ -672,18 +673,17 @@
     "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
     "arrLookupFailed": "메타데이터 ID 조회 실패 - 제목으로만 검색하여 결과가 불완전할 수 있습니다",
     "arrNoIds": "이 릴리스의 메타데이터 ID를 찾을 수 없음 - 제목으로만 검색했습니다",
+    "gazelleTimedOut": "RED/OPS가 제시간에 응답하지 않았습니다",
+    "torznabFailed": "Torznab 검색 실패 - RED/OPS 결과만 표시합니다",
     "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
+    "gazelleOnlySearch": "검색은 API 키가 있는 RED/OPS 사이트에만 요청합니다.",
     "capabilityNote": "기능 참고",
     "capabilityDescription": "이 인덱서에는 이 토렌트에 필요한 기능/카테고리가 없어 서버에서 건너뜁니다:",
-    "contentFilteringInProgress": "콘텐츠 필터링 진행 중",
-    "analyzingContent": "기존 콘텐츠 분석 중...",
     "smartFilteringActive": "스마트 필터링 활성",
     "indexersFiltered_other": "인덱서 {{count}}개 필터링됨",
-    "contentFilteringDescription": "기존 토렌트를 확인하여 중복을 찾고 불필요한 트래커를 제외합니다. 이를 통해 동일한 콘텐츠를 여러 번 다운로드하는 것을 방지합니다.",
     "excludedDescription": "이 트래커에서 이미 이 릴리스를 시드 중이므로 검색에서 제외됩니다.",
-    "noContentDuplicates": "콘텐츠 필터링이 완료되었습니다. 활성화된 트래커에서 중복 콘텐츠를 찾지 못했습니다.",
     "searchingIndexers": "인덱서 검색 중…",
     "noMatchesFound": "검색에서 일치 항목을 찾을 수 없습니다.",
     "selectReleasesToAdd": "추가할 릴리스를 선택하세요",
@@ -732,7 +732,6 @@
       "selectAllIndexers": "모두 선택",
       "clearSelection": "선택 해제",
       "search": "검색",
-      "filtering": "필터링 중…",
       "searching": "검색 중",
       "noneSelected": "선택 안 됨",
       "enabledIndexers": "{{count}}개 활성화 {{suffix}}",
@@ -765,7 +764,8 @@
       "fewerIndexers": "더 적은 인덱서를 선택하여 검색해 보세요",
       "useRss": "지속적인 cross-seeding에는 RSS 자동화 기능을 사용하세요",
       "checkIndexers": "인덱서 페이지에서 속도 제한된 항목을 확인하세요"
-    }
+    },
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다."
   },
   "columnFilter": {
     "filterColumn": "{{column}} 필터링",
@@ -955,7 +955,6 @@
     "torrentCount_other": "토렌트 {{count}}개",
     "torrentsLoaded": "토렌트 {{total}}개 중 {{loaded}}개 로드됨",
     "scrollForMore": "(더 보려면 스크롤)",
-    "loading": "불러오는 중...",
     "freeSpace": "여유 공간",
     "switchToBits": "초당 비트(bps)로 전환",
     "switchToBytes": "초당 바이트(B/s)로 전환",
@@ -1021,7 +1020,6 @@
     "closePanel": "세부 정보 패널 닫기",
     "unknownError": "알 수 없는 오류",
     "toast": {
-      "copied": "{{type}}이(가) 클립보드에 복사되었습니다",
       "copyFailed": "클립보드에 복사하지 못했습니다",
       "peersAdded": "피어가 추가되었습니다",
       "peersFailed": "피어를 추가하지 못했습니다: {{error}}",
@@ -1068,20 +1066,14 @@
       "loadedSummary_other": "모든 인스턴스에서 일치하는 토렌트 {{count}}개 발견됨",
       "deleteMatches": "일치 항목 삭제 ({{count}})",
       "deleteThisTorrent": "이 토렌트 삭제",
-      "checkingMoreInstances": "더 많은 인스턴스 확인 중...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "정확히 동일한 토렌트(동일한 info hash)",
-      "savePathMatch": "저장 경로",
-      "savePathDescription": "동일한 저장 디렉터리 및 파일 이름",
-      "selectTorrent": "{{name}} 선택"
+      "selectTorrent": "{{name}} 선택",
+      "openTorrent": "{{name}} 열기"
     },
     "sections": {
       "generalInformation": "일반 정보",
       "transferStatistics": "전송 통계",
-      "speed": "속도",
       "queueManagement": "대기열 관리",
       "timeInformation": "시간 정보",
-      "timestamps": "타임스탬프",
       "activeTrackers": "활성 트래커",
       "connectedPeers": "연결된 피어",
       "fileContents": "파일 콘텐츠"
@@ -1108,22 +1100,17 @@
       "added": "추가됨",
       "completed": "완료됨",
       "created": "생성됨",
-      "leechers": "리처",
-      "peerProgress": "피어 진행률",
-      "connection": "연결:",
-      "flags": "플래그:"
+      "leechers": "리처"
     },
     "counts": {
       "trackers_other": "트래커 {{count}}개",
       "connectedPeers_other": "피어 {{count}}개 연결됨",
-      "httpSources_other": "소스 {{count}}개",
       "selectedFiles": "{{total}}개 중 {{selected}}개 선택됨",
       "files_other": "파일 {{count}}개"
     },
     "values": {
       "normal": "보통",
       "queued": "대기 중 {{state}}",
-      "seeder": "시더",
       "unknownClient": "알 수 없는 클라이언트"
     },
     "actions": {
@@ -1132,14 +1119,12 @@
       "selectAll": "전체",
       "selectNone": "없음"
     },
-    "peer": {
-      "flagLabel": "플래그 {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "파일을 찾을 수 없습니다"
     },
     "selectAll": "모두 선택",
-    "deselectAll": "모두 선택 해제"
+    "deselectAll": "모두 선택 해제",
+    "trackerMessageHidden": "시크릿 모드에서는 트래커 메시지가 숨겨집니다"
   },
   "generalTab": {
     "name": "이름:",
@@ -1184,6 +1169,7 @@
     "status": "상태",
     "tracker": "트래커",
     "seeds": "시드",
+    "peers": "피어",
     "leeches": "리처",
     "downloaded": "DL",
     "message": "메시지",
@@ -1296,11 +1282,7 @@
       }
     },
     "noMatches": "다른 인스턴스에서 일치하는 토렌트를 찾을 수 없습니다",
-    "loadFailed": "크로스시드 일치 항목을 확인할 수 없습니다. 다시 시도하려면 새로고침하세요.",
-    "toast": {
-      "savePathCopied": "저장 경로가 복사되었습니다",
-      "copyFailed": "복사하지 못했습니다"
-    }
+    "loadFailed": "크로스시드 일치 항목을 확인할 수 없습니다. 다시 시도하려면 새로고침하세요."
   },
   "addTorrentDialog": {
     "title": "새 토렌트 추가",
@@ -1445,7 +1427,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
     },
-    "ratio": "비율:"
+    "ratio": "비율:",
+    "added": "{{time}} 추가됨"
   },
   "tableView": {
     "ascending": "오름차순",
@@ -1577,6 +1560,7 @@
     "tags": "태그",
     "newTagPlaceholder": "태그를 입력하고 Enter를 누르세요",
     "savePath": "저장 경로(실제 대상 위치)",
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다.",
     "cancel": "취소",
     "apply": "크로스시드 추가",
     "applying": "추가 중...",
@@ -1598,12 +1582,14 @@
       "dropped": "팩을 추가했습니다. 제외된 대상: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "팩을 조립하려면 이 인스턴스에 로컬 파일 시스템 접근 권한이 필요합니다.",
+        "no_filesystem_access": "이 인스턴스가 팩을 조립하려면 파일시스템 쓰기 접근이 필요합니다. 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하거나 SSH 접근을 설정하세요.",
         "no_link_mode": "여러 대상을 선택하려면 이 인스턴스에서 하드링크 또는 reflink 모드를 활성화하세요.",
         "no_base_directory": "이 인스턴스의 링크 기본 디렉터리를 설정하세요.",
         "no_episode_files": "이 팩에서 재생 가능한 에피소드 파일을 찾지 못했습니다.",
         "target_not_found": "이 인스턴스에서 대상을 찾지 못했습니다.",
         "incomplete": "대상 다운로드가 완료되지 않았습니다.",
+        "not_settled": "이 토렌트는 아직 이동 중이거나 확인 중입니다. 완료된 후 다시 시도하세요.",
+        "errored": "이 토렌트에 오류가 있거나 파일이 누락되었습니다. 문제를 해결한 후 다시 시도하세요.",
         "no_episode_identity": "에피소드 번호를 해석할 수 없습니다.",
         "file_list_unavailable": "대상 파일 목록을 사용할 수 없습니다.",
         "episode_file_invalid": "대상에는 선택한 에피소드 식별자와 일치하는 재생 가능한 파일이 하나 있어야 합니다.",
@@ -1618,5 +1604,17 @@
         "add_failed": "토렌트를 추가하지 못했습니다."
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}}의 추가 사본 {{count}}개",
+    "copiesWithProblem_other": "{{name}}의 추가 사본 {{count}}개. 숨겨진 사본에 문제가 있습니다",
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · {{count}}개 선택됨",
+    "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "사본 묶기",
+    "expandAll": "모두 펼치기",
+    "collapseAll": "모두 접기",
+    "grouping": "묶는 중…"
   }
 }

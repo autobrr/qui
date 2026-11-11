@@ -351,17 +351,17 @@ func TestRemove_RefusedUnlinkNeverReportsMissing(t *testing.T) {
 	require.NoError(t, err, "the link is still there")
 }
 
-// cancelHeldWrite cancels once the server holds a write, then checks the
-// call is still waiting for it before the server answers.
+// cancelHeldWrite cancels once the server holds a write, then lets the server
+// answer it. The caller checks that the held write landed before the call
+// returned.
 func cancelHeldWrite(t *testing.T, server *sshtest.Server, cancel context.CancelFunc, done <-chan error) error {
 	t.Helper()
-	require.Eventually(t, func() bool { return server.HeldMutations() == 1 }, 5*time.Second, 10*time.Millisecond)
-	cancel()
 	select {
-	case err := <-done:
-		t.Fatalf("returned before its held write was answered: %v", err)
-	case <-time.After(100 * time.Millisecond):
+	case <-server.Stalled():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server never held the write")
 	}
+	cancel()
 	server.ReleaseStall()
 	return <-done
 }
@@ -437,12 +437,18 @@ func TestRemove_CancelledRemoveCompletes(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(t.Context())
 			done := make(chan error, 1)
-			go func() { done <- b.Remove(ctx, remotePath(dir, tc.remove), tc.opts) }()
+			var held error
+			go func() {
+				err := b.Remove(ctx, remotePath(dir, tc.remove), tc.opts)
+				// Read as the call returns: a call that does not wait for
+				// its held remove returns before the remove lands.
+				_, held = os.Lstat(remotePath(dir, tc.held))
+				done <- err
+			}()
 
 			err := cancelHeldWrite(t, server, cancel, done)
 			require.ErrorIs(t, err, context.Canceled)
-			_, err = os.Lstat(remotePath(dir, tc.held))
-			require.ErrorIs(t, err, fs.ErrNotExist, "the held remove landed before the call returned")
+			require.ErrorIs(t, held, fs.ErrNotExist, "the held remove landed before the call returned")
 		})
 	}
 }
@@ -588,10 +594,8 @@ func TestTargetIsSource_JobStoppedDuringStatIsAnError(t *testing.T) {
 	require.NoError(t, err)
 	server.SetExec(sshtest.ExecHang)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
-	defer cancel()
-	same, err := b.targetIsSource(ctx, plan.Files[0])
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	same, err := b.targetIsSource(cancelOnStall(t, server), plan.Files[0])
+	require.ErrorIs(t, err, context.Canceled)
 	assert.False(t, same)
 }
 

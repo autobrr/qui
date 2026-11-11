@@ -58,7 +58,6 @@
     "errors": "Errors",
     "reannounceTooltip": "Automatic tracker reannounce enabled",
     "altSpeedLimits": "Alternative speed limits: {{status}}",
-    "localFileAccess": "Local file access enabled",
     "connectable": "Connectable",
     "portInfo": ". Port: {{port}}",
     "connectionStatus": "qBittorrent connection status: {{status}}",

@@ -21,13 +21,22 @@ import (
 func TestRetryDoStopsWhenContextEnds(t *testing.T) {
 	t.Parallel()
 
+	arrived := make(chan struct{}, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case arrived <- struct{}{}:
+		default:
+		}
 		<-r.Context().Done()
 	}))
 	t.Cleanup(server.Close)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	go func() {
+		<-arrived
+		cancel()
+	}()
 
 	client := NewClient(Config{Host: server.URL})
 	start := time.Now()
@@ -44,6 +53,7 @@ func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
 
 	var mu sync.Mutex
 	open := map[net.Conn]bool{}
+	var allClosed chan struct{}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 	}))
@@ -55,6 +65,10 @@ func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
 			open[c] = true
 		case http.StateClosed, http.StateHijacked:
 			delete(open, c)
+			if len(open) == 0 && allClosed != nil {
+				close(allClosed)
+				allClosed = nil
+			}
 		case http.StateActive, http.StateIdle:
 		}
 	}
@@ -67,12 +81,26 @@ func TestRetryDoReleasesConnectionOn5xx(t *testing.T) {
 		require.Error(t, err)
 	}
 
+	// A released connection is closed or idle in the pool, depending on whether
+	// the client read the short body before the close. Close the idle ones, so
+	// that only a leaked connection stays open.
+	client.http.CloseIdleConnections()
+
 	// The server sees each client close a moment after the call returns.
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(open) == 0
-	}, 2*time.Second, 10*time.Millisecond)
+	closed := make(chan struct{})
+	mu.Lock()
+	if len(open) == 0 {
+		close(closed)
+	} else {
+		allClosed = closed
+	}
+	mu.Unlock()
+
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a connection stayed open after its 5xx response")
+	}
 }
 
 // A 5xx body that never ends must not hold the caller until the client timeout.

@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -45,9 +47,13 @@ func (g *hashFilteringSyncManager) GetTorrents(_ context.Context, _ int, opts qb
 
 // newSearchRunLoopFixture builds a Service with a running search-run state
 // backed by a migrated SQLite store, ready for searchRunLoop. Gazelle match
-// lookups are stubbed to find nothing.
+// lookups are stubbed to find nothing, and the run does not wait between
+// candidates.
 func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilteringSyncManager) (*Service, *searchRunState) {
 	t.Helper()
+	prevInterval := minSearchIntervalSecondsGazelleOnly
+	minSearchIntervalSecondsGazelleOnly = 0
+	t.Cleanup(func() { minSearchIntervalSecondsGazelleOnly = prevInterval })
 	ctx := context.Background()
 	db := testdb.NewMigratedSQLite(t, dbName)
 
@@ -80,7 +86,7 @@ func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilte
 	require.NoError(t, err)
 	state := &searchRunState{
 		run:  run,
-		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 1},
+		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true},
 	}
 	state.gazelleClients = clients
 
@@ -107,7 +113,6 @@ func runSearchLoopToCompletion(t *testing.T, svc *Service, state *searchRunState
 		close(done)
 	}()
 
-	// Gazelle-only runs wait minSearchIntervalSecondsGazelleOnly after a candidate that sent a request.
 	select {
 	case <-done:
 	case <-time.After(15 * time.Second):
@@ -297,4 +302,63 @@ func TestPersistSearchRun_FlushesResultsEveryN(t *testing.T) {
 
 	svc.finalizeSearchRun(state, false)
 	require.Len(t, storedRun().Results, searchResultsFlushEvery+1, "finalize writes the full row")
+}
+
+// listFailingIndexerStore fails the indexer listing of the content filter.
+type listFailingIndexerStore struct {
+	failingEnabledIndexerStore
+}
+
+func (s *listFailingIndexerStore) List(context.Context) ([]*models.TorznabIndexer, error) {
+	return nil, errors.New("prowlarr down")
+}
+
+// A failed indexer listing removes every Torznab indexer from the scope. qui
+// did not ask those indexers, so the Library Scan must not start their
+// cooldown.
+func TestProcessSearchCandidate_IndexerListingFailureStampsNoIndexer(t *testing.T) {
+	ctx, env := newSearchHistoryTestEnv(t, "crossseed-listing-failure-history", 2)
+	instanceStore, err := models.NewInstanceStore(env.db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clients, err := gazelleClientsForTest()
+	require.NoError(t, err)
+	stubGazelleMatchLookup(t)
+
+	torrent := qbt.Torrent{
+		Hash:     torznabGazelleSourceHash,
+		Name:     "During - LMK (2024 WF)",
+		Progress: 1.0,
+		Size:     123,
+		Tracker:  "https://flacsfor.me/announce",
+	}
+	svc := &Service{
+		instanceStore:   instanceStore,
+		automationStore: env.store,
+		jackettService:  jackett.NewService(&listFailingIndexerStore{}),
+		syncManager: &hashFilteringSyncManager{
+			torrents: []qbt.Torrent{torrent},
+			filesByHash: map[string]qbt.TorrentFiles{
+				torznabGazelleSourceHash: {{Name: "During - LMK (2024 WF)/01 - Track.flac", Size: 123}},
+			},
+		},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	state := &searchRunState{
+		run:                       &models.CrossSeedSearchRun{},
+		opts:                      SearchRunOptions{InstanceID: env.instanceID},
+		resolvedTorznabIndexerIDs: env.indexerIDs,
+		gazelleClients:            clients,
+		staleWork: map[string]candidateStaleWork{
+			torznabGazelleSourceHash: {indexerIDs: env.indexerIDs, gazelle: true},
+		},
+	}
+
+	_, err = svc.processSearchCandidate(ctx, state, &torrent)
+	require.NoError(t, err)
+	require.Error(t, state.torznabErr, "the listing failure reaches the run")
+
+	history, err := env.store.GetIndexerSearchHistory(ctx, env.instanceID, torrent.Hash)
+	require.NoError(t, err)
+	require.Empty(t, history, "qui asked no Torznab indexer")
 }

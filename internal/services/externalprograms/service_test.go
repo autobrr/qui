@@ -1348,7 +1348,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		assert.Equal(t, "cmd.exe", strings.ToLower(filepath.Base(path)))
 	}
 
-	t.Run("terminal mode uses cmd.exe with start cmd /k", func(t *testing.T) {
+	t.Run("terminal mode runs cmd /k in a new console", func(t *testing.T) {
 		program := &models.ExternalProgram{
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: true,
@@ -1356,12 +1356,9 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assertWindowsCmdPath(t, cmd.Path)
-		// Args should be: [cmd.exe, /c, start, "", cmd, /k, C:\Programs\test.exe, arg1, arg2]
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "cmd")
-		assert.Contains(t, cmd.Args, "/k")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		// start would make cmd.exe parse the arguments a second time.
+		assert.Equal(t, []string{"cmd.exe", "/d", "/e:on", "/v:off", "/s", "/k", program.Path, "arg1", "arg2"}, cmd.Args)
+		assert.Contains(t, cmd.Env, "QUI_EXTERNAL_PROGRAM_PATH="+program.Path)
 	})
 
 	t.Run("direct mode launches the executable without a shell", func(t *testing.T) {
@@ -1396,11 +1393,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "cmd")
-		assert.Contains(t, cmd.Args, "/k")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		assert.Equal(t, []string{"cmd.exe", "/d", "/e:on", "/v:off", "/s", "/k", program.Path}, cmd.Args)
 	})
 
 	t.Run("direct mode with no arguments", func(t *testing.T) {

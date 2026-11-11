@@ -59,7 +59,8 @@ func RemoteFileID(raw []byte) FileID {
 }
 
 // FileIDFromBytes is the inverse of Bytes. Any other length is no identity,
-// which is what a row written before the tagged form decodes to.
+// which is what a row written before the tagged form decodes to. Dir Scan appends
+// an endpoint tag to a remote identity before storing it and strips it before this.
 func FileIDFromBytes(b []byte) FileID {
 	if len(b) != 1+fileIDRawLen {
 		return FileID{}

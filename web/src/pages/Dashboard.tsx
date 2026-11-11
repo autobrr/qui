@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { isStreamUsable } from "@/lib/sync-stream-state"
+import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { MigrationHint } from "@/components/instances/MigrationHint"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
+import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import {
   AlertDialog,
@@ -137,9 +138,12 @@ type InstanceStreamData = {
   streamConnected: boolean
   streamError: string | null
   hasLiveDashboardStatsPayload: boolean
+  fallbackPollInterval: number | false
   cacheMetadata: CacheMetadata | null | undefined
   instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
 }
+
+const STATS_FALLBACK_POLL_INTERVAL_MS = 5000
 
 const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   stats: null,
@@ -152,6 +156,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   streamConnected: false,
   streamError: null,
   hasLiveDashboardStatsPayload: false,
+  fallbackPollInterval: STATS_FALLBACK_POLL_INTERVAL_MS,
   cacheMetadata: null,
   instanceMeta: null,
 })
@@ -216,6 +221,7 @@ function instanceStreamDataFromResponse(
     streamConnected: current?.streamConnected ?? false,
     streamError: current?.streamError ?? null,
     hasLiveDashboardStatsPayload: current?.hasLiveDashboardStatsPayload ?? false,
+    fallbackPollInterval: current?.fallbackPollInterval ?? STATS_FALLBACK_POLL_INTERVAL_MS,
     cacheMetadata: response.cacheMetadata ?? current?.cacheMetadata ?? null,
     instanceMeta: response.instanceMeta ?? current?.instanceMeta ?? null,
   }
@@ -324,7 +330,8 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
 }
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
+// eslint-disable-next-line react-refresh/only-export-components
+export function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: boolean }): DashboardInstanceStats[] {
   const { enabled: streamEnabled } = options
   const syncStream = useSyncStreamManager()
   const queryClient = useQueryClient()
@@ -373,7 +380,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           order: DASHBOARD_STATS_FALLBACK_ORDER,
         }),
         enabled: fallbackEnabled,
-        refetchInterval: fallbackEnabled ? 5000 : false,
+        refetchInterval: fallbackEnabled ? (streamState?.fallbackPollInterval ?? STATS_FALLBACK_POLL_INTERVAL_MS) : false,
         refetchIntervalInBackground: false,
         staleTime: 2000,
         gcTime: 300000,
@@ -572,6 +579,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               streamConnected: true,
               streamError: null,
               hasLiveDashboardStatsPayload: current.hasLiveDashboardStatsPayload || hasLiveDashboardStatsPayload,
+              fallbackPollInterval: current.fallbackPollInterval,
               cacheMetadata: data.cacheMetadata ?? current.cacheMetadata,
               instanceMeta: data.instanceMeta ?? current.instanceMeta,
             }
@@ -592,6 +600,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               streamError: snapshot.error ?? (streamUsable ? null : current.streamError),
               hasLiveDashboardStatsPayload: streamUsable &&
                 current.hasLiveDashboardStatsPayload,
+              fallbackPollInterval: streamFallbackPollInterval(snapshot, STATS_FALLBACK_POLL_INTERVAL_MS),
             }
 
             if (snapshot.error) {
@@ -696,7 +705,8 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       isLoading,
       error,
       streamConnected: state.streamConnected,
-      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive, fallbackData),
+      // A stopped poll refreshes nothing, so its fallback data must not hide the error
+      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive && state.fallbackPollInterval !== false, fallbackData),
       hasLiveDashboardStatsPayload: state.hasLiveDashboardStatsPayload,
       isDashboardStatsFallbackActive: isFallbackActive,
       cacheMetadata,
@@ -903,16 +913,7 @@ function InstanceCard({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {instance.hasLocalFilesystemAccess && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HardDrive className="h-4 w-4 text-primary" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t("instanceCard.localFileAccess")}
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              <RemoteAccessIndicator instance={instance} variant="icon" />
               <InstanceSettingsButton
                 instanceId={instance.id}
                 instanceName={instance.name}

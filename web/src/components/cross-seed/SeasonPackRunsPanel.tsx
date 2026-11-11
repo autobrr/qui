@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { useInstances } from "@/hooks/useInstances"
+import { useClientSetting } from "@/lib/client-settings"
+import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
 import type { SeasonPackRun } from "@/types"
 import { ChevronDown, History, Loader2, RefreshCw, Search } from "lucide-react"
-import { useMemo, useState } from "react"
+import { Fragment, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface SeasonPackRunsPanelProps {
@@ -21,6 +22,43 @@ interface SeasonPackRunsPanelProps {
   error: unknown
   onRefresh: () => void
   formatDateValue: (date: string | undefined) => string
+}
+
+const STATUS_FILTERS = ["applied", "ready", "skipped", "failed"] as const
+type StatusFilter = typeof STATUS_FILTERS[number]
+
+const DEFAULT_STATUS_FILTERS: StatusFilter[] = ["applied"]
+
+const STATUS_FILTER_LABEL_KEYS = {
+  applied: "seasonPackRuns.statusLabels.applied",
+  ready: "seasonPackRuns.statusLabels.ready",
+  skipped: "seasonPackRuns.statusLabels.skipped",
+  failed: "seasonPackRuns.statusLabels.failed",
+} as const satisfies Record<StatusFilter, string>
+
+const SHOW_STATUS_KEYS = {
+  applied: "seasonPackRuns.showStatus.applied",
+  ready: "seasonPackRuns.showStatus.ready",
+  skipped: "seasonPackRuns.showStatus.skipped",
+  failed: "seasonPackRuns.showStatus.failed",
+} as const satisfies Record<StatusFilter, string>
+
+function parseStatusFilters(raw: string): StatusFilter[] {
+  const parsed: unknown = JSON.parse(raw)
+  if (!Array.isArray(parsed) || parsed.some(item => !STATUS_FILTERS.includes(item))) {
+    throw new Error("invalid season pack run status filters")
+  }
+  return parsed
+}
+
+function statusFilterOf(status: SeasonPackRun["status"]): StatusFilter {
+  return status === "ready_no_threshold" ? "ready" : status
+}
+
+function countByStatusFilter(runs: SeasonPackRun[]): Record<StatusFilter, number> {
+  const counts: Record<StatusFilter, number> = { applied: 0, ready: 0, skipped: 0, failed: 0 }
+  for (const run of runs) counts[statusFilterOf(run.status)]++
+  return counts
 }
 
 function seasonPackStatusVariant(status: SeasonPackRun["status"]) {
@@ -58,33 +96,43 @@ export function SeasonPackRunsPanel({
   formatDateValue,
 }: SeasonPackRunsPanelProps) {
   const { t } = useTranslation("crossseed")
+  const { instances } = useInstances()
   const [open, setOpen] = useState(false)
+  // An instance that no longer exists keeps its id.
+  const instanceName = (id: number) => instances?.find(instance => instance.id === id)?.name ?? String(id)
+  const isRouted = (run: SeasonPackRun) =>
+    run.instanceId !== undefined && run.addedInstanceId !== undefined && run.addedInstanceId !== run.instanceId
+  const instanceLabel = (run: SeasonPackRun) => {
+    if (run.instanceId === undefined) return "—"
+    if (!isRouted(run)) return instanceName(run.instanceId)
+    return crossSeedRouteText(t, instanceName(run.instanceId), instanceName(run.addedInstanceId!), run.status === "applied")
+  }
   const [search, setSearch] = useState("")
-  const [showSkipped, setShowSkipped] = useState(false)
+  const [statusFilters, setStatusFilters] = useClientSetting<StatusFilter[]>("qui-season-pack-run-status-filters", {
+    defaultValue: DEFAULT_STATUS_FILTERS,
+    parse: parseStatusFilters,
+  })
 
-  const skippedCount = useMemo(
-    () => runs.filter(run => run.status === "skipped").length,
-    [runs]
-  )
+  const statusCounts = useMemo(() => countByStatusFilter(runs), [runs])
 
-  const appliedCount = useMemo(
-    () => runs.filter(run => run.status === "applied").length,
-    [runs]
-  )
-
-  const failedCount = useMemo(
-    () => runs.filter(run => run.status === "failed").length,
-    [runs]
-  )
-
-  const filteredRuns = useMemo(() => {
+  const searchedRuns = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return runs.filter(run => {
-      if (!showSkipped && run.status === "skipped") return false
-      if (query && !run.torrentName.toLowerCase().includes(query)) return false
-      return true
-    })
-  }, [runs, search, showSkipped])
+    return query ? runs.filter(run => run.torrentName.toLowerCase().includes(query)) : runs
+  }, [runs, search])
+
+  // The empty-state links count only runs that match the name search, so a link never opens an empty list.
+  const searchedCounts = useMemo(() => countByStatusFilter(searchedRuns), [searchedRuns])
+
+  const filteredRuns = useMemo(
+    () => searchedRuns.filter(run => statusFilters.includes(statusFilterOf(run.status))),
+    [searchedRuns, statusFilters]
+  )
+
+  const toggleStatusFilter = (filter: StatusFilter) => {
+    setStatusFilters(prev => prev.includes(filter) ? prev.filter(item => item !== filter) : [...prev, filter])
+  }
+
+  const hiddenStatusesWithRuns = STATUS_FILTERS.filter(filter => !statusFilters.includes(filter) && searchedCounts[filter] > 0)
 
   return (
     <div className="pt-3 border-t border-border/50">
@@ -96,8 +144,8 @@ export function SeasonPackRunsPanel({
             {runs.length > 0 ? (
               <Badge variant="secondary" className="text-xs">
                 {t("seasonPackRuns.runsCount", { count: runs.length })}
-                {appliedCount > 0 && ` • ${t("seasonPackRuns.appliedCount", { count: appliedCount })}`}
-                {failedCount > 0 && ` • ${t("seasonPackRuns.failedCount", { count: failedCount })}`}
+                {statusCounts.applied > 0 && ` • ${t("seasonPackRuns.appliedCount", { count: statusCounts.applied })}`}
+                {statusCounts.failed > 0 && ` • ${t("seasonPackRuns.failedCount", { count: statusCounts.failed })}`}
               </Badge>
             ) : (
               <span className="text-xs text-muted-foreground">{t("seasonPackRuns.noRunsYet")}</span>
@@ -108,7 +156,26 @@ export function SeasonPackRunsPanel({
 
         <CollapsibleContent>
           <div className="space-y-3 pt-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <div role="group" aria-label={t("seasonPackRuns.statusFilter")} className="flex flex-wrap items-center gap-1.5 sm:mr-auto">
+                {STATUS_FILTERS.map(filter => {
+                  const selected = statusFilters.includes(filter)
+                  return (
+                    <Button
+                      key={filter}
+                      type="button"
+                      size="sm"
+                      variant={selected ? "secondary" : "outline"}
+                      aria-pressed={selected}
+                      onClick={() => toggleStatusFilter(filter)}
+                      className={`h-7 gap-1.5 px-2.5 text-xs ${selected ? "" : "text-muted-foreground"}`}
+                    >
+                      <span>{t(STATUS_FILTER_LABEL_KEYS[filter])}</span>{" "}
+                      <span className="tabular-nums opacity-70">{statusCounts[filter]}</span>
+                    </Button>
+                  )
+                })}
+              </div>
               <div className="relative w-full sm:w-56">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -119,20 +186,10 @@ export function SeasonPackRunsPanel({
                   className="h-8 pl-8 text-xs"
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 sm:justify-start">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="season-pack-show-skipped" className="text-xs">{t("seasonPackRuns.showSkipped")}</Label>
-                  <Switch
-                    id="season-pack-show-skipped"
-                    checked={showSkipped}
-                    onCheckedChange={setShowSkipped}
-                  />
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
-                  <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-                  {t("seasonPackRuns.refresh")}
-                </Button>
-              </div>
+              <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isFetching} className="self-end sm:self-auto">
+                <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+                {t("seasonPackRuns.refresh")}
+              </Button>
             </div>
 
             {error ? (
@@ -151,25 +208,25 @@ export function SeasonPackRunsPanel({
             ) : filteredRuns.length === 0 ? (
               <div className="rounded-md border border-border/70 bg-background/50 p-3 text-sm text-muted-foreground">
                 {t("seasonPackRuns.noMatches")}
-                {!showSkipped && skippedCount > 0 && (
-                  <>
-                    {" "}
+                {hiddenStatusesWithRuns.map((filter, index) => (
+                  <Fragment key={filter}>
+                    {index === 0 ? " " : " · "}
                     <button
                       type="button"
-                      onClick={() => setShowSkipped(true)}
+                      onClick={() => toggleStatusFilter(filter)}
                       className="text-foreground underline-offset-2 hover:underline"
                     >
-                      {t("seasonPackRuns.showSkippedCount", { count: skippedCount })}
+                      {t(SHOW_STATUS_KEYS[filter], { total: searchedCounts[filter] })}
                     </button>
-                    .
-                  </>
-                )}
+                  </Fragment>
+                ))}
               </div>
             ) : (
               <div className="overflow-hidden rounded-md border border-border/70">
                 <div className="max-h-[420px] divide-y divide-border/70 overflow-y-auto">
                   {filteredRuns.map(run => {
-                    const reasonLabel = formatSeasonPackReason(run)
+                    const routeStatusKey = crossSeedRouteStatusKeys[run.reason]
+                    const reasonLabel = routeStatusKey ? t(routeStatusKey) : formatSeasonPackReason(run)
                     return (
                       <div key={run.id} className="grid gap-2 bg-background/50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                         <div className="min-w-0 space-y-1">
@@ -181,10 +238,11 @@ export function SeasonPackRunsPanel({
                           <p className="truncate text-sm font-medium" title={run.torrentName}>{run.torrentName}</p>
                           {run.message && <p className="line-clamp-2 text-xs text-muted-foreground">{run.message}</p>}
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:min-w-72 md:grid-cols-3">
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:w-80 md:grid-cols-3">
                           <span>{t("seasonPackRuns.coverage")} <span className="font-medium text-foreground">{formatSeasonPackCoverage(run)}</span></span>
                           <span>{t("seasonPackRuns.episodes")} <span className="font-medium text-foreground">{run.matchedEpisodes}/{run.totalEpisodes || "?"}</span></span>
-                          <span>{t("seasonPackRuns.instance")} <span className="font-medium text-foreground">{run.instanceId ?? "—"}</span></span>
+                          {/* A routed label is long, so it takes the full row and the column keeps its width. */}
+                          <span className={isRouted(run) ? "col-span-2 md:col-span-3" : undefined}>{t("seasonPackRuns.instance")} <span className="font-medium text-foreground">{instanceLabel(run)}</span></span>
                           <span>{t("seasonPackRuns.mode")} <span className="font-medium text-foreground">{run.linkMode || "—"}</span></span>
                           <span className="col-span-2 md:col-span-2">{formatDateValue(run.createdAt)}</span>
                         </div>

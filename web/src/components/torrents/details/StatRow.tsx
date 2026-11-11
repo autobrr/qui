@@ -3,19 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { cn, copyTextToClipboard } from "@/lib/utils"
-import { Copy } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { memo } from "react"
-import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 interface StatRowProps {
   label: string
   value: string | React.ReactNode
-  copyable?: boolean
-  copyValue?: string
   monospace?: boolean
   className?: string
   valueClassName?: string
@@ -27,8 +21,6 @@ interface StatRowProps {
 export const StatRow = memo(function StatRow({
   label,
   value,
-  copyable,
-  copyValue,
   monospace,
   className,
   valueClassName,
@@ -36,16 +28,6 @@ export const StatRow = memo(function StatRow({
   tooltip,
   highlight,
 }: StatRowProps) {
-  const { t } = useTranslation("torrents")
-
-  const handleCopy = () => {
-    const textToCopy = copyValue || (typeof value === "string" ? value : "")
-    if (textToCopy) {
-      copyTextToClipboard(textToCopy)
-      toast.success(t("detailsPanel.toast.copied", { type: label }))
-    }
-  }
-
   const highlightClass = highlight? {
     green: "text-green-500",
     blue: "text-blue-500",
@@ -68,17 +50,6 @@ export const StatRow = memo(function StatRow({
       >
         {value}
       </span>
-      {copyable && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 shrink-0 opacity-50 hover:opacity-100"
-          onClick={handleCopy}
-          aria-label={`${t("contextMenu.copy").replace("...", "")} ${label}`}
-        >
-          <Copy className="h-3 w-3" />
-        </Button>
-      )}
     </div>
   )
 

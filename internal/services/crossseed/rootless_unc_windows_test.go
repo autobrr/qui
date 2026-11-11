@@ -56,7 +56,7 @@ func TestProcessCrossSeedCandidate_WindowsUNCSavePath(t *testing.T) {
 			}
 			withAdder(service)
 			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), "newhash", "", name,
-				&CrossSeedRequest{StartPaused: new(true)}, service.releaseCache.Parse(name), tc.files, nil)
+				&CrossSeedRequest{StartPaused: new(true)}, service.releaseCache.Parse(name), tc.files, nil, nil)
 			require.True(t, result.Success, "candidate must reach AddTorrent: %+v", result)
 			require.NotNil(t, sync.addedOptions)
 			assert.Equal(t, tc.want, filepath.ToSlash(sync.addedOptions["savepath"]), "operational destination must preserve its root")

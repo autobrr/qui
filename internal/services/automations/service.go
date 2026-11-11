@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -85,6 +86,7 @@ type automationSummary struct {
 	sampleErrors     []string
 	sampleSeen       map[string]struct{}
 	tagSampleSeen    map[string]struct{}
+	activities       []*models.AutomationActivity // the rows the run recorded, in order
 }
 
 type automationRuleSummary struct {
@@ -172,6 +174,10 @@ func (s *automationSummary) recordActivity(activity *models.AutomationActivity, 
 	if count <= 0 {
 		count = 1
 	}
+	if activity.CreatedAt.IsZero() {
+		activity.CreatedAt = time.Now().UTC() // the store lets the database stamp the row and leaves this field unset
+	}
+	s.activities = append(s.activities, activity)
 	s.add(activity.Action, activity.Outcome, count)
 	s.addRuleAction(activity, count)
 	s.addSamplesFromActivity(activity)
@@ -489,24 +495,104 @@ type tagChange struct {
 	desired  map[string]struct{}
 	toAdd    []string
 	toRemove []string
+	// ruleByTag is the rule that chose each added or removed tag.
+	ruleByTag map[string]ruleRef
 }
 
-type categoryMove struct {
-	hash          string
-	name          string
-	trackerDomain string
-	category      string
+// applyTagChanges sends the planned tag changes to qBittorrent and returns the changes of the
+// torrents that qBittorrent accepted.
+func (s *Service) applyTagChanges(ctx context.Context, instanceID int, tagChanges map[string]*tagChange) map[string]*tagChange {
+	client, err := s.syncManager.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: get client for tags failed")
+		return nil
+	}
+
+	if client.Supports(qbittorrent.CapSetTags) {
+		return s.setTagsByTagSet(ctx, instanceID, tagChanges)
+	}
+
+	// The Set Tags fallback costs about four requests for each tag set; one
+	// request for each tag stays near the old count on large libraries.
+	log.Debug().Int("instanceID", instanceID).Msg("automations: falling back to add/remove tags (older qBittorrent)")
+	return s.editTagsByTag(ctx, instanceID, tagChanges)
 }
 
-type pendingDeletion struct {
-	hash          string
-	torrentName   string
-	trackerDomain string
-	action        string
-	ruleID        int
-	ruleName      string
-	reason        string
-	details       map[string]any
+// setTagsByTagSet replaces the tags with one Set Tags for each tag set and batch.
+func (s *Service) setTagsByTagSet(ctx context.Context, instanceID int, tagChanges map[string]*tagChange) map[string]*tagChange {
+	// Group by desired tag set for batching
+	setTagsBatches := make(map[string][]string) // key = sorted tags, value = hashes
+	for hash, change := range tagChanges {
+		key := strings.Join(slices.Sorted(maps.Keys(change.desired)), ",")
+		setTagsBatches[key] = append(setTagsBatches[key], hash)
+	}
+
+	accepted := make(map[string]*tagChange, len(tagChanges))
+	for tagSet, hashes := range setTagsBatches {
+		var tags []string
+		if tagSet != "" {
+			tags = strings.Split(tagSet, ",")
+		}
+		for _, batch := range limitHashBatch(hashes, s.cfg.MaxBatchHashes) {
+			if err := s.syncManager.SetTags(ctx, instanceID, batch, tagSet); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags failed")
+				continue
+			}
+			log.Debug().Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags on torrents")
+			for _, hash := range batch {
+				accepted[hash] = tagChanges[hash]
+			}
+		}
+	}
+	return accepted
+}
+
+// editTagsByTag sends one Add Tags or Remove Tags for each tag and batch. A torrent counts as
+// accepted only when qBittorrent accepted each request for it.
+func (s *Service) editTagsByTag(ctx context.Context, instanceID int, tagChanges map[string]*tagChange) map[string]*tagChange {
+	addBatches := make(map[string][]string)    // key = tag, value = hashes
+	removeBatches := make(map[string][]string) // key = tag, value = hashes
+	for hash, change := range tagChanges {
+		for _, tag := range change.toAdd {
+			addBatches[tag] = append(addBatches[tag], hash)
+		}
+		for _, tag := range change.toRemove {
+			removeBatches[tag] = append(removeBatches[tag], hash)
+		}
+	}
+
+	refused := make(map[string]struct{})
+	for tag, hashes := range addBatches {
+		for _, batch := range limitHashBatch(hashes, s.cfg.MaxBatchHashes) {
+			if err := s.syncManager.AddTags(ctx, instanceID, batch, tag); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: add tags failed")
+				for _, hash := range batch {
+					refused[hash] = struct{}{}
+				}
+			} else {
+				log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: added tag to torrents")
+			}
+		}
+	}
+
+	for tag, hashes := range removeBatches {
+		for _, batch := range limitHashBatch(hashes, s.cfg.MaxBatchHashes) {
+			if err := s.syncManager.RemoveTags(ctx, instanceID, batch, tag); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: remove tags failed")
+				for _, hash := range batch {
+					refused[hash] = struct{}{}
+				}
+			} else {
+				log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: removed tag from torrents")
+			}
+		}
+	}
+
+	accepted := maps.Clone(tagChanges)
+	for hash := range refused {
+		delete(accepted, hash)
+	}
+	return accepted
 }
 
 func DefaultConfig() Config {
@@ -527,9 +613,16 @@ type CrossMatchNeeds = crossseed.CrossMatchNeeds
 // CrossMatchResult contains all cross-match sets for a given instance.
 type CrossMatchResult = crossseed.CrossMatchResult
 
+// CrossMatchSession answers the Shared-file groups and the cross-seed facts of
+// the torrents that a reader asks for.
+type CrossMatchSession = crossseed.CrossMatchSession
+
+// ResolveRequest names the torrents that one CrossMatchSession.Resolve answers.
+type ResolveRequest = crossseed.ResolveRequest
+
 // filesReader is the slice of the sync manager the hardlink index, the
-// missing-files check, the skipped-files check, and the any-instance season
-// pack set read. ADR 0005.
+// missing-files check, the skipped-files check, the any-instance season
+// pack set, and the file overlap checks read. ADR 0005.
 type filesReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
@@ -538,7 +631,7 @@ type filesReader interface {
 // CrossMatcher provides cross-seed torrent matching using content-aware
 // strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
 type CrossMatcher interface {
-	BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult
+	OpenCrossMatchSession(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) (CrossMatchSession, error)
 }
 
 // Service periodically applies automation rules to torrents for all active instances.
@@ -550,6 +643,7 @@ type Service struct {
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
 	filesReader               filesReader
+	targetLookup              targetLookup
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
@@ -557,15 +651,18 @@ type Service struct {
 	activityRuns              *activityRunStore
 	releaseParser             *releases.Parser
 
-	// keep lightweight memory of recent deletions to avoid acting on torrents
-	// that havent disappeared from sync data yet
-	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
+	lastApplied           map[int]map[string]time.Time // the Skip window stamps, instanceID -> hash -> time. rule_scope.go owns them
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
+	reportedSkips         map[reportedSkipKey]RuleSkip // the skip that the activity log already shows for each rule
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
 	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
+	runningInstances      map[int]struct{}             // instances with a run that applies actions
 	mu                    sync.RWMutex
 
 	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
+	// routedTorrents reads the torrents of a Cross-seed instance for the hardlink index.
+	routedTorrents crossseedroute.TorrentReader
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -595,14 +692,16 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
 		filesReader:               syncManager,
+		targetLookup:              syncManager,
+		routedTorrents:            syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
 		backendPool:               backendPool,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		releaseParser:             releases.NewDefaultParser(),
-		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
+		reportedSkips:             make(map[reportedSkipKey]RuleSkip),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
 		inFlightExports:           make(map[string]struct{}),
 		activityPublisher:         activity.NopPublisher{},
@@ -618,7 +717,12 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 	s.activityPublisher = publisher
 }
 
-// cleanupStaleEntries removes entries from lastApplied and lastRuleRun maps
+// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
+}
+
+// cleanupStaleEntries removes the Skip window stamps and the lastRuleRun entries
 // that are older than the cutoff to prevent unbounded memory growth.
 func (s *Service) cleanupStaleEntries() {
 	cutoff := time.Now().Add(-10 * time.Minute)
@@ -626,13 +730,7 @@ func (s *Service) cleanupStaleEntries() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, instMap := range s.lastApplied {
-		for hash, ts := range instMap {
-			if ts.Before(cutoff) {
-				delete(instMap, hash)
-			}
-		}
-	}
+	s.dropOldSkipStamps(cutoff)
 
 	for key, ts := range s.lastRuleRun {
 		if ts.Before(ruleCutoff) {
@@ -712,16 +810,82 @@ func (s *Service) applyAll(ctx context.Context) {
 		if !instance.IsActive {
 			continue
 		}
-		if err := s.applyForInstance(ctx, instance.ID, false); err != nil {
+		if err := s.applyForInstance(ctx, instance.ID, false); errors.Is(err, ErrRunInProgress) {
+			log.Debug().Int("instanceID", instance.ID).Msg("automations: run in progress, skipping instance until the next check")
+		} else if err != nil {
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("automations: apply failed")
 		}
 	}
 }
 
 // ApplyOnceForInstance allows manual triggering (API hook).
-// It bypasses per-rule interval checks (force=true).
+// It bypasses per-rule interval checks (force=true). Cancelling ctx does not stop the run.
 func (s *Service) ApplyOnceForInstance(ctx context.Context, instanceID int) error {
-	return s.applyForInstance(ctx, instanceID, true)
+	return s.applyForInstance(context.WithoutCancel(ctx), instanceID, true)
+}
+
+// ErrRunInProgress means that another run applies actions on the instance.
+var ErrRunInProgress = errors.New("automations: a run is in progress on this instance")
+
+// tryLockRun claims the instance for a run that applies actions. Only one such run acts on an instance at a time.
+func (s *Service) tryLockRun(instanceID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, running := s.runningInstances[instanceID]; running {
+		return false
+	}
+	if s.runningInstances == nil {
+		s.runningInstances = make(map[int]struct{})
+	}
+	s.runningInstances[instanceID] = struct{}{}
+	return true
+}
+
+func (s *Service) unlockRun(instanceID int) {
+	s.mu.Lock()
+	delete(s.runningInstances, instanceID)
+	s.mu.Unlock()
+}
+
+// ApplyRuleNow runs a single saved rule immediately and applies its actions, unless the rule itself is a dry run.
+// The rule is forced enabled for this execution only, and its interval is ignored.
+// Returns the activity rows written for this run, or ErrRunInProgress when another run acts on the instance.
+// Cancelling ctx does not stop a live run.
+func (s *Service) ApplyRuleNow(ctx context.Context, instanceID int, rule *models.Automation) ([]*models.AutomationActivity, error) {
+	if s.syncManager == nil || s.instanceStore == nil {
+		return nil, nil
+	}
+	if rule.DryRun {
+		activities, err := s.ApplyRuleDryRun(ctx, instanceID, rule)
+		s.publishActivity(instanceID, activities)
+		return activities, err
+	}
+
+	if !s.tryLockRun(instanceID) {
+		return nil, ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
+	liveRule := *rule
+	liveRule.Enabled = true
+	activities, err := s.applyRulesForInstance(context.WithoutCancel(ctx), instanceID, true, []*models.Automation{&liveRule}, false)
+	if err != nil {
+		return nil, err
+	}
+	s.publishActivity(instanceID, activities)
+	return activities, nil
+}
+
+// publishActivity signals connected clients that this instance's automation activity changed so
+// they refetch instead of polling. It sends nothing when the run wrote no activity rows.
+func (s *Service) publishActivity(instanceID int, activities []*models.AutomationActivity) {
+	if len(activities) == 0 || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindAutomationActivity,
+		InstanceID: instanceID,
+	})
 }
 
 // ApplyRuleDryRun executes a single rule immediately in dry-run mode.
@@ -782,8 +946,9 @@ func prepareRuleForDryRun(rule *models.Automation, instanceID int) *models.Autom
 // PreviewResult contains torrents that would match a rule.
 type PreviewResult struct {
 	TotalMatches   int              `json:"totalMatches"`
-	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (for category preview)
+	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (category and tag preview)
 	Examples       []PreviewTorrent `json:"examples"`
+	Skipped        *RuleSkip        `json:"skipped,omitempty"` // Why the rule gets no Action on this instance
 }
 
 // PreviewTorrent is a simplified torrent for preview display.
@@ -853,9 +1018,7 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 	}
 
 	if evalCtx != nil {
-		if evalCtx.UnregisteredSet != nil {
-			_, pt.IsUnregistered = evalCtx.UnregisteredSet[torrent.Hash]
-		}
+		pt.IsUnregistered = evalCtx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
@@ -896,11 +1059,7 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
 	if s.syncManager != nil {
-		if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
-			evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
-			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
-			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
-		}
+		evalCtx.TrackerHealth = s.syncManager.GetTrackerHealthSnapshot(instanceID)
 	}
 
 	// The cached index provides scope detection AND hardlink grouping in a single build.
@@ -941,12 +1100,10 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 		}
 	}
 
-	if needs.CrossMatch != (CrossMatchNeeds{}) {
-		result := s.buildCrossMatchSets(ctx, instanceID, needs.CrossMatch)
-		if result != nil && result.Err != nil {
-			return nil, nil, fmt.Errorf("failed to build cross-seed snapshot: %w", result.Err)
+	if needs.CrossMatch != (CrossMatchNeeds{}) && s.crossMatcher != nil {
+		if err := s.openRunSession(ctx, instanceID, torrents, needs, evalCtx); err != nil {
+			return nil, nil, fmt.Errorf("failed to build cross-seed snapshot: %w", err)
 		}
-		s.applyCrossMatchResult(evalCtx, result)
 	}
 
 	if needs.SeasonPack {
@@ -974,43 +1131,18 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 }
 
 // previewEvalContext builds the evaluation context for a preview of one rule. A preview goes
-// on without the instance when it cannot load it.
-func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent) (*EvalContext, *HardlinkIndex, *models.Instance, error) {
+// on without the instance when it cannot load it, unless the rule reads FREE_SPACE.
+func (s *Service) previewEvalContext(ctx context.Context, instanceID int, rule *models.Automation, torrents []qbt.Torrent, scope *ruleScope) (*EvalContext, *HardlinkIndex, *models.Instance, error) {
 	instance, err := s.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for preview, proceeding without instance context")
 	}
 	evalCtx, hardlinkIndex, err := s.buildEvalContext(ctx, instanceID, instance, torrents, previewNeeds(rule))
-	return evalCtx, hardlinkIndex, instance, err
-}
-
-// setupFreeSpaceContext initializes FREE_SPACE context if needed by the rule.
-func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rule *models.Automation, evalCtx *EvalContext, instance *models.Instance) error {
-	if instance == nil || !ruleUsesCondition(rule, FieldFreeSpace) {
-		return nil
-	}
-
-	// The rule needs FREE_SPACE; evaluating without it would silently
-	// treat the disk as having no data. Fail the setup instead.
-	freeSpace, err := s.freeSpaceBytes(ctx, instance, rule.FreeSpaceSource)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
-		return fmt.Errorf("failed to get free space: %w", err)
+		return nil, nil, instance, err
 	}
-	evalCtx.FreeSpace = freeSpace
-	evalCtx.FilesToClear = make(map[string]int64)
-	if ruleUsesIncludeCrossSeedsFreeSpace(rule) {
-		evalCtx.CrossSeedHashesToClear = make(map[string]struct{})
-	}
-	return nil
-}
-
-// getTrackerForTorrent returns the first tracker domain for a torrent.
-func getTrackerForTorrent(torrent *qbt.Torrent, sm *qbittorrent.SyncManager) string {
-	if domains := collectTrackerDomains(*torrent, sm); len(domains) > 0 {
-		return domains[0]
-	}
-	return ""
+	askRuleFacts([]*models.Automation{rule}, torrents, evalCtx, scope)
+	return evalCtx, hardlinkIndex, instance, nil
 }
 
 // PreviewDeleteRule returns torrents that would be deleted by the given rule.
@@ -1032,6 +1164,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
+		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
+	}
 	torrents, err = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
 	if err != nil {
 		return nil, err
@@ -1040,21 +1175,18 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
-	evalCtx, hardlinkIndex, instance, err := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	scope := newRuleScope([]*models.Automation{rule}, nil)
+	evalCtx, hardlinkIndex, instance, err := s.previewEvalContext(ctx, instanceID, rule, torrents, scope)
 	if err != nil {
 		return nil, err
 	}
-	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-
-	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
+	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, previewView == "eligible")
+	if err != nil {
 		return nil, err
 	}
+	enterRule(evalCtx, rule, torrents, scope)
 
-	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
-
-	deleteMode := getDeleteMode(rule)
-	eligibleMode := previewView == "eligible"
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 	if ruleNeedsCrossSeedFiles(rule) {
@@ -1065,22 +1197,17 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 		s.loadCrossSeedFiles(ctx, instanceID, crossSeeds, evalCtx, projectionHardlinks)
 	}
 
-	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		return s.previewDeleteIncludeCrossSeeds(
-			rule,
-			torrents,
-			evalCtx,
-			hardlinkIndex,
-			cfg.limit,
-			cfg.offset,
-			eligibleMode,
-			scoreByHash,
-			crossSeeds,
-			cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
-		)
+	selection := s.selectDeletions(ctx, instanceID, deletionSelectionInput{
+		rules:      []*models.Automation{rule},
+		torrents:   torrents,
+		evalCtx:    evalCtx,
+		crossSeeds: crossSeeds,
+		scope:      scope,
+	})
+	if err := selection.failedRules[rule.ID]; err != nil {
+		return nil, err
 	}
-
-	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg, scoreByHash, crossSeeds)
+	return buildDeletePreviewResult(torrents, selection, evalCtx, cfg, rule, scoreByHash, scope), nil
 }
 
 func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
@@ -1118,8 +1245,12 @@ func getDeleteMode(rule *models.Automation) string {
 }
 
 // shouldDeleteTorrent checks if a torrent matches the delete condition.
+// A torrent never matches while qBittorrent checks it, because its progress is not correct until the check ends.
 func shouldDeleteTorrent(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext) bool {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
+		return false
+	}
+	if matchesStateValue(*torrent, "checking", evalCtx) {
 		return false
 	}
 	if rule.Conditions.Delete.Condition == nil {
@@ -1128,215 +1259,26 @@ func shouldDeleteTorrent(rule *models.Automation, torrent *qbt.Torrent, evalCtx 
 	return EvaluateConditionWithContext(rule.Conditions.Delete.Condition, *torrent, evalCtx, 0)
 }
 
-// previewDeleteStandard handles standard (non-include-cross-seeds) delete preview.
-func (s *Service) previewDeleteStandard(
-	ctx context.Context,
-	instanceID int,
-	rule *models.Automation,
-	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	deleteMode string,
-	eligibleMode bool,
-	cfg previewConfig,
-	scoreByHash map[string]float64,
-	crossSeeds crossSeedGroups,
-) (*PreviewResult, error) {
-	result := &PreviewResult{
-		Examples: make([]PreviewTorrent, 0, cfg.limit),
-	}
-
-	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil &&
-		deleteMode == DeleteModeKeepFiles && strings.TrimSpace(rule.Conditions.Delete.GroupID) != "" {
-		deleteCond := rule.Conditions.Delete
-		groupID := strings.TrimSpace(deleteCond.GroupID)
-
-		torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-		for _, t := range torrents {
-			torrentByHash[t.Hash] = t
-		}
-
-		idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
-		def := (*models.GroupDefinition)(nil)
-		if rule.Conditions.Grouping != nil {
-			def = findGroupDefinition(rule.Conditions.Grouping, groupID)
-		}
-		if def == nil {
-			def = builtinGroupDefinition(groupID)
-		}
-
-		expandedSet := make(map[string]struct{})
-		directMatchSet := make(map[string]struct{})
-		processedGroupKeys := make(map[string]struct{})
-
-		for i := range torrents {
-			torrent := &torrents[i]
-
-			trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-			if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-				continue
-			}
-			if !shouldDeleteTorrent(rule, torrent, evalCtx) {
-				continue
-			}
-
-			members := []string{torrent.Hash}
-			groupKey := ""
-			if idx != nil {
-				groupKey = idx.KeyForHash(torrent.Hash)
-				if groupKey != "" {
-					if _, seen := processedGroupKeys[groupKey]; seen {
-						continue
-					}
-					processedGroupKeys[groupKey] = struct{}{}
-				}
-				if m := idx.MembersForHash(torrent.Hash); len(m) > 0 {
-					members = m
-				}
-			}
-
-			expandGroup := true
-			if def != nil && idx != nil && idx.IsAmbiguousForHash(torrent.Hash) && containsKey(def.Keys, groupKeyContentPath) {
-				policy := strings.TrimSpace(def.AmbiguousPolicy)
-				if policy == "" {
-					policy = groupAmbiguousVerifyOverlap
-				}
-				if policy == groupAmbiguousSkip {
-					continue
-				}
-				minPercent := def.MinFileOverlapPercent
-				if minPercent <= 0 {
-					minPercent = minFileOverlapPercent
-				}
-				skipGroup := false
-				triggerTorrent, ok := torrentByHash[torrent.Hash]
-				if !ok {
-					skipGroup = true
-				}
-				for _, otherHash := range members {
-					if skipGroup || otherHash == torrent.Hash {
-						continue
-					}
-					otherTorrent, ok := torrentByHash[otherHash]
-					if !ok {
-						skipGroup = true
-						break
-					}
-					hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
-					if err != nil || !hasOverlap {
-						skipGroup = true
-						break
-					}
-				}
-				if skipGroup {
-					continue
-				}
-			}
-
-			// GroupId semantics are strict: every member must satisfy the same condition tree.
-			if evalCtx != nil && deleteCond.Condition != nil && ConditionUsesField(deleteCond.Condition, FieldFreeSpace) {
-				evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-			}
-			activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-			if !allGroupMembersMatchCondition(members, torrentByHash, deleteCond.Condition, evalCtx) {
-				continue
-			}
-
-			if expandGroup {
-				directMatchSet[torrent.Hash] = struct{}{}
-				for _, memberHash := range members {
-					expandedSet[memberHash] = struct{}{}
-				}
-			}
-		}
-
-		matchIndex := 0
-		for i := range torrents {
-			torrent := &torrents[i]
-			if _, included := expandedSet[torrent.Hash]; !included {
-				continue
-			}
-			matchIndex++
-			if matchIndex <= cfg.offset {
-				continue
-			}
-			if len(result.Examples) >= cfg.limit {
-				continue
-			}
-			_, isDirect := directMatchSet[torrent.Hash]
-			tracker := getTrackerForTorrent(torrent, s.syncManager)
-
-			score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
-
-			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, !isDirect, false, score))
-		}
-
-		result.TotalMatches = matchIndex
-		return result, nil
-	}
-
-	matchIndex := 0
-	for i := range torrents {
-		torrent := &torrents[i]
-
-		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-			continue
-		}
-
-		if !shouldDeleteTorrent(rule, torrent, evalCtx) {
-			continue
-		}
-
-		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
-
-		if !eligibleMode {
-			if !updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, crossSeeds, false) {
-				return nil, fmt.Errorf("cannot estimate freed space: file list unavailable for torrent %s", torrent.Hash)
-			}
-		}
-
-		matchIndex++
-		if matchIndex <= cfg.offset {
-			continue
-		}
-		if len(result.Examples) < cfg.limit {
-			tracker := getTrackerForTorrent(torrent, s.syncManager)
-			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false, false, score))
-		}
-	}
-
-	result.TotalMatches = matchIndex
-	return result, nil
-}
-
-// crossSeedExpansionState tracks state during cross-seed preview expansion.
 type torrentFilesFetcher func(hashes []string) (map[string]qbt.TorrentFiles, error)
 
+// crossSeedExpansionState holds the torrents that one delete expansion takes along.
 type crossSeedExpansionState struct {
 	expandedSet     map[string]struct{}
-	crossSeedSet    map[string]struct{}
 	hardlinkCopySet map[string]struct{}
 }
 
 func newCrossSeedExpansionState() *crossSeedExpansionState {
 	return &crossSeedExpansionState{
 		expandedSet:     make(map[string]struct{}),
-		crossSeedSet:    make(map[string]struct{}),
 		hardlinkCopySet: make(map[string]struct{}),
 	}
-}
-
-// isAlreadyExpanded returns true if the torrent hash is already in the expanded set.
-func (s *crossSeedExpansionState) isAlreadyExpanded(hash string) bool {
-	_, included := s.expandedSet[hash]
-	return included
 }
 
 // deleteCrossSeedGroup follows shared paths and hardlinks before any torrent is deleted.
 func deleteCrossSeedGroup(
 	trigger qbt.Torrent,
 	torrents map[string]qbt.Torrent,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 	hardlinks *HardlinkIndex,
 	alreadyIncluded map[string]struct{},
 	fetchFiles torrentFilesFetcher,
@@ -1358,8 +1300,6 @@ func deleteCrossSeedGroup(
 		state.expandedSet[hash] = struct{}{}
 		if linked {
 			state.hardlinkCopySet[hash] = struct{}{}
-		} else {
-			state.crossSeedSet[hash] = struct{}{}
 		}
 		queue = append(queue, torrent)
 		return true
@@ -1369,7 +1309,7 @@ func deleteCrossSeedGroup(
 	for i := 0; i < len(queue); i++ {
 		member := queue[i]
 		if _, checked := contentChecked[member.Hash]; !checked {
-			group, ok := crossSeedGroupMembers(member, crossSeeds[member.Hash], alreadyIncluded, fetchFiles)
+			group, ok := crossSeedGroupMembers(member, crossSeeds.members(member.Hash), alreadyIncluded, fetchFiles)
 			if !ok {
 				return nil, false
 			}
@@ -1397,162 +1337,88 @@ func deleteCrossSeedGroup(
 	return state, true
 }
 
-// previewDeleteIncludeCrossSeeds handles preview for "include cross-seeds" delete mode.
-// It evaluates torrents incrementally, expanding with cross-seeds and updating FREE_SPACE
-// projection after each group so that stop-when-satisfied behavior works correctly.
-// When eligibleMode is true, it shows all matching torrents without cumulative stop-when-satisfied.
-// If IncludeHardlinks is enabled, also expands with hardlink copies (same physical files).
-func (s *Service) previewDeleteIncludeCrossSeeds(
-	rule *models.Automation,
+// buildDeletePreviewResult pages the Deletion selection in the sort order of the rule.
+func buildDeletePreviewResult(
 	torrents []qbt.Torrent,
+	selection *deletionSelection,
 	evalCtx *EvalContext,
-	hardlinkIndex *HardlinkIndex,
-	limit, offset int,
-	eligibleMode bool,
-	scoreByHash map[string]float64,
-	crossSeeds crossSeedGroups,
-	fetchFiles torrentFilesFetcher,
-) (*PreviewResult, error) {
-	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
-		return &PreviewResult{Examples: make([]PreviewTorrent, 0)}, nil
-	}
-
-	state := newCrossSeedExpansionState()
-	deleteCond := rule.Conditions.Delete
-	includeHardlinks := deleteCond.IncludeHardlinks
-	var expansionHardlinks *HardlinkIndex
-	if includeHardlinks {
-		expansionHardlinks = hardlinkIndex
-	}
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-	for _, torrent := range torrents {
-		torrentByHash[torrent.Hash] = torrent
-	}
-
-	evalCtx.torrentsByHash = torrentByHash
-	s.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, deleteCond.Condition, eligibleMode, includeHardlinks)
-
-	for i := range torrents {
-		torrent := &torrents[i]
-		if state.isAlreadyExpanded(torrent.Hash) {
-			continue
-		}
-
-		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx) {
-			continue
-		}
-
-		expanded, ok := deleteCrossSeedGroup(*torrent, torrentByHash, crossSeeds, expansionHardlinks, state.expandedSet, fetchFiles)
-		if !ok {
-			continue
-		}
-		if !eligibleMode && evalCtx.CrossSeedHashesToClear != nil &&
-			!projectCrossSeedDeletionGroup(torrentByHash, expanded.expandedSet, evalCtx, expansionHardlinks) {
-			continue
-		}
-		maps.Copy(state.expandedSet, expanded.expandedSet)
-		maps.Copy(state.crossSeedSet, expanded.crossSeedSet)
-		maps.Copy(state.hardlinkCopySet, expanded.hardlinkCopySet)
-	}
-
-	return s.buildCrossSeedPreviewResult(torrents, state, evalCtx, limit, offset, rule, scoreByHash), nil
-}
-
-// setupHardlinkSignatureContext gives the FREE_SPACE projection the hardlink index.
-func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIndex *HardlinkIndex, cond *RuleCondition, eligibleMode, includeHardlinks bool) {
-	if !includeHardlinks || hardlinkIndex == nil || eligibleMode {
-		return
-	}
-	if !ConditionUsesField(cond, FieldFreeSpace) {
-		return
-	}
-	evalCtx.hardlinkIndex = hardlinkIndex
-}
-
-// torrentMatchesDeleteRule checks if a torrent matches the tracker pattern and delete condition.
-func (s *Service) torrentMatchesDeleteRule(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext) bool {
-	trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-	if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-		return false
-	}
-
-	cond := rule.Conditions.Delete.Condition
-	return cond == nil || EvaluateConditionWithContext(cond, *torrent, evalCtx, 0)
-}
-
-// buildCrossSeedPreviewResult builds the paginated preview result from expansion state.
-func (s *Service) buildCrossSeedPreviewResult(
-	torrents []qbt.Torrent,
-	state *crossSeedExpansionState,
-	evalCtx *EvalContext,
-	limit, offset int,
+	cfg previewConfig,
 	rule *models.Automation,
 	scoreByHash map[string]float64,
+	scope *ruleScope,
 ) *PreviewResult {
 	result := &PreviewResult{
-		TotalMatches:   len(state.expandedSet),
-		CrossSeedCount: len(state.crossSeedSet),
-		Examples:       make([]PreviewTorrent, 0, limit),
+		TotalMatches: len(selection.byHash),
+		Examples:     make([]PreviewTorrent, 0, cfg.limit),
 	}
 
 	matchIndex := 0
 	for i := range torrents {
 		torrent := &torrents[i]
-		if !state.isAlreadyExpanded(torrent.Hash) {
+		selected, ok := selection.byHash[torrent.Hash]
+		if !ok {
 			continue
+		}
+		// The badge marks each torrent that the expansion of a Delete trigger took. The count
+		// holds only the cross-seeds of an include-cross-seeds delete.
+		isCrossSeed := !selected.trigger && !selected.hardlinkCopy
+		if isCrossSeed && selected.deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
+			result.CrossSeedCount++
 		}
 
 		matchIndex++
-		if matchIndex <= offset {
+		if matchIndex <= cfg.offset || len(result.Examples) >= cfg.limit {
 			continue
 		}
-		if len(result.Examples) >= limit {
-			break
-		}
-
-		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
-		_, isHardlinkCopy := state.hardlinkCopySet[torrent.Hash]
-
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
-
-		tracker := getTrackerForTorrent(torrent, s.syncManager)
-		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, isHardlinkCopy, score))
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, scope.tracker(torrent), evalCtx, isCrossSeed, selected.hardlinkCopy, score))
 	}
 
 	return result
 }
 
-// categoryPreviewState tracks state during category preview processing.
-type categoryPreviewState struct {
-	directMatchSet map[string]struct{}
-	crossSeedSet   map[string]struct{}
-	matchedKeys    map[string]struct{}
-	targetCategory string
-}
-
-func newCategoryPreviewState(targetCategory string) *categoryPreviewState {
-	return &categoryPreviewState{
-		directMatchSet: make(map[string]struct{}),
-		crossSeedSet:   make(map[string]struct{}),
-		matchedKeys:    make(map[string]struct{}),
-		targetCategory: targetCategory,
-	}
-}
-
 // PreviewCategoryRule returns torrents that would have their category changed by the given rule.
-// If IncludeCrossSeeds is enabled, also includes cross-seeds that share files with matched torrents.
+// It shows the category part of the Run plan of the rule, with the group members and cross-seeds
+// that the plan takes along.
 func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
+	if rule == nil {
+		return &PreviewResult{}, nil
+	}
+	return s.previewPlanPart(ctx, instanceID, rule, models.ActionConditions{Category: rule.Conditions.Category}, limit, offset, func(plan runPlan) []string {
+		var hashes []string
+		for _, targetHashes := range plan.category.byTarget {
+			hashes = append(hashes, targetHashes...)
+		}
+		return hashes
+	})
+}
+
+// PreviewTagRule returns torrents whose tags would change under the given rule's tag actions.
+// It shows the tag part of the Run plan of the rule, with the cross-seeds that the plan takes along.
+func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
+	if rule == nil {
+		return &PreviewResult{}, nil
+	}
+	return s.previewPlanPart(ctx, instanceID, rule, models.ActionConditions{Tag: rule.Conditions.Tag, Tags: rule.Conditions.Tags}, limit, offset, func(plan runPlan) []string {
+		return slices.Collect(maps.Keys(plan.tags))
+	})
+}
+
+// previewPlanPart builds the Run plan of the rule with only the actions in keep, and pages the
+// torrents that part returns from the plan. A torrent is a direct match when the rule changed it
+// on its own, before the cross-seed expansion. Each other torrent counts as a cross-seed.
+func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, limit, offset int, part func(runPlan) []string) (*PreviewResult, error) {
 	if s == nil || s.syncManager == nil {
 		return &PreviewResult{}, nil
 	}
 	rule = prepareRuleForPreview(rule, instanceID)
-	if rule == nil {
-		return &PreviewResult{}, nil
-	}
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
+		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
 	torrents, err = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
 	if err != nil {
@@ -1562,38 +1428,39 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
 
-	evalCtx, _, instance, err := s.previewEvalContext(ctx, instanceID, rule, torrents)
+	scope := newRuleScope([]*models.Automation{rule}, nil)
+	evalCtx, _, instance, err := s.previewEvalContext(ctx, instanceID, rule, torrents, scope)
 	if err != nil {
 		return nil, err
 	}
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
-	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
+	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, false)
+	if err != nil {
 		return nil, err
 	}
 
-	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
+	// The plan step enters the rule, which activates its grouping and its free space ledger for the
+	// score map, and sorts torrents in the sort order of the rule.
+	plan, own := s.planPreview(ctx, instanceID, rule, keep, torrents, evalCtx, crossSeeds, scope)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
 
-	catAction := getCategoryAction(rule)
-	state := newCategoryPreviewState(catAction.targetCategory)
-
-	s.findDirectCategoryMatches(rule, torrents, evalCtx, crossSeeds, catAction, state)
-	if catAction.groupID != "" {
-		s.findCategoryGroupMembers(ctx, instanceID, rule, torrents, evalCtx, catAction, state)
-	} else {
-		s.findCategoryCrossSeeds(torrents, crossSeeds, catAction, state)
+	directSet := make(map[string]struct{})
+	crossSeedSet := make(map[string]struct{})
+	for _, hash := range part(plan) {
+		if _, ok := own[hash]; ok {
+			directSet[hash] = struct{}{}
+		} else {
+			crossSeedSet[hash] = struct{}{}
+		}
 	}
 
-	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg, rule, scoreByHash), nil
+	return buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, cfg, rule, scoreByHash, scope), nil
 }
 
 // categoryActionConfig holds category action configuration.
 type categoryActionConfig struct {
-	targetCategory    string
 	includeCrossSeeds bool
-	groupID           string
 	blockCategories   []string
 	condition         *RuleCondition
 	enabled           bool
@@ -1601,23 +1468,33 @@ type categoryActionConfig struct {
 
 // getCategoryAction extracts category action configuration from rule.
 func getCategoryAction(rule *models.Automation) categoryActionConfig {
-	if rule.Conditions == nil || rule.Conditions.Category == nil {
+	if rule.Conditions == nil {
 		return categoryActionConfig{}
 	}
-	cat := rule.Conditions.Category
+	return categoryActionOf(rule.Conditions.Category)
+}
+
+func categoryActionOf(cat *models.CategoryAction) categoryActionConfig {
+	if cat == nil {
+		return categoryActionConfig{}
+	}
 	groupID := strings.TrimSpace(cat.GroupID)
 	return categoryActionConfig{
-		targetCategory:    cat.Category,
 		includeCrossSeeds: groupID == "" && cat.IncludeCrossSeeds,
-		groupID:           groupID,
 		blockCategories:   cat.BlockIfCrossSeedInCategories,
 		condition:         cat.Condition,
 		enabled:           cat.Enabled,
 	}
 }
 
+// readsCrossSeedGroups reports whether the category action reads the cross-seed group of a torrent
+// whose condition matches.
+func (c categoryActionConfig) readsCrossSeedGroups() bool {
+	return c.enabled && (c.includeCrossSeeds || len(c.blockCategories) > 0)
+}
+
 // shouldApplyCategoryAction checks if category action should apply to torrent.
-func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionConfig, evalCtx *EvalContext, crossSeeds crossSeedGroups) bool {
+func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionConfig, evalCtx *EvalContext, crossSeeds *crossSeedGroups) bool {
 	if !catAction.enabled {
 		return false
 	}
@@ -1630,157 +1507,28 @@ func shouldApplyCategoryAction(torrent *qbt.Torrent, catAction categoryActionCon
 	return !shouldBlockCategoryChangeForCrossSeeds(*torrent, catAction.blockCategories, crossSeeds)
 }
 
-// findDirectCategoryMatches finds torrents that directly match the category rule.
-func (s *Service) findDirectCategoryMatches(
-	rule *models.Automation,
+// buildMatchPreviewResult builds a paginated preview result from direct-match
+// and cross-seed hash sets (shared by the category and tag previews).
+func buildMatchPreviewResult(
 	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	crossSeeds crossSeedGroups,
-	catAction categoryActionConfig,
-	state *categoryPreviewState,
-) {
-	for i := range torrents {
-		torrent := &torrents[i]
-
-		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
-			continue
-		}
-
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-
-		if !shouldApplyCategoryAction(torrent, catAction, evalCtx, crossSeeds) {
-			continue
-		}
-
-		state.directMatchSet[torrent.Hash] = struct{}{}
-		if catAction.includeCrossSeeds {
-			state.matchedKeys[crossSeeds.key(*torrent)] = struct{}{}
-		}
-	}
-}
-
-// findCategoryCrossSeeds finds cross-seeds for matched torrents.
-func (s *Service) findCategoryCrossSeeds(torrents []qbt.Torrent, crossSeeds crossSeedGroups, catAction categoryActionConfig, state *categoryPreviewState) {
-	if !catAction.includeCrossSeeds || len(state.matchedKeys) == 0 {
-		return
-	}
-
-	for i := range torrents {
-		torrent := &torrents[i]
-		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
-			continue
-		}
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-		if _, matched := state.matchedKeys[crossSeeds.key(*torrent)]; matched {
-			state.crossSeedSet[torrent.Hash] = struct{}{}
-		}
-	}
-}
-
-func (s *Service) findCategoryGroupMembers(
-	ctx context.Context,
-	instanceID int,
-	rule *models.Automation,
-	torrents []qbt.Torrent,
-	evalCtx *EvalContext,
-	catAction categoryActionConfig,
-	state *categoryPreviewState,
-) {
-	if rule == nil || evalCtx == nil || state == nil {
-		return
-	}
-	groupID := strings.TrimSpace(catAction.groupID)
-	if groupID == "" {
-		return
-	}
-	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, s.syncManager)
-	if idx == nil {
-		return
-	}
-
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-	for _, t := range torrents {
-		torrentByHash[t.Hash] = t
-	}
-	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-
-	keySet := make(map[string]struct{})
-	keyEligibility := make(map[string]bool)
-	for h := range state.directMatchSet {
-		gk := idx.KeyForHash(h)
-		if gk == "" {
-			delete(state.directMatchSet, h)
-			continue
-		}
-		eligible, computed := keyEligibility[gk]
-		if !computed {
-			eligible = true
-			if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, groupID, idx, h, torrentByHash) {
-				eligible = false
-			}
-			if eligible {
-				if evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-					evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-				}
-				activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-				members := idx.MembersForHash(h)
-				if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, evalCtx, crossSeeds) {
-					eligible = false
-				}
-			}
-			keyEligibility[gk] = eligible
-		}
-		if !eligible {
-			delete(state.directMatchSet, h)
-			continue
-		}
-		keySet[gk] = struct{}{}
-	}
-	if len(keySet) == 0 {
-		return
-	}
-
-	for i := range torrents {
-		torrent := &torrents[i]
-		if _, isDirectMatch := state.directMatchSet[torrent.Hash]; isDirectMatch {
-			continue
-		}
-		if torrent.Category == state.targetCategory {
-			continue
-		}
-		if gk := idx.KeyForHash(torrent.Hash); gk != "" {
-			if _, ok := keySet[gk]; ok {
-				state.crossSeedSet[torrent.Hash] = struct{}{}
-			}
-		}
-	}
-}
-
-// buildCategoryPreviewResult builds the paginated preview result for category preview.
-func (s *Service) buildCategoryPreviewResult(
-	torrents []qbt.Torrent,
-	state *categoryPreviewState,
+	directSet, crossSeedSet map[string]struct{},
 	evalCtx *EvalContext,
 	cfg previewConfig,
 	rule *models.Automation,
 	scoreByHash map[string]float64,
+	scope *ruleScope,
 ) *PreviewResult {
-	allMatches := make(map[string]struct{}, len(state.directMatchSet)+len(state.crossSeedSet))
-	for h := range state.directMatchSet {
+	allMatches := make(map[string]struct{}, len(directSet)+len(crossSeedSet))
+	for h := range directSet {
 		allMatches[h] = struct{}{}
 	}
-	for h := range state.crossSeedSet {
+	for h := range crossSeedSet {
 		allMatches[h] = struct{}{}
 	}
 
 	result := &PreviewResult{
 		TotalMatches:   len(allMatches),
-		CrossSeedCount: len(state.crossSeedSet),
+		CrossSeedCount: len(crossSeedSet),
 		Examples:       make([]PreviewTorrent, 0, cfg.limit),
 	}
 
@@ -1799,12 +1547,11 @@ func (s *Service) buildCategoryPreviewResult(
 			break
 		}
 
-		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
+		_, isCrossSeed := crossSeedSet[torrent.Hash]
 
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
-		tracker := getTrackerForTorrent(torrent, s.syncManager)
-		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, false, score))
+		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, scope.tracker(torrent), evalCtx, isCrossSeed, false, score))
 	}
 
 	return result
@@ -1844,20 +1591,13 @@ func (s *Service) blockedDeleteCandidates(
 	instanceID int,
 	hardlinkIndex *HardlinkIndex,
 	torrentByHash map[string]qbt.Torrent,
-	deleteHashesByMode map[string][]string,
-	pendingByHash map[string]pendingDeletion,
+	deletions *deletionSelection,
 	ruleByID map[int]*models.Automation,
 ) map[string]string {
 	candidates := make(map[string]hardlinkUse)
-	for _, hashes := range deleteHashesByMode {
-		for _, hash := range hashes {
-			pending, queued := pendingByHash[hash]
-			if !queued {
-				continue
-			}
-			if use := deleteUsesHardlinkData(ruleByID[pending.ruleID]); use != (hardlinkUse{}) {
-				candidates[hash] = use
-			}
+	for hash, pending := range deletions.byHash {
+		if use := deleteUsesHardlinkData(ruleByID[pending.rule.id]); use != (hardlinkUse{}) {
+			candidates[hash] = use
 		}
 	}
 
@@ -1865,6 +1605,11 @@ func (s *Service) blockedDeleteCandidates(
 }
 
 func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bool) error {
+	if !s.tryLockRun(instanceID) {
+		return ErrRunInProgress
+	}
+	defer s.unlockRun(instanceID)
+
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load rules")
@@ -1894,19 +1639,25 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		return err
 	}
 
-	// Signal connected clients that this instance's automation activity changed so
-	// they refetch instead of polling. Emitted only when activity rows were actually
-	// written this cycle (not on idle ticks), after writes and with no lock held.
-	if len(dryActivity) > 0 || len(liveActivity) > 0 {
-		if s.activityPublisher != nil {
-			s.activityPublisher.Publish(activity.Event{
-				Kind:       activity.KindAutomationActivity,
-				InstanceID: instanceID,
-			})
-		}
-	}
-
+	s.publishActivity(instanceID, append(dryActivity, liveActivity...))
 	return nil
+}
+
+// actionRunOrder is the order applyRulesForInstance applies actions in; only tests read it, and ACTION_RUN_ORDER mirrors it.
+var actionRunOrder = []string{
+	"speedLimits",
+	"shareLimits",
+	"pause",
+	"resume",
+	"recheck",
+	"reannounce",
+	"autoManagement",
+	"tag",
+	"category",
+	"move",
+	"externalProgram",
+	"exportToInstance",
+	"delete",
 }
 
 func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) ([]*models.AutomationActivity, error) {
@@ -1991,8 +1742,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, err
 	}
 
-	if len(torrents) == 0 {
-		return nil, nil
+	// After the fetch: a full sync update reads the qBittorrent version again.
+	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)
+	skipActivities := s.recordRuleSkips(ctx, instanceID, skipped, force, dryRun)
+	if len(torrents) == 0 || len(eligibleRules) == 0 {
+		return skipActivities, nil
 	}
 
 	needs := NeedsFor(eligibleRules)
@@ -2025,51 +1779,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, err
 	}
 
-	// Get free space on instance (only if rules use FREE_SPACE field)
-	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if needs.FreeSpace {
-		// Initialize per-rule free space states.
-		// Each rule gets its own projection state (keyed by source + rule ID),
-		// ensuring rules with different thresholds on the same disk don't interfere.
-		evalCtx.FreeSpaceStates = make(map[string]*FreeSpaceSourceState)
-
-		// First, cache free space by source key to avoid redundant disk reads
-		freeSpaceBySourceKey := make(map[string]int64)
-		for _, r := range eligibleRules {
-			if !ruleUsesCondition(r, FieldFreeSpace) {
-				continue
-			}
-			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
-			if _, cached := freeSpaceBySourceKey[sourceKey]; cached {
-				continue
-			}
-
-			freeSpace, err := s.freeSpaceBytes(ctx, instance, r.FreeSpaceSource)
-			if err != nil {
-				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
-				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
-				s.notifyAutomationFailure(ctx, instanceID, wrapped)
-				return nil, wrapped
-			}
-			freeSpaceBySourceKey[sourceKey] = freeSpace
-		}
-
-		// Now create per-rule states using cached free space values
-		for _, r := range eligibleRules {
-			if !ruleUsesCondition(r, FieldFreeSpace) {
-				continue
-			}
-			ruleKey := GetFreeSpaceRuleKey(r)
-			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
-			state := &FreeSpaceSourceState{
-				FreeSpace:    freeSpaceBySourceKey[sourceKey],
-				SpaceToClear: 0,
-				FilesToClear: make(map[string]int64),
-			}
-			if ruleUsesIncludeCrossSeedsFreeSpace(r) {
-				state.CrossSeedHashesToClear = make(map[string]struct{})
-			}
-			evalCtx.FreeSpaceStates[ruleKey] = state
+		evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, eligibleRules, false)
+		if err != nil {
+			s.notifyAutomationFailure(ctx, instanceID, err)
+			return nil, err
 		}
 	}
 
@@ -2082,53 +1796,42 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.loadCrossSeedFiles(ctx, instanceID, crossSeeds, evalCtx, projectionHardlinks)
 	}
 
-	// Ensure lastApplied map is initialized for this instance
-	s.mu.RLock()
-	instLastApplied, ok := s.lastApplied[instanceID]
-	s.mu.RUnlock()
-	if !ok || instLastApplied == nil {
-		s.mu.Lock()
-		if s.lastApplied[instanceID] == nil {
-			s.lastApplied[instanceID] = make(map[string]time.Time)
-		}
-		instLastApplied = s.lastApplied[instanceID]
-		s.mu.Unlock()
+	// A dry run never starts a Skip window, so it does not read one.
+	var skipWindow map[string]struct{}
+	if !dryRun {
+		skipWindow = s.skipWindow(instanceID, now)
 	}
+	scope := newRuleScope(eligibleRules, skipWindow)
 
-	// Skip checker for recently processed torrents. A dry run never stamps this map, so it must not read it either.
-	skipCheck := func(hash string) bool {
-		if dryRun {
-			return false
-		}
-		s.mu.RLock()
-		ts, exists := instLastApplied[hash]
-		s.mu.RUnlock()
-		return exists && now.Sub(ts) < s.cfg.SkipWithin
+	askRuleFacts(eligibleRules, torrents, evalCtx, scope)
+
+	rulesUsed, consideredTorrents := rulesWithTorrents(eligibleRules, torrents, scope)
+
+	ruleByID := make(map[int]*models.Automation, len(eligibleRules))
+	for _, r := range eligibleRules {
+		ruleByID[r.ID] = r
 	}
-
-	// Compute which rules actually have matching torrents that won't be skipped.
-	// This must happen after skipCheck is defined so we only stamp lastRuleRun
-	// for rules that will actually process at least one torrent.
-	rulesUsed := make(map[int]struct{})
-	consideredTorrents := 0
-	for _, torrent := range torrents {
-		if skipCheck(torrent.Hash) {
-			continue
-		}
-		consideredTorrents++
-		for _, rule := range selectMatchingRules(torrent, eligibleRules, s.syncManager) {
-			rulesUsed[rule.ID] = struct{}{}
-		}
+	ruleStats := make(map[int]*ruleRunStats)
+	deletions := s.selectDeletions(ctx, instanceID, deletionSelectionInput{
+		rules:      eligibleRules,
+		torrents:   torrents,
+		evalCtx:    evalCtx,
+		crossSeeds: crossSeeds,
+		scope:      scope,
+		stats:      ruleStats,
+	})
+	for ruleID, err := range deletions.failedRules {
+		log.Warn().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Str("ruleName", ruleByID[ruleID].Name).
+			Msg("automations: skipping free-space delete rule")
 	}
 
 	// Process all torrents through all eligible rules, batching by sort order
-	ruleStats := make(map[int]*ruleRunStats)
 	states := make(map[string]*torrentDesiredState)
 
 	// Group rules into batches based on sorting config equality
-	s.buildAndExecuteBatches(instanceID, eligibleRules, torrents, evalCtx, skipCheck, ruleStats, states)
+	buildAndExecuteBatches(instanceID, eligibleRules, torrents, evalCtx, crossSeeds, scope, ruleStats, states)
 
-	if len(states) == 0 {
+	if len(states) == 0 && len(deletions.triggers) == 0 {
 		log.Trace().
 			Int("instanceID", instanceID).
 			Int("eligibleRules", len(eligibleRules)).
@@ -2171,7 +1874,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("recheckNoMatch", stats.RecheckConditionNotMet).
 			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
 			Int("tagNoMatch", stats.TagConditionNotMet).
-			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
+			Int("tagMissingTrackerHealth", stats.TagSkippedMissingTrackerHealth).
 			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
 			Int("deleteNoMatch", stats.DeleteConditionNotMet).
 			Int("moveNoMatch", stats.MoveConditionNotMet).
@@ -2197,1551 +1900,79 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			torrentByHash[t.Hash] = t
 		}
 	}
-	ruleByID := make(map[int]*models.Automation, len(eligibleRules))
-	for _, r := range eligibleRules {
-		ruleByID[r.ID] = r
-	}
 
-	// Build batches from desired states
-	shareBatches := make(map[shareKey][]string)
-	uploadBatches := make(map[int64][]string)
-	downloadBatches := make(map[int64][]string)
-	pauseHashes := make([]string, 0)
-	resumeHashes := make([]string, 0)
-	recheckHashes := make([]string, 0)
-	reannounceHashes := make([]string, 0)
-	autoManageEnableHashes := make([]string, 0)
-	autoManageDisableHashes := make([]string, 0)
-	uploadRuleByHash := make(map[string]ruleRef)
-	downloadRuleByHash := make(map[string]ruleRef)
-	shareRatioRuleByHash := make(map[string]ruleRef)
-	shareSeedingRuleByHash := make(map[string]ruleRef)
-	pauseRuleByHash := make(map[string]ruleRef)
-	resumeRuleByHash := make(map[string]ruleRef)
-	recheckRuleByHash := make(map[string]ruleRef)
-	reannounceRuleByHash := make(map[string]ruleRef)
-	autoManageRuleByHash := make(map[string]ruleRef)
-	categoryRuleByHash := make(map[string]ruleRef)
-	moveRuleByHash := make(map[string]ruleRef)
-
-	tagChanges := make(map[string]*tagChange)
-	categoryBatches := make(map[string][]string) // category name -> hashes
-	moveBatches := make(map[string][]string)     // path -> hashes
-
-	// External program execution tracking
-	var programExecutions []pendingProgramExec
-	// Export to instance execution tracking
-	var exportExecutions []pendingExportToInstance
 	deleteHashesByMode := make(map[string][]string)
-	pendingByHash := make(map[string]pendingDeletion)
-
-	// Track hashes that have been processed for "include cross-seeds" expansion
-	// to avoid double-processing
-	includedCrossSeedHashes := make(map[string]struct{})
-
-	// Settle the delete set before any other batch, so no action or expansion reaches a torrent the run deletes.
-	for hash, state := range states {
-		torrent := torrentByHash[hash]
-
-		if state.shouldDelete {
-			deleteMode := state.deleteMode
-			var actualMode string
-			var keepingFiles bool
-			var logMsg string
-			var hashesToDelete []string
-
-			switch deleteMode {
-			case DeleteModeWithFilesIncludeCrossSeeds:
-				var expansionHardlinks *HardlinkIndex
-				if state.deleteIncludeHardlinks {
-					expansionHardlinks = hardlinkIndex
-				}
-				expanded, ok := deleteCrossSeedGroup(
-					torrent, torrentByHash, crossSeeds, expansionHardlinks,
-					includedCrossSeedHashes, cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
-				)
-				if !ok {
-					continue
-				}
-				for h := range expanded.expandedSet {
-					if h != hash {
-						includedCrossSeedHashes[h] = struct{}{}
-					}
-				}
-				hashesToDelete = slices.Sorted(maps.Keys(expanded.expandedSet))
-				actualMode = DeleteModeWithFiles
-				logMsg = logMsgRemoveTorrentWithFiles
-				if len(hashesToDelete) > 1 {
-					logMsg = "automations: removing torrent with files (include cross-seeds - verified)"
-				}
-				if len(expanded.hardlinkCopySet) > 0 {
-					logMsg = "automations: removing torrent with files (include cross-seeds + hardlinks)"
-				}
-				keepingFiles = false
-			case DeleteModeWithFilesPreserveCrossSeeds:
-				hashesToDelete = []string{hash}
-				if shouldPreserveCrossSeedFiles(torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
-					actualMode = DeleteModeKeepFiles
-					logMsg = "automations: removing torrent (preserve cross-seeds - keeping files)"
-					keepingFiles = true
-				} else {
-					actualMode = DeleteModeWithFiles
-					logMsg = logMsgRemoveTorrentWithFiles
-					keepingFiles = false
-				}
-			case DeleteModeKeepFiles:
-				// Optional group-aware keep-files deletion:
-				// if groupId is set, optionally expand deletion to the whole group.
-				// Group matching is strict: all members must satisfy the delete condition.
-				if state.deleteGroupID != "" && state.deleteRuleID > 0 {
-					rule := ruleByID[state.deleteRuleID]
-					if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
-						deleteCond := rule.Conditions.Delete
-						cond := deleteCond.Condition
-						idx := getOrBuildGroupIndexForRule(evalCtx, rule, state.deleteGroupID, torrents, s.syncManager)
-						if idx != nil {
-							members := idx.MembersForHash(hash)
-							if len(members) > 0 {
-								// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-								def := (*models.GroupDefinition)(nil)
-								if rule.Conditions.Grouping != nil {
-									def = findGroupDefinition(rule.Conditions.Grouping, state.deleteGroupID)
-								}
-								if def == nil {
-									def = builtinGroupDefinition(state.deleteGroupID)
-								}
-
-								if def != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
-									policy := strings.TrimSpace(def.AmbiguousPolicy)
-									if policy == "" {
-										policy = groupAmbiguousVerifyOverlap
-									}
-									if policy == groupAmbiguousSkip {
-										continue
-									}
-									minPercent := def.MinFileOverlapPercent
-									if minPercent <= 0 {
-										minPercent = minFileOverlapPercent
-									}
-									// Verify overlap against all members; any failure skips entire group.
-									skipGroup := false
-									for _, otherHash := range members {
-										if otherHash == hash {
-											continue
-										}
-										otherTorrent, ok := torrentByHash[otherHash]
-										if !ok {
-											skipGroup = true
-											break
-										}
-										hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, otherTorrent, minPercent)
-										if err != nil || !hasOverlap {
-											skipGroup = true
-											break
-										}
-									}
-									if skipGroup {
-										continue
-									}
-								}
-
-								// Ensure rule-scoped helpers (FREE_SPACE state, grouping default group) are active.
-								if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-									evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-								}
-								activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-								if !allGroupMembersMatchCondition(members, torrentByHash, cond, evalCtx) {
-									continue
-								}
-
-								hashesToDelete = members
-								actualMode = DeleteModeKeepFiles
-								logMsg = "automations: removing torrent group (keeping files)"
-								keepingFiles = true
-								break
-							}
-						}
-					}
-				}
-				if state.deleteGroupID != "" {
-					// GroupId is strict all-or-none; if we didn't emit a group deletion above, skip this trigger.
-					continue
-				}
-
-				hashesToDelete = []string{hash}
-				actualMode = DeleteModeKeepFiles
-				logMsg = "automations: removing torrent (keeping files)"
-				keepingFiles = true
-			default:
-				hashesToDelete = []string{hash}
-				actualMode = deleteMode
-				logMsg = logMsgRemoveTorrentWithFiles
-				keepingFiles = false
-			}
-
-			// Add all hashes to delete batch (with deduplication)
-			for _, h := range hashesToDelete {
-				// Skip if already queued for deletion (dedup)
-				if _, alreadyQueued := pendingByHash[h]; alreadyQueued {
-					continue
-				}
-
-				// Look up actual torrent info for proper logging
-				torrentName := state.name
-				trackerDomain := ""
-				if len(state.trackerDomains) > 0 {
-					trackerDomain = state.trackerDomains[0]
-				}
-				if h != hash {
-					// Expanded cross-seed - use its own name/tracker info
-					if t, exists := torrentByHash[h]; exists {
-						torrentName = t.Name
-						if domains := collectTrackerDomains(t, s.syncManager); len(domains) > 0 {
-							trackerDomain = domains[0]
-						}
-					}
-				}
-
-				// Log with correct name for each hash
-				isTrigger := h == hash
-				log.Info().Str("hash", h).Str("name", torrentName).Bool("isTrigger", isTrigger).Str("reason", state.deleteReason).Bool("filesKept", keepingFiles).Msg(logMsg)
-				deleteHashesByMode[actualMode] = append(deleteHashesByMode[actualMode], h)
-
-				// Determine activity action type
-				action := models.ActivityActionDeletedCondition
-				switch state.deleteReason {
-				case "unregistered":
-					action = models.ActivityActionDeletedUnregistered
-				case "ratio limit reached":
-					action = models.ActivityActionDeletedRatio
-				case "seeding time limit reached", "ratio and seeding time limits reached":
-					action = models.ActivityActionDeletedSeeding
-				}
-
-				pendingByHash[h] = pendingDeletion{
-					hash:          h,
-					torrentName:   torrentName,
-					trackerDomain: trackerDomain,
-					action:        action,
-					ruleID:        state.deleteRuleID,
-					ruleName:      state.deleteRuleName,
-					reason:        state.deleteReason,
-					details:       map[string]any{"filesKept": keepingFiles, "deleteMode": deleteMode, "isTrigger": isTrigger},
-				}
-
-				// Mark as processed
-				if !dryRun {
-					s.mu.Lock()
-					instLastApplied[h] = now
-					s.mu.Unlock()
-				}
-			}
-		}
+	for _, hash := range deletions.order {
+		pending := deletions.byHash[hash]
+		log.Info().Str("hash", hash).Str("name", torrentByHash[hash].Name).Bool("isTrigger", pending.trigger).Str("reason", "condition matched").Bool("filesKept", pending.filesKept()).Msg(pending.logMsg)
+	}
+	if !dryRun {
+		s.startSkipWindow(instanceID, deletions.order, now)
 	}
 
 	// A blocked candidate leaves the delete set, so expansion still keeps it with its cross-seeds.
 	if !dryRun {
 		recheckCtx, cancelRecheck := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
-		blocked := s.blockedDeleteCandidates(recheckCtx, instanceID, hardlinkIndex, torrentByHash, deleteHashesByMode, pendingByHash, ruleByID)
+		blocked := s.blockedDeleteCandidates(recheckCtx, instanceID, hardlinkIndex, torrentByHash, deletions, ruleByID)
 		cancelRecheck()
-		if len(blocked) > 0 {
-			for mode, hashes := range deleteHashesByMode {
-				kept := hashes[:0]
-				for _, hash := range hashes {
-					reason, isBlocked := blocked[hash]
-					if !isBlocked {
-						kept = append(kept, hash)
-						continue
-					}
-
-					pending := pendingByHash[hash]
-					delete(pendingByHash, hash)
-					log.Warn().
-						Int("instanceID", instanceID).
-						Str("hash", hash).
-						Str("name", pending.torrentName).
-						Str("ruleName", pending.ruleName).
-						Str("reason", reason).
-						Msg("automations: skipped delete, hardlink state changed since the rule decided")
-				}
-				deleteHashesByMode[mode] = kept
-			}
+		for hash, reason := range blocked {
+			pending := deletions.byHash[hash]
+			delete(deletions.byHash, hash)
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Str("name", torrentByHash[hash].Name).
+				Str("ruleName", pending.rule.name).
+				Str("reason", reason).
+				Msg("automations: skipped delete, hardlink state changed since the rule decided")
+		}
+	}
+	for _, hash := range deletions.order {
+		if pending, queued := deletions.byHash[hash]; queued {
+			deleteHashesByMode[pending.batchMode] = append(deleteHashesByMode[pending.batchMode], hash)
 		}
 	}
 
-	for hash, state := range states {
-		// A delete trigger gets no other action, even when its delete was skipped or blocked.
-		if state.shouldDelete {
-			continue
-		}
-		// Another torrent's delete expansion pulled this one in.
-		if _, deleting := pendingByHash[hash]; deleting {
-			continue
-		}
-		torrent := torrentByHash[hash]
-
-		// Speed limits - only add to batch if current doesn't match desired
-		if state.uploadLimitKiB != nil {
-			desired := *state.uploadLimitKiB * 1024
-			if torrent.UpLimit != desired {
-				uploadBatches[*state.uploadLimitKiB] = append(uploadBatches[*state.uploadLimitKiB], hash)
-				uploadRuleByHash[hash] = state.uploadRule
-			}
-		}
-		if state.downloadLimitKiB != nil {
-			desired := *state.downloadLimitKiB * 1024
-			if torrent.DlLimit != desired {
-				downloadBatches[*state.downloadLimitKiB] = append(downloadBatches[*state.downloadLimitKiB], hash)
-				downloadRuleByHash[hash] = state.downloadRule
-			}
-		}
-
-		// Share limits (ratio, seeding time, action, mode)
-		if state.ratioLimit != nil || state.seedingMinutes != nil ||
-			state.shareLimitAction != "" || state.shareLimitsMode != "" {
-			// Start with torrent's current values
-			ratio := torrent.RatioLimit
-			seedMinutes := torrent.SeedingTimeLimit
-			inactiveMinutes := torrent.InactiveSeedingTimeLimit // Preserve inactive limit
-
-			// Apply desired values if set
-			if state.ratioLimit != nil {
-				ratio = *state.ratioLimit
-			}
-			if state.seedingMinutes != nil {
-				seedMinutes = *state.seedingMinutes
-			}
-
-			// Normalize ratio to 2 decimal places to match qBittorrent/go-qbittorrent precision
-			// This prevents perpetual reapplication due to floating point differences
-			normalizeRatio := func(r float64) float64 {
-				if r >= 0 {
-					return float64(int(r*100+0.5)) / 100
-				}
-				return r // Keep sentinel values (-1, -2) unchanged
-			}
-			ratio = normalizeRatio(ratio)
-			currentRatio := normalizeRatio(torrent.RatioLimit)
-
-			// Check if update is needed (comparing normalized values)
-			ratioNeedsUpdate := state.ratioLimit != nil && currentRatio != ratio
-			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
-			actionNeedsUpdate := state.shareLimitAction != "" &&
-				normalizeShareLimitEnum(torrent.ShareLimitAction) != normalizeShareLimitEnum(state.shareLimitAction)
-			modeNeedsUpdate := state.shareLimitsMode != "" &&
-				normalizeShareLimitEnum(torrent.ShareLimitsMode) != normalizeShareLimitEnum(state.shareLimitsMode)
-			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate || actionNeedsUpdate || modeNeedsUpdate
-			if needsUpdate {
-				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes, action: state.shareLimitAction, mode: state.shareLimitsMode}
-				shareBatches[key] = append(shareBatches[key], hash)
-				if ratioNeedsUpdate {
-					shareRatioRuleByHash[hash] = state.ratioRule
-				}
-				if seedingNeedsUpdate {
-					shareSeedingRuleByHash[hash] = state.seedingRule
-				}
-				if actionNeedsUpdate {
-					shareRatioRuleByHash[hash] = shareLimitRuleRef(state.shareActionRule, state.ratioRule)
-				}
-				if modeNeedsUpdate {
-					shareSeedingRuleByHash[hash] = shareLimitRuleRef(state.shareModeRule, state.seedingRule)
-				}
-			}
-		}
-
-		// Pause
-		if state.shouldPause {
-			pauseHashes = append(pauseHashes, hash)
-			pauseRuleByHash[hash] = state.pauseRule
-		}
-
-		// Resume
-		if state.shouldResume {
-			resumeHashes = append(resumeHashes, hash)
-			resumeRuleByHash[hash] = state.resumeRule
-		}
-
-		// Recheck
-		if state.shouldRecheck {
-			recheckHashes = append(recheckHashes, hash)
-			recheckRuleByHash[hash] = state.recheckRule
-		}
-
-		// Reannounce
-		if state.shouldReannounce {
-			reannounceHashes = append(reannounceHashes, hash)
-			reannounceRuleByHash[hash] = state.reannounceRule
-		}
-
-		// Auto management
-		if state.shouldAutoManage {
-			if state.autoManageValue {
-				autoManageEnableHashes = append(autoManageEnableHashes, hash)
-			} else {
-				autoManageDisableHashes = append(autoManageDisableHashes, hash)
-			}
-			autoManageRuleByHash[hash] = state.autoManageRule
-		}
-
-		// Tags
-		if len(state.tagActions) > 0 {
-			var toAdd, toRemove []string
-			desired := make(map[string]struct{})
-			for t := range state.currentTags {
-				desired[t] = struct{}{}
-			}
-			for tag, action := range state.tagActions {
-				switch action {
-				case "add":
-					toAdd = append(toAdd, tag)
-					desired[tag] = struct{}{}
-				case "remove":
-					toRemove = append(toRemove, tag)
-					delete(desired, tag)
-				}
-			}
-			if len(toAdd) > 0 || len(toRemove) > 0 {
-				tagChanges[hash] = &tagChange{
-					current:  state.currentTags,
-					desired:  desired,
-					toAdd:    toAdd,
-					toRemove: toRemove,
-				}
-			}
-		}
-
-		// Category - filter no-ops by comparing desired vs current
-		if state.category != nil {
-			if torrent.Category != *state.category {
-				categoryBatches[*state.category] = append(categoryBatches[*state.category], hash)
-				categoryRuleByHash[hash] = state.categoryRule
-			}
-		}
-
-		if state.shouldMove {
-			moveBatches[state.movePath] = append(moveBatches[state.movePath], hash)
-			moveRuleByHash[hash] = state.moveRule
-		}
-
-		// External program execution
-		if state.externalProgramID != nil {
-			programExecutions = append(programExecutions, pendingProgramExec{
-				hash:      hash,
-				torrent:   torrent,
-				programID: *state.externalProgramID,
-				ruleID:    state.programRuleID,
-				ruleName:  state.programRuleName,
-			})
-		}
-
-		// Export to instance
-		if state.exportToInstance != nil {
-			exportEntry := pendingExportToInstance{
-				hash:     hash,
-				torrent:  torrent,
-				action:   state.exportToInstance,
-				ruleID:   state.exportToInstanceRuleID,
-				ruleName: state.exportToInstanceRuleName,
-			}
-
-			// Skip if the torrent already exists on the target instance.
-			// Use a bounded timeout so a slow/unreachable target doesn't stall the entire pass.
-			checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
-			_, exists, err := s.syncManager.HasTorrentByAnyHash(checkCtx, state.exportToInstance.TargetInstanceID, []string{hash})
-			checkCancel()
-			switch {
-			case err != nil:
-				log.Warn().Err(err).
-					Str("hash", hash).
-					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-					Msg("automations: failed to check target instance for existing torrent")
-				exportEntry.failureReason = "Failed to check target instance: " + err.Error()
-				exportExecutions = append(exportExecutions, exportEntry)
-			case exists:
-				log.Debug().
-					Str("hash", hash).
-					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-					Msg("automations: torrent already exists on target instance, skipping export")
-				// In dry-run, record so the report shows "already on target" instead of "no match"
-				if dryRun {
-					exportEntry.failureReason = "Already exists on target instance"
-					exportExecutions = append(exportExecutions, exportEntry)
-				}
-			default:
-				resolvedPath := state.exportToInstance.SavePath
-				if resolvedPath != "" {
-					if resolved, ok := renderPathTemplate(resolvedPath, torrent, state, evalCtx); ok {
-						resolvedPath = resolved
-					} else {
-						log.Warn().
-							Str("hash", hash).
-							Str("rawPath", resolvedPath).
-							Str("rule", state.exportToInstanceRuleName).
-							Msg("automations: save path template resolution failed")
-						exportEntry.failureReason = "Save path template resolution failed"
-						exportExecutions = append(exportExecutions, exportEntry)
-						continue
-					}
-				}
-				exportEntry.resolvedSavePath = resolvedPath
-
-				// Reserve in-flight slot atomically (live runs only, not dry-run)
-				if !dryRun {
-					flightKey := fmt.Sprintf("%d:%s", state.exportToInstance.TargetInstanceID, hash)
-					s.mu.Lock()
-					if _, alreadyInFlight := s.inFlightExports[flightKey]; alreadyInFlight {
-						s.mu.Unlock()
-						log.Debug().
-							Str("hash", hash).
-							Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-							Msg("automations: export already in-flight, skipping")
-						continue
-					}
-					s.inFlightExports[flightKey] = struct{}{}
-					s.mu.Unlock()
-				}
-
-				exportExecutions = append(exportExecutions, exportEntry)
-			}
-		}
+	// The plan reads file lists, so in a live run the timeout also bounds the plan step.
+	if !dryRun {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.cfg.ApplyTimeout)
+		defer cancel()
+		crossSeeds.setContext(ctx)
 	}
+
+	plan := s.buildRunPlan(ctx, runPlanInput{
+		instanceID:    instanceID,
+		states:        states,
+		deletions:     deletions,
+		torrents:      torrents,
+		torrentByHash: torrentByHash,
+		ruleByID:      ruleByID,
+		crossSeeds:    crossSeeds,
+		evalCtx:       evalCtx,
+		scope:         scope,
+	})
 
 	if dryRun {
-		activities := s.recordDryRunActivities(
-			ctx,
-			instanceID,
-			uploadBatches,
-			downloadBatches,
-			shareBatches,
-			pauseHashes,
-			resumeHashes,
-			recheckHashes,
-			reannounceHashes,
-			append(autoManageEnableHashes, autoManageDisableHashes...),
-			tagChanges,
-			categoryBatches,
-			moveBatches,
-			pendingByHash,
-			programExecutions,
-			exportExecutions,
-			torrentByHash,
-			torrents,
-			states,
-			ruleByID,
-			evalCtx,
-			force,
-		)
-		return activities, nil
+		return append(s.recordDryRunActivities(ctx, instanceID, plan, torrentByHash, scope, force), skipActivities...), nil
 	}
 
 	summary := newAutomationSummary()
-
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.ApplyTimeout)
-	defer cancel()
-
-	// Apply speed limits and track success
-	uploadSuccess := s.applySpeedLimits(ctx, instanceID, uploadBatches, "upload", s.syncManager.SetTorrentUploadLimit, summary, uploadRuleByHash, torrentByHash)
-	downloadSuccess := s.applySpeedLimits(ctx, instanceID, downloadBatches, "download", s.syncManager.SetTorrentDownloadLimit, summary, downloadRuleByHash, torrentByHash)
-
-	// Record aggregated speed limit activity
-	if len(uploadSuccess) > 0 || len(downloadSuccess) > 0 {
-		speedLimits := make(map[string]int) // "upload:1024" -> count, "download:2048" -> count
-		totalUpdated := 0
-		for limit, hashes := range uploadSuccess {
-			speedLimits[fmt.Sprintf("upload:%d", limit)] = len(hashes)
-			totalUpdated += len(hashes)
-		}
-		for limit, hashes := range downloadSuccess {
-			speedLimits[fmt.Sprintf("download:%d", limit)] = len(hashes)
-			totalUpdated += len(hashes)
-		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": speedLimits})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionSpeedLimitsChanged,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, totalUpdated)
-		summary.recordRuleCounts(
-			models.ActivityActionSpeedLimitsChanged,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroups(uploadSuccess), uploadRuleByHash),
-		)
-		summary.recordRuleCounts(
-			models.ActivityActionSpeedLimitsChanged,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroups(downloadSuccess), downloadRuleByHash),
-		)
-		speedSampleHashes := append(flattenHashGroups(uploadSuccess), flattenHashGroups(downloadSuccess)...)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(speedSampleHashes, torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record speed limit activity")
-			} else if s.activityRuns != nil {
-				items := buildSpeedLimitRunItems(uploadSuccess, downloadSuccess, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
+	steps := &stepRun{
+		s:             s,
+		instanceID:    instanceID,
+		torrentByHash: torrentByHash,
+		scope:         scope,
+		summary:       summary,
+		resetTags:     collectManagedTagsForClientReset(eligibleRules),
 	}
-
-	// Apply share limits and track success
-	shareLimitSuccess := make(map[shareKey][]string) // "ratio:seed:inactive" -> hashes
-	for key, hashes := range shareBatches {
-		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive, key.action, key.mode)
-			if err == nil {
-				shareLimitSuccess[key] = append(shareLimitSuccess[key], batch...)
-				continue
-			}
-			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Str("action", key.action).Str("mode", key.mode).Int("count", len(batch)).Msg("automations: share limit failed")
-			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "action": key.action, "mode": key.mode, "count": len(batch), "type": "share"})
-			if marshalErr != nil {
-				log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal share limit details")
-				continue
-			}
-			activity := &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       strings.Join(batch, ","),
-				Action:     models.ActivityActionLimitFailed,
-				Outcome:    models.ActivityOutcomeFailed,
-				Reason:     "share limit failed: " + err.Error(),
-				Details:    detailsJSON,
-			}
-			summary.recordActivity(activity, len(batch))
-			summary.recordRuleCounts(
-				models.ActivityActionLimitFailed,
-				models.ActivityOutcomeFailed,
-				buildRuleCountsFromHashMaps(batch, shareRatioRuleByHash, shareSeedingRuleByHash),
-			)
-			summary.addTorrentSamples(collectTorrentNamesForHashes(batch, torrentByHash), 3)
-			if s.activityStore != nil {
-				if actErr := s.activityStore.Create(ctx, activity); actErr != nil {
-					log.Warn().Err(actErr).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-				}
-			}
-		}
-	}
-
-	// Record aggregated share limit activity
-	if len(shareLimitSuccess) > 0 {
-		limitCounts := make(map[string]int)
-		totalUpdated := 0
-		for key, hashes := range shareLimitSuccess {
-			limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
-			limitCounts[limitKey] = len(hashes)
-			totalUpdated += len(hashes)
-		}
-		detailsJSON, _ := json.Marshal(map[string]any{"limits": limitCounts})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionShareLimitsChanged,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, totalUpdated)
-		summary.recordRuleCounts(
-			models.ActivityActionShareLimitsChanged,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashMaps(flattenHashGroupsByShareKey(shareLimitSuccess), shareRatioRuleByHash, shareSeedingRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByShareKey(shareLimitSuccess), torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record share limit activity")
-			} else if s.activityRuns != nil {
-				items := buildShareLimitRunItems(shareLimitSuccess, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-
-	// Execute pause actions for expression-based rules
-	pausedCount := 0
-	pausedHashesSuccess := make([]string, 0)
-	if len(pauseHashes) > 0 {
-		limited := limitHashBatch(pauseHashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "pause"); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: pause action failed")
-			} else {
-				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: paused torrents")
-				pausedCount += len(batch)
-				pausedHashesSuccess = append(pausedHashesSuccess, batch...)
-			}
-		}
-	}
-
-	// Record aggregated pause activity
-	if pausedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": pausedCount})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionPaused,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, pausedCount)
-		summary.recordRuleCounts(
-			models.ActivityActionPaused,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(pausedHashesSuccess, pauseRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(pausedHashesSuccess, torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record pause activity")
-			} else if s.activityRuns != nil {
-				items := buildRunItemsFromHashes(pausedHashesSuccess, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-
-	// Execute resume actions for expression-based rules
-	resumedCount := 0
-	resumedHashesSuccess := make([]string, 0)
-	if len(resumeHashes) > 0 {
-		limited := limitHashBatch(resumeHashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "resume"); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: resume action failed")
-			} else {
-				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: resumed torrents")
-				resumedCount += len(batch)
-				resumedHashesSuccess = append(resumedHashesSuccess, batch...)
-			}
-		}
-	}
-
-	// Record aggregated resume activity
-	if resumedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": resumedCount})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionResumed,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, resumedCount)
-		summary.recordRuleCounts(
-			models.ActivityActionResumed,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(resumedHashesSuccess, resumeRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(resumedHashesSuccess, torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record resume activity")
-			} else if s.activityRuns != nil {
-				items := buildRunItemsFromHashes(resumedHashesSuccess, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-
-	// Execute recheck actions for expression-based rules
-	recheckedCount := 0
-	recheckedHashesSuccess := make([]string, 0)
-	if len(recheckHashes) > 0 {
-		limited := limitHashBatch(recheckHashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "recheck"); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: recheck action failed")
-			} else {
-				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: rechecked torrents")
-				recheckedCount += len(batch)
-				recheckedHashesSuccess = append(recheckedHashesSuccess, batch...)
-			}
-		}
-	}
-
-	// Record aggregated recheck activity
-	if recheckedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": recheckedCount})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionRechecked,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, recheckedCount)
-		summary.recordRuleCounts(
-			models.ActivityActionRechecked,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(recheckedHashesSuccess, recheckRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(recheckedHashesSuccess, torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record recheck activity")
-			} else if s.activityRuns != nil {
-				items := buildRunItemsFromHashes(recheckedHashesSuccess, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-
-	// Execute reannounce actions for expression-based rules
-	reannouncedCount := 0
-	reannouncedHashesSuccess := make([]string, 0)
-	if len(reannounceHashes) > 0 {
-		limited := limitHashBatch(reannounceHashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.BulkAction(ctx, instanceID, batch, "reannounce"); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: reannounce action failed")
-			} else {
-				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: reannounced torrents")
-				reannouncedCount += len(batch)
-				reannouncedHashesSuccess = append(reannouncedHashesSuccess, batch...)
-			}
-		}
-	}
-
-	// Record aggregated reannounce activity
-	if reannouncedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": reannouncedCount})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionReannounced,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, reannouncedCount)
-		summary.recordRuleCounts(
-			models.ActivityActionReannounced,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(reannouncedHashesSuccess, reannounceRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(reannouncedHashesSuccess, torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record reannounce activity")
-			} else if s.activityRuns != nil {
-				items := buildRunItemsFromHashes(reannouncedHashesSuccess, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-
-	// Execute auto management actions
-	autoManagedCount := 0
-	autoManagedHashesSuccess := make([]string, 0)
-	for _, group := range []struct {
-		hashes []string
-		enable bool
-		verb   string
-	}{
-		{autoManageEnableHashes, true, "enabled"},
-		{autoManageDisableHashes, false, "disabled"},
-	} {
-		if len(group.hashes) == 0 {
-			continue
-		}
-		limited := limitHashBatch(group.hashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.SetAutoTMM(ctx, instanceID, batch, group.enable); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: auto management action failed")
-			} else {
-				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Str("mode", group.verb).Msg("automations: auto management for torrents")
-				autoManagedCount += len(batch)
-				autoManagedHashesSuccess = append(autoManagedHashesSuccess, batch...)
-			}
-		}
-	}
-
-	// Record aggregated auto management activity
-	if autoManagedCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"count": autoManagedCount})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionAutoManaged,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, autoManagedCount)
-		summary.recordRuleCounts(
-			models.ActivityActionAutoManaged,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(autoManagedHashesSuccess, autoManageRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(autoManagedHashesSuccess, torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record auto management activity")
-			} else if s.activityRuns != nil {
-				items := buildRunItemsFromHashes(autoManagedHashesSuccess, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-
-	// Execute tag actions for expression-based rules
-	tagsToResetInClient := collectManagedTagsForClientReset(eligibleRules)
-	if len(tagsToResetInClient) > 0 && !dryRun {
-		if err := s.syncManager.DeleteTags(ctx, instanceID, tagsToResetInClient); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Strs("tags", tagsToResetInClient).
-				Msg("automations: failed to delete managed tags from client before retagging")
-		} else {
-			log.Info().
-				Int("instanceID", instanceID).
-				Strs("tags", tagsToResetInClient).
-				Msg("automations: deleted managed tags from client before retagging")
-		}
-	}
-
-	if len(tagChanges) > 0 {
-		tagRuleCounts := make(map[ruleRef]int)
-
-		// Try SetTags first (more efficient for qBit 5.1+)
-		// Group by desired tag set for batching
-		setTagsBatches := make(map[string][]string) // key = sorted tags, value = hashes
-
-		for hash, change := range tagChanges {
-			// Build sorted tag list for batching key
-			tags := make([]string, 0, len(change.desired))
-			for t := range change.desired {
-				tags = append(tags, t)
-			}
-			sort.Strings(tags)
-			key := strings.Join(tags, ",")
-			setTagsBatches[key] = append(setTagsBatches[key], hash)
-		}
-
-		// Try SetTags first (qBit 5.1+)
-		useSetTags := true
-		for tagSet, hashes := range setTagsBatches {
-			var tags []string
-			if tagSet != "" {
-				tags = strings.Split(tagSet, ",")
-			}
-			batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-			for _, batch := range batches {
-				err := s.syncManager.SetTorrentTags(ctx, instanceID, batch, tags)
-				if err != nil {
-					// Check if it's an unsupported version error
-					if strings.Contains(err.Error(), "requires qBittorrent") {
-						useSetTags = false
-						break
-					}
-					log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags failed")
-				} else {
-					log.Debug().Int("instanceID", instanceID).Strs("tags", tags).Int("count", len(batch)).Msg("automations: set tags on torrents")
-				}
-			}
-			if !useSetTags {
-				break
-			}
-		}
-
-		// Fallback to Add/Remove for older clients
-		if !useSetTags {
-			log.Debug().Int("instanceID", instanceID).Msg("automations: falling back to add/remove tags (older qBittorrent)")
-
-			// Group by tags to add/remove
-			addBatches := make(map[string][]string)    // key = tag, value = hashes
-			removeBatches := make(map[string][]string) // key = tag, value = hashes
-
-			for hash, change := range tagChanges {
-				for _, tag := range change.toAdd {
-					addBatches[tag] = append(addBatches[tag], hash)
-				}
-				for _, tag := range change.toRemove {
-					removeBatches[tag] = append(removeBatches[tag], hash)
-				}
-			}
-
-			for tag, hashes := range addBatches {
-				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-				for _, batch := range batches {
-					if err := s.syncManager.AddTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: add tags failed")
-					} else {
-						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: added tag to torrents")
-					}
-				}
-			}
-
-			for tag, hashes := range removeBatches {
-				batches := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-				for _, batch := range batches {
-					if err := s.syncManager.RemoveTorrentTags(ctx, instanceID, batch, []string{tag}); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: remove tags failed")
-					} else {
-						log.Debug().Int("instanceID", instanceID).Str("tag", tag).Int("count", len(batch)).Msg("automations: removed tag from torrents")
-					}
-				}
-			}
-		}
-
-		// Record tag activity summary
-		// Aggregate counts per tag
-		addCounts := make(map[string]int)    // tag -> count of torrents
-		removeCounts := make(map[string]int) // tag -> count of torrents
-
-		tagSampleHashes := make([]string, 0, len(tagChanges))
-		for hash, change := range tagChanges {
-			tagSampleHashes = append(tagSampleHashes, hash)
-			state := states[hash]
-			for _, tag := range change.toAdd {
-				addCounts[tag]++
-				if state != nil {
-					if ref, ok := state.tagRuleByTag[tag]; ok {
-						tagRuleCounts[ref]++
-					}
-				}
-			}
-			for _, tag := range change.toRemove {
-				removeCounts[tag]++
-				if state != nil {
-					if ref, ok := state.tagRuleByTag[tag]; ok {
-						tagRuleCounts[ref]++
-					}
-				}
-			}
-		}
-
-		// Only record if there were actual changes
-		if len(addCounts) > 0 || len(removeCounts) > 0 {
-			detailsJSON, _ := json.Marshal(map[string]any{
-				"added":   addCounts,
-				"removed": removeCounts,
-			})
-			activity := &models.AutomationActivity{
-				InstanceID: instanceID,
-				Hash:       "", // No single hash for batch operations
-				Action:     models.ActivityActionTagsChanged,
-				Outcome:    models.ActivityOutcomeSuccess,
-				Details:    detailsJSON,
-			}
-			changedCount := len(tagChanges)
-			summary.recordActivity(activity, changedCount)
-			summary.recordRuleCounts(models.ActivityActionTagsChanged, models.ActivityOutcomeSuccess, tagRuleCounts)
-			summary.addTagCounts(addCounts, removeCounts)
-			summary.addTagSamples(collectTorrentNamesForHashes(tagSampleHashes, torrentByHash), 3)
-			summary.addTorrentSamples(collectTorrentNamesForHashes(tagSampleHashes, torrentByHash), 3)
-			if s.activityStore != nil {
-				activityID, err := s.activityStore.CreateWithID(ctx, activity)
-				if err != nil {
-					log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record tag activity")
-				} else if s.activityRuns != nil {
-					items := buildTagRunItems(tagChanges, torrentByHash, s.syncManager)
-					if len(items) > 0 {
-						s.activityRuns.Put(activityID, instanceID, items)
-					}
-				}
-			}
-		}
-	}
-
-	// Execute category changes - expand with cross-seeds where winning rule requested it
-	// Sort keys for deterministic execution order
-	var successfulMoves []categoryMove
-
-	sortedCategories := make([]string, 0, len(categoryBatches))
-	for cat := range categoryBatches {
-		sortedCategories = append(sortedCategories, cat)
-	}
-	sort.Strings(sortedCategories)
-
-	for _, category := range sortedCategories {
-		hashes := categoryBatches[category]
-		expandedHashes := make([]string, 0, len(hashes))
-
-		type groupExpandKey struct {
-			ruleID  int
-			groupID string
-		}
-
-		// Find torrents whose winning category rule requested grouping expansion (via groupId
-		// or legacy includeCrossSeeds), then expand other torrents that share the same group key.
-		keysToExpand := make(map[groupExpandKey]map[string]struct{})
-		groupIndexByKey := make(map[groupExpandKey]*groupIndex)
-		groupEligibilityByKey := make(map[groupExpandKey]map[string]bool)
-		ruleByGroupKey := make(map[groupExpandKey]ruleRef)
-		for _, hash := range hashes {
-			state, exists := states[hash]
-			if !exists || state == nil {
-				continue
-			}
-			if state.categoryGroupID == "" || state.categoryRuleID <= 0 {
-				expandedHashes = append(expandedHashes, hash)
-				continue
-			}
-			rule := ruleByID[state.categoryRuleID]
-			if rule == nil {
-				// GroupId semantics are strict all-or-none: unresolved grouping rules are skipped.
-				// Legacy includeCrossSeeds should still apply to the trigger even if expansion can't be resolved.
-				if state.categoryIncludeCrossSeeds {
-					expandedHashes = append(expandedHashes, hash)
-				}
-				continue
-			}
-
-			catAction := getCategoryAction(rule)
-
-			k := groupExpandKey{ruleID: rule.ID, groupID: state.categoryGroupID}
-			idx := groupIndexByKey[k]
-			if idx == nil {
-				idx = getOrBuildGroupIndexForRule(evalCtx, rule, state.categoryGroupID, torrents, s.syncManager)
-				groupIndexByKey[k] = idx
-			}
-			if idx == nil {
-				continue
-			}
-
-			groupKey := idx.KeyForHash(hash)
-			if groupKey == "" {
-				continue
-			}
-			if groupEligibilityByKey[k] == nil {
-				groupEligibilityByKey[k] = make(map[string]bool)
-			}
-			eligible, computed := groupEligibilityByKey[k][groupKey]
-			if !computed {
-				eligible = true
-				if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, state.categoryGroupID, idx, hash, torrentByHash) {
-					eligible = false
-				}
-				// GroupId is strict all-or-none: every member must satisfy the action condition.
-				if eligible {
-					if evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-						evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-					}
-					activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-					members := idx.MembersForHash(hash)
-					if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, evalCtx, crossSeeds) {
-						eligible = false
-					}
-				}
-				groupEligibilityByKey[k][groupKey] = eligible
-			}
-			if !eligible {
-				continue
-			}
-
-			// Explicit groupId is strict all-or-none (only include if group eligibility is satisfied).
-			expandedHashes = append(expandedHashes, hash)
-			if keysToExpand[k] == nil {
-				keysToExpand[k] = make(map[string]struct{})
-			}
-			keysToExpand[k][groupKey] = struct{}{}
-			if _, exists := ruleByGroupKey[k]; !exists {
-				ruleByGroupKey[k] = ruleRef{id: rule.ID, name: rule.Name}
-			}
-		}
-
-		if len(keysToExpand) > 0 {
-			expandedSet := make(map[string]struct{})
-			for _, h := range expandedHashes {
-				expandedSet[h] = struct{}{}
-			}
-
-			for _, t := range torrents {
-				if t.Category == category {
-					continue // Already in target category
-				}
-				if _, deleting := pendingByHash[t.Hash]; deleting {
-					continue
-				}
-				if _, exists := expandedSet[t.Hash]; exists {
-					continue // Already in batch
-				}
-				// CRITICAL: Don't override torrent's own computed desired category
-				// If this torrent has its own category set by rules, respect "last rule wins"
-				if state, hasState := states[t.Hash]; hasState && state.category != nil {
-					if *state.category != category {
-						continue // Torrent's winning rule chose a different category
-					}
-				}
-				shouldExpand := false
-				matchedKey := groupExpandKey{}
-				for k, keySet := range keysToExpand {
-					idx := groupIndexByKey[k]
-					if idx == nil {
-						continue
-					}
-					gk := idx.KeyForHash(t.Hash)
-					if gk == "" {
-						continue
-					}
-					if _, ok := keySet[gk]; ok {
-						shouldExpand = true
-						matchedKey = k
-						break
-					}
-				}
-				if shouldExpand {
-					expandedHashes = append(expandedHashes, t.Hash)
-					expandedSet[t.Hash] = struct{}{}
-					if _, exists := categoryRuleByHash[t.Hash]; !exists {
-						if ref, ok := ruleByGroupKey[matchedKey]; ok {
-							categoryRuleByHash[t.Hash] = ref
-						}
-					}
-				}
-			}
-		}
-
-		for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, pendingByHash) {
-			expandedHashes = append(expandedHashes, added.hash)
-			if _, exists := categoryRuleByHash[added.hash]; !exists {
-				if ref, ok := categoryRuleByHash[added.trigger]; ok {
-					categoryRuleByHash[added.hash] = ref
-				}
-			}
-		}
-
-		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.SetCategory(ctx, instanceID, batch, category); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("category", category).Int("count", len(batch)).Msg("automations: set category failed")
-			} else {
-				log.Debug().Int("instanceID", instanceID).Str("category", category).Int("count", len(batch)).Msg("automations: set category on torrents")
-				// Track individual successes for activity logging
-				for _, hash := range batch {
-					move := categoryMove{
-						hash:     hash,
-						category: category,
-					}
-					if t, exists := torrentByHash[hash]; exists {
-						move.name = t.Name
-						if domains := collectTrackerDomains(t, s.syncManager); len(domains) > 0 {
-							move.trackerDomain = domains[0]
-						}
-					}
-					successfulMoves = append(successfulMoves, move)
-				}
-			}
-		}
-	}
-
-	// Record aggregated category activity (like tags)
-	if len(successfulMoves) > 0 {
-		categoryCounts := make(map[string]int) // category -> count of torrents moved
-		for _, move := range successfulMoves {
-			categoryCounts[move.category]++
-		}
-
-		detailsJSON, _ := json.Marshal(map[string]any{
-			"categories": categoryCounts,
-		})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "", // No single hash for batch operations
-			Action:     models.ActivityActionCategoryChanged,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, len(successfulMoves))
-		summary.recordRuleCounts(
-			models.ActivityActionCategoryChanged,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(categoryMoveHashes(successfulMoves), categoryRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(categoryMoveHashes(successfulMoves), torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record category activity")
-			} else if s.activityRuns != nil {
-				items := buildCategoryRunItems(successfulMoves, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-
-	// Execute moves - sort paths for deterministic processing order
-	sortedPaths := make([]string, 0, len(moveBatches))
-	for path := range moveBatches {
-		sortedPaths = append(sortedPaths, path)
-	}
-	sort.Strings(sortedPaths)
-
-	movedHashes := make(map[string]struct{})
-	successfulMovesByPath := make(map[string]int)
-	failedMovesByPath := make(map[string]int)
-	successfulMoveHashesByPath := make(map[string][]string)
-	failedMoveHashesByPath := make(map[string][]string)
-	for _, path := range sortedPaths {
-		hashes := moveBatches[path]
-		successfulMovesForPath := 0
-		failedMovesForPath := 0
-		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, torrentByHash, moveRuleByHash, crossSeeds)
-
-		normalizedDest := normalizePath(path)
-
-		// Before moving, we need to expand move targets to avoid breaking related torrents.
-		var expandedHashes []string
-		type ruleGroupKey struct {
-			ruleID  int
-			groupID string
-		}
-		groupIndexByKey := make(map[ruleGroupKey]*groupIndex)
-
-		legacyKeysToExpand := make(map[string]struct{})
-
-		for _, hash := range hashes {
-			if _, exists := movedHashes[hash]; exists {
-				continue // Already moved
-			}
-
-			state := states[hash]
-			if state != nil && state.moveGroupID != "" {
-				rule := (*models.Automation)(nil)
-				if ruleByID != nil && state.moveRuleID > 0 {
-					rule = ruleByID[state.moveRuleID]
-				}
-
-				// GroupId set but rule can't be resolved: skip (strict all-or-none semantics).
-				if rule == nil {
-					continue
-				}
-
-				{
-					rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
-					idx := groupIndexByKey[rgk]
-					if idx == nil {
-						idx = getOrBuildGroupIndexForRule(evalCtx, rule, state.moveGroupID, torrents, s.syncManager)
-						groupIndexByKey[rgk] = idx
-					}
-
-					members := []string{hash}
-					if idx != nil {
-						if m := idx.MembersForHash(hash); len(m) > 0 {
-							members = m
-						}
-					}
-					if !groupHoldsSharedFiles(members, crossSeeds) {
-						continue
-					}
-
-					// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-					def := (*models.GroupDefinition)(nil)
-					if rule.Conditions != nil && rule.Conditions.Grouping != nil {
-						def = findGroupDefinition(rule.Conditions.Grouping, state.moveGroupID)
-					}
-					if def == nil {
-						def = builtinGroupDefinition(state.moveGroupID)
-					}
-
-					if def != nil && idx != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
-						policy := strings.TrimSpace(def.AmbiguousPolicy)
-						if policy == "" {
-							policy = groupAmbiguousVerifyOverlap
-						}
-						if policy == groupAmbiguousSkip {
-							continue
-						}
-						minPercent := def.MinFileOverlapPercent
-						if minPercent <= 0 {
-							minPercent = minFileOverlapPercent
-						}
-						skipGroup := false
-						triggerTorrent, ok := torrentByHash[hash]
-						if !ok {
-							skipGroup = true
-						}
-						for _, otherHash := range members {
-							if skipGroup || otherHash == hash {
-								continue
-							}
-							otherTorrent, ok := torrentByHash[otherHash]
-							if !ok {
-								skipGroup = true
-								break
-							}
-							hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
-							if err != nil || !hasOverlap {
-								skipGroup = true
-								break
-							}
-						}
-						if skipGroup {
-							continue
-						}
-					}
-
-					// GroupId semantics are strict: every member must satisfy the move condition.
-					cond := (*models.RuleCondition)(nil)
-					if rule.Conditions != nil && rule.Conditions.Move != nil {
-						cond = rule.Conditions.Move.Condition
-					}
-					if evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-						evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-					}
-					activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
-					if !allGroupMembersMatchCondition(members, torrentByHash, cond, evalCtx) {
-						continue
-					}
-
-					for _, memberHash := range members {
-						if _, exists := movedHashes[memberHash]; exists {
-							continue
-						}
-						if _, deleting := pendingByHash[memberHash]; deleting {
-							continue
-						}
-						memberTorrent, ok := torrentByHash[memberHash]
-						if !ok {
-							continue
-						}
-						if normalizePath(memberTorrent.SavePath) == normalizedDest {
-							continue // Already in target path
-						}
-						expandedHashes = append(expandedHashes, memberHash)
-						movedHashes[memberHash] = struct{}{}
-						inheritRuleRefForMoveGroup(memberHash, hash, moveRuleByHash)
-					}
-					continue
-				}
-			}
-
-			// Legacy cross-seed expansion behavior
-			expandedHashes = append(expandedHashes, hash)
-			movedHashes[hash] = struct{}{}
-			if t, exists := torrentByHash[hash]; exists {
-				legacyKeysToExpand[crossSeeds.key(t)] = struct{}{}
-			}
-		}
-
-		if len(legacyKeysToExpand) > 0 {
-			for _, t := range torrents {
-				if normalizePath(t.SavePath) == normalizedDest {
-					continue // Already in target path
-				}
-				if _, exists := movedHashes[t.Hash]; exists {
-					continue // Already moved
-				}
-				if _, deleting := pendingByHash[t.Hash]; deleting {
-					continue
-				}
-				key := crossSeeds.key(t)
-				if _, matched := legacyKeysToExpand[key]; matched {
-					expandedHashes = append(expandedHashes, t.Hash)
-					movedHashes[t.Hash] = struct{}{}
-					inheritRuleRefForCrossSeed(t.Hash, key, moveRuleByHash, ruleByCrossSeedKey)
-				}
-			}
-		}
-
-		limited := limitHashBatch(expandedHashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if len(batch) == 0 {
-				continue
-			}
-
-			if err := s.syncManager.SetLocation(ctx, instanceID, batch, path); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: move failed")
-				failedMovesForPath += len(batch)
-				failedMoveHashesByPath[path] = append(failedMoveHashesByPath[path], batch...)
-			} else {
-				log.Debug().Int("instanceID", instanceID).Str("path", path).Strs("hashes", batch).Msg("automations: moved torrent")
-				successfulMovesForPath += len(batch)
-				successfulMoveHashesByPath[path] = append(successfulMoveHashesByPath[path], batch...)
-			}
-		}
-
-		successfulMovesByPath[path] = successfulMovesForPath
-		failedMovesByPath[path] = failedMovesForPath
-	}
-
-	// Record aggregated move activity
-	successCount := 0
-	for _, count := range successfulMovesByPath {
-		successCount += count
-	}
-	failureCount := 0
-	for _, count := range failedMovesByPath {
-		failureCount += count
-	}
-
-	if successCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": successfulMovesByPath})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionMoved,
-			Outcome:    models.ActivityOutcomeSuccess,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, successCount)
-		summary.recordRuleCounts(
-			models.ActivityActionMoved,
-			models.ActivityOutcomeSuccess,
-			buildRuleCountsFromHashes(flattenHashGroupsByPath(successfulMoveHashesByPath), moveRuleByHash),
-		)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByPath(successfulMoveHashesByPath), torrentByHash), 3)
-		if s.activityStore != nil {
-			activityID, err := s.activityStore.CreateWithID(ctx, activity)
-			if err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
-			} else if s.activityRuns != nil {
-				items := buildMoveRunItems(successfulMoveHashesByPath, torrentByHash, s.syncManager)
-				if len(items) > 0 {
-					s.activityRuns.Put(activityID, instanceID, items)
-				}
-			}
-		}
-	}
-	if failureCount > 0 {
-		detailsJSON, _ := json.Marshal(map[string]any{"paths": failedMovesByPath})
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     models.ActivityActionMoved,
-			Outcome:    models.ActivityOutcomeFailed,
-			Details:    detailsJSON,
-		}
-		summary.recordActivity(activity, failureCount)
-		recordMoveFailureRuleCounts(summary, failedMoveHashesByPath, moveRuleByHash)
-		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByPath(failedMoveHashesByPath), torrentByHash), 3)
-		if s.activityStore != nil {
-			if err := s.activityStore.Create(ctx, activity); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record move activity")
-			}
-		}
-	}
+	steps.runSteps(ctx, &plan)
 
 	// Execute external programs (async, fire-and-forget)
-	s.executeExternalProgramsFromAutomation(ctx, instanceID, programExecutions)
+	s.executeExternalProgramsFromAutomation(ctx, instanceID, plan.programs)
 
 	// Execute export to instance — collect results before notification
-	exportResults := s.executeExportToInstance(ctx, instanceID, exportExecutions)
+	exportResults := s.executeExportToInstance(ctx, instanceID, s.reserveExports(plan.exports))
 
 	// Execute deletions
 	//
@@ -3755,6 +1986,26 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// - stop_tracker_timeout setting (default 2s) controls how long to wait for tracker ack
 	//
 	// This behavior is identical for both BitTorrent v1 and v2 torrents.
+	deleteActivity := func(hash string, pending selectedDeletion, action, outcome, reason string) *models.AutomationActivity {
+		detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // string and bool fields cannot fail to encode
+			DeleteMode string `json:"deleteMode"`
+			FilesKept  bool   `json:"filesKept"`
+			IsTrigger  bool   `json:"isTrigger"`
+		}{pending.deleteMode, pending.filesKept(), pending.trigger})
+		torrent := torrentByHash[hash]
+		return &models.AutomationActivity{
+			InstanceID:    instanceID,
+			Hash:          hash,
+			TorrentName:   torrent.Name,
+			TrackerDomain: scope.tracker(&torrent),
+			Action:        action,
+			RuleID:        &pending.rule.id,
+			RuleName:      pending.rule.name,
+			Outcome:       outcome,
+			Reason:        reason,
+			Details:       detailsJSON,
+		}
+	}
 	for mode, hashes := range deleteHashesByMode {
 		if len(hashes) == 0 {
 			continue
@@ -3767,20 +2018,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 				// Record failed deletion activity
 				for _, hash := range batch {
-					if pending, ok := pendingByHash[hash]; ok {
-						detailsJSON, _ := json.Marshal(pending.details)
-						activity := &models.AutomationActivity{
-							InstanceID:    instanceID,
-							Hash:          hash,
-							TorrentName:   pending.torrentName,
-							TrackerDomain: pending.trackerDomain,
-							Action:        models.ActivityActionDeleteFailed,
-							RuleID:        &pending.ruleID,
-							RuleName:      pending.ruleName,
-							Outcome:       models.ActivityOutcomeFailed,
-							Reason:        err.Error(),
-							Details:       detailsJSON,
-						}
+					if pending, ok := deletions.byHash[hash]; ok {
+						activity := deleteActivity(hash, pending, models.ActivityActionDeleteFailed, models.ActivityOutcomeFailed, err.Error())
 						summary.recordActivity(activity, 1)
 						if s.activityStore != nil {
 							if err := s.activityStore.Create(ctx, activity); err != nil {
@@ -3799,14 +2038,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					// This allows qBittorrent time to refresh its disk free space reading
 					if len(freeSpaceDeleteRuleIDs) > 0 {
 						for _, hash := range batch {
-							if pending, ok := pendingByHash[hash]; ok {
-								if _, isFSRule := freeSpaceDeleteRuleIDs[pending.ruleID]; isFSRule {
+							if pending, ok := deletions.byHash[hash]; ok {
+								if _, isFSRule := freeSpaceDeleteRuleIDs[pending.rule.id]; isFSRule {
 									s.mu.Lock()
 									s.lastFreeSpaceDeleteAt[instanceID] = now
 									s.mu.Unlock()
 									log.Debug().
 										Int("instanceID", instanceID).
-										Int("ruleID", pending.ruleID).
+										Int("ruleID", pending.rule.id).
 										Dur("cooldown", freeSpaceDeleteCooldown).
 										Msg("automations: started FREE_SPACE delete cooldown")
 									break // Only need to set once per batch
@@ -3818,20 +2057,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 				// Record successful deletion activity
 				for _, hash := range batch {
-					if pending, ok := pendingByHash[hash]; ok {
-						detailsJSON, _ := json.Marshal(pending.details)
-						activity := &models.AutomationActivity{
-							InstanceID:    instanceID,
-							Hash:          hash,
-							TorrentName:   pending.torrentName,
-							TrackerDomain: pending.trackerDomain,
-							Action:        pending.action,
-							RuleID:        &pending.ruleID,
-							RuleName:      pending.ruleName,
-							Outcome:       models.ActivityOutcomeSuccess,
-							Reason:        pending.reason,
-							Details:       detailsJSON,
-						}
+					if pending, ok := deletions.byHash[hash]; ok {
+						activity := deleteActivity(hash, pending, models.ActivityActionDeletedCondition, models.ActivityOutcomeSuccess, "condition matched")
 						summary.recordActivity(activity, 1)
 						if s.activityStore != nil {
 							if err := s.activityStore.Create(ctx, activity); err != nil {
@@ -3914,7 +2141,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		defer cancel()
 	}
 	s.notifyAutomationSummary(notifyCtx, instanceID, summary, eligibleRules)
-	return nil, nil
+	return append(summary.activities, skipActivities...), nil
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary, rules []*models.Automation) {
@@ -4101,17 +2328,6 @@ func buildRuleCountsFromHashes(hashes []string, ruleByHash map[string]ruleRef) m
 	return counts
 }
 
-func recordMoveFailureRuleCounts(summary *automationSummary, failedMoveHashesByPath map[string][]string, moveRuleByHash map[string]ruleRef) {
-	if summary == nil {
-		return
-	}
-	summary.recordRuleCounts(
-		models.ActivityActionMoved,
-		models.ActivityOutcomeFailed,
-		buildRuleCountsFromHashes(flattenHashGroupsByPath(failedMoveHashesByPath), moveRuleByHash),
-	)
-}
-
 func buildNotifiedAutomationSummary(summary *automationSummary, rules []*models.Automation) *automationSummary {
 	if summary == nil || len(summary.rules) == 0 || len(rules) == 0 {
 		return nil
@@ -4209,71 +2425,6 @@ func buildRuleCountsFromHashMaps(hashes []string, ruleByHashMaps ...map[string]r
 	return counts
 }
 
-func flattenHashGroups(groups ...map[int64][]string) []string {
-	if len(groups) == 0 {
-		return nil
-	}
-	out := make([]string, 0)
-	for _, group := range groups {
-		for _, hashes := range group {
-			out = append(out, hashes...)
-		}
-	}
-	return out
-}
-
-func flattenHashGroupsByShareKey(group map[shareKey][]string) []string {
-	if len(group) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{})
-	out := make([]string, 0)
-	for _, hashes := range group {
-		for _, hash := range hashes {
-			if _, exists := seen[hash]; exists {
-				continue
-			}
-			seen[hash] = struct{}{}
-			out = append(out, hash)
-		}
-	}
-	return out
-}
-
-func flattenHashGroupsByPath(group map[string][]string) []string {
-	if len(group) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{})
-	out := make([]string, 0)
-	for _, hashes := range group {
-		for _, hash := range hashes {
-			if _, exists := seen[hash]; exists {
-				continue
-			}
-			seen[hash] = struct{}{}
-			out = append(out, hash)
-		}
-	}
-	return out
-}
-
-func categoryMoveHashes(moves []categoryMove) []string {
-	if len(moves) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{})
-	out := make([]string, 0, len(moves))
-	for _, move := range moves {
-		if _, exists := seen[move.hash]; exists {
-			continue
-		}
-		seen[move.hash] = struct{}{}
-		out = append(out, move.hash)
-	}
-	return out
-}
-
 func collectTorrentNamesForHashes(hashes []string, torrentByHash map[string]qbt.Torrent) []string {
 	if len(hashes) == 0 || len(torrentByHash) == 0 {
 		return nil
@@ -4299,99 +2450,6 @@ func collectTorrentNamesForHashes(hashes []string, torrentByHash map[string]qbt.
 	return out
 }
 
-func matchesTracker(pattern string, domains []string) bool {
-	if pattern == "*" {
-		return true // Match all trackers
-	}
-	if pattern == "" {
-		return false
-	}
-
-	tokens := strings.FieldsFunc(pattern, func(r rune) bool {
-		return r == ',' || r == ';' || r == '|'
-	})
-	includeTokens := make([]string, 0, len(tokens))
-	excludeTokens := make([]string, 0, len(tokens))
-
-	for _, token := range tokens {
-		normalized := normalizeLowerTrim(token)
-		if normalized == "" {
-			continue
-		}
-		if after, ok := strings.CutPrefix(normalized, "!"); ok {
-			negated := normalizeLowerTrim(after)
-			if negated != "" {
-				excludeTokens = append(excludeTokens, negated)
-			}
-			continue
-		}
-		includeTokens = append(includeTokens, normalized)
-	}
-
-	matchesToken := func(token string) bool {
-		isGlob := strings.ContainsAny(token, "*?")
-		for _, domain := range domains {
-			d := normalizeLower(domain)
-			if isGlob {
-				ok, err := path.Match(token, d)
-				if err != nil {
-					log.Error().Err(err).Str("pattern", token).Msg("automations: invalid glob pattern")
-					continue
-				}
-				if ok {
-					return true
-				}
-				continue
-			}
-			if d == token || (strings.HasPrefix(token, ".") && strings.HasSuffix(d, token)) {
-				return true
-			}
-		}
-		return false
-	}
-
-	if slices.ContainsFunc(excludeTokens, matchesToken) {
-		return false
-	}
-
-	if len(includeTokens) == 0 {
-		return len(excludeTokens) > 0
-	}
-	return slices.ContainsFunc(includeTokens, matchesToken)
-}
-
-func collectTrackerDomains(t qbt.Torrent, sm *qbittorrent.SyncManager) []string {
-	domainSet := make(map[string]struct{})
-
-	if t.Tracker != "" {
-		if domain := sm.ExtractDomainFromURL(t.Tracker); domain != "" && domain != "Unknown" {
-			domainSet[domain] = struct{}{}
-		}
-	}
-
-	for _, tr := range t.Trackers {
-		if tr.Url == "" {
-			continue
-		}
-		if domain := sm.ExtractDomainFromURL(tr.Url); domain != "" && domain != "Unknown" {
-			domainSet[domain] = struct{}{}
-		}
-	}
-
-	if len(domainSet) == 0 && t.Tracker != "" {
-		if domain := sanitizeTrackerHost(t.Tracker); domain != "" {
-			domainSet[domain] = struct{}{}
-		}
-	}
-
-	domains := make([]string, 0, len(domainSet))
-	for d := range domainSet {
-		domains = append(domains, d)
-	}
-	slices.Sort(domains)
-	return domains
-}
-
 func sanitizeTrackerHost(urlOrHost string) string {
 	clean := strings.TrimSpace(urlOrHost)
 	if clean == "" {
@@ -4413,14 +2471,35 @@ func normalizePath(p string) string {
 	return pathComparisonNormalizer.Normalize(p)
 }
 
-// crossSeedGroups maps a torrent hash to its cross-seed group: the torrents on
+// crossSeedGroups holds the cross-seed group of each torrent: the torrents on
 // the instance that share at least one file on disk with it, directly or
-// through another member, itself included. All members map to one slice. A
-// torrent without a cross-seed has no entry. The cross-seed matcher decides
-// which torrents share any file, including files that match classification ignores.
-type crossSeedGroups map[string][]qbt.Torrent
+// through another member, itself included. All members share one slice. A
+// torrent without a cross-seed has no group. The cross-seed matcher decides
+// which torrents share any file, including files that match classification
+// ignores. With a run session, a torrent that no ask covered is read first
+// (ADR 0042). A nil value holds no group.
+type crossSeedGroups struct {
+	byHash  map[string][]qbt.Torrent
+	session *runSession
+}
 
-func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) crossSeedGroups {
+// members returns the group of the torrent, or nil when it has no cross-seed.
+func (g *crossSeedGroups) members(hash string) []qbt.Torrent {
+	if g == nil {
+		return nil
+	}
+	if g.session != nil {
+		g.session.ensureGroups(hash)
+	}
+	return g.byHash[hash]
+}
+
+// buildCrossSeedGroups returns the groups of the run session, or without one
+// the groups of the links in evalCtx.
+func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) *crossSeedGroups {
+	if evalCtx != nil && evalCtx.crossSeeds != nil {
+		return evalCtx.crossSeeds
+	}
 	if evalCtx == nil || len(evalCtx.SameInstanceContentByHash) == 0 {
 		return nil
 	}
@@ -4430,7 +2509,7 @@ func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) crossSee
 		byHash[t.Hash] = t
 	}
 
-	groups := make(crossSeedGroups)
+	groups := make(map[string][]qbt.Torrent)
 	for _, t := range torrents {
 		if _, grouped := groups[t.Hash]; grouped || len(sharing[t.Hash]) == 0 {
 			continue
@@ -4455,19 +2534,19 @@ func buildCrossSeedGroups(torrents []qbt.Torrent, evalCtx *EvalContext) crossSee
 			groups[member.Hash] = members
 		}
 	}
-	return groups
+	return &crossSeedGroups{byHash: groups}
 }
 
 // key identifies the cross-seed group of a torrent. A torrent without a
 // cross-seed is a group of its own.
-func (g crossSeedGroups) key(t qbt.Torrent) string {
-	if members := g[t.Hash]; len(members) > 0 {
+func (g *crossSeedGroups) key(t qbt.Torrent) string {
+	if members := g.members(t.Hash); len(members) > 0 {
 		return members[0].Hash
 	}
 	return t.Hash
 }
 
-func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef, groups crossSeedGroups) map[string]ruleRef {
+func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef, groups *crossSeedGroups) map[string]ruleRef {
 	if len(triggerHashes) == 0 || len(torrentByHash) == 0 || len(ruleByHash) == 0 {
 		return nil
 	}
@@ -4521,11 +2600,18 @@ func inheritRuleRefForMoveGroup(expandedHash, triggerHash string, ruleByHash map
 	ruleByHash[expandedHash] = ref
 }
 
-func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups crossSeedGroups, evalCtx *EvalContext, hardlinks *HardlinkIndex) {
-	if len(groups) == 0 && hardlinks == nil {
+func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups *crossSeedGroups, evalCtx *EvalContext, hardlinks *HardlinkIndex) {
+	if groups != nil && groups.session != nil {
+		groups.session.loadFiles(ctx, hardlinks)
 		return
 	}
-	hashes := slices.Sorted(maps.Keys(groups))
+	if groups == nil && hardlinks == nil {
+		return
+	}
+	var hashes []string
+	if groups != nil {
+		hashes = slices.Sorted(maps.Keys(groups.byHash))
+	}
 	if hardlinks != nil {
 		for _, group := range hardlinks.DeleteSafeGroupBySignature {
 			hashes = append(hashes, group...)
@@ -4534,7 +2620,7 @@ func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, groups
 		hashes = slices.Compact(hashes)
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	evalCtx.CrossSeedFilesByHash = filesByHash
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
@@ -4554,7 +2640,7 @@ type categoryExpansion struct {
 // other members of each trigger's cross-seed group. A torrent already in the
 // category or in the batch, one whose own rule chose another category, or one
 // the run deletes stays out.
-func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds crossSeedGroups, deleting map[string]pendingDeletion) []categoryExpansion {
+func categoryCrossSeedExpansion(category string, batch []string, states map[string]*torrentDesiredState, crossSeeds *crossSeedGroups, deleting map[string]selectedDeletion) []categoryExpansion {
 	taken := make(map[string]struct{}, len(batch))
 	for _, hash := range batch {
 		taken[hash] = struct{}{}
@@ -4565,7 +2651,7 @@ func categoryCrossSeedExpansion(category string, batch []string, states map[stri
 		if state == nil || !state.categoryIncludeCrossSeeds || state.categoryGroupID != "" {
 			continue
 		}
-		for _, member := range crossSeeds[hash] {
+		for _, member := range crossSeeds.members(hash) {
 			if _, ok := taken[member.Hash]; ok || member.Category == category {
 				continue
 			}
@@ -4729,10 +2815,10 @@ func crossSeedGroupMembers(
 	return verified, true
 }
 
-func shouldPreserveCrossSeedFiles(torrent qbt.Torrent, crossSeeds crossSeedGroups, filesByHash map[string]qbt.TorrentFiles) bool {
+func shouldPreserveCrossSeedFiles(torrent qbt.Torrent, crossSeeds *crossSeedGroups, filesByHash map[string]qbt.TorrentFiles) bool {
 	verifiedHashes, ok := crossSeedGroupMembers(
 		torrent,
-		crossSeeds[torrent.Hash],
+		crossSeeds.members(torrent.Hash),
 		nil,
 		cachedTorrentFilesFetcher(filesByHash),
 	)
@@ -4748,7 +2834,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	}
 
 	// Get files for both torrents
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{torrent1.Hash, torrent2.Hash})
+	filesByHash, err := s.filesReader.GetTorrentFilesBatch(ctx, instanceID, []string{torrent1.Hash, torrent2.Hash})
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch files: %w", err)
 	}
@@ -4767,6 +2853,134 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	return percent >= int64(minOverlapPercent), nil
 }
 
+// expandTagStatesForCrossSeeds propagates pending tag decisions flagged with
+// includeCrossSeeds onto the trigger's cross-seed group: the torrents that
+// share a file with it, as category expansion uses. Siblings get their own
+// state entry (seeded with their current tags) so the tag diff loop computes
+// a correct per-sibling desired set - SetTags replaces a torrent's
+// whole tag list, so deltas must never be shared.
+func expandTagStatesForCrossSeeds(states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, crossSeeds *crossSeedGroups) {
+	// Deterministic trigger order keeps sibling attribution stable when several
+	// triggers in one group expand the same tag.
+	var triggerHashes []string
+	for hash, state := range states {
+		if state != nil && len(state.tagExpandByTag) > 0 {
+			triggerHashes = append(triggerHashes, hash)
+		}
+	}
+	if len(triggerHashes) == 0 {
+		return
+	}
+	sort.Strings(triggerHashes)
+
+	exp := tagExpansion{states: states, rulePos: rulePositions(ruleByID), injected: make(map[tagInjectionKey]tagInjection)}
+	for _, hash := range triggerHashes {
+		state := states[hash]
+		for _, tag := range slices.Sorted(maps.Keys(state.tagExpandByTag)) {
+			intent := state.tagExpandByTag[tag]
+			if ruleByID[intent.rule.id] == nil {
+				continue
+			}
+			for _, sibTorrent := range crossSeeds.members(hash) {
+				if sibTorrent.Hash != hash {
+					exp.inject(sibTorrent, tag, intent)
+				}
+			}
+		}
+	}
+}
+
+// rulePositions maps each rule to its evaluation order ((sort_order, id), the
+// store's ordering). It resolves conflicting expansions injected by different
+// rules: the later rule wins, independent of trigger hash order.
+func rulePositions(ruleByID map[int]*models.Automation) map[int]int {
+	ordered := slices.SortedFunc(maps.Values(ruleByID), func(a, b *models.Automation) int {
+		if a.SortOrder != b.SortOrder {
+			return a.SortOrder - b.SortOrder
+		}
+		return a.ID - b.ID
+	})
+	pos := make(map[int]int, len(ordered))
+	for i, rule := range ordered {
+		pos[rule.ID] = i
+	}
+	return pos
+}
+
+type tagInjectionKey struct {
+	hash string
+	tag  string
+}
+
+// tagInjection is a sibling tag decision injected (or canceled as a no-op) by
+// expansion: the injecting rule's position and the injected action.
+type tagInjection struct {
+	pos    int
+	action string
+}
+
+// tagExpansion injects tag decisions into sibling states. injected
+// distinguishes them from a sibling's own evaluated decisions, which a
+// different rule's expansion never overrides.
+type tagExpansion struct {
+	states   map[string]*torrentDesiredState
+	rulePos  map[int]int
+	injected map[tagInjectionKey]tagInjection
+}
+
+func (e *tagExpansion) inject(sibTorrent qbt.Torrent, tag string, intent tagExpandIntent) {
+	sibState := e.states[sibTorrent.Hash]
+	if sibState == nil {
+		sibState = &torrentDesiredState{
+			hash:         sibTorrent.Hash,
+			name:         sibTorrent.Name,
+			currentTags:  parseTorrentTags(sibTorrent.Tags),
+			tagActions:   make(map[string]string),
+			tagRuleByTag: make(map[string]ruleRef),
+		}
+		e.states[sibTorrent.Hash] = sibState
+	}
+	key := tagInjectionKey{hash: sibTorrent.Hash, tag: tag}
+	pos := e.rulePos[intent.rule.id]
+	prev, wasInjected := e.injected[key]
+	if wasInjected && pos < prev.pos {
+		return // a later rule's expansion already decided this tag
+	}
+	if wasInjected && pos == prev.pos && prev.action == "add" && intent.action == "remove" {
+		return // same-rule conflicts resolve add-over-remove
+	}
+	if ownRule, hasOwn := sibState.tagRuleByTag[tag]; hasOwn && !wasInjected {
+		if ownRule.id != intent.rule.id {
+			return // sibling's own decision from another rule wins, a no-op one too
+		}
+		if sibState.tagActions[tag] == intent.action || intent.action == "remove" {
+			return // same-rule conflicts resolve add-over-remove
+		}
+	}
+	e.injected[key] = tagInjection{pos: pos, action: intent.action}
+
+	// Skip changes the sibling's current tags already satisfy, so no-op
+	// siblings don't land in tagChanges and inflate activity counts. Managed
+	// reset is the exception: the tag is wholesale-deleted in the client
+	// first, so its re-adds are real changes, also for a later rule's add
+	// after an earlier reset re-add. A canceled entry stays canceled: the
+	// winning decision is "leave as is".
+	_, sibHasTag := sibState.currentTags[tag]
+	_, resetPending := sibState.tagResetTags[tag]
+	reset := intent.resetFromClient || resetPending
+	if reset {
+		sibHasTag = false
+	}
+	if (intent.action == "add") == sibHasTag {
+		delete(sibState.tagActions, tag)
+		delete(sibState.tagRuleByTag, tag)
+		return
+	}
+	sibState.tagActions[tag] = intent.action
+	sibState.tagRuleByTag[tag] = intent.rule
+	markTagReset(sibState, tag, reset && intent.action == "add")
+}
+
 // shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied
 // for a trigger torrent when ContentPath is ambiguous (ContentPath == SavePath).
 //
@@ -4782,11 +2996,22 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 	triggerHash string,
 	torrentByHash map[string]qbt.Torrent,
 ) bool {
+	expand, verifyOverlap, minPercent := s.groupAmbiguityPolicy(rule, groupID, idx, triggerHash)
+	if !expand || !verifyOverlap {
+		return expand
+	}
+	return s.triggerOverlapsGroup(ctx, instanceID, idx, triggerHash, torrentByHash, minPercent)
+}
+
+// groupAmbiguityPolicy is the part of the ambiguity policy that holds for every trigger in
+// the group of triggerHash. It returns whether the group can expand, and whether each trigger
+// must first pass the overlap check with minPercent.
+func (s *Service) groupAmbiguityPolicy(rule *models.Automation, groupID string, idx *groupIndex, triggerHash string) (expand, verifyOverlap bool, minPercent int) {
 	if idx == nil || triggerHash == "" {
-		return true
+		return true, false, 0
 	}
 	if !idx.IsAmbiguousForHash(triggerHash) {
-		return true
+		return true, false, 0
 	}
 
 	def := (*models.GroupDefinition)(nil)
@@ -4797,7 +3022,7 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 		def = builtinGroupDefinition(groupID)
 	}
 	if def == nil || !containsKey(def.Keys, groupKeyContentPath) {
-		return true
+		return true, false, 0
 	}
 
 	policy := strings.TrimSpace(def.AmbiguousPolicy)
@@ -4805,24 +3030,28 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 		policy = groupAmbiguousVerifyOverlap
 	}
 	if policy == groupAmbiguousSkip {
-		return false
+		return false, false, 0
 	}
 
-	if s == nil || s.syncManager == nil {
-		return false
+	if s == nil || s.filesReader == nil {
+		return false, false, 0
 	}
+
+	minPercent = def.MinFileOverlapPercent
+	if minPercent <= 0 {
+		minPercent = minFileOverlapPercent
+	}
+	return true, true, minPercent
+}
+
+// triggerOverlapsGroup returns whether the files of the trigger overlap the files of each
+// other member of its group by minPercent or more.
+func (s *Service) triggerOverlapsGroup(ctx context.Context, instanceID int, idx *groupIndex, triggerHash string, torrentByHash map[string]qbt.Torrent, minPercent int) bool {
 	triggerTorrent, ok := torrentByHash[triggerHash]
 	if !ok {
 		return false
 	}
-
-	minPercent := def.MinFileOverlapPercent
-	if minPercent <= 0 {
-		minPercent = minFileOverlapPercent
-	}
-
-	members := idx.MembersForHash(triggerHash)
-	for _, otherHash := range members {
+	for _, otherHash := range idx.MembersForHash(triggerHash) {
 		if otherHash == triggerHash {
 			continue
 		}
@@ -4841,13 +3070,13 @@ func (s *Service) shouldExpandGroupWithAmbiguityPolicy(
 // groupHoldsSharedFiles reports whether every torrent that shares a file with
 // a member is also a member. Moving a member moves the files that the other
 // torrent still needs.
-func groupHoldsSharedFiles(members []string, crossSeeds crossSeedGroups) bool {
+func groupHoldsSharedFiles(members []string, crossSeeds *crossSeedGroups) bool {
 	inGroup := make(map[string]struct{}, len(members))
 	for _, hash := range members {
 		inGroup[hash] = struct{}{}
 	}
 	for _, hash := range members {
-		for _, peer := range crossSeeds[hash] {
+		for _, peer := range crossSeeds.members(hash) {
 			if _, ok := inGroup[peer.Hash]; !ok {
 				return false
 			}
@@ -4877,7 +3106,7 @@ func allGroupMembersMatchCategoryAction(
 	torrentByHash map[string]qbt.Torrent,
 	catAction categoryActionConfig,
 	evalCtx *EvalContext,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 ) bool {
 	if len(members) == 0 {
 		return false
@@ -4910,7 +3139,7 @@ func allGroupMembersMatchCategoryAction(
 func deleteFreesSpace(
 	mode string,
 	torrent qbt.Torrent,
-	crossSeeds crossSeedGroups,
+	crossSeeds *crossSeedGroups,
 	filesByHash map[string]qbt.TorrentFiles,
 ) bool {
 	switch mode {
@@ -5076,39 +3305,21 @@ func rulesNeedCrossSeedFiles(rules []*models.Automation) bool {
 	return slices.ContainsFunc(rules, ruleNeedsCrossSeedFiles)
 }
 
-// buildCrossMatchSets delegates to the CrossMatcher to build all cross-match sets.
-func (s *Service) buildCrossMatchSets(ctx context.Context, instanceID int, needs CrossMatchNeeds) *CrossMatchResult {
-	if s.crossMatcher != nil {
-		return s.crossMatcher.BuildCrossMatchSets(ctx, instanceID, needs)
+// otherInstanceKeepsFiles reports whether a torrent on another instance can
+// need the files of the torrent: they share a file, or qui could not check. A
+// rule never reaches another instance, so the delete keeps the files. logMsg
+// says why.
+func otherInstanceKeepsFiles(evalCtx *EvalContext, hash string) (logMsg string, keep bool) {
+	if _, shared := evalCtx.CrossInstanceSharedHashSet[hash]; shared {
+		return "automations: removing torrent (a torrent on another instance shares the files - keeping files)", true
 	}
-	return &CrossMatchResult{}
-}
-
-// applyCrossMatchResult populates the EvalContext with cross-match hash sets.
-func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatchResult) {
-	if result == nil {
-		return
+	if _, unknown := evalCtx.CrossInstanceSharedUnknown[hash]; !unknown {
+		return "", false
 	}
-	if result.SameInstanceExists != nil {
-		evalCtx.SameInstanceCrossSeedHashSet = result.SameInstanceExists
+	if len(evalCtx.OfflineLocalInstances) == 0 {
+		return "automations: removing torrent (could not check other instances - keeping files)", true
 	}
-	if result.SameInstanceSeeding != nil {
-		evalCtx.SameInstanceCrossSeedSeedingHashSet = result.SameInstanceSeeding
-	}
-	if result.SameInstanceTagsByHash != nil {
-		evalCtx.SameInstanceCrossSeedTagsByHash = result.SameInstanceTagsByHash
-	}
-	if result.SameInstanceContentByHash != nil {
-		evalCtx.SameInstanceContentByHash = result.SameInstanceContentByHash
-	}
-	if result.OtherInstanceExists != nil {
-		evalCtx.CrossInstanceHashSet = result.OtherInstanceExists
-	}
-	if result.OtherInstanceSeeding != nil {
-		evalCtx.CrossInstanceSeedingHashSet = result.OtherInstanceSeeding
-	}
-	evalCtx.SameInstanceCrossSeedUnknown = result.SameInstanceUnknown
-	evalCtx.CrossInstanceUnknown = result.OtherInstanceUnknown
+	return "automations: removing torrent (could not check instance " + strings.Join(evalCtx.OfflineLocalInstances, ", ") + " - keeping files)", true
 }
 
 // rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks
@@ -5230,64 +3441,12 @@ func hasWindowsDrivePrefix(p string) bool {
 		(('a' <= p[0] && p[0] <= 'z') || ('A' <= p[0] && p[0] <= 'Z'))
 }
 
-// applySpeedLimits applies upload or download limits in batches, logging and recording failures.
-// Returns a map of limit (KiB) -> hashes of successfully updated torrents.
-func (s *Service) applySpeedLimits(
-	ctx context.Context,
-	instanceID int,
-	batches map[int64][]string,
-	limitType string,
-	setLimit func(ctx context.Context, instanceID int, hashes []string, limit int64) error,
-	summary *automationSummary,
-	ruleByHash map[string]ruleRef,
-	torrentByHash map[string]qbt.Torrent,
-) map[int64][]string {
-	successHashes := make(map[int64][]string)
-	for limit, hashes := range batches {
-		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := setLimit(ctx, instanceID, batch, limit); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Int64("limitKiB", limit).Int("count", len(batch)).Str("limitType", limitType).Msg("automations: speed limit failed")
-				detailsJSON, marshalErr := json.Marshal(map[string]any{"limitKiB": limit, "count": len(batch), "type": limitType})
-				if marshalErr != nil {
-					log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal activity details")
-				}
-				activity := &models.AutomationActivity{
-					InstanceID: instanceID,
-					Hash:       strings.Join(batch, ","),
-					Action:     models.ActivityActionLimitFailed,
-					Outcome:    models.ActivityOutcomeFailed,
-					Reason:     limitType + " limit failed: " + err.Error(),
-					Details:    detailsJSON,
-				}
-				if summary != nil {
-					summary.recordActivity(activity, len(batch))
-					summary.recordRuleCounts(
-						models.ActivityActionLimitFailed,
-						models.ActivityOutcomeFailed,
-						buildRuleCountsFromHashes(batch, ruleByHash),
-					)
-					summary.addTorrentSamples(collectTorrentNamesForHashes(batch, torrentByHash), 3)
-				}
-				if s.activityStore != nil {
-					if err := s.activityStore.Create(ctx, activity); err != nil {
-						log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record activity")
-					}
-				}
-			} else {
-				successHashes[limit] = append(successHashes[limit], batch...)
-			}
-		}
-	}
-	return successHashes
-}
-
 func (s *Service) recordDryRunNoMatch(ctx context.Context, instanceID int) []*models.AutomationActivity {
 	if s == nil || s.activityStore == nil {
 		return nil
 	}
 
-	detailsJSON, _ := json.Marshal(map[string]any{"count": 0})
+	detailsJSON, _ := json.Marshal(map[string]int{"count": 0}) //nolint:errchkjson // string keys and int values cannot fail to encode
 	activity := &models.AutomationActivity{
 		InstanceID: instanceID,
 		Hash:       "",
@@ -5308,495 +3467,47 @@ func (s *Service) recordDryRunNoMatch(ctx context.Context, instanceID int) []*mo
 func (s *Service) recordDryRunActivities(
 	ctx context.Context,
 	instanceID int,
-	uploadBatches map[int64][]string,
-	downloadBatches map[int64][]string,
-	shareBatches map[shareKey][]string,
-	pauseHashes []string,
-	resumeHashes []string,
-	recheckHashes []string,
-	reannounceHashes []string,
-	autoManageHashes []string,
-	tagChanges map[string]*tagChange,
-	categoryBatches map[string][]string,
-	moveBatches map[string][]string,
-	pendingByHash map[string]pendingDeletion,
-	programExecutions []pendingProgramExec,
-	exportExecutions []pendingExportToInstance,
+	plan runPlan,
 	torrentByHash map[string]qbt.Torrent,
-	torrents []qbt.Torrent,
-	states map[string]*torrentDesiredState,
-	ruleByID map[int]*models.Automation,
-	evalCtx *EvalContext,
+	scope *ruleScope,
 	recordNoMatch bool,
 ) []*models.AutomationActivity {
 	if s.activityStore == nil {
 		return nil
 	}
 
-	createdActivities := make([]*models.AutomationActivity, 0)
-
-	// The dry run reuses the live run's context, so grouping expansion reads the same hardlink data.
-	dryRunEvalCtx := evalCtx
-	if dryRunEvalCtx == nil {
-		dryRunEvalCtx = &EvalContext{ReleaseParser: s.releaseParser}
-	}
-	crossSeeds := buildCrossSeedGroups(torrents, dryRunEvalCtx)
+	r := &stepRun{s: s, instanceID: instanceID, torrentByHash: torrentByHash, scope: scope, dryRun: true}
+	r.runSteps(ctx, &plan)
 	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
-		detailsJSON, _ := json.Marshal(details)
-		activity := &models.AutomationActivity{
-			InstanceID: instanceID,
-			Hash:       "",
-			Action:     action,
-			Outcome:    models.ActivityOutcomeDryRun,
-			Details:    detailsJSON,
-			CreatedAt:  time.Now().UTC(),
-		}
-		activityID, err := s.activityStore.CreateWithID(ctx, activity)
-		if err != nil {
-			return
-		}
-		activity.ID = activityID
-		createdActivities = append(createdActivities, activity)
-		if s.activityRuns == nil || buildItems == nil {
-			return
-		}
-		items := buildItems()
-		if len(items) > 0 {
-			s.activityRuns.Put(activityID, instanceID, items)
-		}
+		r.record(ctx, stepActivity{action: action, details: details, items: buildItems})
 	}
 
-	// Speed limits
-	if len(uploadBatches) > 0 || len(downloadBatches) > 0 {
-		limitCounts := make(map[string]int)
-		for limit, hashes := range uploadBatches {
-			limitCounts[fmt.Sprintf("upload:%d", limit)] = len(dedupeHashes(hashes))
-		}
-		for limit, hashes := range downloadBatches {
-			limitCounts[fmt.Sprintf("download:%d", limit)] = len(dedupeHashes(hashes))
-		}
-		createActivity(models.ActivityActionSpeedLimitsChanged, map[string]any{"limits": limitCounts}, func() []ActivityRunTorrent {
-			return buildSpeedLimitRunItems(uploadBatches, downloadBatches, torrentByHash, s.syncManager)
-		})
-	}
-
-	// Share limits
-	if len(shareBatches) > 0 {
-		limitCounts := make(map[string]int)
-		for key, hashes := range shareBatches {
-			limitKey := fmt.Sprintf("%.2f:%d:%d", key.ratio, key.seed, key.inactive)
-			limitCounts[limitKey] = len(dedupeHashes(hashes))
-		}
-		createActivity(models.ActivityActionShareLimitsChanged, map[string]any{"limits": limitCounts}, func() []ActivityRunTorrent {
-			return buildShareLimitRunItems(shareBatches, torrentByHash, s.syncManager)
-		})
-	}
-
-	for _, a := range []struct {
-		action string
-		hashes []string
-	}{
-		{action: models.ActivityActionPaused, hashes: pauseHashes},
-		{action: models.ActivityActionResumed, hashes: resumeHashes},
-		{action: models.ActivityActionRechecked, hashes: recheckHashes},
-		{action: models.ActivityActionReannounced, hashes: reannounceHashes},
-		{action: models.ActivityActionAutoManaged, hashes: autoManageHashes},
-	} {
-		if len(a.hashes) == 0 {
-			continue
-		}
-		uniqueHashes := dedupeHashes(a.hashes)
-		createActivity(a.action, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
-			return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
-		})
-	}
-
-	// Tags
-	if len(tagChanges) > 0 {
-		addCounts := make(map[string]int)
-		removeCounts := make(map[string]int)
-		for _, change := range tagChanges {
-			for _, tag := range change.toAdd {
-				addCounts[tag]++
-			}
-			for _, tag := range change.toRemove {
-				removeCounts[tag]++
-			}
-		}
-		if len(addCounts) > 0 || len(removeCounts) > 0 {
-			createActivity(models.ActivityActionTagsChanged, map[string]any{
-				"added":   addCounts,
-				"removed": removeCounts,
-			}, func() []ActivityRunTorrent {
-				return buildTagRunItems(tagChanges, torrentByHash, s.syncManager)
-			})
-		}
-	}
-
-	// Categories (include cross-seed expansion)
-	if len(categoryBatches) > 0 && len(states) > 0 {
-		var plannedMoves []categoryMove
-		sortedCategories := make([]string, 0, len(categoryBatches))
-		for cat := range categoryBatches {
-			sortedCategories = append(sortedCategories, cat)
-		}
-		sort.Strings(sortedCategories)
-
-		for _, category := range sortedCategories {
-			hashes := categoryBatches[category]
-			expandedHashes := make([]string, 0, len(hashes))
-
-			type ruleGroupKey struct {
-				ruleID  int
-				groupID string
-			}
-
-			previewEvalCtx := dryRunEvalCtx
-			keysToExpandByGroupID := make(map[ruleGroupKey]map[string]struct{})
-			groupIndexByGroupID := make(map[ruleGroupKey]*groupIndex)
-			groupEligibilityByGroupID := make(map[ruleGroupKey]map[string]bool)
-			for _, hash := range hashes {
-				state, exists := states[hash]
-				if !exists || state == nil {
-					continue
-				}
-				if state.categoryGroupID == "" {
-					expandedHashes = append(expandedHashes, hash)
-					continue
-				}
-
-				rule := (*models.Automation)(nil)
-				if ruleByID != nil && state.categoryRuleID > 0 {
-					rule = ruleByID[state.categoryRuleID]
-				}
-				if rule == nil {
-					if state.categoryIncludeCrossSeeds {
-						expandedHashes = append(expandedHashes, hash)
-					}
-					continue
-				}
-
-				catAction := getCategoryAction(rule)
-
-				rgk := ruleGroupKey{ruleID: state.categoryRuleID, groupID: state.categoryGroupID}
-				gid := state.categoryGroupID
-				idx := groupIndexByGroupID[rgk]
-				if idx == nil {
-					idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, gid, torrents, s.syncManager)
-					groupIndexByGroupID[rgk] = idx
-				}
-				if idx == nil {
-					continue
-				}
-				groupKey := idx.KeyForHash(hash)
-				if groupKey == "" {
-					continue
-				}
-				if groupEligibilityByGroupID[rgk] == nil {
-					groupEligibilityByGroupID[rgk] = make(map[string]bool)
-				}
-				eligible, computed := groupEligibilityByGroupID[rgk][groupKey]
-				if !computed {
-					eligible = true
-					if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, gid, idx, hash, torrentByHash) {
-						eligible = false
-					}
-					if eligible {
-						if previewEvalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-							previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-						}
-						activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
-						members := idx.MembersForHash(hash)
-						if !allGroupMembersMatchCategoryAction(members, torrentByHash, catAction, previewEvalCtx, crossSeeds) {
-							eligible = false
-						}
-					}
-					groupEligibilityByGroupID[rgk][groupKey] = eligible
-				}
-				if !eligible {
-					continue
-				}
-				expandedHashes = append(expandedHashes, hash)
-				if keysToExpandByGroupID[rgk] == nil {
-					keysToExpandByGroupID[rgk] = make(map[string]struct{})
-				}
-				keysToExpandByGroupID[rgk][groupKey] = struct{}{}
-			}
-
-			if len(keysToExpandByGroupID) > 0 {
-				expandedSet := make(map[string]struct{})
-				for _, h := range expandedHashes {
-					expandedSet[h] = struct{}{}
-				}
-
-				for _, t := range torrents {
-					if t.Category == category {
-						continue
-					}
-					if _, exists := expandedSet[t.Hash]; exists {
-						continue
-					}
-					if _, deleting := pendingByHash[t.Hash]; deleting {
-						continue
-					}
-					if state, hasState := states[t.Hash]; hasState && state.category != nil {
-						if *state.category != category {
-							continue
-						}
-					}
-
-					shouldExpand := false
-					for rgk, keySet := range keysToExpandByGroupID {
-						idx := groupIndexByGroupID[rgk]
-						if idx == nil {
-							continue
-						}
-						gk := idx.KeyForHash(t.Hash)
-						if gk == "" {
-							continue
-						}
-						if _, ok := keySet[gk]; ok {
-							shouldExpand = true
-							break
-						}
-					}
-					if shouldExpand {
-						expandedHashes = append(expandedHashes, t.Hash)
-						expandedSet[t.Hash] = struct{}{}
-					}
-				}
-			}
-
-			for _, added := range categoryCrossSeedExpansion(category, expandedHashes, states, crossSeeds, pendingByHash) {
-				expandedHashes = append(expandedHashes, added.hash)
-			}
-
-			for _, hash := range expandedHashes {
-				move := categoryMove{hash: hash, category: category}
-				if t, exists := torrentByHash[hash]; exists {
-					move.name = t.Name
-					if domains := collectTrackerDomains(t, s.syncManager); len(domains) > 0 {
-						move.trackerDomain = domains[0]
-					}
-				}
-				plannedMoves = append(plannedMoves, move)
-			}
-		}
-
-		if len(plannedMoves) > 0 {
-			categoryCounts := make(map[string]int)
-			for _, move := range plannedMoves {
-				categoryCounts[move.category]++
-			}
-			createActivity(models.ActivityActionCategoryChanged, map[string]any{"categories": categoryCounts}, func() []ActivityRunTorrent {
-				return buildCategoryRunItems(plannedMoves, torrentByHash, s.syncManager)
-			})
-		}
-	}
-
-	// Moves (include cross-seed expansion)
-	if len(moveBatches) > 0 {
-		sortedPaths := make([]string, 0, len(moveBatches))
-		for path := range moveBatches {
-			sortedPaths = append(sortedPaths, path)
-		}
-		sort.Strings(sortedPaths)
-
-		movedHashes := make(map[string]struct{})
-		plannedCounts := make(map[string]int)
-		plannedHashesByPath := make(map[string][]string)
-		previewEvalCtx := dryRunEvalCtx
-
-		for _, path := range sortedPaths {
-			hashes := moveBatches[path]
-			normalizedDest := normalizePath(path)
-			var expandedHashes []string
-
-			type ruleGroupKey struct {
-				ruleID  int
-				groupID string
-			}
-			groupIndexByKey := make(map[ruleGroupKey]*groupIndex)
-			legacyKeysToExpand := make(map[string]struct{})
-
-			for _, hash := range hashes {
-				if _, exists := movedHashes[hash]; exists {
-					continue
-				}
-
-				state := states[hash]
-				if state != nil && state.moveGroupID != "" {
-					rule := (*models.Automation)(nil)
-					if ruleByID != nil && state.moveRuleID > 0 {
-						rule = ruleByID[state.moveRuleID]
-					}
-					if rule == nil {
-						// GroupId semantics are strict all-or-none.
-						continue
-					}
-
-					{
-						rgk := ruleGroupKey{ruleID: rule.ID, groupID: state.moveGroupID}
-						idx := groupIndexByKey[rgk]
-						if idx == nil {
-							idx = getOrBuildGroupIndexForRule(previewEvalCtx, rule, state.moveGroupID, torrents, s.syncManager)
-							groupIndexByKey[rgk] = idx
-						}
-
-						members := []string{hash}
-						if idx != nil {
-							if m := idx.MembersForHash(hash); len(m) > 0 {
-								members = m
-							}
-						}
-						if !groupHoldsSharedFiles(members, crossSeeds) {
-							continue
-						}
-
-						// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-						def := (*models.GroupDefinition)(nil)
-						if rule.Conditions != nil && rule.Conditions.Grouping != nil {
-							def = findGroupDefinition(rule.Conditions.Grouping, state.moveGroupID)
-						}
-						if def == nil {
-							def = builtinGroupDefinition(state.moveGroupID)
-						}
-
-						if def != nil && idx != nil && idx.IsAmbiguousForHash(hash) && containsKey(def.Keys, groupKeyContentPath) {
-							policy := strings.TrimSpace(def.AmbiguousPolicy)
-							if policy == "" {
-								policy = groupAmbiguousVerifyOverlap
-							}
-							if policy == groupAmbiguousSkip {
-								continue
-							}
-							minPercent := def.MinFileOverlapPercent
-							if minPercent <= 0 {
-								minPercent = minFileOverlapPercent
-							}
-							skipGroup := false
-							triggerTorrent, ok := torrentByHash[hash]
-							if !ok {
-								skipGroup = true
-							}
-							for _, otherHash := range members {
-								if skipGroup || otherHash == hash {
-									continue
-								}
-								otherTorrent, ok := torrentByHash[otherHash]
-								if !ok {
-									skipGroup = true
-									break
-								}
-								hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, triggerTorrent, otherTorrent, minPercent)
-								if err != nil || !hasOverlap {
-									skipGroup = true
-									break
-								}
-							}
-							if skipGroup {
-								continue
-							}
-						}
-
-						cond := (*models.RuleCondition)(nil)
-						if rule.Conditions != nil && rule.Conditions.Move != nil {
-							cond = rule.Conditions.Move.Condition
-						}
-						if previewEvalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-							previewEvalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-						}
-						activateRuleGrouping(previewEvalCtx, rule, torrents, s.syncManager)
-						if !allGroupMembersMatchCondition(members, torrentByHash, cond, previewEvalCtx) {
-							continue
-						}
-
-						for _, memberHash := range members {
-							if _, exists := movedHashes[memberHash]; exists {
-								continue
-							}
-							if _, deleting := pendingByHash[memberHash]; deleting {
-								continue
-							}
-							memberTorrent, ok := torrentByHash[memberHash]
-							if !ok {
-								continue
-							}
-							if normalizePath(memberTorrent.SavePath) == normalizedDest {
-								continue
-							}
-							expandedHashes = append(expandedHashes, memberHash)
-							movedHashes[memberHash] = struct{}{}
-						}
-						continue
-					}
-				}
-
-				expandedHashes = append(expandedHashes, hash)
-				movedHashes[hash] = struct{}{}
-				if t, exists := torrentByHash[hash]; exists {
-					legacyKeysToExpand[crossSeeds.key(t)] = struct{}{}
-				}
-			}
-
-			if len(legacyKeysToExpand) > 0 {
-				for _, t := range torrents {
-					if normalizePath(t.SavePath) == normalizedDest {
-						continue
-					}
-					if _, exists := movedHashes[t.Hash]; exists {
-						continue
-					}
-					if _, deleting := pendingByHash[t.Hash]; deleting {
-						continue
-					}
-					key := crossSeeds.key(t)
-					if _, matched := legacyKeysToExpand[key]; matched {
-						expandedHashes = append(expandedHashes, t.Hash)
-						movedHashes[t.Hash] = struct{}{}
-					}
-				}
-			}
-
-			expandedHashes = dedupeHashes(expandedHashes)
-			if len(expandedHashes) > 0 {
-				plannedHashesByPath[path] = expandedHashes
-				plannedCounts[path] = len(expandedHashes)
-			}
-		}
-
-		if len(plannedHashesByPath) > 0 {
-			createActivity(models.ActivityActionMoved, map[string]any{"paths": plannedCounts}, func() []ActivityRunTorrent {
-				return buildMoveRunItems(plannedHashesByPath, torrentByHash, s.syncManager)
-			})
-		}
-	}
+	deletions := plan.deletions.byHash
 
 	// External programs
-	if len(programExecutions) > 0 {
+	if len(plan.programs) > 0 {
 		hashesByProgram := make(map[int][]string)
-		for _, exec := range programExecutions {
+		for _, exec := range plan.programs {
 			hashesByProgram[exec.programID] = append(hashesByProgram[exec.programID], exec.hash)
 		}
 		for programID, hashes := range hashesByProgram {
 			uniqueHashes := dedupeHashes(hashes)
 			createActivity(externalprograms.ActivityActionExternalProgram, map[string]any{"programId": programID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
 			})
 		}
 	}
 
 	// Export to instance
-	if len(exportExecutions) > 0 {
-		const alreadyExistsReason = "Already exists on target instance"
+	if len(plan.exports) > 0 {
 		successByTarget := make(map[int][]string)
 		failedByTarget := make(map[int][]string)
 		existsByTarget := make(map[int][]string)
-		for _, exec := range exportExecutions {
-			switch {
-			case exec.failureReason == alreadyExistsReason:
+		for _, exec := range plan.exports {
+			switch exec.mark {
+			case exportAlreadyOnTarget:
 				existsByTarget[exec.action.TargetInstanceID] = append(existsByTarget[exec.action.TargetInstanceID], exec.hash)
-			case exec.failureReason != "":
+			case exportCheckFailed, exportSavePathUnresolved:
 				failedByTarget[exec.action.TargetInstanceID] = append(failedByTarget[exec.action.TargetInstanceID], exec.hash)
 			default:
 				successByTarget[exec.action.TargetInstanceID] = append(successByTarget[exec.action.TargetInstanceID], exec.hash)
@@ -5805,45 +3516,39 @@ func (s *Service) recordDryRunActivities(
 		for targetID, hashes := range successByTarget {
 			uniqueHashes := dedupeHashes(hashes)
 			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
 			})
 		}
 		for targetID, hashes := range existsByTarget {
 			uniqueHashes := dedupeHashes(hashes)
 			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes), "alreadyOnTarget": true}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
 			})
 		}
 		for targetID, hashes := range failedByTarget {
 			uniqueHashes := dedupeHashes(hashes)
 			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes), "preflightFailed": true}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
 			})
 		}
 	}
 
 	// Deletes
-	if len(pendingByHash) > 0 {
-		hashesByAction := make(map[string][]string)
-		for hash, pending := range pendingByHash {
-			hashesByAction[pending.action] = append(hashesByAction[pending.action], hash)
-		}
-		for action, hashes := range hashesByAction {
-			uniqueHashes := dedupeHashes(hashes)
-			createActivity(action, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
-			})
-		}
+	if len(deletions) > 0 {
+		hashes := slices.Collect(maps.Keys(deletions))
+		createActivity(models.ActivityActionDeletedCondition, map[string]any{"count": len(hashes)}, func() []ActivityRunTorrent {
+			return buildRunItemsFromHashes(hashes, torrentByHash, scope)
+		})
 	}
 
-	if recordNoMatch && len(createdActivities) == 0 {
+	if recordNoMatch && len(r.activities) == 0 {
 		return s.recordDryRunNoMatch(ctx, instanceID)
 	}
 
-	return createdActivities
+	return r.activities
 }
 
-func buildRunItemFromHash(hash string, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) ActivityRunTorrent {
+func buildRunItemFromHash(hash string, torrentByHash map[string]qbt.Torrent, scope *ruleScope) ActivityRunTorrent {
 	item := ActivityRunTorrent{Hash: hash}
 	if t, ok := torrentByHash[hash]; ok {
 		item.Name = t.Name
@@ -5853,16 +3558,12 @@ func buildRunItemFromHash(hash string, torrentByHash map[string]qbt.Torrent, sm 
 		item.Size = &size
 		item.Ratio = &ratio
 		item.AddedOn = &addedOn
-		if sm != nil {
-			if domains := collectTrackerDomains(t, sm); len(domains) > 0 {
-				item.TrackerDomain = domains[0]
-			}
-		}
+		item.TrackerDomain = scope.tracker(&t)
 	}
 	return item
 }
 
-func buildRunItemsFromHashes(hashes []string, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) []ActivityRunTorrent {
+func buildRunItemsFromHashes(hashes []string, torrentByHash map[string]qbt.Torrent, scope *ruleScope) []ActivityRunTorrent {
 	seen := make(map[string]struct{})
 	items := make([]ActivityRunTorrent, 0, len(hashes))
 	for _, hash := range hashes {
@@ -5873,19 +3574,19 @@ func buildRunItemsFromHashes(hashes []string, torrentByHash map[string]qbt.Torre
 			continue
 		}
 		seen[hash] = struct{}{}
-		items = append(items, buildRunItemFromHash(hash, torrentByHash, sm))
+		items = append(items, buildRunItemFromHash(hash, torrentByHash, scope))
 	}
 	sortActivityRunItems(items)
 	return items
 }
 
-func buildTagRunItems(tagChanges map[string]*tagChange, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) []ActivityRunTorrent {
+func buildTagRunItems(tagChanges map[string]*tagChange, torrentByHash map[string]qbt.Torrent, scope *ruleScope) []ActivityRunTorrent {
 	items := make([]ActivityRunTorrent, 0, len(tagChanges))
 	for hash, change := range tagChanges {
 		if len(change.toAdd) == 0 && len(change.toRemove) == 0 {
 			continue
 		}
-		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		item := buildRunItemFromHash(hash, torrentByHash, scope)
 		item.TagsAdded = slices.Clone(change.toAdd)
 		item.TagsRemoved = slices.Clone(change.toRemove)
 		slices.Sort(item.TagsAdded)
@@ -5896,18 +3597,14 @@ func buildTagRunItems(tagChanges map[string]*tagChange, torrentByHash map[string
 	return items
 }
 
-func buildCategoryRunItems(moves []categoryMove, torrentByHash map[string]qbt.Torrent, sm *qbittorrent.SyncManager) []ActivityRunTorrent {
-	items := make([]ActivityRunTorrent, 0, len(moves))
-	for _, move := range moves {
-		item := buildRunItemFromHash(move.hash, torrentByHash, sm)
-		if item.Name == "" {
-			item.Name = move.name
+func buildCategoryRunItems(byCategory map[string][]string, torrentByHash map[string]qbt.Torrent, scope *ruleScope) []ActivityRunTorrent {
+	items := make([]ActivityRunTorrent, 0, len(byCategory))
+	for category, hashes := range byCategory {
+		for _, hash := range hashes {
+			item := buildRunItemFromHash(hash, torrentByHash, scope)
+			item.Category = category
+			items = append(items, item)
 		}
-		if item.TrackerDomain == "" {
-			item.TrackerDomain = move.trackerDomain
-		}
-		item.Category = move.category
-		items = append(items, item)
 	}
 	sortActivityRunItems(items)
 	return items
@@ -5917,7 +3614,7 @@ func buildSpeedLimitRunItems(
 	uploadSuccess map[int64][]string,
 	downloadSuccess map[int64][]string,
 	torrentByHash map[string]qbt.Torrent,
-	sm *qbittorrent.SyncManager,
+	scope *ruleScope,
 ) []ActivityRunTorrent {
 	itemMap := make(map[string]*ActivityRunTorrent)
 
@@ -5925,7 +3622,7 @@ func buildSpeedLimitRunItems(
 		if item, ok := itemMap[hash]; ok {
 			return item
 		}
-		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		item := buildRunItemFromHash(hash, torrentByHash, scope)
 		itemMap[hash] = &item
 		return &item
 	}
@@ -5957,7 +3654,7 @@ func buildSpeedLimitRunItems(
 func buildShareLimitRunItems(
 	shareLimitSuccess map[shareKey][]string,
 	torrentByHash map[string]qbt.Torrent,
-	sm *qbittorrent.SyncManager,
+	scope *ruleScope,
 ) []ActivityRunTorrent {
 	itemMap := make(map[string]*ActivityRunTorrent)
 
@@ -5965,7 +3662,7 @@ func buildShareLimitRunItems(
 		if item, ok := itemMap[hash]; ok {
 			return item
 		}
-		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		item := buildRunItemFromHash(hash, torrentByHash, scope)
 		itemMap[hash] = &item
 		return &item
 	}
@@ -5991,7 +3688,7 @@ func buildShareLimitRunItems(
 func buildMoveRunItems(
 	successfulMoveHashesByPath map[string][]string,
 	torrentByHash map[string]qbt.Torrent,
-	sm *qbittorrent.SyncManager,
+	scope *ruleScope,
 ) []ActivityRunTorrent {
 	itemMap := make(map[string]*ActivityRunTorrent)
 
@@ -5999,7 +3696,7 @@ func buildMoveRunItems(
 		if item, ok := itemMap[hash]; ok {
 			return item
 		}
-		item := buildRunItemFromHash(hash, torrentByHash, sm)
+		item := buildRunItemFromHash(hash, torrentByHash, scope)
 		itemMap[hash] = &item
 		return &item
 	}
@@ -6176,16 +3873,44 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 	}
 }
 
-// pendingExportToInstance tracks a pending export-to-instance execution.
+// pendingExportToInstance is one export in the Run plan.
 // If failureReason is set, the export failed preflight and should only record a failure activity.
 type pendingExportToInstance struct {
 	hash             string
 	torrent          qbt.Torrent
+	trackerDomain    string
 	action           *models.ExportToInstanceAction
 	resolvedSavePath string
 	ruleID           int
 	ruleName         string
+	mark             exportMark
 	failureReason    string
+}
+
+// reserveExports drops each export that is already on the target and reserves the in-flight
+// slot of each ready export. It skips a ready export whose slot an earlier run still holds.
+func (s *Service) reserveExports(exports []pendingExportToInstance) []pendingExportToInstance {
+	reserved := make([]pendingExportToInstance, 0, len(exports))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, export := range exports {
+		if export.mark == exportAlreadyOnTarget {
+			continue
+		}
+		if export.mark == exportReady {
+			flightKey := fmt.Sprintf("%d:%s", export.action.TargetInstanceID, export.hash)
+			if _, alreadyInFlight := s.inFlightExports[flightKey]; alreadyInFlight {
+				log.Debug().
+					Str("hash", export.hash).
+					Int("targetInstanceID", export.action.TargetInstanceID).
+					Msg("automations: export already in-flight, skipping")
+				continue
+			}
+			s.inFlightExports[flightKey] = struct{}{}
+		}
+		reserved = append(reserved, export)
+	}
+	return reserved
 }
 
 // executeExportToInstance exports torrents from the source instance and adds them to target instances.
@@ -6220,11 +3945,11 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 		// Handle preflight failures without spawning a goroutine
 		if exec.failureReason != "" {
 			ruleID := exec.ruleID
-			detailsJSON, _ := json.Marshal(map[string]any{
+			detailsJSON, _ := json.Marshal(map[string]int{ //nolint:errchkjson // string keys and int values cannot fail to encode
 				"targetInstanceId": exec.action.TargetInstanceID,
 				"count":            1,
 			})
-			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
+			trackerDomain := exec.trackerDomain
 			activity := &models.AutomationActivity{
 				InstanceID:    sourceInstanceID,
 				Hash:          exec.hash,
@@ -6262,16 +3987,25 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
 			defer cancel()
 
+			// Another run can export the torrent after this run planned it.
+			if _, exists, err := s.targetLookup.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); err == nil && exists {
+				log.Debug().
+					Str("hash", exec.hash).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Msg("automations: torrent reached target instance after the plan, skipping export")
+				return
+			}
+
 			// Fallback tracker domain from cached sync data; overridden by ExportTorrent if available
-			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
+			trackerDomain := exec.trackerDomain
 
 			buildActivity := func(outcome, reason string) *models.AutomationActivity {
 				ruleID := exec.ruleID
-				detailsJSON, _ := json.Marshal(map[string]any{
-					"targetInstanceId": exec.action.TargetInstanceID,
-					"savePath":         exec.resolvedSavePath,
-					"count":            1,
-				})
+				detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // int and string fields cannot fail to encode
+					Count            int    `json:"count"`
+					SavePath         string `json:"savePath"`
+					TargetInstanceID int    `json:"targetInstanceId"`
+				}{1, exec.resolvedSavePath, exec.action.TargetInstanceID})
 				return &models.AutomationActivity{
 					InstanceID:    sourceInstanceID,
 					Hash:          exec.hash,
@@ -6293,6 +4027,18 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					}
 				}
 				ch <- activity
+			}
+
+			// removeFromTarget deletes a failed export from the target, keeping its files,
+			// so it does not block a re-export on the next run.
+			removeFromTarget := func(ctx context.Context, cause string) {
+				if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
+					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).Str("cause", cause).
+						Msg("automations: failed to clean up torrent from target")
+					return
+				}
+				log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
+					Msg("automations: cleaned up failed export torrent from target")
 			}
 
 			// 1. Export .torrent from source instance
@@ -6359,6 +4105,28 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				return
 			}
 
+			// qBittorrent does not hash-check a torrent that was added stopped.
+			// Ask it to recheck; it runs the torrent only for the check and stops it again.
+			if exec.action.Paused && !exec.action.SkipCheckingEnabled() {
+				err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), exec.action.TargetInstanceID, []string{exec.hash}, "recheck")
+
+				// The post-add retry detaches from ctx and can use up its deadline, so verify and clean up under a fresh one.
+				var verifyCancel context.CancelFunc
+				ctx, verifyCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
+				defer verifyCancel()
+
+				if err != nil {
+					log.Error().Err(err).
+						Int("sourceInstanceID", sourceInstanceID).
+						Int("targetInstanceID", exec.action.TargetInstanceID).
+						Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
+						Msg("automations: recheck on target failed")
+					removeFromTarget(ctx, "recheck failed")
+					recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Recheck on target failed: "+err.Error()))
+					return
+				}
+			}
+
 			// 4. Post-add verification: confirm torrent is healthy on target
 			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.action.SkipCheckingEnabled()); reason != "" {
 				log.Error().
@@ -6383,15 +4151,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					return
 				}
 
-				// Clean up the failed torrent from target so it doesn't block re-export on next run
-				if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
-					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
-						Msg("automations: failed to clean up torrent from target after verification failure")
-				} else {
-					log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
-						Msg("automations: cleaned up failed export torrent from target")
-				}
-
+				removeFromTarget(ctx, "verification failed")
 				recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
 				return
 			}
@@ -6415,16 +4175,17 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	return ch
 }
 
+// exportVerifyMaxAttempts and exportVerifyPollInterval bound post-add verification. Tests shorten them.
+var (
+	exportVerifyMaxAttempts  = 10
+	exportVerifyPollInterval = 3 * time.Second
+)
+
 // verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
 // When skipChecking is false, a torrent still in a checking state after retries is treated as
 // success (the add worked, hash check is in progress).
 // Returns empty string on success, or a failure reason string.
 func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash string, skipChecking bool) string {
-	const (
-		maxAttempts  = 10
-		pollInterval = 3 * time.Second
-	)
-
 	syncMgr, err := s.syncManager.GetQBittorrentSyncManager(ctx, targetInstanceID)
 	if err != nil {
 		return fmt.Sprintf("Verification failed: unable to get sync manager: %v", err)
@@ -6433,7 +4194,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 	var lastErr error
 	var lastStateChecking bool
 
-	for attempt := range maxAttempts {
+	for attempt := range exportVerifyMaxAttempts {
 		// Force a cache refresh so we see newly added torrents
 		if err := syncMgr.Sync(ctx); err != nil {
 			lastErr = err
@@ -6500,7 +4261,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		select {
 		case <-ctx.Done():
 			return "Verification cancelled: " + ctx.Err().Error()
-		case <-time.After(pollInterval):
+		case <-time.After(exportVerifyPollInterval):
 		}
 	}
 
@@ -6511,7 +4272,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 	if lastErr != nil {
 		return fmt.Sprintf("Verification failed: %v", lastErr)
 	}
-	return fmt.Sprintf("Verification timed out after %d attempts (%v)", maxAttempts, time.Duration(maxAttempts)*pollInterval)
+	return fmt.Sprintf("Verification timed out after %d attempts (%v)", exportVerifyMaxAttempts, time.Duration(exportVerifyMaxAttempts)*exportVerifyPollInterval)
 }
 
 func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext, instanceID int, ruleName string) {
@@ -6521,14 +4282,27 @@ func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConf
 	}
 }
 
-func loadRuleScopedEvalContext(rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager) {
-	if evalCtx == nil {
-		return
+// rulesWithTorrents returns the rules that ran: each rule with one torrent or more that is in its
+// Rule scope, or that only lacks a value for a field that the rule reads. So a rule whose only
+// torrent has no value still counts as run for its interval. considered counts the torrents
+// outside the Skip window.
+func rulesWithTorrents(rules []*models.Automation, torrents []qbt.Torrent, scope *ruleScope) (used map[int]struct{}, considered int) {
+	used = make(map[int]struct{})
+	for i := range torrents {
+		inSkipWindow := false
+		for _, rule := range rules {
+			answer := scope.answer(rule, &torrents[i])
+			if answer == scopeSkipWindow {
+				inSkipWindow = true
+			} else if answer != scopeOtherTracker {
+				used[rule.ID] = struct{}{}
+			}
+		}
+		if !inSkipWindow {
+			considered++
+		}
 	}
-	if ruleUsesCondition(rule, FieldFreeSpace) {
-		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-	activateRuleGrouping(evalCtx, rule, torrents, sm)
+	return used, considered
 }
 
 func executeBatch(
@@ -6536,8 +4310,8 @@ func executeBatch(
 	currentBatch []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
-	sm *qbittorrent.SyncManager,
-	skipCheck func(hash string) bool,
+	crossSeeds *crossSeedGroups,
+	scope *ruleScope,
 	ruleStats map[int]*ruleRunStats,
 	states map[string]*torrentDesiredState,
 ) {
@@ -6547,19 +4321,20 @@ func executeBatch(
 
 	// 1. Sort torrents based on this batch's configuration
 	// Use the config from the first rule (all rules in batch have equivalent config)
-	loadRuleScopedEvalContext(currentBatch[0], torrents, evalCtx, sm)
+	enterRule(evalCtx, currentBatch[0], torrents, scope)
 	SortTorrentsWithFallback(torrents, currentBatch[0].SortingConfig, evalCtx, instanceID, currentBatch[0].Name)
 
 	// 2. Process rules
-	processTorrents(torrents, currentBatch, evalCtx, sm, skipCheck, ruleStats, states)
+	processTorrents(torrents, currentBatch, evalCtx, crossSeeds, scope, ruleStats, states)
 }
 
-func (s *Service) buildAndExecuteBatches(
+func buildAndExecuteBatches(
 	instanceID int,
 	eligibleRules []*models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
-	skipCheck func(hash string) bool,
+	crossSeeds *crossSeedGroups,
+	scope *ruleScope,
 	ruleStats map[int]*ruleRunStats,
 	states map[string]*torrentDesiredState,
 ) {
@@ -6576,14 +4351,14 @@ func (s *Service) buildAndExecuteBatches(
 			currentBatch = append(currentBatch, rule)
 		} else {
 			// Execute current batch
-			executeBatch(instanceID, currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+			executeBatch(instanceID, currentBatch, torrents, evalCtx, crossSeeds, scope, ruleStats, states)
 			// Start new batch
 			currentBatch = []*models.Automation{rule}
 		}
 	}
 	// Execute final batch
 	if len(currentBatch) > 0 {
-		executeBatch(instanceID, currentBatch, torrents, evalCtx, s.syncManager, skipCheck, ruleStats, states)
+		executeBatch(instanceID, currentBatch, torrents, evalCtx, crossSeeds, scope, ruleStats, states)
 	}
 }
 
