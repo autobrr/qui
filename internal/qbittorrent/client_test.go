@@ -922,16 +922,16 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 			require.NoError(t, err)
 
-			torrents := []qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
-			enriched, _, _ := (&SyncManager{}).enrichTorrentsWithTrackerData(t.Context(), client, torrents, nil)
+			torrents := []*qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
+			lookup := trackerDetailsFromManager(t.Context(), client, torrents, nil)
 
 			mu.Lock()
 			defer mu.Unlock()
 			require.Zero(t, hits["/api/v2/torrents/trackers"], "list hydration must never use per-hash torrents/trackers; use torrents/info?includeTrackers on 5.1+ and skip hydration below it")
 			require.Equal(t, tc.bulkRequests, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
-			for _, torrent := range enriched {
+			for _, torrent := range torrents {
 				// One tracker per torrent when hydrated, none when the gate skips hydration.
-				require.Len(t, torrent.Trackers, tc.bulkRequests, "hash %s", torrent.Hash)
+				require.Len(t, lookup.Trackers(torrent.Hash), tc.bulkRequests, "hash %s", torrent.Hash)
 			}
 		})
 	}
