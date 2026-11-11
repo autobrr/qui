@@ -220,9 +220,11 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 		}
 	}
 	// A torrent on the content path of a torrent with Shared parts holds those
-	// parts, so only its bytes above them count. Only a torrent without Shared
-	// parts gives its content path a set.
+	// parts, so only its bytes above them count. Its bytes that seed count
+	// above the parts of the path that seed, because its file list is not
+	// known. Only a torrent without Shared parts gives its content path a set.
 	held := make([]int64, len(u.parent))
+	heldSeeding := make([]int64, len(u.parent))
 	var heldParts map[[2]uint64]struct{}
 	for _, holder := range u.onPath {
 		set, ok := u.byPath[holder.path]
@@ -230,22 +232,25 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 			continue
 		}
 		root := u.root(set)
-		u.count(holder.parts, seeds[root] > 0)
 		for _, part := range holder.parts {
 			key := [2]uint64{uint64(root), part.ID} //nolint:gosec // A set index is not negative.
-			if _, ok := heldParts[key]; !ok {
-				if heldParts == nil {
-					heldParts = map[[2]uint64]struct{}{}
-				}
-				heldParts[key] = struct{}{}
-				held[root] += part.Size
+			if _, ok := heldParts[key]; ok {
+				continue
+			}
+			if heldParts == nil {
+				heldParts = map[[2]uint64]struct{}{}
+			}
+			heldParts[key] = struct{}{}
+			held[root] += part.Size
+			if u.countedSeeding[part.ID] {
+				heldSeeding[root] += part.Size
 			}
 		}
 	}
 	total, seeding = u.total, u.seeding
 	for set := range all {
 		total += max(0, all[set]-held[set])
-		seeding += max(0, seeds[set]-held[set])
+		seeding += max(0, seeds[set]-heldSeeding[set])
 	}
 	return total, seeding
 }
