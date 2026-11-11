@@ -248,7 +248,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			return ""
 		}
 
-		if qbtSyncManager, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID); err == nil && qbtSyncManager != nil {
+		if qbtSyncManager, err := s.syncManager.GetSyncOwner(ctx, instanceID); err == nil && qbtSyncManager != nil {
 			if err := qbtSyncManager.Sync(ctx); err != nil {
 				log.Debug().
 					Err(err).

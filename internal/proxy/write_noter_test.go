@@ -61,7 +61,7 @@ func TestProxyNotesTorrentWrites(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 	client, err := pool.GetClient(t.Context(), instance.ID)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
 	handler := NewHandler(pool, models.NewClientAPIKeyStore(db), instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/")
 	noter := &fakeWriteNoter{}

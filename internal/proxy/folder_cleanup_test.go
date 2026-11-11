@@ -109,7 +109,7 @@ func (r *proxyRig) add(torrents ...qbtstub.Torrent) {
 	for _, t := range torrents {
 		r.stub.Add(t)
 	}
-	require.NoError(r.t, r.client.GetSyncManager().Sync(r.t.Context()))
+	require.NoError(r.t, r.client.SyncOwner().Sync(r.t.Context()))
 }
 
 // post sends a form to an intercepted endpoint the way a proxy client does.

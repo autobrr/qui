@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/activity"
 )
 
@@ -186,7 +187,7 @@ func streamGroupKey(opts StreamOptions) string {
 // delivery can be exercised with injected fakes in tests.
 type syncProvider interface {
 	ListTorrents(ctx context.Context, view qbittorrent.TorrentListView) (*qbittorrent.TorrentResponse, error)
-	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error)
 	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
 	GetActiveTaskCount(ctx context.Context, instanceID int) int
 }
@@ -2464,7 +2465,7 @@ func (m *StreamManager) forceSync(parent context.Context, instanceID int) {
 	ctx, cancel := context.WithTimeout(parent, m.syncTimeout(instanceID))
 	defer cancel()
 
-	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
+	syncMgr, err := m.syncManager.GetSyncOwner(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent sync manager for SSE loop")
 		m.HandleSyncError(instanceID, fmt.Errorf("sync manager unavailable: %w", err))

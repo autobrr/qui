@@ -888,7 +888,7 @@ func (r *hardlinkIndexRig) moveMaindata(t *testing.T, torrent qbt.Torrent) {
 	r.qbit.set(torrent)
 	client, err := r.clients.GetClient(t.Context(), r.instanceID)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 }
 
 // ageFilesCache moves the write of every cached file list back by d. It sets

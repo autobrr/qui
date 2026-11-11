@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 // folderCleanupStatConcurrency bounds the content checks a request waits on
@@ -137,7 +138,7 @@ func (sm *SyncManager) prepareFolderCleanup(ctx context.Context, instanceID int,
 	return batch
 }
 
-func folderCleanupCandidates(syncManager *qbt.SyncManager, d fsops.PathDialect, op FolderCleanupOp) []qbt.Torrent {
+func folderCleanupCandidates(syncManager *syncowner.Owner, d fsops.PathDialect, op FolderCleanupOp) []qbt.Torrent {
 	var torrents []qbt.Torrent
 	switch {
 	case op.Kind == FolderCleanupEditCategory:
@@ -156,7 +157,7 @@ func folderCleanupCandidates(syncManager *qbt.SyncManager, d fsops.PathDialect, 
 // lookupTorrents resolves hashes as qBittorrent's WebAPI does: only a
 // torrent's own hash, in either case, names it. A padded or v2 hash, which
 // BulkAction accepts but qBittorrent ignores, is not a cache key.
-func lookupTorrents(syncManager *qbt.SyncManager, hashes []string) []qbt.Torrent {
+func lookupTorrents(syncManager *syncowner.Owner, hashes []string) []qbt.Torrent {
 	var found []qbt.Torrent
 	seen := make(map[string]struct{}, len(hashes))
 	for _, hash := range hashes {
@@ -397,7 +398,7 @@ func (s *folderSnapshot) markExisted(info *fsops.LstatInfo) {
 
 // syncedMainData reads the cache without a request. An instance that has not
 // synced yet is an error, not an empty cache, which would protect nothing.
-func (sm *SyncManager) syncedMainData(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
+func (sm *SyncManager) syncedMainData(ctx context.Context, instanceID int) (*Client, *syncowner.Owner, error) {
 	client, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataReadCached)
 	if err != nil {
 		return nil, nil, err

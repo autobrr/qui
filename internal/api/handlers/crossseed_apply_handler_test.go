@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -117,7 +118,7 @@ func (*seasonPackHandlerSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (*seasonPackHandlerSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*seasonPackHandlerSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 type mainDataReadMode uint8
@@ -31,14 +33,14 @@ type mainDataProvider interface {
 	GetServerStateUnchecked() qbt.ServerState
 }
 
-func (sm *SyncManager) readMainData(ctx context.Context, instanceID int, mode mainDataReadMode) (*Client, *qbt.SyncManager, *qbt.MainData, error) {
+func (sm *SyncManager) readMainData(ctx context.Context, instanceID int, mode mainDataReadMode) (*Client, *syncowner.Owner, *qbt.MainData, error) {
 	if sm == nil || sm.clientPool == nil {
 		return nil, nil, nil, errors.New("client pool unavailable")
 	}
 
 	var (
 		client      *Client
-		syncManager *qbt.SyncManager
+		syncManager *syncowner.Owner
 		err         error
 	)
 
@@ -54,7 +56,7 @@ func (sm *SyncManager) readMainData(ctx context.Context, instanceID int, mode ma
 		if client == nil {
 			return nil, nil, nil, nil
 		}
-		syncManager = client.GetSyncManager()
+		syncManager = client.SyncOwner()
 		if syncManager == nil {
 			return client, nil, nil, nil
 		}

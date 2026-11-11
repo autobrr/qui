@@ -34,6 +34,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/trackergroup"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -1502,7 +1503,7 @@ func trackerHealthSupportedByClient(client *Client) bool {
 }
 
 // getClientAndSyncManager gets both client and sync manager with error handling
-func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
+func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID int) (*Client, *syncowner.Owner, error) {
 	// Get client
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -1510,7 +1511,7 @@ func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID i
 	}
 
 	// Get sync manager
-	syncManager := client.GetSyncManager()
+	syncManager := client.SyncOwner()
 	if syncManager == nil {
 		return nil, nil, errors.New("sync manager not initialized")
 	}
@@ -2205,8 +2206,7 @@ func sortedTagKeys(values map[string]struct{}) []string {
 	return result
 }
 
-// GetQBittorrentSyncManager returns the underlying qBittorrent sync manager for an instance
-func (sm *SyncManager) GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error) {
+func (sm *SyncManager) GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error) {
 	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	return syncManager, err
 }
@@ -2623,7 +2623,7 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 	return readCategories(syncManager, false), nil
 }
 
-func readCategories(syncManager *qbt.SyncManager, cacheOnly bool) map[string]qbt.Category {
+func readCategories(syncManager *syncowner.Owner, cacheOnly bool) map[string]qbt.Category {
 	var categories map[string]qbt.Category
 	if cacheOnly {
 		categories = syncManager.GetCategoriesUnchecked()
@@ -2647,7 +2647,7 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 	return readTags(syncManager, false), nil
 }
 
-func readTags(syncManager *qbt.SyncManager, cacheOnly bool) []string {
+func readTags(syncManager *syncowner.Owner, cacheOnly bool) []string {
 	var tags []string
 	if cacheOnly {
 		tags = syncManager.GetTagsUnchecked()
@@ -3879,7 +3879,7 @@ func (sm *SyncManager) runDebouncedSync(instanceID int, client *Client, operatio
 		}
 	}
 
-	if syncManager := c.GetSyncManager(); syncManager != nil {
+	if syncManager := c.SyncOwner(); syncManager != nil {
 		// Small delay to let qBittorrent process the command
 		jitter := sm.syncDebounceMinJitter
 		if jitter <= 0 {

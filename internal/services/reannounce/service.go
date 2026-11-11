@@ -610,7 +610,7 @@ func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []s
 	if s.syncManager == nil {
 		return result
 	}
-	sync, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
+	sync, err := s.syncManager.GetSyncOwner(ctx, instanceID)
 	if err != nil || sync == nil {
 		return result
 	}

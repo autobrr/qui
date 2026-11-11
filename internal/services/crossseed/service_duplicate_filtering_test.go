@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -1225,7 +1226,7 @@ func (*duplicateFilteringSyncManager) ExtractDomainFromURL(raw string) string {
 	return strings.ToLower(strings.TrimSpace(parsed.Hostname()))
 }
 
-func (*duplicateFilteringSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*duplicateFilteringSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 

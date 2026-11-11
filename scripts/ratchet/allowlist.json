@@ -41,6 +41,15 @@
     "internal/sshpool/pool.go": 1,
     "pkg/prowlarr/client.go": 3
   },
+  "forbidigo": {
+    "internal/api/handlers/torrents.go": 1,
+    "internal/qbittorrent/client.go": 4,
+    "internal/qbittorrent/folder_cleanup_triggers.go": 5,
+    "internal/qbittorrent/read_instance_torrents.go": 2,
+    "internal/qbittorrent/sync_manager.go": 18,
+    "internal/services/crossseed/partial_pool.go": 1,
+    "internal/services/reannounce/service.go": 1
+  },
   "gocognit": {
     "cmd/qui/main.go": 2,
     "internal/api/handlers/backups.go": 3,

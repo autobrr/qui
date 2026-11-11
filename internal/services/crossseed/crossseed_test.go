@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -1777,8 +1778,8 @@ func (f *fakeSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (f *fakeSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
-	return nil, errors.New("GetQBittorrentSyncManager not implemented in fakeSyncManager")
+func (f *fakeSyncManager) GetSyncOwner(_ context.Context, _ int) (*syncowner.Owner, error) {
+	return nil, errors.New("GetSyncOwner not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -2059,7 +2060,7 @@ func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (m *mockRecoverSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (m *mockRecoverSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -2346,7 +2347,7 @@ func (f *infohashTestSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (f *infohashTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (f *infohashTestSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -3342,7 +3343,7 @@ func (m *rssFilterTestSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (m *rssFilterTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (m *rssFilterTestSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 

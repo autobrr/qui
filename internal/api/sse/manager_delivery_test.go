@@ -24,6 +24,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 // fakeSyncProvider is a configurable implementation of the consumer-side
@@ -94,7 +95,7 @@ func (f *fakeSyncProvider) ListTorrents(_ context.Context, view qbittorrent.Torr
 	return resp, err
 }
 
-func (f *fakeSyncProvider) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
+func (f *fakeSyncProvider) GetSyncOwner(_ context.Context, _ int) (*syncowner.Owner, error) {
 	// These tests drive delivery through HandleMainData rather than the real sync
 	// loop, so the loop's attempt to fetch a sync manager always fails fast.
 	return nil, errors.New("sync manager unavailable in test")

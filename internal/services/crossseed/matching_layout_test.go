@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -323,7 +324,7 @@ func (c *candidateSelectionSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (c *candidateSelectionSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (c *candidateSelectionSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 

@@ -172,7 +172,7 @@ func newListTestClient(t testing.TB, instanceID int, torrents []qbt.Torrent, tra
 	client, err := NewClientWithTimeout(instanceID, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.True(t, client.Supports(CapTrackerHealth), "state sort must see tracker health")
 	return client
 }

@@ -4189,7 +4189,7 @@ var (
 // success (the add worked, hash check is in progress).
 // Returns empty string on success, or a failure reason string.
 func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash string, skipChecking bool) string {
-	syncMgr, err := s.syncManager.GetQBittorrentSyncManager(ctx, targetInstanceID)
+	syncMgr, err := s.syncManager.GetSyncOwner(ctx, targetInstanceID)
 	if err != nil {
 		return fmt.Sprintf("Verification failed: unable to get sync manager: %v", err)
 	}
