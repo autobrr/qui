@@ -607,6 +607,33 @@ func TestFindCopyGroups_APackThatMovesKeepsTheFileOfItsEpisode(t *testing.T) {
 	require.Equal(t, shared, partHolders(links.parts))
 }
 
+// regression: #4041
+func TestFindCopyGroups_APackThatSkipsAFileNoLongerHoldsIt(t *testing.T) {
+	a, b := cgHash('a'), cgHash('b')
+	view := func(hash, name, content string, size, totalSize int64) qbittorrent.CrossInstanceTorrentView {
+		return qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: hash, Name: name, SavePath: "/data", ContentPath: "/data/" + content, Size: size, TotalSize: totalSize}},
+			InstanceID:  1,
+		}
+	}
+	episode := view(b, strings.TrimSuffix(cgEpisode1, ".mkv"), cgEpisode1, 1000, 1000)
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{1: {view(a, cgPack, cgPack, 3000, 3000), episode}}
+	files := map[int]map[string]qbt.TorrentFiles{1: {a: wanted(cgPackFiles()), b: wanted(qbt.TorrentFiles{{Name: cgEpisode1, Size: 1000}})}}
+	svc := newTestService()
+	_, links, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), nil, nil, copyGroupTestKey)
+	require.NoError(t, err)
+	require.Equal(t, []string{fmt.Sprintf("1000 [1|%s 1|%s]", a, b), fmt.Sprintf("2000 [1|%s]", a)}, partHolders(links.parts))
+
+	// The user deselects the second episode of the pack. Its total size stays.
+	skipped := wanted(cgPackFiles())
+	skipped[1].Priority = 0
+	files[1][a] = skipped
+	torrents[1] = []qbittorrent.CrossInstanceTorrentView{view(a, cgPack, cgPack, 1000, 3000), episode}
+	_, links, err = svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), links, nil, copyGroupTestKey)
+	require.NoError(t, err)
+	require.Equal(t, []string{fmt.Sprintf("1000 [1|%s 1|%s]", a, b)}, partHolders(links.parts))
+}
+
 func TestFindCopyGroups_GroupID(t *testing.T) {
 	a, b, c := cgHash('a'), cgHash('b'), cgHash('c')
 	copyOf := func(hash string, addedOn int64) copyGroupFixture {

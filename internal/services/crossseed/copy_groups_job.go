@@ -376,10 +376,13 @@ func (j *copyGroupsJob) readLists(ctx context.Context, instanceIDs []int) map[in
 type copyGroupsPrint struct {
 	hash, name, category, savePath, contentPath string
 	size                                        int64
+	// wanted is the size of the files that qBittorrent downloads. It moves
+	// when the user selects or deselects a file, and the Shared parts read it.
+	wanted int64
 }
 
 func newCopyGroupsPrint(t *qbt.Torrent) copyGroupsPrint {
-	return copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), contentPath: t.ContentPath}
+	return copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), wanted: t.Size, contentPath: t.ContentPath}
 }
 
 func (j *copyGroupsJob) fingerprint(torrents []qbittorrent.CrossInstanceTorrentView) uint64 {

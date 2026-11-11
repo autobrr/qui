@@ -67,6 +67,8 @@ type uniqueSizes struct {
 	parts map[string][]SharedPart
 	// counted and countedSeeding hold the Shared parts that the totals hold.
 	counted, countedSeeding map[uint64]struct{}
+	// pathParts holds the Shared parts of the torrents on each content path set.
+	pathParts map[int32][]SharedPart
 	// parent joins the Copy groups and the content paths that hold the same data.
 	parent  []int32
 	byGroup map[uint64]int32
@@ -89,7 +91,7 @@ func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
 	}
 	return &uniqueSizes{
 		ids: g.ids[instanceID], parts: g.parts[instanceID],
-		counted: map[uint64]struct{}{}, countedSeeding: map[uint64]struct{}{},
+		counted: map[uint64]struct{}{}, countedSeeding: map[uint64]struct{}{}, pathParts: map[int32][]SharedPart{},
 		byGroup: map[uint64]int32{}, byPath: map[string]int32{},
 	}
 }
@@ -101,17 +103,16 @@ func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 	if u == nil {
 		return
 	}
+	sharedPath = sharedPath && t.ContentPath != ""
 	if parts, ok := u.parts[t.Hash]; ok {
-		for _, part := range parts {
-			u.total += countOnce(u.counted, part)
-			if seeding {
-				u.seeding += countOnce(u.countedSeeding, part)
-			}
+		u.count(parts, seeding)
+		if sharedPath {
+			set := u.set(u.byPath, t.ContentPath)
+			u.pathParts[set] = append(u.pathParts[set], parts...)
 		}
 		return
 	}
 	id, grouped := u.ids[t.Hash]
-	sharedPath = sharedPath && t.ContentPath != ""
 	if !grouped && !sharedPath {
 		u.total += t.Size
 		if seeding {
@@ -131,6 +132,16 @@ func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 		set = path
 	}
 	u.members = append(u.members, uniqueSizeMember{set: set, size: t.Size, seeding: seeding})
+}
+
+// count adds each part that the totals do not hold yet.
+func (u *uniqueSizes) count(parts []SharedPart, seeding bool) {
+	for _, part := range parts {
+		u.total += countOnce(u.counted, part)
+		if seeding {
+			u.seeding += countOnce(u.countedSeeding, part)
+		}
+	}
 }
 
 // countOnce returns the size of part the first time that it sees the part.
@@ -172,10 +183,25 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 			seeds[set] = max(seeds[set], m.size)
 		}
 	}
+	// A torrent on the content path of a torrent with Shared parts holds those
+	// parts, so only its bytes above them count.
+	held := make([]int64, len(u.parent))
+	heldParts := map[[2]uint64]struct{}{}
+	for set, parts := range u.pathParts {
+		root := u.root(set)
+		u.count(parts, seeds[root] > 0)
+		for _, part := range parts {
+			key := [2]uint64{uint64(root), part.ID} //nolint:gosec // A set index is not negative.
+			if _, ok := heldParts[key]; !ok {
+				heldParts[key] = struct{}{}
+				held[root] += part.Size
+			}
+		}
+	}
 	total, seeding = u.total, u.seeding
 	for set := range all {
-		total += all[set]
-		seeding += seeds[set]
+		total += max(0, all[set]-held[set])
+		seeding += max(0, seeds[set]-held[set])
 	}
 	return total, seeding
 }

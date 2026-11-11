@@ -355,7 +355,7 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		2: {"a1": copyGroupKaiju},
 	}, map[int]map[string][]SharedPart{
 		// p1 holds all three episodes of a pack, and q1 holds two of them.
-		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}},
+		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}, "r1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}},
 	}, []int{1, 2})
 	sizes := func(instanceID int, torrents ...qbt.Torrent) *TorrentStats {
 		return (&SyncManager{}).calculateStats(torrents, groups.uniqueSizes(instanceID))
@@ -379,6 +379,13 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		{name: "a stalled member still joins its content path", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(stalledTorrent("b1", 1000), "/links/Rel"), at(torrent("y1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
 		{name: "torrents that share some files count each Shared part one time", torrents: []qbt.Torrent{torrent("p1", 1000), torrent("q1", 900)}, want: 1000, wantSeeding: 1000},
 		{name: "a Shared part seeds when a torrent that seeds holds it", torrents: []qbt.Torrent{stalledTorrent("p1", 1000), torrent("q1", 900)}, want: 1000, wantSeeding: 900},
+		// regression: #4041
+		{name: "a torrent on the content path of a torrent with Shared parts counts one time", torrents: []qbt.Torrent{at(torrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1000), "/data/Pack"), torrent("q1", 900)}, want: 1000, wantSeeding: 1000},
+		{name: "a torrent on that content path counts its bytes above the Shared parts", torrents: []qbt.Torrent{at(torrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1200), "/data/Pack")}, want: 1200, wantSeeding: 1200},
+		{name: "two torrents with the same Shared parts on that content path hold them one time", torrents: []qbt.Torrent{at(torrent("p1", 1000), "/data/Pack"), at(torrent("r1", 1000), "/data/Pack"), at(torrent("y1", 1200), "/data/Pack")}, want: 1200, wantSeeding: 1200},
+		{name: "a smaller torrent on that content path adds nothing", torrents: []qbt.Torrent{at(torrent("p1", 1000), "/data/Pack"), at(torrent("y1", 800), "/data/Pack")}, want: 1000, wantSeeding: 1000},
+		{name: "a torrent that seeds on that content path seeds the Shared parts", torrents: []qbt.Torrent{at(stalledTorrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1000), "/data/Pack")}, want: 1000, wantSeeding: 1000},
+		{name: "a stalled torrent on that content path seeds nothing", torrents: []qbt.Torrent{at(stalledTorrent("q1", 900), "/links/Pack"), at(stalledTorrent("y1", 900), "/links/Pack")}, want: 900, wantSeeding: 0},
 		{name: "a group joins the torrents of its content paths", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/links/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
 	}
 	for _, tt := range tests {
