@@ -849,10 +849,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 
-	var torrents []*qbt.Torrent
-	if syncSnapshot := syncManager.Snapshot(); syncSnapshot != nil {
-		torrents = syncSnapshot.Torrents()
-	}
+	torrents := snapshotTorrents(syncManager.Snapshot())
 	mainData := resolveMainData(syncManager, mainDataReadCached)
 
 	// Only refresh for clients that support IncludeTrackers (qBittorrent 5.1+)
