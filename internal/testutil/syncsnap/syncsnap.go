@@ -62,6 +62,19 @@ func (s *Source) Update(t testing.TB, torrents ...qbt.Torrent) qbt.SyncUpdate {
 	}
 	mainData, err := json.Marshal(fullUpdate{Rid: 1, FullUpdate: true, Torrents: byHash})
 	require.NoError(t, err)
+	return s.sync(t, mainData)
+}
+
+// Partial returns the update after a sync that qBittorrent answers with
+// mainData, a partial update in JSON. Changes.Torrents names only the
+// torrents that mainData names.
+func (s *Source) Partial(t testing.TB, mainData string) qbt.SyncUpdate {
+	t.Helper()
+	return s.sync(t, []byte(mainData))
+}
+
+func (s *Source) sync(t testing.TB, mainData []byte) qbt.SyncUpdate {
+	t.Helper()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

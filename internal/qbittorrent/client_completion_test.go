@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -557,6 +558,75 @@ func TestStateHandlersPruneRemovedTorrents(t *testing.T) {
 	if _, ok := client.addedState["abc"]; ok || len(client.addedState) != 1 {
 		t.Fatalf("addedState kept removed torrent: %v", client.addedState)
 	}
+}
+
+// A partial update names only the torrents that changed. The handlers read
+// those, and each other torrent keeps its result.
+func TestStateHandlersReadAPartialUpdate(t *testing.T) {
+	t.Parallel()
+
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 15}
+		completed := make(chan qbt.Torrent, 4)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			completed <- torrent
+		})
+		added := make(chan []qbt.Torrent, 4)
+		client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []qbt.Torrent) {
+			added <- torrents
+		})
+		handle := func(update qbt.SyncUpdate) {
+			client.handleCompletionUpdates(update)
+			client.handleAddedUpdates(update)
+		}
+		requireAdded := func(want ...string) {
+			t.Helper()
+			synctest.Wait()
+			var got []string
+			select {
+			case batch := <-added:
+				for _, torrent := range batch {
+					got = append(got, torrent.Hash)
+				}
+			default:
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("added torrents = %v, want %v", got, want)
+			}
+		}
+
+		handle(syncOf(t, src, map[string]qbt.Torrent{
+			"downloading": {CompletionOn: -1, AmountLeft: 100, State: qbt.TorrentStateDownloading},
+			"seeding":     {CompletionOn: 1700000000, State: qbt.TorrentStateUploading},
+		}))
+		requireNoTorrentEvent(t, completed)
+		requireAdded()
+
+		// One torrent completes, one is new, and the seeding torrent changes
+		// only its speed.
+		handle(src.Partial(t, `{"rid":2,"torrents":{
+			"downloading":{"completion_on":1700000999,"amount_left":0,"state":"uploading"},
+			"seeding":{"upspeed":4096},
+			"new":{"added_on":1700001000,"amount_left":50,"state":"downloading"}}}`))
+		if torrent := requireTorrentEvent(t, completed, "expected a completion event"); torrent.Hash != "downloading" {
+			t.Fatalf("completed torrent = %q, want downloading", torrent.Hash)
+		}
+		requireNoTorrentEvent(t, completed)
+		requireAdded("new")
+
+		// The update names neither the completed torrent nor the new one.
+		handle(src.Partial(t, `{"rid":3,"torrents":{"seeding":{"upspeed":0}}}`))
+		requireNoTorrentEvent(t, completed)
+		requireAdded()
+
+		// A removed torrent that comes back is new again.
+		handle(src.Partial(t, `{"rid":4,"torrents_removed":["new"]}`))
+		requireAdded()
+		handle(src.Partial(t, `{"rid":5,"torrents":{"new":{"added_on":1700002000,"amount_left":50,"state":"downloading"}}}`))
+		requireNoTorrentEvent(t, completed)
+		requireAdded("new")
+	})
 }
 
 // completeBurst sends one sync with n downloading torrents, then one with all n complete.
