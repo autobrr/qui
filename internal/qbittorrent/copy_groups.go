@@ -60,14 +60,16 @@ func (g *CopyGroups) UniqueSize(instanceID int, torrents []qbt.Torrent, keep fun
 	data := &sharedData{parent: map[sharedDataKey]sharedDataKey{}}
 	for i := range torrents {
 		t := &torrents[i]
+		id, grouped := g.groupID(instanceID, t.Hash)
+		// A torrent that keep leaves out still joins its group and its
+		// content path, so it can link two torrents that keep accepts.
+		if grouped && t.ContentPath != "" {
+			data.join(sharedDataKey{group: id, grouped: true}, sharedDataKey{path: t.ContentPath})
+		}
 		if keep != nil && !keep(t) {
 			continue
 		}
-		id, grouped := g.groupID(instanceID, t.Hash)
 		switch {
-		case grouped && t.ContentPath != "":
-			data.add(sharedDataKey{group: id, grouped: true}, t.Size)
-			data.join(sharedDataKey{group: id, grouped: true}, sharedDataKey{path: t.ContentPath})
 		case grouped:
 			data.add(sharedDataKey{group: id, grouped: true}, t.Size)
 		case t.ContentPath != "":
