@@ -82,7 +82,7 @@ func (s *Service) FindCopyGroups(
 	// on another instance must not block a shared-path pick.
 	for n, instance := range lists.instances {
 		shared := make([][]*candidatePick, instance.hi-instance.lo)
-		lists.held.addSharedPathPicks(ctx, instance.id, all[instance.lo:instance.hi], pathGroups[n], shared, CrossMatchNeeds{})
+		lists.held.addSharedPathPicks(ctx, instance.id, all[instance.lo:instance.hi], lists.readable(instance, pathGroups[n]), shared, CrossMatchNeeds{})
 		for k := range shared {
 			picks[instance.lo+k] = append(picks[instance.lo+k], shared[k]...)
 		}
@@ -135,6 +135,18 @@ func newCopyGroupLists(s *Service, torrents map[int][]qbittorrent.CrossInstanceT
 		l.held.fetched[cacheKeyForTorrentFiles(l.all[i].InstanceID, l.all[i].Hash)] = nil
 	}
 	return l
+}
+
+// readable leaves out the torrents without a file list. Such a torrent links
+// to no torrent, and addSharedPathPicks pairs it with each member of its groups.
+func (l *copyGroupLists) readable(instance copyGroupInstance, pathGroups [][]int) [][]int {
+	for g, group := range pathGroups {
+		pathGroups[g] = slices.DeleteFunc(group, func(i int) bool {
+			t := l.all[instance.lo+i]
+			return len(l.held.fetched[cacheKeyForTorrentFiles(t.InstanceID, t.Hash)]) == 0
+		})
+	}
+	return pathGroups
 }
 
 // fetch asks read one time for each torrent of want.

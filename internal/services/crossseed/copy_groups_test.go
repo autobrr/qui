@@ -280,6 +280,35 @@ func TestFindCopyGroups_AsksOnlyForTheListsOfPossibleCopies(t *testing.T) {
 	assert.Equal(t, []string{"1|" + a, "1|" + b, "1|" + d}, asked)
 }
 
+// The first read of an instance gets no file list for the torrents of the
+// other instances, so a flat folder there must cost its torrent count.
+// regression: #4024
+func TestFindCopyGroups_AnUnreadFlatFolderCostsItsTorrentCount(t *testing.T) {
+	const count = 300
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{}
+	for i := range count {
+		name := fmt.Sprintf("Quiet.Harbor.%03d.2019.1080p.BluRay.x264-GRP", i)
+		content := "/data/flat/" + name + ".mkv"
+		if i == 0 {
+			content = "/data/flat"
+		}
+		torrents[1] = append(torrents[1], qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: fmt.Sprintf("%040d", i), Name: name, SavePath: "/data/flat", ContentPath: content, Size: int64(1000 + i)}},
+			InstanceID:  1,
+		})
+	}
+	svc := newTestService()
+
+	allocs := testing.AllocsPerRun(1, func() {
+		groups, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(nil, nil), nil, copyGroupTestKey)
+		require.NoError(t, err)
+		require.Empty(t, groups)
+	})
+
+	// A pick for each pair of torrents takes over 1,500 allocations for each torrent.
+	assert.Less(t, allocs/count, 300.0)
+}
+
 func TestFindCopyGroups_GroupID(t *testing.T) {
 	a, b, c := cgHash('a'), cgHash('b'), cgHash('c')
 	copyOf := func(hash string, addedOn int64) copyGroupFixture {
