@@ -40,7 +40,7 @@
     "download": "Stahování",
     "upload": "Nahrávání",
     "totalSize": "Celková velikost",
-    "totalSizeTooltip": "Celková velikost všech torrentů, včetně křížově sdílených",
+    "totalSizeTooltip": "Celková velikost všech torrentů. Kopie jednoho vydání se počítají jednou.",
     "freeSpace": "Volné místo",
     "showMore": "Zobrazit více",
     "showLess": "Zobrazit méně",
@@ -75,6 +75,10 @@
       "fallback": "Obnovování statistik přehledu",
       "error": "Problém se streamem; používá se záložní obnovování"
     }
+  },
+  "uniqueSize": {
+    "calculating": "počítá se",
+    "calculatingTooltip": "qui čte seznamy souborů, aby našel kopie každého vydání. Dokud neskončí, tato velikost počítá každý propojený křížově sdílený torrent celý."
   },
   "mobileOverview": {
     "instances": "Instance",

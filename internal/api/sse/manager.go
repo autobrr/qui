@@ -156,7 +156,7 @@ func streamOptionsKey(opts StreamOptions) string {
 	}
 
 	return fmt.Sprintf(
-		"%s|%d|%d|%s|%s|%s|%s|%t|%t",
+		"%s|%d|%d|%s|%s|%s|%s|%t|%t|%t",
 		instanceKey,
 		// A client that sends no key gets this text as its stream key, so it keeps the page number.
 		view.Offset/max(view.Limit, 1),
@@ -167,6 +167,7 @@ func streamOptionsKey(opts StreamOptions) string {
 		strconv.Quote(filtersKey),
 		view.NoRows,
 		view.CopyGroups,
+		view.UniqueSize,
 	)
 }
 
@@ -196,8 +197,8 @@ type versionWatcher interface {
 	WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool
 }
 
-// copyGroupsDemand keeps the Copy groups job running while a grouped stream is
-// open, because the browser sends no list request while the stream works. It
+// copyGroupsDemand keeps the Copy groups job running while a grouped stream or
+// a stream with the Unique size is open, because the browser sends no list request while the stream works. It
 // stays apart from syncProvider, which ADR 0005 caps at five methods.
 type copyGroupsDemand interface {
 	DemandCopyGroups()
@@ -2498,7 +2499,7 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 
 func (m *StreamManager) demandCopyGroups(instanceID int) {
 	for _, group := range m.groupsForInstance(instanceID) {
-		if group.options.View.CopyGroups {
+		if group.options.View.CopyGroups || group.options.View.UniqueSize {
 			m.copyGroups.DemandCopyGroups()
 			return
 		}
@@ -2549,6 +2550,7 @@ type streamRequestPayload struct {
 	Filters     *qbittorrent.FilterOptions `json:"filters"`
 	Summary     bool                       `json:"summary"`
 	GroupCopies bool                       `json:"groupCopies"`
+	UniqueSize  bool                       `json:"uniqueSize"`
 }
 
 func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
@@ -2631,6 +2633,7 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 		Filters:    filters,
 		NoRows:     p.Summary,
 		CopyGroups: p.GroupCopies,
+		UniqueSize: p.UniqueSize,
 	}
 	if err := view.Validate(); err != nil {
 		return StreamOptions{}, err

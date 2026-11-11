@@ -1754,7 +1754,7 @@ paths:
           description: |
             JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
             Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
-            `sort`, `order`, `search`, `filters`, `summary`, and `groupCopies`. Use a positive `instanceId`
+            `sort`, `order`, `search`, `filters`, `summary`, `groupCopies`, and `uniqueSize`. Use a positive `instanceId`
             or 1 to 64 positive `instanceIds` for a cross-instance view.
             `key` is returned as `meta.streamKey`. `page` starts at 0.
             `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
@@ -1765,7 +1765,9 @@ paths:
             true, the frames carry Copy groups and `copyGroupsReady`, as the torrent
             list does with `groupCopies=true`. A frame follows when the groups
             change, also when no torrent changed. `groupCopies` cannot be combined
-            with `summary`.
+            with `summary`. If `uniqueSize` is true, the stats carry `uniqueSize`
+            and `uniqueSeedingSize`, as the torrent list does with
+            `uniqueSize=true`. `uniqueSize` needs a single `instanceId`.
           schema:
             type: string
           example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
@@ -1910,6 +1912,12 @@ paths:
             type: boolean
             default: false
           description: Collapse each Copy group into adjacent rows, the Group representative first. Pages, offsets, and `hasMore` then count top rows. `total` still counts torrents. While `copyGroupsReady` is false, the rows are flat.
+        - name: uniqueSize
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Add `stats.uniqueSize` and `stats.uniqueSeedingSize`, the size of the matching torrents and of the seeding ones with each Copy group counted one time. The two fields are absent until the first Copy groups build that read the instance ends.
       responses:
         '200':
           description: Paginated torrent list

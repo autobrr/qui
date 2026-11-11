@@ -113,6 +113,7 @@ func TestListTorrentsRejectsAViewThatCannotBeRead(t *testing.T) {
 	}{
 		{"Unified view without rows", TorrentListView{Unified: true, NoRows: true}, "summary needs a single instance"},
 		{"no rows with Copy groups", TorrentListView{InstanceID: id, NoRows: true, CopyGroups: true}, "summary has no rows to group"},
+		{"Unified view with the Unique size", TorrentListView{Unified: true, UniqueSize: true}, "the Unique size needs a single instance"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

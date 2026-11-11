@@ -25,10 +25,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Torrent list
 
-- **Torrent view**: One reading of the torrent list: the instances, the page, the sort, the search, the filters, the passkey access of the reader, and what the reader gets (rows, Sidebar counts, Copy groups). The main table, a Dashboard card, and the details panel each hold one. _Avoid_: list request, list query.
+- **Torrent view**: One reading of the torrent list: the instances, the page, the sort, the search, the filters, the passkey access of the reader, and what the reader gets (rows, Sidebar counts, Copy groups, the Unique size). The main table, a Dashboard card, and the details panel each hold one. _Avoid_: list request, list query.
 - **Unified view**: One torrent list built from every active instance, or from the instances the user picks. A subset of instances is still the Unified view. Its totals add up torrents, so a torrent cross-seeded on two instances counts twice. _Avoid_: Cross-instance view, all-instances view.
 - **View parity**: The Unified view, scoped to one instance, shows the same rows, order, row fields, and totals as that instance's own view. With more instances, the rows of each instance keep the order that instance's own view gives them. A Copy group takes the place of its first-sorted member, so with more than one instance, the rows of an instance can leave the order of its own view. _Avoid_: Consistency, sync.
-- **Copy group**: Torrents that the Batch matcher links and that have equal file sizes, shown as one entry in the torrent list. It is a view of the list. _Avoid_: parent and children, Shared-file group, Duplicate group.
+- **Copy group**: Torrents that the Batch matcher links and that have equal file sizes. The torrent list shows them as one entry, and the Unique size counts them one time. _Avoid_: parent and children, Shared-file group, Duplicate group.
+- **Unique size**: The size of a set of torrents with each Copy group counted one time inside an instance. Instances add together. _Avoid_: true size, deduplicated size.
 - **Group representative**: The member of a group that stands for the group: the oldest by added time, with the infohash as the tie-break, then the instance. _Avoid_: parent, canonical copy, primary copy.
 - **Select all mode**: A selection of every torrent that matches the current filter, including torrents on pages that are not loaded, minus the torrents that the user excluded. _Avoid_: Select-all, all selected.
 - **Exclusion**: A torrent that the user unticked in Select all mode. It stays out of the selection until the user ticks it again or the selection clears. _Avoid_: Deselected torrent.

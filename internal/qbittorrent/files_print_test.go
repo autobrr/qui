@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -408,4 +410,38 @@ func TestFileCacheDropsKeepNoHashOnceNoFetchRuns(t *testing.T) {
 	require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
 
 	require.Empty(t, rig.sm.filesInvalidations.dropped, "a deleted torrent must not stay in memory")
+}
+
+func TestGetTorrentFilesBatch_FetchLimitThenCache(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		hashes := make([]string, 10)
+		for i := range hashes {
+			hashes[i] = fmt.Sprintf("%040x", i+1)
+		}
+		rig := newFilesModeRig(hashes...)
+		release := make(chan struct{})
+		var inFlight atomic.Int32
+		rig.client.onFetch = func() {
+			inFlight.Add(1)
+			<-release
+			inFlight.Add(-1)
+		}
+		ctx := WithFileFetchLimit(WithFilesUntilChanged(t.Context()), 4)
+
+		done := make(chan error)
+		go func() {
+			_, err := rig.sm.GetTorrentFilesBatch(ctx, 1, hashes)
+			done <- err
+		}()
+		synctest.Wait()
+		require.Equal(t, int32(4), inFlight.Load(), "the batch holds four requests at a time")
+		close(release)
+		require.NoError(t, <-done)
+		require.Equal(t, len(hashes), rig.client.requests())
+
+		require.Len(t, rig.read(ctx, t, hashes...), len(hashes))
+		require.Equal(t, len(hashes), rig.client.requests(), "a second read takes each list from the cache")
+	})
 }

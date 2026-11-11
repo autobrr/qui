@@ -40,7 +40,7 @@
     "download": "Baixada",
     "upload": "Pujada",
     "totalSize": "Mida total",
-    "totalSizeTooltip": "Mida total de tots els torrents, inclosos els cross-seed",
+    "totalSizeTooltip": "Mida total de tots els torrents. Les còpies d'una publicació compten una sola vegada.",
     "freeSpace": "Espai lliure",
     "showMore": "Mostra'n més",
     "showLess": "Mostra'n menys",
@@ -75,6 +75,10 @@
       "disable": "Desactiva",
       "cancel": "Cancel·la"
     }
+  },
+  "uniqueSize": {
+    "calculating": "calculant",
+    "calculatingTooltip": "qui està llegint les llistes de fitxers per trobar les còpies de cada publicació. Fins que acabi, aquesta mida compta cada cross-seed enllaçat sencer."
   },
   "mobileOverview": {
     "instances": "Instàncies",

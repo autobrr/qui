@@ -42,6 +42,17 @@ func TestParseStreamRequests_GroupCopies(t *testing.T) {
 
 	_, err = parse(map[string]any{"instanceId": 1, "groupCopies": true, "summary": true})
 	require.Error(t, err, "a summary has no rows to group")
+
+	summary, err := parse(map[string]any{"instanceId": 1, "summary": true})
+	require.NoError(t, err)
+	unique, err := parse(map[string]any{"instanceId": 1, "summary": true, "uniqueSize": true})
+	require.NoError(t, err)
+	require.True(t, unique[0].options.View.UniqueSize)
+	require.NotEqual(t, streamOptionsKey(summary[0].options), streamOptionsKey(unique[0].options),
+		"a stream with the Unique size must not share a payload with one without it")
+
+	_, err = parse(map[string]any{"instanceIds": []int{1, 2}, "uniqueSize": true})
+	require.EqualError(t, err, "the Unique size needs a single instance")
 }
 
 // A Copy group change with no torrent change sends the row again in each view.
@@ -127,16 +138,18 @@ func TestFlatAndGroupedSubscribersGetTheirOwnPayload(t *testing.T) {
 	})
 }
 
-// The browser sends no list request while a grouped stream works, so the
-// stream keeps the job, which stops 5 minutes after the last demand, running.
+// The browser sends no list request while a grouped stream or a stream with
+// the Unique size works, so the stream keeps the job, which stops 5 minutes
+// after the last demand, running.
 func TestOpenGroupedStreamKeepsDemandingCopyGroups(t *testing.T) {
 	for name, tt := range map[string]struct {
 		payload []map[string]any
 		demands bool
 	}{
-		"flat":    {payload: streamPayload(1, "flat")},
-		"grouped": {payload: groupedStreamPayload(1, "grouped"), demands: true},
-		"unified": {payload: []map[string]any{{"key": "unified", "instanceIds": []int{1, 2}, "groupCopies": true}}, demands: true},
+		"flat":                         {payload: streamPayload(1, "flat")},
+		"grouped":                      {payload: groupedStreamPayload(1, "grouped"), demands: true},
+		"unified":                      {payload: []map[string]any{{"key": "unified", "instanceIds": []int{1, 2}, "groupCopies": true}}, demands: true},
+		"summary with the Unique size": {payload: []map[string]any{{"key": "unique", "instanceId": 1, "summary": true, "uniqueSize": true}}, demands: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {

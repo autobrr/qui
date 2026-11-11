@@ -431,6 +431,10 @@ type TorrentStats struct {
 	TotalSize          int64 `json:"totalSize"`
 	TotalRemainingSize int64 `json:"totalRemainingSize"`
 	TotalSeedingSize   int64 `json:"totalSeedingSize"`
+	// UniqueSize and UniqueSeedingSize are set when the view asks for the
+	// Unique size and a Copy groups build that read the instance has ended.
+	UniqueSize        *int64 `json:"uniqueSize,omitempty"`
+	UniqueSeedingSize *int64 `json:"uniqueSeedingSize,omitempty"`
 }
 
 // DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
@@ -1679,6 +1683,14 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
+	if view.UniqueSize {
+		sm.DemandCopyGroups()
+		groups := sm.copyGroups.Load()
+		if size, ok := groups.UniqueSize(instanceID, filteredTorrents, nil); ok {
+			seeding, _ := groups.UniqueSize(instanceID, filteredTorrents, activelySeeding)
+			stats.UniqueSize, stats.UniqueSeedingSize = new(size), new(seeding)
+		}
+	}
 
 	// Apply pagination to filtered results; limit <= 0 means "unbounded"
 	totalTorrents := len(filteredTorrents)
@@ -4740,6 +4752,11 @@ func (t *trackerDomainStats) totals() TrackerTransferStats {
 	stats := t.sum
 	stats.TotalSize += t.size.total()
 	return stats
+}
+
+// activelySeeding matches the torrents that calculateStats counts as seeding.
+func activelySeeding(torrent *qbt.Torrent) bool {
+	return torrent.State == qbt.TorrentStateUploading || torrent.State == qbt.TorrentStateForcedUp
 }
 
 // calculateStats calculates torrent statistics from a list of torrents.

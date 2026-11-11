@@ -56,6 +56,13 @@ func newCopyGroupFixture(t *testing.T) copyGroupFixture {
 			copyGroupTorrent("a1", "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 400, 99, "t4.example.invalid"),
 		},
 	}
+	sizes := map[string]int64{"a1": 1000, "b1": 1000, "c1": 1000, "d1": 300, "e1": 50, "f1": 50}
+	for _, library := range libraries {
+		for i := range library {
+			library[i].Size = sizes[library[i].Hash]
+		}
+	}
+	libraries["a"][3].State = qbt.TorrentStateStalledUp
 	okTrackers := func(int) []qbt.TorrentTracker { return nil }
 
 	f := copyGroupFixture{names: map[int]string{}}
@@ -326,6 +333,90 @@ func TestGroupCopiesReady(t *testing.T) {
 		require.Equal(t, flatA, f.rows(response.Torrents))
 		require.Equal(t, new(false), response.CopyGroupsReady)
 	})
+}
+
+func TestCopyGroupsUniqueSize(t *testing.T) {
+	t.Parallel()
+
+	torrent := func(hash string, size int64) qbt.Torrent {
+		return qbt.Torrent{Hash: hash, Size: size, State: qbt.TorrentStateUploading}
+	}
+	at := func(t qbt.Torrent, contentPath string) qbt.Torrent {
+		t.ContentPath = contentPath
+		return t
+	}
+	groups := NewCopyGroups(map[int]map[string]uint64{
+		1: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju},
+		2: {"a1": copyGroupKaiju},
+	}, []int{1, 2})
+	stalled := torrent("d1", 300)
+	stalled.State = qbt.TorrentStateStalledUp
+
+	tests := []struct {
+		name       string
+		instanceID int
+		torrents   []qbt.Torrent
+		keep       func(*qbt.Torrent) bool
+		want       int64
+	}{
+		{name: "two copies in one instance count one time", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000)}, want: 1000},
+		{name: "a torrent outside a group counts in full", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000), torrent("g1", 1000)}, want: 2000},
+		{name: "a copy that skips files does not lower the size of its group", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 40), torrent("b1", 50), torrent("c1", 45)}, want: 50},
+		{name: "keep leaves torrents out", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 1000), stalled}, keep: activelySeeding, want: 1000},
+		{name: "a torrent outside a group with the content path of a member counts one time", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/data/Rel")}, want: 1000},
+		{name: "two torrents outside a group with one content path count one time", instanceID: 1, torrents: []qbt.Torrent{at(torrent("y1", 300), "/data/Film"), at(torrent("z1", 300), "/data/Film")}, want: 300},
+		{name: "a group joins the torrents of its content paths", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/links/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := groups.UniqueSize(tt.instanceID, tt.torrents, tt.keep)
+			require.True(t, ok)
+			require.Equal(t, tt.want, got)
+		})
+	}
+
+	one, _ := groups.UniqueSize(1, []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000)}, nil)
+	two, _ := groups.UniqueSize(2, []qbt.Torrent{torrent("a1", 1000)}, nil)
+	require.Equal(t, int64(2000), one+two, "copies on two instances count two times")
+
+	_, ok := groups.UniqueSize(3, []qbt.Torrent{torrent("a1", 1000)}, nil)
+	require.False(t, ok, "an instance outside the record has no Unique size")
+	_, ok = (*CopyGroups)(nil).UniqueSize(1, []qbt.Torrent{torrent("a1", 1000)}, nil)
+	require.False(t, ok, "no map has no Unique size")
+}
+
+func TestUniqueSizeInstanceView(t *testing.T) {
+	t.Parallel()
+
+	f := newCopyGroupFixture(t)
+	f.sm.SetCopyGroups(f.groups(f.a))
+	demands := 0
+	f.sm.SetCopyGroupsDemandHandler(func() { demands++ })
+
+	stats := func(instanceID int, uniqueSize bool) *TorrentStats {
+		t.Helper()
+		response, err := f.sm.ListTorrents(t.Context(), TorrentListView{InstanceID: instanceID, NoRows: true, UniqueSize: uniqueSize, CacheOnly: true})
+		require.NoError(t, err)
+		return response.Stats
+	}
+
+	a := stats(f.a, true)
+	require.Equal(t, new(int64(1350)), a.UniqueSize, "each Copy group counts one time")
+	require.Equal(t, new(int64(1050)), a.UniqueSeedingSize, "a stalled torrent is not seeding")
+	require.Equal(t, int64(1000), a.TotalSize, "the content path rule stays")
+
+	b := stats(f.b, true)
+	require.Nil(t, b.UniqueSize, "no build read the instance yet")
+	require.Nil(t, b.UniqueSeedingSize)
+	require.Equal(t, 2, demands)
+
+	f.sm.SetCopyGroups(f.groups(f.a, f.b))
+	require.Equal(t, new(int64(1000)), stats(f.b, true).UniqueSize, "the copy on the second instance counts there")
+
+	plain := stats(f.a, false)
+	require.Nil(t, plain.UniqueSize)
+	require.Equal(t, 3, demands, "a view without the Unique size does not wake the job")
 }
 
 func TestSetCopyGroupsNotifiesChangedInstances(t *testing.T) {

@@ -47,6 +47,93 @@ func (g *CopyGroups) groupID(instanceID int, hash string) (uint64, bool) {
 	return id, ok
 }
 
+// UniqueSize returns the Unique size (GLOSSARY.md) of the torrents of one
+// instance that keep accepts, or of all of them when keep is nil. Torrents
+// with the same content path also count one time, as in TotalSize, so a copy
+// that the last build did not group does not count twice. It is false until a
+// build that read the instance ends.
+func (g *CopyGroups) UniqueSize(instanceID int, torrents []qbt.Torrent, keep func(*qbt.Torrent) bool) (int64, bool) {
+	if !g.hasRead(instanceID) {
+		return 0, false
+	}
+	var size int64
+	data := &sharedData{parent: map[sharedDataKey]sharedDataKey{}}
+	for i := range torrents {
+		t := &torrents[i]
+		if keep != nil && !keep(t) {
+			continue
+		}
+		id, grouped := g.groupID(instanceID, t.Hash)
+		switch {
+		case grouped && t.ContentPath != "":
+			data.add(sharedDataKey{group: id, grouped: true}, t.Size)
+			data.join(sharedDataKey{group: id, grouped: true}, sharedDataKey{path: t.ContentPath})
+		case grouped:
+			data.add(sharedDataKey{group: id, grouped: true}, t.Size)
+		case t.ContentPath != "":
+			data.add(sharedDataKey{path: t.ContentPath}, t.Size)
+		default:
+			size += t.Size
+		}
+	}
+	return size + data.total(), true
+}
+
+// sharedDataKey is a Copy group or a content path.
+type sharedDataKey struct {
+	path    string
+	group   uint64
+	grouped bool
+}
+
+// sharedData joins the keys that hold the same data and counts each joined
+// set at the size of its largest torrent: a copy can skip files.
+type sharedData struct {
+	parent  map[sharedDataKey]sharedDataKey
+	members []sharedDataMember
+}
+
+type sharedDataMember struct {
+	key  sharedDataKey
+	size int64
+}
+
+func (d *sharedData) root(k sharedDataKey) sharedDataKey {
+	for {
+		p, ok := d.parent[k]
+		if !ok || p == k {
+			return k
+		}
+		if pp, ok := d.parent[p]; ok {
+			d.parent[k] = pp
+		}
+		k = p
+	}
+}
+
+func (d *sharedData) add(k sharedDataKey, size int64) {
+	d.members = append(d.members, sharedDataMember{key: k, size: size})
+}
+
+func (d *sharedData) join(a, b sharedDataKey) {
+	if ra, rb := d.root(a), d.root(b); ra != rb {
+		d.parent[ra] = rb
+	}
+}
+
+func (d *sharedData) total() int64 {
+	sizes := make(map[sharedDataKey]int64, len(d.members))
+	for _, m := range d.members {
+		r := d.root(m.key)
+		sizes[r] = max(sizes[r], m.size)
+	}
+	var total int64
+	for _, size := range sizes {
+		total += size
+	}
+	return total
+}
+
 type CopyGroupRow struct {
 	ID string `json:"id"`
 	// FirstSorted is set on the Group representative only.
@@ -75,7 +162,7 @@ func (sm *SyncManager) SetCopyGroups(next *CopyGroups) {
 	}
 }
 
-// SetCopyGroupsDemandHandler registers the function that a list request or a grouped stream for Copy groups calls.
+// SetCopyGroupsDemandHandler registers the function that a request or a stream for Copy groups or the Unique size calls.
 func (sm *SyncManager) SetCopyGroupsDemandHandler(handler func()) {
 	sm.copyGroupsDemand.Store(&handler)
 }
