@@ -19,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/internal/trackergroup"
 )
 
 // listRows returns the rows that a list request with filters gives from
@@ -313,4 +314,95 @@ func TestAddSubcategoriesToParentsCountsEachSizeOnce(t *testing.T) {
 		require.Equal(t, map[string]int{"tv": 3, "tv/anime": 2, "tv/anime/season": 1}, counts.Categories)
 		require.Equal(t, map[string]int64{"tv": 111, "tv/anime": 110, "tv/anime/season": 100}, counts.CategorySizes)
 	}
+}
+
+// TestTrackerGroupsCountEachTorrentOnce holds the Tracker group totals: a
+// torrent counts toward one group, so the groups add up to the library, and a
+// content path that two torrents of one group share counts once.
+func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
+	t.Parallel()
+
+	withMetadata, noMetadata := true, false
+	torrent := func(hash, tracker string, private *bool, size, uploaded int64, contentPath string) qbt.Torrent {
+		tr := qbt.Torrent{Hash: hash, Tracker: tracker, Size: size, Uploaded: uploaded, Downloaded: 1, ContentPath: contentPath}
+		if tracker != "" {
+			tr.TrackersCount = 1
+		}
+		if private != nil {
+			tr.HasMetadata, tr.Private = &withMetadata, *private
+		} else {
+			tr.HasMetadata = &noMetadata
+		}
+		return tr
+	}
+	private, public := true, false
+	torrents := []qbt.Torrent{
+		torrent("h1", "https://a.example.invalid/announce", &private, 100, 10, "/data/shared"),
+		torrent("h2", "https://a.example.invalid/announce", &private, 100, 20, "/data/shared"),
+		torrent("h3", "https://c.example.invalid/announce", &public, 300, 30, "/data/three"),
+		torrent("h4", "https://d.example.invalid/announce", nil, 400, 40, "/data/four"),
+		torrent("h5", "", &private, 500, 50, "/data/five"),
+	}
+	// h1 announces to two domains of one tracker.
+	mapping := map[string]map[string]struct{}{
+		"a.example.invalid": {"h1": {}, "h2": {}},
+		"b.example.invalid": {"h1": {}},
+	}
+	in := torrentCountsInput{
+		torrents:       torrents,
+		domainToHashes: mapping,
+		trackers:       trackerSources{extractDomain: ExtractDomainFromURL},
+	}
+	counts := countTorrents(in).counts
+
+	// The per-domain numbers that the Dashboard reads still count h1 twice.
+	require.Equal(t, 2, counts.TrackerTransfers["a.example.invalid"].Count)
+	require.Equal(t, 1, counts.TrackerTransfers["b.example.invalid"].Count)
+
+	groupOf := func(name string, kind trackergroup.Kind) trackergroup.Group {
+		return trackergroup.Group{Kind: kind, Name: name}
+	}
+	total := func(groups map[trackergroup.Group]TrackerTransferStats) (n int, uploaded int64) {
+		for _, stats := range groups {
+			n += stats.Count
+			uploaded += stats.Uploaded
+		}
+		return n, uploaded
+	}
+
+	t.Run("no customization", func(t *testing.T) {
+		groups := groupTrackers(in, trackergroup.New(nil))
+		require.Equal(t, map[trackergroup.Group]TrackerTransferStats{
+			groupOf("a.example.invalid", trackergroup.Domain): {Count: 2, Uploaded: 30, Downloaded: 2, TotalSize: 100},
+			groupOf("Public", trackergroup.Public):            {Count: 1, Uploaded: 30, Downloaded: 1, TotalSize: 300},
+			groupOf("d.example.invalid", trackergroup.Domain): {Count: 1, Uploaded: 40, Downloaded: 1, TotalSize: 400},
+			groupOf("No tracker", trackergroup.NoTracker):     {Count: 1, Uploaded: 50, Downloaded: 1, TotalSize: 500},
+		}, groups)
+		n, uploaded := total(groups)
+		require.Equal(t, len(torrents), n)
+		require.EqualValues(t, 150, uploaded)
+	})
+
+	t.Run("a customization merges two groups", func(t *testing.T) {
+		mapper := trackergroup.New([]*models.TrackerCustomization{
+			{DisplayName: "Example", Domains: []string{"b.example.invalid", "d.example.invalid"}},
+		})
+		groups := groupTrackers(in, mapper)
+		require.Equal(t, TrackerTransferStats{Count: 2, Uploaded: 50, Downloaded: 2, TotalSize: 500},
+			groups[groupOf("Example", trackergroup.Customization)])
+		require.Equal(t, TrackerTransferStats{Count: 1, Uploaded: 20, Downloaded: 1, TotalSize: 100},
+			groups[groupOf("a.example.invalid", trackergroup.Domain)])
+		n, uploaded := total(groups)
+		require.Equal(t, len(torrents), n)
+		require.EqualValues(t, 150, uploaded)
+	})
+
+	t.Run("sizes merge across sets of one group", func(t *testing.T) {
+		mapper := trackergroup.New([]*models.TrackerCustomization{
+			{DisplayName: "Example", Domains: []string{"a.example.invalid", "b.example.invalid"}},
+		})
+		// h1 has the sets {a, b} and h2 has {a}. Both are in Example and share a path.
+		stats := groupTrackers(in, mapper)[groupOf("Example", trackergroup.Customization)]
+		require.Equal(t, TrackerTransferStats{Count: 2, Uploaded: 30, Downloaded: 2, TotalSize: 100}, stats)
+	})
 }

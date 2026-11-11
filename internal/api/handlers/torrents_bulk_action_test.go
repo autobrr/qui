@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -411,6 +412,47 @@ func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 			if tc.want == nil {
 				require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			}
+		})
+	}
+}
+
+type recordingDeleter struct {
+	deleteFiles []bool
+	actors      []qbittorrent.DeleteActor
+}
+
+func (d *recordingDeleter) DeleteTorrents(_ context.Context, _ int, _ []string, deleteFiles bool, actor qbittorrent.DeleteActor) error {
+	d.deleteFiles = append(d.deleteFiles, deleteFiles)
+	d.actors = append(d.actors, actor)
+	return nil
+}
+
+// A delete from the web UI or the API names the user in qui.
+func TestBulkAction_DeleteNamesTheUser(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		payload         map[string]any
+		wantDeleteFiles bool
+	}{
+		{"delete keeps files", map[string]any{"action": "delete"}, false},
+		{"delete with the files flag", map[string]any{"action": "delete", "deleteFiles": true}, true},
+		{"deleteWithFiles", map[string]any{"action": "deleteWithFiles"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			deleter := &recordingDeleter{}
+			handler := &TorrentsHandler{deleter: deleter}
+			tt.payload["hashes"] = []string{"aaaa"}
+
+			rec := httptest.NewRecorder()
+			handler.BulkAction(rec, newTorrentFieldRequest(t, 1, tt.payload))
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			require.Equal(t, []bool{tt.wantDeleteFiles}, deleter.deleteFiles)
+			require.Equal(t, []qbittorrent.DeleteActor{{Kind: qbittorrent.DeleteActorUser}}, deleter.actors)
 		})
 	}
 }
