@@ -31,8 +31,7 @@ type TorrentListView struct {
 	NoRows        bool
 	SidebarCounts bool
 	CopyGroups    bool
-	// UniqueSize adds the Unique size to the stats of a single-instance view,
-	// and keeps the Copy groups job running.
+	// UniqueSize adds the Unique size to the stats of a single-instance view.
 	UniqueSize bool
 	// CacheOnly reads the sync cache and starts no sync.
 	CacheOnly bool
