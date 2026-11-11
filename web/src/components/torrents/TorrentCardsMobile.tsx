@@ -29,10 +29,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
-import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
-import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useCopyGroupRows, type CopyGroupRow } from "@/hooks/useCopyGroupRows"
-import { useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
+import { useTorrentListController } from "@/hooks/useTorrentListController"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useClientSetting } from "@/lib/client-settings"
@@ -40,8 +38,8 @@ import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
-import { actionTargetInstanceIds, actionTargetRequest, buildActionTarget, getSelectionIdentity as selectionIdentity, hasSelection, rememberTickedTorrents, selectAllButtonEvent, type ActionTargetScope } from "@/lib/torrent-selection"
-import { getCommonCategory, getCommonSavePath, getToggleSelectionState, getTotalSize } from "@/lib/torrent-utils"
+import { actionTargetInstanceIds, buildActionTarget, EMPTY_ACTION_TARGET, getSelectionIdentity as selectionIdentity, hasSelection, rememberTickedTorrents, selectAllButtonEvent, type ActionTargetScope } from "@/lib/torrent-selection"
+import { getToggleSelectionState, getTotalSize } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -82,23 +80,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
+import type { BulkActionPick } from "./bulk-actions/bulk-action-state"
+import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { TorrentListEmptyState } from "./TorrentListEmptyState"
-import {
-  LocationWarningDialog,
-  SetCategoryDialog,
-  SetLocationDialog,
-  ShareLimitDialog,
-  SpeedLimitsDialog,
-  TagEditorDialog,
-  TmmConfirmDialog
-} from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
-import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext, type ListFacts } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities, useInstancesSupport } from "@/hooks/useInstanceCapabilities"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
@@ -747,7 +736,7 @@ export function TorrentCardsMobile({
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   // Selection keys: hash for single-instance, `${instanceId}:${hash}` for unified scope.
-  const { selection, dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const { selection, dispatch: dispatchSelection, publishSummary } = useTorrentSelectionContext()
   const { isAllSelected, selected: selectedHashes, excluded: excludedFromSelectAll } = selection
   // Selection mode means that something is selected, Select all mode included.
   const selectionMode = hasSelection(selection)
@@ -831,52 +820,7 @@ export function TorrentCardsMobile({
     return newLookup
   }, [trackerCustomizationsQuery.data])
 
-  // Use the shared torrent actions hook
-  const torrentActions = useTorrentActions({
-    instanceId,
-    instanceIds,
-    onActionComplete: (action) => {
-      if (action === TORRENT_ACTIONS.DELETE) {
-        dispatchSelection({ type: "clear" })
-      }
-    },
-  })
-  const {
-    showDeleteDialog,
-    closeDeleteDialog,
-    deleteFiles,
-    setDeleteFiles,
-    isDeleteFilesLocked,
-    toggleDeleteFilesLock,
-    blockCrossSeeds,
-    setBlockCrossSeeds,
-    deleteCrossSeeds,
-    setDeleteCrossSeeds,
-    showTagsDialog,
-    setShowTagsDialog,
-    showCategoryDialog,
-    setShowCategoryDialog,
-    showLocationDialog,
-    setShowLocationDialog,
-    showShareLimitDialog,
-    setShowShareLimitDialog,
-    showSpeedLimitDialog,
-    setShowSpeedLimitDialog,
-    showTmmDialog,
-    setShowTmmDialog,
-    pendingTmmEnable,
-    showLocationWarningDialog,
-    setShowLocationWarningDialog,
-    isPending,
-    prepareDeleteAction,
-    prepareLocationAction,
-    prepareTmmAction,
-    proceedToLocationDialog,
-  } = torrentActions
-
-  const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
-  const availableTags = metadata?.tags || []
-  const availableCategories = metadata?.categories || {}
+  const { pick, isExporting } = useBulkActions()
 
   const debouncedSearch = useDebounce(globalFilter, 1000)
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
@@ -942,7 +886,6 @@ export function TorrentCardsMobile({
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
-  const { exportTorrents, isExporting } = useTorrentExporter({ instanceId, incognitoMode })
   const supportsTrackerHealth = resolveTrackerHealthSupport({
     isUnifiedView: isAllInstancesView,
     capabilitySupport: capabilities?.supportsTrackerHealth,
@@ -973,63 +916,46 @@ export function TorrentCardsMobile({
   const tickedTorrentsRef = useRef(new Map<string, Torrent>())
   // Every bulk action on the cards reads this target (ADR 0034). The cards have no Column filters.
   const actionTarget = useMemo(() => {
+    if (!selectionMode) {
+      // A stable result while nothing is selected: torrents is a new array on each stream tick.
+      tickedTorrentsRef.current.clear()
+      return EMPTY_ACTION_TARGET
+    }
     const ticked = rememberTickedTorrents(tickedTorrentsRef.current, selectedHashes, torrents, getSelectionIdentity)
     const scope: ActionTargetScope = { instanceId, instanceIds, filters, columnFilters: null, search: effectiveSearch, isCrossInstance: isCrossInstanceEndpoint }
     return buildActionTarget(selection, scope, { loaded: torrents, ticked, totalCount })
-  }, [selection, selectedHashes, torrents, getSelectionIdentity, instanceId, instanceIds, filters, effectiveSearch, isCrossInstanceEndpoint, totalCount])
+  }, [selectionMode, selection, selectedHashes, torrents, getSelectionIdentity, instanceId, instanceIds, filters, effectiveSearch, isCrossInstanceEndpoint, totalCount])
   const { count: effectiveSelectionCount, previewTorrents: selectedTorrents } = actionTarget
   const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
   const supportsTorrentExport = useInstancesSupport(actionInstanceIds, "supportsTorrentExport")
 
   const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
 
-  const selectedTotalSize = useMemo(() => {
-    if (isAllSelected) {
-      const aggregateTotalSize = stats?.totalSize ?? 0
-
-      if (aggregateTotalSize <= 0) {
-        return 0
-      }
-
-      if (excludedFromSelectAll.size === 0) {
-        return aggregateTotalSize
-      }
-
-      const excludedSize = torrents.reduce((total, torrent) => {
-        if (excludedFromSelectAll.has(getSelectionIdentity(torrent))) {
-          return total + (torrent.size || 0)
-        }
-        return total
-      }, 0)
-
-      return Math.max(aggregateTotalSize - excludedSize, 0)
+  const totalSize = isAllSelected ? stats?.totalSize ?? 0 : 0
+  const excludedSize = useMemo(() => {
+    if (!isAllSelected || excludedFromSelectAll.size === 0) {
+      return 0
     }
-
-    return getTotalSize(selectedTorrents)
-  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, torrents, selectedTorrents, getSelectionIdentity])
-
+    return torrents.reduce((total, torrent) => excludedFromSelectAll.has(getSelectionIdentity(torrent)) ? total + (torrent.size || 0) : total, 0)
+  }, [isAllSelected, excludedFromSelectAll, torrents, getSelectionIdentity])
+  const selectedTotalSize = isAllSelected ? Math.max(totalSize - excludedSize, 0) : getTotalSize(selectedTorrents)
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
-  const {
-    crossSeedWarning,
-    hasCrossSeedTag,
-    runAction,
-    handleExportWrapper,
-    handleDeleteWrapper,
-    handleTagsWrapper,
-    handleSetCategoryWrapper,
-    handleSetLocationWrapper,
-    handleTmmConfirmWrapper,
-    handleSetShareLimitWrapper,
-    handleSetSpeedLimitsWrapper,
-  } = useTorrentListActions({
-    instanceId,
-    actionTarget,
-    actions: torrentActions,
-    exportTorrents,
-    sort: backendSortField,
-    order: sortOrder,
-  })
+  const listFacts = useMemo<ListFacts>(() => ({
+    isCrossInstance: Boolean(isCrossInstanceEndpoint),
+    categories,
+    tags,
+    allowSubcategories,
+    capabilities,
+    sortField: backendSortField,
+    sortOrder,
+  }), [isCrossInstanceEndpoint, categories, tags, allowSubcategories, capabilities, backendSortField, sortOrder])
+
+  // The bulk action module reads this value for its dialogs and requests.
+  useEffect(() => {
+    publishSummary({ actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts })
+  }, [publishSummary, actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts])
+  useEffect(() => () => publishSummary(null), [publishSummary])
 
   // Virtual scrolling with consistent spacing
   const virtualizer = useVirtualizer({
@@ -1114,15 +1040,10 @@ export function TorrentCardsMobile({
     dispatchSelection(selectAllButtonEvent(selection, totalCount))
   }, [dispatchSelection, selection, totalCount])
 
-  const handleBulkAction = useCallback((action: TorrentAction, options?: { enable?: boolean }) => {
-    runAction(action, options)
+  const pickBulkAction = useCallback((bulkPick: BulkActionPick) => {
+    pick(bulkPick)
     setShowActionsSheet(false)
-  }, [runAction])
-
-  const handleExport = () => {
-    handleExportWrapper()
-    setShowActionsSheet(false)
-  }
+  }, [pick])
 
   const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
     instanceId,
@@ -1376,7 +1297,7 @@ export function TorrentCardsMobile({
         >
           <div className="flex items-center justify-around h-16">
             <button
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.RESUME)}
+              onClick={() => pickBulkAction({ action: "resume" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Play className="h-5 w-5" />
@@ -1384,7 +1305,7 @@ export function TorrentCardsMobile({
             </button>
 
             <button
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.PAUSE)}
+              onClick={() => pickBulkAction({ action: "pause" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Pause className="h-5 w-5" />
@@ -1392,9 +1313,7 @@ export function TorrentCardsMobile({
             </button>
 
             <button
-              onClick={() => {
-                setShowCategoryDialog(true)
-              }}
+              onClick={() => pickBulkAction({ action: "setCategory" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Folder className="h-5 w-5" />
@@ -1402,9 +1321,7 @@ export function TorrentCardsMobile({
             </button>
 
             <button
-              onClick={() => {
-                setShowTagsDialog(true)
-              }}
+              onClick={() => pickBulkAction({ action: "setTags" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Tag className="h-5 w-5" />
@@ -1439,7 +1356,7 @@ export function TorrentCardsMobile({
                   <>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: true })}
+                      onClick={() => pickBulkAction({ action: "forceStart", enable: true })}
                       className="justify-start"
                     >
                       <FastForward className="mr-2 h-4 w-4" />
@@ -1447,7 +1364,7 @@ export function TorrentCardsMobile({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: false })}
+                      onClick={() => pickBulkAction({ action: "forceStart", enable: false })}
                       className="justify-start"
                     >
                       <FastForward className="mr-2 h-4 w-4" />
@@ -1460,7 +1377,7 @@ export function TorrentCardsMobile({
               return (
                 <Button
                   variant="outline"
-                  onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: !allForceStarted })}
+                  onClick={() => pickBulkAction({ action: "forceStart", enable: !allForceStarted })}
                   className="justify-start"
                 >
                   <FastForward className="mr-2 h-4 w-4" />
@@ -1470,7 +1387,7 @@ export function TorrentCardsMobile({
             })()}
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.RECHECK)}
+              onClick={() => pickBulkAction({ action: "recheck" })}
               className="justify-start"
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -1478,7 +1395,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.REANNOUNCE)}
+              onClick={() => pickBulkAction({ action: "reannounce" })}
               className="justify-start"
             >
               <Radio className="mr-2 h-4 w-4" />
@@ -1492,7 +1409,7 @@ export function TorrentCardsMobile({
                   <>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: true })}
+                      onClick={() => pickBulkAction({ action: "toggleSequentialDownload", enable: true })}
                       className="justify-start"
                     >
                       <Blocks className="mr-2 h-4 w-4" />
@@ -1500,7 +1417,7 @@ export function TorrentCardsMobile({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: false })}
+                      onClick={() => pickBulkAction({ action: "toggleSequentialDownload", enable: false })}
                       className="justify-start"
                     >
                       <Blocks className="mr-2 h-4 w-4" />
@@ -1513,7 +1430,7 @@ export function TorrentCardsMobile({
               return (
                 <Button
                   variant="outline"
-                  onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: !allSeqDlEnabled })}
+                  onClick={() => pickBulkAction({ action: "toggleSequentialDownload", enable: !allSeqDlEnabled })}
                   className="justify-start"
                 >
                   <Blocks className="mr-2 h-4 w-4" />
@@ -1571,7 +1488,7 @@ export function TorrentCardsMobile({
             )}
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.INCREASE_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "increasePriority" })}
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
@@ -1579,7 +1496,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.DECREASE_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "decreasePriority" })}
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
@@ -1587,7 +1504,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.TOP_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "topPriority" })}
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
@@ -1595,7 +1512,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.BOTTOM_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "bottomPriority" })}
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
@@ -1609,10 +1526,7 @@ export function TorrentCardsMobile({
                   <>
                     <Button
                       variant="outline"
-                      onClick={() => {
-                        prepareTmmAction(true)
-                        setShowActionsSheet(false)
-                      }}
+                      onClick={() => pickBulkAction({ action: "toggleAutoTMM", enable: true })}
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
@@ -1620,10 +1534,7 @@ export function TorrentCardsMobile({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => {
-                        prepareTmmAction(false)
-                        setShowActionsSheet(false)
-                      }}
+                      onClick={() => pickBulkAction({ action: "toggleAutoTMM", enable: false })}
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
@@ -1636,10 +1547,7 @@ export function TorrentCardsMobile({
               return (
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    prepareTmmAction(!allEnabled)
-                    setShowActionsSheet(false)
-                  }}
+                  onClick={() => pickBulkAction({ action: "toggleAutoTMM", enable: !allEnabled })}
                   className="justify-start"
                 >
                   {allEnabled ? (
@@ -1658,10 +1566,7 @@ export function TorrentCardsMobile({
             })()}
             <Button
               variant="outline"
-              onClick={() => {
-                setShowShareLimitDialog(true)
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "setShareLimit" })}
               className="justify-start"
             >
               <Sprout className="mr-2 h-4 w-4" />
@@ -1669,10 +1574,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                setShowSpeedLimitDialog(true)
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "setSpeedLimits" })}
               className="justify-start"
             >
               <Gauge className="mr-2 h-4 w-4" />
@@ -1680,10 +1582,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                prepareLocationAction()
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "setLocation" })}
               className="justify-start"
             >
               <FolderOpen className="mr-2 h-4 w-4" />
@@ -1692,7 +1591,7 @@ export function TorrentCardsMobile({
             {supportsTorrentExport && (
               <Button
                 variant="outline"
-                onClick={handleExport}
+                onClick={() => pickBulkAction({ action: "export" })}
                 disabled={isExporting}
                 className="justify-start"
               >
@@ -1702,10 +1601,7 @@ export function TorrentCardsMobile({
             )}
             <Button
               variant="destructive"
-              onClick={() => {
-                prepareDeleteAction()
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "delete" })}
               className="justify-start !bg-destructive !text-destructive-foreground"
             >
               <Trash2 className="mr-2 h-4 w-4" />
@@ -1714,109 +1610,6 @@ export function TorrentCardsMobile({
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Delete confirmation dialog */}
-      <DeleteTorrentDialog
-        open={showDeleteDialog}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeDeleteDialog()
-            crossSeedWarning.reset()
-          }
-        }}
-        count={effectiveSelectionCount}
-        totalSize={selectedTotalSize}
-        formattedSize={selectedFormattedSize}
-        deleteFiles={deleteFiles}
-        onDeleteFilesChange={setDeleteFiles}
-        isDeleteFilesLocked={isDeleteFilesLocked}
-        onToggleDeleteFilesLock={toggleDeleteFilesLock}
-        deleteCrossSeeds={deleteCrossSeeds}
-        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-        showBlockCrossSeeds={hasCrossSeedTag}
-        blockCrossSeeds={blockCrossSeeds}
-        onBlockCrossSeedsChange={setBlockCrossSeeds}
-        crossSeedWarning={crossSeedWarning}
-        onConfirm={handleDeleteWrapper}
-        isAllSelected={isAllSelected}
-        previewTorrents={selectedTorrents}
-      />
-
-      {/* Tags dialog */}
-      <TagEditorDialog
-        open={showTagsDialog}
-        onOpenChange={setShowTagsDialog}
-        availableTags={availableTags || []}
-        selectedTorrents={selectedTorrents}
-        hashCount={effectiveSelectionCount}
-        selectionRequest={{ instanceId, ...actionTargetRequest(actionTarget) }}
-        onConfirm={handleTagsWrapper}
-        isPending={isPending}
-      />
-
-      {/* Category dialog */}
-      <SetCategoryDialog
-        open={showCategoryDialog}
-        onOpenChange={setShowCategoryDialog}
-        availableCategories={availableCategories}
-        hashCount={effectiveSelectionCount}
-        onConfirm={handleSetCategoryWrapper}
-        isPending={isPending}
-        initialCategory={getCommonCategory(selectedTorrents)}
-        useSubcategories={allowSubcategories}
-      />
-
-      {/* Share Limits Dialog */}
-      <ShareLimitDialog
-        open={showShareLimitDialog}
-        onOpenChange={setShowShareLimitDialog}
-        hashCount={effectiveSelectionCount}
-        torrents={selectedTorrents}
-        instanceIds={actionInstanceIds}
-        onConfirm={handleSetShareLimitWrapper}
-        isPending={isPending}
-      />
-
-      {/* Speed Limits Dialog */}
-      <SpeedLimitsDialog
-        open={showSpeedLimitDialog}
-        onOpenChange={setShowSpeedLimitDialog}
-        hashCount={effectiveSelectionCount}
-        torrents={selectedTorrents}
-        onConfirm={handleSetSpeedLimitsWrapper}
-        isPending={isPending}
-      />
-
-      {/* Set Location Dialog */}
-      <SetLocationDialog
-        open={showLocationDialog}
-        onOpenChange={setShowLocationDialog}
-        hashCount={effectiveSelectionCount}
-        initialLocation={getCommonSavePath(selectedTorrents)}
-        onConfirm={handleSetLocationWrapper}
-        isPending={isPending}
-        instanceId={instanceId}
-        capabilities={capabilities}
-      />
-
-      {/* TMM Confirmation Dialog */}
-      <TmmConfirmDialog
-        open={showTmmDialog}
-        onOpenChange={setShowTmmDialog}
-        count={effectiveSelectionCount}
-        enable={pendingTmmEnable}
-        onConfirm={handleTmmConfirmWrapper}
-        isPending={isPending}
-      />
-
-      {/* Location Warning Dialog */}
-      <LocationWarningDialog
-        open={showLocationWarningDialog}
-        onOpenChange={setShowLocationWarningDialog}
-        count={effectiveSelectionCount}
-        onConfirm={proceedToLocationDialog}
-        isPending={isPending}
-      />
 
       {/* Search Modal */}
       <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>
