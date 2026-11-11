@@ -210,6 +210,7 @@ func (u *uniqueSizes) root(set int32) int32 {
 // totals counts each joined set at the size of its largest torrent: a copy can
 // skip files.
 func (u *uniqueSizes) totals() (total, seeding int64) {
+	held := u.heldParts()
 	all := make([]int64, len(u.parent))
 	seeds := make([]int64, len(u.parent))
 	for _, m := range u.members {
@@ -221,38 +222,51 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 	}
 	// A torrent on the content path of a torrent with Shared parts holds those
 	// parts, so only its bytes above them count. Its bytes that seed count
-	// above the parts of the path that seed, because its file list is not
-	// known. Only a torrent without Shared parts gives its content path a set.
-	held := make([]int64, len(u.parent))
-	heldSeeding := make([]int64, len(u.parent))
-	var heldParts map[[2]uint64]struct{}
+	// above the parts of the path that seed, because its file list is not known.
+	for id, part := range held {
+		set := u.root(part.set)
+		all[set] -= part.size
+		if u.countedSeeding[id] {
+			seeds[set] -= part.size
+		}
+	}
+	total, seeding = u.total, u.seeding
+	for set := range all {
+		total += max(0, all[set])
+		seeding += max(0, seeds[set])
+	}
+	return total, seeding
+}
+
+// heldPart is a Shared part and a set of a content path that holds it.
+type heldPart struct {
+	set  int32
+	size int64
+}
+
+// heldParts returns the Shared parts of the content paths that also hold a
+// torrent without Shared parts. Only such a torrent gives its content path a
+// set. Content paths that hold the same part hold the same data, so it joins
+// their sets.
+func (u *uniqueSizes) heldParts() map[uint64]heldPart {
+	var held map[uint64]heldPart
 	for _, holder := range u.onPath {
 		set, ok := u.byPath[holder.path]
 		if !ok {
 			continue
 		}
-		root := u.root(set)
 		for _, part := range holder.parts {
-			key := [2]uint64{uint64(root), part.ID} //nolint:gosec // A set index is not negative.
-			if _, ok := heldParts[key]; ok {
+			if first, ok := held[part.ID]; ok {
+				u.parent[u.root(set)] = u.root(first.set)
 				continue
 			}
-			if heldParts == nil {
-				heldParts = map[[2]uint64]struct{}{}
+			if held == nil {
+				held = map[uint64]heldPart{}
 			}
-			heldParts[key] = struct{}{}
-			held[root] += part.Size
-			if u.countedSeeding[part.ID] {
-				heldSeeding[root] += part.Size
-			}
+			held[part.ID] = heldPart{set: set, size: part.Size}
 		}
 	}
-	total, seeding = u.total, u.seeding
-	for set := range all {
-		total += max(0, all[set]-held[set])
-		seeding += max(0, seeds[set]-heldSeeding[set])
-	}
-	return total, seeding
+	return held
 }
 
 type CopyGroupRow struct {
