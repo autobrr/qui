@@ -63,8 +63,14 @@ func (f TorrentRefFilter) Select(snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
 		return nil
 	}
 	refs := make([]*qbt.Torrent, 0, len(f.Hashes))
+	seen := make(map[*qbt.Torrent]struct{}, len(f.Hashes))
 	for _, hash := range f.Hashes {
-		if t, ok := snapshot.Torrent(hash); ok && f.matches(t) && !slices.Contains(refs, t) {
+		t, ok := snapshot.Torrent(hash)
+		if !ok || !f.matches(t) {
+			continue
+		}
+		if _, repeat := seen[t]; !repeat {
+			seen[t] = struct{}{}
 			refs = append(refs, t)
 		}
 	}
