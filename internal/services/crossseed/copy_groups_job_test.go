@@ -286,6 +286,10 @@ func (h *cgHarness) requested(instanceID int, hash string) int {
 // want builds the map the job must publish. The first member of each group is
 // its Group representative.
 func (h *cgHarness) want(read []int, groups ...[]qbittorrent.CopyGroupMember) *qbittorrent.CopyGroups {
+	return qbittorrent.NewCopyGroups(h.ids(groups...), nil, read)
+}
+
+func (h *cgHarness) ids(groups ...[]qbittorrent.CopyGroupMember) map[int]map[string]uint64 {
 	ids := map[int]map[string]uint64{}
 	for _, group := range groups {
 		id := copyGroupID(h.job.key, group[0].InstanceID, group[0].Hash)
@@ -296,7 +300,7 @@ func (h *cgHarness) want(read []int, groups ...[]qbittorrent.CopyGroupMember) *q
 			ids[m.InstanceID][m.Hash] = id
 		}
 	}
-	return qbittorrent.NewCopyGroups(ids, read)
+	return ids
 }
 
 func cgMember(instanceID int, hash string) qbittorrent.CopyGroupMember {
@@ -895,6 +899,30 @@ func TestCopyGroupsJob_AGroupKeepsItsIdDuringAnOutage(t *testing.T) {
 	})
 }
 
+func TestCopyGroupsJob_AnOfflineInstanceKeepsItsSharedParts(t *testing.T) {
+	cgTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
+		episode3 := qbt.TorrentFile{Name: cgPack + "/Harbor.Watch.S01E03.1080p.WEB.h264-GRP.mkv", Size: 500}
+		h.add(1, cgA, "/data/a", cgOld, wanted(cgPackFiles(episode3)))
+		// b and c hold two of the three episodes of a.
+		h.add(1, cgB, "/data/b", cgOld.Add(time.Hour), wanted(cgPackFiles()))
+		h.add(2, cgC, "/data/c", cgOld.Add(2*time.Hour), wanted(cgPackFiles()))
+		h.startAndWait()
+		h.wait(copyGroupsTick)
+		ids := h.ids([]qbittorrent.CopyGroupMember{cgMember(1, cgB), cgMember(2, cgC)})
+		parts := map[int]map[string][]qbittorrent.SharedPart{
+			1: {cgA: {{ID: 0, Size: 500}, {ID: 1, Size: 3000}}, cgB: {{ID: 1, Size: 3000}}},
+		}
+		require.Equal(t, qbittorrent.NewCopyGroups(ids, parts, []int{1, 2}), h.last(), "the copies on instance 1 share 3000 bytes")
+
+		h.setListErr(1, errors.New("connection refused"))
+		h.addNamed(2, cgD, "Quiet.Meadow.S01.1080p.WEB.h264-OTHER", "/data/d", cgOld.Add(3*time.Hour), wanted(cgPackFiles()))
+		publishes := h.publishes()
+		h.wait(copyGroupsTick)
+		require.Greater(t, h.publishes(), publishes, "the change on instance 2 starts a rebuild")
+		require.Equal(t, qbittorrent.NewCopyGroups(ids, parts, []int{1, 2}), h.last(), "instance 1 keeps its Shared parts while it is offline")
+	})
+}
+
 func TestCopyGroupsJob_TwoOldIdsJoinUnderTheLowerId(t *testing.T) {
 	cgTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		const other = "Harbor.Watch.S01.1080p.WEB.h264-OTHER"
@@ -918,7 +946,7 @@ func TestCopyGroupsJob_TwoOldIdsJoinUnderTheLowerId(t *testing.T) {
 		require.Equal(t, qbittorrent.NewCopyGroups(map[int]map[string]uint64{
 			1: {cgA: lower, cgC: lower, e: lower},
 			2: {cgB: lower, cgD: lower},
-		}, []int{1, 2}), h.last())
+		}, nil, []int{1, 2}), h.last())
 	})
 }
 

@@ -86,7 +86,7 @@ func (f copyGroupFixture) groups(read ...int) *CopyGroups {
 	return NewCopyGroups(map[int]map[string]uint64{
 		f.a: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju, "e1": copyGroupAlbum, "f1": copyGroupAlbum},
 		f.b: {"a1": copyGroupKaiju},
-	}, read)
+	}, nil, read)
 }
 
 func (f copyGroupFixture) row(instanceID int, view *TorrentView) string {
@@ -353,6 +353,9 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 	groups := NewCopyGroups(map[int]map[string]uint64{
 		1: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju},
 		2: {"a1": copyGroupKaiju},
+	}, map[int]map[string][]SharedPart{
+		// p1 holds all three episodes of a pack, and q1 holds two of them.
+		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}},
 	}, []int{1, 2})
 	sizes := func(instanceID int, torrents ...qbt.Torrent) *TorrentStats {
 		return (&SyncManager{}).calculateStats(torrents, groups.uniqueSizes(instanceID))
@@ -374,6 +377,8 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		{name: "two torrents outside a group with one content path count one time", torrents: []qbt.Torrent{at(torrent("y1", 300), "/data/Film"), at(torrent("z1", 300), "/data/Film")}, want: 300, wantSeeding: 300},
 		// regression: #4020
 		{name: "a stalled member still joins its content path", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(stalledTorrent("b1", 1000), "/links/Rel"), at(torrent("y1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
+		{name: "torrents that share some files count each Shared part one time", torrents: []qbt.Torrent{torrent("p1", 1000), torrent("q1", 900)}, want: 1000, wantSeeding: 1000},
+		{name: "a Shared part seeds when a torrent that seeds holds it", torrents: []qbt.Torrent{stalledTorrent("p1", 1000), torrent("q1", 900)}, want: 1000, wantSeeding: 900},
 		{name: "a group joins the torrents of its content paths", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/links/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
 	}
 	for _, tt := range tests {
@@ -435,19 +440,19 @@ func TestSetCopyGroupsNotifiesChangedInstances(t *testing.T) {
 		return out
 	}
 
-	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}}, []int{1, 2}))
+	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}}, nil, []int{1, 2}))
 	require.Equal(t, []int{1, 2}, updates(), "a first map")
 
-	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}}, []int{1, 2}))
+	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}}, nil, []int{1, 2}))
 	require.Empty(t, updates(), "an equal map")
 
-	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}, 2: {"a1": 1}}, []int{1, 2}))
+	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}, 2: {"a1": 1}}, nil, []int{1, 2}))
 	require.Equal(t, []int{2}, updates(), "new entries on one instance")
 
-	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}, 2: {"a1": 1}}, []int{1, 2, 3}))
+	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 1, "b1": 1}, 2: {"a1": 1}}, nil, []int{1, 2, 3}))
 	require.Equal(t, []int{3}, updates(), "an instance that joins the record")
 
-	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 2, "b1": 2}, 2: {"a1": 1}}, []int{1, 2, 3}))
+	sm.SetCopyGroups(NewCopyGroups(map[int]map[string]uint64{1: {"a1": 2, "b1": 2}, 2: {"a1": 1}}, nil, []int{1, 2, 3}))
 	require.Equal(t, []int{1}, updates(), "a changed group id")
 }
 

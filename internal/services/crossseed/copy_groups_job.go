@@ -78,6 +78,8 @@ type copyGroupsJob struct {
 	forgotten map[string]uint64
 	// ids is the last published map. It is nil before the first publish.
 	ids map[int]map[string]uint64
+	// parts holds the last published Shared parts.
+	parts map[int]map[string][]qbittorrent.SharedPart
 	// failed holds the time after which an unreadable torrent is read again.
 	failed map[int]map[string]time.Time
 }
@@ -317,7 +319,7 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 	if len(run.torrents) == 0 && j.ids == nil && listFailed && !slices.ContainsFunc(active, func(id int) bool { return synced[id] }) {
 		// No instance can sync, so the list shows flat rows and no hint.
 		j.ids = map[int]map[string]uint64{}
-		j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(j.ids, nil))
+		j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(j.ids, nil, nil))
 	}
 	if j.rebuilding || len(run.torrents) == 0 {
 		j.tickSkipped = j.rebuilding
@@ -588,12 +590,21 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	ids := keepOfflineGroups(groups, run.torrents, run.prev, run.offline)
 
 	j.mu.Lock()
-	j.ids = ids
+	parts := links.parts
+	for _, id := range run.offline {
+		if j.parts[id] != nil {
+			if parts == nil {
+				parts = map[int]map[string][]qbittorrent.SharedPart{}
+			}
+			parts[id] = j.parts[id]
+		}
+	}
+	j.ids, j.parts = ids, parts
 	j.fingerprints, j.builtMarks, j.links = run.fingerprints, run.marks, links
 	maps.DeleteFunc(j.forgotten, func(_ string, mark uint64) bool { return mark <= run.marks })
 	maps.Copy(j.failed, reader.failed)
 	j.mu.Unlock()
-	j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(ids, run.read))
+	j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(ids, parts, run.read))
 	log.Debug().Bool("retryRead", run.retry).Bool("allTorrents", run.links == nil).Ints("instances", run.read).Int("groups", len(groups)).
 		Dur("elapsed", time.Since(started)).Msg("crossseed: Copy groups rebuilt")
 }

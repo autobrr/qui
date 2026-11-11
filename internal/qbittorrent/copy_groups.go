@@ -17,17 +17,27 @@ import (
 
 // CopyGroups maps instance and hash to a Copy group id, with the record of instances that ended a first read.
 type CopyGroups struct {
-	ids  map[int]map[string]uint64
-	read map[int]struct{}
+	ids   map[int]map[string]uint64
+	read  map[int]struct{}
+	parts map[int]map[string][]SharedPart
 }
 
-// NewCopyGroups keeps ids, so the caller must not change it after the call.
-func NewCopyGroups(ids map[int]map[string]uint64, read []int) *CopyGroups {
+// SharedPart is one part of the data of torrents that share some files but
+// not all (GLOSSARY.md). Each torrent that holds the part has it in its list,
+// and the Unique size counts the part one time.
+type SharedPart struct {
+	ID   uint64
+	Size int64
+}
+
+// NewCopyGroups keeps ids and parts, so the caller must not change them after
+// the call. parts holds the Shared parts by instance and hash.
+func NewCopyGroups(ids map[int]map[string]uint64, parts map[int]map[string][]SharedPart, read []int) *CopyGroups {
 	record := make(map[int]struct{}, len(read))
 	for _, id := range read {
 		record[id] = struct{}{}
 	}
-	return &CopyGroups{ids: ids, read: record}
+	return &CopyGroups{ids: ids, parts: parts, read: record}
 }
 
 func (g *CopyGroups) hasRead(instanceID int) bool {
@@ -48,11 +58,15 @@ func (g *CopyGroups) groupID(instanceID int, hash string) (uint64, bool) {
 }
 
 // uniqueSizes adds up the Unique size (GLOSSARY.md) of the torrents of one
-// instance, and of the torrents among them that seed. Torrents with the same
-// content path also count one time, as in TotalSize, so a copy that the last
-// build did not group does not count twice.
+// instance, and of the torrents among them that seed. A torrent with Shared
+// parts counts each part one time. Torrents with the same content path also
+// count one time, as in TotalSize, so a copy that the last build did not group
+// does not count twice.
 type uniqueSizes struct {
-	ids map[string]uint64
+	ids   map[string]uint64
+	parts map[string][]SharedPart
+	// counted and countedSeeding hold the Shared parts that the totals hold.
+	counted, countedSeeding map[uint64]struct{}
 	// parent joins the Copy groups and the content paths that hold the same data.
 	parent  []int32
 	byGroup map[uint64]int32
@@ -73,7 +87,11 @@ func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
 	if !g.hasRead(instanceID) {
 		return nil
 	}
-	return &uniqueSizes{ids: g.ids[instanceID], byGroup: map[uint64]int32{}, byPath: map[string]int32{}}
+	return &uniqueSizes{
+		ids: g.ids[instanceID], parts: g.parts[instanceID],
+		counted: map[uint64]struct{}{}, countedSeeding: map[uint64]struct{}{},
+		byGroup: map[uint64]int32{}, byPath: map[string]int32{},
+	}
 }
 
 // add counts one torrent. sharedPath is its mark from findSharedContentPaths.
@@ -81,6 +99,15 @@ func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
 // it can link two torrents that seed.
 func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 	if u == nil {
+		return
+	}
+	if parts, ok := u.parts[t.Hash]; ok {
+		for _, part := range parts {
+			u.total += countOnce(u.counted, part)
+			if seeding {
+				u.seeding += countOnce(u.countedSeeding, part)
+			}
+		}
 		return
 	}
 	id, grouped := u.ids[t.Hash]
@@ -104,6 +131,15 @@ func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 		set = path
 	}
 	u.members = append(u.members, uniqueSizeMember{set: set, size: t.Size, seeding: seeding})
+}
+
+// countOnce returns the size of part the first time that it sees the part.
+func countOnce(counted map[uint64]struct{}, part SharedPart) int64 {
+	if _, ok := counted[part.ID]; ok {
+		return 0
+	}
+	counted[part.ID] = struct{}{}
+	return part.Size
 }
 
 func (u *uniqueSizes) set[K comparable](sets map[K]int32, key K) int32 {
@@ -194,10 +230,14 @@ func changedCopyGroupInstances(prev, next *CopyGroups) []int {
 		for id := range g.read {
 			instances[id] = struct{}{}
 		}
+		for id := range g.parts {
+			instances[id] = struct{}{}
+		}
 	}
 	var changed []int
 	for _, id := range slices.Sorted(maps.Keys(instances)) {
-		if prev.hasRead(id) != next.hasRead(id) || !maps.Equal(prev.entries(id), next.entries(id)) {
+		if prev.hasRead(id) != next.hasRead(id) || !maps.Equal(prev.entries(id), next.entries(id)) ||
+			!maps.EqualFunc(prev.sharedParts(id), next.sharedParts(id), slices.Equal) {
 			changed = append(changed, id)
 		}
 	}
@@ -209,6 +249,13 @@ func (g *CopyGroups) entries(instanceID int) map[string]uint64 {
 		return nil
 	}
 	return g.ids[instanceID]
+}
+
+func (g *CopyGroups) sharedParts(instanceID int) map[string][]SharedPart {
+	if g == nil {
+		return nil
+	}
+	return g.parts[instanceID]
 }
 
 func (sm *SyncManager) copyGroupsReady(ctx context.Context, groups *CopyGroups, instanceIDs []int) bool {
