@@ -71,8 +71,9 @@ func (sm *SyncManager) InstanceFolders(ctx context.Context, d fsops.PathDialect,
 }
 
 // CategoryPathRule is the rule an instance's qBittorrent names category
-// folders with now.
-func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int) (CategoryPathRule, error) {
+// folders with under prefs, the same read the caller takes the default save
+// path from.
+func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int, prefs *qbt.AppPreferences) (CategoryPathRule, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return CategoryPathRule{}, fmt.Errorf("failed to get client: %w", err)
@@ -80,13 +81,6 @@ func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int) (Ca
 	version, err := sm.categoryVersion(ctx, client, instanceID)
 	if err != nil {
 		return CategoryPathRule{}, err
-	}
-	if !version.optional {
-		return version.rule, nil
-	}
-	prefs, err := client.refreshAppPreferences(ctx)
-	if err != nil {
-		return CategoryPathRule{}, fmt.Errorf("failed to read qBittorrent preferences: %w", err)
 	}
 	return version.ruleFor(prefs), nil
 }

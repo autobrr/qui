@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -370,20 +372,60 @@ func TestLoadCategorySavePaths_UsesInstanceFolderNameRule(t *testing.T) {
 		}
 	}))
 	t.Cleanup(server.Close)
-
-	db := testdb.NewMigratedSQLite(t, t.Name())
-	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
-	require.NoError(t, err)
-	instance, err := instanceStore.Create(t.Context(), "windows", server.URL, "", "", nil, nil, false, new(false))
-	require.NoError(t, err)
-	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = clientPool.Close() })
-	svc := &Service{syncManager: qbittorrent.NewSyncManager(clientPool, nil)}
+	svc, instanceID := newCategoryPathService(t, server.URL)
 
 	require.Equal(t, map[string]string{
 		"":       `C:\Downloads`,
 		"tv":     `D:\media\tv`,
 		"tv/a:b": `D:\media\tv\a_b`,
-	}, svc.loadCategorySavePaths(t.Context(), instance.ID))
+	}, svc.loadCategorySavePaths(t.Context(), instanceID))
+}
+
+// On qBittorrent 5.0/5.1, the default save path and use_subcategories come
+// from one preferences read, so a change in qBittorrent between two reads
+// cannot mix them into a folder qBittorrent never used.
+func TestLoadCategorySavePaths_OnePreferencesRead(t *testing.T) {
+	var prefsReads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.11.4"))
+		case "/api/v2/app/version":
+			_, _ = w.Write([]byte("v5.1.2"))
+		case "/api/v2/app/preferences":
+			if prefsReads.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"save_path":"/old","use_subcategories":true}`))
+			} else {
+				_, _ = w.Write([]byte(`{"save_path":"/new","use_subcategories":false}`))
+			}
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"categories":{"tv":{"name":"tv","savePath":"/media/tv"},"tv/anime":{"name":"tv/anime","savePath":""}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	svc, instanceID := newCategoryPathService(t, server.URL)
+
+	got := svc.loadCategorySavePaths(t.Context(), instanceID)
+	before := map[string]string{"": "/old", "tv": "/media/tv", "tv/anime": "/media/tv/anime"}
+	after := map[string]string{"": "/new", "tv": "/media/tv", "tv/anime": "/new/tv/anime"}
+	if !reflect.DeepEqual(got, before) && !reflect.DeepEqual(got, after) {
+		t.Fatalf("got %v, want the paths of one preferences read: %v or %v", got, before, after)
+	}
+}
+
+func newCategoryPathService(t *testing.T, url string) (*Service, int) {
+	t.Helper()
+	db := testdb.NewMigratedSQLite(t, t.Name())
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(t.Context(), "qbt", url, "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+	return &Service{syncManager: qbittorrent.NewSyncManager(clientPool, nil)}, instance.ID
 }

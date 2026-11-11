@@ -487,7 +487,8 @@ func TestCategoryPathRule(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(stub)
 			}
-			got, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).sm.CategoryPathRule(t.Context(), 1)
+			prefs := &qbt.AppPreferences{UseSubcategories: !stub.SubcategoriesOff}
+			got, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).sm.CategoryPathRule(t.Context(), 1, prefs)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
