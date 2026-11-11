@@ -518,7 +518,6 @@ type SyncManager struct {
 	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
 	filesInvalidations  filesInvalidations
 	copyGroups          atomic.Pointer[CopyGroups]
-	copyGroupsDemand    atomic.Pointer[func()]
 	// instanceName is nil outside tests; then the name comes from the instance store.
 	instanceName func(ctx context.Context, instanceID int) (string, error)
 
@@ -1700,7 +1699,6 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	var copyGroupsReady *bool
 	var groupedRows []copyGroupPageRow
 	if view.CopyGroups {
-		sm.DemandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, []int{instanceID}))
 		if *copyGroupsReady && !view.NoRows {
@@ -2033,7 +2031,6 @@ func (sm *SyncManager) listUnifiedTorrents(ctx context.Context, view *TorrentLis
 
 	var copyGroupsReady *bool
 	if groupCopies {
-		sm.DemandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, requestInstanceIDs))
 		if *copyGroupsReady {

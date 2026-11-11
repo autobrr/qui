@@ -20,7 +20,9 @@ import (
 
 const (
 	copyGroupsTick = 30 * time.Second
-	copyGroupsIdle = 5 * time.Minute
+	// copyGroupsSettle is how long the job waits after a sync changed a
+	// torrent, so that one tick takes the changes of a burst of syncs.
+	copyGroupsSettle = 2 * time.Second
 	// copyGroupsListWait bounds a torrent list read: with no client, GetClient
 	// can wait 60 s on a login that ignores the context.
 	copyGroupsListWait = 10 * time.Second
@@ -34,8 +36,9 @@ type copyGroupsSync interface {
 	SetCopyGroups(groups *qbittorrent.CopyGroups)
 }
 
-// copyGroupsJob keeps the Copy groups of the torrent list current while a
-// list asks for them.
+// copyGroupsJob keeps the Copy groups of the torrent list current from the
+// start of qui. It looks at the torrents when a sync changed one of them, and
+// on each tick.
 type copyGroupsJob struct {
 	svc  *Service
 	sync copyGroupsSync
@@ -45,14 +48,15 @@ type copyGroupsJob struct {
 	interval time.Duration
 
 	mu sync.Mutex
-	// ctx is nil until StartCopyGroups and after StopCopyGroups.
-	ctx        context.Context
+	// cancel is nil until StartCopyGroups and after StopCopyGroups.
 	cancel     context.CancelFunc
-	running    bool
-	lastDemand time.Time
 	rebuilding bool
 	// wake starts a tick before the ticker does.
 	wake chan struct{}
+	// seen holds each torrent as the last sync of its instance gave it.
+	seen map[int]map[string]copyGroupsPrint
+	// settling: a sync changed a torrent, and the tick for it waits for copyGroupsSettle.
+	settling bool
 	// firstReadEnded: an instance ended its first read after the last rebuild started.
 	firstReadEnded bool
 	listing        map[int]bool
@@ -83,10 +87,11 @@ func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
 		svc: svc, sync: sync, key: key, seed: maphash.MakeSeed(), interval: copyGroupsTick, wake: make(chan struct{}, 1),
 		listing: map[int]bool{}, firstReads: map[int]bool{}, record: map[int]struct{}{},
 		failed: map[int]map[string]time.Time{}, forgotten: map[string]uint64{},
+		seen: map[int]map[string]copyGroupsPrint{},
 	}
 }
 
-// StartCopyGroups lets list requests and grouped streams start the Copy groups job. Its runs use ctx.
+// StartCopyGroups starts the Copy groups job. Its runs use ctx.
 func (s *Service) StartCopyGroups(ctx context.Context) {
 	j := s.copyGroups
 	if j == nil {
@@ -94,8 +99,9 @@ func (s *Service) StartCopyGroups(ctx context.Context) {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if j.ctx == nil {
-		j.ctx, j.cancel = context.WithCancel(ctx)
+	if j.cancel == nil {
+		ctx, j.cancel = context.WithCancel(ctx)
+		go j.loop(ctx)
 	}
 }
 
@@ -110,21 +116,66 @@ func (s *Service) StopCopyGroups() {
 	if j.cancel != nil {
 		j.cancel()
 	}
-	j.ctx, j.cancel = nil, nil
+	j.cancel = nil
 }
 
-func (j *copyGroupsJob) demand() {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.ctx == nil {
+// CopyGroupsSyncSink returns the consumer of sync updates that wakes the Copy
+// groups job.
+func (s *Service) CopyGroupsSyncSink() qbittorrent.SyncEventSink {
+	return s.copyGroups
+}
+
+// HandleMainData wakes the job when a sync added or removed a torrent, or
+// changed what the group search reads of one. The first sync of an instance
+// wakes it at once.
+func (j *copyGroupsJob) HandleMainData(instanceID int, data *qbt.MainData) {
+	if j == nil || data == nil {
 		return
 	}
-	j.lastDemand = time.Now()
-	if !j.running {
-		j.running = true
-		go j.loop(j.ctx)
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	seen := j.seen[instanceID]
+	first := seen == nil
+	if first {
+		seen = make(map[string]copyGroupsPrint, len(data.Torrents))
+		j.seen[instanceID] = seen
+	}
+	changed := false
+	for _, hash := range data.Changes.Torrents {
+		torrent, ok := data.Torrents[hash]
+		if !ok {
+			continue
+		}
+		if now := newCopyGroupsPrint(&torrent); seen[hash] != now {
+			seen[hash] = now
+			changed = true
+		}
+	}
+	for _, hash := range data.Changes.TorrentsRemoved {
+		if _, ok := seen[hash]; ok {
+			delete(seen, hash)
+			changed = true
+		}
+	}
+	switch {
+	case first:
+		j.wakeLoop()
+	case changed && !j.settling:
+		j.settling = true
+		time.AfterFunc(copyGroupsSettle, func() {
+			j.mu.Lock()
+			j.settling = false
+			j.mu.Unlock()
+			j.wakeLoop()
+		})
 	}
 }
+
+// HandleTrackerHealthUpdated is part of qbittorrent.SyncEventSink.
+func (j *copyGroupsJob) HandleTrackerHealthUpdated(int) {}
+
+// HandleSyncError is part of qbittorrent.SyncEventSink.
+func (j *copyGroupsJob) HandleSyncError(int, error) {}
 
 // forget makes the next tick rebuild the map and read the torrent again.
 func (j *copyGroupsJob) forget(instanceID int, hash string) {
@@ -201,13 +252,9 @@ type copyGroupsRun struct {
 }
 
 func (j *copyGroupsJob) tick(ctx context.Context) bool {
-	j.mu.Lock()
-	if ctx.Err() != nil || time.Since(j.lastDemand) >= copyGroupsIdle {
-		j.running = false
-		j.mu.Unlock()
+	if ctx.Err() != nil {
 		return false
 	}
-	j.mu.Unlock()
 
 	instances, err := j.svc.instanceStore.List(ctx)
 	if err != nil {
@@ -220,6 +267,9 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 			active = append(active, instance.ID)
 		}
 	}
+	j.mu.Lock()
+	maps.DeleteFunc(j.seen, func(id int, _ map[string]copyGroupsPrint) bool { return !slices.Contains(active, id) })
+	j.mu.Unlock()
 	lists := j.readLists(ctx, active)
 	synced := make(map[int]bool, len(active))
 	fingerprints := make(map[int]uint64, len(lists))

@@ -75,18 +75,6 @@ func (sm *SyncManager) SetCopyGroups(next *CopyGroups) {
 	}
 }
 
-// SetCopyGroupsDemandHandler registers the function that a list request or a grouped stream for Copy groups calls.
-func (sm *SyncManager) SetCopyGroupsDemandHandler(handler func()) {
-	sm.copyGroupsDemand.Store(&handler)
-}
-
-// DemandCopyGroups wakes the Copy groups job, or keeps it running.
-func (sm *SyncManager) DemandCopyGroups() {
-	if handler := sm.copyGroupsDemand.Load(); handler != nil {
-		(*handler)()
-	}
-}
-
 // LastSuccessfulSync reads the pool offline, so it never waits on a login. It
 // is zero for an instance with no client or no successful sync.
 func (sm *SyncManager) LastSuccessfulSync(ctx context.Context, instanceID int) time.Time {

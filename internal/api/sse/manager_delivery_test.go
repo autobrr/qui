@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -42,7 +41,6 @@ type fakeSyncProvider struct {
 	// torrentsView and crossView are the last view that the stream asked for.
 	torrentsView          qbittorrent.TorrentListView
 	groupedResponse       *qbittorrent.TorrentResponse
-	demands               []time.Time
 	crossInstanceResponse *qbittorrent.TorrentResponse
 	crossInstanceErr      error
 	crossInstanceCalls    int
@@ -119,18 +117,6 @@ func (f *fakeSyncProvider) WebAPIVersionsChanged(_ context.Context, versions map
 	return false
 }
 
-func (f *fakeSyncProvider) DemandCopyGroups() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.demands = append(f.demands, time.Now())
-}
-
-func (f *fakeSyncProvider) demandTimes() []time.Time {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.demands)
-}
-
 func (f *fakeSyncProvider) GetActiveTaskCount(ctx context.Context, _ int) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -148,7 +134,7 @@ func TestMaterializeGroupResponseReadsTheCacheWithoutCounts(t *testing.T) {
 	canned := cannedResponse()
 	canned.TrackerHealthSupported = true
 	provider := &fakeSyncProvider{torrentsResponse: canned}
-	manager := NewStreamManager(nil, provider, provider, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	response, errPayload := manager.materializeGroupResponse(
@@ -169,7 +155,7 @@ func TestMaterializeGroupResponseReadsTheCacheWithoutCounts(t *testing.T) {
 
 func TestMaterializeGroupResponsePassesSummary(t *testing.T) {
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	_, errPayload := manager.materializeGroupResponse(StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 1}}, &StreamMeta{}, "rows")
@@ -238,7 +224,7 @@ func TestInitBuildUsesBaselinePublishedWhileMaterializing(t *testing.T) {
 		State:    qbt.TorrentStateDownloading,
 	}})
 	provider := &fakeSyncProvider{torrentsResponse: before}
-	manager := NewStreamManager(nil, provider, provider, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 300}}
@@ -549,7 +535,7 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -587,7 +573,7 @@ func TestServeEndToEndDeliversTrackerHealthUpdate(t *testing.T) {
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -621,7 +607,7 @@ func TestServeServerStateOnlyTickSkipsRebuild(t *testing.T) {
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -658,7 +644,7 @@ func TestServerStateTickRebuildsWhenAVersionChanged(t *testing.T) {
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -690,7 +676,7 @@ func TestServerStateTickKeepsQueuedRebuild(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -717,7 +703,7 @@ func TestServerStateTickRetriesFailedRebuild(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -740,7 +726,7 @@ func TestCombinedViewRebuildsOnServerStateTick(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse(), crossInstanceResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -778,7 +764,7 @@ func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -851,7 +837,7 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	require.ErrorIs(t, err, errTooManyStreamRequests)
 
 	// Serve-level: responds 400 Bad Request.
-	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	recorder := httptest.NewRecorder()
@@ -887,7 +873,7 @@ func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -980,7 +966,7 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 				torrentsResponse:      cannedResponse(),
 				crossInstanceResponse: cannedResponse(),
 			}
-			manager := NewStreamManager(nil, provider, provider, provider, store)
+			manager := NewStreamManager(nil, provider, provider, store)
 			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 			instanceID := seedActiveInstance(t, manager)
@@ -1024,7 +1010,7 @@ func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 		torrentsResponse:      cannedResponse(),
 		crossInstanceResponse: cannedResponse(),
 	}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -1073,7 +1059,7 @@ func TestServerStateTickRefreshesActiveTaskCount(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -1104,7 +1090,7 @@ func TestInitRequestsCounts(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -1128,7 +1114,7 @@ func TestServerStateTickRefreshesCacheMetadata(t *testing.T) {
 	canned := cannedResponse()
 	canned.CacheMetadata = &qbittorrent.CacheMetadata{Source: "cache", Age: 5, IsStale: true}
 	provider := &fakeSyncProvider{torrentsResponse: canned}
-	manager := NewStreamManager(nil, provider, provider, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)

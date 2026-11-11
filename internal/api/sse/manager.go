@@ -196,13 +196,6 @@ type versionWatcher interface {
 	WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool
 }
 
-// copyGroupsDemand keeps the Copy groups job running while a grouped stream is
-// open, because the browser sends no list request while the stream works. It
-// stays apart from syncProvider, which ADR 0005 caps at five methods.
-type copyGroupsDemand interface {
-	DemandCopyGroups()
-}
-
 // instanceStore is the subset of *models.InstanceStore that the StreamManager
 // depends on, so tests can run a stream without a database.
 type instanceStore interface {
@@ -221,7 +214,6 @@ type StreamManager struct {
 	clientPool  *qbittorrent.ClientPool
 	syncManager syncProvider
 	versions    versionWatcher
-	copyGroups  copyGroupsDemand
 	instanceDB  instanceStore
 
 	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
@@ -449,7 +441,7 @@ type ActivityPayload struct {
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
-func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, versions versionWatcher, copyGroups copyGroupsDemand, instanceStore instanceStore) *StreamManager {
+func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, versions versionWatcher, instanceStore instanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
@@ -464,7 +456,6 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		clientPool:     clientPool,
 		syncManager:    syncManager,
 		versions:       versions,
-		copyGroups:     copyGroups,
 		instanceDB:     instanceStore,
 		subscriptions:  make(map[string]*subscriptionState),
 		instanceIndex:  make(map[int]map[string]*subscriptionState),
@@ -2506,7 +2497,6 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 				return
 			case <-timer.C:
 				m.publishHeartbeat(instanceID)
-				m.demandCopyGroups(instanceID)
 				m.enqueueIdleTicks(instanceID) //nolint:contextcheck // a tick builds on the manager context, like every other tick
 				// Jitter each interval so per-instance heartbeats do not align into a
 				// synchronized burst through the single dispatcher.
@@ -2516,15 +2506,6 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 	}()
 
 	return loop
-}
-
-func (m *StreamManager) demandCopyGroups(instanceID int) {
-	for _, group := range m.groupsForInstance(instanceID) {
-		if group.options.View.CopyGroups {
-			m.copyGroups.DemandCopyGroups()
-			return
-		}
-	}
 }
 
 func (m *StreamManager) publishHeartbeat(instanceID int) {

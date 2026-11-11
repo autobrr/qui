@@ -139,7 +139,7 @@ func (fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error
 // newIdleTestManager returns a manager with a fake instance store.
 func newIdleTestManager(t *testing.T, provider *fakeSyncProvider) *StreamManager {
 	t.Helper()
-	manager := NewStreamManager(nil, provider, provider, provider, fakeInstanceStore{})
+	manager := NewStreamManager(nil, provider, provider, fakeInstanceStore{})
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	return manager
 }
