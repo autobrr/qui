@@ -30,6 +30,7 @@ for _ in $(seq 100); do curl -fs $Q/health >/dev/null 2>&1 && break; sleep 0.3; 
 sample() {
   local rss hwm heap
   if ! kill -0 $QUI 2>/dev/null; then echo "$1 QUI-DIED" | tee -a "$OUT/samples.txt"; exit 1; fi
+  if ! kill -0 $STUB 2>/dev/null; then echo "$1 STUB-DIED" | tee -a "$OUT/samples.txt"; exit 1; fi
   curl -fs "127.0.0.1:16060/debug/pprof/heap?gc=1" -o "$OUT/$1.heap"
   heap=$(curl -fs "127.0.0.1:16060/debug/pprof/heap?debug=1" | awk '/^# HeapInuse/{print int($4/1048576)}')
   rss=$(awk '/^VmRSS/{print int($2/1024)}' /proc/$QUI/status)

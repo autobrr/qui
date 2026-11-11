@@ -5,12 +5,15 @@ syncs() { curl -s 127.0.0.1:18080/_counts | python3 -c 'import sys,json; print(j
 alloc() { curl -fs "127.0.0.1:16060/debug/pprof/heap?debug=1" | awk '/^# TotalAlloc/{print $4}'; }
 sleep 20; sample idle20
 q=$(python3 -c 'import urllib.parse,json; print(urllib.parse.quote(json.dumps([{"key":"k1","instanceId":1,"page":0,"limit":300,"sort":"added_on","order":"desc"}])))')
-timeout 75 curl -sN "$Q/api/stream?streams=$q" -o /dev/null &
+( timeout 75 curl -fsN "$Q/api/stream?streams=$q" -o /dev/null; echo $? >> "$OUT/sse-exits.txt" ) &
 sleep 10
 resetpeak; c0=$(cpu); s0=$(syncs); a0=$(alloc)
 sleep 60
 c1=$(cpu); s1=$(syncs); a1=$(alloc)
 sample stream60
-if [ "$s1" -le "$s0" ]; then echo "synccost NO-SYNCS" | tee -a "$OUT/samples.txt"; exit 1; fi
-python3 -c 'import sys; c,s,a=[int(sys.argv[i+3])-int(sys.argv[i]) for i in (1,2,3)]; print("synccost syncs=%d cpu_ms_per_sync=%.1f alloc_mb_per_sync=%.2f" % (s, c*10.0/s, a/1048576/s))' $c0 $s0 $a0 $c1 $s1 $a1 | tee -a "$OUT/samples.txt"
+if ! [ "$s1" -gt "$s0" ] 2>/dev/null; then echo "synccost NO-SYNCS" | tee -a "$OUT/samples.txt"; exit 1; fi
+if ! cost=$(python3 -c 'import sys; c,s,a=[int(sys.argv[i+3])-int(sys.argv[i]) for i in (1,2,3)]; print("synccost syncs=%d cpu_ms_per_sync=%.1f alloc_mb_per_sync=%.2f" % (s, c*10.0/s, a/1048576/s))' "$c0" "$s0" "$a0" "$c1" "$s1" "$a1"); then echo "synccost FAILED" | tee -a "$OUT/samples.txt"; exit 1; fi
+echo "$cost" | tee -a "$OUT/samples.txt"
 sleep 15; sample idle-after
+# 124 is the exit status of a stream that stayed open until its timeout.
+if [ "$(cat "$OUT/sse-exits.txt")" != 124 ]; then echo "SSE-FAILED" | tee -a "$OUT/samples.txt"; exit 1; fi
