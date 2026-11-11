@@ -46,7 +46,8 @@ for _ in $(seq 240); do
   t=$(curl -s "$Q/api/instances/1/torrents?limit=1" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("total",0))' 2>/dev/null)
   [ "${t:-0}" = "$N" ] && break; sleep 0.5
 done
-echo "synced total=${t:-?}" | tee -a "$OUT/samples.txt"
+if [ "${t:-0}" != "$N" ]; then echo "SYNC-FAILED total=${t:-?} want=$N" | tee -a "$OUT/samples.txt"; exit 1; fi
+echo "synced total=$t" | tee -a "$OUT/samples.txt"
 sample synced
 
 . "$SCEN"

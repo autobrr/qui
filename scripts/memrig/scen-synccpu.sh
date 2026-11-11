@@ -11,5 +11,6 @@ resetpeak; c0=$(cpu); s0=$(syncs); a0=$(alloc)
 sleep 60
 c1=$(cpu); s1=$(syncs); a1=$(alloc)
 sample stream60
-python3 -c 'import sys; c,s,a=[int(sys.argv[i+3])-int(sys.argv[i]) for i in (1,2,3)]; print("synccost syncs=%d cpu_ms_per_sync=%.1f alloc_mb_per_sync=%.2f" % (s, c*10.0/max(s,1), a/1048576/max(s,1)))' $c0 $s0 $a0 $c1 $s1 $a1 | tee -a "$OUT/samples.txt"
+if [ "$s1" -le "$s0" ]; then echo "synccost NO-SYNCS" | tee -a "$OUT/samples.txt"; exit 1; fi
+python3 -c 'import sys; c,s,a=[int(sys.argv[i+3])-int(sys.argv[i]) for i in (1,2,3)]; print("synccost syncs=%d cpu_ms_per_sync=%.1f alloc_mb_per_sync=%.2f" % (s, c*10.0/s, a/1048576/s))' $c0 $s0 $a0 $c1 $s1 $a1 | tee -a "$OUT/samples.txt"
 sleep 15; sample idle-after

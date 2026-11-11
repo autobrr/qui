@@ -114,7 +114,7 @@ def maindata(req_rid):
             FULL["rid"] = rid
             return json.dumps(FULL).encode()
         changed = {}
-        for h in rnd.sample(order, max(1, COUNT // 200)):
+        for h in rnd.sample(order, min(len(order), max(1, COUNT // 200))):
             t = torrents[h]
             t["upspeed"] = rnd.randrange(500_000)
             t["uploaded"] += t["upspeed"]

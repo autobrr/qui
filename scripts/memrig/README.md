@@ -5,9 +5,9 @@ The memory rig measures how much memory qui uses on a large library when many re
 ## What it does
 
 - `stub.py` is a fake qBittorrent WebUI. It holds the number of torrents that you give it, on 40 tracker hosts under `.test`. Each content has 1 to 4 copies. The first sync gets a full update. Each later sync gets a change to 0.5% of the torrents.
-- `run.sh` starts the stub and qui, adds the stub as an instance, waits for the first sync, and runs one scenario. After each step, it writes the resident memory, the peak resident memory, and the Go heap of qui to `samples.txt`. It resets the peak between steps.
+- `run.sh` starts the stub and qui, adds the stub as an instance, waits for the first sync, and runs one scenario. After each step, it writes the resident memory, the peak resident memory, and the Go heap of qui to `samples.txt`. It resets the peak between steps. A run stops with exit status 1 if the library does not load, a list request fails, a stream ends early, or the rig counts no sync.
 - `launch.sh` starts `run.sh` in a network namespace that has only the loopback interface, with a memory limit of 5 GiB and no swap. If a run uses more memory, the kernel stops it, and the machine stays usable. The ports of the rig do not collide with processes on the host.
-- `all.sh` runs the five scenarios of a comparison, one after the other. For one build, it takes about 15 minutes.
+- `all.sh` runs the five scenarios of a comparison, one after the other. For one build, it takes about 15 minutes. It exits with status 1 if a scenario did not run to the end.
 
 | Scenario | What it sends |
 | --- | --- |
