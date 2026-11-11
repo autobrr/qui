@@ -85,7 +85,7 @@ func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completio
 	}
 }
 
-func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *completionPollingSyncMock) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 {
 		return nil, nil
 	}
@@ -110,7 +110,7 @@ func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter
 	m.hits[hash]++
 
 	torrent := sequence[index]
-	return []qbt.Torrent{torrent}, nil
+	return testTorrentRefs([]qbt.Torrent{torrent}), nil
 }
 
 func (m *completionPollingSyncMock) hitCount(hash string) int {

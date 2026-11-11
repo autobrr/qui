@@ -91,7 +91,7 @@ type seasonPackRunCreator interface {
 
 // qbittorrentSync exposes the sync manager functionality needed by the service.
 type qbittorrentSync interface {
-	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	// GetTorrentFilesBatch returns files keyed by the provided hashes (canonicalized by the sync manager).
 	// The returned map uses normalized hashes; missing entries indicate per-hash fetch failures or absent torrents.
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)

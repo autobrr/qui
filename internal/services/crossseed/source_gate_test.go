@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -106,14 +107,14 @@ type turnStateSyncManager struct {
 	atTurn map[string]qbt.Torrent
 }
 
-func (m *turnStateSyncManager) GetTorrents(ctx context.Context, instanceID int, opts qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	torrents, err := m.hashFilteringSyncManager.GetTorrents(ctx, instanceID, opts)
+func (m *turnStateSyncManager) GetTorrentRefs(ctx context.Context, instanceID int, opts qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	torrents, err := m.hashFilteringSyncManager.GetTorrentRefs(ctx, instanceID, opts)
 	if len(opts.Hashes) == 0 {
 		return torrents, err
 	}
 	for i := range torrents {
 		if later, ok := m.atTurn[torrents[i].Hash]; ok {
-			torrents[i] = later
+			torrents[i] = &later
 		}
 	}
 	return torrents, err
@@ -228,8 +229,8 @@ type laterLookupSyncManager struct {
 	lookups int
 }
 
-func (m *laterLookupSyncManager) GetTorrents(ctx context.Context, instanceID int, opts qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	torrents, err := m.hashFilteringSyncManager.GetTorrents(ctx, instanceID, opts)
+func (m *laterLookupSyncManager) GetTorrentRefs(ctx context.Context, instanceID int, opts qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	torrents, err := m.hashFilteringSyncManager.GetTorrentRefs(ctx, instanceID, opts)
 	if len(opts.Hashes) > 0 {
 		m.lookups++
 		if m.lookups > 1 {

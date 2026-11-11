@@ -203,7 +203,7 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 				Category:    "movies",
 				ContentPath: filepath.Join(downloadsDir, tt.strictFile),
 			}
-			candidate.Torrents = append(candidate.Torrents, strictTorrent)
+			candidate.Torrents = append(candidate.Torrents, &strictTorrent)
 			sync.files[strictHash] = strictFiles
 			sync.props[strictHash] = &qbt.TorrentProperties{SavePath: downloadsDir}
 

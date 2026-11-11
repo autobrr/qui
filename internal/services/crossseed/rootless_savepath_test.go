@@ -26,15 +26,15 @@ type rootlessSavePathSyncManager struct {
 	bulkActions  []string
 }
 
-func (m *rootlessSavePathSyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *rootlessSavePathSyncManager) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) > 0 {
 		torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 		for _, hash := range filter.Hashes {
 			torrents = append(torrents, qbt.Torrent{Hash: hash})
 		}
-		return torrents, nil
+		return testTorrentRefs(torrents), nil
 	}
-	return []qbt.Torrent{{Hash: "dummy"}}, nil
+	return testTorrentRefs([]qbt.Torrent{{Hash: "dummy"}}), nil
 }
 
 func (m *rootlessSavePathSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -204,7 +204,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)
@@ -282,7 +282,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)
@@ -362,7 +362,7 @@ func TestProcessCrossSeedCandidate_SavePathOverridePinsRootlessFileIntoMatchedFo
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	// CASE B inherently renames the bare file to the candidate name; the stub sync manager does
@@ -443,7 +443,7 @@ func TestProcessCrossSeedCandidate_RootlessFileNameMatchUsesSubfolderNoOverride(
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)
@@ -523,7 +523,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)

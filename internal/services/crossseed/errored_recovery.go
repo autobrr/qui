@@ -12,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 )
 
@@ -117,9 +118,9 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, ha
 // recoverErroredTorrents identifies errored torrents and performs batched recheck to fix their state.
 // This function blocks until all recoverable torrents are processed, ensuring they can participate
 // in the current automation run. API calls are batched to minimize qBittorrent load.
-func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) error {
+func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, torrents []*qbt.Torrent) error {
 	// Identify errored torrents
-	var erroredTorrents []qbt.Torrent
+	var erroredTorrents []*qbt.Torrent
 	for _, torrent := range torrents {
 		if torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles {
 			erroredTorrents = append(erroredTorrents, torrent)
@@ -148,7 +149,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 
 	// Collect all hashes and build lookup maps
 	allHashes := make([]string, len(erroredTorrents))
-	torrentByHash := make(map[string]qbt.Torrent, len(erroredTorrents))
+	torrentByHash := make(map[string]*qbt.Torrent, len(erroredTorrents))
 	for i, t := range erroredTorrents {
 		allHashes[i] = t.Hash
 		torrentByHash[t.Hash] = t
@@ -210,7 +211,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 			}
 
 			// Batch query all pending torrents
-			currentTorrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: pendingHashes})
+			currentTorrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: pendingHashes})
 			if err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check recheck progress")
 				time.Sleep(pollInterval)
@@ -218,7 +219,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 			}
 
 			// Build lookup map
-			currentByHash := make(map[string]qbt.Torrent, len(currentTorrents))
+			currentByHash := make(map[string]*qbt.Torrent, len(currentTorrents))
 			for _, t := range currentTorrents {
 				currentByHash[t.Hash] = t
 			}

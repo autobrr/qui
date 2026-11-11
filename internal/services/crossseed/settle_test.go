@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // settlePoll is what qBittorrent shows on one poll of the settle worker.
@@ -44,7 +45,7 @@ type settleFake struct {
 	runs            []*models.SeasonPackRun
 }
 
-func (f *settleFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *settleFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	// The worker reads once by hash and again unfiltered only when a hash is missing.
@@ -62,7 +63,7 @@ func (f *settleFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFil
 	if f.current == nil {
 		return nil, nil
 	}
-	return []qbt.Torrent{*f.current}, nil
+	return testTorrentRefs([]qbt.Torrent{*f.current}), nil
 }
 
 func (f *settleFake) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
@@ -1053,7 +1054,7 @@ func startSettleScript(t *testing.T, service *Service, torrents ...*qbt.Torrent)
 	return script
 }
 
-func (s *settleScript) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (s *settleScript) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(filter.Hashes) > 0 {
@@ -1071,7 +1072,7 @@ func (s *settleScript) GetTorrents(_ context.Context, _ int, filter qbt.TorrentF
 		// A scripted torrent with no hash answers to the hash the worker watches.
 		torrent.Hash = filter.Hashes[0]
 	}
-	return []qbt.Torrent{torrent}, nil
+	return testTorrentRefs([]qbt.Torrent{torrent}), nil
 }
 
 func (s *settleScript) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
@@ -1155,11 +1156,11 @@ type lookupFake struct {
 	allErr error
 }
 
-func (f *lookupFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *lookupFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 && f.allErr != nil {
 		return nil, f.allErr
 	}
-	return f.listed, nil
+	return testTorrentRefs(f.listed), nil
 }
 
 func TestPollInstanceTwoHashesOfOneTorrent(t *testing.T) {

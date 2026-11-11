@@ -1104,8 +1104,8 @@ func TestBoundAnnouncementStopsAfterStrandedAdd(t *testing.T) {
 			}
 
 			response, err := service.invokeBoundAnnouncementMatches(t.Context(), []boundAnnouncementMatch{
-				{instanceID: 1, instanceName: "synthetic", torrent: qbt.Torrent{Hash: "source-one"}},
-				{instanceID: 1, instanceName: "synthetic", torrent: qbt.Torrent{Hash: "source-two"}},
+				{instanceID: 1, instanceName: "synthetic", torrent: &qbt.Torrent{Hash: "source-one"}},
+				{instanceID: 1, instanceName: "synthetic", torrent: &qbt.Torrent{Hash: "source-two"}},
 			}, func(boundAnnouncementMatch) *CrossSeedRequest {
 				return &CrossSeedRequest{}
 			})

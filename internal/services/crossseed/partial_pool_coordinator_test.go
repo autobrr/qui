@@ -6,6 +6,9 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
@@ -38,7 +41,7 @@ func (m *recheckResumeSyncManager) GetTorrentPieceStates(context.Context, int, s
 	return m.pieceStates, m.pieceStatesErr
 }
 
-func (m *recheckResumeSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *recheckResumeSyncManager) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	return nil, nil
 }
 
@@ -136,7 +139,7 @@ type partialPoolPollingSyncManager struct {
 	checkingAfterRead int
 }
 
-func (m *partialPoolPollingSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *partialPoolPollingSyncManager) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.reads++
@@ -144,7 +147,7 @@ func (m *partialPoolPollingSyncManager) GetTorrents(context.Context, int, qbt.To
 		m.torrent.State = qbt.TorrentStateCheckingDl
 		m.checkingAfterRead = 0
 	}
-	return []qbt.Torrent{m.torrent}, nil
+	return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 }
 
 func (m *partialPoolPollingSyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
@@ -232,7 +235,7 @@ type scopedPartialPoolSyncManager struct {
 	actions               []string
 }
 
-func (m *scopedPartialPoolSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *scopedPartialPoolSyncManager) GetTorrentRefs(_ context.Context, instanceID int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.torrentsErrByInstance[instanceID]; err != nil {
@@ -242,9 +245,9 @@ func (m *scopedPartialPoolSyncManager) GetTorrents(_ context.Context, instanceID
 		return nil, m.torrentsErr
 	}
 	if m.torrentsByInstance != nil {
-		return append([]qbt.Torrent(nil), m.torrentsByInstance[instanceID]...), nil
+		return testTorrentRefs(append([]qbt.Torrent(nil), m.torrentsByInstance[instanceID]...)), nil
 	}
-	return append([]qbt.Torrent(nil), m.torrents...), nil
+	return testTorrentRefs(append([]qbt.Torrent(nil), m.torrents...)), nil
 }
 
 func (m *scopedPartialPoolSyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
@@ -2110,7 +2113,7 @@ func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {
 
 	service := &partialPoolCoordinator{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), pool.Members[0].CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
-		instanceID: {loaded: true, authoritative: true, byAlias: map[string]qbt.Torrent{}},
+		instanceID: {loaded: true, authoritative: true, byAlias: map[string]*qbt.Torrent{}},
 	})
 	require.Empty(t, observed)
 
@@ -2135,7 +2138,7 @@ func TestObservePartialPoolMembersRemovesPendingAdmissionAfterVisibilityGrace(t 
 
 	service := &partialPoolCoordinator{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
-		instanceID: {loaded: true, authoritative: true, byAlias: map[string]qbt.Torrent{}},
+		instanceID: {loaded: true, authoritative: true, byAlias: map[string]*qbt.Torrent{}},
 	})
 	require.Empty(t, observed)
 
@@ -2160,7 +2163,7 @@ func TestObservePartialPoolMembersRetainsPendingAdmissionWithoutAuthoritativeAbs
 
 	service := &partialPoolCoordinator{automationStore: store, syncManager: &recheckResumeSyncManager{}}
 	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
-		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
+		instanceID: {loaded: true, byAlias: map[string]*qbt.Torrent{}},
 	})
 	require.Empty(t, observed)
 
@@ -2227,7 +2230,7 @@ func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {
 			sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{member.TorrentKey: files}}
 			service := &partialPoolCoordinator{automationStore: store, syncManager: sync}
 			observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt, pool, map[int]partialPoolTorrentInventory{
-				instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{member.TorrentKey: torrent}},
+				instanceID: {loaded: true, byAlias: map[string]*qbt.Torrent{member.TorrentKey: &torrent}},
 			})
 			require.Contains(t, observed, member.ID)
 
@@ -2682,4 +2685,51 @@ func partialPoolTestSnapshot(member *models.CrossSeedPartialPoolMember, amountLe
 
 func (*recheckResumeSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
 	return nil, nil
+}
+
+// snapshotPartialPoolSyncManager answers GetSyncOwner with a sync owner over a
+// qBittorrent stub that holds the torrent with hash "source".
+type snapshotPartialPoolSyncManager struct {
+	recheckResumeSyncManager
+	owner *syncowner.Owner
+}
+
+func (m *snapshotPartialPoolSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
+	return m.owner, nil
+}
+
+func TestObservePartialPoolMembersKeepsMemberThatTheFreshSyncHolds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/app/webapiVersion":
+			_, _ = io.WriteString(w, "2.11.4")
+		case "/api/v2/sync/maindata":
+			_, _ = io.WriteString(w, `{"rid":1,"full_update":true,"torrents":{"source":{"name":"Source","state":"stalledUP"}}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	owner := syncowner.New(qbt.NewClient(qbt.Config{Host: srv.URL}), qbt.DefaultSyncOptions())
+
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	pool, _, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
+		instanceID,
+		"source",
+		models.CrossSeedPartialPoolModeHardlink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	))
+	require.NoError(t, err)
+
+	service := &partialPoolCoordinator{automationStore: store, syncManager: &snapshotPartialPoolSyncManager{owner: owner}}
+	observed := service.observePartialPoolMembers(t.Context(), pool.Members[0].CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
+		instanceID: {loaded: true, byAlias: map[string]*qbt.Torrent{}},
+	})
+	require.Contains(t, observed, pool.Members[0].ID, "the fresh sync still holds the torrent")
+
+	_, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
 }

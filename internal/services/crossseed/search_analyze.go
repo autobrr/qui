@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -139,16 +140,14 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
-		Hashes: []string{hash},
-	})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
 	if len(torrents) == 0 {
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
-	sourceTorrent := &torrents[0]
+	sourceTorrent := torrents[0]
 	if err := s.requireSource(sourceTorrent); err != nil {
 		return nil, err
 	}

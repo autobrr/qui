@@ -22,8 +22,7 @@ type localMatchSyncManager struct {
 	errorOnFetch error // If set, GetTorrentFilesBatch returns this error
 }
 
-//nolint:gocritic // Interface requires value type for TorrentFilterOptions
-func (m *localMatchSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *localMatchSyncManager) GetTorrentRefs(_ context.Context, _ int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	return nil, nil
 }
 

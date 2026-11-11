@@ -7,6 +7,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // lateTorrentSyncManager lists one torrent under its qBittorrent hash, and only
@@ -25,9 +27,9 @@ func (m *lateTorrentSyncManager) listed(hashes []string) bool {
 	return slices.Contains(hashes, m.torrent.Hash)
 }
 
-func (m *lateTorrentSyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *lateTorrentSyncManager) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if m.listed(filter.Hashes) {
-		return []qbt.Torrent{m.torrent}, nil
+		return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 	}
 	return nil, nil
 }

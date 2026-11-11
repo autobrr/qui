@@ -1102,13 +1102,13 @@ func newDuplicateFilteringContentFilterService(sync *duplicateFilteringSyncManag
 	}
 }
 
-func (m *duplicateFilteringSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *duplicateFilteringSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	torrents := m.torrents[instanceID]
 	if torrents == nil {
 		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
 	if len(filter.Hashes) == 0 {
-		return append([]qbt.Torrent(nil), torrents...), nil
+		return testTorrentRefs(append([]qbt.Torrent(nil), torrents...)), nil
 	}
 
 	targets := make(map[string]struct{}, len(filter.Hashes))
@@ -1132,7 +1132,7 @@ func (m *duplicateFilteringSyncManager) GetTorrents(_ context.Context, instanceI
 			filtered = append(filtered, torrent)
 		}
 	}
-	return filtered, nil
+	return testTorrentRefs(filtered), nil
 }
 
 func (m *duplicateFilteringSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
