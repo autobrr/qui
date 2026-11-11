@@ -127,48 +127,6 @@ func TestFlatAndGroupedSubscribersGetTheirOwnPayload(t *testing.T) {
 	})
 }
 
-// The browser sends no list request while a grouped stream works, so the
-// stream keeps the job, which stops 5 minutes after the last demand, running.
-func TestOpenGroupedStreamKeepsDemandingCopyGroups(t *testing.T) {
-	for name, tt := range map[string]struct {
-		payload []map[string]any
-		demands bool
-	}{
-		"flat":    {payload: streamPayload(1, "flat")},
-		"grouped": {payload: groupedStreamPayload(1, "grouped"), demands: true},
-		"unified": {payload: []map[string]any{{"key": "unified", "instanceIds": []int{1, 2}, "groupCopies": true}}, demands: true},
-	} {
-		t.Run(name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				provider := &fakeSyncProvider{
-					torrentsResponse:      flatRows(),
-					groupedResponse:       copyGroupRows(true),
-					crossInstanceResponse: &qbittorrent.TorrentResponse{},
-				}
-				manager := newIdleTestManager(t, provider)
-				reader := connectPipeStream(t, manager, tt.payload)
-				reader.waitForEvent(t, streamEventInit, time.Second)
-				openedAt := time.Now()
-
-				reader.requireNoTick(t, 10*time.Minute)
-
-				demands := provider.demandTimes()
-				if !tt.demands {
-					require.Empty(t, demands, "a flat stream must not wake the job")
-					return
-				}
-				require.NotEmpty(t, demands)
-				last := openedAt
-				for _, at := range demands {
-					require.LessOrEqual(t, at.Sub(last), 2*heartbeatInterval, "the stream left a gap between demands")
-					last = at
-				}
-				require.LessOrEqual(t, time.Since(last), 2*heartbeatInterval)
-			})
-		})
-	}
-}
-
 // The setter wakes the stream when no torrent changed: the frame carries the
 // ready field and the rows that joined a group.
 func TestStreamFrameAfterCopyGroupsSetter(t *testing.T) {

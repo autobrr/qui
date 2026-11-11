@@ -367,7 +367,7 @@ func TestStreamFrameReadsTheCacheWithThePasskeyAccessOfItsSubscriber(t *testing.
 }
 
 func TestServeRejectsASummaryThatCannotBeRead(t *testing.T) {
-	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, &fakeSyncProvider{}, fakeInstanceStore{})
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, fakeInstanceStore{})
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	for _, tc := range []struct {

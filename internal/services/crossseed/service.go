@@ -374,7 +374,6 @@ func NewService(
 	if syncManager != nil {
 		syncManager.SetFilesChangedHandler(svc.forgetLocalRead)
 		svc.copyGroups = newCopyGroupsJob(svc, syncManager)
-		syncManager.SetCopyGroupsDemandHandler(svc.copyGroups.demand)
 	}
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,
