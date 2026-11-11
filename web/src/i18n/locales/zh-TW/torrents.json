@@ -568,10 +568,7 @@
     "bottomPriorityBatch": "最低優先順序 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "重新命名",
-    "renameTorrent": "重新命名種子",
-    "renameFile": "重新命名檔案",
-    "renameFolder": "重新命名資料夾"
+    "renameTorrent": "重新命名種子"
   },
   "tagCategoryManagement": {
     "createTag": {
