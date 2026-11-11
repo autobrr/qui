@@ -98,6 +98,7 @@ func (s *Service) FindCopyGroups(
 			picks[instance.lo+k] = append(picks[instance.lo+k], shared[k]...)
 		}
 	}
+	search.addPackPicks(idx, reads, picks)
 	if err := search.readPicks(ctx, picks); err != nil {
 		return nil, nil, err
 	}
@@ -221,6 +222,45 @@ func (l *copyGroupSearch) readPicks(ctx context.Context, picks [][]*candidatePic
 		}
 	}
 	return l.fetch(ctx, want)
+}
+
+// addPackPicks gives each single episode the season packs of its release as
+// picks. A pack is no copy of an episode, so the pick has no name tier: it can
+// only share files.
+func (l *copyGroupSearch) addPackPicks(idx *matchIndex, reads localReads, picks [][]*candidatePick) {
+	m := l.svc.matcher()
+	read := func(i int) namedRelease { return reads.read(m, l.all[i].InstanceID, l.all[i].Torrent) }
+	// An episode that did not change keeps its links of last, if no pack changed.
+	packChanged := slices.ContainsFunc(l.changedTorrents(), func(i int) bool { return isTVSeasonPack(read(i).release) })
+	policy := localMatchPolicy
+	policy.IndividualEpisodes = true
+	for i := range l.all {
+		if !l.changed[i] && !packChanged {
+			continue
+		}
+		episode := read(i)
+		if !isTVEpisode(episode.release) {
+			continue
+		}
+		date := releaseDate(episode.release)
+		for _, title := range m.titleKeys(episode) {
+			for _, c := range idx.byTitleKey[titleEpisodeKey{title: title, date: date}] {
+				if isTVSeasonPack(c.read.release) && m.matchVerdict(c.read, episode, matchEvidence{}, policy).Matched {
+					picks[i] = append(picks[i], &candidatePick{entry: c.candidateEntry})
+				}
+			}
+		}
+	}
+}
+
+func (l *copyGroupSearch) changedTorrents() []int {
+	var changed []int
+	for i, isChanged := range l.changed {
+		if isChanged {
+			changed = append(changed, i)
+		}
+	}
+	return changed
 }
 
 // links returns what the next call starts from, with the Shared parts.
