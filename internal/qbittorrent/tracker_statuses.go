@@ -99,18 +99,18 @@ var trackerDownStatuses = []string{
 	"<none>",
 }
 
-// trackerHealthOf decides the tracker health of a torrent. During the grace hour
+// trackerHealthOf decides the tracker health of a torrent from its trackers. During the grace hour
 // an unregistered message gives no unregistered label, because a tracker can say
 // that before it registers a new upload. The tracker down label can still show.
-func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
+func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now time.Time) TrackerHealth {
 	// Most torrents have no tracker data, so they skip the time math.
-	if torrent == nil || len(torrent.Trackers) == 0 {
+	if torrent == nil || len(trackers) == 0 {
 		return ""
 	}
 
 	graceOver := torrent.AddedOn <= 0 || now.Sub(time.Unix(torrent.AddedOn, 0)) >= time.Hour
 	var working, updating, unregistered, down, failed, pending bool
-	for _, tracker := range torrent.Trackers {
+	for _, tracker := range trackers {
 		switch tracker.Status {
 		case qbt.TrackerStatusDisabled:
 			// Skip DHT/PeX entries

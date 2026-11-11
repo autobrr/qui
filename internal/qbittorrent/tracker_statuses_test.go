@@ -272,13 +272,13 @@ func TestTrackerHealthOf(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			torrent := &qbt.Torrent{AddedOn: tt.addedOn, Trackers: tt.trackers}
-			if got := trackerHealthOf(torrent, now); got != tt.want {
+			if got := trackerHealthOf(torrent, torrent.Trackers, now); got != tt.want {
 				t.Errorf("trackerHealthOf() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 
-	if got := trackerHealthOf(nil, now); got != "" {
+	if got := trackerHealthOf(nil, []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "timed out"}}, now); got != "" {
 		t.Errorf("trackerHealthOf(nil) = %q, want no health", got)
 	}
 }

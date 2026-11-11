@@ -185,7 +185,7 @@ func TestTrackerMappingFromMainData(t *testing.T) {
 		},
 	}
 
-	mapping := sm.trackerMappingFromMainData(torrents, mainData)
+	mapping := sm.trackerMappingFromMainData(torrentRefs(torrents), mainData)
 	require.Equal(t, map[string]map[string]struct{}{
 		"hash-a":     {"tracker-a.example": {}},
 		"hash-multi": {"multi-one.example": {}, "multi-two.example": {}},
@@ -211,11 +211,11 @@ func TestStoreTrackerMappingKeepsGenerationWhenUnchanged(t *testing.T) {
 	mainData := &qbt.MainData{Trackers: map[string][]string{"https://current.example/announce": {"current-hash"}}}
 	torrents := []qbt.Torrent{{Hash: "current-hash"}}
 
-	require.True(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrents, mainData)))
+	require.True(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrentRefs(torrents), mainData)))
 	require.Equal(t, map[string]map[string]struct{}{"current.example": {"current-hash": {}}}, sm.getValidatedTrackerMapping(7).DomainToHashes)
 
 	gen := sm.trackerMappingGen.Load()
-	require.False(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrents, mainData)))
+	require.False(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrentRefs(torrents), mainData)))
 	require.Equal(t, gen, sm.trackerMappingGen.Load(), "an unchanged mapping keeps cached counts valid")
 }
 
@@ -253,7 +253,7 @@ func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *test
 		},
 	}
 
-	sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrents, mainData))
+	sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrentRefs(torrents), mainData))
 
 	mapping := sm.getValidatedTrackerMapping(7)
 	require.NotNil(t, mapping)
