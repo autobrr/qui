@@ -384,6 +384,7 @@ func TestLoadCategorySavePaths_UsesInstanceFolderNameRule(t *testing.T) {
 // On qBittorrent 5.0/5.1, the default save path and use_subcategories come
 // from one preferences read, so a change in qBittorrent between two reads
 // cannot mix them into a folder qBittorrent never used.
+// regression: #2882
 func TestLoadCategorySavePaths_OnePreferencesRead(t *testing.T) {
 	var prefsReads atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
