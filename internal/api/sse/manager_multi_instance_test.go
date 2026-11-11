@@ -193,7 +193,7 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	builds := provider.signalBuilds()
 
 	// An update from either member must rebuild the aggregated group.
-	manager.HandleMainData(2, &qbt.MainData{Rid: 1})
+	manager.HandleSyncUpdate(2, qbt.SyncUpdate{})
 	receive(t, builds, "the aggregated group build")
 
 	provider.mu.Lock()

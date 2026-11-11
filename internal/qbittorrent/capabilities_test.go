@@ -205,7 +205,7 @@ type versionSink struct {
 	errs           []error
 }
 
-func (s *versionSink) HandleMainData(int, *qbt.MainData) {
+func (s *versionSink) HandleSyncUpdate(int, qbt.SyncUpdate) {
 	s.liveReannounce = append(s.liveReannounce, s.client.Supports(CapLiveReannounce))
 }
 func (*versionSink) HandleTrackerHealthUpdated(int)     {}

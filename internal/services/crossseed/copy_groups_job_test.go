@@ -6,7 +6,6 @@ package crossseed
 import (
 	"context"
 	"errors"
-	"maps"
 	"slices"
 	"sync"
 	"testing"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/syncsnap"
 )
 
 // cgSync fakes the sync manager for the Copy groups job. files is what
@@ -133,28 +133,31 @@ type cgHarness struct {
 	job       *copyGroupsJob
 	sync      *cgSync
 	instances *cgInstances
+	updates   *syncsnap.Source
 
 	settingsMu  sync.Mutex
 	settingsErr error
 }
 
 // cgTest runs body in synctest.Test with a job over synced instances that
-// hold no torrents. The service is built outside the bubble, because its
-// release cache starts goroutines that never end.
+// hold no torrents. The service and the source of sync updates are built
+// outside the bubble, because each starts goroutines that never end.
 func cgTest(t *testing.T, instanceIDs []int, body func(t *testing.T, h *cgHarness)) {
 	t.Helper()
 	svc := newTestService()
+	updates := syncsnap.NewSource()
 	synctest.Test(t, func(t *testing.T) {
-		h := newCGHarness(t, svc, instanceIDs...)
+		h := newCGHarness(t, svc, updates, instanceIDs...)
 		defer h.svc.StopCopyGroups()
 		body(t, h)
 	})
 }
 
-func newCGHarness(t *testing.T, svc *Service, instanceIDs ...int) *cgHarness {
+func newCGHarness(t *testing.T, svc *Service, updates *syncsnap.Source, instanceIDs ...int) *cgHarness {
 	t.Helper()
 	h := &cgHarness{
-		t: t,
+		t:       t,
+		updates: updates,
 		sync: &cgSync{
 			torrents: map[int][]qbittorrent.CrossInstanceTorrentView{}, files: map[int]map[string]qbt.TorrentFiles{},
 			synced: map[int]bool{}, listErr: map[int]error{}, listHang: map[int]chan struct{}{}, batchHang: map[int]int{}, batchGate: map[int]chan struct{}{}, batchErr: map[int]error{},
@@ -221,18 +224,27 @@ func (h *cgHarness) startAndWait() {
 // synced gives the job the sync update of an instance that changed hashes.
 // With no hashes, the update is a full one.
 func (h *cgHarness) synced(instanceID int, hashes ...string) {
+	update := h.update(instanceID)
+	if len(hashes) > 0 {
+		update.Changes.Torrents = hashes
+	}
+	h.job.HandleSyncUpdate(instanceID, update)
+	synctest.Wait()
+}
+
+// update returns a full sync update that holds the torrents of an instance and
+// names each of them as changed. It names no removed torrent: the instances
+// share one source, so the removals of the source mix the instances.
+func (h *cgHarness) update(instanceID int) qbt.SyncUpdate {
 	h.sync.mu.Lock()
-	data := &qbt.MainData{Torrents: map[string]qbt.Torrent{}}
+	torrents := make([]qbt.Torrent, 0, len(h.sync.torrents[instanceID]))
 	for _, view := range h.sync.torrents[instanceID] {
-		data.Torrents[view.Hash] = *view.Torrent
+		torrents = append(torrents, *view.Torrent)
 	}
 	h.sync.mu.Unlock()
-	data.Changes.Torrents = hashes
-	if len(hashes) == 0 {
-		data.Changes.Torrents = slices.Collect(maps.Keys(data.Torrents))
-	}
-	h.job.HandleMainData(instanceID, data)
-	synctest.Wait()
+	update := h.updates.Update(h.t, torrents...)
+	update.Changes = qbt.MainDataChanges{Torrents: update.Changes.Torrents}
+	return update
 }
 
 // wait moves the fake clock and lets the job settle.
@@ -774,7 +786,9 @@ func TestCopyGroupsJob_ASyncThatChangesATorrentStartsATick(t *testing.T) {
 		h.sync.mu.Lock()
 		h.sync.torrents[1] = h.sync.torrents[1][1:]
 		h.sync.mu.Unlock()
-		h.job.HandleMainData(1, &qbt.MainData{Changes: qbt.MainDataChanges{TorrentsRemoved: []string{cgA}}})
+		update := h.update(1)
+		update.Changes = qbt.MainDataChanges{TorrentsRemoved: []string{cgA}}
+		h.job.HandleSyncUpdate(1, update)
 		h.wait(copyGroupsSettle)
 		require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgC), cgMember(1, cgB)}), h.last())
 	})

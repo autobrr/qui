@@ -96,7 +96,7 @@ func (f *fakeSyncProvider) ListTorrents(_ context.Context, view qbittorrent.Torr
 }
 
 func (f *fakeSyncProvider) GetSyncOwner(_ context.Context, _ int) (*syncowner.Owner, error) {
-	// These tests drive delivery through HandleMainData rather than the real sync
+	// These tests drive delivery through HandleSyncUpdate rather than the real sync
 	// loop, so the loop's attempt to fetch a sync manager always fails fast.
 	return nil, errors.New("sync manager unavailable in test")
 }
@@ -530,7 +530,7 @@ func seedActiveInstance(t *testing.T, manager *StreamManager) int {
 }
 
 // TestServeEndToEndDeliversInitAndUpdate covers the happy path: an init snapshot
-// on connect, followed by an update event when HandleMainData fires.
+// on connect, followed by an update event when HandleSyncUpdate fires.
 func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -559,7 +559,7 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	// the baseline with the same canned page, this tick is a delta carrying no row
 	// changes but the full aggregate metadata (total, sessionID).
 	receive(t, subscribed, "the session to subscribe")
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 	updateEvent := reader.waitForTick(t, 5*time.Second)
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.True(t, isTickEvent(updatePayload.Type), "expected a tick frame, got %q", updatePayload.Type)
@@ -620,8 +620,7 @@ func TestServeServerStateOnlyTickSkipsRebuild(t *testing.T) {
 	builds := provider.torrentsCallCount()
 
 	receive(t, subscribed, "the session to subscribe")
-	manager.HandleMainData(instanceID, &qbt.MainData{
-		Rid:         2,
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{
 		ServerState: qbt.ServerState{DlInfoSpeed: 4096},
 		Changes:     qbt.MainDataChanges{ServerState: true},
 	})
@@ -664,8 +663,7 @@ func TestServerStateTickRebuildsWhenAVersionChanged(t *testing.T) {
 	provider.webAPIVersions = recovered.WebAPIVersions
 	provider.mu.Unlock()
 
-	manager.HandleMainData(instanceID, &qbt.MainData{
-		Rid:         2,
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{
 		ServerState: qbt.ServerState{DlInfoSpeed: 4096},
 		Changes:     qbt.MainDataChanges{ServerState: true},
 	})
@@ -746,8 +744,7 @@ func TestCombinedViewRebuildsOnServerStateTick(t *testing.T) {
 
 	// A member's subcategory mode changes its category counts in the combined view.
 	receive(t, subscribed, "the session to subscribe")
-	manager.HandleMainData(instanceID, &qbt.MainData{
-		Rid:         2,
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{
 		ServerState: qbt.ServerState{UseSubcategories: true},
 		Changes:     qbt.MainDataChanges{ServerState: true},
 	})
@@ -786,7 +783,7 @@ func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 	builds := provider.signalBuilds()
 	release := provider.gateTorrentBuilds()
 
-	// HandleMainData queues each update from its own goroutine, so on a busy
+	// HandleSyncUpdate queues each update from its own goroutine, so on a busy
 	// runner a late update starts a new build after the release. Queue the burst
 	// here instead, so all of it is in the queue before the test releases the
 	// first build.
@@ -901,7 +898,7 @@ func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
 	// A subsequent update fans out to both connections in the group. Each stream
 	// is ordered, so a second init that B's join pushed to A arrives before this
 	// tick, and waitForTick fails on it.
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 	readerA.waitForTick(t, 5*time.Second)
 	readerB.waitForTick(t, 5*time.Second)
 }
@@ -989,7 +986,7 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 			// An external update triggers a rebuild, which now fails and must surface a
 			// stream-error event rather than silently dropping.
 			receive(t, subscribed, "the session to subscribe")
-			manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
+			manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 			errPayload := reader.waitForError(t, tt.wantMsg, 5*time.Second)
 			require.Equal(t, streamEventError, errPayload.Type)
 			require.NotNil(t, errPayload.Meta, "error event must carry meta for the retry hint")
@@ -1040,7 +1037,7 @@ func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 	provider.setCrossInstanceErr(errors.New("boom"))
 
 	receive(t, subscribed, "the session to subscribe")
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 	errPayload := reader.waitForError(t, "failed to refresh torrent list", 5*time.Second)
 	require.Equal(t, streamEventError, errPayload.Type)
 	require.NotNil(t, errPayload.Meta, "error event must carry meta")
@@ -1075,7 +1072,7 @@ func TestServerStateTickRefreshesActiveTaskCount(t *testing.T) {
 	provider.torrentsResponse.ActiveTaskCount = 0
 	provider.mu.Unlock()
 	receive(t, subscribed, "the session to subscribe")
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 2, Changes: qbt.MainDataChanges{ServerState: true}})
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{Changes: qbt.MainDataChanges{ServerState: true}})
 	updateEvent := reader.waitForTick(t, 5*time.Second)
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.Equal(t, streamEventDelta, updatePayload.Type)
@@ -1126,7 +1123,7 @@ func TestServerStateTickRefreshesCacheMetadata(t *testing.T) {
 	reader.waitForEvent(t, streamEventInit, 5*time.Second)
 
 	receive(t, subscribed, "the session to subscribe")
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 2, Changes: qbt.MainDataChanges{ServerState: true}})
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{Changes: qbt.MainDataChanges{ServerState: true}})
 	updateEvent := reader.waitForTick(t, 5*time.Second)
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.Equal(t, streamEventDelta, updatePayload.Type)

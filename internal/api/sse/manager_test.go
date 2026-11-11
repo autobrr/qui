@@ -952,33 +952,6 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	require.True(t, instanceGroupsGone, "instance groups should be cleaned up")
 }
 
-func TestHandleMainData_NilData(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil, nil)
-	provider := newRecordingProvider()
-	manager.server.Provider = provider
-
-	sub := withConn(&subscriptionState{
-		id:        "sub-nil-test",
-		options:   StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}},
-		created:   time.Now(),
-		groupKey:  "group-nil-test",
-		clientKey: "client-nil-test",
-	})
-
-	manager.mu.Lock()
-	manager.subscriptions[sub.id] = sub
-	manager.instanceIndex[sub.options.View.InstanceID] = map[string]*subscriptionState{
-		sub.id: sub,
-	}
-	manager.mu.Unlock()
-
-	// Call with nil data - should return before it starts any goroutine
-	manager.HandleMainData(sub.options.View.InstanceID, nil)
-
-	messages := provider.allMessages()
-	require.Empty(t, messages, "nil data should not produce any messages")
-}
-
 func TestHandleSyncError_NilError(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 	provider := newRecordingProvider()
