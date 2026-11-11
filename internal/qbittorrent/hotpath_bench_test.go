@@ -131,7 +131,7 @@ const benchSize = 10000
 func BenchmarkHotSearch(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
-	torrents := benchTorrents(benchSize)
+	refs := torrentRefs(benchTorrents(benchSize))
 
 	// "hit" matches on the cheap exact path, "miss" walks every fallback tier.
 	for _, tc := range []struct{ name, search string }{
@@ -141,7 +141,7 @@ func BenchmarkHotSearch(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				_ = sm.filterTorrentsBySearch(torrents, tc.search)
+				_ = sm.filterTorrentsBySearch(refs, tc.search)
 			}
 		})
 	}
@@ -182,7 +182,7 @@ func BenchmarkHotListRules(b *testing.B) {
 func BenchmarkHotCounts(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
-	torrents := benchTorrents(benchSize)
+	torrents := torrentRefs(benchTorrents(benchSize))
 
 	for b.Loop() {
 		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
@@ -213,15 +213,16 @@ func BenchmarkHotCountsWithTrackers(b *testing.B) {
 	sm := &SyncManager{validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping}}
 	client := &Client{instanceID: 1, trackerExclusions: make(map[string]map[string]struct{})}
 
+	refs := torrentRefs(torrents)
 	for b.Loop() {
-		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, torrents, nil, false, false)
+		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, refs, nil, false, false)
 	}
 }
 
 func BenchmarkHotStats(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
-	torrents := benchTorrents(benchSize)
+	torrents := torrentRefs(benchTorrents(benchSize))
 
 	for b.Loop() {
 		_ = sm.calculateStats(torrents, nil)
@@ -238,7 +239,7 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	torrents := benchTorrents(benchSize)
-	counts := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrentRefs(torrents), nil, false, false)
 
 	page := torrents[:300]
 	views := make([]TorrentView, len(page))
@@ -250,7 +251,7 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 		Torrents: views,
 		Total:    len(torrents),
 		Counts:   counts,
-		Stats:    sm.calculateStats(torrents, nil),
+		Stats:    sm.calculateStats(torrentRefs(torrents), nil),
 		HasMore:  true,
 	}
 
@@ -270,22 +271,23 @@ func BenchmarkHotSort(b *testing.B) {
 	sm := &SyncManager{}
 	src := benchTorrents(benchSize)
 	health := benchTrackerHealth(src)
-	work := make([]qbt.Torrent, len(src))
+	refs := torrentRefs(src)
+	work := make([]*qbt.Torrent, len(src))
 
 	for _, tc := range []struct {
 		name string
-		run  func(t []qbt.Torrent)
+		run  func(t []*qbt.Torrent)
 	}{
-		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
-		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, health) }},
-		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
-		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
-		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
+		{"name", func(t []*qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
+		{"state", func(t []*qbt.Torrent) { sm.sortTorrents(t, "state", false, true, health) }},
+		{"tracker", func(t []*qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
+		{"added_on", func(t []*qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
+		{"eta", func(t []*qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
 				b.StopTimer()
-				copy(work, src)
+				copy(work, refs)
 				b.StartTimer()
 				tc.run(work)
 			}

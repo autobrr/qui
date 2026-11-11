@@ -35,18 +35,14 @@ var torrentSortFields = func() map[string]int {
 
 // sortTorrents sorts the rows of one instance in place. The state sort reads
 // the tracker health from cachedHealth.
-func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthSnapshot) {
-	rows := make([]*qbt.Torrent, len(torrents))
-	for i := range torrents {
-		rows[i] = &torrents[i]
-	}
+func (sm *SyncManager) sortTorrents(torrents []*qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthSnapshot) {
 	health := func(i int) TrackerHealth {
 		if !trackerHealthSupported {
 			return ""
 		}
-		return cachedHealth.Health(rows[i].Hash)
+		return cachedHealth.Health(torrents[i].Hash)
 	}
-	sortByIndex(torrents, sm.torrentOrder(rows, health, column, desc, func(a, b int) int { return a - b }))
+	sortByIndex(torrents, sm.torrentOrder(torrents, health, column, desc, func(a, b int) int { return a - b }))
 }
 
 // sortCrossInstanceTorrents sorts Unified rows in place. Rows that compare
@@ -408,9 +404,8 @@ func timestampOrder(rows []*qbt.Torrent, desc bool, tie func(a, b int) int, time
 
 // sortByIndex sorts items in place by comparing indices instead of the items
 // themselves, so sort keys can be resolved once per item up front instead of on
-// every comparison. It also keeps large elements (qbt.Torrent is ~600 bytes)
-// still while the sort runs. compare must be a total order over indices (add
-// the index itself as the last tiebreak to keep a stable result).
+// every comparison. compare must be a total order over indices (add the index
+// itself as the last tiebreak to keep a stable result).
 func sortByIndex[T any](torrents []T, compare func(aIdx, bIdx int) int) {
 	indices := make([]int, len(torrents))
 	for idx := range indices {

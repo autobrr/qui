@@ -270,6 +270,30 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 	})
 }
 
+// The list rows of a read key hide the passkeys, and the torrents of the Sync
+// snapshot, which every reader shares, keep their tracker URLs.
+func TestReadKeyListLeavesTheSyncSnapshotWhole(t *testing.T) {
+	rig := newPasskeyRig(t)
+	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
+
+	status, body := rig.fetch(t, http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents", rig.instanceID), readKey, "", nil)
+	require.Equal(t, http.StatusOK, status, body)
+	require.NotContains(t, body, pathPasskey)
+	require.NotContains(t, body, queryPasskey)
+
+	client, err := rig.deps.ClientPool.GetClient(t.Context(), rig.instanceID)
+	require.NoError(t, err)
+	snapshot := client.SyncOwner().SnapshotUnchecked()
+	require.NotNil(t, snapshot)
+	for hash, tracker := range map[string]string{"aaa": pathTracker, "bbb": queryTracker} {
+		torrent, ok := snapshot.Torrent(hash)
+		require.True(t, ok, hash)
+		require.Equal(t, tracker, torrent.Tracker, hash)
+		require.Len(t, torrent.Trackers, 1, hash)
+		require.Equal(t, tracker, torrent.Trackers[0].Url, hash)
+	}
+}
+
 func TestMagnetFieldNeedsTorrentsWrite(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
