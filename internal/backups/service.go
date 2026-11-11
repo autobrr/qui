@@ -117,7 +117,7 @@ type backupTorrentMutator interface {
 	SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error
 	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
 	ResumeWhenComplete(instanceID int, hashes []string, opts qbittorrent.ResumeWhenCompleteOptions)
-	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
+	DeleteTorrents(ctx context.Context, instanceID int, hashes []string, deleteFiles bool, actor qbittorrent.DeleteActor) error
 }
 
 type job struct {

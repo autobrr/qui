@@ -628,6 +628,10 @@ type filesReader interface {
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 }
 
+type torrentDeleter interface {
+	DeleteTorrents(ctx context.Context, instanceID int, hashes []string, deleteFiles bool, actor qbittorrent.DeleteActor) error
+}
+
 // CrossMatcher provides cross-seed torrent matching using content-aware
 // strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
 type CrossMatcher interface {
@@ -644,6 +648,7 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 	filesReader               filesReader
 	targetLookup              targetLookup
+	deleter                   torrentDeleter
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
@@ -693,6 +698,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
+		deleter:                   syncManager,
 		routedTorrents:            syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
@@ -1901,7 +1907,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	deleteHashesByMode := make(map[string][]string)
 	for _, hash := range deletions.order {
 		pending := deletions.byHash[hash]
 		log.Info().Str("hash", hash).Str("name", torrentByHash[hash].Name).Bool("isTrigger", pending.trigger).Str("reason", "condition matched").Bool("filesKept", pending.filesKept()).Msg(pending.logMsg)
@@ -1927,11 +1932,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				Msg("automations: skipped delete, hardlink state changed since the rule decided")
 		}
 	}
-	for _, hash := range deletions.order {
-		if pending, queued := deletions.byHash[hash]; queued {
-			deleteHashesByMode[pending.batchMode] = append(deleteHashesByMode[pending.batchMode], hash)
-		}
-	}
+	deletes := groupDeletesByRule(deletions)
 
 	// The plan reads file lists, so in a live run the timeout also bounds the plan step.
 	if !dryRun {
@@ -2006,15 +2007,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:       detailsJSON,
 		}
 	}
-	for mode, hashes := range deleteHashesByMode {
-		if len(hashes) == 0 {
-			continue
-		}
-
-		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
-		for _, batch := range limited {
-			if err := s.syncManager.BulkAction(ctx, instanceID, batch, mode); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
+	for _, group := range deletes {
+		actor := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: group.rule.name}
+		deleteFiles, modeErr := deleteFilesForMode(group.mode)
+		for _, batch := range limitHashBatch(group.hashes, s.cfg.MaxBatchHashes) {
+			err := modeErr
+			if err == nil {
+				err = s.deleter.DeleteTorrents(ctx, instanceID, batch, deleteFiles, actor)
+			}
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", group.mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
 
 				// Record failed deletion activity
 				for _, hash := range batch {
@@ -2029,7 +2031,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					}
 				}
 			} else {
-				if mode == DeleteModeKeepFiles {
+				if group.mode == DeleteModeKeepFiles {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents (files kept)")
 				} else {
 					log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: removed torrents with files")
@@ -4032,7 +4034,8 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			// removeFromTarget deletes a failed export from the target, keeping its files,
 			// so it does not block a re-export on the next run.
 			removeFromTarget := func(ctx context.Context, cause string) {
-				if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
+				actor := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: exec.ruleName}
+				if err := s.deleter.DeleteTorrents(ctx, exec.action.TargetInstanceID, []string{exec.hash}, false, actor); err != nil {
 					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).Str("cause", cause).
 						Msg("automations: failed to clean up torrent from target")
 					return

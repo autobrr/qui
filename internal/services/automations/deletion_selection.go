@@ -43,6 +43,51 @@ type selectedDeletion struct {
 	logMsg       string
 }
 
+// deleteFilesForMode refuses a mode that is not a batch mode, such as a
+// stored mode that qui no longer knows.
+func deleteFilesForMode(mode string) (bool, error) {
+	switch mode {
+	case DeleteModeKeepFiles:
+		return false, nil
+	case DeleteModeWithFiles:
+		return true, nil
+	}
+	return false, fmt.Errorf("unknown delete mode: %s", mode)
+}
+
+// ruleDeletes holds the torrents that one rule deletes with one mode.
+type ruleDeletes struct {
+	mode   string
+	rule   ruleRef
+	hashes []string
+}
+
+// groupDeletesByRule splits the queued deletes by rule and mode, in selection
+// order, so that each delete names the rule that started it.
+func groupDeletesByRule(sel *deletionSelection) []ruleDeletes {
+	type key struct {
+		mode string
+		rule ruleRef
+	}
+	var groups []ruleDeletes
+	index := make(map[key]int)
+	for _, hash := range sel.order {
+		pending, queued := sel.byHash[hash]
+		if !queued {
+			continue
+		}
+		k := key{pending.batchMode, pending.rule}
+		i, ok := index[k]
+		if !ok {
+			i = len(groups)
+			index[k] = i
+			groups = append(groups, ruleDeletes{mode: pending.batchMode, rule: pending.rule})
+		}
+		groups[i].hashes = append(groups[i].hashes, hash)
+	}
+	return groups
+}
+
 func (d selectedDeletion) filesKept() bool {
 	return d.batchMode == DeleteModeKeepFiles
 }

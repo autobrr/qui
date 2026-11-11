@@ -2205,8 +2205,16 @@ func (sm *SyncManager) GetQBittorrentSyncManager(ctx context.Context, instanceID
 	return syncManager, err
 }
 
-// BulkAction performs bulk operations on torrents
+// BulkAction performs bulk operations on torrents. A delete goes through
+// DeleteTorrents, which names who started it.
 func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	if action == "delete" || action == "deleteWithFiles" {
+		return fmt.Errorf("bulk action %s needs an actor, use DeleteTorrents", action)
+	}
+	return sm.bulkAction(ctx, instanceID, hashes, action)
+}
+
+func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
