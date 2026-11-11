@@ -270,7 +270,7 @@ func TestRenderPathTemplate_LogLevel(t *testing.T) {
 
 	evalCtx := &EvalContext{CategorySavePaths: map[string]string{"": "/downloads"}}
 	for path, want := range map[string]string{
-		"{{.CategorySavePath}}/done": "debug",
+		"{{.CategorySavePath}}/done": "trace",
 		"/data/{{ .Name":             "error",
 	} {
 		logs.Reset()
