@@ -777,8 +777,6 @@ func (m *StreamManager) removeInstanceGroupLocked(instanceID int, groupKey strin
 	}
 }
 
-// removeInstanceSubscriberLocked detaches the subscriber from the instance and
-// stops the instance's sync and heartbeat loops when no subscriber is left.
 func (m *StreamManager) removeInstanceSubscriberLocked(instanceID int, id string) {
 	subs := m.instanceIndex[instanceID]
 	if subs == nil {
