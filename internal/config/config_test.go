@@ -991,6 +991,85 @@ func TestBaseURLNormalization(t *testing.T) {
 	}
 }
 
+// regression: #2669
+func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
+	tests := []struct {
+		name        string
+		workFiles   map[string]string
+		workDirs    []string
+		defaultFile string
+		wantErr     string
+		wantPort    int
+		wantInWork  bool
+	}{
+		{name: "ini_in_working_dir", workFiles: map[string]string{"config.ini": "[general]\nkey=value with spaces\n"}, wantPort: 7476},
+		{
+			name:        "ini_does_not_shadow_default_toml",
+			workFiles:   map[string]string{"config.ini": "[general]\nport=1\n"},
+			defaultFile: testConfigContent,
+			wantPort:    8080,
+		},
+		{
+			name:        "toml_in_working_dir_wins",
+			workFiles:   map[string]string{"config.toml": "port = 9090\n"},
+			defaultFile: testConfigContent,
+			wantPort:    9090,
+			wantInWork:  true,
+		},
+		{
+			name:        "directory_named_config_toml_in_working_dir_is_skipped",
+			workDirs:    []string{"config.toml"},
+			defaultFile: testConfigContent,
+			wantPort:    8080,
+		},
+		{
+			name:      "malformed_toml_in_working_dir",
+			workFiles: map[string]string{"config.toml": "port = = 1\n"},
+			wantErr:   "failed to read config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			xdgDir := t.TempDir()
+			defaultDir := filepath.Join(xdgDir, "qui")
+			t.Setenv("XDG_CONFIG_HOME", xdgDir)
+			t.Setenv(envPrefix+"PORT", "")
+			t.Chdir(workDir)
+
+			for name, content := range tt.workFiles {
+				require.NoError(t, os.WriteFile(filepath.Join(workDir, name), []byte(content), 0o600))
+			}
+			for _, name := range tt.workDirs {
+				require.NoError(t, os.Mkdir(filepath.Join(workDir, name), 0o700))
+			}
+			if tt.defaultFile != "" {
+				require.NoError(t, os.MkdirAll(defaultDir, 0o700))
+				require.NoError(t, os.WriteFile(filepath.Join(defaultDir, "config.toml"), []byte(tt.defaultFile), 0o600))
+			}
+
+			cfg, err := New("")
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				var parseErr viper.ConfigParseError
+				require.ErrorAs(t, err, &parseErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantPort, cfg.Config.Port)
+
+			wantFile := filepath.Join(defaultDir, "config.toml")
+			if tt.wantInWork {
+				wantFile = filepath.Join(workDir, "config.toml")
+			}
+			assert.Equal(t, wantFile, cfg.viper.ConfigFileUsed())
+			_, statErr := os.Stat(filepath.Join(defaultDir, "config.toml"))
+			require.NoError(t, statErr)
+		})
+	}
+}
+
 func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {
