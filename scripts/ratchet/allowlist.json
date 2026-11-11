@@ -47,7 +47,6 @@
     "internal/api/handlers/crossseed.go": 2,
     "internal/api/handlers/jackett.go": 2,
     "internal/api/handlers/torrents.go": 2,
-    "internal/api/sse/manager.go": 1,
     "internal/backups/restore_execute.go": 2,
     "internal/backups/service.go": 3,
     "internal/clientmigrate/deluge.go": 1,
