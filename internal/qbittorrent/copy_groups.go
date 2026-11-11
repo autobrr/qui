@@ -210,7 +210,6 @@ func (u *uniqueSizes) root(set int32) int32 {
 // totals counts each joined set at the size of its largest torrent: a copy can
 // skip files.
 func (u *uniqueSizes) totals() (total, seeding int64) {
-	held := u.heldParts()
 	all := make([]int64, len(u.parent))
 	seeds := make([]int64, len(u.parent))
 	for _, m := range u.members {
@@ -220,15 +219,21 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 			seeds[set] = max(seeds[set], m.size)
 		}
 	}
-	// A torrent on the content path of a torrent with Shared parts holds those
-	// parts, so only its bytes above them count. Its bytes that seed count
-	// above the parts of the path that seed, because its file list is not known.
-	for id, part := range held {
-		set := u.root(part.set)
-		all[set] -= part.size
-		if u.countedSeeding[id] {
-			seeds[set] -= part.size
+	// A torrent on the content path of a torrent with Shared parts has no
+	// parts of its own, but it holds the parts of that path. A torrent that
+	// seeds and is as large as those parts seeds each of them.
+	paths := u.partsOnPaths()
+	for set, parts := range paths {
+		if seeds[set] >= partsSize(parts, nil) {
+			u.count(parts, true)
 		}
+	}
+	// Only the bytes of such a torrent above the parts count. A smaller torrent
+	// that seeds counts above the parts of its path that seed, because its
+	// file list is not known.
+	for set, parts := range paths {
+		all[set] -= partsSize(parts, nil)
+		seeds[set] -= partsSize(parts, u.countedSeeding)
 	}
 	total, seeding = u.total, u.seeding
 	for set := range all {
@@ -238,35 +243,38 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 	return total, seeding
 }
 
-// heldPart is a Shared part and a set of a content path that holds it.
-type heldPart struct {
-	set  int32
-	size int64
-}
-
-// heldParts returns the Shared parts of the content paths that also hold a
-// torrent without Shared parts. Only such a torrent gives its content path a
-// set. Content paths that hold the same part hold the same data, so it joins
-// their sets.
-func (u *uniqueSizes) heldParts() map[uint64]heldPart {
-	var held map[uint64]heldPart
+// partsOnPaths returns the Shared parts of each content path set that also
+// holds a torrent without Shared parts. Only such a torrent gives its content
+// path a set.
+func (u *uniqueSizes) partsOnPaths() map[int32][]SharedPart {
+	var paths map[int32][]SharedPart
 	for _, holder := range u.onPath {
 		set, ok := u.byPath[holder.path]
 		if !ok {
 			continue
 		}
+		if paths == nil {
+			paths = map[int32][]SharedPart{}
+		}
+		set = u.root(set)
 		for _, part := range holder.parts {
-			if first, ok := held[part.ID]; ok {
-				u.parent[u.root(set)] = u.root(first.set)
-				continue
+			if !slices.Contains(paths[set], part) {
+				paths[set] = append(paths[set], part)
 			}
-			if held == nil {
-				held = map[uint64]heldPart{}
-			}
-			held[part.ID] = heldPart{set: set, size: part.Size}
 		}
 	}
-	return held
+	return paths
+}
+
+// partsSize adds the sizes of parts. With marks, it adds only the marked parts.
+func partsSize(parts []SharedPart, marks []bool) int64 {
+	var size int64
+	for _, part := range parts {
+		if marks == nil || marks[part.ID] {
+			size += part.Size
+		}
+	}
+	return size
 }
 
 type CopyGroupRow struct {

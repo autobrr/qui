@@ -355,7 +355,7 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		2: {"a1": copyGroupKaiju},
 	}, map[int]map[string][]SharedPart{
 		// p1 holds all three episodes of a pack, and q1 holds two of them.
-		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}, "r1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}},
+		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}, "r1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "s1": {{ID: 7, Size: 900}, {ID: 9, Size: 200}}},
 	}, []int{1, 2})
 	sizes := func(instanceID int, torrents ...qbt.Torrent) *TorrentStats {
 		return (&SyncManager{}).calculateStats(torrents, groups.uniqueSizes(instanceID))
@@ -388,6 +388,8 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		{name: "a smaller torrent that seeds on that content path seeds only its own size", torrents: []qbt.Torrent{at(stalledTorrent("p1", 1000), "/data/Pack"), at(torrent("y1", 800), "/data/Pack")}, want: 1000, wantSeeding: 800},
 		{name: "a torrent that seeds on that content path does not count a part again that seeds", torrents: []qbt.Torrent{at(stalledTorrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1000), "/data/Pack"), torrent("q1", 900)}, want: 1000, wantSeeding: 1000},
 		{name: "two content paths with the same Shared parts hold one set of data", torrents: []qbt.Torrent{at(stalledTorrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1000), "/data/Pack"), at(stalledTorrent("r1", 1000), "/links/Pack"), at(torrent("z1", 1000), "/links/Pack")}, want: 1000, wantSeeding: 1000},
+		{name: "two content paths that share one part keep their other parts", torrents: []qbt.Torrent{at(stalledTorrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1000), "/data/Pack"), at(stalledTorrent("s1", 1100), "/links/Pack"), at(torrent("z1", 1100), "/links/Pack")}, want: 1200, wantSeeding: 1200},
+		{name: "a torrent that seeds on one content path keeps the part that the other path does not hold", torrents: []qbt.Torrent{at(stalledTorrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1000), "/data/Pack"), at(torrent("s1", 1100), "/links/Pack"), at(stalledTorrent("z1", 1100), "/links/Pack")}, want: 1200, wantSeeding: 1200},
 		{name: "a stalled torrent on that content path seeds nothing", torrents: []qbt.Torrent{at(stalledTorrent("q1", 900), "/links/Pack"), at(stalledTorrent("y1", 900), "/links/Pack")}, want: 900, wantSeeding: 0},
 		{name: "a group joins the torrents of its content paths", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/links/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
 	}
