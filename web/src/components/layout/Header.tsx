@@ -48,6 +48,7 @@ import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
 import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
@@ -141,6 +142,8 @@ export function Header({
 
   const { selection } = useTorrentSelectionContext()
   const selectionSummary = useTorrentSelectionSummary()
+  // CSS hides the header on the phone layout, so the management bar does not mount there.
+  const isMobile = useIsMobile()
 
   const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
@@ -579,7 +582,7 @@ export function Header({
             )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
-          {selectionSummary && hasSelection(selection) && (
+          {!isMobile && selectionSummary && hasSelection(selection) && (
             <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}

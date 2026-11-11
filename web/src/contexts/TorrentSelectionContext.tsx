@@ -20,7 +20,7 @@ export interface ListFacts {
   sortOrder: "asc" | "desc"
 }
 
-// What the desktop table publishes for the header management bar and the bulk action module.
+// What the desktop table or the mobile cards publish for the header management bar and the bulk action module.
 export interface TorrentSelectionSummary {
   actionTarget: ActionTarget
   // In Select all mode, the total size of the filter and the size of the loaded Exclusions.

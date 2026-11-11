@@ -5,9 +5,7 @@ package collector
 
 import (
 	"context"
-	"maps"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/trackergroup"
 )
 
 type TorrentCollector struct {
@@ -186,6 +185,8 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
+	mapper := trackergroup.New(trackerCustomizations)
+
 	instances := c.clientPool.GetAllInstances(ctx)
 
 	log.Debug().Int("instances", len(instances)).Msg("Collecting metrics for instances")
@@ -297,45 +298,48 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				)
 			}
 
-			if counts.TrackerTransfers != nil {
-				trackerStats := groupTrackerTransfersForMetrics(counts.TrackerTransfers, trackerCustomizations)
-				for trackerName, stats := range trackerStats {
-					if strings.TrimSpace(trackerName) == "" {
-						continue
-					}
-					ch <- prometheus.MustNewConstMetric(
-						c.trackerTorrentsDesc,
-						prometheus.GaugeValue,
-						float64(stats.Count),
-						instanceIDStr,
-						instanceName,
-						trackerName,
-					)
-					ch <- prometheus.MustNewConstMetric(
-						c.trackerUploadedDesc,
-						prometheus.GaugeValue,
-						float64(stats.Uploaded),
-						instanceIDStr,
-						instanceName,
-						trackerName,
-					)
-					ch <- prometheus.MustNewConstMetric(
-						c.trackerDownloadedDesc,
-						prometheus.GaugeValue,
-						float64(stats.Downloaded),
-						instanceIDStr,
-						instanceName,
-						trackerName,
-					)
-					ch <- prometheus.MustNewConstMetric(
-						c.trackerTotalSizeDesc,
-						prometheus.GaugeValue,
-						float64(stats.TotalSize),
-						instanceIDStr,
-						instanceName,
-						trackerName,
-					)
-				}
+			groups, groupsErr := c.syncManager.TrackerGroups(ctx, instance.ID, mapper)
+			if groupsErr != nil {
+				log.Warn().
+					Err(groupsErr).
+					Int("instanceID", instance.ID).
+					Str("instanceName", instanceName).
+					Msg("Failed to group torrents by tracker for metrics")
+				c.reportError(ch, instanceIDStr, instanceName, "tracker_groups")
+			}
+			for trackerName, stats := range mergeByName(groups) {
+				ch <- prometheus.MustNewConstMetric(
+					c.trackerTorrentsDesc,
+					prometheus.GaugeValue,
+					float64(stats.Count),
+					instanceIDStr,
+					instanceName,
+					trackerName,
+				)
+				ch <- prometheus.MustNewConstMetric(
+					c.trackerUploadedDesc,
+					prometheus.GaugeValue,
+					float64(stats.Uploaded),
+					instanceIDStr,
+					instanceName,
+					trackerName,
+				)
+				ch <- prometheus.MustNewConstMetric(
+					c.trackerDownloadedDesc,
+					prometheus.GaugeValue,
+					float64(stats.Downloaded),
+					instanceIDStr,
+					instanceName,
+					trackerName,
+				)
+				ch <- prometheus.MustNewConstMetric(
+					c.trackerTotalSizeDesc,
+					prometheus.GaugeValue,
+					float64(stats.TotalSize),
+					instanceIDStr,
+					instanceName,
+					trackerName,
+				)
 			}
 		}
 
@@ -378,112 +382,17 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func groupTrackerTransfersForMetrics(transfers map[string]qbittorrent.TrackerTransferStats, customizations []*models.TrackerCustomization) map[string]qbittorrent.TrackerTransferStats {
-	domainToCustomization := make(map[string]*models.TrackerCustomization)
-	for _, custom := range customizations {
-		for _, domain := range custom.Domains {
-			domain = strings.ToLower(strings.TrimSpace(domain))
-			if domain == "" {
-				continue
-			}
-			domainToCustomization[domain] = custom
-		}
+// mergeByName adds the groups that share one label, because a duplicate label
+// would fail the whole scrape. A customization named like a domain does this.
+func mergeByName(groups map[trackergroup.Group]qbittorrent.TrackerTransferStats) map[string]qbittorrent.TrackerTransferStats {
+	byName := make(map[string]qbittorrent.TrackerTransferStats, len(groups))
+	for group, stats := range groups {
+		total := byName[group.Name]
+		total.Count += stats.Count
+		total.Uploaded += stats.Uploaded
+		total.Downloaded += stats.Downloaded
+		total.TotalSize += stats.TotalSize
+		byName[group.Name] = total
 	}
-
-	displayNameFor := func(custom *models.TrackerCustomization, domain string) string {
-		if custom == nil {
-			return strings.TrimSpace(domain)
-		}
-		if name := strings.TrimSpace(custom.DisplayName); name != "" {
-			return name
-		}
-		return strings.TrimSpace(domain)
-	}
-
-	isPrimaryDomain := func(custom *models.TrackerCustomization, domain string) bool {
-		if custom == nil || len(custom.Domains) == 0 {
-			return false
-		}
-		return strings.EqualFold(custom.Domains[0], domain)
-	}
-
-	isIncludedInStats := func(custom *models.TrackerCustomization, domain string) bool {
-		if custom == nil {
-			return false
-		}
-		for _, d := range custom.IncludedInStats {
-			if strings.EqualFold(d, domain) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Mirrors tracker breakdown grouping rules in the dashboard (3-pass approach).
-	processed := make(map[string]qbittorrent.TrackerTransferStats)
-
-	// Pass 1: primary domains and standalone domains.
-	for domain, stats := range transfers {
-		trimmedDomain := strings.TrimSpace(domain)
-		if trimmedDomain == "" {
-			continue
-		}
-		custom := domainToCustomization[strings.ToLower(trimmedDomain)]
-		if custom == nil {
-			processed[trimmedDomain] = stats
-			continue
-		}
-		if isPrimaryDomain(custom, trimmedDomain) {
-			processed[displayNameFor(custom, trimmedDomain)] = stats
-		}
-	}
-
-	// Pass 2: explicitly included secondary domains contribute to the group.
-	for domain, stats := range transfers {
-		trimmedDomain := strings.TrimSpace(domain)
-		if trimmedDomain == "" {
-			continue
-		}
-		custom := domainToCustomization[strings.ToLower(trimmedDomain)]
-		if custom == nil {
-			continue
-		}
-		if isPrimaryDomain(custom, trimmedDomain) || !isIncludedInStats(custom, trimmedDomain) {
-			continue
-		}
-
-		name := displayNameFor(custom, trimmedDomain)
-		existing := processed[name]
-		existing.Uploaded += stats.Uploaded
-		existing.Downloaded += stats.Downloaded
-		existing.TotalSize += stats.TotalSize
-		existing.Count += stats.Count
-		processed[name] = existing
-	}
-
-	// Pass 3: ensure merged groups remain visible even if primary/included domains have no torrents.
-	fallbackByDisplayName := make(map[string]qbittorrent.TrackerTransferStats)
-	for domain, stats := range transfers {
-		trimmedDomain := strings.TrimSpace(domain)
-		if trimmedDomain == "" {
-			continue
-		}
-		custom := domainToCustomization[strings.ToLower(trimmedDomain)]
-		if custom == nil {
-			continue
-		}
-		name := displayNameFor(custom, trimmedDomain)
-		if _, exists := processed[name]; exists {
-			continue
-		}
-
-		existing, ok := fallbackByDisplayName[name]
-		if !ok || stats.Count > existing.Count || (stats.Count == existing.Count && stats.Uploaded > existing.Uploaded) {
-			fallbackByDisplayName[name] = stats
-		}
-	}
-
-	maps.Copy(processed, fallbackByDisplayName)
-
-	return processed
+	return byName
 }

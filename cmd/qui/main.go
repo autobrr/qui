@@ -997,6 +997,7 @@ func (app *Application) runServer() {
 	select {
 	case <-serverReady:
 		crossSeedService.StartAutomation(automationCtx)
+		clientPool.AddSyncEventSink(crossSeedService.CopyGroupsSyncSink())
 		crossSeedService.StartCopyGroups(automationCtx)
 		go func() {
 			defer close(partialPoolDone)

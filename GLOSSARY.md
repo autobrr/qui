@@ -43,6 +43,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Stopped**: A torrent in a paused or stopped state. Running is the opposite. _Avoid_: Paused, as a separate meaning.
 - **Seeding**: A torrent in an upload state, whether or not it sends data. Dashboard "active" counts only those that send data. _Avoid_: Uploading, in user text.
 - **Trackers**: The tracker domains that a torrent belongs to. A torrent with none is in No tracker. _Avoid_: Tracker membership, and the Tracker column for the full set.
+- **Tracker group**: The one tracker that the bytes of a torrent count toward: a tracker customization, one tracker domain, Public, or No tracker. Public holds every torrent that is not private. _Avoid_: tracker bucket.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 
 ## Peers

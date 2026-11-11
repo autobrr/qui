@@ -398,8 +398,6 @@ func TestUniqueSizeInstanceView(t *testing.T) {
 
 	f := newCopyGroupFixture(t)
 	f.sm.SetCopyGroups(f.groups(f.a))
-	demands := 0
-	f.sm.SetCopyGroupsDemandHandler(func() { demands++ })
 
 	stats := func(instanceID int, uniqueSize bool) *TorrentStats {
 		t.Helper()
@@ -416,14 +414,11 @@ func TestUniqueSizeInstanceView(t *testing.T) {
 	b := stats(f.b, true)
 	require.Nil(t, b.UniqueSize, "no build read the instance yet")
 	require.Nil(t, b.UniqueSeedingSize)
-	require.Equal(t, 2, demands)
 
 	f.sm.SetCopyGroups(f.groups(f.a, f.b))
 	require.Equal(t, new(int64(1000)), stats(f.b, true).UniqueSize, "the copy on the second instance counts there")
 
-	plain := stats(f.a, false)
-	require.Nil(t, plain.UniqueSize)
-	require.Equal(t, 3, demands, "a view without the Unique size does not wake the job")
+	require.Nil(t, stats(f.a, false).UniqueSize, "a view without the Unique size has none")
 }
 
 func TestSetCopyGroupsNotifiesChangedInstances(t *testing.T) {

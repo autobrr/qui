@@ -136,7 +136,7 @@ Grouping changes only how the list looks:
 - A tick, a right-click, and Shift + click select only the rows that you see. To act on all copies, use Ctrl/Cmd + A, or the cross-seed option in the delete dialog.
 - The torrent count in the status bar counts torrents, not rows.
 
-When you turn on the switch for the first time, qui reads the file lists of your torrents. Until it finishes, the list stays flat, and the status bar shows **Grouping…**. On phones, the bar above the cards shows it. **Filter Cross-Seeds** always shows flat rows.
+qui finds the copies in the background from its start, also while the switch is off. The first time, it reads the file lists of the torrents that can have a copy. Until the first search after a start of qui finishes, the list stays flat, and the status bar shows **Grouping…**. On phones, the bar above the cards shows it. **Filter Cross-Seeds** always shows flat rows.
 
 ## Live updates paused
 

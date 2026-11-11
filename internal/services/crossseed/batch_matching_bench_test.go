@@ -134,7 +134,7 @@ func BenchmarkFindCopyGroups(b *testing.B) {
 	torrents, files := benchCopyGroupInput()
 	key := make([]byte, 32)
 	run := func(b *testing.B, svc *Service) {
-		groups, err := svc.FindCopyGroups(b.Context(), torrents, files, nil, key)
+		groups, _, err := svc.FindCopyGroups(b.Context(), torrents, heldCopyGroupFiles(files, nil), nil, nil, key)
 		if err != nil || len(groups) != 2000 {
 			b.Fatalf("found %d groups, err %v, want 2000", len(groups), err)
 		}

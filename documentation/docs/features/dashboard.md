@@ -68,7 +68,7 @@ qui does not make sure that two copies share their data on the disk. If you down
 
 qui counts the copies one time in each instance. A copy on a second instance counts again.
 
-To find the copies, qui reads the file list of each torrent one time, four torrents at a time. qui keeps the lists and reads a list again only when its torrent changes. Until the first read of an instance ends, the Dashboard shows the old size with the mark **calculating**. The old size counts torrents with the same content path one time, but it counts a hardlinked or reflinked cross-seed in full.
+qui finds the copies in the background from its start. The first time, it reads the file lists of the torrents that can have a copy, four torrents at a time. qui keeps the lists and reads a list again only when its torrent changes. Until the first search after a start of qui ends, the Dashboard shows the old size with the mark **calculating**. The old size counts torrents with the same content path one time, but it counts a hardlinked or reflinked cross-seed in full.
 
 The sidebar of the torrent list does not use the Unique size for categories and tags.
 

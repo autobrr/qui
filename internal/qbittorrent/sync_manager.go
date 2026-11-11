@@ -35,6 +35,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/trackergroup"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -522,7 +523,6 @@ type SyncManager struct {
 	filesChangedHandler atomic.Pointer[func(instanceID int, hash string)]
 	filesInvalidations  filesInvalidations
 	copyGroups          atomic.Pointer[CopyGroups]
-	copyGroupsDemand    atomic.Pointer[func()]
 	// instanceName is nil outside tests; then the name comes from the instance store.
 	instanceName func(ctx context.Context, instanceID int) (string, error)
 
@@ -1684,7 +1684,6 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	// Calculate stats from filtered torrents
 	var unique *uniqueSizes
 	if view.UniqueSize {
-		sm.DemandCopyGroups()
 		unique = sm.copyGroups.Load().uniqueSizes(instanceID)
 	}
 	stats := sm.calculateStats(filteredTorrents, unique)
@@ -1709,7 +1708,6 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	var copyGroupsReady *bool
 	var groupedRows []copyGroupPageRow
 	if view.CopyGroups {
-		sm.DemandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, []int{instanceID}))
 		if *copyGroupsReady && !view.NoRows {
@@ -2042,7 +2040,6 @@ func (sm *SyncManager) listUnifiedTorrents(ctx context.Context, view *TorrentLis
 
 	var copyGroupsReady *bool
 	if groupCopies {
-		sm.DemandCopyGroups()
 		groups := sm.copyGroups.Load()
 		copyGroupsReady = new(sm.copyGroupsReady(ctx, groups, requestInstanceIDs))
 		if *copyGroupsReady {
@@ -2214,8 +2211,16 @@ func (sm *SyncManager) GetQBittorrentSyncManager(ctx context.Context, instanceID
 	return syncManager, err
 }
 
-// BulkAction performs bulk operations on torrents
+// BulkAction performs bulk operations on torrents. A delete goes through
+// DeleteTorrents, which names who started it.
 func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	if action == "delete" || action == "deleteWithFiles" {
+		return fmt.Errorf("bulk action %s needs an actor, use DeleteTorrents", action)
+	}
+	return sm.bulkAction(ctx, instanceID, hashes, action)
+}
+
+func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
@@ -3657,6 +3662,23 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	return result.counts
 }
 
+// TrackerGroups returns the totals of each Tracker group of an instance, where
+// a torrent counts toward exactly one group. It reads the library again, so a
+// customization change shows at the next call.
+func (sm *SyncManager) TrackerGroups(ctx context.Context, instanceID int, mapper *trackergroup.Mapper) (map[trackergroup.Group]TrackerTransferStats, error) {
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	mainData := resolveMainData(syncManager, mainDataModeForRequest(false, syncManager.LastSyncTime()))
+	in := torrentCountsInput{
+		torrents:       syncManager.GetTorrents(qbt.TorrentFilterOptions{}),
+		domainToHashes: sm.getAuthoritativeDomainToHashes(instanceID),
+		trackers:       sm.trackerSources(client, mainData),
+	}
+	return groupTrackers(in, mapper), nil
+}
+
 // torrentListRuleFor builds the rule of a list request. It reads the tracker
 // inputs only when the request has a tracker filter.
 func (sm *SyncManager) torrentListRuleFor(client *Client, filters FilterOptions, mainData *qbt.MainData, health *TrackerHealthSnapshot, useSubcategories bool) *torrentListRule {
@@ -4743,6 +4765,23 @@ func (t *trackerDomainStats) add(torrent *qbt.Torrent, sharedPath bool) {
 	t.sum.DownloadedSession += torrent.DownloadedSession
 
 	t.size.add(torrent, sharedPath && torrent.ContentPath != "")
+}
+
+// merge adds the totals of o. The sizes merge exactly, because the shared
+// content paths come from the whole library, not from one tracker.
+func (t *trackerDomainStats) merge(o *trackerDomainStats) {
+	t.sum.Count += o.sum.Count
+	t.sum.Uploaded += o.sum.Uploaded
+	t.sum.Downloaded += o.sum.Downloaded
+	t.sum.UploadedSession += o.sum.UploadedSession
+	t.sum.DownloadedSession += o.sum.DownloadedSession
+	t.size.unshared += o.size.unshared
+	for path, size := range o.size.sizeByPath {
+		if t.size.sizeByPath == nil {
+			t.size.sizeByPath = make(map[string]int64)
+		}
+		t.size.sizeByPath[path] = max(t.size.sizeByPath[path], size)
+	}
 }
 
 func (t *trackerDomainStats) totals() TrackerTransferStats {
