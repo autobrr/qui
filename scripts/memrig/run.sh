@@ -10,7 +10,7 @@ BIN=$1; N=$2; SCEN=$3; OUT=$4; API=${5:-2.11.4}
 RIG=$(dirname "$(readlink -f "$0")")
 DATA=$HOME/.cache/qui-memrig/run-$$
 mkdir -p "$OUT" "$DATA"
-rm -f "$OUT/samples.txt" "$OUT/hook-codes.txt" "$OUT/list-codes.txt" "$OUT/sse-exits.txt"
+rm -f "$OUT/samples.txt" "$OUT/hook-codes.txt" "$OUT/list-codes.txt" "$OUT/sse-exits.txt" "$OUT/sse-errors.txt"
 ip link set lo up
 
 python3 "$RIG/stub.py" 18080 "$N" "$API" & STUB=$!
@@ -37,6 +37,20 @@ sample() {
   hwm=$(awk '/^VmHWM/{print int($2/1024)}' /proc/$QUI/status)
   printf '%-28s rss=%5d MB  peak=%5d MB  heap_inuse=%5d MB  goroutines=%s\n' "$1" "$rss" "$hwm" "$heap" \
     "$(curl -fs '127.0.0.1:16060/debug/pprof/goroutine?debug=1' | head -1 | awk '{print $NF}')" | tee -a "$OUT/samples.txt"
+}
+# stream <seconds> <streams query>: one live-update stream in the background.
+# It records the exit status of the stream and the number of sync errors that
+# the stream got.
+stream() {
+  ( timeout "$1" curl -fsN "$Q/api/stream?streams=$2" | grep -a -c '^event: stream-error' >> "$OUT/sse-errors.txt"
+    echo "${PIPESTATUS[0]}" >> "$OUT/sse-exits.txt" ) &
+}
+# checkstreams: stops the run when a stream ended before its timeout (an exit
+# status other than 124) or got a sync error.
+checkstreams() {
+  sort "$OUT/sse-exits.txt" | uniq -c | tee -a "$OUT/samples.txt"
+  if [ "$(sort -u "$OUT/sse-exits.txt")" != 124 ]; then echo "SSE-FAILED" | tee -a "$OUT/samples.txt"; exit 1; fi
+  if [ "$(sort -u "$OUT/sse-errors.txt")" != 0 ]; then echo "SYNC-ERRORS" | tee -a "$OUT/samples.txt"; exit 1; fi
 }
 # reset the kernel's peak RSS counter so each step shows its own peak
 resetpeak() { echo 5 > /proc/$QUI/clear_refs 2>/dev/null; }
