@@ -503,6 +503,23 @@ func TestCopyGroupsJob_ARetryBatchErrorReadsNoTorrentTwice(t *testing.T) {
 	})
 }
 
+// regression: #4024
+func TestCopyGroupsJob_ABatchErrorReadsNoTorrentOfAnotherInstanceTwice(t *testing.T) {
+	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
+		h.addUnreadable(1, cgC, "/data/c", time.Now())
+		h.add(2, cgD, "/data/d", cgOld, cgPackFiles())
+		h.demandAndWait()
+		h.wait(copyGroupsTick)
+
+		h.setBatchErr(2, errors.New("qBittorrent did not answer"))
+		h.add(1, cgHash('e'), "/data/e", cgOld, cgPackFiles())
+		c, publishes := h.requested(1, cgC), h.publishes()
+		h.wait(copyGroupsTick)
+		require.Greater(t, h.publishes(), publishes)
+		require.Equal(t, c+1, h.requested(1, cgC))
+	})
+}
+
 func TestCopyGroupsJob_NoRequestForAMagnet(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.add(1, cgC, "/data/c", time.Now(), nil)
