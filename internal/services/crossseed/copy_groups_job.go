@@ -62,6 +62,14 @@ type copyGroupsJob struct {
 	// fingerprints holds no value for an instance whose last read failed.
 	fingerprints      map[int]uint64
 	marks, builtMarks uint64
+	// links holds what the last rebuild found. A rebuild compares only the
+	// torrents that changed since then.
+	links *CopyLinks
+	// allForgotten is the mark of the last change that makes links of no use.
+	allForgotten uint64
+	// forgotten holds the mark of each torrent that qui changed after its links
+	// were found.
+	forgotten map[string]uint64
 	// ids is the last published map. It is nil before the first publish.
 	ids map[int]map[string]uint64
 	// failed holds the time after which an unreadable torrent is read again.
@@ -74,7 +82,7 @@ func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
 	return &copyGroupsJob{
 		svc: svc, sync: sync, key: key, seed: maphash.MakeSeed(), interval: copyGroupsTick, wake: make(chan struct{}, 1),
 		listing: map[int]bool{}, firstReads: map[int]bool{}, record: map[int]struct{}{},
-		failed: map[int]map[string]time.Time{},
+		failed: map[int]map[string]time.Time{}, forgotten: map[string]uint64{},
 	}
 }
 
@@ -118,14 +126,37 @@ func (j *copyGroupsJob) demand() {
 	}
 }
 
-// mark makes the next tick rebuild the map.
-func (j *copyGroupsJob) mark() {
+// forget makes the next tick rebuild the map and read the torrent again.
+func (j *copyGroupsJob) forget(instanceID int, hash string) {
 	if j == nil {
 		return
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.marks++
+	j.forgotten[cacheKeyForTorrentFiles(instanceID, hash)] = j.marks
+}
+
+// forgetAll makes the next tick rebuild the map and read every torrent again.
+func (j *copyGroupsJob) forgetAll() {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.marks++
+	j.allForgotten = j.marks
+}
+
+// knownLinks returns the links that a run can start from. The caller holds mu.
+func (j *copyGroupsJob) knownLinks() *CopyLinks {
+	if j.builtMarks < j.allForgotten {
+		return nil
+	}
+	if len(j.forgotten) == 0 {
+		return j.links
+	}
+	return j.links.without(maps.Keys(j.forgotten))
 }
 
 func (j *copyGroupsJob) wakeLoop() {
@@ -157,9 +188,11 @@ type copyGroupsRun struct {
 	torrents     map[int][]qbittorrent.CrossInstanceTorrentView
 	fingerprints map[int]uint64
 	marks        uint64
-	failed       map[int]map[string]time.Time
-	read         []int
-	prev         map[int]map[string]uint64
+	// links is nil for a run that compares every torrent.
+	links  *CopyLinks
+	failed map[int]map[string]time.Time
+	read   []int
+	prev   map[int]map[string]uint64
 	// offline holds the recorded instances that the run does not read.
 	offline []int
 	// retry: nothing moved, so the run rebuilds only if a due failed torrent
@@ -199,7 +232,7 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	run := copyGroupsRun{torrents: map[int][]qbittorrent.CrossInstanceTorrentView{}, fingerprints: map[int]uint64{}, marks: j.marks, failed: map[int]map[string]time.Time{}}
+	run := copyGroupsRun{torrents: map[int][]qbittorrent.CrossInstanceTorrentView{}, fingerprints: map[int]uint64{}, marks: j.marks, links: j.knownLinks(), failed: map[int]map[string]time.Time{}}
 	listFailed := false
 	known := make(map[int][]qbittorrent.CrossInstanceTorrentView, len(active))
 	var first []int
@@ -227,7 +260,7 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 		}
 	}
 	for _, id := range first {
-		go j.firstRead(ctx, id, known)
+		go j.firstRead(ctx, id, known, run.links)
 	}
 	if len(run.torrents) == 0 && j.ids == nil && listFailed && !slices.ContainsFunc(active, func(id int) bool { return synced[id] }) {
 		// No instance can sync, so the list shows flat rows and no hint.
@@ -283,16 +316,21 @@ func (j *copyGroupsJob) readLists(ctx context.Context, instanceIDs []int) map[in
 	return lists
 }
 
+// copyGroupsPrint is what the group search reads of a torrent outside its
+// file list. A torrent with a new print is a changed torrent.
 type copyGroupsPrint struct {
 	hash, name, category, savePath, contentPath string
 	size                                        int64
 }
 
+func newCopyGroupsPrint(t *qbt.Torrent) copyGroupsPrint {
+	return copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), contentPath: t.ContentPath}
+}
+
 func (j *copyGroupsJob) fingerprint(torrents []qbittorrent.CrossInstanceTorrentView) uint64 {
 	var sum uint64
 	for i := range torrents {
-		t := torrents[i].Torrent
-		sum += maphash.Comparable(j.seed, copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), contentPath: t.ContentPath})
+		sum += maphash.Comparable(j.seed, newCopyGroupsPrint(torrents[i].Torrent))
 	}
 	return sum
 }
@@ -343,20 +381,20 @@ func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents 
 
 // firstRead stores the file lists of one instance that its groups with the
 // torrents of known need, so that a rebuild reads them from the cache.
-func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map[int][]qbittorrent.CrossInstanceTorrentView) {
+func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map[int][]qbittorrent.CrossInstanceTorrentView, links *CopyLinks) {
 	ctx, cancel := context.WithTimeout(ctx, localReadFillTimeout)
 	defer cancel()
 	failed := map[string]time.Time{}
 	settings, err := j.svc.GetAutomationSettings(ctx)
 	if err == nil {
-		_, err = j.svc.FindCopyGroups(ctx, known, func(ctx context.Context, id int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
+		_, _, err = j.svc.FindCopyGroups(ctx, known, func(ctx context.Context, id int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
 			if id != instanceID {
 				return nil, nil
 			}
 			files, unread, err := j.readFiles(ctx, id, torrents)
 			maps.Copy(failed, unread)
 			return files, err
-		}, settings.CategoryMappingRules, j.key)
+		}, links, settings.CategoryMappingRules, j.key)
 	}
 
 	j.mu.Lock()
@@ -466,8 +504,9 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	}
 	reader := newCopyGroupsReader(j, run, retried)
 	var groups []CopyGroup
+	var links *CopyLinks
 	for {
-		groups, err = j.svc.FindCopyGroups(ctx, run.torrents, reader.read, settings.CategoryMappingRules, j.key)
+		groups, links, err = j.svc.FindCopyGroups(ctx, run.torrents, reader.read, run.links, settings.CategoryMappingRules, j.key)
 		if ctx.Err() != nil {
 			log.Debug().Err(err).Msg("crossseed: Copy groups keep the last map, because the file lists could not be read in time")
 			return
@@ -497,11 +536,12 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 
 	j.mu.Lock()
 	j.ids = ids
-	j.fingerprints, j.builtMarks = run.fingerprints, run.marks
+	j.fingerprints, j.builtMarks, j.links = run.fingerprints, run.marks, links
+	maps.DeleteFunc(j.forgotten, func(_ string, mark uint64) bool { return mark <= run.marks })
 	maps.Copy(j.failed, reader.failed)
 	j.mu.Unlock()
 	j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(ids, run.read))
-	log.Debug().Bool("retryRead", run.retry).Ints("instances", run.read).Int("groups", len(groups)).
+	log.Debug().Bool("retryRead", run.retry).Bool("allTorrents", run.links == nil).Ints("instances", run.read).Int("groups", len(groups)).
 		Dur("elapsed", time.Since(started)).Msg("crossseed: Copy groups rebuilt")
 }
 

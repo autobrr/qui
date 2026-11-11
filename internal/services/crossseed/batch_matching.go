@@ -82,6 +82,16 @@ type candidateEntry struct {
 	view       *qbittorrent.CrossInstanceTorrentView
 }
 
+// candidateKey names one torrent on one instance, with the hash in its normal form.
+type candidateKey struct {
+	instanceID int
+	hash       string
+}
+
+func (c candidateEntry) key() candidateKey {
+	return candidateKey{instanceID: c.instanceID, hash: c.hash}
+}
+
 func newCandidateEntry(view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool) candidateEntry {
 	return candidateEntry{
 		hash:       normalizeHash(view.Hash),
@@ -892,16 +902,15 @@ func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease,
 	sourceHash := normalizeHash(source.Hash)
 
 	var picks []*candidatePick
-	picked := make(map[string]struct{})
+	picked := make(map[candidateKey]struct{})
 	add := func(c candidateEntry, nameOrRelease string) {
 		if sameInstance && c.hash == sourceHash {
 			return
 		}
-		key := cacheKeyForTorrentFiles(c.instanceID, c.hash)
-		if _, ok := picked[key]; ok {
+		if _, ok := picked[c.key()]; ok {
 			return
 		}
-		picked[key] = struct{}{}
+		picked[c.key()] = struct{}{}
 		picks = append(picks, &candidatePick{entry: c, nameOrRelease: nameOrRelease})
 	}
 

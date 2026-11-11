@@ -557,6 +557,25 @@ func TestCopyGroupsJob_NoRequestForAMagnet(t *testing.T) {
 	})
 }
 
+func TestCopyGroupsJob_ARebuildReadsOnlyTheChangedTorrents(t *testing.T) {
+	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.firstMap()
+		a := h.requested(1, cgA)
+
+		h.add(1, cgD, "/data/d", time.Now(), cgPackFiles())
+		h.wait(copyGroupsTick)
+		require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB), cgMember(1, cgD)}), h.last())
+		require.Equal(t, a+1, h.requested(1, cgA), "the new copy is compared with the copies")
+
+		h.sync.mu.Lock()
+		h.sync.torrents[1] = h.sync.torrents[1][1:]
+		h.sync.mu.Unlock()
+		h.wait(copyGroupsTick)
+		require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgB), cgMember(1, cgD)}), h.last())
+		require.Equal(t, 1, h.requested(1, cgD), "the copies that stay keep their link")
+	})
+}
+
 func TestCopyGroupsJob_NoRequestForATorrentWithoutACopy(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.addNamed(1, cgC, "Quiet.Harbor.2019.1080p.BluRay.x264-GRP", "/data/c", cgOld, qbt.TorrentFiles{{Name: "Quiet.Harbor.2019.1080p.BluRay.x264-GRP.mkv", Size: 777}})
@@ -729,10 +748,17 @@ func TestCopyGroupsJob_RebuildsAfterAForget(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 				h.firstMap()
+				reads := h.requested(1, cgA)
 				h.job.demand()
 				forget(h.svc)
 				h.wait(copyGroupsTick)
 				require.Equal(t, 2, h.publishes())
+				require.Equal(t, reads+1, h.requested(1, cgA), "the rebuild reads the torrent again")
+
+				h.addNamed(1, cgC, "Quiet.Harbor.2019.1080p.BluRay.x264-GRP", "/data/c", cgOld, qbt.TorrentFiles{{Name: "Quiet.Harbor.2019.1080p.BluRay.x264-GRP.mkv", Size: 777}})
+				h.wait(copyGroupsTick)
+				require.Equal(t, 3, h.publishes())
+				require.Equal(t, reads+1, h.requested(1, cgA), "the next rebuild keeps the links")
 			})
 		})
 	}

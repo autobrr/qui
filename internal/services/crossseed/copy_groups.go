@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
+	"iter"
 	"maps"
 	"slices"
 
@@ -28,129 +29,218 @@ type CopyGroup struct {
 // instance, by normalized hash.
 type CopyGroupFiles func(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error)
 
+// CopyLinks is what one FindCopyGroups call found. With it, the next call
+// reads and compares only the torrents that changed.
+type CopyLinks struct {
+	// prints holds each torrent whose links are complete, as the search read it.
+	prints map[string]copyGroupsPrint
+	// pairs holds the torrents that the search linked.
+	pairs [][2]string
+	// reads holds the read from files of each torrent whose name reads too little.
+	reads localReads
+}
+
+// without returns the links with the torrents of keys as changed torrents.
+func (l *CopyLinks) without(keys iter.Seq[string]) *CopyLinks {
+	if l == nil {
+		return nil
+	}
+	next := &CopyLinks{prints: maps.Clone(l.prints), pairs: l.pairs, reads: l.reads}
+	for key := range keys {
+		delete(next.prints, key)
+	}
+	return next
+}
+
 // FindCopyGroups asks read for the file lists of the torrents that can have a
 // copy, and for no other list. A torrent without a list from read stays out of
 // every group. An error of read ends the call.
+//
+// With last, the links of an earlier call, it asks only for the torrents that
+// changed since that call and for the torrents that can be their copies. The
+// file list of a torrent in last must be the same as in that call. The caller
+// keeps the returned links for the next call.
 func (s *Service) FindCopyGroups(
 	ctx context.Context,
 	torrents map[int][]qbittorrent.CrossInstanceTorrentView,
 	read CopyGroupFiles,
+	last *CopyLinks,
 	rules []models.CategoryMappingRule,
 	key []byte,
-) ([]CopyGroup, error) {
-	lists := newCopyGroupLists(s, torrents, read)
-	all := lists.all
-	index := make(map[string]int, len(all))
-	needsFiles := make([]bool, len(all))
-	want := make([]bool, len(all))
-	m := s.matcher()
-	for i := range all {
-		index[cacheKeyForTorrentFiles(all[i].InstanceID, all[i].Hash)] = i
-		needsFiles[i] = nameNeedsFiles(m.readName(all[i].Name).release)
-		want[i] = needsFiles[i]
+) ([]CopyGroup, *CopyLinks, error) {
+	search := newCopyGroupSearch(s, torrents, read, last)
+	pathGroups, err := search.readNamesAndPathGroups(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
-	pathGroups := make([][][]int, len(lists.instances))
-	for n, instance := range lists.instances {
-		pathGroups[n] = sharedPathGroups(all[instance.lo:instance.hi])
+	reads := search.fileReads(rules)
+	idx := s.buildIndexFromViews(search.all, false, reads)
+	if idx == nil {
+		return nil, search.links(nil, reads), nil
+	}
+	picks := s.selectAllCandidates(ctx, search.all, idx, false, reads)
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	// The helper skips a pick whose hash it holds, so a pick of the same hash
+	// on another instance must not block a shared-path pick.
+	for n, instance := range search.instances {
+		shared := make([][]*candidatePick, instance.hi-instance.lo)
+		search.held.addSharedPathPicks(ctx, instance.id, search.all[instance.lo:instance.hi], search.readable(instance, pathGroups[n]), shared, CrossMatchNeeds{})
+		for k := range shared {
+			picks[instance.lo+k] = append(picks[instance.lo+k], shared[k]...)
+		}
+	}
+	if err := search.readPicks(ctx, picks); err != nil {
+		return nil, nil, err
+	}
+	roots, pairs, err := search.link(ctx, picks)
+	if err != nil {
+		return nil, nil, err
+	}
+	return copyGroupsOf(search.all, roots, key), search.links(pairs, reads), nil
+}
+
+// copyGroupSearch holds the torrents of one FindCopyGroups call and the file
+// lists that it asked for.
+type copyGroupSearch struct {
+	svc       *Service
+	all       []qbittorrent.CrossInstanceTorrentView
+	instances []copyGroupInstance
+	// keys holds the key of each torrent of all, and index its place in all.
+	keys  []string
+	index map[string]int
+	// places holds the place in all of each torrent, for a pick.
+	places map[candidateKey]int
+	held   *batchFiles
+	read   CopyGroupFiles
+	asked  []bool
+	// last holds the links of the call before this one, or nil.
+	last   *CopyLinks
+	prints []copyGroupsPrint
+	// changed marks each torrent that last does not hold as it is now.
+	changed []bool
+	// needsFiles marks each torrent whose name reads too little.
+	needsFiles []bool
+}
+
+// copyGroupInstance is the range of one instance in copyGroupSearch.all.
+type copyGroupInstance struct {
+	id, lo, hi int
+}
+
+func newCopyGroupSearch(s *Service, torrents map[int][]qbittorrent.CrossInstanceTorrentView, read CopyGroupFiles, last *CopyLinks) *copyGroupSearch {
+	l := &copyGroupSearch{svc: s, read: read, last: last}
+	for _, id := range slices.Sorted(maps.Keys(torrents)) {
+		l.instances = append(l.instances, copyGroupInstance{id: id, lo: len(l.all), hi: len(l.all) + len(torrents[id])})
+		l.all = append(l.all, torrents[id]...)
+	}
+	l.asked = make([]bool, len(l.all))
+	l.keys = make([]string, len(l.all))
+	l.prints = make([]copyGroupsPrint, len(l.all))
+	l.changed = make([]bool, len(l.all))
+	l.needsFiles = make([]bool, len(l.all))
+	l.index = make(map[string]int, len(l.all))
+	l.places = make(map[candidateKey]int, len(l.all))
+	l.held = &batchFiles{svc: s, byKey: make(map[string]*batchFileData), fetched: make(map[string]qbt.TorrentFiles, len(l.all))}
+	m := s.matcher()
+	for i := range l.all {
+		l.keys[i] = cacheKeyForTorrentFiles(l.all[i].InstanceID, l.all[i].Hash)
+		l.index[l.keys[i]] = i
+		l.places[candidateKey{instanceID: l.all[i].InstanceID, hash: normalizeHash(l.all[i].Hash)}] = i
+		// An entry without a list keeps batchFiles.get away from the client.
+		l.held.fetched[l.keys[i]] = nil
+		l.prints[i] = newCopyGroupsPrint(l.all[i].Torrent)
+		l.changed[i] = last == nil || last.prints[l.keys[i]] != l.prints[i]
+		l.needsFiles[i] = nameNeedsFiles(m.readName(l.all[i].Name).release)
+	}
+	return l
+}
+
+// readNamesAndPathGroups asks for the lists of the changed torrents whose name
+// reads too little, and of the shared-path groups that hold a changed torrent.
+// It returns those groups for each instance. The torrents of a group with no
+// changed torrent keep the links of last.
+func (l *copyGroupSearch) readNamesAndPathGroups(ctx context.Context) ([][][]int, error) {
+	want := make([]bool, len(l.all))
+	for i := range l.all {
+		want[i] = l.needsFiles[i] && l.changed[i]
+	}
+	pathGroups := make([][][]int, len(l.instances))
+	for n, instance := range l.instances {
+		pathGroups[n] = slices.DeleteFunc(sharedPathGroups(l.all[instance.lo:instance.hi]), func(group []int) bool {
+			return !slices.ContainsFunc(group, func(i int) bool { return l.changed[instance.lo+i] })
+		})
 		for _, group := range pathGroups[n] {
 			for _, i := range group {
 				want[instance.lo+i] = true
 			}
 		}
 	}
-	if err := lists.fetch(ctx, want); err != nil {
-		return nil, err
-	}
+	return pathGroups, l.fetch(ctx, want)
+}
 
+// fileReads returns the read from files of each torrent whose name reads too
+// little: from last for a torrent that did not change, else from its list.
+func (l *copyGroupSearch) fileReads(rules []models.CategoryMappingRule) localReads {
 	reads := make(localReads)
-	for i := range all {
-		t := all[i].Torrent
-		k := cacheKeyForTorrentFiles(all[i].InstanceID, t.Hash)
-		if list := lists.held.fetched[k]; needsFiles[i] && len(list) > 0 {
-			reads[k] = localReadEntry{name: t.Name, category: t.Category, read: s.readLocalFiles(rules, t.Name, t.Category, list), fromFiles: true}
+	for i := range l.all {
+		t := l.all[i].Torrent
+		switch list := l.held.fetched[l.keys[i]]; {
+		case !l.needsFiles[i]:
+		case !l.changed[i]:
+			if entry, ok := l.last.reads[l.keys[i]]; ok {
+				reads[l.keys[i]] = entry
+			}
+		case len(list) > 0:
+			reads[l.keys[i]] = localReadEntry{name: t.Name, category: t.Category, read: l.svc.readLocalFiles(rules, t.Name, t.Category, list), fromFiles: true}
 		}
 	}
-	idx := s.buildIndexFromViews(all, false, reads)
-	if idx == nil {
-		return nil, nil
-	}
-	picks := s.selectAllCandidates(ctx, all, idx, false, reads)
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	// The helper skips a pick whose hash it holds, so a pick of the same hash
-	// on another instance must not block a shared-path pick.
-	for n, instance := range lists.instances {
-		shared := make([][]*candidatePick, instance.hi-instance.lo)
-		lists.held.addSharedPathPicks(ctx, instance.id, all[instance.lo:instance.hi], lists.readable(instance, pathGroups[n]), shared, CrossMatchNeeds{})
-		for k := range shared {
-			picks[instance.lo+k] = append(picks[instance.lo+k], shared[k]...)
-		}
-	}
+	return reads
+}
 
-	clear(want)
+// readPicks drops the picks that need no compare, and asks for the lists of
+// the others. A torrent is no copy of itself, and two torrents that did not
+// change keep their link of last.
+func (l *copyGroupSearch) readPicks(ctx context.Context, picks [][]*candidatePick) error {
+	want := make([]bool, len(l.all))
 	for i := range picks {
 		picks[i] = slices.DeleteFunc(picks[i], func(p *candidatePick) bool {
-			return index[cacheKeyForTorrentFiles(p.entry.instanceID, p.entry.hash)] == i
+			c := l.places[p.entry.key()]
+			return c == i || !l.changed[i] && !l.changed[c]
 		})
 		for _, p := range picks[i] {
-			want[i], want[index[cacheKeyForTorrentFiles(p.entry.instanceID, p.entry.hash)]] = true, true
+			want[i], want[l.places[p.entry.key()]] = true, true
 		}
 	}
-	if err := lists.fetch(ctx, want); err != nil {
-		return nil, err
-	}
-
-	roots, err := linkCopies(ctx, all, lists.held, picks, index)
-	if err != nil {
-		return nil, err
-	}
-	return copyGroupsOf(all, roots, key), nil
+	return l.fetch(ctx, want)
 }
 
-// copyGroupLists holds the file lists that one FindCopyGroups call asked for.
-type copyGroupLists struct {
-	all       []qbittorrent.CrossInstanceTorrentView
-	instances []copyGroupInstance
-	held      *batchFiles
-	read      CopyGroupFiles
-	asked     []bool
-}
-
-// copyGroupInstance is the range of one instance in copyGroupLists.all.
-type copyGroupInstance struct {
-	id, lo, hi int
-}
-
-func newCopyGroupLists(s *Service, torrents map[int][]qbittorrent.CrossInstanceTorrentView, read CopyGroupFiles) *copyGroupLists {
-	l := &copyGroupLists{read: read}
-	for _, id := range slices.Sorted(maps.Keys(torrents)) {
-		l.instances = append(l.instances, copyGroupInstance{id: id, lo: len(l.all), hi: len(l.all) + len(torrents[id])})
-		l.all = append(l.all, torrents[id]...)
-	}
-	l.asked = make([]bool, len(l.all))
-	l.held = &batchFiles{svc: s, byKey: make(map[string]*batchFileData), fetched: make(map[string]qbt.TorrentFiles, len(l.all))}
-	// An entry without a list keeps batchFiles.get away from the client.
+// links returns what the next call starts from.
+func (l *copyGroupSearch) links(pairs [][2]string, reads localReads) *CopyLinks {
+	next := &CopyLinks{prints: make(map[string]copyGroupsPrint, len(l.all)), pairs: pairs, reads: reads}
 	for i := range l.all {
-		l.held.fetched[cacheKeyForTorrentFiles(l.all[i].InstanceID, l.all[i].Hash)] = nil
+		// A torrent whose list did not read is a changed torrent in the next call.
+		if !l.asked[i] || len(l.held.fetched[l.keys[i]]) > 0 {
+			next.prints[l.keys[i]] = l.prints[i]
+		}
 	}
-	return l
+	return next
 }
 
 // readable leaves out the torrents without a file list. Such a torrent links
 // to no torrent, and addSharedPathPicks pairs it with each member of its groups.
-func (l *copyGroupLists) readable(instance copyGroupInstance, pathGroups [][]int) [][]int {
+func (l *copyGroupSearch) readable(instance copyGroupInstance, pathGroups [][]int) [][]int {
 	for g, group := range pathGroups {
 		pathGroups[g] = slices.DeleteFunc(group, func(i int) bool {
-			t := l.all[instance.lo+i]
-			return len(l.held.fetched[cacheKeyForTorrentFiles(t.InstanceID, t.Hash)]) == 0
+			return len(l.held.fetched[l.keys[instance.lo+i]]) == 0
 		})
 	}
 	return pathGroups
 }
 
 // fetch asks read one time for each torrent of want.
-func (l *copyGroupLists) fetch(ctx context.Context, want []bool) error {
+func (l *copyGroupSearch) fetch(ctx context.Context, want []bool) error {
 	for _, instance := range l.instances {
 		var torrents []qbittorrent.CrossInstanceTorrentView
 		for i := instance.lo; i < instance.hi; i++ {
@@ -173,8 +263,10 @@ func (l *copyGroupLists) fetch(ctx context.Context, want []bool) error {
 	return nil
 }
 
-func linkCopies(ctx context.Context, all []qbittorrent.CrossInstanceTorrentView, held *batchFiles, picks [][]*candidatePick, index map[string]int) ([]int, error) {
-	parent := make([]int, len(all))
+// link joins the pairs of last that did not change, and the picks with equal
+// file sizes. It returns the root of each torrent and each pair that it joined.
+func (l *copyGroupSearch) link(ctx context.Context, picks [][]*candidatePick) ([]int, [][2]string, error) {
+	parent := make([]int, len(l.all))
 	for i := range parent {
 		parent[i] = i
 	}
@@ -185,31 +277,44 @@ func linkCopies(ctx context.Context, all []qbittorrent.CrossInstanceTorrentView,
 		}
 		return i
 	}
-	for i := range all {
+	var pairs [][2]string
+	if l.last != nil {
+		for _, pair := range l.last.pairs {
+			a, okA := l.index[pair[0]]
+			b, okB := l.index[pair[1]]
+			if okA && okB && !l.changed[a] && !l.changed[b] {
+				parent[root(b)] = root(a)
+				pairs = append(pairs, pair)
+			}
+		}
+	}
+	for i := range l.all {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(picks[i]) == 0 {
 			continue
 		}
-		source := all[i]
-		sourceData, ok := held.get(ctx, source.InstanceID, source.Hash, source.SavePath)
+		source := l.all[i]
+		sourceData, ok := l.held.get(ctx, source.InstanceID, source.Hash, source.SavePath)
 		if !ok {
 			continue
 		}
 		for _, p := range picks[i] {
-			candidateData, ok := held.get(ctx, p.entry.instanceID, p.entry.hash, p.entry.savePath)
+			candidateData, ok := l.held.get(ctx, p.entry.instanceID, p.entry.hash, p.entry.savePath)
 			if !ok || !slices.Equal(sourceData.data.sizes, candidateData.data.sizes) ||
 				localMatchTier(p.entry.instanceID == source.InstanceID, p.nameOrRelease, sourceData.data, candidateData.data, nil) == "" {
 				continue
 			}
-			parent[root(index[cacheKeyForTorrentFiles(p.entry.instanceID, p.entry.hash)])] = root(i)
+			c := l.places[p.entry.key()]
+			parent[root(c)] = root(i)
+			pairs = append(pairs, [2]string{l.keys[i], l.keys[c]})
 		}
 	}
 	for i := range parent {
 		parent[i] = root(i)
 	}
-	return parent, nil
+	return parent, pairs, nil
 }
 
 func copyGroupsOf(all []qbittorrent.CrossInstanceTorrentView, roots []int, key []byte) []CopyGroup {
