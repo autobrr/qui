@@ -5,44 +5,33 @@
 
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 
-// Which Copy groups are open. Expand all is one flag; toggled holds the groups
-// that differ from it. The state lives in browser memory only.
-export interface CopyGroupExpansion {
-  expandAll: boolean
-  toggled: ReadonlySet<string>
-}
+// The ids of the open Copy groups. The state lives in browser memory only.
+export type CopyGroupExpansion = ReadonlySet<string>
 
 export type CopyGroupExpansionEvent =
   | { type: "toggleGroup"; id: string }
-  | { type: "toggleExpandAll" }
   // The selection scope changed: instance, instance subset, filter, column filter, or search.
   | { type: "scopeChanged" }
 
-export const COLLAPSED_COPY_GROUPS: CopyGroupExpansion = { expandAll: false, toggled: new Set() }
+export const COLLAPSED_COPY_GROUPS: CopyGroupExpansion = new Set()
 
 export function copyGroupExpansionReducer(state: CopyGroupExpansion, event: CopyGroupExpansionEvent): CopyGroupExpansion {
   switch (event.type) {
     case "toggleGroup": {
-      const toggled = new Set(state.toggled)
-      if (!toggled.delete(event.id)) {
-        toggled.add(event.id)
+      const open = new Set(state)
+      if (!open.delete(event.id)) {
+        open.add(event.id)
       }
-      return { ...state, toggled }
+      return open
     }
-    case "toggleExpandAll":
-      return { expandAll: !state.expandAll, toggled: new Set() }
     case "scopeChanged":
-      return state.expandAll || state.toggled.size > 0 ? COLLAPSED_COPY_GROUPS : state
+      return state.size > 0 ? COLLAPSED_COPY_GROUPS : state
   }
 }
 
 // A member of a Copy group other than its Group representative is not a top row.
 export function isTopRow(row: Pick<Torrent, "copy_group">): boolean {
   return !row.copy_group || row.copy_group.first_sorted !== undefined
-}
-
-export function isCopyGroupOpen(expansion: CopyGroupExpansion, id: string): boolean {
-  return expansion.expandAll !== expansion.toggled.has(id)
 }
 
 function groupMembers<T extends Torrent>(rows: T[]): Map<string, T[]> {
@@ -88,7 +77,7 @@ export function buildVisibleRows<T extends Torrent>(rows: T[], expansion: CopyGr
     groups.delete(id)
     const top = topRowOf(members)
     visible.push(top)
-    if (isCopyGroupOpen(expansion, id)) {
+    if (expansion.has(id)) {
       for (const member of members) {
         if (member !== top) visible.push(member)
       }

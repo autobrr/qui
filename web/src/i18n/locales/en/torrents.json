@@ -1691,8 +1691,7 @@
     "hiddenTicked_other": "{{count}} hidden copies are ticked",
     "labelWithTicks": "{{label}}. {{ticks}}",
     "groupCopies": "Group copies",
-    "expandAll": "Expand all",
-    "collapseAll": "Collapse all",
+    "ungroupCopies": "Ungroup copies",
     "grouping": "Grouping…"
   }
 }

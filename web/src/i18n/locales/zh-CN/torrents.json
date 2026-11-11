@@ -1610,8 +1610,7 @@
     "hiddenTicked_other": "已选中 {{count}} 个隐藏的副本",
     "labelWithTicks": "{{label}}。{{ticks}}",
     "groupCopies": "合并副本",
-    "expandAll": "全部展开",
-    "collapseAll": "全部收起",
+    "ungroupCopies": "取消合并副本",
     "grouping": "正在分组…"
   }
 }

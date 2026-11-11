@@ -1853,8 +1853,7 @@
     "hiddenTicked_other": "Вибрано {{count}} прихованої копії",
     "labelWithTicks": "{{label}}. {{ticks}}",
     "groupCopies": "Групувати копії",
-    "expandAll": "Розгорнути все",
-    "collapseAll": "Згорнути все",
+    "ungroupCopies": "Розгрупувати копії",
     "grouping": "Групування…"
   }
 }

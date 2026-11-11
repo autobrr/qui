@@ -136,7 +136,6 @@ export function useTorrentListController({
   }
 
   const toggleGroup = useCallback((id: string) => dispatchExpansion({ type: "toggleGroup", id }), [])
-  const toggleExpandAll = useCallback(() => dispatchExpansion({ type: "toggleExpandAll" }), [])
 
   return {
     ...list,
@@ -148,7 +147,6 @@ export function useTorrentListController({
     listKey,
     groupExpansion,
     toggleGroup,
-    toggleExpandAll,
   }
 }
 

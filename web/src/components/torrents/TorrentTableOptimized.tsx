@@ -112,7 +112,7 @@ import { ColumnOrderMenu } from "./ColumnOrderMenu"
 import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
 import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { useCopyGroupRows } from "@/hooks/useCopyGroupRows"
-import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
+import { GroupCopiesToolbar } from "./table/GroupCopiesToolbar"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
@@ -313,7 +313,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     visibleRows,
     groupExpansion,
     toggleGroup,
-    toggleExpandAll,
     copyGroupsReady,
   } = useTorrentListController({
     instanceId,
@@ -1002,6 +1001,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
                 const actions = (
                   <>
+                    <GroupCopiesToolbar groupCopies={groupCopiesSetting} onToggleGroupCopies={toggleGroupCopies} />
                     {desktopViewMode === "compact" && compactSortOptions.length > 0 && (
                       <div className="flex items-center">
                         <DropdownMenu>
@@ -1026,12 +1026,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <TooltipContent>{t("tableView.changeSortField")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
-                            <CopyGroupMenuItems
-                              groupCopies={groupCopiesSetting}
-                              expandAll={groupExpansion.expandAll}
-                              onToggleGroupCopies={toggleGroupCopies}
-                              onToggleExpandAll={toggleExpandAll}
-                            />
                             <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuRadioGroup
@@ -1142,12 +1136,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <TooltipContent>{t("tableView.toggleColumns")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-52">
-                            <CopyGroupMenuItems
-                              groupCopies={groupCopiesSetting}
-                              expandAll={groupExpansion.expandAll}
-                              onToggleGroupCopies={toggleGroupCopies}
-                              onToggleExpandAll={toggleExpandAll}
-                            />
                             <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <ColumnOrderMenu
