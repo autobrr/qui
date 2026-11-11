@@ -470,10 +470,10 @@ func (l *copyGroupLayout) page(offset, limit int, member func(i int) CopyGroupMe
 	return rows, stop < len(l.starts)
 }
 
-func collapseInstanceTorrents(rows []qbt.Torrent, instanceID int, groups *CopyGroups, offset, limit int) ([]copyGroupPageRow, bool) {
+func collapseInstanceTorrents(rows []*qbt.Torrent, instanceID int, groups *CopyGroups, offset, limit int) ([]copyGroupPageRow, bool) {
 	layout := collapseCopyGroups(len(rows),
 		func(i int) (uint64, bool) { return groups.groupID(instanceID, rows[i].Hash) },
-		func(a, b int) int { return CompareRepresentative(instanceID, &rows[a], instanceID, &rows[b]) })
+		func(a, b int) int { return CompareRepresentative(instanceID, rows[a], instanceID, rows[b]) })
 	return layout.page(offset, limit, func(i int) CopyGroupMember {
 		return CopyGroupMember{InstanceID: instanceID, Hash: rows[i].Hash}
 	})

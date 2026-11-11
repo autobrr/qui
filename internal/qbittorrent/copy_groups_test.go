@@ -358,7 +358,7 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}, "r1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "s1": {{ID: 7, Size: 900}, {ID: 9, Size: 200}}},
 	}, []int{1, 2})
 	sizes := func(instanceID int, torrents ...qbt.Torrent) *TorrentStats {
-		return (&SyncManager{}).calculateStats(torrents, groups.uniqueSizes(instanceID))
+		return (&SyncManager{}).calculateStats(torrentRefs(torrents), groups.uniqueSizes(instanceID))
 	}
 
 	tests := []struct {
