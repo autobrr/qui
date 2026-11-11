@@ -221,11 +221,17 @@ func (l *copyGroupSearch) links(pairs [][2]string, reads localReads) *CopyLinks 
 	next := &CopyLinks{prints: make(map[string]copyGroupsPrint, len(l.all)), pairs: pairs, reads: reads}
 	for i := range l.all {
 		// A torrent whose list did not read is a changed torrent in the next call.
-		if !l.asked[i] || len(l.held.fetched[l.keys[i]]) > 0 {
+		if !l.unread(i) {
 			next.prints[l.keys[i]] = l.prints[i]
 		}
 	}
 	return next
+}
+
+// unread reports whether the call asked for the list of the torrent and got
+// none. Such a torrent stays out of every group (ADR 0041).
+func (l *copyGroupSearch) unread(i int) bool {
+	return l.asked[i] && len(l.held.fetched[l.keys[i]]) == 0
 }
 
 // readable leaves out the torrents without a file list. Such a torrent links
@@ -263,8 +269,8 @@ func (l *copyGroupSearch) fetch(ctx context.Context, want []bool) error {
 	return nil
 }
 
-// link joins the pairs of last that did not change, and the picks with equal
-// file sizes. It returns the root of each torrent and each pair that it joined.
+// link joins the pairs of last that did not change and whose lists the call
+// did not fail to read, and the picks with equal file sizes. It returns the root of each torrent and each pair that it joined.
 func (l *copyGroupSearch) link(ctx context.Context, picks [][]*candidatePick) ([]int, [][2]string, error) {
 	parent := make([]int, len(l.all))
 	for i := range parent {
@@ -282,7 +288,7 @@ func (l *copyGroupSearch) link(ctx context.Context, picks [][]*candidatePick) ([
 		for _, pair := range l.last.pairs {
 			a, okA := l.index[pair[0]]
 			b, okB := l.index[pair[1]]
-			if okA && okB && !l.changed[a] && !l.changed[b] {
+			if okA && okB && !l.changed[a] && !l.changed[b] && !l.unread(a) && !l.unread(b) {
 				parent[root(b)] = root(a)
 				pairs = append(pairs, pair)
 			}

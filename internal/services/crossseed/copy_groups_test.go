@@ -456,6 +456,33 @@ func TestFindCopyGroups_AsksOnlyForTheChangedTorrentsAndTheirCopies(t *testing.T
 	require.Len(t, groups[0].Members, 4)
 }
 
+// regression: #4024
+func TestFindCopyGroups_ATorrentWhoseListNoLongerReadsLeavesItsGroup(t *testing.T) {
+	a, b, c := cgHash('a'), cgHash('b'), cgHash('c')
+	copyOf := func(hash string) qbittorrent.CrossInstanceTorrentView {
+		folder := "/data/" + hash[:1]
+		return qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: hash, Name: cgPack, SavePath: folder, ContentPath: folder + "/" + cgPack, Size: 3000}},
+			InstanceID:  1,
+		}
+	}
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{1: {copyOf(a), copyOf(b)}}
+	files := map[int]map[string]qbt.TorrentFiles{1: {a: cgPackFiles(), b: cgPackFiles(), c: cgPackFiles()}}
+	svc := newTestService()
+	groups, links, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), nil, nil, copyGroupTestKey)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+
+	// The new copy makes the search read a again, and that read gives no list.
+	delete(files[1], a)
+	torrents[1] = append(torrents[1], copyOf(c))
+	groups, _, err = svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), links, nil, copyGroupTestKey)
+	require.NoError(t, err)
+
+	require.Len(t, groups, 1)
+	assert.ElementsMatch(t, []qbittorrent.CopyGroupMember{{InstanceID: 1, Hash: b}, {InstanceID: 1, Hash: c}}, groups[0].Members)
+}
+
 func TestFindCopyGroups_GroupID(t *testing.T) {
 	a, b, c := cgHash('a'), cgHash('b'), cgHash('c')
 	copyOf := func(hash string, addedOn int64) copyGroupFixture {
