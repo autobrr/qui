@@ -306,7 +306,7 @@ func filesContext(ctx context.Context) context.Context {
 }
 
 // readFiles returns the next retry time of each torrent it could not read.
-func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView, skip map[string]time.Time) (map[string]qbt.TorrentFiles, map[string]time.Time, error) {
+func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, map[string]time.Time, error) {
 	failed := map[string]time.Time{}
 	var hashes []string
 	var wanted []*qbt.Torrent
@@ -315,10 +315,6 @@ func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents 
 		t := torrents[i].Torrent
 		hash := normalizeHash(t.Hash)
 		if t.ContentPath == "" {
-			continue
-		}
-		if retryAt, ok := skip[hash]; ok && now.Before(retryAt) {
-			failed[hash] = retryAt
 			continue
 		}
 		hashes = append(hashes, hash)
@@ -357,7 +353,7 @@ func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map
 			if id != instanceID {
 				return nil, nil
 			}
-			files, unread, err := j.readFiles(ctx, id, torrents, nil)
+			files, unread, err := j.readFiles(ctx, id, torrents)
 			maps.Copy(failed, unread)
 			return files, err
 		}, settings.CategoryMappingRules, j.key)
@@ -381,11 +377,11 @@ func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map
 // copyGroupsReader answers FindCopyGroups with the file lists of one run. It
 // reads each torrent one time, also when the run starts FindCopyGroups again.
 type copyGroupsReader struct {
-	job *copyGroupsJob
-	// skip holds the failed torrents of each instance that the run does not read yet.
-	skip  map[int]map[string]time.Time
+	job   *copyGroupsJob
 	files map[int]map[string]qbt.TorrentFiles
-	// failed holds the next retry time of each torrent that the run could not read.
+	// failed holds the next retry time of each torrent that the run does not
+	// read: its last read failed and its retry time is later, or its read
+	// failed in this run.
 	failed map[int]map[string]time.Time
 	// broken is the instance whose file batch failed.
 	broken   int
@@ -393,9 +389,11 @@ type copyGroupsReader struct {
 }
 
 // newCopyGroupsReader starts with the reads of retried, so the run does not
-// fetch those torrents again.
+// fetch those torrents again. A failed torrent that the run does not ask for
+// keeps its retry time.
 func newCopyGroupsReader(j *copyGroupsJob, run copyGroupsRun, retried map[int]copyGroupsRead) *copyGroupsReader {
-	r := &copyGroupsReader{job: j, skip: run.failed, files: map[int]map[string]qbt.TorrentFiles{}, failed: map[int]map[string]time.Time{}}
+	r := &copyGroupsReader{job: j, files: map[int]map[string]qbt.TorrentFiles{}, failed: map[int]map[string]time.Time{}}
+	now := time.Now()
 	for id := range run.torrents {
 		r.files[id] = maps.Clone(retried[id].files)
 		if r.files[id] == nil {
@@ -404,6 +402,11 @@ func newCopyGroupsReader(j *copyGroupsJob, run copyGroupsRun, retried map[int]co
 		r.failed[id] = maps.Clone(retried[id].failed)
 		if r.failed[id] == nil {
 			r.failed[id] = map[string]time.Time{}
+		}
+		for hash, retryAt := range run.failed[id] {
+			if now.Before(retryAt) {
+				r.failed[id][hash] = retryAt
+			}
 		}
 	}
 	return r
@@ -419,7 +422,7 @@ func (r *copyGroupsReader) read(ctx context.Context, instanceID int, torrents []
 	if len(torrents) == 0 {
 		return files, nil
 	}
-	read, unread, err := r.job.readFiles(ctx, instanceID, torrents, r.skip[instanceID])
+	read, unread, err := r.job.readFiles(ctx, instanceID, torrents)
 	if err != nil {
 		r.broken, r.isBroken = instanceID, true
 		return nil, err
@@ -528,7 +531,7 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[
 		if len(due) == 0 {
 			continue
 		}
-		files, failed, err := j.readFiles(ctx, id, due, nil)
+		files, failed, err := j.readFiles(ctx, id, due)
 		if ctx.Err() != nil {
 			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups retry stopped")
 			return nil, false

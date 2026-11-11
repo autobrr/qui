@@ -520,6 +520,34 @@ func TestCopyGroupsJob_ABatchErrorReadsNoTorrentOfAnotherInstanceTwice(t *testin
 	})
 }
 
+// regression: #4024
+func TestCopyGroupsJob_AnUnreadableTorrentWithoutACopyKeepsItsRetryTime(t *testing.T) {
+	cgTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.add(1, cgA, "/data/a", cgOld, cgPackFiles())
+		h.addUnreadable(1, cgD, "/data/d", cgOld)
+		h.demandAndWait()
+		require.Equal(t, 1, h.requested(1, cgD))
+
+		h.sync.mu.Lock()
+		copyOfD := h.sync.torrents[1][0]
+		h.sync.torrents[1] = h.sync.torrents[1][1:]
+		h.sync.mu.Unlock()
+		h.wait(10 * time.Second)
+		h.job.wakeLoop()
+		synctest.Wait()
+
+		h.sync.mu.Lock()
+		h.sync.torrents[1] = append(h.sync.torrents[1], copyOfD)
+		h.sync.mu.Unlock()
+		h.wait(10 * time.Second)
+		h.job.wakeLoop()
+		synctest.Wait()
+		require.Equal(t, 3, h.publishes())
+		require.Equal(t, 1, h.requested(1, cgD), "the torrent waits a minute after its failed read")
+		require.Equal(t, 3, h.requested(1, cgA))
+	})
+}
+
 func TestCopyGroupsJob_NoRequestForAMagnet(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.add(1, cgC, "/data/c", time.Now(), nil)
