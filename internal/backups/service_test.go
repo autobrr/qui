@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -1396,7 +1397,7 @@ func TestCleanupTorrentBlobsDefersWhileRunActive(t *testing.T) {
 	}
 	require.NoError(t, store.CreateRun(ctx, active))
 
-	svc.cleanupTorrentBlobs(ctx, []*models.BackupItem{{TorrentBlobPath: &blobRelPath}})
+	svc.cleanupTorrentBlobs(ctx, []string{blobRelPath})
 
 	require.FileExists(t, blobAbsPath, "blob deletion must wait while a backup run is active")
 }
@@ -1412,12 +1413,10 @@ func TestCleanupTorrentBlobsKeepsBlobWhenCountsUnavailable(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
 	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
 
-	items := []*models.BackupItem{{TorrentBlobPath: &blobRelPath}}
-
 	// A closed database makes every reference count fail; unknown counts must
 	// keep the blob, not delete it.
 	require.NoError(t, db.Close())
-	svc.cleanupTorrentBlobs(context.Background(), items)
+	svc.cleanupTorrentBlobs(context.Background(), []string{blobRelPath})
 
 	require.FileExists(t, blobAbsPath)
 }
@@ -1473,14 +1472,10 @@ func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
 		TorrentBlobPath: &blobRelPath,
 	}}))
 
-	items, err := store.ListItems(ctx, runA.ID)
-	require.NoError(t, err)
-	require.Len(t, items, 1)
-
 	require.NoError(t, store.CleanupRun(ctx, runA.ID))
-	svc.cleanupTorrentBlobs(ctx, items)
+	svc.cleanupTorrentBlobs(ctx, []string{blobRelPath})
 
-	_, err = os.Stat(blobAbsPath)
+	_, err := os.Stat(blobAbsPath)
 	require.NoError(t, err)
 }
 
@@ -1553,6 +1548,77 @@ func checkDeleteRunKeepsBlobsWhileARunReferencesThem(t *testing.T, db *database.
 
 	require.NoError(t, svc.DeleteRun(ctx, runC))
 	requireBlobs("after deleting C")
+}
+
+func TestApplyRetentionRemovesFilesOnlyDeletedRunsUsedSQLite(t *testing.T) {
+	t.Parallel()
+	checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t, setupTestBackupDB(t))
+}
+
+func TestApplyRetentionRemovesFilesOnlyDeletedRunsUsedPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t, testdb.NewMigratedPostgres(t, "backups-retention-files"))
+}
+
+// One pass deletes three of four runs. Torrent "b" gets a new blob in each
+// run, so the deleted runs leave blobs that no remaining run uses, and "a" and
+// "d" keep a blob that the remaining run still uses.
+func checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t *testing.T, db *database.DB) {
+	ctx := t.Context()
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "retention-files", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	files := map[string]string{} // name -> abs
+	file := func(dir, name string) *string {
+		rel := filepath.ToSlash(filepath.Join("backups", dir, name))
+		abs := filepath.Join(dataDir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(name), 0o600))
+		files[name] = abs
+		return &rel
+	}
+	blob := func(name string) *string { return file(filepath.Join("torrents", "aa", "bb"), name) }
+	a, b1, b2, b3, c, d := blob("a.torrent"), blob("b1.torrent"), blob("b2.torrent"), blob("b3.torrent"), blob("c.torrent"), blob("d.torrent")
+
+	base := time.Unix(0, 0).UTC()
+	commit := func(n int, items ...models.BackupItem) int64 {
+		at := base.Add(time.Duration(n) * time.Hour)
+		run := &models.BackupRun{InstanceID: instance.ID, Kind: models.BackupRunKindHourly, Status: models.BackupRunStatusSuccess,
+			RequestedBy: "tester", RequestedAt: at, CompletedAt: &at,
+			ManifestPath: file("runs", fmt.Sprintf("run-%d.json", n)), ArchivePath: file("runs", fmt.Sprintf("run-%d.zip", n))}
+		require.NoError(t, store.CreateRun(ctx, run))
+		require.NoError(t, store.InsertItems(ctx, run.ID, items))
+		return run.ID
+	}
+	item := func(hash string, blobPath *string) models.BackupItem {
+		return models.BackupItem{TorrentHash: hash, Name: hash, SizeBytes: 1, TorrentBlobPath: blobPath}
+	}
+	commit(1, item("a", a), item("b", b1), item("c", c))
+	commit(2, item("a", a), item("b", b2), item("c", c))
+	commit(3, item("a", a), item("b", b2), item("d", d))
+	kept := commit(4, item("a", a), item("b", b3), item("d", d))
+
+	settings := models.DefaultBackupSettings(instance.ID)
+	settings.KeepHourly = 1
+	require.NoError(t, svc.applyRetention(ctx, instance.ID, settings))
+
+	runIDs, err := store.ListRunIDs(ctx, instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{kept}, runIDs)
+
+	keptFiles := []string{"a.torrent", "b3.torrent", "d.torrent", "run-4.json", "run-4.zip"}
+	for name, abs := range files {
+		if slices.Contains(keptFiles, name) {
+			require.FileExists(t, abs, "%s is used by the remaining run", name)
+		} else {
+			require.NoFileExists(t, abs, "%s is used only by deleted runs", name)
+		}
+	}
 }
 
 func TestCleanupOrphanedBlobs(t *testing.T) {

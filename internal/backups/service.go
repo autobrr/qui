@@ -1526,15 +1526,13 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		}
 	}
 
-	// Items of the deleted runs, as blob cleanup candidates.
-	items, err := s.store.ListItemsForRuns(ctx, runIDs)
+	blobPaths, err := s.store.ListTorrentBlobPathsForRuns(ctx, runIDs)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to list backup items for cleanup")
-		items = nil
+		log.Warn().Err(err).Msg("Failed to list torrent blobs for cleanup")
+		blobPaths = nil
 	}
 
 	var filesToDelete []string
-	var itemsToCleanup []*models.BackupItem
 
 	for _, runID := range runIDs {
 		run, exists := runMap[runID]
@@ -1542,15 +1540,6 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 			// Run was already deleted or not found
 			continue
 		}
-
-		// Collect items for this run
-		var runItems []*models.BackupItem
-		for _, item := range items {
-			if item.RunID == runID {
-				runItems = append(runItems, item)
-			}
-		}
-		itemsToCleanup = append(itemsToCleanup, runItems...)
 
 		if run.ManifestPath != nil {
 			if abs := s.ResolveBackupPath(*run.ManifestPath); abs != "" {
@@ -1576,7 +1565,7 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		log.Warn().Err(err).Msg("Failed to cleanup runs from database")
 	}
 
-	s.cleanupTorrentBlobs(ctx, itemsToCleanup)
+	s.cleanupTorrentBlobs(ctx, blobPaths)
 
 	return nil
 }
@@ -1617,10 +1606,10 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 		return err
 	}
 
-	items, err := s.store.ListItems(ctx, runID)
+	blobPaths, err := s.store.ListTorrentBlobPathsForRuns(ctx, []int64{runID})
 	if err != nil {
-		log.Warn().Err(err).Int64("runID", runID).Msg("Failed to list backup items before delete")
-		items = nil
+		log.Warn().Err(err).Int64("runID", runID).Msg("Failed to list torrent blobs before delete")
+		blobPaths = nil
 	}
 
 	var filesToDelete []string
@@ -1645,7 +1634,7 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 		return err
 	}
 
-	s.cleanupTorrentBlobs(ctx, items)
+	s.cleanupTorrentBlobs(ctx, blobPaths)
 
 	return nil
 }
@@ -2108,8 +2097,8 @@ func (s *Service) loadCachedTorrent(ctx context.Context, instanceID int, hash st
 	return &cachedTorrent{data: data, relPath: *rel}, nil
 }
 
-func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.BackupItem) {
-	if len(items) == 0 {
+func (s *Service) cleanupTorrentBlobs(ctx context.Context, blobPaths []string) {
+	if len(blobPaths) == 0 {
 		return
 	}
 
@@ -2119,12 +2108,8 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 	seen := make(map[string]struct{})
 	var uniqueBlobs, lookup []string
 
-	for _, item := range items {
-		if item == nil || item.TorrentBlobPath == nil {
-			continue
-		}
-
-		canon := backupRelPath(*item.TorrentBlobPath)
+	for _, blobPath := range blobPaths {
+		canon := backupRelPath(blobPath)
 		if canon == "" {
 			continue
 		}

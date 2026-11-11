@@ -389,7 +389,7 @@ func (r *torrentListRule) match(t *qbt.Torrent) bool {
 // tracker mapping by domain, nil when no mapping exists yet. health is nil when
 // the instance has no tracker health.
 type torrentCountsInput struct {
-	torrents         []qbt.Torrent
+	torrents         []*qbt.Torrent
 	useSubcategories bool
 	health           *TrackerHealthSnapshot
 	domainToHashes   map[string]map[string]struct{}
@@ -436,7 +436,7 @@ func countTorrents(in torrentCountsInput) torrentCountsResult {
 	categoryStats := make(map[string]*countWithSize)
 	tagStats := make(map[string]*countWithSize)
 	for i := range torrents {
-		t := &torrents[i]
+		t := torrents[i]
 		byState[t.State]++
 		addStat(categoryStats, t.Category, t, sharedContentPaths[i])
 		tagged := false
@@ -510,7 +510,7 @@ func countTrackers(in torrentCountsInput, sharedContentPaths []bool, result *tor
 			s = &trackerDomainStats{}
 			stats[domain] = s
 		}
-		s.add(&torrents[i], sharedContentPaths[i])
+		s.add(torrents[i], sharedContentPaths[i])
 		if url == "" {
 			return
 		}
@@ -541,7 +541,7 @@ func resolveTrackers(in torrentCountsInput, visit func(i int, domain, url string
 	placed := placeMappedTorrents(in, func(domain string, i int) { visit(i, domain, "") })
 	need := make(map[string]struct{})
 	for i := range torrents {
-		if !placed[i] && needsMainData(&torrents[i]) {
+		if !placed[i] && needsMainData(torrents[i]) {
 			need[torrents[i].Hash] = struct{}{}
 		}
 	}
@@ -553,7 +553,7 @@ func resolveTrackers(in torrentCountsInput, visit func(i int, domain, url string
 		if placed[i] {
 			continue
 		}
-		if resolver.fallback(&torrents[i], func(domain, url string) { visit(i, domain, url) }) {
+		if resolver.fallback(torrents[i], func(domain, url string) { visit(i, domain, url) }) {
 			noTracker(i)
 		}
 	}
@@ -626,7 +626,7 @@ func groupTrackers(in torrentCountsInput, mapper *trackergroup.Mapper) map[track
 	byKey := make(map[string]*trackerSet)
 	var sets []*trackerSet
 	for i := range torrents {
-		t := &torrents[i]
+		t := torrents[i]
 		public := !PrivateUnknown(t) && !t.Private
 		domains := domainsOf[i]
 		key := "\x00public"
