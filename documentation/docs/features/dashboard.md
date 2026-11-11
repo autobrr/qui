@@ -64,7 +64,7 @@ The eye icon next to the instance URL toggles [Incognito Mode](./incognito.md) f
 
 A cross-seed often uses the data of another torrent. In hardlink or reflink mode, the two torrents have different folders, but the disk holds the data one time. The Unique size counts the copies of a release one time. Two torrents are copies when qui puts them in one group of [Group copies](./torrent-management.md#group-copies). You do not have to turn on the **Group copies** switch. Torrents with the same content path also count one time.
 
-A torrent can hold only some of the files of a release. For example, it holds two of the three episodes of a season pack, it is a REPACK that changes one file, or it is a single episode of a season pack that you also have. Such a torrent is not in the group, but the Unique size counts the files that it shares with the release one time. Inside one release, qui counts two files of the same size as the same file.
+A torrent can hold only some of the files of a release. For example, it holds two of the three episodes of a season pack, it is a REPACK that changes one file, or it is a single episode of a season pack that you also have. Such a torrent is not in the group, but the Unique size counts the files that it shares with the release one time. When two torrents of one release each have a file of the same size, qui counts the two files as one file.
 
 qui does not make sure that two copies share their data on the disk. If you downloaded a release two times, or an episode and then its season pack, the disk holds two copies, but the Unique size counts the data one time.
 
