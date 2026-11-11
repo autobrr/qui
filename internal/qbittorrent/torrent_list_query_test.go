@@ -26,16 +26,16 @@ import (
 // torrents, with the tracker inputs that the sync manager gathers.
 func listRows(sm *SyncManager, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData, useSubcategories bool, health *TrackerHealthSnapshot) []qbt.Torrent {
 	rule := sm.torrentListRuleFor(client, filters, mainData, health, useSubcategories)
-	var rows []qbt.Torrent
+	var refs []*qbt.Torrent
 	for i := range torrents {
 		if rule.match(&torrents[i]) {
-			rows = append(rows, torrents[i])
+			refs = append(refs, &torrents[i])
 		}
 	}
 	if filters.Expr != "" {
-		rows = sm.filterTorrentsByExpr(rows, filters.Expr, false)
+		refs = sm.filterTorrentsByExpr(refs, filters.Expr, false)
 	}
-	return rows
+	return torrentValues(refs)
 }
 
 // sidebarLibrary holds each qBittorrent state, a parent category with a
@@ -107,7 +107,7 @@ func TestSidebarCountsEqualRows(t *testing.T) {
 	for _, useSubcategories := range []bool{false, true} {
 		t.Run(fmt.Sprintf("subcategories %t", useSubcategories), func(t *testing.T) {
 			counts := countTorrents(torrentCountsInput{
-				torrents:         torrents,
+				torrents:         torrentRefs(torrents),
 				useSubcategories: useSubcategories,
 				health:           health,
 				domainToHashes:   byDomain(mapping),
@@ -349,7 +349,7 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 		"b.example.invalid": {"h1": {}},
 	}
 	in := torrentCountsInput{
-		torrents:       torrents,
+		torrents:       torrentRefs(torrents),
 		domainToHashes: mapping,
 		trackers:       trackerSources{extractDomain: ExtractDomainFromURL},
 	}

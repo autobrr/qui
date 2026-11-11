@@ -15,7 +15,7 @@ import (
 // The bytes that one list read with a Torrent view allocates on a library of
 // biglib.Size torrents (ADR 0051).
 func TestMemoryBudget_ListRead(t *testing.T) {
-	const budget = 16 * biglib.MB
+	const budget = 10 * biglib.MB
 
 	client, err := NewClientWithTimeout(1, biglib.Serve(t, biglib.Torrents(biglib.Size)), "", "", "", nil, nil, false, time.Minute, time.Minute)
 	require.NoError(t, err)

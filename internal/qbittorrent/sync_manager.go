@@ -1571,11 +1571,38 @@ func (sm *SyncManager) checkVersion(ctx context.Context, instanceID int, check f
 	return check(client)
 }
 
+// listSnapshot returns the Sync snapshot that a list request reads. A
+// cache-only read starts no sync, unless no sync attempt ended yet. It returns
+// nil when no sync succeeded.
+func listSnapshot(owner *syncowner.Owner, cacheOnly bool) *qbt.SyncSnapshot {
+	if cacheOnly && !owner.LastSyncTime().IsZero() {
+		return owner.SnapshotUnchecked()
+	}
+	return owner.Snapshot()
+}
+
+// snapshotTorrents returns the torrents of snapshot, or nil for no snapshot.
+// The caller owns the slice, not the torrents.
+func snapshotTorrents(snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
+	if snapshot == nil {
+		return nil
+	}
+	return snapshot.Torrents()
+}
+
+// snapshotMatching returns the torrents of snapshot that match, or nil for no snapshot.
+func snapshotMatching(snapshot *qbt.SyncSnapshot, match func(*qbt.Torrent) bool) []*qbt.Torrent {
+	if snapshot == nil {
+		return nil
+	}
+	return snapshot.Matching(match)
+}
+
 // listInstanceTorrents reads the view of one instance. Its rows keep their passkeys.
 func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentListView) (*TorrentResponse, error) {
 	instanceID, filters := view.InstanceID, view.Filters
-	var filteredTorrents []qbt.Torrent
-	var allTorrentsForCounts []qbt.Torrent
+	var filteredTorrents []*qbt.Torrent
+	var allTorrentsForCounts []*qbt.Torrent
 	var err error
 
 	// Get client and sync manager
@@ -1602,39 +1629,19 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	// Get MainData for tracker filtering (if needed)
 	mainData := resolveMainData(syncManager, mainDataModeForRequest(skipFreshData, syncManager.LastSyncTime()))
 
-	// Choose torrent getter based on freshness preference
-	// Use a wrapper for GetTorrentsUnchecked to fall back to GetTorrents if cache is empty
-	getTorrents := syncManager.GetTorrents
-	getMatching := syncManager.GetTorrentsMatching
-	if skipFreshData {
-		getTorrents = func(opts qbt.TorrentFilterOptions) []qbt.Torrent {
-			if torrents := syncManager.GetTorrentsUnchecked(opts); torrents != nil {
-				return torrents
-			}
-			return syncManager.GetTorrents(opts)
-		}
-		getMatching = func(match func(*qbt.Torrent) bool) []qbt.Torrent {
-			if torrents := syncManager.GetTorrentsMatchingUnchecked(match); torrents != nil {
-				return torrents
-			}
-			return syncManager.GetTorrentsMatching(match)
-		}
-	}
+	// The rows and the counts of the request read this one Sync snapshot.
+	syncSnapshot := listSnapshot(syncManager, skipFreshData)
 
 	// One hash and nothing else set (the details panel's stream): answer from the
 	// per-hash index. A miss falls through to the scan, which does variant matching.
 	// ponytail: single hash only; a multi-hash request still scans.
 	var hashLookupHit bool
-	if len(filters.Hashes) == 1 {
+	if len(filters.Hashes) == 1 && syncSnapshot != nil {
 		rest := filters
 		rest.Hashes = nil
 		if rest.IsEmpty() {
-			getTorrent := syncManager.GetTorrent
-			if skipFreshData {
-				getTorrent = syncManager.GetTorrentUnchecked
-			}
-			if torrent, ok := lookupTorrentByExactHash(getTorrent, filters.Hashes[0]); ok {
-				filteredTorrents = []qbt.Torrent{torrent}
+			if torrent, ok := lookupTorrentByExactHash(syncSnapshot.Torrent, filters.Hashes[0]); ok {
+				filteredTorrents = []*qbt.Torrent{torrent}
 				hashLookupHit = true
 			}
 		}
@@ -1656,10 +1663,10 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	case rule.none:
 		filteredTorrents = nil
 	case rule.narrows():
-		filteredTorrents = getMatching(rule.match)
+		filteredTorrents = snapshotMatching(syncSnapshot, rule.match)
 	default:
 		// Nothing narrows the rows, so the counts share this read of the library.
-		filteredTorrents = getTorrents(qbt.TorrentFilterOptions{})
+		filteredTorrents = snapshotTorrents(syncSnapshot)
 		allTorrentsForCounts = filteredTorrents
 	}
 
@@ -1719,13 +1726,13 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 
 	if view.SidebarCounts {
 		// Counts come from ALL torrents (not filtered) for the sidebar. Called only
-		// on a counts-cache miss; the clone is the expensive part of a cached request.
-		allTorrents := func() []qbt.Torrent {
+		// on a counts-cache miss.
+		allTorrents := func() []*qbt.Torrent {
 			if len(allTorrentsForCounts) > 0 {
 				return allTorrentsForCounts
 			}
 
-			torrents := getTorrents(qbt.TorrentFilterOptions{})
+			torrents := snapshotTorrents(syncSnapshot)
 			if len(torrents) == 0 {
 				log.Trace().
 					Int("instanceID", instanceID).
@@ -1741,14 +1748,14 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
 		rows := client.newRowBuilder(len(paginatedTorrents))
 		for i := range paginatedTorrents {
-			paginatedViews[i] = rows.view(i, &paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
+			paginatedViews[i] = rows.view(i, paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
 		}
 	}
 	if len(groupedRows) > 0 {
 		paginatedViews = make([]TorrentView, len(groupedRows))
 		rows := client.newRowBuilder(len(groupedRows))
 		for i, grouped := range groupedRows {
-			torrent := &filteredTorrents[grouped.row]
+			torrent := filteredTorrents[grouped.row]
 			paginatedViews[i] = rows.view(i, torrent, cachedHealth.Health(torrent.Hash))
 			paginatedViews[i].CopyGroup = grouped.group
 		}
@@ -3210,17 +3217,17 @@ func normalizeHashes(hashes []string) normalizedHashes {
 // lookupTorrentByExactHash reads one row by its cache key. Keys are
 // case-sensitive, so the input is tried as given, lower and upper. It does not
 // match infohash_v1/v2 variants; resolveTorrentByVariantHash scans for those.
-func lookupTorrentByExactHash(get func(string) (qbt.Torrent, bool), hash string) (qbt.Torrent, bool) {
+func lookupTorrentByExactHash(get func(string) (*qbt.Torrent, bool), hash string) (*qbt.Torrent, bool) {
 	trimmed := strings.TrimSpace(hash)
 	if trimmed == "" {
-		return qbt.Torrent{}, false
+		return nil, false
 	}
 	for _, variant := range []string{trimmed, strings.ToLower(trimmed), strings.ToUpper(trimmed)} {
 		if torrent, ok := get(variant); ok {
 			return torrent, true
 		}
 	}
-	return qbt.Torrent{}, false
+	return nil, false
 }
 
 func matchesAnyHash(torrent qbt.Torrent, targetSet map[string]struct{}) bool {
@@ -3591,7 +3598,7 @@ type cachedInstanceCounts struct {
 // to agree rejects a request whose rows and generation came from different
 // libraries: it neither serves nor stores a cache entry, at the cost of one
 // uncached counts pass.
-func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents func() []qbt.Torrent, mainData *qbt.MainData, trackerHealthSupported bool, useSubcategories bool) *TorrentCounts {
+func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents func() []*qbt.Torrent, mainData *qbt.MainData, trackerHealthSupported bool, useSubcategories bool) *TorrentCounts {
 	if client == nil || client.countsGen.Load() != clientGen || !sm.hasTrackerMapping(client.instanceID) {
 		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerHealthSupported, useSubcategories)
 	}
@@ -3633,7 +3640,7 @@ func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Clien
 // Tracker health counts (unregistered, tracker_down) are fetched from a background cache
 // that is refreshed every 60 seconds per instance. This avoids blocking API requests
 // while still providing accurate counts in the sidebar for qBittorrent 5.1+ users.
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerHealthSupported bool, useSubcategories bool) *TorrentCounts {
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context, client *Client, allTorrents []*qbt.Torrent, mainData *qbt.MainData, trackerHealthSupported bool, useSubcategories bool) *TorrentCounts {
 	in := torrentCountsInput{
 		torrents:         allTorrents,
 		useSubcategories: useSubcategories,
@@ -3672,7 +3679,7 @@ func (sm *SyncManager) TrackerGroups(ctx context.Context, instanceID int, mapper
 	}
 	mainData := resolveMainData(syncManager, mainDataModeForRequest(false, syncManager.LastSyncTime()))
 	in := torrentCountsInput{
-		torrents:       syncManager.GetTorrents(qbt.TorrentFilterOptions{}),
+		torrents:       snapshotTorrents(syncManager.Snapshot()),
 		domainToHashes: sm.getAuthoritativeDomainToHashes(instanceID),
 		trackers:       sm.trackerSources(client, mainData),
 	}
@@ -3708,7 +3715,7 @@ func (sm *SyncManager) trackerSources(client *Client, mainData *qbt.MainData) tr
 // expression that does not compile gives no rows, so a typo in a bulk action
 // touches nothing. It returns a new slice when it narrows, because the counts
 // can still read the input.
-func (sm *SyncManager) filterTorrentsByExpr(torrents []qbt.Torrent, expression string, hidePasskeys bool) []qbt.Torrent {
+func (sm *SyncManager) filterTorrentsByExpr(torrents []*qbt.Torrent, expression string, hidePasskeys bool) []*qbt.Torrent {
 	program, ok := sm.exprCache.Get(expression)
 	if !ok {
 		// User expressions see raw qbt.Torrent fields, including the
@@ -3732,9 +3739,9 @@ func (sm *SyncManager) filterTorrentsByExpr(torrents []qbt.Torrent, expression s
 	failures := 0
 	var matched []int
 	for i := range torrents {
-		env := torrents[i]
+		env := *torrents[i]
 		if hidePasskeys {
-			env = torrentWithoutPasskeys(&torrents[i])
+			env = torrentWithoutPasskeys(torrents[i])
 			env.MagnetURI = ""
 		}
 		result, err := expr.Run(program, env)
@@ -3761,7 +3768,7 @@ func (sm *SyncManager) filterTorrentsByExpr(torrents []qbt.Torrent, expression s
 	if len(matched) == len(torrents) {
 		return torrents
 	}
-	filtered := make([]qbt.Torrent, len(matched))
+	filtered := make([]*qbt.Torrent, len(matched))
 	for pos, idx := range matched {
 		filtered[pos] = torrents[idx]
 	}
@@ -4395,7 +4402,7 @@ func rankFuzzy(source, target string, sourceIsFolded bool) int {
 }
 
 // filterTorrentsBySearch filters torrents by search string with smart matching
-func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search string) []qbt.Torrent {
+func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search string) []*qbt.Torrent {
 	if search == "" {
 		return torrents
 	}
@@ -4433,7 +4440,7 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 
 	var matched []int
 	for i := range torrents {
-		torrent := &torrents[i]
+		torrent := torrents[i]
 
 		// Method 1: Exact substring match (highest priority)
 		if stringutils.ContainsFold(torrent.Name, searchLower) ||
@@ -4492,7 +4499,7 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		return torrents
 	}
 
-	filtered := make([]qbt.Torrent, len(matched))
+	filtered := make([]*qbt.Torrent, len(matched))
 	for i, idx := range matched {
 		filtered[i] = torrents[idx]
 	}
@@ -4507,8 +4514,8 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 }
 
 // filterTorrentsByGlob filters torrents using glob pattern matching
-func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern string) []qbt.Torrent {
-	var filtered []qbt.Torrent
+func (sm *SyncManager) filterTorrentsByGlob(torrents []*qbt.Torrent, pattern string) []*qbt.Torrent {
+	var filtered []*qbt.Torrent
 
 	// Convert to lowercase for case-insensitive matching
 	patternLower := strings.ToLower(pattern)
@@ -4684,7 +4691,7 @@ func stateSortPriority(state qbt.TorrentState) int {
 //
 // The result is indexed by position, so it belongs to the slice it was built
 // from and does not survive a re-sort.
-func findSharedContentPaths(torrents []qbt.Torrent) []bool {
+func findSharedContentPaths(torrents []*qbt.Torrent) []bool {
 	shared := make([]bool, len(torrents))
 	firstAt := make(map[string]int, len(torrents))
 	for i := range torrents {
@@ -4793,7 +4800,7 @@ func (t *trackerDomainStats) totals() TrackerTransferStats {
 // calculateStats calculates torrent statistics from a list of torrents.
 // Sizes are deduplicated by ContentPath to avoid inflating totals with cross-seeds.
 // With unique, the statistics also hold the Unique size.
-func (sm *SyncManager) calculateStats(torrents []qbt.Torrent, unique *uniqueSizes) *TorrentStats {
+func (sm *SyncManager) calculateStats(torrents []*qbt.Torrent, unique *uniqueSizes) *TorrentStats {
 	stats := &TorrentStats{
 		Total: len(torrents),
 	}
@@ -4802,7 +4809,7 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent, unique *uniqueSize
 	sharedContentPaths := findSharedContentPaths(torrents)
 
 	for i := range torrents {
-		torrent := &torrents[i]
+		torrent := torrents[i]
 		sharedPath := sharedContentPaths[i]
 
 		// Add speeds and session data (not deduplicated - each torrent has its own)

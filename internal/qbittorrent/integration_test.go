@@ -76,7 +76,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 			torrents[i].UpSpeed = int64(i * 500)  // 0, 500, 1000, ...
 		}
 
-		stats := sm.calculateStats(torrents, nil)
+		stats := sm.calculateStats(torrentRefs(torrents), nil)
 
 		assert.Equal(t, 10, stats.Total, "Total should be 10")
 		assert.Positive(t, stats.TotalDownloadSpeed, "Should have download speed")
@@ -396,10 +396,10 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 		"down":  TrackerHealthDown,
 	})
 
-	sm.sortTorrents(torrents, "state", true, true, cachedHealth)
+	sortTorrentValues(sm, torrents, "state", true, true, cachedHealth)
 	assert.Equal(t, []string{"paused_old", "paused", "uploading_old", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
 
-	sm.sortTorrents(torrents, "state", false, true, cachedHealth)
+	sortTorrentValues(sm, torrents, "state", false, true, cachedHealth)
 	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "uploading_old", "paused", "paused_old"}, hashes(torrents))
 }
 
@@ -425,7 +425,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", false, true, cachedHealth)
+	sortTorrentValues(sm, torrents, "state", false, true, cachedHealth)
 	assert.Equal(t, []string{"unregistered", "down", "error", "healthy"}, hashes(torrents))
 
 	unsupportedTorrents := []qbt.Torrent{
@@ -435,7 +435,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		{Hash: "error", Name: "bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
 	}
-	sm.sortTorrents(unsupportedTorrents, "state", false, false, cachedHealth)
+	sortTorrentValues(sm, unsupportedTorrents, "state", false, false, cachedHealth)
 	assert.Equal(t, []string{"healthy", "error", "down", "unregistered"}, hashes(unsupportedTorrents))
 }
 
@@ -465,10 +465,10 @@ func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", true, false, nil)
+	sortTorrentValues(sm, torrents, "state", true, false, nil)
 	assert.Equal(t, []string{"older", "newer"}, hashes(torrents))
 
-	sm.sortTorrents(torrents, "state", false, false, nil)
+	sortTorrentValues(sm, torrents, "state", false, false, nil)
 	assert.Equal(t, []string{"newer", "older"}, hashes(torrents))
 }
 
@@ -489,7 +489,7 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", false, false, nil)
+	sortTorrentValues(sm, torrents, "state", false, false, nil)
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 
@@ -509,7 +509,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	}
 
 	t.Run("filterTorrentsBySearch exact match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrents, "ubuntu")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "ubuntu")
 
 		// Should find 2 ubuntu torrents
 		assert.Len(t, results, 2, "Should find 2 Ubuntu torrents")
@@ -523,7 +523,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	})
 
 	t.Run("filterTorrentsBySearch fuzzy match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrents, "2023")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "2023")
 
 		// Should find torrents with 2023 in name or tags
 		assert.GreaterOrEqual(t, len(results), 2, "Should find at least 2 torrents with '2023'")
@@ -537,7 +537,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	})
 
 	t.Run("filterTorrentsBySearch hash match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrents, "dd44")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "dd44")
 
 		assert.Len(t, results, 1, "Should find torrent by hash")
 		assert.Equal(t, "Movie.2023.1080p.BluRay.x264", results[0].Name)
@@ -546,12 +546,12 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	t.Run("filterTorrentsBySearch non-hex search skips hash fields", func(t *testing.T) {
 		// "x264" cannot be part of a hex infohash, so the hash fields are not
 		// scanned; the name still matches.
-		results := sm.filterTorrentsBySearch(torrents, "x264")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "x264")
 		assert.Len(t, results, 2, "Should match names, not hashes")
 	})
 
 	t.Run("filterTorrentsByGlob pattern match", func(t *testing.T) {
-		results := sm.filterTorrentsByGlob(torrents, "*.iso")
+		results := sm.filterTorrentsByGlob(torrentRefs(torrents), "*.iso")
 
 		// Should find all ISO files
 		assert.GreaterOrEqual(t, len(results), 3, "Should find at least 3 ISO files")
@@ -563,7 +563,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 
 	t.Run("filterTorrentsByGlob episode example skips season packs", func(t *testing.T) {
 		// The search help offers this pattern; ? would also hit a season-only name.
-		results := sm.filterTorrentsByGlob([]qbt.Torrent{
+		results := sm.filterTorrentsByGlob([]*qbt.Torrent{
 			{Name: "Some.Show.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 			{Name: "Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		}, "*S[0-9][0-9]E[0-9][0-9]*")
@@ -634,7 +634,7 @@ func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
 	torrents := createTestTorrents(1000) // 1k torrents
 
 	for b.Loop() {
-		results := sm.filterTorrentsBySearch(torrents, "test-torrent-5")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "test-torrent-5")
 		if len(results) == 0 {
 			b.Fatal("Should find at least one match")
 		}
@@ -651,7 +651,7 @@ func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	torrents := createTestTorrents(10000) // 10k torrents
 
 	for b.Loop() {
-		stats := sm.calculateStats(torrents, nil)
+		stats := sm.calculateStats(torrentRefs(torrents), nil)
 		if stats.Total != 10000 {
 			b.Fatal("Stats calculation failed")
 		}
