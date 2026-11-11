@@ -67,11 +67,32 @@ func (sm *SyncManager) InstanceFolders(ctx context.Context, d fsops.PathDialect,
 	if err != nil {
 		return InstanceFolders{}, err
 	}
-	rule := version.rule
-	if version.optional && !prefs.UseSubcategories {
+	return instanceFolders(d, prefs, categories, version.ruleFor(prefs))
+}
+
+// CategoryPathRule is the rule an instance's qBittorrent names category
+// folders with under prefs, the same read the caller takes the default save
+// path from.
+func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int, prefs *qbt.AppPreferences) (CategoryPathRule, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return CategoryPathRule{}, fmt.Errorf("failed to get client: %w", err)
+	}
+	version, err := sm.categoryVersion(ctx, client, instanceID)
+	if err != nil {
+		return CategoryPathRule{}, err
+	}
+	return version.ruleFor(prefs), nil
+}
+
+// ruleFor applies the use_subcategories preference, which turns nesting off
+// on the versions where it is optional.
+func (v categoryVersion) ruleFor(prefs *qbt.AppPreferences) CategoryPathRule {
+	rule := v.rule
+	if v.optional && !prefs.UseSubcategories {
 		rule.Nest = false
 	}
-	return instanceFolders(d, prefs, categories, rule)
+	return rule
 }
 
 // categoryVersion reuses an instance's version answer for categoryVersionTTL.
