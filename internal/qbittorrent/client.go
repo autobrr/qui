@@ -561,27 +561,44 @@ func (c *Client) trackerManager() *qbt.TrackerManager {
 	return syncManager.Trackers()
 }
 
-func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+// trackerDetails returns the trackers of the torrents from the tracker cache
+// and fetches the hashes that the cache does not hold. A torrent that already
+// carries trackers keeps them. It writes the trackers into torrents, so pass
+// copies that the caller owns, never the torrents of a Sync snapshot.
+func (c *Client) trackerDetails(ctx context.Context, torrents []qbt.Torrent) (TrackerLookup, error) {
 	tm := c.trackerManager()
 	if tm == nil {
-		return torrents, nil, nil, errors.New("tracker manager unavailable")
+		return nil, errors.New("tracker manager unavailable")
 	}
 
-	enriched, trackerData := tm.HydrateTorrents(ctx, torrents)
-	return enriched, trackerData, nil, nil
+	_, lookup := tm.HydrateTorrents(ctx, torrents)
+	return lookup, nil
 }
 
 // refreshTrackers fetches tracker data for every torrent in one request, bypassing
-// the tracker cache. A torrent that the fetch does not return keeps no tracker data:
+// the tracker cache. A torrent that the fetch does not return gets no entry:
 // cached MainData can still hold a torrent that qBittorrent already deleted, and
 // that torrent must not block every pass.
-func (c *Client) refreshTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, error) {
+func (c *Client) refreshTrackers(ctx context.Context, torrents []*qbt.Torrent) (TrackerLookup, error) {
 	tm := c.trackerManager()
 	if tm == nil {
-		return torrents, errors.New("tracker manager unavailable")
+		return nil, errors.New("tracker manager unavailable")
 	}
-	torrents, _, err := tm.Refresh(ctx, torrents)
-	return torrents, err
+	_, lookup, err := tm.Refresh(ctx, trackerManagerInput(torrents))
+	return lookup, err
+}
+
+// trackerManagerInput builds the torrents that the tracker manager of
+// go-qbittorrent writes to. The manager reads only the hash and the trackers,
+// so the input holds only those, and the shared torrents of the Sync snapshot
+// stay as they are.
+func trackerManagerInput(torrents []*qbt.Torrent) []qbt.Torrent {
+	input := make([]qbt.Torrent, len(torrents))
+	for i, torrent := range torrents {
+		input[i].Hash = torrent.Hash
+		input[i].Trackers = torrent.Trackers
+	}
+	return input
 }
 
 func (c *Client) invalidateTrackerCache(hashes ...string) {

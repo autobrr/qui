@@ -5,15 +5,6 @@ package qbittorrent
 
 import qbt "github.com/autobrr/go-qbittorrent"
 
-// torrentRefs returns a reference to each torrent, as a Sync snapshot gives them.
-func torrentRefs(torrents []qbt.Torrent) []*qbt.Torrent {
-	refs := make([]*qbt.Torrent, len(torrents))
-	for i := range torrents {
-		refs[i] = &torrents[i]
-	}
-	return refs
-}
-
 // sortTorrentValues sorts torrents in place with sortTorrents.
 func sortTorrentValues(sm *SyncManager, torrents []qbt.Torrent, column string, desc, trackerHealthSupported bool, health *TrackerHealthSnapshot) {
 	refs := torrentRefs(torrents)
