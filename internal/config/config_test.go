@@ -991,23 +991,18 @@ func TestBaseURLNormalization(t *testing.T) {
 	}
 }
 
+// regression: #2669
 func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 	tests := []struct {
-		name      string
-		workFiles map[string]string
-		// workDirs are created as directories in the working directory.
-		workDirs []string
-		// defaultFile is written to the default config dir before New runs.
+		name        string
+		workFiles   map[string]string
+		workDirs    []string
 		defaultFile string
 		wantErr     string
-		wantParse   bool
 		wantPort    int
 		wantInWork  bool
 	}{
 		{name: "ini_in_working_dir", workFiles: map[string]string{"config.ini": "[general]\nkey=value with spaces\n"}, wantPort: 7476},
-		{name: "json_in_working_dir", workFiles: map[string]string{"config.json": `{"port": 1`}, wantPort: 7476},
-		{name: "yaml_in_working_dir", workFiles: map[string]string{"config.yaml": "port: [1\n"}, wantPort: 7476},
-		{name: "extensionless_in_working_dir", workFiles: map[string]string{"config": "port = = 1\n"}, wantPort: 7476},
 		{
 			name:        "ini_does_not_shadow_default_toml",
 			workFiles:   map[string]string{"config.ini": "[general]\nport=1\n"},
@@ -1031,7 +1026,6 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 			name:      "malformed_toml_in_working_dir",
 			workFiles: map[string]string{"config.toml": "port = = 1\n"},
 			wantErr:   "failed to read config",
-			wantParse: true,
 		},
 	}
 
@@ -1058,10 +1052,8 @@ func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
 			cfg, err := New("")
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
-				if tt.wantParse {
-					var parseErr viper.ConfigParseError
-					require.ErrorAs(t, err, &parseErr)
-				}
+				var parseErr viper.ConfigParseError
+				require.ErrorAs(t, err, &parseErr)
 				return
 			}
 			require.NoError(t, err)

@@ -203,20 +203,17 @@ func (c *AppConfig) loadFromStandardLocations() error {
 	return c.loadFromPath(standardConfigPath())
 }
 
-// standardConfigPath returns the first config.toml that is a regular file, checking the working
-// directory and then the default config directory. It falls back to the default path, where
-// loadFromPath writes a default config.
+// standardConfigPath falls back to the default path, where loadFromPath writes a default config.
 func standardConfigPath() string {
-	// Only look for config.toml. A name-only search also matches config.ini, config.json and so on,
-	// which would then be decoded as TOML.
+	// Match config.toml only: viper's name-only search also matched config.ini and other
+	// extensions, then decoded them as TOML (#2669).
 	defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
 	workDirConfigPath, err := filepath.Abs("config.toml")
 	if err != nil {
 		return defaultConfigPath
 	}
 	for _, candidate := range []string{workDirConfigPath, defaultConfigPath} {
-		// Like viper's search, skip a candidate on any stat error so an unreadable working directory
-		// falls through to the default config directory.
+		// Skip on any stat error, so an unreadable working directory falls through to the default dir.
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
