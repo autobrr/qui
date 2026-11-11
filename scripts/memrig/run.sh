@@ -10,6 +10,7 @@ BIN=$1; N=$2; SCEN=$3; OUT=$4; API=${5:-2.11.4}
 RIG=$(dirname "$(readlink -f "$0")")
 DATA=$HOME/.cache/qui-memrig/run-$$
 mkdir -p "$OUT" "$DATA"
+rm -f "$OUT/samples.txt" "$OUT/hook-codes.txt" "$OUT/list-codes.txt" "$OUT/sse-exits.txt"
 ip link set lo up
 
 python3 "$RIG/stub.py" 18080 "$N" "$API" & STUB=$!
