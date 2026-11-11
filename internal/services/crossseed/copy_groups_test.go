@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
@@ -57,7 +58,7 @@ func findCopyGroupsWithKey(t *testing.T, svc *Service, key []byte, fixtures ...c
 			files[f.instanceID][f.hash] = f.files
 		}
 	}
-	groups, err := svc.FindCopyGroups(t.Context(), torrents, files, nil, key)
+	groups, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), nil, key)
 	require.NoError(t, err)
 	members := make([][]string, 0, len(groups))
 	for _, group := range groups {
@@ -70,6 +71,23 @@ func findCopyGroupsWithKey(t *testing.T, svc *Service, key []byte, fixtures ...c
 	}
 	slices.SortFunc(members, func(a, b []string) int { return strings.Compare(a[0], b[0]) })
 	return members, groups
+}
+
+// heldCopyGroupFiles answers FindCopyGroups from files. It adds each torrent
+// that the call asks for to asked, as "instance|hash".
+func heldCopyGroupFiles(files map[int]map[string]qbt.TorrentFiles, asked *[]string) CopyGroupFiles {
+	return func(_ context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
+		out := make(map[string]qbt.TorrentFiles, len(torrents))
+		for _, t := range torrents {
+			if asked != nil {
+				*asked = append(*asked, cacheKeyForTorrentFiles(instanceID, t.Hash))
+			}
+			if list, ok := files[instanceID][t.Hash]; ok {
+				out[t.Hash] = list
+			}
+		}
+		return out, nil
+	}
 }
 
 const (
@@ -232,6 +250,34 @@ func TestFindCopyGroups_ReadsOnlyTheHeldFileLists(t *testing.T) {
 	)
 
 	assert.Equal(t, [][]string{{"1|" + a, "2|" + c}}, got)
+}
+
+func TestFindCopyGroups_AsksOnlyForTheListsOfPossibleCopies(t *testing.T) {
+	a, b, c, d := cgHash('a'), cgHash('b'), cgHash('c'), cgHash('d')
+	single := "Quiet.Harbor.2019.1080p.BluRay.x264-GRP"
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{}
+	files := map[int]map[string]qbt.TorrentFiles{1: {}}
+	add := func(hash, name, folder string, list qbt.TorrentFiles) {
+		torrents[1] = append(torrents[1], qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: hash, Name: name, SavePath: folder, ContentPath: folder + "/" + name, Size: sourceFilesTotalSize(list)}},
+			InstanceID:  1,
+		})
+		files[1][hash] = list
+	}
+	add(a, cgPack, "/data/a", cgPackFiles())
+	add(b, cgPack, "/data/b", cgPackFiles())
+	add(c, single, "/data/c", qbt.TorrentFiles{{Name: single + ".mkv", Size: 777}})
+	// The name of a season folder reads too little, so its files give the read.
+	add(d, "Season 1", "/data/d", qbt.TorrentFiles{{Name: "Season 1/" + cgEpisode1, Size: 1000}, {Name: "Season 1/" + cgEpisode2, Size: 2000}})
+
+	var asked []string
+	groups, err := newTestService().FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, &asked), nil, copyGroupTestKey)
+	require.NoError(t, err)
+
+	require.Len(t, groups, 1)
+	assert.Len(t, groups[0].Members, 3)
+	slices.Sort(asked)
+	assert.Equal(t, []string{"1|" + a, "1|" + b, "1|" + d}, asked)
 }
 
 func TestFindCopyGroups_GroupID(t *testing.T) {

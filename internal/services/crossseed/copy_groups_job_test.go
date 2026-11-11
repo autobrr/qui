@@ -512,6 +512,18 @@ func TestCopyGroupsJob_NoRequestForAMagnet(t *testing.T) {
 	})
 }
 
+func TestCopyGroupsJob_NoRequestForATorrentWithoutACopy(t *testing.T) {
+	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
+		h.addNamed(1, cgC, "Quiet.Harbor.2019.1080p.BluRay.x264-GRP", "/data/c", cgOld, qbt.TorrentFiles{{Name: "Quiet.Harbor.2019.1080p.BluRay.x264-GRP.mkv", Size: 777}})
+		h.firstMap()
+		h.add(1, cgD, "/data/d", time.Now(), cgPackFiles())
+		h.wait(copyGroupsTick)
+		require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB), cgMember(1, cgD)}), h.last())
+		require.Zero(t, h.requested(1, cgC))
+		require.Positive(t, h.requested(1, cgA))
+	})
+}
+
 func TestCopyGroupsJob_RebuildAtTheLimit(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()
@@ -876,6 +888,7 @@ func TestCopyGroupsJob_ReadyDuringAnOutage(t *testing.T) {
 	})
 	t.Run("an instance that first syncs after the first run", func(t *testing.T) {
 		pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
+			h.add(2, cgC, "/data/c", cgOld.Add(2*time.Hour), cgPackFiles())
 			h.setSynced(2, false)
 			h.firstMap()
 			gate := make(chan struct{})
@@ -885,10 +898,10 @@ func TestCopyGroupsJob_ReadyDuringAnOutage(t *testing.T) {
 			h.setSynced(2, true)
 			h.wait(2 * copyGroupsTick)
 			require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB)}), h.last(),
-				"the empty instance is not ready until its first read ends")
+				"the instance is not ready until its first read ends")
 			close(gate)
 			synctest.Wait()
-			require.Equal(t, h.want([]int{1, 2}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB)}), h.last())
+			require.Equal(t, h.want([]int{1, 2}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB), cgMember(2, cgC)}), h.last())
 		})
 	})
 }
