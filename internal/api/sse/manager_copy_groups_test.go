@@ -156,7 +156,7 @@ func TestStreamFrameAfterCopyGroupsSetter(t *testing.T) {
 		provider.mu.Lock()
 		provider.groupedResponse = copyGroupRows(true)
 		provider.mu.Unlock()
-		sm.SetCopyGroups(qbittorrent.NewCopyGroups(map[int]map[string]uint64{1: {"a": 0xaa, "b": 0xaa}}, []int{1}))
+		sm.SetCopyGroups(qbittorrent.NewCopyGroups(map[int]map[string]uint64{1: {"a": 0xaa, "b": 0xaa}}, nil, []int{1}))
 
 		frame := decodeStreamPayloadData(t, reader.waitForTick(t, time.Second).data)
 		require.Equal(t, streamEventDelta, frame.Type)
