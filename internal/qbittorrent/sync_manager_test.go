@@ -2947,8 +2947,8 @@ func TestSizeTotalsDoNotDependOnTorrentOrder(t *testing.T) {
 	require.Equal(t, forward.CategorySizes, backward.CategorySizes)
 	require.Equal(t, forward.TagSizes, backward.TagSizes)
 
-	forwardStats := sm.calculateStats(torrents)
-	backwardStats := sm.calculateStats(reversed)
+	forwardStats := sm.calculateStats(torrents, nil)
+	backwardStats := sm.calculateStats(reversed, nil)
 
 	require.Equal(t, forwardStats.TotalSize, backwardStats.TotalSize)
 	require.Equal(t, forwardStats.TotalSeedingSize, backwardStats.TotalSeedingSize)

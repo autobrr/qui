@@ -47,93 +47,101 @@ func (g *CopyGroups) groupID(instanceID int, hash string) (uint64, bool) {
 	return id, ok
 }
 
-// UniqueSize returns the Unique size (GLOSSARY.md) of the torrents of one
-// instance that keep accepts, or of all of them when keep is nil. Torrents
-// with the same content path also count one time, as in TotalSize, so a copy
-// that the last build did not group does not count twice. It is false until a
-// build that read the instance ends.
-func (g *CopyGroups) UniqueSize(instanceID int, torrents []qbt.Torrent, keep func(*qbt.Torrent) bool) (int64, bool) {
+// uniqueSizes adds up the Unique size (GLOSSARY.md) of the torrents of one
+// instance, and of the torrents among them that seed. Torrents with the same
+// content path also count one time, as in TotalSize, so a copy that the last
+// build did not group does not count twice.
+type uniqueSizes struct {
+	ids map[string]uint64
+	// parent joins the Copy groups and the content paths that hold the same data.
+	parent  []int32
+	byGroup map[uint64]int32
+	byPath  map[string]int32
+	members []uniqueSizeMember
+	// total and seeding count the torrents that share their data with no torrent.
+	total, seeding int64
+}
+
+type uniqueSizeMember struct {
+	set     int32
+	size    int64
+	seeding bool
+}
+
+// uniqueSizes is nil until a build that read the instance ends.
+func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
 	if !g.hasRead(instanceID) {
-		return 0, false
+		return nil
 	}
-	var size int64
-	data := &sharedData{parent: map[sharedDataKey]sharedDataKey{}}
-	for i := range torrents {
-		t := &torrents[i]
-		id, grouped := g.groupID(instanceID, t.Hash)
-		// A torrent that keep leaves out still joins its group and its
-		// content path, so it can link two torrents that keep accepts.
-		if grouped && t.ContentPath != "" {
-			data.join(sharedDataKey{group: id, grouped: true}, sharedDataKey{path: t.ContentPath})
+	return &uniqueSizes{ids: g.ids[instanceID], byGroup: map[uint64]int32{}, byPath: map[string]int32{}}
+}
+
+// add counts one torrent. sharedPath is its mark from findSharedContentPaths.
+// A torrent that does not seed still joins its group and its content path, so
+// it can link two torrents that seed.
+func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
+	if u == nil {
+		return
+	}
+	id, grouped := u.ids[t.Hash]
+	sharedPath = sharedPath && t.ContentPath != ""
+	if !grouped && !sharedPath {
+		u.total += t.Size
+		if seeding {
+			u.seeding += t.Size
 		}
-		if keep != nil && !keep(t) {
-			continue
+		return
+	}
+	set := int32(-1)
+	if grouped {
+		set = u.set(u.byGroup, id)
+	}
+	if sharedPath {
+		path := u.set(u.byPath, t.ContentPath)
+		if set >= 0 {
+			u.parent[u.root(set)] = u.root(path)
 		}
-		switch {
-		case grouped:
-			data.add(sharedDataKey{group: id, grouped: true}, t.Size)
-		case t.ContentPath != "":
-			data.add(sharedDataKey{path: t.ContentPath}, t.Size)
-		default:
-			size += t.Size
+		set = path
+	}
+	u.members = append(u.members, uniqueSizeMember{set: set, size: t.Size, seeding: seeding})
+}
+
+func (u *uniqueSizes) set[K comparable](sets map[K]int32, key K) int32 {
+	set, ok := sets[key]
+	if !ok {
+		set = int32(len(u.parent))
+		u.parent = append(u.parent, set)
+		sets[key] = set
+	}
+	return set
+}
+
+func (u *uniqueSizes) root(set int32) int32 {
+	for u.parent[set] != set {
+		u.parent[set] = u.parent[u.parent[set]]
+		set = u.parent[set]
+	}
+	return set
+}
+
+// totals counts each joined set at the size of its largest torrent: a copy can
+// skip files.
+func (u *uniqueSizes) totals() (total, seeding int64) {
+	all := make([]int64, len(u.parent))
+	seeds := make([]int64, len(u.parent))
+	for _, m := range u.members {
+		set := u.root(m.set)
+		all[set] = max(all[set], m.size)
+		if m.seeding {
+			seeds[set] = max(seeds[set], m.size)
 		}
 	}
-	return size + data.total(), true
-}
-
-// sharedDataKey is a Copy group or a content path.
-type sharedDataKey struct {
-	path    string
-	group   uint64
-	grouped bool
-}
-
-// sharedData joins the keys that hold the same data and counts each joined
-// set at the size of its largest torrent: a copy can skip files.
-type sharedData struct {
-	parent  map[sharedDataKey]sharedDataKey
-	members []sharedDataMember
-}
-
-type sharedDataMember struct {
-	key  sharedDataKey
-	size int64
-}
-
-func (d *sharedData) root(k sharedDataKey) sharedDataKey {
-	for {
-		p, ok := d.parent[k]
-		if !ok || p == k {
-			return k
-		}
-		if pp, ok := d.parent[p]; ok {
-			d.parent[k] = pp
-		}
-		k = p
+	total, seeding = u.total, u.seeding
+	for set := range all {
+		total += all[set]
+		seeding += seeds[set]
 	}
-}
-
-func (d *sharedData) add(k sharedDataKey, size int64) {
-	d.members = append(d.members, sharedDataMember{key: k, size: size})
-}
-
-func (d *sharedData) join(a, b sharedDataKey) {
-	if ra, rb := d.root(a), d.root(b); ra != rb {
-		d.parent[ra] = rb
-	}
-}
-
-func (d *sharedData) total() int64 {
-	sizes := make(map[sharedDataKey]int64, len(d.members))
-	for _, m := range d.members {
-		r := d.root(m.key)
-		sizes[r] = max(sizes[r], m.size)
-	}
-	var total int64
-	for _, size := range sizes {
-		total += size
-	}
-	return total
+	return total, seeding
 }
 
 type CopyGroupRow struct {

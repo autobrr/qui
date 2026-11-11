@@ -76,7 +76,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 			torrents[i].UpSpeed = int64(i * 500)  // 0, 500, 1000, ...
 		}
 
-		stats := sm.calculateStats(torrents)
+		stats := sm.calculateStats(torrents, nil)
 
 		assert.Equal(t, 10, stats.Total, "Total should be 10")
 		assert.Positive(t, stats.TotalDownloadSpeed, "Should have download speed")
@@ -651,7 +651,7 @@ func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	torrents := createTestTorrents(10000) // 10k torrents
 
 	for b.Loop() {
-		stats := sm.calculateStats(torrents)
+		stats := sm.calculateStats(torrents, nil)
 		if stats.Total != 10000 {
 			b.Fatal("Stats calculation failed")
 		}

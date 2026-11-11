@@ -354,43 +354,43 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		1: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju},
 		2: {"a1": copyGroupKaiju},
 	}, []int{1, 2})
-	stalled := torrent("d1", 300)
-	stalled.State = qbt.TorrentStateStalledUp
+	sizes := func(instanceID int, torrents ...qbt.Torrent) *TorrentStats {
+		return (&SyncManager{}).calculateStats(torrents, groups.uniqueSizes(instanceID))
+	}
 
 	tests := []struct {
-		name       string
-		instanceID int
-		torrents   []qbt.Torrent
-		keep       func(*qbt.Torrent) bool
-		want       int64
+		name        string
+		torrents    []qbt.Torrent
+		want        int64
+		wantSeeding int64
 	}{
-		{name: "two copies in one instance count one time", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000)}, want: 1000},
-		{name: "a torrent outside a group counts in full", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000), torrent("g1", 1000)}, want: 2000},
-		{name: "a copy that skips files does not lower the size of its group", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 40), torrent("b1", 50), torrent("c1", 45)}, want: 50},
-		{name: "keep leaves torrents out", instanceID: 1, torrents: []qbt.Torrent{torrent("a1", 1000), stalled}, keep: activelySeeding, want: 1000},
-		{name: "a torrent outside a group with the content path of a member counts one time", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/data/Rel")}, want: 1000},
-		{name: "two torrents outside a group with one content path count one time", instanceID: 1, torrents: []qbt.Torrent{at(torrent("y1", 300), "/data/Film"), at(torrent("z1", 300), "/data/Film")}, want: 300},
+		{name: "two copies in one instance count one time", torrents: []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000)}, want: 1000, wantSeeding: 1000},
+		{name: "a torrent outside a group counts in full", torrents: []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000), torrent("g1", 1000)}, want: 2000, wantSeeding: 2000},
+		{name: "a copy that skips files does not lower the size of its group", torrents: []qbt.Torrent{torrent("a1", 40), torrent("b1", 50), torrent("c1", 45)}, want: 50, wantSeeding: 50},
+		{name: "a stalled torrent is not seeding", torrents: []qbt.Torrent{torrent("a1", 1000), stalledTorrent("d1", 300)}, want: 1300, wantSeeding: 1000},
+		{name: "copies with a content path each count one time", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
+		{name: "torrents without a content path share no data", torrents: []qbt.Torrent{torrent("y1", 300), torrent("z1", 300)}, want: 600, wantSeeding: 600},
+		{name: "a torrent outside a group with the content path of a member counts one time", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/data/Rel")}, want: 1000, wantSeeding: 1000},
+		{name: "two torrents outside a group with one content path count one time", torrents: []qbt.Torrent{at(torrent("y1", 300), "/data/Film"), at(torrent("z1", 300), "/data/Film")}, want: 300, wantSeeding: 300},
 		// regression: #4020
-		{name: "a member that keep leaves out still joins its content path", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(stalledTorrent("b1", 1000), "/links/Rel"), at(torrent("y1", 1000), "/links/Rel")}, keep: activelySeeding, want: 1000},
-		{name: "a group joins the torrents of its content paths", instanceID: 1, torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/links/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000},
+		{name: "a stalled member still joins its content path", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(stalledTorrent("b1", 1000), "/links/Rel"), at(torrent("y1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
+		{name: "a group joins the torrents of its content paths", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/links/Rel"), at(torrent("b1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := groups.UniqueSize(tt.instanceID, tt.torrents, tt.keep)
-			require.True(t, ok)
-			require.Equal(t, tt.want, got)
+			stats := sizes(1, tt.torrents...)
+			require.Equal(t, new(tt.want), stats.UniqueSize)
+			require.Equal(t, new(tt.wantSeeding), stats.UniqueSeedingSize)
 		})
 	}
 
-	one, _ := groups.UniqueSize(1, []qbt.Torrent{torrent("a1", 1000), torrent("b1", 1000)}, nil)
-	two, _ := groups.UniqueSize(2, []qbt.Torrent{torrent("a1", 1000)}, nil)
-	require.Equal(t, int64(2000), one+two, "copies on two instances count two times")
+	one := sizes(1, torrent("a1", 1000), torrent("b1", 1000))
+	two := sizes(2, torrent("a1", 1000))
+	require.Equal(t, int64(2000), *one.UniqueSize+*two.UniqueSize, "copies on two instances count two times")
 
-	_, ok := groups.UniqueSize(3, []qbt.Torrent{torrent("a1", 1000)}, nil)
-	require.False(t, ok, "an instance outside the record has no Unique size")
-	_, ok = (*CopyGroups)(nil).UniqueSize(1, []qbt.Torrent{torrent("a1", 1000)}, nil)
-	require.False(t, ok, "no map has no Unique size")
+	require.Nil(t, sizes(3, torrent("a1", 1000)).UniqueSize, "an instance outside the record has no Unique size")
+	require.Nil(t, (*CopyGroups)(nil).uniqueSizes(1), "no map has no Unique size")
 }
 
 func TestUniqueSizeInstanceView(t *testing.T) {

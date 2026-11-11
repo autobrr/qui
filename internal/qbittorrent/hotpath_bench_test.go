@@ -224,7 +224,7 @@ func BenchmarkHotStats(b *testing.B) {
 	torrents := benchTorrents(benchSize)
 
 	for b.Loop() {
-		_ = sm.calculateStats(torrents)
+		_ = sm.calculateStats(torrents, nil)
 	}
 }
 
@@ -250,7 +250,7 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 		Torrents: views,
 		Total:    len(torrents),
 		Counts:   counts,
-		Stats:    sm.calculateStats(torrents),
+		Stats:    sm.calculateStats(torrents, nil),
 		HasMore:  true,
 	}
 
