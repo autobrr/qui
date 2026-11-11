@@ -464,3 +464,33 @@ func TestInstanceFoldersKeepTheRulesOfTheVersionRead(t *testing.T) {
 	require.EqualValues(t, 2, r.versionRequests.Load(), "the app info refresh read the version again")
 	require.Contains(t, folders.CategorySaveFolders, "/media/tv/anime")
 }
+
+func TestCategoryPathRule(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		version string
+		setup   func(s *qbtstub.Server)
+		want    CategoryPathRule
+	}{
+		{name: "4.6 subcategories on is flat", version: "2.9.3"},
+		{name: "5.1 subcategories on nests", want: CategoryPathRule{Nest: true, InheritsDownloadPath: true}},
+		{name: "5.1 subcategories off is flat", setup: func(s *qbtstub.Server) { s.SubcategoriesOff = true }, want: CategoryPathRule{InheritsDownloadPath: true}},
+		{name: "5.2 nests with subcategories off", version: "2.15.1", setup: func(s *qbtstub.Server) { s.SubcategoriesOff = true }, want: CategoryPathRule{Nest: true, InheritsDownloadPath: true}},
+		{name: "5.3 on Windows", version: "2.15.4", setup: func(s *qbtstub.Server) { s.Platform = "windows" }, want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows", InheritsDownloadPath: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			stub := newFoldersStub(t, nil)
+			stub.WebAPIVersion = tt.version
+			if tt.setup != nil {
+				tt.setup(stub)
+			}
+			prefs := &qbt.AppPreferences{UseSubcategories: !stub.SubcategoriesOff}
+			got, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).sm.CategoryPathRule(t.Context(), 1, prefs)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
