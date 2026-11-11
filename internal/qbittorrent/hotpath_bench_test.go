@@ -110,7 +110,7 @@ func benchTrackerHealth(torrents []qbt.Torrent) *TrackerHealthSnapshot {
 	now := time.Now()
 	byHash := make(map[string]TrackerHealth)
 	for i := range torrents {
-		if health := trackerHealthOf(&torrents[i], now); health != "" {
+		if health := trackerHealthOf(&torrents[i], torrents[i].Trackers, now); health != "" {
 			byHash[torrents[i].Hash] = health
 		}
 	}
