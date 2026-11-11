@@ -4,9 +4,13 @@
 package crossseed
 
 import (
+	"cmp"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"maps"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -57,7 +61,7 @@ func findCopyGroupsWithKey(t *testing.T, svc *Service, key []byte, fixtures ...c
 			files[f.instanceID][f.hash] = f.files
 		}
 	}
-	groups, err := svc.FindCopyGroups(t.Context(), torrents, files, nil, key)
+	groups, _, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), nil, nil, key)
 	require.NoError(t, err)
 	members := make([][]string, 0, len(groups))
 	for _, group := range groups {
@@ -70,6 +74,23 @@ func findCopyGroupsWithKey(t *testing.T, svc *Service, key []byte, fixtures ...c
 	}
 	slices.SortFunc(members, func(a, b []string) int { return strings.Compare(a[0], b[0]) })
 	return members, groups
+}
+
+// heldCopyGroupFiles answers FindCopyGroups from files. It adds each torrent
+// that the call asks for to asked, as "instance|hash".
+func heldCopyGroupFiles(files map[int]map[string]qbt.TorrentFiles, asked *[]string) CopyGroupFiles {
+	return func(_ context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
+		out := make(map[string]qbt.TorrentFiles, len(torrents))
+		for _, t := range torrents {
+			if asked != nil {
+				*asked = append(*asked, cacheKeyForTorrentFiles(instanceID, t.Hash))
+			}
+			if list, ok := files[instanceID][t.Hash]; ok {
+				out[t.Hash] = list
+			}
+		}
+		return out, nil
+	}
 }
 
 const (
@@ -232,6 +253,234 @@ func TestFindCopyGroups_ReadsOnlyTheHeldFileLists(t *testing.T) {
 	)
 
 	assert.Equal(t, [][]string{{"1|" + a, "2|" + c}}, got)
+}
+
+func TestFindCopyGroups_AsksOnlyForTheListsOfPossibleCopies(t *testing.T) {
+	a, b, c, d := cgHash('a'), cgHash('b'), cgHash('c'), cgHash('d')
+	single := "Quiet.Harbor.2019.1080p.BluRay.x264-GRP"
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{}
+	files := map[int]map[string]qbt.TorrentFiles{1: {}}
+	add := func(hash, name, folder string, list qbt.TorrentFiles) {
+		torrents[1] = append(torrents[1], qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: hash, Name: name, SavePath: folder, ContentPath: folder + "/" + name, Size: sourceFilesTotalSize(list)}},
+			InstanceID:  1,
+		})
+		files[1][hash] = list
+	}
+	add(a, cgPack, "/data/a", cgPackFiles())
+	add(b, cgPack, "/data/b", cgPackFiles())
+	add(c, single, "/data/c", qbt.TorrentFiles{{Name: single + ".mkv", Size: 777}})
+	// The name of a season folder reads too little, so its files give the read.
+	add(d, "Season 1", "/data/d", qbt.TorrentFiles{{Name: "Season 1/" + cgEpisode1, Size: 1000}, {Name: "Season 1/" + cgEpisode2, Size: 2000}})
+
+	var asked []string
+	groups, _, err := newTestService().FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, &asked), nil, nil, copyGroupTestKey)
+	require.NoError(t, err)
+
+	require.Len(t, groups, 1)
+	assert.Len(t, groups[0].Members, 3)
+	slices.Sort(asked)
+	assert.Equal(t, []string{"1|" + a, "1|" + b, "1|" + d}, asked)
+}
+
+// The first read of an instance gets no file list for the torrents of the
+// other instances, so a flat folder there must cost its torrent count.
+// regression: #4024
+func TestFindCopyGroups_AnUnreadFlatFolderCostsItsTorrentCount(t *testing.T) {
+	const count = 300
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{}
+	for i := range count {
+		name := fmt.Sprintf("Quiet.Harbor.%03d.2019.1080p.BluRay.x264-GRP", i)
+		content := "/data/flat/" + name + ".mkv"
+		if i == 0 {
+			content = "/data/flat"
+		}
+		torrents[1] = append(torrents[1], qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: fmt.Sprintf("%040d", i), Name: name, SavePath: "/data/flat", ContentPath: content, Size: int64(1000 + i)}},
+			InstanceID:  1,
+		})
+	}
+	svc := newTestService()
+
+	allocs := testing.AllocsPerRun(1, func() {
+		groups, _, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(nil, nil), nil, nil, copyGroupTestKey)
+		require.NoError(t, err)
+		require.Empty(t, groups)
+	})
+
+	// A pick for each pair of torrents takes over 1,500 allocations for each torrent.
+	assert.Less(t, allocs/count, 300.0)
+}
+
+// A call that starts from the links of the call before it must find the groups
+// that a call with no links finds, after each change of the library.
+func TestFindCopyGroups_LinksGiveTheGroupsOfAFullSearch(t *testing.T) {
+	type release struct {
+		name  string
+		files qbt.TorrentFiles
+	}
+	movie := "Quiet.Harbor.2019.1080p.BluRay.x264-GRP"
+	releases := []release{
+		{cgPack, cgPackFiles()},
+		{"Harbor.Watch.S01.1080p.WEB.h264-OTHER", cgPackFiles()},
+		{"Harbor.Lookout.S01.1080p.WEB.h264-GRP", cgPackFiles()},
+		{cgPack, cgPackFiles(qbt.TorrentFile{Name: cgPack + "/Harbor.Watch.S01E03.1080p.WEB.h264-GRP.mkv", Size: 500})},
+		{"Season 1", qbt.TorrentFiles{{Name: "Season 1/" + cgEpisode1, Size: 1000}, {Name: "Season 1/" + cgEpisode2, Size: 2000}}},
+		{movie, qbt.TorrentFiles{{Name: movie + ".mkv", Size: 777}}},
+	}
+	folders := []string{"/data", "/data/a", "/data/b", "/links"}
+	type torrent struct {
+		view     qbittorrent.CrossInstanceTorrentView
+		files    qbt.TorrentFiles
+		readable bool
+	}
+	library := map[string]*torrent{}
+	rng := rand.New(rand.NewPCG(1, 2))
+	place := func(tr *torrent, r release, folder string) {
+		tr.files = r.files
+		tr.view.Name, tr.view.SavePath, tr.view.ContentPath = r.name, folder, folder+"/"+r.name
+		tr.view.Size = sourceFilesTotalSize(r.files)
+	}
+	pick := func() *torrent {
+		keys := slices.Sorted(maps.Keys(library))
+		return library[keys[rng.IntN(len(keys))]]
+	}
+	read := func(_ context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
+		out := map[string]qbt.TorrentFiles{}
+		for _, v := range torrents {
+			if tr := library[cacheKeyForTorrentFiles(instanceID, v.Hash)]; tr.readable {
+				out[v.Hash] = tr.files
+			}
+		}
+		return out, nil
+	}
+	members := func(groups []CopyGroup) map[uint64][]qbittorrent.CopyGroupMember {
+		out := map[uint64][]qbittorrent.CopyGroupMember{}
+		for _, group := range groups {
+			out[group.ID] = slices.SortedFunc(slices.Values(group.Members), func(a, b qbittorrent.CopyGroupMember) int {
+				return cmp.Or(cmp.Compare(a.InstanceID, b.InstanceID), strings.Compare(a.Hash, b.Hash))
+			})
+		}
+		return out
+	}
+
+	svc := newTestService()
+	var links *CopyLinks
+	grouped := 0
+	for step := range 400 {
+		switch op := rng.IntN(10); {
+		case len(library) == 0 || op < 4 && len(library) < 30:
+			tr := &torrent{readable: rng.IntN(8) > 0}
+			tr.view = qbittorrent.CrossInstanceTorrentView{
+				TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: fmt.Sprintf("%040d", step), AddedOn: int64(step)}},
+				InstanceID:  1 + rng.IntN(2),
+			}
+			place(tr, releases[rng.IntN(len(releases))], folders[rng.IntN(len(folders))])
+			library[cacheKeyForTorrentFiles(tr.view.InstanceID, tr.view.Hash)] = tr
+		case op < 6:
+			tr := pick()
+			delete(library, cacheKeyForTorrentFiles(tr.view.InstanceID, tr.view.Hash))
+		case op < 8:
+			// A move or a rename gives the torrent a new torrent value, as a sync does.
+			tr := pick()
+			moved := *tr.view.Torrent
+			tr.view.TorrentView = &qbittorrent.TorrentView{Torrent: &moved}
+			place(tr, releases[rng.IntN(len(releases))], folders[rng.IntN(len(folders))])
+		default:
+			pick().readable = true
+		}
+		torrents := map[int][]qbittorrent.CrossInstanceTorrentView{}
+		for _, key := range slices.Sorted(maps.Keys(library)) {
+			tr := library[key]
+			torrents[tr.view.InstanceID] = append(torrents[tr.view.InstanceID], tr.view)
+		}
+
+		full, _, err := svc.FindCopyGroups(t.Context(), torrents, read, nil, nil, copyGroupTestKey)
+		require.NoError(t, err)
+		var fromLinks []CopyGroup
+		fromLinks, links, err = svc.FindCopyGroups(t.Context(), torrents, read, links, nil, copyGroupTestKey)
+		require.NoError(t, err)
+		require.Equal(t, members(full), members(fromLinks), "step %d", step)
+		grouped += len(full)
+	}
+	require.Greater(t, grouped, 400, "the library must hold groups in most steps")
+}
+
+func TestFindCopyGroups_AsksOnlyForTheChangedTorrentsAndTheirCopies(t *testing.T) {
+	a, b, c, d, e, f := cgHash('a'), cgHash('b'), cgHash('c'), cgHash('d'), cgHash('e'), cgHash('f')
+	single := "Quiet.Harbor.2019.1080p.BluRay.x264-GRP"
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{}
+	files := map[int]map[string]qbt.TorrentFiles{1: {}}
+	add := func(hash, name, folder string, list qbt.TorrentFiles) {
+		// The content path is the folder of the files, so two names can share it.
+		content, _, _ := strings.Cut(list[0].Name, "/")
+		torrents[1] = append(torrents[1], qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: hash, Name: name, SavePath: folder, ContentPath: folder + "/" + content, Size: sourceFilesTotalSize(list)}},
+			InstanceID:  1,
+		})
+		files[1][hash] = list
+	}
+	svc := newTestService()
+	var links *CopyLinks
+	search := func() (groups []CopyGroup, asked []string) {
+		var err error
+		groups, links, err = svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, &asked), links, nil, copyGroupTestKey)
+		require.NoError(t, err)
+		slices.Sort(asked)
+		return groups, asked
+	}
+
+	// a and b share a folder, c has its own, and the season folder f gives its
+	// read from its files.
+	add(a, cgPack, "/data", cgPackFiles())
+	add(b, "Harbor.Watch.S01.1080p.WEB.h264-OTHER", "/data", cgPackFiles())
+	add(c, cgPack, "/data/c", cgPackFiles())
+	add(f, "Season 1", "/data/f", qbt.TorrentFiles{{Name: "Season 1/" + cgEpisode1, Size: 1000}, {Name: "Season 1/" + cgEpisode2, Size: 2000}})
+	_, asked := search()
+	require.Equal(t, []string{"1|" + a, "1|" + b, "1|" + c, "1|" + f}, asked)
+
+	add(e, single, "/data/e", qbt.TorrentFiles{{Name: single + ".mkv", Size: 777}})
+	groups, asked := search()
+	require.Empty(t, asked, "a torrent with no copy changes no link")
+	require.Len(t, groups, 1)
+	require.Len(t, groups[0].Members, 4)
+
+	add(d, cgPack, "/data/d", cgPackFiles())
+	groups, asked = search()
+	require.Equal(t, []string{"1|" + a, "1|" + c, "1|" + d, "1|" + f}, asked, "the new copy is compared with each torrent that can be its copy, and b has another group tag")
+	require.Len(t, groups[0].Members, 5)
+
+	torrents[1] = slices.DeleteFunc(torrents[1], func(v qbittorrent.CrossInstanceTorrentView) bool { return v.Hash == b })
+	groups, asked = search()
+	require.Empty(t, asked, "the other copies keep their links")
+	require.Len(t, groups[0].Members, 4)
+}
+
+// regression: #4024
+func TestFindCopyGroups_ATorrentWhoseListNoLongerReadsLeavesItsGroup(t *testing.T) {
+	a, b, c := cgHash('a'), cgHash('b'), cgHash('c')
+	copyOf := func(hash string) qbittorrent.CrossInstanceTorrentView {
+		folder := "/data/" + hash[:1]
+		return qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: hash, Name: cgPack, SavePath: folder, ContentPath: folder + "/" + cgPack, Size: 3000}},
+			InstanceID:  1,
+		}
+	}
+	torrents := map[int][]qbittorrent.CrossInstanceTorrentView{1: {copyOf(a), copyOf(b)}}
+	files := map[int]map[string]qbt.TorrentFiles{1: {a: cgPackFiles(), b: cgPackFiles(), c: cgPackFiles()}}
+	svc := newTestService()
+	groups, links, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), nil, nil, copyGroupTestKey)
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+
+	// The new copy makes the search read a again, and that read gives no list.
+	delete(files[1], a)
+	torrents[1] = append(torrents[1], copyOf(c))
+	groups, _, err = svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), links, nil, copyGroupTestKey)
+	require.NoError(t, err)
+
+	require.Len(t, groups, 1)
+	assert.ElementsMatch(t, []qbittorrent.CopyGroupMember{{InstanceID: 1, Hash: b}, {InstanceID: 1, Hash: c}}, groups[0].Members)
 }
 
 func TestFindCopyGroups_GroupID(t *testing.T) {

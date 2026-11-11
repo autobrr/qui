@@ -62,6 +62,14 @@ type copyGroupsJob struct {
 	// fingerprints holds no value for an instance whose last read failed.
 	fingerprints      map[int]uint64
 	marks, builtMarks uint64
+	// links holds what the last rebuild found. A rebuild compares only the
+	// torrents that changed since then.
+	links *CopyLinks
+	// allForgotten is the mark of the last change that makes links of no use.
+	allForgotten uint64
+	// forgotten holds the mark of each torrent that qui changed after its links
+	// were found.
+	forgotten map[string]uint64
 	// ids is the last published map. It is nil before the first publish.
 	ids map[int]map[string]uint64
 	// failed holds the time after which an unreadable torrent is read again.
@@ -74,7 +82,7 @@ func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
 	return &copyGroupsJob{
 		svc: svc, sync: sync, key: key, seed: maphash.MakeSeed(), interval: copyGroupsTick, wake: make(chan struct{}, 1),
 		listing: map[int]bool{}, firstReads: map[int]bool{}, record: map[int]struct{}{},
-		failed: map[int]map[string]time.Time{},
+		failed: map[int]map[string]time.Time{}, forgotten: map[string]uint64{},
 	}
 }
 
@@ -118,14 +126,37 @@ func (j *copyGroupsJob) demand() {
 	}
 }
 
-// mark makes the next tick rebuild the map.
-func (j *copyGroupsJob) mark() {
+// forget makes the next tick rebuild the map and read the torrent again.
+func (j *copyGroupsJob) forget(instanceID int, hash string) {
 	if j == nil {
 		return
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.marks++
+	j.forgotten[cacheKeyForTorrentFiles(instanceID, hash)] = j.marks
+}
+
+// forgetAll makes the next tick rebuild the map and read every torrent again.
+func (j *copyGroupsJob) forgetAll() {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.marks++
+	j.allForgotten = j.marks
+}
+
+// knownLinks returns the links that a run can start from. The caller holds mu.
+func (j *copyGroupsJob) knownLinks() *CopyLinks {
+	if j.builtMarks < j.allForgotten {
+		return nil
+	}
+	if len(j.forgotten) == 0 {
+		return j.links
+	}
+	return j.links.without(maps.Keys(j.forgotten))
 }
 
 func (j *copyGroupsJob) wakeLoop() {
@@ -157,9 +188,11 @@ type copyGroupsRun struct {
 	torrents     map[int][]qbittorrent.CrossInstanceTorrentView
 	fingerprints map[int]uint64
 	marks        uint64
-	failed       map[int]map[string]time.Time
-	read         []int
-	prev         map[int]map[string]uint64
+	// links is nil for a run that compares every torrent.
+	links  *CopyLinks
+	failed map[int]map[string]time.Time
+	read   []int
+	prev   map[int]map[string]uint64
 	// offline holds the recorded instances that the run does not read.
 	offline []int
 	// retry: nothing moved, so the run rebuilds only if a due failed torrent
@@ -199,8 +232,10 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	run := copyGroupsRun{torrents: map[int][]qbittorrent.CrossInstanceTorrentView{}, fingerprints: map[int]uint64{}, marks: j.marks, failed: map[int]map[string]time.Time{}}
+	run := copyGroupsRun{torrents: map[int][]qbittorrent.CrossInstanceTorrentView{}, fingerprints: map[int]uint64{}, marks: j.marks, links: j.knownLinks(), failed: map[int]map[string]time.Time{}}
 	listFailed := false
+	known := make(map[int][]qbittorrent.CrossInstanceTorrentView, len(active))
+	var first []int
 	for _, id := range active {
 		list, ok := lists[id]
 		_, recorded := j.record[id]
@@ -212,15 +247,20 @@ func (j *copyGroupsJob) tick(ctx context.Context) bool {
 				delete(j.fingerprints, id)
 			}
 		case !recorded:
+			known[id] = list.torrents
 			if !j.firstReads[id] {
 				j.firstReads[id] = true
-				go j.firstRead(ctx, id, list.torrents)
+				first = append(first, id)
 			}
 		default:
+			known[id] = list.torrents
 			run.torrents[id] = list.torrents
 			run.fingerprints[id] = fingerprints[id]
 			run.failed[id] = maps.Clone(j.failed[id])
 		}
+	}
+	for _, id := range first {
+		go j.firstRead(ctx, id, known, run.links)
 	}
 	if len(run.torrents) == 0 && j.ids == nil && listFailed && !slices.ContainsFunc(active, func(id int) bool { return synced[id] }) {
 		// No instance can sync, so the list shows flat rows and no hint.
@@ -276,16 +316,21 @@ func (j *copyGroupsJob) readLists(ctx context.Context, instanceIDs []int) map[in
 	return lists
 }
 
+// copyGroupsPrint is what the group search reads of a torrent outside its
+// file list. A torrent with a new print is a changed torrent.
 type copyGroupsPrint struct {
 	hash, name, category, savePath, contentPath string
 	size                                        int64
 }
 
+func newCopyGroupsPrint(t *qbt.Torrent) copyGroupsPrint {
+	return copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), contentPath: t.ContentPath}
+}
+
 func (j *copyGroupsJob) fingerprint(torrents []qbittorrent.CrossInstanceTorrentView) uint64 {
 	var sum uint64
 	for i := range torrents {
-		t := torrents[i].Torrent
-		sum += maphash.Comparable(j.seed, copyGroupsPrint{hash: t.Hash, name: t.Name, category: t.Category, savePath: t.SavePath, size: searchSourceSize(t), contentPath: t.ContentPath})
+		sum += maphash.Comparable(j.seed, newCopyGroupsPrint(torrents[i].Torrent))
 	}
 	return sum
 }
@@ -299,7 +344,7 @@ func filesContext(ctx context.Context) context.Context {
 }
 
 // readFiles returns the next retry time of each torrent it could not read.
-func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView, skip map[string]time.Time) (map[string]qbt.TorrentFiles, map[string]time.Time, error) {
+func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, map[string]time.Time, error) {
 	failed := map[string]time.Time{}
 	var hashes []string
 	var wanted []*qbt.Torrent
@@ -308,10 +353,6 @@ func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents 
 		t := torrents[i].Torrent
 		hash := normalizeHash(t.Hash)
 		if t.ContentPath == "" {
-			continue
-		}
-		if retryAt, ok := skip[hash]; ok && now.Before(retryAt) {
-			failed[hash] = retryAt
 			continue
 		}
 		hashes = append(hashes, hash)
@@ -338,10 +379,23 @@ func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents 
 	return files, failed, nil
 }
 
-func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) {
+// firstRead stores the file lists of one instance that its groups with the
+// torrents of known need, so that a rebuild reads them from the cache.
+func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map[int][]qbittorrent.CrossInstanceTorrentView, links *CopyLinks) {
 	ctx, cancel := context.WithTimeout(ctx, localReadFillTimeout)
 	defer cancel()
-	_, failed, err := j.readFiles(ctx, instanceID, torrents, nil)
+	failed := map[string]time.Time{}
+	settings, err := j.svc.GetAutomationSettings(ctx)
+	if err == nil {
+		_, _, err = j.svc.FindCopyGroups(ctx, known, func(ctx context.Context, id int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
+			if id != instanceID {
+				return nil, nil
+			}
+			files, unread, err := j.readFiles(ctx, id, torrents)
+			maps.Copy(failed, unread)
+			return files, err
+		}, links, settings.CategoryMappingRules, j.key)
+	}
 
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -356,6 +410,71 @@ func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, torrents 
 	if !j.rebuilding {
 		j.wakeLoop()
 	}
+}
+
+// copyGroupsReader answers FindCopyGroups with the file lists of one run. It
+// reads each torrent one time, also when the run starts FindCopyGroups again.
+type copyGroupsReader struct {
+	job   *copyGroupsJob
+	files map[int]map[string]qbt.TorrentFiles
+	// failed holds the next retry time of each torrent that the run does not
+	// read: its last read failed and its retry time is later, or its read
+	// failed in this run.
+	failed map[int]map[string]time.Time
+	// broken is the instance whose file batch failed.
+	broken   int
+	isBroken bool
+}
+
+// newCopyGroupsReader starts with the reads of retried, so the run does not
+// fetch those torrents again. A failed torrent that the run does not ask for
+// keeps its retry time.
+func newCopyGroupsReader(j *copyGroupsJob, run copyGroupsRun, retried map[int]copyGroupsRead) *copyGroupsReader {
+	r := &copyGroupsReader{job: j, files: map[int]map[string]qbt.TorrentFiles{}, failed: map[int]map[string]time.Time{}}
+	now := time.Now()
+	for id := range run.torrents {
+		r.files[id] = maps.Clone(retried[id].files)
+		if r.files[id] == nil {
+			r.files[id] = map[string]qbt.TorrentFiles{}
+		}
+		r.failed[id] = maps.Clone(retried[id].failed)
+		if r.failed[id] == nil {
+			r.failed[id] = map[string]time.Time{}
+		}
+		for hash, retryAt := range run.failed[id] {
+			if now.Before(retryAt) {
+				r.failed[id][hash] = retryAt
+			}
+		}
+	}
+	return r
+}
+
+func (r *copyGroupsReader) read(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
+	files, failed := r.files[instanceID], r.failed[instanceID]
+	torrents = slices.DeleteFunc(slices.Clone(torrents), func(t qbittorrent.CrossInstanceTorrentView) bool {
+		hash := normalizeHash(t.Hash)
+		_, unread := failed[hash]
+		return unread || len(files[hash]) > 0
+	})
+	if len(torrents) == 0 {
+		return files, nil
+	}
+	read, unread, err := r.job.readFiles(ctx, instanceID, torrents)
+	if err != nil {
+		r.broken, r.isBroken = instanceID, true
+		return nil, err
+	}
+	maps.Copy(files, read)
+	maps.Copy(failed, unread)
+	return files, nil
+}
+
+// drop forgets the instance whose file batch failed.
+func (r *copyGroupsReader) drop(instanceID int) {
+	delete(r.files, instanceID)
+	delete(r.failed, instanceID)
+	r.isBroken = false
 }
 
 func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
@@ -383,61 +502,52 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 		log.Debug().Err(err).Msg("crossseed: Copy groups keep the last map, because the settings could not be loaded")
 		return
 	}
-	files := make(map[int]map[string]qbt.TorrentFiles, len(run.torrents))
-	failed := make(map[int]map[string]time.Time, len(run.torrents))
-	for id, torrents := range run.torrents {
-		done := retried[id]
-		if len(done.hashes) > 0 {
-			torrents = slices.DeleteFunc(slices.Clone(torrents), func(t qbittorrent.CrossInstanceTorrentView) bool {
-				return done.hashes[normalizeHash(t.Hash)]
-			})
-		}
-		files[id], failed[id], err = j.readFiles(ctx, id, torrents, run.failed[id])
-		if err == nil && len(done.hashes) > 0 {
-			maps.Copy(files[id], done.files)
-			maps.Copy(failed[id], done.failed)
-		}
+	reader := newCopyGroupsReader(j, run, retried)
+	var groups []CopyGroup
+	var links *CopyLinks
+	for {
+		groups, links, err = j.svc.FindCopyGroups(ctx, run.torrents, reader.read, run.links, settings.CategoryMappingRules, j.key)
 		if ctx.Err() != nil {
-			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups keep the last map, because the file lists could not be read in time")
+			log.Debug().Err(err).Msg("crossseed: Copy groups keep the last map, because the file lists could not be read in time")
 			return
 		}
-		if err != nil {
-			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups keep the entries of an instance, because its file lists could not be read")
-			delete(run.torrents, id)
-			delete(run.fingerprints, id)
-			delete(failed, id)
-			run.offline = append(run.offline, id)
+		if err == nil {
+			break
 		}
-	}
-	if len(run.torrents) == 0 {
-		j.mu.Lock()
-		for _, id := range run.offline {
-			delete(j.fingerprints, id)
+		if !reader.isBroken {
+			log.Debug().Err(err).Msg("crossseed: Copy groups keep the last map, because the rebuild stopped")
+			return
 		}
-		j.mu.Unlock()
-		return
-	}
-	groups, err := j.svc.FindCopyGroups(ctx, run.torrents, files, settings.CategoryMappingRules, j.key)
-	if err != nil {
-		log.Debug().Err(err).Msg("crossseed: Copy groups keep the last map, because the rebuild stopped")
-		return
+		log.Debug().Err(err).Int("instanceID", reader.broken).Msg("crossseed: Copy groups keep the entries of an instance, because its file lists could not be read")
+		reader.drop(reader.broken)
+		delete(run.torrents, reader.broken)
+		delete(run.fingerprints, reader.broken)
+		run.offline = append(run.offline, reader.broken)
+		if len(run.torrents) == 0 {
+			j.mu.Lock()
+			for _, id := range run.offline {
+				delete(j.fingerprints, id)
+			}
+			j.mu.Unlock()
+			return
+		}
 	}
 	ids := keepOfflineGroups(groups, run.torrents, run.prev, run.offline)
 
 	j.mu.Lock()
 	j.ids = ids
-	j.fingerprints, j.builtMarks = run.fingerprints, run.marks
-	maps.Copy(j.failed, failed)
+	j.fingerprints, j.builtMarks, j.links = run.fingerprints, run.marks, links
+	maps.DeleteFunc(j.forgotten, func(_ string, mark uint64) bool { return mark <= run.marks })
+	maps.Copy(j.failed, reader.failed)
 	j.mu.Unlock()
 	j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(ids, run.read))
-	log.Debug().Bool("retryRead", run.retry).Ints("instances", run.read).Int("groups", len(groups)).
+	log.Debug().Bool("retryRead", run.retry).Bool("allTorrents", run.links == nil).Ints("instances", run.read).Int("groups", len(groups)).
 		Dur("elapsed", time.Since(started)).Msg("crossseed: Copy groups rebuilt")
 }
 
 // copyGroupsRead holds what a retry read for one instance, so the rebuild of
 // the same run does not fetch those torrents again.
 type copyGroupsRead struct {
-	hashes map[string]bool
 	files  map[string]qbt.TorrentFiles
 	failed map[string]time.Time
 }
@@ -461,7 +571,7 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[
 		if len(due) == 0 {
 			continue
 		}
-		files, failed, err := j.readFiles(ctx, id, due, nil)
+		files, failed, err := j.readFiles(ctx, id, due)
 		if ctx.Err() != nil {
 			log.Debug().Err(err).Int("instanceID", id).Msg("crossseed: Copy groups retry stopped")
 			return nil, false
@@ -473,7 +583,7 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[
 		for hash := range hashes {
 			read = read || len(files[hash]) > 0
 		}
-		retried[id] = copyGroupsRead{hashes: hashes, files: files, failed: failed}
+		retried[id] = copyGroupsRead{files: files, failed: failed}
 	}
 	if read {
 		return retried, true
