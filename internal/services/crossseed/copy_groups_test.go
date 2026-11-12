@@ -51,6 +51,23 @@ func findCopyGroupsAndLinks(t *testing.T, svc *Service, key []byte, fixtures ...
 	if svc == nil {
 		svc = newTestService()
 	}
+	torrents, files := copyGroupInput(fixtures...)
+	groups, links, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), nil, nil, key)
+	require.NoError(t, err)
+	members := make([][]string, 0, len(groups))
+	for _, group := range groups {
+		var keys []string
+		for _, m := range group.Members {
+			keys = append(keys, cacheKeyForTorrentFiles(m.InstanceID, m.Hash))
+		}
+		slices.Sort(keys)
+		members = append(members, keys)
+	}
+	slices.SortFunc(members, func(a, b []string) int { return strings.Compare(a[0], b[0]) })
+	return members, groups, links
+}
+
+func copyGroupInput(fixtures ...copyGroupFixture) (map[int][]qbittorrent.CrossInstanceTorrentView, map[int]map[string]qbt.TorrentFiles) {
 	torrents := make(map[int][]qbittorrent.CrossInstanceTorrentView)
 	files := make(map[int]map[string]qbt.TorrentFiles)
 	for _, f := range fixtures {
@@ -67,19 +84,7 @@ func findCopyGroupsAndLinks(t *testing.T, svc *Service, key []byte, fixtures ...
 			files[f.instanceID][f.hash] = f.files
 		}
 	}
-	groups, links, err := svc.FindCopyGroups(t.Context(), torrents, heldCopyGroupFiles(files, nil), nil, nil, key)
-	require.NoError(t, err)
-	members := make([][]string, 0, len(groups))
-	for _, group := range groups {
-		var keys []string
-		for _, m := range group.Members {
-			keys = append(keys, cacheKeyForTorrentFiles(m.InstanceID, m.Hash))
-		}
-		slices.Sort(keys)
-		members = append(members, keys)
-	}
-	slices.SortFunc(members, func(a, b []string) int { return strings.Compare(a[0], b[0]) })
-	return members, groups, links
+	return torrents, files
 }
 
 // heldCopyGroupFiles answers FindCopyGroups from files. It adds each torrent
@@ -469,6 +474,14 @@ func TestFindCopyGroups_LinksGiveTheGroupsOfAFullSearch(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, members(full), members(fromLinks), "step %d", step)
 		require.Equal(t, partHolders(fullLinks.parts), partHolders(links.parts), "step %d", step)
+		if step%4 == 0 {
+			job := &copyGroupsJob{svc: svc, key: copyGroupTestKey, sliceFrom: 3}
+			inSlices, sliceLinks, err := job.findInSlices(t.Context(), torrents, read, nil, nil, func() {})
+			require.NoError(t, err)
+			require.Equal(t, members(full), members(inSlices), "step %d, in slices", step)
+			require.Equal(t, partHolders(fullLinks.parts), partHolders(sliceLinks.parts), "step %d, in slices", step)
+			require.Equal(t, fullLinks.prints, sliceLinks.prints, "step %d, in slices", step)
+		}
 		grouped += len(full)
 		split += len(fullLinks.parts)
 	}

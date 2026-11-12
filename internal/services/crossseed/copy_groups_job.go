@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"hash/maphash"
@@ -15,6 +16,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -26,6 +28,11 @@ const (
 	// copyGroupsListWait bounds a torrent list read: with no client, GetClient
 	// can wait 60 s on a login that ignores the context.
 	copyGroupsListWait = 10 * time.Second
+	// copyGroupsSliceFrom is the number of changed torrents above which a run
+	// compares them in copyGroupsSlices searches, so that it holds the file
+	// lists of one slice and not of the library.
+	copyGroupsSliceFrom = 5000
+	copyGroupsSlices    = 5
 )
 
 // copyGroupsSync is what the Copy groups job reads and writes (ADR 0005).
@@ -46,6 +53,8 @@ type copyGroupsJob struct {
 	seed maphash.Seed
 	// interval is copyGroupsTick, except in tests that run on a real clock.
 	interval time.Duration
+	// sliceFrom is copyGroupsSliceFrom, except in tests.
+	sliceFrom int
 
 	mu sync.Mutex
 	// cancel is nil until StartCopyGroups and after StopCopyGroups.
@@ -88,7 +97,7 @@ func newCopyGroupsJob(svc *Service, sync copyGroupsSync) *copyGroupsJob {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 	return &copyGroupsJob{
-		svc: svc, sync: sync, key: key, seed: maphash.MakeSeed(), interval: copyGroupsTick, wake: make(chan struct{}, 1),
+		svc: svc, sync: sync, key: key, seed: maphash.MakeSeed(), interval: copyGroupsTick, sliceFrom: copyGroupsSliceFrom, wake: make(chan struct{}, 1),
 		listing: map[int]bool{}, firstReads: map[int]bool{}, record: map[int]struct{}{},
 		failed: map[int]map[string]time.Time{}, forgotten: map[string]uint64{},
 		seen: map[int]map[string]copyGroupsPrint{},
@@ -445,14 +454,14 @@ func (j *copyGroupsJob) firstRead(ctx context.Context, instanceID int, known map
 	failed := map[string]time.Time{}
 	settings, err := j.svc.GetAutomationSettings(ctx)
 	if err == nil {
-		_, _, err = j.svc.FindCopyGroups(ctx, known, func(ctx context.Context, id int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
+		_, _, err = j.findInSlices(ctx, known, func(ctx context.Context, id int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
 			if id != instanceID {
 				return nil, nil
 			}
 			files, unread, err := j.readFiles(ctx, id, torrents)
 			maps.Copy(failed, unread)
 			return files, err
-		}, links, settings.CategoryMappingRules, j.key)
+		}, links, settings.CategoryMappingRules, func() {})
 	}
 
 	j.mu.Lock()
@@ -528,6 +537,13 @@ func (r *copyGroupsReader) read(ctx context.Context, instanceID int, torrents []
 	return files, nil
 }
 
+// nextSlice forgets the file lists, so that the run holds the lists of one slice.
+func (r *copyGroupsReader) nextSlice() {
+	for _, files := range r.files {
+		clear(files)
+	}
+}
+
 // drop forgets the instance whose file batch failed.
 func (r *copyGroupsReader) drop(instanceID int) {
 	delete(r.files, instanceID)
@@ -564,7 +580,7 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	var groups []CopyGroup
 	var links *CopyLinks
 	for {
-		groups, links, err = j.svc.FindCopyGroups(ctx, run.torrents, reader.read, run.links, settings.CategoryMappingRules, j.key)
+		groups, links, err = j.findInSlices(ctx, run.torrents, reader.read, run.links, settings.CategoryMappingRules, reader.nextSlice)
 		if ctx.Err() != nil {
 			log.Debug().Err(err).Msg("crossseed: Copy groups keep the last map, because the file lists could not be read in time")
 			return
@@ -610,6 +626,128 @@ func (j *copyGroupsJob) rebuild(ctx context.Context, run copyGroupsRun) {
 	j.sync.SetCopyGroups(qbittorrent.NewCopyGroups(ids, parts, run.read))
 	log.Debug().Bool("retryRead", run.retry).Bool("allTorrents", run.links == nil).Ints("instances", run.read).Int("groups", len(groups)).
 		Dur("elapsed", time.Since(started)).Msg("crossseed: Copy groups rebuilt")
+}
+
+// findInSlices is FindCopyGroups. Above j.sliceFrom changed torrents it
+// compares them in copyGroupsSlices searches, so that a search holds the file
+// lists of one slice. It calls nextSlice between two slices.
+func (j *copyGroupsJob) findInSlices(
+	ctx context.Context,
+	torrents map[int][]qbittorrent.CrossInstanceTorrentView,
+	read CopyGroupFiles,
+	last *CopyLinks,
+	rules []models.CategoryMappingRule,
+	nextSlice func(),
+) ([]CopyGroup, *CopyLinks, error) {
+	isChanged := func(t qbittorrent.CrossInstanceTorrentView) bool {
+		return last == nil || last.prints[cacheKeyForTorrentFiles(t.InstanceID, t.Hash)] != newCopyGroupsPrint(t.Torrent)
+	}
+	changed := 0
+	for _, list := range torrents {
+		for i := range list {
+			if isChanged(list[i]) {
+				changed++
+			}
+		}
+	}
+	if changed <= j.sliceFrom {
+		return j.svc.FindCopyGroups(ctx, torrents, read, last, rules, j.key)
+	}
+	size := (changed + copyGroupsSlices - 1) / copyGroupsSlices
+
+	prints := make(map[string]copyGroupsPrint, changed)
+	for _, list := range torrents {
+		for i := range list {
+			prints[cacheKeyForTorrentFiles(list[i].InstanceID, list[i].Hash)] = newCopyGroupsPrint(list[i].Torrent)
+		}
+	}
+	links := last
+	if links == nil {
+		links = &CopyLinks{}
+	}
+	var unread []string
+	var groups []CopyGroup
+	for n, slice := range copyGroupSlices(torrents, isChanged, size) {
+		if n > 0 {
+			nextSlice()
+		}
+		// Each torrent outside the slice counts as not changed in this search.
+		for _, t := range slice {
+			delete(prints, cacheKeyForTorrentFiles(t.InstanceID, t.Hash))
+		}
+		var err error
+		groups, links, err = j.svc.FindCopyGroups(ctx, torrents, read,
+			&CopyLinks{prints: prints, pairs: links.pairs, shared: links.shared, sizes: links.sizes, reads: links.reads}, rules, j.key)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, t := range slice {
+			prints[cacheKeyForTorrentFiles(t.InstanceID, t.Hash)] = newCopyGroupsPrint(t.Torrent)
+		}
+		for key := range prints {
+			if _, ok := links.prints[key]; !ok {
+				unread = append(unread, key)
+			}
+		}
+	}
+	for _, key := range unread {
+		delete(links.prints, key)
+	}
+	return groups, links, nil
+}
+
+// copyGroupSlices splits the changed torrents into slices of about size
+// torrents. A search reads the whole shared-path group of a changed torrent,
+// so the changed torrents of a group stay in one slice. Copies have like
+// names, so the slices follow the names.
+func copyGroupSlices(torrents map[int][]qbittorrent.CrossInstanceTorrentView, isChanged func(qbittorrent.CrossInstanceTorrentView) bool, size int) [][]qbittorrent.CrossInstanceTorrentView {
+	byName := func(a, b qbittorrent.CrossInstanceTorrentView) int {
+		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.InstanceID, b.InstanceID), cmp.Compare(a.Hash, b.Hash))
+	}
+	var sets [][]qbittorrent.CrossInstanceTorrentView
+	for _, list := range torrents {
+		parent := make([]int, len(list))
+		for i := range parent {
+			parent[i] = i
+		}
+		root := func(i int) int {
+			for parent[i] != i {
+				parent[i] = parent[parent[i]]
+				i = parent[i]
+			}
+			return i
+		}
+		for _, group := range sharedPathGroups(list) {
+			group = slices.DeleteFunc(group, func(i int) bool { return !isChanged(list[i]) })
+			for _, i := range group {
+				parent[root(i)] = root(group[0])
+			}
+		}
+		members := map[int][]qbittorrent.CrossInstanceTorrentView{}
+		for i := range list {
+			if isChanged(list[i]) {
+				members[root(i)] = append(members[root(i)], list[i])
+			}
+		}
+		for _, set := range members {
+			slices.SortFunc(set, byName)
+		}
+		sets = slices.AppendSeq(sets, maps.Values(members))
+	}
+	slices.SortFunc(sets, func(a, b []qbittorrent.CrossInstanceTorrentView) int { return byName(a[0], b[0]) })
+
+	var all [][]qbittorrent.CrossInstanceTorrentView
+	var slice []qbittorrent.CrossInstanceTorrentView
+	for _, set := range sets {
+		slice = append(slice, set...)
+		if len(slice) >= size {
+			all, slice = append(all, slice), nil
+		}
+	}
+	if len(slice) > 0 {
+		all = append(all, slice)
+	}
+	return all
 }
 
 // copyGroupsRead holds what a retry read for one instance, so the rebuild of
