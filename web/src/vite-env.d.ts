@@ -13,6 +13,7 @@ declare global {
 
   interface ImportMetaEnv {
     readonly VITE_DEMO?: string
+    readonly VITE_PROTO_FIXTURE?: string
   }
 }
 

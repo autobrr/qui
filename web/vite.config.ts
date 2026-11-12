@@ -180,7 +180,8 @@ export default defineConfig(({ mode }) => {
     },
     proxy: {
       "/api": {
-        target: "http://localhost:7476",
+        // PROTOTYPE: QUI_API_TARGET points the dev server at another qui.
+        target: process.env.QUI_API_TARGET ?? "http://localhost:7476",
         changeOrigin: true,
       },
     },

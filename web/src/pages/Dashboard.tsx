@@ -87,7 +87,7 @@ import type {
   TrackerTransferStats
 } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { Link } from "@tanstack/react-router"
+import { Link, useSearch } from "@tanstack/react-router"
 import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Database, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, MoreVertical, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -111,8 +111,10 @@ import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import type { TorrentStreamPayload } from "@/types"
+import { DashboardPrototype, isPrototypeVariant } from "@/pages/dashboard-prototype"
+import { useFixtureStats } from "@/pages/dashboard-prototype/fixture"
 
-interface DashboardInstanceStats {
+export interface DashboardInstanceStats {
   instance: InstanceResponse
   stats: TorrentStats | null
   serverState: ServerState | null
@@ -1235,7 +1237,7 @@ function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
   )
 }
 
-type GlobalStats = ReturnType<typeof useGlobalStats>
+export type GlobalStats = ReturnType<typeof useGlobalStats>
 
 function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
   const { t } = useTranslation("dashboard")
@@ -3093,7 +3095,13 @@ export function Dashboard() {
   // Query handoff: when the dashboard is visible we run the full SSE-backed
   // stats stream; after the delayed hide, we stop the heavy stream and only
   // poll transfer info for title bar speeds.
-  const statsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed })
+  // PROTOTYPE: `?variant=` picks a dashboard variant and `?data=` its data, in dev builds only.
+  const prototypeSearch = useSearch({ strict: false }) as { variant?: string; data?: string }
+  const useFixture = import.meta.env.DEV &&
+    (prototypeSearch.data ? prototypeSearch.data === "fixture" : import.meta.env.VITE_PROTO_FIXTURE === "1")
+  const liveStatsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed && !useFixture })
+  const fixtureStatsData = useFixtureStats(useFixture)
+  const statsData = useFixture ? fixtureStatsData : liveStatsData
   const globalStats = useGlobalStats(statsData)
   const transferInfoQueries = useQueries({
     queries: activeInstances.map(instance => ({
@@ -3166,8 +3174,13 @@ export function Dashboard() {
     )
   }
 
+  if (import.meta.env.DEV && isPrototypeVariant(prototypeSearch.variant)) {
+    return <DashboardPrototype variant={prototypeSearch.variant} statsData={statsData} globalStats={globalStats} seedHistory={useFixture} />
+  }
+
   return (
     <div className="p-4 lg:p-6 pb-16">
+      {import.meta.env.DEV && <DashboardPrototype variant="current" statsData={statsData} globalStats={globalStats} seedHistory={useFixture} />}
       <div className="mb-6">
         <PageHeader
           title={t("title")}
