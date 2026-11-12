@@ -256,3 +256,30 @@ func TestParser_ReadsWebSourceAfterUHDAndAnotherTag(t *testing.T) {
 		require.Equal(t, want, parser.Parse(name).Source, name)
 	}
 }
+
+func TestParser_GivesTheReleaseOfParseString(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+	for _, name := range []string{
+		"Harbor.Watch.S01.UHD.HDTV.x265-GRP",
+		"Quiet Tide - Harbor Sounds [FLAC 16bit 44.1kHz]",
+	} {
+		want := rls.ParseString(name)
+		got := parser.Parse(name)
+		require.Equal(t, want.Title, got.Title, name)
+		require.Equal(t, want.Resolution, got.Resolution, name)
+		require.Equal(t, want.Audio, got.Audio, name)
+		require.Equal(t, want.Language, got.Language, name)
+	}
+}
+
+func TestParser_KeepsATagListOfTheExactSize(t *testing.T) {
+	t.Parallel()
+
+	release := NewDefaultParser().Parse("Harbor.Watch.S01E02.The.Quiet.Tide.2160p.WEB-DL.DDP5.1.DV.HDR.H.265-GRP")
+	tags := release.Tags()
+	require.NotEmpty(t, tags)
+	// A copy of the tags can get room for some more, up to the next allocation size.
+	require.LessOrEqual(t, cap(tags), len(tags)+len(tags)/8+1)
+}
