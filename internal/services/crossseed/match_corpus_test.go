@@ -478,6 +478,14 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
+		name:          "group tag that repeats its site label against another group under the label",
+		source:        "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-kaijutv[kaijutv]",
+		candidate:     "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-OTHER[kaijutv]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
 		name:          "REPACK flag in a trailing bracket against the flag in the name",
 		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",

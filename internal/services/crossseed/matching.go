@@ -545,7 +545,8 @@ func (m matcher) compareGroupSiteAndChecksum(comparison *releaseComparison, sour
 	// Only enforce group matching if the source has a group tag. rls repeats a
 	// bracket tag such as [SubsPlease] into Group when the name has no other
 	// group, and the Site rule below judges that tag.
-	if sourceGroup != "" && sourceGroup != sourceSite && !spaceJoined {
+	bracketGroup := sourceGroup != "" && sourceGroup == sourceSite && !releaseHasExplicitGroupTag(source)
+	if sourceGroup != "" && !bracketGroup && !spaceJoined {
 		candidateGroupIdentity := candidateGroup
 		if candidateGroupIdentity == "" {
 			candidateGroupIdentity = candidateSite
