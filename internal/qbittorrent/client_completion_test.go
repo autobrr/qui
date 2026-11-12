@@ -572,8 +572,8 @@ func TestStateHandlersReadAPartialUpdate(t *testing.T) {
 		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
 			completed <- torrent
 		})
-		added := make(chan []qbt.Torrent, 4)
-		client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []qbt.Torrent) {
+		added := make(chan []*qbt.Torrent, 4)
+		client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []*qbt.Torrent) {
 			added <- torrents
 		})
 		handle := func(update qbt.SyncUpdate) {
@@ -714,8 +714,8 @@ func TestHandleAddedUpdatesBurstCallsHandlerOncePerSync(t *testing.T) {
 		const burst = 10_000
 		client := &Client{instanceID: 13}
 
-		batches := make(chan []qbt.Torrent, burst)
-		client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []qbt.Torrent) {
+		batches := make(chan []*qbt.Torrent, burst)
+		client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []*qbt.Torrent) {
 			batches <- torrents
 		})
 
@@ -759,7 +759,7 @@ func TestHandleAddedUpdatesRunsOnBoundedGoroutines(t *testing.T) {
 
 		var running, maxRunning, calls atomic.Int64
 		release := make(chan struct{})
-		client.SetTorrentAddedHandler(func(context.Context, int, []qbt.Torrent) {
+		client.SetTorrentAddedHandler(func(context.Context, int, []*qbt.Torrent) {
 			n := running.Add(1)
 			for {
 				prev := maxRunning.Load()

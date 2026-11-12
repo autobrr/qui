@@ -128,7 +128,7 @@ func newFlagsRig(t *testing.T) *flagsRig {
 	return rig
 }
 
-// pass syncs MainData, as the loop's GetTorrents does when the cache is stale,
+// pass syncs MainData, as the loop's read does when the cache is stale,
 // runs one health pass, and returns the torrents/info requests it sent.
 func (rig *flagsRig) pass(t *testing.T) [][]string {
 	t.Helper()

@@ -3350,34 +3350,27 @@ func TestListTorrentsSingleHashSkipsLibraryCopy(t *testing.T) {
 	require.Less(t, hashBytes*10, exprBytes, "a single-hash request must allocate far less than the library scan")
 }
 
-// Orphan scan deletes files that no torrent claims, so it must see a torrent
-// added after the last sync, even when its read joins a sync already in flight
-// that returns an older snapshot.
-func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
+// Orphan scan deletes files that no torrent claims, and a torrent-added
+// notification reads the new torrents again by hash, so both reads must see a
+// torrent added after the last sync, even when the read joins a sync already
+// in flight that returns an older snapshot.
+func TestGetTorrentRefsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 	t.Parallel()
 
-	reads := map[string]func(ctx context.Context, sm *SyncManager) ([]string, error){
-		"copies": func(ctx context.Context, sm *SyncManager) ([]string, error) {
-			torrents, err := sm.GetTorrentsFresh(ctx, 1, qbt.TorrentFilterOptions{})
-			hashes := make([]string, 0, len(torrents))
-			for _, torrent := range torrents {
-				hashes = append(hashes, torrent.Hash)
-			}
-			return hashes, err
-		},
-		"refs": func(ctx context.Context, sm *SyncManager) ([]string, error) {
-			torrents, err := sm.GetTorrentRefsFresh(ctx, 1)
-			hashes := make([]string, 0, len(torrents))
-			for _, torrent := range torrents {
-				hashes = append(hashes, torrent.Hash)
-			}
-			return hashes, err
-		},
-	}
-	for name, read := range reads {
+	for name, filter := range map[string]TorrentRefFilter{
+		"all":     {},
+		"by hash": {Hashes: []string{"aa11", "bb22"}},
+	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			testFreshReadSeesTorrentAddedDuringInFlightSync(t, read)
+			testFreshReadSeesTorrentAddedDuringInFlightSync(t, func(ctx context.Context, sm *SyncManager) ([]string, error) {
+				torrents, err := sm.GetTorrentRefsFresh(ctx, 1, filter)
+				hashes := make([]string, 0, len(torrents))
+				for _, torrent := range torrents {
+					hashes = append(hashes, torrent.Hash)
+				}
+				return hashes, err
+			})
 		})
 	}
 }
@@ -3466,9 +3459,9 @@ func TestHasTorrentByAnyHashReturnsPrivateCopy(t *testing.T) {
 	require.Equal(t, "Show.S01E01-GRP", shared.Name)
 }
 
-// Automation rules delete on what GetAllTorrents returns, so a pass must not
+// Automation rules delete on what GetAllTorrentRefs returns, so a pass must not
 // evaluate a snapshot older than the window a torrent response counts as fresh.
-func TestGetAllTorrentsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
+func TestGetAllTorrentRefsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
 	t.Parallel()
 
 	// The go-qbittorrent and qui sync managers start cache goroutines that never
@@ -3503,7 +3496,7 @@ func TestGetAllTorrentsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
 		ctx := t.Context()
 		require.NoError(t, client.syncManager.Sync(ctx))
 
-		torrents, err := syncManager.GetAllTorrents(ctx, 1)
+		torrents, err := syncManager.GetAllTorrentRefs(ctx, 1)
 		require.NoError(t, err)
 		require.Len(t, torrents, 1)
 		require.Equal(t, "keep", torrents[0].Tags)
@@ -3511,7 +3504,7 @@ func TestGetAllTorrentsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
 
 		time.Sleep(torrentResponseFreshWindow + 100*time.Millisecond)
 
-		torrents, err = syncManager.GetAllTorrents(ctx, 1)
+		torrents, err = syncManager.GetAllTorrentRefs(ctx, 1)
 		require.NoError(t, err)
 		require.Len(t, torrents, 1)
 		require.Empty(t, torrents[0].Tags, "a stale cache must be refreshed before the rule reads it")

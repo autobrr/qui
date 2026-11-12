@@ -41,9 +41,6 @@
     "internal/sshpool/pool.go": 1,
     "pkg/prowlarr/client.go": 3
   },
-  "forbidigo": {
-    "internal/qbittorrent/sync_manager.go": 2
-  },
   "gocognit": {
     "cmd/qui/main.go": 2,
     "internal/api/handlers/backups.go": 3,

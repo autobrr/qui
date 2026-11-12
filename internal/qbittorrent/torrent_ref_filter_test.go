@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,49 +47,40 @@ func newRefRig(t *testing.T) (*SyncManager, *Client) {
 	return sm, client
 }
 
-func TestGetTorrentRefsSelectsWhatGetTorrentsSelects(t *testing.T) {
+func TestGetTorrentRefsSelectsSyncSnapshotTorrents(t *testing.T) {
 	t.Parallel()
 	sm, client := newRefRig(t)
 	snapshot := client.SyncOwner().SnapshotUnchecked()
 
+	// Each want holds what the qBittorrent filter of go-qbittorrent selects for
+	// the same options, except that a read by hash keeps the order of the hashes.
 	for _, tc := range []struct {
-		name string
-		refs TorrentRefFilter
-		old  qbt.TorrentFilterOptions
-		// With hashes, the refs come in the order of the hashes and the old
-		// read in the order of the snapshot.
-		hashOrder bool
+		name   string
+		filter TorrentRefFilter
+		want   []string
 	}{
-		{"all", TorrentRefFilter{}, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}, false},
-		{"one hash", TorrentRefFilter{Hashes: []string{"aa03"}}, qbt.TorrentFilterOptions{Hashes: []string{"aa03"}}, false},
-		{"hashes out of order, a repeat, and a missing one", TorrentRefFilter{Hashes: []string{"aa04", "aa01", "ffff", "aa04"}}, qbt.TorrentFilterOptions{Hashes: []string{"aa04", "aa01", "ffff", "aa04"}}, true},
-		{"a missing hash", TorrentRefFilter{Hashes: []string{"ffff"}}, qbt.TorrentFilterOptions{Hashes: []string{"ffff"}}, false},
-		{"category", TorrentRefFilter{Category: "movies"}, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Category: "movies"}, false},
-		{"tag", TorrentRefFilter{Tag: "keep"}, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Tag: "keep"}, false},
-		{"completed", TorrentRefFilter{Completed: true}, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted}, false},
-		{"completed in a category", TorrentRefFilter{Category: "tv", Completed: true}, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted, Category: "tv"}, false},
+		{"all", TorrentRefFilter{}, []string{"aa01", "aa02", "aa03", "aa04", "aa05"}},
+		{"one hash", TorrentRefFilter{Hashes: []string{"aa03"}}, []string{"aa03"}},
+		{"hashes out of order, a repeat, and a missing one", TorrentRefFilter{Hashes: []string{"aa04", "aa01", "ffff", "aa04"}}, []string{"aa04", "aa01"}},
+		{"a missing hash", TorrentRefFilter{Hashes: []string{"ffff"}}, []string{}},
+		{"category", TorrentRefFilter{Category: "movies"}, []string{"aa03", "aa04"}},
+		{"tag", TorrentRefFilter{Tag: "keep"}, []string{"aa01", "aa02"}},
+		{"completed", TorrentRefFilter{Completed: true}, []string{"aa01", "aa03", "aa05"}},
+		{"completed in a category", TorrentRefFilter{Category: "tv", Completed: true}, []string{"aa01"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			refs, err := sm.GetTorrentRefs(t.Context(), 1, tc.refs)
-			require.NoError(t, err)
-			want, err := sm.GetTorrents(t.Context(), 1, tc.old)
+			refs, err := sm.GetTorrentRefs(t.Context(), 1, tc.filter)
 			require.NoError(t, err)
 
-			got := make([]qbt.Torrent, 0, len(refs))
+			got := make([]string, 0, len(refs))
 			for _, ref := range refs {
 				shared, ok := snapshot.Torrent(ref.Hash)
 				require.True(t, ok)
 				require.Same(t, shared, ref, "a read returns the torrent of the Sync snapshot")
-				got = append(got, *ref)
+				got = append(got, ref.Hash)
 			}
-			if tc.hashOrder {
-				order := []string{got[0].Hash, got[1].Hash}
-				require.Equal(t, []string{"aa04", "aa01"}, order)
-				require.ElementsMatch(t, want, got)
-				return
-			}
-			require.Equal(t, want, got)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

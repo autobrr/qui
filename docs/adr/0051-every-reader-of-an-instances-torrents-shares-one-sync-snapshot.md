@@ -18,7 +18,7 @@ Before this decision, each read of the sync cache copied the whole library two t
 
 ## Consequences
 
-- A reader that needs a changed torrent copies that one torrent. The read that applies the expected state after a user action does this.
+- A reader that needs a changed torrent copies that one torrent. The read that applies the expected state after a user action does this, and so does the routed read of a Cross-seed route, which maps the paths of each torrent that it returns.
 - Tracker details are in a lookup by hash, not in the torrent.
 - In tests and in builds without a release version, the library seals each snapshot and panics when a reader changed a torrent.
 - A memory budget test limits what a list read, a stream tick, and a cross-seed webhook check allocate.

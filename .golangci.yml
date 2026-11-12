@@ -142,6 +142,20 @@ linters:
         - pattern: ^(driver\.(Driver\.Open|DriverContext\.OpenConnector|Connector\.Connect)|(sqlite|stdlib)\.Driver\.Open|stdlib\.Driver\.OpenConnector|pq\.(Open|DialOpen|NewConnector|NewConnectorConfig|Driver\.Open|NewListener|NewDialListener))$
           pkg: ^(database/sql/driver|github\.com/jackc/pgx/v5/stdlib|github\.com/lib/pq|modernc\.org/sqlite)$
           msg: open SQLite and Postgres connections through internal/database, which sets the UTC time-zone handling
+        # One package owns the sync object of go-qbittorrent (ADR 0051). The
+        # type rule also catches an interface method or a field whose type names
+        # the object, and each method call on an object of that type.
+        - pattern: ^qbittorrent\.SyncManager(\.\w+)?$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: only internal/qbittorrent/syncowner holds the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
+        # qui has its own function qbittorrent.NewSyncManager, so the function
+        # rule names the library package. The method rule names no package: it
+        # reports the method on each type, also on a type that embeds a client.
+        - pattern: ^qbittorrent\.NewSyncManager$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
+        - pattern: ^\w+\.\w+\.NewSyncManager$
+          msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -201,8 +215,8 @@ linters:
           - forbidigo
         text: SyncManager\.InstanceFolders
 
-      # The torrent list rule binds only the qBittorrent production code. Cross-seed
-      # and reannounce use the library filter on purpose.
+      # The torrent list rule binds only the qBittorrent production code.
+      # Reannounce uses the library filter on purpose in a request to qBittorrent.
       - path-except: ^internal/qbittorrent/
         linters:
           - forbidigo
@@ -211,6 +225,12 @@ linters:
         linters:
           - forbidigo
         text: ADR 0043
+
+      # Only the sync owner holds and creates the sync object of go-qbittorrent.
+      - path: ^internal/qbittorrent/syncowner/
+        linters:
+          - forbidigo
+        text: the sync object of go-qbittorrent
 
       # The one-parser rule binds only the cross-seed production code.
       - path-except: ^internal/services/crossseed/

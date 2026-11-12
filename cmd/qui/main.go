@@ -824,7 +824,7 @@ func (app *Application) runServer() {
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	}, crossSeedService.HandleTorrentCompletion)
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
 		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 

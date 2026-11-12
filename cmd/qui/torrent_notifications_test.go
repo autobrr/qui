@@ -16,12 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 type stubTorrentNotificationSync struct {
-	torrents       []qbt.Torrent
+	torrents       []*qbt.Torrent
 	err            error
 	lastHashes     []string
 	refreshCalls   int
@@ -29,13 +30,13 @@ type stubTorrentNotificationSync struct {
 	extractInvoked bool
 }
 
-func (s *stubTorrentNotificationSync) GetTorrentsFresh(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (s *stubTorrentNotificationSync) GetTorrentRefsFresh(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	s.refreshCalls++
 	s.lastHashes = append([]string(nil), filter.Hashes...)
 	if s.err != nil {
 		return nil, s.err
 	}
-	return append([]qbt.Torrent(nil), s.torrents...), nil
+	return append([]*qbt.Torrent(nil), s.torrents...), nil
 }
 
 func (s *stubTorrentNotificationSync) ExtractDomainFromURL(rawURL string) string {
@@ -91,12 +92,12 @@ func TestNotifyTorrentsAddedAfterRefreshesSnapshot(t *testing.T) {
 		refreshed.NumLeechs = 11
 
 		syncStub := &stubTorrentNotificationSync{
-			torrents:      []qbt.Torrent{refreshed},
+			torrents:      []*qbt.Torrent{&refreshed},
 			extractDomain: "tracker.example",
 		}
 		notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 7, []qbt.Torrent{initial}, 5*time.Millisecond)
+		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 7, []*qbt.Torrent{&initial}, 5*time.Millisecond)
 
 		// notifyTorrentsAddedAfter returns after it sends.
 		require.Len(t, notifier.events, 1)
@@ -137,7 +138,7 @@ func TestNotifyTorrentsAddedAfterFallsBackToInitialSnapshot(t *testing.T) {
 		}
 		notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 2, []qbt.Torrent{initial}, 5*time.Millisecond)
+		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 2, []*qbt.Torrent{&initial}, 5*time.Millisecond)
 
 		// notifyTorrentsAddedAfter returns after it sends.
 		require.Len(t, notifier.events, 1)
@@ -160,10 +161,10 @@ func TestNotifyTorrentsAddedAfterRefreshesBatchInOneRead(t *testing.T) {
 	refreshedFirst := first
 	refreshedFirst.Progress = 0.9
 
-	syncStub := &stubTorrentNotificationSync{torrents: []qbt.Torrent{refreshedFirst}}
+	syncStub := &stubTorrentNotificationSync{torrents: []*qbt.Torrent{&refreshedFirst}}
 	notifier := &captureNotifier{events: make(chan notifications.Event, 2)}
 
-	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 3, []qbt.Torrent{first, second}, 0)
+	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 3, []*qbt.Torrent{&first, &second}, 0)
 
 	progress := map[string]float64{}
 	for range 2 {
@@ -183,7 +184,7 @@ func TestNotifyTorrentsAddedAfterSkipsWaitWithNoListener(t *testing.T) {
 	syncStub := &stubTorrentNotificationSync{}
 
 	start := time.Now()
-	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 1, []qbt.Torrent{{Hash: "ABC123"}}, time.Minute)
+	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 1, []*qbt.Torrent{{Hash: "ABC123"}}, time.Minute)
 
 	require.Zero(t, syncStub.refreshCalls)
 	require.Less(t, time.Since(start), 10*time.Second)
