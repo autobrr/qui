@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { api } from "@/lib/api"
 import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
+import type { QueryClient } from "@tanstack/react-query"
 
 // i18n-namespace: instances
 
@@ -143,6 +145,15 @@ export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
   const hasInclude = tokens.some((token) => !token.startsWith("!"))
   if (hasExclude && hasInclude) return "mixed"
   return hasExclude ? "exclude" : "include"
+}
+
+/** Returns the rule names of an instance. Reads the server when the rule list is not loaded, and rejects when that read fails. */
+export async function loadWorkflowNames(queryClient: QueryClient, instanceId: number): Promise<string[]> {
+  const rules = await queryClient.ensureQueryData({
+    queryKey: ["automations", instanceId],
+    queryFn: () => api.listAutomations(instanceId),
+  })
+  return (rules ?? []).map(rule => rule.name)
 }
 
 /**
