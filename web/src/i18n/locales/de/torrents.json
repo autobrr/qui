@@ -1682,8 +1682,14 @@
   "copyGroups": {
     "copies_one": "{{count}} weitere Kopie von {{name}}",
     "copies_other": "{{count}} weitere Kopien von {{name}}",
-    "copiesWithProblem_one": "{{count}} weitere Kopie von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
-    "copiesWithProblem_other": "{{count}} weitere Kopien von {{name}}. Eine ausgeblendete Kopie hat ein Problem",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Einer ausgeblendeten Kopie fehlen Dateien",
+      "error": "Eine ausgeblendete Kopie hat einen Fehler",
+      "unregistered": "Eine ausgeblendete Kopie ist nicht registriert",
+      "trackerError": "Eine ausgeblendete Kopie hat einen Tracker-Fehler",
+      "trackerDown": "Der Tracker einer ausgeblendeten Kopie ist offline"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · {{count}} ausgewählt",
     "badgeTicked_other": "+{{hidden}} · {{count}} ausgewählt",

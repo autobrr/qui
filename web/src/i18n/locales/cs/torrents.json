@@ -1760,9 +1760,14 @@
     "copies_one": "{{count}} další kopie položky {{name}}",
     "copies_few": "{{count}} další kopie položky {{name}}",
     "copies_other": "{{count}} dalších kopií položky {{name}}",
-    "copiesWithProblem_one": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
-    "copiesWithProblem_few": "{{count}} další kopie položky {{name}}. Skrytá kopie má problém",
-    "copiesWithProblem_other": "{{count}} dalších kopií položky {{name}}. Skrytá kopie má problém",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Skryté kopii chybí soubory",
+      "error": "Skrytá kopie má chybu",
+      "unregistered": "Skrytá kopie není registrovaná",
+      "trackerError": "Skrytá kopie má chybu trackeru",
+      "trackerDown": "Tracker skryté kopie je nedostupný"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · {{count}} vybraná",
     "badgeTicked_few": "+{{hidden}} · {{count}} vybrané",

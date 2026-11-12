@@ -1682,8 +1682,14 @@
   "copyGroups": {
     "copies_one": "{{count}} còpia més de {{name}}",
     "copies_other": "{{count}} còpies més de {{name}}",
-    "copiesWithProblem_one": "{{count}} còpia més de {{name}}. Una còpia amagada té un problema",
-    "copiesWithProblem_other": "{{count}} còpies més de {{name}}. Una còpia amagada té un problema",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A una còpia amagada li falten fitxers",
+      "error": "Una còpia amagada té un error",
+      "unregistered": "Una còpia amagada no està registrada",
+      "trackerError": "Una còpia amagada té un error del tracker",
+      "trackerDown": "El tracker d'una còpia amagada ha caigut"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
     "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",

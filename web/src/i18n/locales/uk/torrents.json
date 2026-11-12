@@ -1838,10 +1838,14 @@
     "copies_few": "Ще {{count}} копії торрента {{name}}",
     "copies_many": "Ще {{count}} копій торрента {{name}}",
     "copies_other": "Ще {{count}} копії торрента {{name}}",
-    "copiesWithProblem_one": "Ще {{count}} копія торрента {{name}}. Прихована копія має проблему",
-    "copiesWithProblem_few": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
-    "copiesWithProblem_many": "Ще {{count}} копій торрента {{name}}. Прихована копія має проблему",
-    "copiesWithProblem_other": "Ще {{count}} копії торрента {{name}}. Прихована копія має проблему",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "У прихованої копії відсутні файли",
+      "error": "Прихована копія має помилку",
+      "unregistered": "Прихована копія незареєстрована",
+      "trackerError": "Прихована копія має помилку трекера",
+      "trackerDown": "Трекер прихованої копії вимкнено"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · вибрано {{count}}",
     "badgeTicked_few": "+{{hidden}} · вибрано {{count}}",

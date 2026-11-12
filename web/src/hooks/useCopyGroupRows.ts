@@ -4,6 +4,7 @@
  */
 
 import { countTickedCopies, summarizeCopyGroups, type CopyGroupExpansion } from "@/lib/copy-groups"
+import type { CopyProblem } from "@/lib/torrent-table/row-display"
 import type { TorrentSelectionState } from "@/lib/torrent-selection"
 import type { Torrent } from "@/types"
 import { useCallback, useMemo } from "react"
@@ -15,8 +16,8 @@ export interface CopyGroupRow<T extends Torrent> {
   open: boolean
   /** The members other than the top row. */
   copies: number
-  /** Only on a closed top row: a hidden copy has a problem. */
-  hiddenProblem: boolean
+  /** Only on a closed top row: the worst problem of its hidden copies. */
+  hiddenProblem?: CopyProblem
   /** Only on a closed top row outside Select all mode: the ticked copies that it hides. */
   hiddenTicks: number
   /** Only on a closed top row whose first-sorted member is another copy. */
@@ -25,7 +26,7 @@ export interface CopyGroupRow<T extends Torrent> {
   nestedCopy: boolean
 }
 
-const PLAIN_ROW = { open: false, copies: 0, hiddenProblem: false, hiddenTicks: 0, nestedCopy: false } as const
+const PLAIN_ROW = { open: false, copies: 0, hiddenTicks: 0, nestedCopy: false } as const
 const NESTED_COPY = { ...PLAIN_ROW, nestedCopy: true } as const
 const NO_TICKED_COPIES: ReadonlyMap<string, number> = new Map()
 
@@ -65,7 +66,7 @@ export function useCopyGroupRows<T extends Torrent>({ rows, expansion, selection
       groupId: id,
       open,
       copies: group.size - 1,
-      hiddenProblem: !open && group.hiddenProblem,
+      hiddenProblem: open ? undefined : group.hiddenProblem,
       hiddenTicks: open ? 0 : tickedCopies.get(id) ?? 0,
       sortedTorrent: !open && group.firstSorted !== row ? group.firstSorted : undefined,
       nestedCopy: false,

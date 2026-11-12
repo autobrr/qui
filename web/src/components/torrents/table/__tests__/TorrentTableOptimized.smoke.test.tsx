@@ -508,7 +508,7 @@ function copyGroupRows(overrides: { top?: Partial<Torrent>; sorted?: Partial<Tor
 
 // In the grid only: the toolbar button also has a copyGroups label.
 const pills = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("[role=grid] button[aria-label^=\"copyGroups.\"]"))
-const warnings = (container: HTMLElement) => container.querySelectorAll("[role=grid] button[aria-label^=\"copyGroups.copiesWithProblem\"]")
+const warnings = (container: HTMLElement) => container.querySelectorAll<HTMLButtonElement>("[role=grid] button[aria-label^=\"copyGroups.labelWithProblem\"]")
 const rowOf = (container: HTMLElement, name: string) => within(container).getByText(name).closest(".cursor-pointer") as HTMLElement
 const cellOf = (row: HTMLElement, columnId: string) => row.querySelector(`[data-torrent-column-measure="${columnId}"]`) as HTMLElement
 
@@ -871,15 +871,20 @@ describe("TorrentTableOptimized Copy groups", () => {
   })
 
   it.each([
-    [{ state: "error" }, true],
-    [{ state: "missingFiles" }, true],
-    [{ tracker_health: "unregistered" }, true],
-    [{ tracker_health: "tracker_down" }, true],
-    [{ tracker_health: "tracker_error" }, true],
-    [{ state: "stalledUP" }, false],
-  ] as const)("shows the warning pill for a hidden copy with %o: %s", (hidden, expected) => {
-    const { container } = renderGroups(copyGroupRows({ third: hidden }))
-    expect(warnings(container).length).toBe(expected ? 1 : 0)
+    [{ third: { state: "error" } }, "error"],
+    [{ third: { state: "missingFiles" } }, "missingFiles"],
+    [{ third: { tracker_health: "unregistered" } }, "unregistered"],
+    [{ third: { tracker_health: "tracker_down" } }, "trackerDown"],
+    [{ third: { tracker_health: "tracker_error" } }, "trackerError"],
+    [{ third: { state: "stalledUP" } }, undefined],
+    [{ sorted: { tracker_health: "tracker_down" }, third: { tracker_health: "unregistered" } }, "unregistered"],
+    [{ sorted: { tracker_health: "tracker_down" }, third: { tracker_health: "tracker_error" } }, "trackerError"],
+    [{ sorted: { state: "error" }, third: { state: "missingFiles" } }, "missingFiles"],
+    [{ third: { state: "error", tracker_health: "tracker_down" } }, "error"],
+  ] as const)("names the worst problem of the hidden copies %o: %s", (overrides, expected) => {
+    const { container } = renderGroups(copyGroupRows(overrides))
+    const labels = Array.from(warnings(container), pill => JSON.parse(pill.getAttribute("aria-label")!.replace("copyGroups.labelWithProblem ", "")).problem)
+    expect(labels).toEqual(expected ? [`copyGroups.hiddenProblem.${expected}`] : [])
   })
 })
 

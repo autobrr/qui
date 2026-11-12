@@ -1682,8 +1682,14 @@
   "copyGroups": {
     "copies_one": "{{count}} autre copie de {{name}}",
     "copies_other": "{{count}} autres copies de {{name}}",
-    "copiesWithProblem_one": "{{count}} autre copie de {{name}}. Une copie masquée a un problème",
-    "copiesWithProblem_other": "{{count}} autres copies de {{name}}. Une copie masquée a un problème",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Il manque des fichiers à une copie masquée",
+      "error": "Une copie masquée a une erreur",
+      "unregistered": "Une copie masquée n'est pas enregistrée",
+      "trackerError": "Une copie masquée a une erreur de tracker",
+      "trackerDown": "Le tracker d'une copie masquée est injoignable"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · {{count}} sélectionnée",
     "badgeTicked_other": "+{{hidden}} · {{count}} sélectionnées",

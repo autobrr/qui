@@ -1682,8 +1682,14 @@
   "copyGroups": {
     "copies_one": "{{count}} altra copia di {{name}}",
     "copies_other": "{{count}} altre copie di {{name}}",
-    "copiesWithProblem_one": "{{count}} altra copia di {{name}}. Una copia nascosta ha un problema",
-    "copiesWithProblem_other": "{{count}} altre copie di {{name}}. Una copia nascosta ha un problema",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A una copia nascosta mancano dei file",
+      "error": "Una copia nascosta ha un errore",
+      "unregistered": "Una copia nascosta non è registrata",
+      "trackerError": "Una copia nascosta ha un errore del tracker",
+      "trackerDown": "Il tracker di una copia nascosta non è raggiungibile"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · {{count}} selezionata",
     "badgeTicked_other": "+{{hidden}} · {{count}} selezionate",

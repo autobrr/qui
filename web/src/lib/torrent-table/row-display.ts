@@ -14,35 +14,51 @@ export type TrackerHealth = NonNullable<Torrent["tracker_health"]>
 
 export type StatusBadgeVariant = "default" | "secondary" | "destructive" | "outline"
 
-// One entry per tracker health. Every view that shows tracker health reads its colors and icon here.
-export const TRACKER_HEALTH_DISPLAY: Record<TrackerHealth, {
-  labelKey: string
+interface Tone {
   className: string
   iconClass: string
   hoverClass: string
-  icon: LucideIcon
-}> = {
-  unregistered: {
-    labelKey: "tableColumns.unregistered",
-    className: "text-destructive border-destructive/40 bg-destructive/10",
-    iconClass: "text-destructive",
-    hoverClass: "hover:bg-destructive/10",
-    icon: XCircle,
-  },
-  tracker_down: {
-    labelKey: "tableColumns.trackerDown",
-    className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10",
-    iconClass: "text-yellow-500",
-    hoverClass: "hover:bg-yellow-500/10",
-    icon: AlertCircle,
-  },
-  tracker_error: {
-    labelKey: "tableColumns.trackerError",
-    className: "text-orange-500 border-orange-500/40 bg-orange-500/10",
-    iconClass: "text-orange-500",
-    hoverClass: "hover:bg-orange-500/10",
-    icon: XCircle,
-  },
+  /** For a surface that already has the tinted background, such as the Copy group pill. */
+  raisedHoverClass: string
+}
+
+const RED: Tone = {
+  className: "text-destructive border-destructive/40 bg-destructive/10",
+  iconClass: "text-destructive",
+  hoverClass: "hover:bg-destructive/10",
+  raisedHoverClass: "hover:border-destructive hover:bg-destructive/20",
+}
+
+const PURPLE: Tone = {
+  className: "text-purple-500 border-purple-500/40 bg-purple-500/10",
+  iconClass: "text-purple-500",
+  hoverClass: "hover:bg-purple-500/10",
+  raisedHoverClass: "hover:border-purple-500 hover:bg-purple-500/20",
+}
+
+const YELLOW: Tone = {
+  className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10",
+  iconClass: "text-yellow-500",
+  hoverClass: "hover:bg-yellow-500/10",
+  raisedHoverClass: "hover:border-yellow-500 hover:bg-yellow-500/20",
+}
+
+// One entry per tracker health. Every view that shows tracker health reads its colors and icon here.
+export const TRACKER_HEALTH_DISPLAY: Record<TrackerHealth, Tone & { labelKey: string, icon: LucideIcon }> = {
+  unregistered: { labelKey: "tableColumns.unregistered", icon: XCircle, ...RED },
+  tracker_down: { labelKey: "tableColumns.trackerDown", icon: AlertCircle, ...YELLOW },
+  tracker_error: { labelKey: "tableColumns.trackerError", icon: XCircle, ...PURPLE },
+}
+
+export type CopyProblem = "missingFiles" | "error" | TrackerHealth
+
+// What the pill of a closed Copy group shows for the worst problem of its hidden copies.
+export const COPY_PROBLEM_DISPLAY: Record<CopyProblem, Tone & { labelKey: string }> = {
+  missingFiles: { labelKey: "copyGroups.hiddenProblem.missingFiles", ...RED },
+  error: { labelKey: "copyGroups.hiddenProblem.error", ...RED },
+  unregistered: { labelKey: "copyGroups.hiddenProblem.unregistered", ...RED },
+  tracker_error: { labelKey: "copyGroups.hiddenProblem.trackerError", ...PURPLE },
+  tracker_down: { labelKey: "copyGroups.hiddenProblem.trackerDown", ...YELLOW },
 }
 
 // Returns the background class for a row based on selection state and zebra striping
