@@ -38,7 +38,7 @@ Recorded results from real releases prove each one, unless the text says otherwi
 ## Consequences
 
 - A `forbidigo` rule reports the library filter options in the production code of `internal/qbittorrent`.
-- Cross-seed and reannounce keep the library filter on purpose. The library `Category` option stays an exact match, so these callers keep their results.
+- Reannounce keeps the library filter on purpose: it asks qBittorrent for the stalled torrents among its candidates. Cross-seed and the other reads of reannounce read the Sync snapshot since #4047 and #4050 (ADR 0051), where qui applies its own rule. That rule also matches a category exactly, so their results did not change.
 - A new qBittorrent release needs one capture run. A changed result fails the test, and a person then decides if qui follows.
 
 ## Benchmark results

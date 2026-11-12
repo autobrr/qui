@@ -41,7 +41,7 @@ type healthChecker interface {
 type syncReader interface {
 	// GetTorrentRefsFresh returns the torrents of the Sync snapshot: never
 	// change one.
-	GetTorrentRefsFresh(ctx context.Context, instanceID int) ([]*qbt.Torrent, error)
+	GetTorrentRefsFresh(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error)
 }
@@ -2345,7 +2345,7 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialec
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID)
+	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -2388,7 +2388,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID)
+	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -2515,7 +2515,7 @@ func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathD
 type freshTorrents struct{ sync syncReader }
 
 func (r freshTorrents) GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
-	return r.sync.GetTorrentRefsFresh(ctx, instanceID)
+	return r.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 }
 
 func (r freshTorrents) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {

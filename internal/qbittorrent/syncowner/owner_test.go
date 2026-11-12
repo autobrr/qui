@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -47,4 +49,19 @@ func TestOwner_WriteToSnapshotTorrentFailsNextSyncWithHash(t *testing.T) {
 	}()
 	require.NotNil(t, recovered, "the sync after a write to a shared torrent must fail")
 	require.Contains(t, fmt.Sprint(recovered), hash)
+}
+
+// No code outside the owner may hold the sync object of go-qbittorrent, so no
+// exported method of the owner hands it out or takes it in (ADR 0051).
+func TestOwner_NoMethodPassesTheLibrarySyncObject(t *testing.T) {
+	library := reflect.TypeFor[qbt.SyncManager]()
+	owner := reflect.TypeFor[*syncowner.Owner]()
+	for method := range owner.Methods() {
+		types := slices.AppendSeq(slices.Collect(method.Type.Ins()), method.Type.Outs())
+		for _, typ := range types {
+			if typ == library || (typ.Kind() == reflect.Pointer && typ.Elem() == library) {
+				t.Errorf("Owner.%s passes %s, the sync object of go-qbittorrent", method.Name, typ)
+			}
+		}
+	}
 }

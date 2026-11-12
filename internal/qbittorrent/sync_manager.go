@@ -112,8 +112,9 @@ func snapshotIndex(snapshot *qbt.SyncSnapshot) torrentIndex {
 // TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
 type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
 
-// TorrentAddedHandler is invoked with the torrents that one sync first sees as new.
-type TorrentAddedHandler func(ctx context.Context, instanceID int, torrents []qbt.Torrent)
+// TorrentAddedHandler is invoked with the torrents that one sync first sees as
+// new. The torrents are shared with the other readers: never change one.
+type TorrentAddedHandler func(ctx context.Context, instanceID int, torrents []*qbt.Torrent)
 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New[string, string](ttlcache.SetDefaultTTL(5 * time.Minute))
@@ -1482,39 +1483,16 @@ func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 	return sm.clientPool.GetErrorStore()
 }
 
-// GetTorrents gets torrents with the specified filter options
-func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	_, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataRead)
-	if err != nil {
-		return nil, err
-	}
-	if syncManager == nil {
-		return nil, errors.New("sync manager not initialized")
-	}
-
-	// Get torrents with filters
-	return syncManager.GetTorrents(filter), nil
-}
-
-// GetTorrentsFresh syncs before it reads. GetTorrents returns a stale cache
-// while it refreshes, so it can miss a torrent added since the last sync.
-func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+// GetTorrentRefsFresh returns what filter selects from a Sync snapshot that it
+// syncs before it reads. GetTorrentRefs can read a stale snapshot while it
+// refreshes, so it can miss a torrent added since the last sync. The torrents
+// are shared with the other readers: copy a torrent before you change it.
+func (sm *SyncManager) GetTorrentRefsFresh(ctx context.Context, instanceID int, filter TorrentRefFilter) ([]*qbt.Torrent, error) {
 	syncManager, err := sm.syncFresh(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	return syncManager.GetTorrentsUnchecked(filter), nil
-}
-
-// GetTorrentRefsFresh returns all torrents of an instance from a Sync snapshot
-// that it syncs before it reads, as GetTorrentsFresh does. The torrents are
-// shared with the other readers: copy a torrent before you change it.
-func (sm *SyncManager) GetTorrentRefsFresh(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
-	syncManager, err := sm.syncFresh(ctx, instanceID)
-	if err != nil {
-		return nil, err
-	}
-	return snapshotTorrents(syncManager.SnapshotUnchecked()), nil
+	return filter.Select(syncManager.SnapshotUnchecked()), nil
 }
 
 func (sm *SyncManager) syncFresh(ctx context.Context, instanceID int) (*syncowner.Owner, error) {
@@ -4159,26 +4137,13 @@ func resumeWhenCompleteStopped(state qbt.TorrentState) bool {
 	return false
 }
 
-// GetAllTorrents is GetAllTorrentRefs with a private copy of each torrent.
-func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
-	refs, err := sm.GetAllTorrentRefs(ctx, instanceID)
-	if err != nil {
-		return nil, err
-	}
-	torrents := make([]qbt.Torrent, len(refs))
-	for i, torrent := range refs {
-		torrents[i] = *torrent
-	}
-	return torrents, nil
-}
-
 // GetAllTorrentRefs returns all torrents of an instance in the order of the
 // Sync snapshot, with the expected state after a user action. A torrent with a
 // pending change is a private copy with the expected state. Each other torrent
 // is the torrent of the Sync snapshot, shared with the other readers: copy a
 // torrent before you change it. A cache past the fresh window is synced first,
 // but the rows can still predate a change made during the fresh window or
-// during a sync that was already in flight. GetTorrentsFresh closes both gaps
+// during a sync that was already in flight. GetTorrentRefsFresh closes both gaps
 // at the cost of two requests.
 func (sm *SyncManager) GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)

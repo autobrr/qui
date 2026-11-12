@@ -78,7 +78,7 @@ func (f TorrentRefFilter) Select(snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
 }
 
 // GetTorrentRefs returns what filter selects from the Sync snapshot of an
-// instance. It can start a sync as GetTorrents does.
+// instance. It can start a sync when the snapshot is stale.
 func (sm *SyncManager) GetTorrentRefs(ctx context.Context, instanceID int, filter TorrentRefFilter) ([]*qbt.Torrent, error) {
 	_, owner, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {

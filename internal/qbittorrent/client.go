@@ -830,7 +830,7 @@ func (c *Client) handleAddedUpdates(update qbt.SyncUpdate) {
 		return
 	}
 
-	ready := make([]qbt.Torrent, 0)
+	ready := make([]*qbt.Torrent, 0)
 	for _, hash := range update.Changes.Torrents {
 		if _, ok := c.addedState[hash]; ok {
 			continue
@@ -840,7 +840,7 @@ func (c *Client) handleAddedUpdates(update qbt.SyncUpdate) {
 			continue
 		}
 		c.addedState[hash] = struct{}{}
-		ready = append(ready, *torrent)
+		ready = append(ready, torrent)
 	}
 	c.addedMu.Unlock()
 
@@ -849,7 +849,7 @@ func (c *Client) handleAddedUpdates(update qbt.SyncUpdate) {
 	}
 
 	now := time.Now()
-	ready = slices.DeleteFunc(ready, func(torrent qbt.Torrent) bool {
+	ready = slices.DeleteFunc(ready, func(torrent *qbt.Torrent) bool {
 		return torrent.AddedOn > 0 && now.Sub(time.Unix(torrent.AddedOn, 0)) > torrentAddedGraceWindow
 	})
 	if len(ready) == 0 {
