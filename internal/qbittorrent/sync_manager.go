@@ -72,15 +72,41 @@ type CachedFilesEntry struct {
 }
 
 type torrentFilesClient interface {
-	getTorrentsByHashes(hashes []string) []qbt.Torrent
-	// getTorrentsByHashesUnchecked reads the maindata entries of the hashes and
-	// never starts a sync.
-	getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent
+	getTorrentsByHashes(hashes []string) []*qbt.Torrent
+	// getTorrentsByHashesUnchecked reads the torrents of the hashes from the
+	// Sync snapshot and never starts a sync.
+	getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent
 	GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error)
 }
 
+// torrentLookup reads one torrent of a Sync snapshot by its hash. The torrent
+// is shared: copy it before you change it.
 type torrentLookup interface {
-	GetTorrent(hash string) (qbt.Torrent, bool)
+	Torrent(hash string) (*qbt.Torrent, bool)
+}
+
+// torrentIndex is the part of a Sync snapshot that hash resolution reads.
+// *qbt.SyncSnapshot implements it.
+type torrentIndex interface {
+	torrentLookup
+	Matching(match func(*qbt.Torrent) bool) []*qbt.Torrent
+	Len() int
+}
+
+// noTorrents is the torrentIndex of an instance without a Sync snapshot.
+type noTorrents struct{}
+
+func (noTorrents) Torrent(string) (*qbt.Torrent, bool)             { return nil, false }
+func (noTorrents) Matching(func(*qbt.Torrent) bool) []*qbt.Torrent { return nil }
+func (noTorrents) Len() int                                        { return 0 }
+
+// snapshotIndex returns snapshot as a torrentIndex, or noTorrents for no
+// snapshot.
+func snapshotIndex(snapshot *qbt.SyncSnapshot) torrentIndex {
+	if snapshot == nil {
+		return noTorrents{}
+	}
+	return snapshot
 }
 
 // TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
@@ -123,8 +149,16 @@ var errPostAddRecheckNotReady = errors.New("torrent not ready for recheck after 
 
 type bulkActionTorrentSyncer interface {
 	Sync(ctx context.Context) error
-	GetTorrentMap(options qbt.TorrentFilterOptions) map[string]qbt.Torrent
+	// snapshot reads the Sync snapshot. It can start a sync when the data is
+	// stale.
+	snapshot() torrentIndex
 }
+
+// ownerSyncer is the bulkActionTorrentSyncer of a sync owner.
+type ownerSyncer struct{ owner *syncowner.Owner }
+
+func (s ownerSyncer) Sync(ctx context.Context) error { return s.owner.Sync(ctx) }
+func (s ownerSyncer) snapshot() torrentIndex         { return snapshotIndex(s.owner.Snapshot()) }
 
 // WithForceFilesRefresh returns a context that bypasses the cached torrent files snapshot.
 // It wins over [WithFilesUntilChanged] and [WithFilesUntilChangedOrStale], and
@@ -1341,7 +1375,7 @@ func (sm *SyncManager) getTorrentLookup(ctx context.Context, instanceID int) (to
 	if err != nil {
 		return nil, err
 	}
-	return syncManager, nil
+	return snapshotIndex(syncManager.Snapshot()), nil
 }
 
 // SetTorrentCompletionHandler registers the callbacks for torrent completion events across all clients.
@@ -1465,6 +1499,25 @@ func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter q
 // GetTorrentsFresh syncs before it reads. GetTorrents returns a stale cache
 // while it refreshes, so it can miss a torrent added since the last sync.
 func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	syncManager, err := sm.syncFresh(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return syncManager.GetTorrentsUnchecked(filter), nil
+}
+
+// GetTorrentRefsFresh returns all torrents of an instance from a Sync snapshot
+// that it syncs before it reads, as GetTorrentsFresh does. The torrents are
+// shared with the other readers: copy a torrent before you change it.
+func (sm *SyncManager) GetTorrentRefsFresh(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
+	syncManager, err := sm.syncFresh(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return snapshotTorrents(syncManager.SnapshotUnchecked()), nil
+}
+
+func (sm *SyncManager) syncFresh(ctx context.Context, instanceID int) (*syncowner.Owner, error) {
 	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
@@ -1476,7 +1529,7 @@ func (sm *SyncManager) GetTorrentsFresh(ctx context.Context, instanceID int, fil
 			return nil, fmt.Errorf("refresh maindata: %w", err)
 		}
 	}
-	return syncManager.GetTorrentsUnchecked(filter), nil
+	return syncManager, nil
 }
 
 // OmitsTrackersOnExport reports whether the instance exports .torrent files
@@ -2240,10 +2293,10 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 
 	// resolveAllHashes attempts to resolve all input hashes using variant-aware resolution.
 	// It resets canonicalHashes and returns the count of resolved and variant-resolved hashes.
-	resolveAllHashes := func(torrentMap map[string]qbt.Torrent) (resolved, variants int) {
+	resolveAllHashes := func(snapshot torrentIndex) (resolved, variants int) {
 		canonicalHashes = canonicalHashes[:0] // reset slice, keep capacity
 		for _, hash := range hashes {
-			torrent, found := resolveTorrentByVariantHash(torrentMap, hash)
+			torrent, found := resolveTorrentByVariantHash(snapshot, hash)
 			if found {
 				canonicalHashes = append(canonicalHashes, torrent.Hash)
 				if !strings.EqualFold(torrent.Hash, hash) {
@@ -2254,9 +2307,11 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 		return len(canonicalHashes), variants
 	}
 
-	// Fast path: try exact hash match with filtered lookup (efficient for large libraries)
-	torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
-	resolved, variants := resolveAllHashes(torrentMap)
+	// Resolution tries each hash as is, then as the InfohashV1 or InfohashV2 of
+	// a hybrid v1+v2 torrent that qBittorrent indexes by its other hash.
+	syncer := ownerSyncer{syncManager}
+	snapshot := syncer.snapshot()
+	resolved, variants := resolveAllHashes(snapshot)
 	variantResolutions = variants
 	postAddRetry := postAddBulkActionRetry(ctx)
 	retryCtx := ctx
@@ -2264,20 +2319,12 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 		retryCtx = context.WithoutCancel(ctx)
 	}
 
-	// If not all found, try variant resolution with full torrent map.
-	// This handles hybrid v1+v2 torrents where caller provides v1 hash but qBittorrent indexes by v2.
-	if resolved < len(hashes) {
-		torrentMap = syncManager.GetTorrentMap(qbt.TorrentFilterOptions{})
-		resolved, variants = resolveAllHashes(torrentMap)
-		variantResolutions = variants
-	}
-
 	// If still missing (or no sync data), force sync and retry. Most callers use
 	// the short budget; post-add paths can opt into a longer visibility wait.
-	if resolved < len(hashes) || len(torrentMap) == 0 {
+	if resolved < len(hashes) || snapshot.Len() == 0 {
 		_, variantResolutions = bulkActionSyncRetry(
 			retryCtx,
-			syncManager,
+			syncer,
 			hashes,
 			instanceID,
 			action,
@@ -2337,7 +2384,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 	if action == "recheck" && postAddRetry {
 		if err := waitForPostAddRecheckReady(
 			retryCtx,
-			syncManager,
+			syncer,
 			canonicalHashes,
 			instanceID,
 			postAddRecheckReadyAttempts,
@@ -2485,7 +2532,7 @@ func waitForPostAddRecheckReady(
 		if lastSyncErr != nil {
 			log.Trace().Err(lastSyncErr).Int("instanceID", instanceID).
 				Int("attempt", attempt).Msg("Post-add recheck readiness sync failed")
-		} else if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
+		} else if postAddRecheckReady(syncManager.snapshot(), hashes) {
 			return nil
 		}
 
@@ -2516,9 +2563,9 @@ func postAddRecheckReadyTimeout(maxAttempts int, retryInterval, syncTimeout time
 
 // postAddRecheckReady reports whether every hash is visible and past resume-data
 // validation.
-func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) bool {
+func postAddRecheckReady(snapshot torrentIndex, hashes []string) bool {
 	for _, hash := range hashes {
-		torrent, found := resolveTorrentByVariantHash(torrentMap, hash)
+		torrent, found := resolveTorrentByVariantHash(snapshot, hash)
 		if !found {
 			return false
 		}
@@ -2539,7 +2586,7 @@ func bulkActionSyncRetry(
 	action string,
 	maxAttempts int,
 	retryInterval time.Duration,
-	resolveAllHashes func(map[string]qbt.Torrent) (int, int),
+	resolveAllHashes func(torrentIndex) (int, int),
 ) (resolved, variants int) {
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
@@ -2557,8 +2604,7 @@ func bulkActionSyncRetry(
 			// Continue to retry even if sync failed
 		}
 
-		torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{})
-		resolved, variants = resolveAllHashes(torrentMap)
+		resolved, variants = resolveAllHashes(syncManager.snapshot())
 		if resolved == len(hashes) {
 			return resolved, variants
 		}
@@ -3037,8 +3083,8 @@ func (mode filesCacheMode) current(hash string, entry CachedFilesEntry, live *in
 func readFilesPrints(client torrentFilesClient, hashes []string) map[string]int64 {
 	torrents := client.getTorrentsByHashesUnchecked(hashes)
 	prints := make(map[string]int64, len(torrents))
-	for i := range torrents {
-		prints[canonicalizeHash(torrents[i].Hash)] = FilesPrint(torrents[i])
+	for _, torrent := range torrents {
+		prints[canonicalizeHash(torrent.Hash)] = FilesPrint(*torrent)
 	}
 	return prints
 }
@@ -3127,7 +3173,7 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 	return &files, nil
 }
 
-// HasTorrentByAnyHash returns the first torrent whose hash or infohash variant matches any of the provided hashes.
+// HasTorrentByAnyHash returns a private copy of the first torrent whose hash or infohash variant matches any of the provided hashes.
 // Hash comparisons are case-insensitive and trimmed.
 func (sm *SyncManager) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
 	lookup, err := sm.getTorrentLookup(ctx, instanceID)
@@ -3141,13 +3187,13 @@ func (sm *SyncManager) HasTorrentByAnyHash(ctx context.Context, instanceID int, 
 	}
 
 	for _, variant := range normalized.lookup {
-		torrent, ok := lookup.GetTorrent(variant)
+		torrent, ok := lookup.Torrent(variant)
 		if !ok {
 			continue
 		}
 
 		if matchesAnyHash(torrent, normalized.canonicalSet) {
-			return &torrent, true, nil
+			return new(*torrent), true, nil
 		}
 	}
 
@@ -3231,7 +3277,7 @@ func lookupTorrentByExactHash(get func(string) (*qbt.Torrent, bool), hash string
 	return nil, false
 }
 
-func matchesAnyHash(torrent qbt.Torrent, targetSet map[string]struct{}) bool {
+func matchesAnyHash(torrent *qbt.Torrent, targetSet map[string]struct{}) bool {
 	if len(targetSet) == 0 {
 		return false
 	}
@@ -3254,17 +3300,17 @@ func matchesAnyHash(torrent qbt.Torrent, targetSet map[string]struct{}) bool {
 
 // resolveTorrentByVariantHash attempts to find a torrent by checking its Hash, InfohashV1, and InfohashV2 fields.
 // This handles hybrid v1+v2 torrents where the provided hash might be a v1 hash but qBittorrent indexes by v2 (or vice versa).
-// Returns the torrent and true if found, zero value and false otherwise.
-func resolveTorrentByVariantHash(torrentMap map[string]qbt.Torrent, inputHash string) (qbt.Torrent, bool) {
+// The torrent is shared with the snapshot: copy it before you change it.
+func resolveTorrentByVariantHash(snapshot torrentIndex, inputHash string) (*qbt.Torrent, bool) {
 	trimmed := strings.TrimSpace(inputHash)
 	if trimmed == "" {
-		return qbt.Torrent{}, false
+		return nil, false
 	}
 
 	// Try exact match variants (case-insensitive) - fast path for common case
-	// Maps are case-sensitive, so try original, lowercase, and uppercase
+	// Hashes are case-sensitive keys, so try original, lowercase, and uppercase
 	for _, variant := range []string{trimmed, strings.ToLower(trimmed), strings.ToUpper(trimmed)} {
-		if torrent, exists := torrentMap[variant]; exists {
+		if torrent, exists := snapshot.Torrent(variant); exists {
 			return torrent, true
 		}
 	}
@@ -3272,21 +3318,17 @@ func resolveTorrentByVariantHash(torrentMap map[string]qbt.Torrent, inputHash st
 	// Normalize for variant matching
 	normalized := canonicalizeHash(trimmed)
 
-	// Check all torrents for variant matches (InfohashV1, InfohashV2)
-	// Use map key to avoid copying torrent struct on each iteration
-	for key := range torrentMap {
-		torrent := torrentMap[key]
-		// Check if input matches InfohashV1
-		if torrent.InfohashV1 != "" && canonicalizeHash(torrent.InfohashV1) == normalized {
-			return torrent, true
+	// Check all torrents for variant matches (InfohashV1, InfohashV2). The
+	// match never selects, so the scan allocates nothing.
+	var found *qbt.Torrent
+	snapshot.Matching(func(torrent *qbt.Torrent) bool {
+		if found == nil && (torrent.InfohashV1 != "" && canonicalizeHash(torrent.InfohashV1) == normalized ||
+			torrent.InfohashV2 != "" && canonicalizeHash(torrent.InfohashV2) == normalized) {
+			found = torrent
 		}
-		// Check if input matches InfohashV2
-		if torrent.InfohashV2 != "" && canonicalizeHash(torrent.InfohashV2) == normalized {
-			return torrent, true
-		}
-	}
-
-	return qbt.Torrent{}, false
+		return false
+	})
+	return found, found != nil
 }
 
 // ExportTorrent returns the raw .torrent data along with a display name suggestion
@@ -3320,7 +3362,7 @@ func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash s
 	return data, suggestedName, trackerDomain, nil
 }
 
-func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
+func (sm *SyncManager) primaryTrackerDomain(torrent *qbt.Torrent) string {
 	candidates := make([]string, 0, 1+len(torrent.Trackers))
 	candidates = append(candidates, torrent.Tracker)
 	for _, tracker := range torrent.Trackers {
@@ -4009,24 +4051,16 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 				}
 			}
 
-			requested := make([]string, 0, len(pending))
-			for _, req := range pending {
-				requested = append(requested, req.hash)
-			}
-
-			torrentMap := syncMgr.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: requested})
-			if len(torrentMap) < len(requested) {
-				torrentMap = syncMgr.GetTorrentMap(qbt.TorrentFilterOptions{})
-			}
+			snapshot := snapshotIndex(syncMgr.Snapshot())
 			lastSeen = syncMgr.LastSuccessfulSyncTime()
-			if len(torrentMap) == 0 {
+			if snapshot.Len() == 0 {
 				continue
 			}
 
 			var resumeList []string
 			var resumeKeys []string
 			for key, req := range pending {
-				torrent, found := resolveTorrentByVariantHash(torrentMap, req.hash)
+				torrent, found := resolveTorrentByVariantHash(snapshot, req.hash)
 				if !found {
 					continue
 				}
@@ -4933,13 +4967,12 @@ func (sm *SyncManager) setTagsFallback(ctx context.Context, instanceID int, clie
 
 	// The removal list comes from these tags, so a tag added outside qui
 	// since the last sync must be in them.
-	torrents, err := sm.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
+	syncManager, err := sm.syncFresh(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to read existing tags during fallback: %w", err)
 	}
-
 	existingTagsSet := make(map[string]bool)
-	for _, torrent := range torrents {
+	for _, torrent := range torrentsByHash(snapshotIndex(syncManager.SnapshotUnchecked()), hashes) {
 		if torrent.Tags != "" {
 			torrentTags := strings.SplitSeq(torrent.Tags, ", ")
 			for tag := range torrentTags {

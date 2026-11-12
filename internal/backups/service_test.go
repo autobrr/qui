@@ -1707,8 +1707,12 @@ type stubBackupSyncManager struct {
 	versionErr  error
 }
 
-func (s *stubBackupSyncManager) GetAllTorrents(context.Context, int) ([]qbt.Torrent, error) {
-	return append([]qbt.Torrent(nil), s.torrents...), nil
+func (s *stubBackupSyncManager) GetAllTorrentRefs(context.Context, int) ([]*qbt.Torrent, error) {
+	refs := make([]*qbt.Torrent, len(s.torrents))
+	for i := range s.torrents {
+		refs[i] = &s.torrents[i]
+	}
+	return refs, nil
 }
 
 func (s *stubBackupSyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {

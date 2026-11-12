@@ -94,7 +94,9 @@ type Service struct {
 }
 
 type backupReader interface {
-	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	// GetAllTorrentRefs returns the torrents of the Sync snapshot: never
+	// change one.
+	GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error)
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	GetTags(ctx context.Context, instanceID int) ([]string, error)
 	OmitsTrackersOnExport(ctx context.Context, instanceID int) (bool, error)
@@ -677,7 +679,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.normalizeAndPersistSettings(ctx, settings)
 
-	torrents, err := s.reader.GetAllTorrents(ctx, j.instanceID)
+	torrents, err := s.reader.GetAllTorrentRefs(ctx, j.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load torrents: %w", err)
 	}
@@ -788,7 +790,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			// bounded by exportWorkers regardless of how the pool schedules.
 			var lastExportElapsed time.Duration
 			for idx := range indexes {
-				res, err := s.exportBackupTorrent(gctx, j, torrents[idx], patchTrackers, &lastExportElapsed)
+				res, err := s.exportBackupTorrent(gctx, j, *torrents[idx], patchTrackers, &lastExportElapsed)
 				if err != nil {
 					return err
 				}

@@ -465,11 +465,16 @@ type fakeRouteTorrents struct {
 	asked [][]string
 }
 
-func (f *fakeRouteTorrents) GetAllTorrents(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (f *fakeRouteTorrents) GetAllTorrentRefs(_ context.Context, instanceID int) ([]*qbt.Torrent, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	return f.torrents[instanceID], nil
+	torrents := f.torrents[instanceID]
+	refs := make([]*qbt.Torrent, len(torrents))
+	for i := range torrents {
+		refs[i] = &torrents[i]
+	}
+	return refs, nil
 }
 
 func (f *fakeRouteTorrents) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {

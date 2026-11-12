@@ -160,11 +160,12 @@ func (r *routedFilesReader) GetTorrentFilesBatch(_ context.Context, _ int, hashe
 	return out, nil
 }
 
-func (r *routedFilesReader) GetAllTorrents(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (r *routedFilesReader) GetAllTorrentRefs(_ context.Context, instanceID int) ([]*qbt.Torrent, error) {
 	if instanceID != r.crossSeedID {
 		return nil, nil
 	}
-	return []qbt.Torrent{r.routed}, nil
+	routed := r.routed
+	return []*qbt.Torrent{&routed}, nil
 }
 
 func (r *routedFilesReader) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {

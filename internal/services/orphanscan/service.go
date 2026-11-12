@@ -39,7 +39,9 @@ type healthChecker interface {
 
 // syncReader is the slice of the sync manager an orphan scan reads. ADR 0005.
 type syncReader interface {
-	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	// GetTorrentRefsFresh returns the torrents of the Sync snapshot: never
+	// change one.
+	GetTorrentRefsFresh(ctx context.Context, instanceID int) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error)
 }
@@ -286,15 +288,15 @@ func walkReaches(ctx context.Context, backend fsops.Backend, cover, below string
 	}
 }
 
-func scanRootsFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent) []string {
+func scanRootsFromTorrents(d fsops.PathDialect, torrents []*qbt.Torrent) []string {
 	scanRoots := make(map[string]struct{})
-	for i := range torrents {
-		addAbsoluteScanRoot(d, scanRoots, torrents[i].SavePath)
+	for _, torrent := range torrents {
+		addAbsoluteScanRoot(d, scanRoots, torrent.SavePath)
 
 		// Auto TMM can rewrite save_path to a category root without moving the
 		// payload. content_path still points at the real file/folder on disk, and
 		// using it directly is enough for conservative overlap detection.
-		addAbsoluteScanRoot(d, scanRoots, torrents[i].ContentPath)
+		addAbsoluteScanRoot(d, scanRoots, torrent.ContentPath)
 	}
 
 	roots := make([]string, 0, len(scanRoots))
@@ -2193,7 +2195,7 @@ func (r *buildFileMapResult) mergeProtection(d fsops.PathDialect, other *buildFi
 	return added
 }
 
-func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
+func buildFileMapFromTorrents(d fsops.PathDialect, torrents []*qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap(d)
 	scanRoots := make(map[string]struct{})
 	skippedRoots := make(map[string]struct{})
@@ -2201,8 +2203,7 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 	stableMissingFiles := 0
 	var torrentPaths []string
 
-	for i := range torrents {
-		torrent := torrents[i]
+	for _, torrent := range torrents {
 		savePath := d.Clean(torrent.SavePath)
 		hasAbsSavePath := savePath != "" && d.IsAbs(savePath)
 		files, ok := filesByHash[canonicalizeHash(torrent.Hash)]
@@ -2344,7 +2345,7 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialec
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -2387,7 +2388,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -2496,7 +2497,11 @@ func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathD
 	case routed == nil:
 		return nil
 	}
-	other, err := buildFileMapFromTorrents(d, routed.Torrents, routed.Files, wantPaths)
+	routedRefs := make([]*qbt.Torrent, len(routed.Torrents))
+	for i := range routed.Torrents {
+		routedRefs[i] = &routed.Torrents[i]
+	}
+	other, err := buildFileMapFromTorrents(d, routedRefs, routed.Files, wantPaths)
 	if err != nil {
 		return fmt.Errorf("routed torrents of the Cross-seed instance: %w", err)
 	}
@@ -2509,18 +2514,18 @@ func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathD
 // peer: fresh torrents and file lists.
 type freshTorrents struct{ sync syncReader }
 
-func (r freshTorrents) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
-	return r.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+func (r freshTorrents) GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
+	return r.sync.GetTorrentRefsFresh(ctx, instanceID)
 }
 
 func (r freshTorrents) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	return r.sync.GetTorrentFilesBatch(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hashes)
 }
 
-func torrentHashes(torrents []qbt.Torrent) []string {
+func torrentHashes(torrents []*qbt.Torrent) []string {
 	hashes := make([]string, 0, len(torrents))
-	for i := range torrents {
-		hashes = append(hashes, torrents[i].Hash)
+	for _, torrent := range torrents {
+		hashes = append(hashes, torrent.Hash)
 	}
 	return hashes
 }

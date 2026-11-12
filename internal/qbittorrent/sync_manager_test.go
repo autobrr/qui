@@ -855,7 +855,7 @@ func TestWaitForPostAddRecheckReadyChecksSyncThatEndsAtTheDeadline(t *testing.T)
 func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
 	t.Parallel()
 
-	ready := postAddRecheckReady(map[string]qbt.Torrent{}, []string{"abc"})
+	ready := postAddRecheckReady(torrentMapIndex{}, []string{"abc"})
 
 	require.False(t, ready)
 }
@@ -1309,7 +1309,7 @@ func TestResolveTorrentByVariantHash(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			torrent, found := resolveTorrentByVariantHash(torrentMap, tc.inputHash)
+			torrent, found := resolveTorrentByVariantHash(torrentMapIndex(torrentMap), tc.inputHash)
 
 			require.Equal(t, tc.expectFound, found, "found mismatch")
 
@@ -1426,11 +1426,11 @@ type scriptedTorrentFilesClient struct {
 	calls     map[string]int
 }
 
-func (*scriptedTorrentFilesClient) getTorrentsByHashes([]string) []qbt.Torrent {
+func (*scriptedTorrentFilesClient) getTorrentsByHashes([]string) []*qbt.Torrent {
 	return nil
 }
 
-func (c *scriptedTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
+func (c *scriptedTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return maindataEntries(hashes, c.responses)
@@ -1438,15 +1438,15 @@ func (c *scriptedTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []strin
 
 // maindataEntries returns a bare maindata entry for each requested hash that
 // the fake serves. Maindata keys hashes in lowercase, as qBittorrent does.
-func maindataEntries[V any](hashes []string, served map[string]V) []qbt.Torrent {
+func maindataEntries[V any](hashes []string, served map[string]V) []*qbt.Torrent {
 	lower := make(map[string]struct{}, len(served))
 	for hash := range served {
 		lower[canonicalizeHash(hash)] = struct{}{}
 	}
-	var torrents []qbt.Torrent
+	var torrents []*qbt.Torrent
 	for _, hash := range hashes {
 		if _, ok := lower[hash]; ok {
-			torrents = append(torrents, qbt.Torrent{Hash: hash})
+			torrents = append(torrents, &qbt.Torrent{Hash: hash})
 		}
 	}
 	return torrents
@@ -1487,13 +1487,17 @@ func (c *scriptedTorrentFilesClient) callCount(hash string) int {
 	return c.calls[hash]
 }
 
-func (c *stubTorrentFilesClient) getTorrentsByHashes(hashes []string) []qbt.Torrent {
+func (c *stubTorrentFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
 	copied := append([]string(nil), hashes...)
 	c.requestedHashes = append(c.requestedHashes, copied)
-	return c.torrents
+	refs := make([]*qbt.Torrent, len(c.torrents))
+	for i := range c.torrents {
+		refs[i] = &c.torrents[i]
+	}
+	return refs
 }
 
-func (c *stubTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
+func (c *stubTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
 	return maindataEntries(hashes, c.filesByHash)
 }
 
@@ -1516,7 +1520,7 @@ type sliceReusingTorrentFilesClient struct {
 	fileRequests    []string
 }
 
-func (c *sliceReusingTorrentFilesClient) getTorrentsByHashes(hashes []string) []qbt.Torrent {
+func (c *sliceReusingTorrentFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	copied := append([]string(nil), hashes...)
@@ -1524,7 +1528,7 @@ func (c *sliceReusingTorrentFilesClient) getTorrentsByHashes(hashes []string) []
 	return nil
 }
 
-func (c *sliceReusingTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
+func (c *sliceReusingTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return maindataEntries(hashes, c.labels)
@@ -1675,9 +1679,9 @@ type stubTorrentLookup struct {
 	torrents map[string]qbt.Torrent
 }
 
-func (s *stubTorrentLookup) GetTorrent(hash string) (qbt.Torrent, bool) {
+func (s *stubTorrentLookup) Torrent(hash string) (*qbt.Torrent, bool) {
 	torrent, ok := s.torrents[hash]
-	return torrent, ok
+	return &torrent, ok
 }
 
 type bulkActionRetrySyncer struct {
@@ -1712,26 +1716,47 @@ func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
 	return s.syncErr
 }
 
-func (s *bulkActionRetrySyncer) GetTorrentMap(qbt.TorrentFilterOptions) map[string]qbt.Torrent {
+func (s *bulkActionRetrySyncer) snapshot() torrentIndex {
 	s.mapCalls++
 	if s.currentMap != nil || s.mapsAfterSync != nil {
-		return s.currentMap
+		return torrentMapIndex(s.currentMap)
 	}
 	if len(s.maps) == 0 {
-		return nil
+		return torrentMapIndex(nil)
 	}
 	index := s.mapCalls - 1
 	if index >= len(s.maps) {
 		index = len(s.maps) - 1
 	}
-	return s.maps[index]
+	return torrentMapIndex(s.maps[index])
 }
 
-func resolveBulkActionRetryTestHashes(hashes []string) func(map[string]qbt.Torrent) (int, int) {
-	return func(torrents map[string]qbt.Torrent) (int, int) {
+// torrentMapIndex is a torrentIndex over torrents keyed by hash. Each read
+// returns a copy, so a test map never changes.
+type torrentMapIndex map[string]qbt.Torrent
+
+func (m torrentMapIndex) Torrent(hash string) (*qbt.Torrent, bool) {
+	t, ok := m[hash]
+	return &t, ok
+}
+
+func (m torrentMapIndex) Matching(match func(*qbt.Torrent) bool) []*qbt.Torrent {
+	var refs []*qbt.Torrent
+	for _, t := range m {
+		if match(&t) {
+			refs = append(refs, &t)
+		}
+	}
+	return refs
+}
+
+func (m torrentMapIndex) Len() int { return len(m) }
+
+func resolveBulkActionRetryTestHashes(hashes []string) func(torrentIndex) (int, int) {
+	return func(torrents torrentIndex) (int, int) {
 		resolved := 0
 		for _, hash := range hashes {
-			if _, ok := torrents[hash]; ok {
+			if _, ok := torrents.Torrent(hash); ok {
 				resolved++
 			}
 		}
@@ -3331,6 +3356,35 @@ func TestListTorrentsSingleHashSkipsLibraryCopy(t *testing.T) {
 func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 	t.Parallel()
 
+	reads := map[string]func(ctx context.Context, sm *SyncManager) ([]string, error){
+		"copies": func(ctx context.Context, sm *SyncManager) ([]string, error) {
+			torrents, err := sm.GetTorrentsFresh(ctx, 1, qbt.TorrentFilterOptions{})
+			hashes := make([]string, 0, len(torrents))
+			for _, torrent := range torrents {
+				hashes = append(hashes, torrent.Hash)
+			}
+			return hashes, err
+		},
+		"refs": func(ctx context.Context, sm *SyncManager) ([]string, error) {
+			torrents, err := sm.GetTorrentRefsFresh(ctx, 1)
+			hashes := make([]string, 0, len(torrents))
+			for _, torrent := range torrents {
+				hashes = append(hashes, torrent.Hash)
+			}
+			return hashes, err
+		},
+	}
+	for name, read := range reads {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testFreshReadSeesTorrentAddedDuringInFlightSync(t, read)
+		})
+	}
+}
+
+func testFreshReadSeesTorrentAddedDuringInFlightSync(t *testing.T, read func(ctx context.Context, sm *SyncManager) ([]string, error)) {
+	t.Helper()
+
 	// The go-qbittorrent and qui sync managers start cache goroutines that never
 	// end, so they must not start inside the bubble.
 	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
@@ -3375,13 +3429,13 @@ func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 		<-leaderReceived
 
 		type result struct {
-			torrents []qbt.Torrent
-			err      error
+			hashes []string
+			err    error
 		}
 		readDone := make(chan result, 1)
 		go func() {
-			torrents, err := sm.GetTorrentsFresh(ctx, 1, qbt.TorrentFilterOptions{})
-			readDone <- result{torrents, err}
+			hashes, err := read(ctx, sm)
+			readDone <- result{hashes, err}
 		}()
 		// Let the read join the blocked leader before it returns.
 		synctest.Wait()
@@ -3390,12 +3444,26 @@ func TestGetTorrentsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
 		require.NoError(t, <-leaderDone)
 		res := <-readDone
 		require.NoError(t, res.err)
-		hashes := make([]string, 0, len(res.torrents))
-		for _, torrent := range res.torrents {
-			hashes = append(hashes, torrent.Hash)
-		}
-		require.ElementsMatch(t, []string{"aa11", "bb22"}, hashes)
+		require.ElementsMatch(t, []string{"aa11", "bb22"}, res.hashes)
 	})
+}
+
+// Reannounce writes the trackers into the torrent that HasTorrentByAnyHash
+// returns, so the read must not return the shared torrent of the Sync snapshot.
+func TestHasTorrentByAnyHashReturnsPrivateCopy(t *testing.T) {
+	t.Parallel()
+
+	client, _, sm, _ := newSyncedStubClient(t, "2.15.1")
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
+
+	found, ok, err := sm.HasTorrentByAnyHash(t.Context(), 1, []string{hashA})
+	require.NoError(t, err)
+	require.True(t, ok)
+	found.Name = "Changed"
+
+	shared, ok := client.SyncOwner().SnapshotUnchecked().Torrent(hashA)
+	require.True(t, ok)
+	require.Equal(t, "Show.S01E01-GRP", shared.Name)
 }
 
 // Automation rules delete on what GetAllTorrents returns, so a pass must not
@@ -3678,9 +3746,9 @@ type blockingTorrentFilesClient struct {
 	after func()
 }
 
-func (*blockingTorrentFilesClient) getTorrentsByHashes([]string) []qbt.Torrent { return nil }
+func (*blockingTorrentFilesClient) getTorrentsByHashes([]string) []*qbt.Torrent { return nil }
 
-func (c *blockingTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
+func (c *blockingTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
 	return maindataEntries(hashes, map[string]struct{}{c.done: {}})
 }
 

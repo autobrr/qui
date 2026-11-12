@@ -42,11 +42,7 @@
     "pkg/prowlarr/client.go": 3
   },
   "forbidigo": {
-    "internal/api/handlers/torrents.go": 1,
-    "internal/qbittorrent/client.go": 4,
-    "internal/qbittorrent/folder_cleanup_triggers.go": 5,
-    "internal/qbittorrent/sync_manager.go": 6,
-    "internal/services/reannounce/service.go": 1
+    "internal/qbittorrent/sync_manager.go": 2
   },
   "gocognit": {
     "cmd/qui/main.go": 2,

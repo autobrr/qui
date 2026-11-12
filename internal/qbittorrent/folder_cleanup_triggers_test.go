@@ -806,7 +806,7 @@ func TestFolderCleanupSnapshotStartsNoStatPastTheDeadline(t *testing.T) {
 	stats := backend.stats.Load()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	torrents := []qbt.Torrent{
+	torrents := []*qbt.Torrent{
 		{Hash: hashA, SavePath: r.p("torrents/tv"), ContentPath: r.p("torrents/tv/Rel-A")},
 		{Hash: hashB, SavePath: r.p("torrents/tv"), ContentPath: r.p("torrents/tv/Rel-B")},
 	}

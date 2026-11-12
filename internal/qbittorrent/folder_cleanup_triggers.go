@@ -138,27 +138,26 @@ func (sm *SyncManager) prepareFolderCleanup(ctx context.Context, instanceID int,
 	return batch
 }
 
-func folderCleanupCandidates(syncManager *syncowner.Owner, d fsops.PathDialect, op FolderCleanupOp) []qbt.Torrent {
-	var torrents []qbt.Torrent
+func folderCleanupCandidates(syncManager *syncowner.Owner, d fsops.PathDialect, op FolderCleanupOp) []*qbt.Torrent {
+	snapshot := snapshotIndex(syncManager.SnapshotUnchecked())
+	mayMove := func(t *qbt.Torrent) bool { return op.mayMove(d, t) }
 	switch {
 	case op.Kind == FolderCleanupEditCategory:
 		if category, ok := syncManager.GetCategoriesUnchecked()[op.EditedCategory]; ok && d.Clean(category.SavePath) == d.Clean(op.Path) {
 			return nil
 		}
-		torrents = syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
+		return snapshot.Matching(mayMove)
 	case len(op.Hashes) == 1 && op.Hashes[0] == "all":
-		torrents = syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
-	default:
-		torrents = lookupTorrents(syncManager, op.Hashes)
+		return snapshot.Matching(mayMove)
 	}
-	return slices.DeleteFunc(torrents, func(t qbt.Torrent) bool { return !op.mayMove(d, &t) })
+	return slices.DeleteFunc(lookupTorrents(snapshot, op.Hashes), func(t *qbt.Torrent) bool { return !mayMove(t) })
 }
 
 // lookupTorrents resolves hashes as qBittorrent's WebAPI does: only a
 // torrent's own hash, in either case, names it. A padded or v2 hash, which
 // BulkAction accepts but qBittorrent ignores, is not a cache key.
-func lookupTorrents(syncManager *syncowner.Owner, hashes []string) []qbt.Torrent {
-	var found []qbt.Torrent
+func lookupTorrents(snapshot torrentLookup, hashes []string) []*qbt.Torrent {
+	var found []*qbt.Torrent
 	seen := make(map[string]struct{}, len(hashes))
 	for _, hash := range hashes {
 		id := strings.ToLower(hash)
@@ -166,7 +165,7 @@ func lookupTorrents(syncManager *syncowner.Owner, hashes []string) []qbt.Torrent
 			continue
 		}
 		seen[id] = struct{}{}
-		if t, ok := syncManager.GetTorrentUnchecked(id); ok {
+		if t, ok := snapshot.Torrent(id); ok {
 			found = append(found, t)
 		}
 	}
@@ -218,15 +217,14 @@ func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
 // snapshotFolders records each torrent's layout and whether its content
 // existed. Only a torrent without a root folder needs its file list: a root
 // folder is removed whole, and a single file has nothing below it.
-func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, backend fsops.Backend, torrents []qbt.Torrent, move bool) []folderSnapshot {
+func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, backend fsops.Backend, torrents []*qbt.Torrent, move bool) []folderSnapshot {
 	if len(torrents) == 0 {
 		return nil
 	}
 	d := backend.Paths()
 	snaps := make([]folderSnapshot, len(torrents))
 	var noRoot []string
-	for i := range torrents {
-		t := &torrents[i]
+	for i, t := range torrents {
 		snaps[i] = folderSnapshot{InstanceID: instanceID, Hash: t.Hash, SavePath: t.SavePath,
 			DownloadPath: t.DownloadPath, ContentPath: t.ContentPath, Layout: layoutRootFolder, Move: move}
 		content := fsops.NormalizePath(d, t.ContentPath)
@@ -409,25 +407,26 @@ func (sm *SyncManager) syncedMainData(ctx context.Context, instanceID int) (*Cli
 	return client, syncManager, nil
 }
 
-func (sm *SyncManager) liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (sm *SyncManager) liveTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
 	_, syncManager, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	return syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{}), nil
+	return snapshotTorrents(syncManager.SnapshotUnchecked()), nil
 }
 
 // ownRows reads the cached rows of hashes, one map read each, keyed by
 // canonicalizeHash. A hash without a row is left out.
-func (sm *SyncManager) ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error) {
+func (sm *SyncManager) ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, error) {
 	_, syncManager, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	rows := make(map[string]qbt.Torrent, len(hashes))
+	snapshot := snapshotIndex(syncManager.SnapshotUnchecked())
+	rows := make(map[string]*qbt.Torrent, len(hashes))
 	for _, hash := range hashes {
 		hash = canonicalizeHash(hash)
-		if t, ok := syncManager.GetTorrentUnchecked(hash); ok {
+		if t, ok := snapshot.Torrent(hash); ok {
 			rows[hash] = t
 		}
 	}
