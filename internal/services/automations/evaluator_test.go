@@ -1561,7 +1561,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 	}
 
 	// Build the category index
-	categoryIndex, categoryNames := BuildCategoryIndex(torrents)
+	categoryIndex, categoryNames := BuildCategoryIndex(torrentRefs(torrents))
 	evalCtx := &EvalContext{
 		CategoryIndex: categoryIndex,
 		CategoryNames: categoryNames,
@@ -1699,7 +1699,7 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 	}
 
 	// Build the category index
-	categoryIndex, categoryNames := BuildCategoryIndex(torrents)
+	categoryIndex, categoryNames := BuildCategoryIndex(torrentRefs(torrents))
 	evalCtx := &EvalContext{
 		CategoryIndex: categoryIndex,
 		CategoryNames: categoryNames,
@@ -1893,7 +1893,7 @@ func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
 			torrents := []qbt.Torrent{
 				{Hash: "hashCat", Name: tt.categoryName, Category: "imported"},
 			}
-			categoryIndex, categoryNames := BuildCategoryIndex(torrents)
+			categoryIndex, categoryNames := BuildCategoryIndex(torrentRefs(torrents))
 			evalCtx := &EvalContext{
 				CategoryIndex: categoryIndex,
 				CategoryNames: categoryNames,
@@ -1917,7 +1917,7 @@ func TestBuildCategoryIndex(t *testing.T) {
 		{Hash: "hash4", Name: "Uncategorized", Category: ""},        // Empty category
 	}
 
-	categoryIndex, categoryNames := BuildCategoryIndex(torrents)
+	categoryIndex, categoryNames := BuildCategoryIndex(torrentRefs(torrents))
 
 	// Test CategoryIndex structure
 	if categoryIndex == nil {
@@ -3466,7 +3466,7 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, withTrackerLookup(tt.ctx, tt.torrent), 0)
 			if got != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, got)
 			}
@@ -4095,7 +4095,7 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, withTrackerLookup(nil, tt.torrent), 0)
 			if got != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, got)
 			}
@@ -4108,8 +4108,8 @@ func TestEvaluateCondition_SeasonPackStatus(t *testing.T) {
 	pack := "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"
 	episode := qbt.Torrent{Hash: "ep", Name: "Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"}
 	movie := qbt.Torrent{Hash: "movie", Name: "Some.Movie.2021.1080p.BluRay.x264-GRP"}
-	sameCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: buildSeasonPackSet(parser, []qbt.Torrent{{Name: pack}})}
-	anyCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: map[string]struct{}{}, SeasonPackSetAnyInstance: buildSeasonPackSet(parser, []qbt.Torrent{{Name: pack}})}
+	sameCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: buildSeasonPackSet(parser, torrentRefs([]qbt.Torrent{{Name: pack}}))}
+	anyCtx := &EvalContext{ReleaseParser: parser, SeasonPackSet: map[string]struct{}{}, SeasonPackSetAnyInstance: buildSeasonPackSet(parser, torrentRefs([]qbt.Torrent{{Name: pack}}))}
 	unbuiltCtx := &EvalContext{ReleaseParser: parser}
 
 	tests := []struct {
@@ -4356,7 +4356,7 @@ func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0); got != tt.expected {
+			if got := EvaluateConditionWithContext(tt.cond, tt.torrent, withTrackerLookup(tt.ctx, tt.torrent), 0); got != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, got)
 			}
 		})

@@ -164,7 +164,7 @@ func TestPlanTorrentRescan(t *testing.T) {
 		"arrived": {Hash: "arrived", SavePath: filepath.Join(dir, "c")},
 	}
 
-	rescan, staleFileIDs := planTorrentRescan(&hardlinkBuildState{torrentInfoByHash: previous}, current)
+	rescan, staleFileIDs := planTorrentRescan(&hardlinkBuildState{torrentInfoByHash: previous}, torrentRefMap(current))
 
 	require.Contains(t, rescan, "moved", "a save path change points the torrent at different files")
 	require.Contains(t, rescan, "arrived", "a torrent with no previous scan has to be read")
@@ -195,7 +195,7 @@ func TestPlanSharingRescanSkipsAlreadyPlannedAndDepartedTorrents(t *testing.T) {
 		staleFileIDs[testFileKey(fileID, nil)] = struct{}{}
 	}
 
-	sharing := planSharingRescan(&hardlinkBuildState{torrentInfoByHash: previous}, current, map[string]struct{}{"planned": {}}, staleFileIDs)
+	sharing := planSharingRescan(&hardlinkBuildState{torrentInfoByHash: previous}, torrentRefMap(current), map[string]struct{}{"planned": {}}, staleFileIDs)
 
 	require.Equal(t, map[string]struct{}{"sharer": {}}, sharing)
 }

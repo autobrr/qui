@@ -24,7 +24,7 @@ import (
 type stepRun struct {
 	s             *Service
 	instanceID    int
-	torrentByHash map[string]qbt.Torrent
+	torrentByHash map[string]*qbt.Torrent
 	// scope gives the tracker that an activity row shows.
 	scope  *ruleScope
 	dryRun bool

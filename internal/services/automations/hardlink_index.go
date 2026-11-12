@@ -175,7 +175,7 @@ var globalHardlinkIndexCache = &hardlinkIndexCache{
 // when no previous scan is available to build on, or when the routed torrents of the
 // Cross-seed instance changed. When qui cannot read the routed torrents, it returns an
 // empty index that it does not cache, so every scope reads unknown for this run.
-func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent) *HardlinkIndex {
+func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents []*qbt.Torrent) *HardlinkIndex {
 	if s == nil || s.filesReader == nil {
 		return nil
 	}
@@ -196,7 +196,7 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	currentDigest := computeTorrentSetDigest(torrents)
 	var routedDigest string
 	if routed != nil {
-		routedDigest = computeTorrentSetDigest(routed.Torrents)
+		routedDigest = computeTorrentSetDigest(torrentRefs(routed.Torrents))
 	}
 
 	// Check cache
@@ -250,7 +250,7 @@ func logRoutedUnavailable(instanceID int, err error) {
 
 // computeTorrentSetDigest creates a digest identifying the current torrent set.
 // Changes in hash or save path invalidate the cache.
-func computeTorrentSetDigest(torrents []qbt.Torrent) string {
+func computeTorrentSetDigest(torrents []*qbt.Torrent) string {
 	if len(torrents) == 0 {
 		return ""
 	}
@@ -261,7 +261,7 @@ func computeTorrentSetDigest(torrents []qbt.Torrent) string {
 		indices[i] = i
 	}
 	sort.Slice(indices, func(i, j int) bool {
-		ti, tj := &torrents[indices[i]], &torrents[indices[j]]
+		ti, tj := torrents[indices[i]], torrents[indices[j]]
 		if ti.Hash != tj.Hash {
 			return ti.Hash < tj.Hash
 		}
@@ -271,7 +271,7 @@ func computeTorrentSetDigest(torrents []qbt.Torrent) string {
 	// Hash sorted torrents directly (avoids intermediate string concatenation)
 	h := sha256.New()
 	for _, idx := range indices {
-		t := &torrents[idx]
+		t := torrents[idx]
 		io.WriteString(h, t.Hash) //nolint:errcheck // hash.Hash.Write never returns error
 		h.Write([]byte{0})
 		io.WriteString(h, t.SavePath) //nolint:errcheck // hash.Hash.Write never returns error
@@ -419,7 +419,7 @@ func deriveLinkCounts(instance *models.Instance, torrentInfoByHash map[string]*t
 // Returns nil when the update cannot be trusted or would not pay for itself, leaving
 // the caller to run a full build: no previous scan to build on, a fetch failure, or
 // more than a fraction of the set changed at once.
-func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cached *HardlinkIndex, torrents []qbt.Torrent, digest string) *HardlinkIndex {
+func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cached *HardlinkIndex, torrents []*qbt.Torrent, digest string) *HardlinkIndex {
 	if cached == nil || len(torrents) == 0 {
 		return nil
 	}
@@ -433,7 +433,7 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 
 	startTime := time.Now()
 
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	torrentByHash := make(map[string]*qbt.Torrent, len(torrents))
 	for i := range torrents {
 		torrentByHash[torrents[i].Hash] = torrents[i]
 	}
@@ -572,7 +572,7 @@ func hardlinkScope(hasInside, hasOutside bool) string {
 // hardlinkIndexTTL for changes nothing reports, which is harmless for tagging and not
 // harmless for deleting. The check does not read the files of other instances again,
 // so the cross-instance counts can lag by the same limit.
-func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, index *HardlinkIndex, torrentByHash map[string]qbt.Torrent, candidates map[string]hardlinkUse) map[string]string {
+func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, index *HardlinkIndex, torrentByHash map[string]*qbt.Torrent, candidates map[string]hardlinkUse) map[string]string {
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -623,7 +623,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 	for hash, use := range candidates {
 		var info *torrentFileInfo
 		if files, present := filesByHash[hash]; present {
-			info = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
+			info = scanTorrentFiles(ctx, backend, *torrentByHash[hash], files)
 		}
 		check := func(scopes map[string]string, counts map[fsops.FileKey]*fileIDTracker) string {
 			expected, known := scopes[hash]
@@ -667,7 +667,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 // link, or kept the link and lost the torrent that explained it. Either way the torrents
 // still holding those files need a fresh read. A torrent whose save path moved points at
 // different files now, so its previous scan is as stale as a removal plus an addition.
-func planTorrentRescan(previous *hardlinkBuildState, torrentByHash map[string]qbt.Torrent) (map[string]struct{}, map[fsops.FileKey]struct{}) {
+func planTorrentRescan(previous *hardlinkBuildState, torrentByHash map[string]*qbt.Torrent) (map[string]struct{}, map[fsops.FileKey]struct{}) {
 	rescan := make(map[string]struct{})
 	staleFileIDs := make(map[fsops.FileKey]struct{})
 
@@ -700,7 +700,7 @@ func planTorrentRescan(previous *hardlinkBuildState, torrentByHash map[string]qb
 // happening to them directly.
 func planSharingRescan(
 	previous *hardlinkBuildState,
-	torrentByHash map[string]qbt.Torrent,
+	torrentByHash map[string]*qbt.Torrent,
 	rescan map[string]struct{},
 	staleFileIDs map[fsops.FileKey]struct{},
 ) map[string]struct{} {
@@ -729,7 +729,7 @@ func planSharingRescan(
 // lists could not be fetched, which must abandon the incremental update rather than
 // leave those torrents on their previous scan: a torrent silently kept at stale link
 // counts is exactly what an incremental update must not produce.
-func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash map[string]qbt.Torrent, hashes map[string]struct{}) (map[string]*torrentFileInfo, bool) {
+func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash map[string]*qbt.Torrent, hashes map[string]struct{}) (map[string]*torrentFileInfo, bool) {
 	if len(hashes) == 0 {
 		return nil, true
 	}
@@ -763,7 +763,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 			scanned[hash] = &torrentFileInfo{savePath: torrentByHash[hash].SavePath}
 			continue
 		}
-		scanned[hash] = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
+		scanned[hash] = scanTorrentFiles(ctx, backend, *torrentByHash[hash], files)
 	}
 	if ctx.Err() != nil {
 		return nil, false
@@ -776,7 +776,7 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 // The complexity is inherent to the single-pass algorithm that avoids multiple filesystem scans.
 //
 //nolint:gocyclo,funlen,revive // complexity is inherent to the single-pass design
-func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, digest string, routed *crossseedroute.RoutedTorrents, routedDigest string) *HardlinkIndex {
+func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []*qbt.Torrent, digest string, routed *crossseedroute.RoutedTorrents, routedDigest string) *HardlinkIndex {
 	startTime := time.Now()
 	index := &HardlinkIndex{
 		SignatureByHash:            make(map[string]string),
@@ -809,7 +809,7 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 
 	// Fetch file lists for all torrents in one batch
 	hashes := make([]string, 0, len(torrents))
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	torrentByHash := make(map[string]*qbt.Torrent, len(torrents))
 	for i := range torrents {
 		hashes = append(hashes, torrents[i].Hash)
 		torrentByHash[torrents[i].Hash] = torrents[i]
@@ -842,7 +842,7 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 			// Don't cache a partial build - a canceled request shouldn't poison the cache
 			return index
 		}
-		torrentInfoByHash[hash] = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
+		torrentInfoByHash[hash] = scanTorrentFiles(ctx, backend, *torrentByHash[hash], files)
 	}
 	if ctx.Err() != nil {
 		return index

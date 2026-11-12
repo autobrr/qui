@@ -82,7 +82,7 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 				Value:    "BHD",
 			}
 
-			evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+			evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}), nil)
 			require.NoError(t, err)
 
 			require.NotNil(t, evalCtx.TrackerDisplayNameByDomain)
@@ -104,7 +104,7 @@ func TestPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
 		Value:    "tier1",
 	}
 
-	evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+	evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}), nil)
 	require.NoError(t, err)
 
 	assert.Nil(t, evalCtx.TrackerDisplayNameByDomain)
@@ -127,7 +127,7 @@ func TestBuildEvalContext_StopsOnCrossSeedSnapshotFailure(t *testing.T) {
 		{Category: &models.CategoryAction{Enabled: true, IncludeCrossSeeds: true}},
 	} {
 		needs := previewNeeds(&models.Automation{Conditions: action})
-		_, _, err := svc.buildEvalContext(t.Context(), 1, nil, nil, needs)
+		_, _, err := svc.buildEvalContext(t.Context(), 1, nil, nil, needs, nil)
 		require.ErrorIs(t, err, wantErr)
 	}
 }

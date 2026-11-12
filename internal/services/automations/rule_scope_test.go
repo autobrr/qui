@@ -15,7 +15,7 @@ import (
 
 // noSkipWindow opens the Rule scope of the rules as a dry run and a preview do.
 func noSkipWindow(rules ...*models.Automation) *ruleScope {
-	return newRuleScope(rules, nil)
+	return newRuleScope(rules, nil, nil)
 }
 
 // scopeTestTorrent returns a torrent with one tracker for each domain. The first is the tracker in use.
@@ -114,7 +114,7 @@ func TestRuleScope(t *testing.T) {
 			}
 			rule := &models.Automation{ID: 1, TrackerPattern: tt.pattern, Conditions: tt.conditions, SortingConfig: tt.sorting}
 
-			got := newRuleScope([]*models.Automation{rule}, skipWindow).answer(rule, &torrent)
+			got := newRuleScope([]*models.Automation{rule}, skipWindow, trackerLookupOf(torrent)).answer(rule, &torrent)
 
 			require.Equal(t, tt.want, got)
 		})
@@ -136,7 +136,7 @@ func TestRuleScope_GroupDropsMember(t *testing.T) {
 	readsName := &models.Automation{ID: 2, TrackerPattern: tracker, Conditions: &models.ActionConditions{
 		Pause: &models.PauseAction{Enabled: true, Condition: &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "a"}},
 	}}
-	scope := newRuleScope([]*models.Automation{readsPrivate, readsName}, map[string]struct{}{"deleting": {}})
+	scope := newRuleScope([]*models.Automation{readsPrivate, readsName}, map[string]struct{}{"deleting": {}}, nil)
 	tests := []struct {
 		name   string
 		rule   *models.Automation
@@ -151,7 +151,7 @@ func TestRuleScope_GroupDropsMember(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scope.groupDropsMember(tt.rule, []string{"withmeta", tt.member}, torrentByHash)
+			got := scope.groupDropsMember(tt.rule, []string{"withmeta", tt.member}, torrentRefMap(torrentByHash))
 
 			require.Equal(t, tt.want, got)
 		})

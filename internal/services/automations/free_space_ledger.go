@@ -172,8 +172,9 @@ func (l *freeSpaceLedger) countCrossSeedGroup(torrent qbt.Torrent, crossSeeds *c
 
 	torrents := evalCtx.torrentsByHash
 	if torrents == nil {
-		torrents = make(map[string]qbt.Torrent, len(crossSeeds.members(torrent.Hash))+1)
-		torrents[torrent.Hash] = torrent
+		trigger := torrent
+		torrents = make(map[string]*qbt.Torrent, len(crossSeeds.members(torrent.Hash))+1)
+		torrents[torrent.Hash] = &trigger
 		for _, member := range crossSeeds.members(torrent.Hash) {
 			torrents[member.Hash] = member
 		}

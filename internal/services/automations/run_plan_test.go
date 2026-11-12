@@ -28,7 +28,7 @@ func planTestRun(t *testing.T, torrents []qbt.Torrent, rules []*models.Automatio
 func planTestRunWith(t *testing.T, svc *Service, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection, sharing map[string][]string) runPlan {
 	t.Helper()
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharing}
-	states := processTorrents(torrents, rules, evalCtx, buildCrossSeedGroups(torrents, evalCtx), noSkipWindow(rules...), nil, nil)
+	states := processTorrents(torrentRefs(torrents), rules, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rules...), nil, nil)
 	if deletions == nil {
 		deletions = &deletionSelection{}
 	}
@@ -43,10 +43,10 @@ func planTestRunWith(t *testing.T, svc *Service, torrents []qbt.Torrent, rules [
 	return svc.buildRunPlan(t.Context(), runPlanInput{
 		states:        states,
 		deletions:     deletions,
-		torrents:      torrents,
-		torrentByHash: torrentByHash,
+		torrents:      torrentRefs(torrents),
+		torrentByHash: torrentRefMap(torrentByHash),
 		ruleByID:      ruleByID,
-		crossSeeds:    buildCrossSeedGroups(torrents, evalCtx),
+		crossSeeds:    buildCrossSeedGroups(torrentRefs(torrents), evalCtx),
 		evalCtx:       evalCtx,
 		scope:         noSkipWindow(rules...),
 	})

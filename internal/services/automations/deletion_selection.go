@@ -21,7 +21,7 @@ type deletionSelectionInput struct {
 	// rules in rule order. A rule without an enabled delete action is ignored.
 	rules []*models.Automation
 	// torrents are sorted in place by the sort order of each rule.
-	torrents   []qbt.Torrent
+	torrents   []*qbt.Torrent
 	evalCtx    *EvalContext
 	crossSeeds *crossSeedGroups
 	// scope is the Rule scope of the run. The dry run and the preview open it with no Skip window.
@@ -138,10 +138,10 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		failedRules: make(map[int]error),
 	}
 	evalCtx := in.evalCtx
-	// A torrent is about 2 KB. Build the map only for the modes that expand groups, so the
-	// preview of another mode does not pay for it. The run builds the map later in any case.
+	// Build the map only for the modes that expand groups, so the preview of another mode
+	// does not pay for it. The run builds the map later in any case.
 	if evalCtx.torrentsByHash == nil && slices.ContainsFunc(in.rules, deleteExpandsGroups) {
-		evalCtx.torrentsByHash = make(map[string]qbt.Torrent, len(in.torrents))
+		evalCtx.torrentsByHash = make(map[string]*qbt.Torrent, len(in.torrents))
 		for _, torrent := range in.torrents {
 			evalCtx.torrentsByHash[torrent.Hash] = torrent
 		}
@@ -171,11 +171,10 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 	}
 	askDeleteGroups(claims, in.crossSeeds, evalCtx.hardlinkIndex)
 
-	// The sort order is final now, so pointers into in.torrents stay valid.
 	triggerTorrents := make(map[string]*qbt.Torrent, len(sel.triggers))
-	for i := range in.torrents {
-		if sel.isClaimed(in.torrents[i].Hash) {
-			triggerTorrents[in.torrents[i].Hash] = &in.torrents[i]
+	for _, torrent := range in.torrents {
+		if sel.isClaimed(torrent.Hash) {
+			triggerTorrents[torrent.Hash] = torrent
 		}
 	}
 	// Torrents that an include-cross-seeds group took, so a later group does not check them
@@ -252,7 +251,7 @@ func claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel
 
 	var claims []deletionClaim
 	for i := range in.torrents {
-		torrent := &in.torrents[i]
+		torrent := in.torrents[i]
 		if !inScope(torrent) {
 			continue
 		}

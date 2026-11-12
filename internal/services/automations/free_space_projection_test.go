@@ -95,8 +95,8 @@ func TestPlainFreeSpaceProjection_UnreadSelectionStopsRule(t *testing.T) {
 		stats := make(map[int]*ruleRunStats)
 		svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
 		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-			rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx,
-			crossSeeds: buildCrossSeedGroups(torrents, evalCtx), scope: noSkipWindow(rule), stats: stats,
+			rules: []*models.Automation{rule}, torrents: torrentRefs(torrents), evalCtx: evalCtx,
+			crossSeeds: buildCrossSeedGroups(torrentRefs(torrents), evalCtx), scope: noSkipWindow(rule), stats: stats,
 		})
 		require.Empty(t, selection.byHash, "a failed estimate cancels earlier selections and stops later deletions")
 		require.Empty(t, selection.triggers)

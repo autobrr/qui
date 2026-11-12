@@ -109,7 +109,7 @@ type groupingConditionUsage struct {
 	hasUnscoped bool
 }
 
-func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrents []qbt.Torrent, scope *ruleScope) {
+func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrents []*qbt.Torrent, scope *ruleScope) {
 	if evalCtx == nil {
 		return
 	}
@@ -149,7 +149,7 @@ func activateRuleGrouping(evalCtx *EvalContext, rule *models.Automation, torrent
 	}
 }
 
-func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, groupID string, torrents []qbt.Torrent, scope *ruleScope) *groupIndex {
+func getOrBuildGroupIndexForRule(evalCtx *EvalContext, rule *models.Automation, groupID string, torrents []*qbt.Torrent, scope *ruleScope) *groupIndex {
 	if evalCtx == nil || rule == nil || groupID == "" {
 		return nil
 	}
@@ -442,7 +442,7 @@ func builtinGroupDefinition(id string) *models.GroupDefinition {
 	}
 }
 
-func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []qbt.Torrent, scope *ruleScope, evalCtx *EvalContext) *groupIndex {
+func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []*qbt.Torrent, scope *ruleScope, evalCtx *EvalContext) *groupIndex {
 	idx := &groupIndex{
 		groupID:       groupID,
 		keyByHash:     make(map[string]string),
@@ -454,7 +454,7 @@ func buildGroupIndex(groupID string, def *models.GroupDefinition, torrents []qbt
 	keys := def.Keys
 	for i := range torrents {
 		t := torrents[i]
-		key, ok := buildGroupKey(keys, t, scope, evalCtx)
+		key, ok := buildGroupKey(keys, *t, scope, evalCtx)
 		if !ok || key == "" {
 			continue
 		}
