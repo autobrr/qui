@@ -148,13 +148,13 @@ linters:
         - pattern: ^qbittorrent\.SyncManager(\.\w+)?$
           pkg: ^github\.com/autobrr/go-qbittorrent$
           msg: only internal/qbittorrent/syncowner holds the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
-        # qui has its own qbittorrent.NewSyncManager, so the library function and
-        # the client method need separate package matches.
+        # qui has its own function qbittorrent.NewSyncManager, so the function
+        # rule names the library package. The method rule names no package: it
+        # reports the method on each type, also on a type that embeds a client.
         - pattern: ^qbittorrent\.NewSyncManager$
           pkg: ^github\.com/autobrr/go-qbittorrent$
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
-        - pattern: ^qbittorrent\.Client\.NewSyncManager$
-          pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
+        - pattern: ^\w+\.\w+\.NewSyncManager$
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
 
     exhaustive:
