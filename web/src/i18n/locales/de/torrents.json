@@ -1699,5 +1699,12 @@
     "groupCopies": "Kopien gruppieren",
     "ungroupCopies": "Gruppierung der Kopien aufheben",
     "grouping": "Gruppiere…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Cross-Seeds gruppieren",
+      "description": "Zeigt die Kopien eines Torrents in einer einzigen Zeile.",
+      "action": "Ausprobieren"
+    }
   }
 }
