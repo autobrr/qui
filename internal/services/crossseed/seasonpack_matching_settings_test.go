@@ -84,6 +84,7 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
+			// regression: #4068
 			name:    "a third repack can be ignored for season packs",
 			pack:    "Show.S01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
 			episode: "Show.S01E01.1080p.WEB-DL.REPACK3.DDPA5.1.H.264-RlsGrp",
@@ -187,6 +188,7 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			checkSeasonPack: true,
 		},
 		{
+			// regression: #4068
 			name:         "a second repack is not the plain episode",
 			pack:         "Show.S01E01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
 			episode:      "Show.S01E01.1080p.WEB-DL.REPACK2.DDPA5.1.H.264-RlsGrp",

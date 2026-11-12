@@ -660,6 +660,7 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 // Plain rls already read the pack file as E01. The cached parser reads it as a
 // pack, so this test fails if the pack side stops taking the first episode.
 // A range that starts at episode 0 is read as its next episode on both sides.
+// regression: #4068
 func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	const packName = "Show.S01.1080p.WEB.x264-GRP"
 	for _, episodes := range []string{"S01E01E02", "S01E00E01"} {

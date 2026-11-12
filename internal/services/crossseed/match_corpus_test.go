@@ -440,6 +440,7 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
+		// regression: #3730
 		name:           "bracket batch with a Batch tag against the same pack without it",
 		source:         "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
 		candidate:      "[KaijuSubs] Kaiju Squad S2 (1080p)",
@@ -450,6 +451,7 @@ var corpusRows = []corpusRow{
 		want:           corpusMatch,
 	},
 	{
+		// regression: #3730
 		name:           "bracket batch against the same pack with a Batch tag",
 		source:         "[KaijuSubs] Kaiju Squad S2 (1080p)",
 		candidate:      "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
@@ -460,6 +462,7 @@ var corpusRows = []corpusRow{
 		want:           corpusMatch,
 	},
 	{
+		// regression: #3730
 		name:           "bracket batch with a Batch tag against the pack of another fansub",
 		source:         "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
 		candidate:      "[OtherSubs] Kaiju Squad S2 (1080p)",
@@ -470,6 +473,7 @@ var corpusRows = []corpusRow{
 		want:           corpusNoMatch,
 	},
 	{
+		// regression: #4068
 		name:          "bracket fansub against a listing with no group",
 		source:        "[KaijuSubs] Kaiju Squad - 81 (1080p)",
 		candidate:     "Kaiju Squad - 81 (1080p)",
@@ -478,6 +482,7 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
+		// regression: #4068
 		name:          "group tag that repeats its site label against another group under the label",
 		source:        "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-kaijutv[kaijutv]",
 		candidate:     "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-OTHER[kaijutv]",
@@ -486,6 +491,7 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
+		// regression: #3292
 		name:          "REPACK flag in a trailing bracket against the flag in the name",
 		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",
@@ -497,6 +503,7 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
+		// regression: #3292
 		name:          "REPACK flag in a trailing bracket at another size",
 		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",
