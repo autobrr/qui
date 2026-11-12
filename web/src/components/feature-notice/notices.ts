@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { ComponentType } from "react"
+
+import { GroupCopiesNoticePicture } from "@/components/torrents/table/GroupCopiesNoticePicture"
 import { readGroupCopies } from "@/hooks/usePersistedGroupCopies"
 
 export interface FeatureNoticeEntry {
@@ -10,6 +13,8 @@ export interface FeatureNoticeEntry {
   titleKey: string
   descriptionKey: string
   actionLabelKey: string
+  /** A small drawing of what the feature does, shown above the title. Hide it from screen readers. */
+  Picture?: ComponentType
   /** True when the user already uses the feature. Reads Client settings; checked again after each change. */
   isInUse: () => boolean
 }
@@ -21,6 +26,7 @@ export const FEATURE_NOTICES = [
     titleKey: "torrents:featureNotice.groupCopies.title",
     descriptionKey: "torrents:featureNotice.groupCopies.description",
     actionLabelKey: "torrents:featureNotice.groupCopies.action",
+    Picture: GroupCopiesNoticePicture,
     isInUse: readGroupCopies,
   },
 ] as const satisfies readonly FeatureNoticeEntry[]

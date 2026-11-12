@@ -92,7 +92,6 @@ describe("FeatureNotice", () => {
     expect(screen.getByText("first.description")).not.toBeNull()
     expect(screen.getByRole("button", { name: "common:featureNotice.gotIt" })).not.toBeNull()
     expect(screen.getByRole("button", { name: "first.action" })).not.toBeNull()
-    expect(screen.getByRole("button", { name: "common:actions.close" })).not.toBeNull()
   })
 
   it("shows nothing before the first server snapshot arrives", () => {
@@ -103,14 +102,11 @@ describe("FeatureNotice", () => {
     expect(bubbleShown()).toBe(true)
   })
 
-  it.each([
-    ["Got it", "common:featureNotice.gotIt"],
-    ["the X", "common:actions.close"],
-  ])("closes and stores seen after %s", (_, name) => {
+  it("closes and stores seen after Got it", () => {
     loadServerSnapshot()
     const onAction = renderNotice("first")
 
-    fireEvent.click(screen.getByRole("button", { name }))
+    fireEvent.click(screen.getByRole("button", { name: "common:featureNotice.gotIt" }))
 
     expect(bubbleShown()).toBe(false)
     expect(readRaw(FIRST_SEEN)).toBe("true")
@@ -228,6 +224,32 @@ describe("FeatureNotice", () => {
     screen.getByRole("button", { name: "first.action" }).focus()
     await userEvent.tab()
 
-    expect(document.activeElement?.textContent).toBe("next control")
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "next control" }))
+  })
+
+  // regression: #4070
+  it.each([
+    ["Got it", "common:featureNotice.gotIt"],
+    ["the primary action", "first.action"],
+  ])("returns keyboard focus to the control after %s", async (_, name) => {
+    loadServerSnapshot()
+    renderNotice("first")
+
+    screen.getByRole("button", { name }).focus()
+    await userEvent.keyboard("{Enter}")
+
+    expect(bubbleShown()).toBe(false)
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "first-control" }))
+  })
+
+  it("leaves focus where it is when a pointer closes the bubble", () => {
+    loadServerSnapshot()
+    render(<input aria-label="search" />)
+    renderNotice("first")
+
+    screen.getByRole("textbox", { name: "search" }).focus()
+    fireEvent.click(screen.getByRole("button", { name: "common:featureNotice.gotIt" }))
+
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "search" }))
   })
 })

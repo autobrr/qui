@@ -10,11 +10,11 @@
 
   @keyframes feature-notice-pulse {
     0% {
-      box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 60%, transparent);
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 30%, transparent);
     }
     70%,
     100% {
-      box-shadow: 0 0 0 8px transparent;
+      box-shadow: 0 0 8px 6px transparent;
     }
   }
 }

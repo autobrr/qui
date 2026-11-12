@@ -4,13 +4,13 @@
  */
 
 import * as PopperPrimitive from "@radix-ui/react-popper"
-import { X } from "lucide-react"
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { subscribeClientSettings, useClientSetting, useClientSettingsLoaded } from "@/lib/client-settings"
 import { isDemo } from "@/lib/demo"
+import { cn } from "@/lib/utils"
 import { getDueNoticeId, SEEN_SETTING, seenKey } from "./due-notice"
 import { FEATURE_NOTICES, type FeatureNoticeEntry, type FeatureNoticeId } from "./notices"
 
@@ -24,8 +24,8 @@ interface FeatureNoticeProps {
 
 /**
  * Points a one-time bubble at the wrapped control while its notice is due. The
- * notice counts as seen after Got it, the X, the primary button, or once the
- * feature is in use while the control is in the page.
+ * notice counts as seen after Got it, the primary button, or once the feature
+ * is in use while the control is in the page.
  */
 export function FeatureNotice(props: FeatureNoticeProps) {
   if (isDemo) return props.children
@@ -47,21 +47,27 @@ function FeatureNoticeBubble({ id, onAction, children }: FeatureNoticeProps) {
 
   const open = loaded && present && !seen && !inUse && getDueNoticeId() === id
 
+  // The bubble goes away with its buttons. A button that had focus hands it to the control.
+  const close = (button: HTMLElement) => {
+    if (button === document.activeElement) control?.focus()
+    setSeen(true)
+  }
+
   return (
     <PopperPrimitive.Root>
       <PopperPrimitive.Anchor
         asChild
         ref={setControl}
-        className={open ? "motion-safe:animate-feature-notice-pulse" : undefined}
+        className={open ? "motion-safe:animate-feature-notice-pulse motion-reduce:ring-2 motion-reduce:ring-primary/30" : undefined}
       >
         {children}
       </PopperPrimitive.Anchor>
       {open && (
         <NoticeBubble
           notice={notice}
-          onDismiss={() => setSeen(true)}
-          onAction={() => {
-            setSeen(true)
+          onDismiss={close}
+          onAction={(button) => {
+            close(button)
             onAction()
           }}
         />
@@ -72,8 +78,8 @@ function FeatureNoticeBubble({ id, onAction, children }: FeatureNoticeProps) {
 
 interface NoticeBubbleProps {
   notice: FeatureNoticeEntry
-  onDismiss: () => void
-  onAction: () => void
+  onDismiss: (button: HTMLElement) => void
+  onAction: (button: HTMLElement) => void
 }
 
 function NoticeBubble({ notice, onDismiss, onAction }: NoticeBubbleProps) {
@@ -85,29 +91,25 @@ function NoticeBubble({ notice, onDismiss, onAction }: NoticeBubbleProps) {
   return (
     <PopperPrimitive.Content
       side="bottom"
-      sideOffset={8}
+      sideOffset={5}
       collisionPadding={8}
       role="region"
       aria-labelledby={titleId}
-      className="z-50 w-72 rounded-md border border-primary/60 bg-popover p-4 text-popover-foreground shadow-md outline-none"
+      className="z-50 w-80 origin-(--radix-popper-transform-origin) rounded-xl border border-foreground/15 bg-popover p-3 text-popover-foreground shadow-xl outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-top-1"
     >
-      <div className="flex items-start justify-between gap-2">
-        <p id={titleId} className="text-sm font-medium">{t(notice.titleKey)}</p>
-        <button
-          type="button"
-          aria-label={t("common:actions.close")}
-          className="-mr-1 -mt-1 rounded-sm p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onDismiss}
-        >
-          <X className="h-4 w-4" />
-        </button>
+      {notice.Picture && <notice.Picture />}
+      <p id={titleId} className={cn("text-sm font-semibold leading-5", notice.Picture && "pt-3")}>{t(notice.titleKey)}</p>
+      <p className="mt-1 text-sm leading-5 text-muted-foreground text-balance">{t(notice.descriptionKey)}</p>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={(event) => onDismiss(event.currentTarget)}>{t("common:featureNotice.gotIt")}</Button>
+        <Button size="sm" onClick={(event) => onAction(event.currentTarget)}>{t(notice.actionLabelKey)}</Button>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">{t(notice.descriptionKey)}</p>
-      <div className="mt-3 flex justify-end gap-2">
-        <Button size="sm" variant="ghost" onClick={onDismiss}>{t("common:featureNotice.gotIt")}</Button>
-        <Button size="sm" onClick={onAction}>{t(notice.actionLabelKey)}</Button>
-      </div>
-      <PopperPrimitive.Arrow className="fill-primary" width={12} height={6} />
+      <PopperPrimitive.Arrow asChild>
+        <svg width="20" height="10" viewBox="0 0 20 10" className="block overflow-visible">
+          <path d="M0 -2 L0 0 L10 9 L20 0 L20 -2 Z" className="fill-popover" />
+          <path d="M0 -0.5 L10 8.5 L20 -0.5" fill="none" className="stroke-foreground/15" />
+        </svg>
+      </PopperPrimitive.Arrow>
     </PopperPrimitive.Content>
   )
 }
