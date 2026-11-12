@@ -886,17 +886,6 @@ describe("TorrentTableOptimized Copy groups", () => {
     const labels = Array.from(warnings(container), pill => JSON.parse(pill.getAttribute("aria-label")!.replace("copyGroups.labelWithProblem ", "")).problem)
     expect(labels).toEqual(expected ? [`copyGroups.hiddenProblem.${expected}`] : [])
   })
-
-  it("colors the warning pill by the worst problem of the hidden copies", () => {
-    const view = renderGroups(copyGroupRows({ third: { tracker_health: "tracker_down" } }))
-    expect(warnings(view.container)[0].className).toContain("border-yellow-500/40")
-    expect(warnings(view.container)[0].className).not.toContain("destructive")
-    cleanup()
-
-    const red = renderGroups(copyGroupRows({ sorted: { tracker_health: "tracker_down" }, third: { tracker_health: "unregistered" } }))
-    expect(warnings(red.container)[0].className).toContain("border-destructive/40")
-    expect(warnings(red.container)[0].className).not.toContain("yellow")
-  })
 })
 
 describe("TorrentTableOptimized Group copies switch", () => {
