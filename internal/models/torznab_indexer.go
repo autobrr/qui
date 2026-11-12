@@ -1090,7 +1090,7 @@ func (s *TorznabIndexerStore) GetLatencyStats(ctx context.Context, indexerID int
 	stats := make([]TorznabIndexerLatencyStats, 0)
 	for rows.Next() {
 		var stat TorznabIndexerLatencyStats
-		var lastMeasuredAt sql.NullString
+		var lastMeasuredAt dbinterface.NullTime
 		if err := rows.Scan(
 			&stat.IndexerID,
 			&stat.OperationType,
@@ -1104,9 +1104,7 @@ func (s *TorznabIndexerStore) GetLatencyStats(ctx context.Context, indexerID int
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan latency stats: %w", err)
 		}
-		if parsed := parseCacheTimestamp(lastMeasuredAt); parsed != nil {
-			stat.LastMeasuredAt = *parsed
-		}
+		stat.LastMeasuredAt = lastMeasuredAt.Time
 		stats = append(stats, stat)
 	}
 
@@ -1127,7 +1125,7 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 
 	var health TorznabIndexerHealth
 	var enabled int
-	var lastMeasuredAt sql.NullString
+	var lastMeasuredAt dbinterface.NullTime
 	err := s.db.QueryRowContext(ctx, query, indexerID).Scan(
 		&health.IndexerID,
 		&health.IndexerName,
@@ -1148,7 +1146,9 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 		}
 		return nil, fmt.Errorf("failed to get health: %w", err)
 	}
-	health.LastMeasuredAt = parseCacheTimestamp(lastMeasuredAt)
+	if lastMeasuredAt.Valid {
+		health.LastMeasuredAt = &lastMeasuredAt.Time
+	}
 
 	return &health, nil
 }
@@ -1171,7 +1171,7 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 	for rows.Next() {
 		var health TorznabIndexerHealth
 		var enabled int
-		var lastMeasuredAt sql.NullString
+		var lastMeasuredAt dbinterface.NullTime
 		if err := rows.Scan(
 			&health.IndexerID,
 			&health.IndexerName,
@@ -1187,7 +1187,9 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 			return nil, fmt.Errorf("failed to scan health: %w", err)
 		}
 		health.Enabled = SQLiteIntToBool(enabled)
-		health.LastMeasuredAt = parseCacheTimestamp(lastMeasuredAt)
+		if lastMeasuredAt.Valid {
+			health.LastMeasuredAt = &lastMeasuredAt.Time
+		}
 		healthList = append(healthList, health)
 	}
 
@@ -1200,16 +1202,10 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 
 // CleanupOldLatency removes latency records older than the specified duration
 func (s *TorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
-	cutoff := time.Now().UTC().Add(-olderThan)
-	cutoffArg := any(cutoff)
-	if dbinterface.DialectOf(s.db) == "sqlite" {
-		cutoffArg = cutoff.Format(time.DateTime)
-	}
-
 	result, err := s.db.ExecContext(ctx, `
 		DELETE FROM torznab_indexer_latency
 		WHERE measured_at < ?
-	`, cutoffArg)
+	`, time.Now().Add(-olderThan))
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup old latency: %w", err)
 	}

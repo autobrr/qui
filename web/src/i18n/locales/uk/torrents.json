@@ -724,10 +724,7 @@
     "bottomPriorityBatch": "Нижній пріоритет ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Перейменувати",
-    "renameTorrent": "Перейменувати торент",
-    "renameFile": "Перейменувати файл",
-    "renameFolder": "Перейменувати папку"
+    "renameTorrent": "Перейменувати торент"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1379,6 +1376,7 @@
     "status": "Стан",
     "tracker": "Трекер",
     "seeds": "Сіди",
+    "peers": "Піри",
     "leeches": "Лічі",
     "downloaded": "DLs",
     "message": "Повідомлення",
@@ -1646,7 +1644,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Автоматичний пошук після введення"
     },
-    "ratio": "Співвідношення:"
+    "ratio": "Співвідношення:",
+    "added": "Додано {{time}}"
   },
   "tableView": {
     "ascending": "висхідний",
@@ -1811,13 +1810,14 @@
       "dropped": "Пакет додано. Пропущені цілі: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Для складання пакета цьому екземпляру потрібен доступ до локальної файлової системи.",
+        "no_filesystem_access": "Цьому екземпляру потрібен доступ до файлової системи на запис, щоб зібрати пакет. Увімкніть «Доступ до локальної файлової системи» або налаштуйте доступ через SSH у налаштуваннях екземпляра.",
         "no_link_mode": "Увімкніть жорсткі посилання або reflink для цього екземпляра, щоб вибрати кілька цілей.",
         "no_base_directory": "Налаштуйте базовий каталог посилань для цього екземпляра.",
         "no_episode_files": "У пакеті не знайдено відтворюваних файлів епізодів.",
         "target_not_found": "Ціль не знайдено в цьому екземплярі.",
         "incomplete": "Завантаження цілі не завершене.",
         "not_settled": "Цей торрент ще переміщується або перевіряється. Спробуйте знову, коли це завершиться.",
+        "errored": "Цей торрент має помилку або відсутні файли. Виправте це та спробуйте знову.",
         "no_episode_identity": "Не вдалося розпізнати номер епізоду.",
         "file_list_unavailable": "Список файлів цілі недоступний.",
         "episode_file_invalid": "Ціль має містити один відтворюваний файл з ідентифікатором вибраного епізоду.",
@@ -1831,6 +1831,40 @@
         "link_failed": "Не вдалося створити посилання.",
         "add_failed": "Не вдалося додати торрент."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_one": "Ще {{count}} копія торрента {{name}}",
+    "copies_few": "Ще {{count}} копії торрента {{name}}",
+    "copies_many": "Ще {{count}} копій торрента {{name}}",
+    "copies_other": "Ще {{count}} копії торрента {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "У прихованої копії відсутні файли",
+      "error": "Прихована копія має помилку",
+      "unregistered": "Прихована копія незареєстрована",
+      "trackerError": "Прихована копія має помилку трекера",
+      "trackerDown": "Трекер прихованої копії вимкнено"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_few": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_many": "+{{hidden}} · вибрано {{count}}",
+    "badgeTicked_other": "+{{hidden}} · вибрано {{count}}",
+    "hiddenTicked_one": "Вибрано {{count}} приховану копію",
+    "hiddenTicked_few": "Вибрано {{count}} приховані копії",
+    "hiddenTicked_many": "Вибрано {{count}} прихованих копій",
+    "hiddenTicked_other": "Вибрано {{count}} прихованої копії",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Групувати копії",
+    "ungroupCopies": "Розгрупувати копії",
+    "grouping": "Групування…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Групуйте свої Cross-Seeds",
+      "description": "Показує копії одного торрента одним рядком.",
+      "action": "Спробувати"
     }
   }
 }

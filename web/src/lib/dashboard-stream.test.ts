@@ -13,11 +13,12 @@ import {
   mergeDashboardInstanceMeta,
   mergeDashboardStatsSnapshot,
   resolveDashboardDataStatusKind,
+  resolveDashboardSizes,
   resolveDashboardStreamError,
   resolveDashboardTorrentCounts,
   shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
-import type { InstanceResponse, TorrentCounts } from "@/types"
+import type { InstanceResponse, TorrentCounts, TorrentStats } from "@/types"
 
 function makeCounts(overrides: Partial<TorrentCounts> = {}): TorrentCounts {
   return {
@@ -258,5 +259,30 @@ describe("mergeDashboardStatsSnapshot", () => {
 
     expect(merged.counts).toBe(cachedCounts)
     expect(merged.stats?.totalDownloadSpeed).toBe(1)
+  })
+})
+
+describe("resolveDashboardSizes", () => {
+  const stats = (overrides: Partial<TorrentStats>): TorrentStats => ({
+    total: 1, downloading: 0, seeding: 1, paused: 0, error: 0, totalSize: 100, totalSeedingSize: 80, ...overrides,
+  })
+
+  it("adds the Unique sizes of instances whose first build ended", () => {
+    expect(resolveDashboardSizes([
+      stats({ uniqueSize: 60, uniqueSeedingSize: 50 }),
+      stats({ uniqueSize: 30, uniqueSeedingSize: 20 }),
+    ])).toEqual({ totalSize: 90, seedingSize: 70, calculating: false })
+  })
+
+  it("adds the old size of an instance before its first build and marks the total", () => {
+    expect(resolveDashboardSizes([
+      stats({ uniqueSize: 60, uniqueSeedingSize: 50 }),
+      stats({}),
+    ])).toEqual({ totalSize: 160, seedingSize: 130, calculating: true })
+  })
+
+  it("leaves out an instance with no stats", () => {
+    expect(resolveDashboardSizes([null, stats({ uniqueSize: 60, uniqueSeedingSize: 50 })]))
+      .toEqual({ totalSize: 60, seedingSize: 50, calculating: false })
   })
 })

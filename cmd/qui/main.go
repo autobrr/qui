@@ -816,7 +816,7 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 
@@ -824,7 +824,7 @@ func (app *Application) runServer() {
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	}, crossSeedService.HandleTorrentCompletion)
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
 		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
@@ -832,6 +832,7 @@ func (app *Application) runServer() {
 	defer func() {
 		automationCancel()
 		crossSeedService.StopAutomation()
+		crossSeedService.StopCopyGroups()
 	}()
 	partialPoolCtx, partialPoolCancel := context.WithCancel(context.Background())
 	partialPoolDone := make(chan struct{})
@@ -996,6 +997,8 @@ func (app *Application) runServer() {
 	select {
 	case <-serverReady:
 		crossSeedService.StartAutomation(automationCtx)
+		clientPool.AddSyncEventSink(crossSeedService.CopyGroupsSyncSink())
+		crossSeedService.StartCopyGroups(automationCtx)
 		go func() {
 			defer close(partialPoolDone)
 			crossSeedService.RunPartialPoolCoordinator(partialPoolCtx)
@@ -1121,13 +1124,13 @@ type torrentHashAdapter struct {
 }
 
 func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
-	torrents, err := a.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := a.syncManager.GetAllTorrentRefs(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("get torrents: %w", err)
 	}
 	hashes := make([]string, len(torrents))
-	for i := range torrents {
-		hashes[i] = torrents[i].Hash
+	for i, torrent := range torrents {
+		hashes[i] = torrent.Hash
 	}
 	return hashes, nil
 }

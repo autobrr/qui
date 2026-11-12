@@ -23,6 +23,9 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/avast/retry-go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/internal/testutil/syncsnap"
 )
 
 type peerSyncTestTransport func(*http.Request) (*http.Response, error)
@@ -122,33 +125,34 @@ func TestPeerSyncManagerTorrentRemoval(t *testing.T) {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	defer client.optimisticUpdates.Close()
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	active := client.GetOrCreatePeerSyncManager(activeHash)
 	removed := client.GetOrCreatePeerSyncManager(strings.ToUpper(removedHash))
-	t.Cleanup(func() { client.prunePeerSyncManagers(&qbt.MainData{}) })
+	empty := syncsnap.Update(t).Snapshot
+	t.Cleanup(func() { client.prunePeerSyncManagers(empty) })
 
 	phase.Store(1)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.NotContains(t, client.peerSyncManager, removedHash)
 	require.Same(t, active, client.GetOrCreatePeerSyncManager(activeHash), "an unchanged torrent survives a delta")
 	require.NotSame(t, removed, client.GetOrCreatePeerSyncManager(removedHash))
 
 	phase.Store(2)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.Empty(t, client.peerSyncManager, "a full refresh removes absent torrents")
 }
 
-// mockSyncEventSink is a test helper that records calls to HandleMainData and HandleSyncError.
+// mockSyncEventSink is a test helper that records calls to HandleSyncUpdate and HandleSyncError.
 type mockSyncEventSink struct {
 	mu                   sync.Mutex
-	mainData             []*mainDataCall
+	syncUpdates          []*syncUpdateCall
 	trackerHealthUpdates []int
 	syncErrors           []*syncErrorCall
 }
 
-type mainDataCall struct {
+type syncUpdateCall struct {
 	instanceID int
-	data       *qbt.MainData
+	update     qbt.SyncUpdate
 }
 
 type syncErrorCall struct {
@@ -156,10 +160,10 @@ type syncErrorCall struct {
 	err        error
 }
 
-func (m *mockSyncEventSink) HandleMainData(instanceID int, data *qbt.MainData) {
+func (m *mockSyncEventSink) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.mainData = append(m.mainData, &mainDataCall{instanceID: instanceID, data: data})
+	m.syncUpdates = append(m.syncUpdates, &syncUpdateCall{instanceID: instanceID, update: update})
 }
 
 func (m *mockSyncEventSink) HandleSyncError(instanceID int, err error) {
@@ -174,10 +178,10 @@ func (m *mockSyncEventSink) HandleTrackerHealthUpdated(instanceID int) {
 	m.trackerHealthUpdates = append(m.trackerHealthUpdates, instanceID)
 }
 
-func (m *mockSyncEventSink) getMainDataCalls() []*mainDataCall {
+func (m *mockSyncEventSink) getSyncUpdateCalls() []*syncUpdateCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.mainData
+	return m.syncUpdates
 }
 
 func (m *mockSyncEventSink) getSyncErrorCalls() []*syncErrorCall {
@@ -248,11 +252,7 @@ func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		client.updateServerState(&qbt.MainData{
-			ServerState: qbt.ServerState{
-				ConnectionStatus: "connected",
-			},
-		})
+		client.updateServerState(qbt.ServerState{ConnectionStatus: "connected"})
 	}()
 
 	select {
@@ -291,7 +291,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	syncOpts.DynamicSync = true
 	client := &Client{
 		Client:      qbtClient,
-		syncManager: qbtClient.NewSyncManager(syncOpts),
+		syncManager: syncowner.New(qbtClient, syncOpts),
 		version:     semver.MustParse("2.16.0"),
 	}
 
@@ -529,7 +529,7 @@ func TestRefreshCapabilitiesRejectsInvalidWebAPIVersionMarker(t *testing.T) {
 	require.Empty(t, client.GetWebAPIVersion())
 }
 
-func TestClientDispatchMainDataCallsSink(t *testing.T) {
+func TestClientDispatchSyncUpdateCallsSink(t *testing.T) {
 	t.Parallel()
 
 	sink := &mockSyncEventSink{}
@@ -538,30 +538,25 @@ func TestClientDispatchMainDataCallsSink(t *testing.T) {
 		syncEventSink: sink,
 	}
 
-	testData := &qbt.MainData{
-		Rid: 123,
-		Torrents: map[string]qbt.Torrent{
-			"abc123": {Name: "Test Torrent"},
-		},
-	}
+	update := syncsnap.Update(t, qbt.Torrent{Hash: "abc123", Name: "Test Torrent"})
 
-	client.dispatchMainData(testData)
+	client.dispatchSyncUpdate(update)
 
-	calls := sink.getMainDataCalls()
+	calls := sink.getSyncUpdateCalls()
 	if len(calls) != 1 {
-		t.Fatalf("expected 1 call to HandleMainData, got %d", len(calls))
+		t.Fatalf("expected 1 call to HandleSyncUpdate, got %d", len(calls))
 	}
 
 	if calls[0].instanceID != 42 {
 		t.Errorf("expected instanceID 42, got %d", calls[0].instanceID)
 	}
 
-	if calls[0].data.Rid != 123 {
-		t.Errorf("expected Rid 123, got %d", calls[0].data.Rid)
+	if calls[0].update.Snapshot != update.Snapshot {
+		t.Errorf("expected the Sync snapshot of the update")
 	}
 }
 
-func TestClientDispatchMainDataNilSinkDoesNotPanic(t *testing.T) {
+func TestClientDispatchSyncUpdateNilSinkDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{
@@ -569,27 +564,8 @@ func TestClientDispatchMainDataNilSinkDoesNotPanic(t *testing.T) {
 		syncEventSink: nil,
 	}
 
-	testData := &qbt.MainData{Rid: 123}
-
 	// Should not panic
-	client.dispatchMainData(testData)
-}
-
-func TestClientDispatchMainDataNilDataDoesNotCallSink(t *testing.T) {
-	t.Parallel()
-
-	sink := &mockSyncEventSink{}
-	client := &Client{
-		instanceID:    42,
-		syncEventSink: sink,
-	}
-
-	client.dispatchMainData(nil)
-
-	calls := sink.getMainDataCalls()
-	if len(calls) != 0 {
-		t.Errorf("expected 0 calls to HandleMainData for nil data, got %d", len(calls))
-	}
+	client.dispatchSyncUpdate(syncsnap.Update(t))
 }
 
 func TestClientDispatchSyncErrorCallsSink(t *testing.T) {
@@ -780,10 +756,8 @@ func TestClientHealthCheckKeepsHealthOnDeadline(t *testing.T) {
 func TestClientHealthCheckMarksUnhealthyOnHardFailure(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
-	srv.Close()
-
-	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: 42, isHealthy: true}
+	// Port 1 is outside the ephemeral range: during the retries, a closed httptest port can go to another test's server.
+	client := &Client{Client: qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1", Timeout: 60}), instanceID: 42, isHealthy: true}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -922,16 +896,16 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 			require.NoError(t, err)
 
-			torrents := []qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
-			enriched, _, _ := (&SyncManager{}).enrichTorrentsWithTrackerData(t.Context(), client, torrents, nil)
+			torrents := []*qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
+			lookup := trackerDetailsFromManager(t.Context(), client, torrents)
 
 			mu.Lock()
 			defer mu.Unlock()
 			require.Zero(t, hits["/api/v2/torrents/trackers"], "list hydration must never use per-hash torrents/trackers; use torrents/info?includeTrackers on 5.1+ and skip hydration below it")
 			require.Equal(t, tc.bulkRequests, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
-			for _, torrent := range enriched {
+			for _, torrent := range torrents {
 				// One tracker per torrent when hydrated, none when the gate skips hydration.
-				require.Len(t, torrent.Trackers, tc.bulkRequests, "hash %s", torrent.Hash)
+				require.Len(t, lookup.Trackers(torrent.Hash), tc.bulkRequests, "hash %s", torrent.Hash)
 			}
 		})
 	}
@@ -1125,10 +1099,15 @@ func TestSyncUpdateMovesCountsGenerationOnlyForCountedChanges(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{instanceID: 1}
+	update := func(changes qbt.MainDataChanges) qbt.SyncUpdate {
+		u := syncsnap.Update(t)
+		u.Changes = changes
+		return u
+	}
 
-	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true}})
+	client.handleSyncUpdate(update(qbt.MainDataChanges{ServerState: true}))
 	require.Zero(t, client.countsGen.Load(), "a server-state sync keeps the cached counts")
 
-	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true, Tags: true}})
+	client.handleSyncUpdate(update(qbt.MainDataChanges{ServerState: true, Tags: true}))
 	require.Equal(t, uint64(1), client.countsGen.Load(), "a tag change invalidates the cached counts")
 }

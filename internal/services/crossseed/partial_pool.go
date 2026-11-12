@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
@@ -67,11 +68,11 @@ var (
 
 // partialPoolSync is the part of the sync manager that the partial pool calls.
 type partialPoolSync interface {
-	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
-	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error)
 }
 
 // partialPoolCoordinator owns durable partial link-mode completion. Code
@@ -474,7 +475,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolReviewPauses(ctx context.Co
 type partialPoolTorrentInventory struct {
 	loaded        bool
 	authoritative bool
-	byAlias       map[string]qbt.Torrent
+	byAlias       map[string]*qbt.Torrent
 }
 
 type partialPoolMemberSnapshot struct {
@@ -685,7 +686,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Cont
 		snapshots := make(map[int64]*partialPoolMemberSnapshot, len(pool.Members))
 		for _, member := range pool.Members {
 			if torrent, ok := partialPoolInventoryTorrent(inventories[member.InstanceID], member); ok {
-				snapshots[member.ID] = &partialPoolMemberSnapshot{torrent: torrent}
+				snapshots[member.ID] = &partialPoolMemberSnapshot{torrent: *torrent}
 			}
 		}
 
@@ -813,7 +814,7 @@ func (s *partialPoolCoordinator) loadPartialPoolTorrentInventories(ctx context.C
 		if ctx.Err() != nil {
 			break
 		}
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{})
+		torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 		if err != nil {
 			continue
 		}
@@ -850,7 +851,7 @@ func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context
 		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, instanceID, hashes)
 		if !fresh {
 			var loadErr error
-			torrents, loadErr = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
+			torrents, loadErr = s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 			if loadErr != nil {
 				for _, member := range targets {
 					if !s.expirePartialPoolRecheckObservation(ctx, now, member) {
@@ -869,7 +870,7 @@ func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context
 			}
 		}
 		if missing {
-			if all, allErr := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{}); allErr == nil {
+			if all, allErr := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{}); allErr == nil {
 				inventory = newPartialPoolTorrentInventory(all, false)
 			}
 		}
@@ -898,11 +899,11 @@ func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context
 
 // forcePartialPoolTorrentSnapshot refreshes and immediately reads raw state so
 // a later sync cannot overwrite a brief checking transition before inspection.
-func (s *partialPoolCoordinator) forcePartialPoolTorrentSnapshot(ctx context.Context, instanceID int, hashes []string) ([]qbt.Torrent, bool) {
+func (s *partialPoolCoordinator) forcePartialPoolTorrentSnapshot(ctx context.Context, instanceID int, hashes []string) ([]*qbt.Torrent, bool) {
 	if s == nil || s.syncManager == nil {
 		return nil, false
 	}
-	syncManager, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
+	syncManager, err := s.syncManager.GetSyncOwner(ctx, instanceID)
 	if err != nil || syncManager == nil {
 		return nil, false
 	}
@@ -912,7 +913,11 @@ func (s *partialPoolCoordinator) forcePartialPoolTorrentSnapshot(ctx context.Con
 	if err != nil {
 		return nil, false
 	}
-	return syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes}), true
+	snapshot := syncManager.SnapshotUnchecked()
+	if snapshot == nil {
+		return nil, false
+	}
+	return qbittorrent.TorrentRefFilter{Hashes: hashes}.Select(snapshot), true
 }
 
 // refreshPartialPoolTorrentStates force-refreshes raw qBittorrent state for
@@ -955,7 +960,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(
 			if !found {
 				return false
 			}
-			snapshots[candidate.ID].torrent = torrent
+			snapshots[candidate.ID].torrent = *torrent
 		}
 		refreshedInstances[member.InstanceID] = struct{}{}
 	}
@@ -963,8 +968,8 @@ func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(
 }
 
 // newPartialPoolTorrentInventory indexes canonical and hybrid hash aliases.
-func newPartialPoolTorrentInventory(torrents []qbt.Torrent, authoritative bool) partialPoolTorrentInventory {
-	inventory := partialPoolTorrentInventory{loaded: true, authoritative: authoritative, byAlias: make(map[string]qbt.Torrent, len(torrents)*2)}
+func newPartialPoolTorrentInventory(torrents []*qbt.Torrent, authoritative bool) partialPoolTorrentInventory {
+	inventory := partialPoolTorrentInventory{loaded: true, authoritative: authoritative, byAlias: make(map[string]*qbt.Torrent, len(torrents)*2)}
 	for _, torrent := range torrents {
 		for _, alias := range normalizedHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
 			inventory.byAlias[alias] = torrent
@@ -990,16 +995,16 @@ func partialPoolRecheckObservationOwned(member *models.CrossSeedPartialPoolMembe
 		member.LastError == partialPoolRecheckRequested
 }
 
-func partialPoolInventoryTorrent(inventory partialPoolTorrentInventory, member *models.CrossSeedPartialPoolMember) (qbt.Torrent, bool) {
+func partialPoolInventoryTorrent(inventory partialPoolTorrentInventory, member *models.CrossSeedPartialPoolMember) (*qbt.Torrent, bool) {
 	if !inventory.loaded || member == nil {
-		return qbt.Torrent{}, false
+		return nil, false
 	}
 	for _, alias := range normalizedHashes(member.TorrentKey, member.InfoHashV1, member.InfoHashV2) {
 		if torrent, ok := inventory.byAlias[alias]; ok {
 			return torrent, true
 		}
 	}
-	return qbt.Torrent{}, false
+	return nil, false
 }
 
 // observePartialPoolMembers resolves durable members against the current
@@ -1011,8 +1016,8 @@ func (s *partialPoolCoordinator) observePartialPoolMembers(
 	now time.Time,
 	pool *models.CrossSeedPartialPool,
 	inventories map[int]partialPoolTorrentInventory,
-) map[int64]qbt.Torrent {
-	observed := make(map[int64]qbt.Torrent, len(pool.Members))
+) map[int64]*qbt.Torrent {
+	observed := make(map[int64]*qbt.Torrent, len(pool.Members))
 	authoritativeLookupAttempted := make(map[int]bool)
 	for _, member := range pool.Members {
 		inventory := inventories[member.InstanceID]

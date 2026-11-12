@@ -58,6 +58,10 @@ func (m parityCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatch
 	return &CrossMatchResult{SameInstanceContentByHash: m.sameContent}
 }
 
+func (m parityCrossMatcher) OpenCrossMatchSession(ctx context.Context, instanceID int, needs CrossMatchNeeds) (CrossMatchSession, error) {
+	return cannedSession{m.BuildCrossMatchSets(ctx, instanceID, needs)}, nil
+}
+
 // newDryRunParityService boots a Service against a stub qBittorrent that serves the fixture.
 func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int) {
 	t.Helper()
@@ -97,6 +101,11 @@ type stubQbt struct {
 	refuse func(path string, form url.Values) bool
 	// webAPIVersion replaces the default Web API version 2.10.0.
 	webAPIVersion string
+	fileReads     int // torrents/files requests
+	// trackers is the sync/maindata trackers map, as JSON.
+	trackers string
+	// trackerInfo is the torrents/info answer, as JSON.
+	trackerInfo string
 }
 
 func newStubQbt(t *testing.T, torrents string) *stubQbt {
@@ -123,12 +132,25 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(version))
 	case "/api/v2/sync/maindata":
 		s.mu.Lock()
-		torrents := s.torrents
+		torrents, trackers := s.torrents, s.trackers
 		s.mu.Unlock()
-		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + torrents + `}`))
+		if trackers != "" {
+			trackers = `,"trackers":` + trackers
+		}
+		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + torrents + trackers + `}`))
+	case "/api/v2/torrents/info":
+		s.mu.Lock()
+		info := s.trackerInfo
+		s.mu.Unlock()
+		if info == "" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(info))
 	case "/api/v2/torrents/files":
 		s.mu.Lock()
 		files, ok := s.files[r.URL.Query().Get("hash")]
+		s.fileReads++
 		s.mu.Unlock()
 		if !ok {
 			files = `[]`
@@ -193,7 +215,7 @@ func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) 
 	t.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
-	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, models.NewAutomationStore(db), models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	return svc, db, instanceIDs
 }
 
@@ -254,7 +276,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityDeleteRule(DeleteModeWithFilesIncludeCrossSeeds,
 				&models.RuleCondition{Field: models.FieldRatio, Operator: models.OperatorGreaterThanOrEqual, Value: "1"}),
 			state: func(svc *Service, instanceID int) {
-				svc.lastApplied[instanceID] = map[string]time.Time{parityHash: time.Now()}
+				svc.startSkipWindow(instanceID, []string{parityHash}, time.Now())
 			},
 			want: []string{parityHash},
 		},

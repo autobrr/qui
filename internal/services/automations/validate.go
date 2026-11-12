@@ -26,8 +26,8 @@ func (e *RuleError) Error() string { return e.Message }
 func ruleError(msg string) error { return &RuleError{Message: msg} }
 
 const (
-	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
-	errMsgPathSourceAccessRequired      = "Free space path source requires Local Filesystem Access. Enable it in instance settings first."
+	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows with local filesystem access. Use the default qBittorrent free space instead."
+	errMsgPathSourceAccessRequired      = "Free space path source requires local or SSH filesystem access. Set it up in instance settings first."
 )
 
 // windowsLocalPathSource reports whether a path source would read a Windows
@@ -113,13 +113,26 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	// A remote instance cannot turn on local access without becoming a local
 	// one, so it gets the answer the UI gives, not that advice.
 	isRemote := instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeRemote
-	for field, data := range conditionFieldData {
-		if (data.trustedIdentity && !capabilities.TrustedIdentity || data.read && !capabilities.Read) && actionConditionsUseField(conditions, field) {
-			if isRemote {
-				return ruleError("This file condition is not available on remote instances.")
+	// Two passes over the map, so the answer does not depend on its order: a
+	// field that needs trusted identity decides first, since only local access
+	// grants that and advising SSH for a Read field beside it would mislead.
+	missing := func(want func(fieldData) bool) bool {
+		for field, data := range conditionFieldData {
+			if want(data) && actionConditionsUseField(conditions, field) {
+				return true
 			}
-			return ruleError("File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
 		}
+		return false
+	}
+	needsTrusted := !capabilities.TrustedIdentity && missing(func(d fieldData) bool { return d.trustedIdentity })
+	needsRead := !capabilities.Read && missing(func(d fieldData) bool { return d.read })
+	switch {
+	case (needsTrusted || needsRead) && isRemote:
+		return ruleError("This file condition is not available on remote instances.")
+	case needsTrusted:
+		return ruleError("This file condition requires Local Filesystem Access. Enable it in instance settings first.")
+	case needsRead:
+		return ruleError("File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first.")
 	}
 
 	// Keep-files mode doesn't free disk space, so a FREE_SPACE < X condition

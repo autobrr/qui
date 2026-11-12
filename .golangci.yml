@@ -86,6 +86,9 @@ linters:
         - pattern: ^(qbittorrent\.TorrentFilterOptions\.)?(Sort|Reverse)$
           pkg: ^github\.com/autobrr/go-qbittorrent$
           msg: qui sorts torrents with torrentOrder (ADR 0014)
+        - pattern: ^(qbittorrent\.TorrentFilterOptions\.)?(Filter|Category|Tag)$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: decide torrent list filters in the torrent list query module (ADR 0043)
         - pattern: ^(releases\.(DefaultParser|NewDefaultParser|NewParser)|rls\.(DefaultParser|NewDefaultParser|NewTagParser|NewReleaseScanner|NewScanner|Parse|ParseString|ParseTags|ParseTagsString))$
           pkg: ^github\.com/autobrr/(qui/pkg/releases|rls)$
           msg: cross-seed code parses release names through the release cache or matcher.parseReleaseName (ADR 0008)
@@ -95,9 +98,27 @@ linters:
         - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^crossseed\.(isSourceMovingOrChecking|isSourceErrored)$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: ask the Source gate in internal/services/crossseed/source_gate.go
         - pattern: ^crossseed\.(splitTitleRescueResults|selectTitleRescueAttempts|Service\.attemptTitleRescueResults)$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: apply the search results for one source torrent through the source apply module in internal/services/crossseed/source_apply.go
+        - pattern: ^automations\.CrossMatcher\.OpenCrossMatchSession$
+          pkg: ^github\.com/autobrr/qui/internal/services/automations$
+          msg: ask the run session in internal/services/automations/run_session.go for Shared-file groups (ADR 0042)
+        - pattern: ^automations\.(Service\.freeSpaceBytes|freeSpaceLedger\.(startBytes|projectsDeletes|deleteMode|includeHardlinks|freedBytes|countedPaths|countedMembers))$
+          pkg: ^github\.com/autobrr/qui/internal/services/automations$
+          msg: ask the free space ledger in internal/services/automations/free_space_ledger.go
+        - pattern: ^crossseed\.CrossMatchSession\.Resolve$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: ask the run session in internal/services/automations/run_session.go for Shared-file groups (ADR 0042)
+        - pattern: ^qbittorrent\.PrivateUnknown$
+          pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
+          msg: ask the Rule scope module in internal/services/automations/rule_scope.go
+        - pattern: ^automations\.(matchesTracker|collectTrackerDomains|Service\.lastApplied)$
+          pkg: ^github\.com/autobrr/qui/internal/services/automations$
+          msg: ask the Rule scope module in internal/services/automations/rule_scope.go
         - pattern: ^qbittorrent\.Client\.(AddTags|RemoveTags|SetTags|SetCategory|SetLocation|SetAutoManagement|SetForceStart|SetComment|SetTorrentShareLimit|SetTorrentUploadLimit|SetTorrentDownloadLimit|RenameTorrent|SetTorrentName|RenameFile|RenameFolder|EditTracker|AddTrackers|RemoveTrackers|SetFilePriority|AddPeersForTorrents)(Ctx)?$
           pkg: ^github\.com/autobrr/(go-qbittorrent|qui/internal/qbittorrent)$
           msg: edit torrents through the SyncManager edit methods in internal/qbittorrent/sync_manager.go
@@ -115,6 +136,26 @@ linters:
         - pattern: ^models\.CrossSeedStore\.\w*PartialPool\w*$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: ask the partial pool coordinator in internal/services/crossseed/partial_pool.go
+        - pattern: ^(sql\.(Open|OpenDB)|pgxpool\.(New|NewWithConfig)|(pgx|pgconn)\.(Connect|ConnectConfig|ConnectWithOptions)|stdlib\.(OpenDB|OpenDBFromPool|GetConnector|GetPoolConnector)|sqlite\.NewConnector)$
+          pkg: ^(database/sql|github\.com/jackc/pgx/v5(/pgconn|/pgxpool|/stdlib)?|modernc\.org/sqlite)$
+          msg: open SQLite and Postgres connections through internal/database, which sets the UTC time-zone handling
+        - pattern: ^(driver\.(Driver\.Open|DriverContext\.OpenConnector|Connector\.Connect)|(sqlite|stdlib)\.Driver\.Open|stdlib\.Driver\.OpenConnector|pq\.(Open|DialOpen|NewConnector|NewConnectorConfig|Driver\.Open|NewListener|NewDialListener))$
+          pkg: ^(database/sql/driver|github\.com/jackc/pgx/v5/stdlib|github\.com/lib/pq|modernc\.org/sqlite)$
+          msg: open SQLite and Postgres connections through internal/database, which sets the UTC time-zone handling
+        # One package owns the sync object of go-qbittorrent (ADR 0051). The
+        # type rule also catches an interface method or a field whose type names
+        # the object, and each method call on an object of that type.
+        - pattern: ^qbittorrent\.SyncManager(\.\w+)?$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: only internal/qbittorrent/syncowner holds the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
+        # qui has its own function qbittorrent.NewSyncManager, so the function
+        # rule names the library package. The method rule names no package: it
+        # reports the method on each type, also on a type that embeds a client.
+        - pattern: ^qbittorrent\.NewSyncManager$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
+        - pattern: ^\w+\.\w+\.NewSyncManager$
+          msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -174,6 +215,23 @@ linters:
           - forbidigo
         text: SyncManager\.InstanceFolders
 
+      # The torrent list rule binds only the qBittorrent production code.
+      # Reannounce uses the library filter on purpose in a request to qBittorrent.
+      - path-except: ^internal/qbittorrent/
+        linters:
+          - forbidigo
+        text: ADR 0043
+      - path: _test\.go
+        linters:
+          - forbidigo
+        text: ADR 0043
+
+      # Only the sync owner holds and creates the sync object of go-qbittorrent.
+      - path: ^internal/qbittorrent/syncowner/
+        linters:
+          - forbidigo
+        text: the sync object of go-qbittorrent
+
       # The one-parser rule binds only the cross-seed production code.
       - path-except: ^internal/services/crossseed/
         linters:
@@ -190,17 +248,43 @@ linters:
           - forbidigo
         text: protected path module
 
+      # Only the free space ledger reads the free space of a source and keeps its count.
+      - path: internal/services/automations/(free_space_ledger(_test)?|free_space(_backend)?_test)\.go$
+        linters:
+          - forbidigo
+        text: free space ledger
+
       # Only the Search scope module decides what a search asks (ADR 0029).
       - path: internal/services/crossseed/search_scope\.go$|_test\.go$
         linters:
           - forbidigo
         text: Search scope module
 
+      # Only the Source gate reads the moving and errored helpers. The rule cannot
+      # catch an inline read of progress, because the package has many valid reads.
+      - path: internal/services/crossseed/source_gate\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: Source gate
+
       # Only the source apply module runs normal matches, then title rescue.
       - path: internal/services/crossseed/source_apply\.go$|_test\.go$
         linters:
           - forbidigo
         text: source apply module
+
+      # Only the run session reads Shared-file groups in automations (ADR 0042).
+      - path: internal/services/automations/run_session\.go$|internal/services/crossseed/|_test\.go$
+        linters:
+          - forbidigo
+        text: ask the run session
+
+      # Only the Rule scope module matches a tracker pattern, reads the Skip window, and
+      # tests for an unknown value (ADR 0039). The field table says when a torrent has no value.
+      - path: internal/qbittorrent/|internal/services/automations/(rule_scope|field_table)(_test)?\.go$
+        linters:
+          - forbidigo
+        text: Rule scope module
 
       # Only the Adder adds a torrent in the cross-seed and Dir Scan packages (ADR 0022).
       - path-except: ^internal/services/(crossseed|dirscan)/
@@ -228,6 +312,16 @@ linters:
         linters:
           - forbidigo
         text: partial pool coordinator
+
+      # Only the database module opens SQLite and Postgres connections (ADR 0044).
+      - path: ^internal/database/
+        linters:
+          - forbidigo
+        text: UTC time-zone handling
+      - path: _test\.go
+        linters:
+          - forbidigo
+        text: UTC time-zone handling
 
       # A parameter an interface forces on an implementation still documents
       # what the caller passes; renaming it to _ loses that.

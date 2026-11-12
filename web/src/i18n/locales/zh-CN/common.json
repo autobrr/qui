@@ -106,6 +106,9 @@
     "select": "选择",
     "copyValue": "复制 {{label}}"
   },
+  "featureNotice": {
+    "gotIt": "知道了"
+  },
   "placeholders": {
     "search": "搜索...",
     "selectItems": "选择项目..."

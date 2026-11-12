@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -64,6 +65,18 @@ const seasonPackResumeSlack = 0.98
 type episodeIdentity struct {
 	series  int
 	episode int
+}
+
+// rangeEpisodeIdentity is the identity of a multi-episode name such as
+// "S01E01E02": its first episode. A range that starts at episode 0 takes the
+// next one, because episode 0 does not count as an episode (see isTVEpisode).
+func rangeEpisodeIdentity(r *rls.Release) episodeIdentity {
+	eps := r.SeriesEpisodes()
+	first := eps[0]
+	if i := slices.IndexFunc(eps, func(se []int) bool { return se[1] > 0 }); i >= 0 {
+		first = eps[i]
+	}
+	return episodeIdentity{series: first[0], episode: first[1]}
 }
 
 // episodeMatch records which local torrent provides a matched episode.
@@ -154,6 +167,8 @@ type seasonPackPrep struct {
 
 // prepareSeasonPack runs the shared validation pipeline for check and apply.
 // Returns (nil, reason, message, nil) on expected early exit, or (nil, "", "", err) on internal error.
+const seasonPackNoEligibleInstances = "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
+
 func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int, autonomous bool) (*seasonPackPrep, string, string, error) {
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -201,7 +216,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
 
 	threshold := settings.SeasonPackCoverageThreshold
@@ -255,7 +270,7 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
 
 	// Try to get episode total from metadata chain (Sonarr -> TVDB/TVMaze).
@@ -405,9 +420,9 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		case refusal == nil:
 			checks[inst.ID] = check
 			unblocked = append(unblocked, inst)
-		case refusal.Status == "blocked":
+		case refusal.Status == StatusBlocked:
 			blockedID = cmp.Or(blockedID, inst.ID)
-		case refusal.Status == "exists":
+		case refusal.Status == StatusExists:
 			message := fmt.Sprintf("torrent already exists on instance %d", receiverID)
 			if refusal.Message != existsInThisInstance {
 				message = refusal.Message
@@ -724,14 +739,19 @@ func (s *Service) planSeasonPack(
 		}
 		return nil, nil
 	}
-	if seasonPackFacts(prep, planBuild).Verdict().Refused {
+	facts := seasonPackFacts(prep, planBuild)
+	if facts.Verdict().Refused {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
 
-	if linkMode == "hardlink" && !prep.settings.SkipPieceBoundarySafetyCheck {
-		if unsafe, result := hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths); unsafe {
-			return planBuild, episodes, fmt.Errorf("%w: %s", errUnsafePieceBoundary, result.Reason)
-		}
+	// A second ask, so Skip recheck wins over an unsafe piece. The error keeps
+	// layout_mismatch in run history and the plan that the preview shows.
+	var pieceSafety PieceBoundarySafetyResult
+	facts.UnsafePieces, pieceSafety = hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths)
+	facts.ReflinkAdd = linkMode == "reflink"
+	facts.SkipPieceBoundaryCheck = prep.settings.SkipPieceBoundarySafetyCheck
+	if facts.Verdict().Refused {
+		return planBuild, episodes, fmt.Errorf("%w: %s", errUnsafePieceBoundary, pieceSafety.Reason)
 	}
 
 	return planBuild, episodes, nil
@@ -956,8 +976,8 @@ func (m matcher) parseSeasonPackEpisodePayload(
 		// the seeded file links instead of downloading again. Copy first: the
 		// parsed release is shared from the cache.
 		first := *parsed
-		eps := parsed.SeriesEpisodes()
-		first.Type, first.Series, first.Episode = rls.Episode, eps[0][0], eps[0][1]
+		id := rangeEpisodeIdentity(parsed)
+		first.Type, first.Series, first.Episode = rls.Episode, id.series, id.episode
 		parsed = &first
 	}
 	if !isTVEpisode(parsed) {
@@ -1141,16 +1161,12 @@ func stripSeasonPackRepackTags(values []string) []string {
 	filtered := make([]string, 0, len(values))
 	for _, value := range values {
 		normalized := normalizeVariant(value)
-		switch {
-		case normalized == "":
+		if normalized == "" || slices.ContainsFunc(variantTokens(normalized), func(token string) bool {
+			return slices.Contains(nonPackVariantOverrides.other, token)
+		}) {
 			continue
-		case variantValueMatches(normalized, "REPACK"):
-			continue
-		case variantValueMatches(normalized, "PROPER"):
-			continue
-		default:
-			filtered = append(filtered, value)
 		}
+		filtered = append(filtered, value)
 	}
 
 	return filtered
@@ -1326,6 +1342,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	policy := seasonPackPolicy(settings)
 	policy.SkipSizeCheck = true
 	packEpisodeReleases := make(map[int]*rls.Release)
+	gate := s.sourceGate()
+	webhookFilter := defaultsFor(triggerWebhook, settings).sourceFilter
 
 	for i := range cached {
 		view := &cached[i]
@@ -1334,7 +1352,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 		torrent := view.Torrent
 
-		if !matchesWebhookSourceFilters(torrent, settings) {
+		answer := gate.check(torrent, webhookFilter)
+		if answer.lasting() {
 			continue
 		}
 
@@ -1362,8 +1381,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		if isRange {
 			// A multi-episode range parses with Episode 0. Identify it by its
 			// first episode, the same identity its file carries inside the pack.
-			eps := parsed.SeriesEpisodes()
-			id = episodeIdentity{series: eps[0][0], episode: eps[0][1]}
+			id = rangeEpisodeIdentity(parsed)
 		}
 		if packEpisodes != nil {
 			localSeasonless := parsed.Series == 0
@@ -1414,7 +1432,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
 		// the pack (announce raced the episode's download or its move).
-		if !s.canGiveFiles(torrent) {
+		if answer != sourcePass {
 			log.Debug().
 				Str("pack", packRelease.Title).
 				Int("season", packRelease.Series).

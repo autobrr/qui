@@ -336,15 +336,15 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     return left.hash === right.hash && getTorrentInstanceId(left) === getTorrentInstanceId(right)
   }, [getTorrentInstanceId])
 
-  const handleTorrentSelect = useCallback((torrent: Torrent | null, initialTab?: string) => {
-    // Toggle selection: if the same torrent is clicked without a tab override, deselect it
-    if (torrent && isSameTorrent(selectedTorrent, torrent) && !initialTab) {
+  const handleTorrentSelect = useCallback((torrent: Torrent | null) => {
+    // Toggle selection: a click on the selected torrent deselects it
+    if (torrent && isSameTorrent(selectedTorrent, torrent)) {
       closeMobileDetails()
     } else {
       setSelectedTorrent(torrent)
-      setInitialDetailsTab(initialTab)
+      setInitialDetailsTab(undefined)
       if (isMobile && torrent) {
-        pushMobileDetailsEntry(torrent, initialTab)
+        pushMobileDetailsEntry(torrent)
       }
     }
   }, [closeMobileDetails, isMobile, isSameTorrent, pushMobileDetailsEntry, selectedTorrent])

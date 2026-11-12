@@ -60,6 +60,7 @@ vi.mock("@/hooks/useInstances", () => ({
 vi.mock("@/hooks/useOrphanScan", () => ({
   useOrphanScanSettings: () => idleQuery,
   useOrphanScanRuns: () => runsQuery,
+  useOrphanScanRunPaths: () => ({ data: undefined, isError: false }),
   useOrphanScanRun: (_instanceId: number, _runId: number, options?: { offset?: number }) =>
     options?.offset ? secondPage : firstPage,
   useTriggerOrphanScan: () => idleMutation,

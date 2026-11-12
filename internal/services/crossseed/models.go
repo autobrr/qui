@@ -60,19 +60,8 @@ type CrossSeedRequest struct {
 	// arbiter of a wrong pick.
 	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
-	// SourceFilterCategories filters candidate torrents to only those in these categories.
-	// Used by RSS automation to respect RSSSourceCategories setting.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterCategories []string `json:"-"`
-	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterTags []string `json:"-"`
-	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterExcludeCategories []string `json:"-"`
-	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterExcludeTags []string `json:"-"`
+	// sourceFilter limits which local torrents can be the source of this add.
+	sourceFilter sourceFilter
 	// SearchDecision is private provenance carried only by cached search results.
 	// It binds apply to the source torrent and every relaxation search admitted.
 	SearchDecision searchDecisionProvenance `json:"-"`
@@ -177,18 +166,9 @@ type FindCandidatesRequest struct {
 	// (Manual match). Requires exactly one target instance.
 	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
-	// Source filters - used to restrict which existing torrents are considered as candidates.
-	// These are applied when fetching torrents (if no pre-built snapshot is provided).
-	// Internal-only, not exposed via JSON API.
-
-	// SourceFilterCategories filters candidate torrents to only those in these categories.
-	SourceFilterCategories []string `json:"-"`
-	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
-	SourceFilterTags []string `json:"-"`
-	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
-	SourceFilterExcludeCategories []string `json:"-"`
-	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
-	SourceFilterExcludeTags []string `json:"-"`
+	// sourceFilter limits which existing torrents count as candidates when no
+	// pre-built snapshot is provided.
+	sourceFilter sourceFilter
 	// SearchDecision binds a cached decision to the source torrent. Apply keeps
 	// that verdict for the source torrent and does not decide the pair again.
 	SearchDecision searchDecisionProvenance `json:"-"`
@@ -226,7 +206,7 @@ type CrossSeedCandidate struct {
 	InstanceName string `json:"instance_name"`
 	// Torrents: The EXISTING torrents in this instance that have matching files
 	// Multiple torrents may be listed because they can collectively or individually provide the needed data
-	Torrents []qbt.Torrent `json:"torrents"`
+	Torrents []*qbt.Torrent `json:"torrents"`
 	// MatchType indicates the type of match:
 	//   "exact" - 100% duplicate files (same paths and sizes)
 	//   "partial-in-pack" - new torrent's files are found within existing season pack

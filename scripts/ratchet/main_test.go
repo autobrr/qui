@@ -56,6 +56,15 @@ func TestCompare(t *testing.T) {
 	}
 }
 
+// A new rule starts with the count of each file. Its entries can only shrink
+// once the base has them.
+func TestCompareNewLinter(t *testing.T) {
+	got := counts{"nilerr": {"a.go": 1}, "forbidigo": {"c.go": 3}}
+	assert.Empty(t, compare(got, got, counts{"nilerr": {"a.go": 1}}))
+	assert.Equal(t, []string{"c.go: the forbidigo entry grew from 3 to 4. The allowlist only shrinks."},
+		compare(counts{"forbidigo": {"c.go": 4}}, counts{"forbidigo": {"c.go": 4}}, counts{"forbidigo": {"c.go": 3}}))
+}
+
 func TestCompareZeroEntry(t *testing.T) {
 	allow := counts{"nilerr": {"a.go": 0}}
 	assert.Equal(t, []string{"a.go: nilerr reports no problems. Delete its entry from scripts/ratchet/allowlist.json."},

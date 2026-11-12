@@ -29,9 +29,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
-import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
-import { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
+import { useCopyGroupRows, type CopyGroupRow } from "@/hooks/useCopyGroupRows"
+import { useTorrentListController } from "@/hooks/useTorrentListController"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useClientSetting } from "@/lib/client-settings"
@@ -39,8 +38,8 @@ import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
-import { actionTargetInstanceIds, actionTargetRequest, buildActionTarget, getSelectionIdentity as selectionIdentity, hasSelection, rememberTickedTorrents, selectAllButtonEvent, type ActionTargetScope } from "@/lib/torrent-selection"
-import { getCommonCategory, getCommonSavePath, getToggleSelectionState, getTotalSize } from "@/lib/torrent-utils"
+import { actionTargetInstanceIds, buildActionTarget, EMPTY_ACTION_TARGET, getSelectionIdentity as selectionIdentity, hasSelection, rememberTickedTorrents, selectAllButtonEvent, type ActionTargetScope } from "@/lib/torrent-selection"
+import { getToggleSelectionState, getTotalSize } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -81,31 +80,27 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
+import type { BulkActionPick } from "./bulk-actions/bulk-action-state"
+import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { TorrentListEmptyState } from "./TorrentListEmptyState"
-import {
-  LocationWarningDialog,
-  SetCategoryDialog,
-  SetLocationDialog,
-  ShareLimitDialog,
-  SpeedLimitsDialog,
-  TagEditorDialog,
-  TmmConfirmDialog
-} from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
-import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext, type ListFacts } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedFilter } from "@/hooks/useCrossSeedFilter"
 import { useInstanceCapabilities, useInstancesSupport } from "@/hooks/useInstanceCapabilities"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
+import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
+import { withSortedField } from "@/lib/copy-groups"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
-import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { getCopyGroupAccentClass, getStatusBadgeProps } from "@/lib/torrent-table/row-display"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
+import { CopyGroupPill } from "./table/CopyGroupPill"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 interface TorrentCardsMobileProps {
@@ -264,7 +259,10 @@ const getTrackerDisplayMeta = (tracker?: string) => {
 
 // Swipeable card component with gesture support
 function SwipeableCard({
-  torrent,
+  torrent: cardTorrent,
+  copyGroup,
+  sortedField,
+  onToggleCopyGroup,
   isSelected,
   onSelect,
   onClick,
@@ -277,7 +275,11 @@ function SwipeableCard({
   trackerIcons,
   trackerCustomizationLookup,
 }: {
+  /** The torrent that a tap, a long press, and a tick reach. */
   torrent: Torrent
+  copyGroup: CopyGroupRow<Torrent>
+  sortedField: string
+  onToggleCopyGroup: (id: string) => void
   isSelected: boolean
   onSelect: (selected: boolean) => void
   onClick: () => void
@@ -291,6 +293,11 @@ function SwipeableCard({
   trackerCustomizationLookup?: TrackerCustomizationLookup
 }) {
   const { t } = useTranslation("torrents")
+  // The card of a closed group shows the sorted field of the first-sorted member.
+  const torrent = useMemo(
+    () => withSortedField(cardTorrent, copyGroup.sortedTorrent, sortedField),
+    [cardTorrent, copyGroup.sortedTorrent, sortedField]
+  )
 
   // Use number for timeoutId in browser
   const [longPressTimer, setLongPressTimer] = useState<number | null>(null)
@@ -310,7 +317,7 @@ function SwipeableCard({
         if ("vibrate" in navigator) {
           navigator.vibrate(50)
         }
-        onLongPress(torrent)
+        onLongPress(cardTorrent)
       }
     }, 600) // Increased to 600ms to be less sensitive
     setLongPressTimer(timer)
@@ -364,14 +371,31 @@ function SwipeableCard({
   const trackerIconSrc = resolveTrackerIconSrc(trackerIcons, iconDomain, trackerMeta.host)
   // Display name is either custom name or hostname
   const trackerDisplayName = trackerDisplayInfo.displayName || trackerMeta.title
+  const groupPill = copyGroup.groupId !== undefined && (
+    <CopyGroupPill
+      id={copyGroup.groupId}
+      open={copyGroup.open}
+      copies={copyGroup.copies}
+      hiddenProblem={copyGroup.hiddenProblem}
+      hiddenTicks={copyGroup.hiddenTicks}
+      name={displayName}
+      size={viewMode === "normal" ? "normal" : "dense"}
+      onToggle={onToggleCopyGroup}
+    />
+  )
+  const isComplete = torrent.progress === 1
+  const hasSpeeds = torrent.dlspeed > 0 || torrent.upspeed > 0
+  const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName
 
   return (
     <div
       className={cn(
         "bg-card rounded-lg border cursor-pointer transition-all relative overflow-hidden select-none",
         viewMode === "ultra-compact" ? "px-3 py-1" : viewMode === "compact" ? "p-2" : "p-4",
+        (copyGroup.open || copyGroup.nestedCopy) && getCopyGroupAccentClass(copyGroup.open),
         isSelected && "bg-accent/50",
-        !selectionMode && "active:scale-[0.98]",
+        // A press on the pill does not press the card.
+        !selectionMode && "[&:not(:has(button:active))]:active:scale-[0.98]",
         selectionMode && viewMode !== "normal" && "pr-10"
       )}
       onTouchStart={!selectionMode ? handleTouchStart : undefined}
@@ -446,6 +470,8 @@ function SwipeableCard({
             </div>
           )}
 
+          {groupPill}
+
           {/* State badge - smaller */}
           <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
             {statusBadgeLabel}
@@ -465,8 +491,8 @@ function SwipeableCard({
       ) : viewMode === "compact" ? (
         /* Compact Layout */
         <>
-          {/* Name with progress inline */}
-          <div className="flex items-center gap-2 mb-1">
+          {/* Name and Copy group pill */}
+          <div className="flex h-5 items-center mb-1.5">
             <div className="flex-1 min-w-0 overflow-hidden">
               <div className="w-full overflow-x-auto scrollbar-thin">
                 <h3 className={cn(
@@ -477,38 +503,51 @@ function SwipeableCard({
                 </h3>
               </div>
             </div>
-            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
-              {statusBadgeLabel}
-            </Badge>
+            {groupPill}
           </div>
 
-          {/* Downloaded/Size and Ratio */}
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">
-              {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
-            </span>
-            <div className="flex items-center gap-1">
-              <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
-              <span
-                className="font-medium"
-                style={{ color: getRatioColor(displayRatio) }}
-              >
-                {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+          {/* Tracker, Size and Ratio on the left, state badge on the right. On a full line, the tracker name gets shorter first, then the size. */}
+          <div className="flex h-[22px] items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 text-muted-foreground min-w-0">
+              {trackerDisplayName && (
+                <span className="flex items-center gap-1 min-w-0 shrink-[9999]" title={trackerTitle}>
+                  <TrackerIcon
+                    title={trackerTitle}
+                    fallback={trackerMeta.fallback}
+                    src={trackerIconSrc}
+                    size="xs"
+                    className="flex-shrink-0"
+                  />
+                  <span className="truncate">{trackerDisplayName}</span>
+                </span>
+              )}
+              <span className="min-w-0 truncate">
+                {isComplete ? formatBytes(torrent.size) : `${formatBytes(torrent.downloaded)} / ${formatBytes(torrent.size)}`}
+              </span>
+              <span className="flex items-center gap-1 flex-shrink-0">
+                <span>{t("mobileCards.ratio")}</span>
+                <span
+                  className="font-medium"
+                  style={{ color: getRatioColor(displayRatio) }}
+                >
+                  {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+                </span>
               </span>
             </div>
+            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0 ml-auto", statusBadgeClass)}>
+              {statusBadgeLabel}
+            </Badge>
           </div>
         </>
       ) : (
         /* Full Layout */
         <>
           {/* Torrent name */}
-          <div className="mb-3">
-            <h3 className={cn(
-              "font-medium text-sm line-clamp-2 break-all h-10",
-              selectionMode && "pr-8"
-            )}>
+          <div className={cn("mb-3 flex items-start", selectionMode && "pr-8")}>
+            <h3 className="flex-1 min-w-0 font-medium text-sm line-clamp-2 break-all h-10">
               {displayName}
             </h3>
+            {groupPill}
           </div>
 
           {/* Progress bar */}
@@ -578,21 +617,10 @@ function SwipeableCard({
 
       {/* Bottom row: Tracker/Category/Tags and Status/Speeds - only for compact and full views */}
       {viewMode === "compact" ? (
-        /* Compact version: Tracker/Category/tags on left, percentage/speeds on right */
-        <div className="flex items-center justify-between gap-2 text-xs mt-1">
-          {/* Left side: Tracker, Category and Tags */}
+        /* Compact version: Category/tags on left, percentage/speeds or added time on right */
+        <div className="flex h-4 items-center justify-between gap-2 text-xs mt-1">
+          {/* Left side: Category and Tags */}
           <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
-            {trackerDisplayName && (
-              <span className="flex items-center gap-1 flex-shrink-0" title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}>
-                <TrackerIcon
-                  title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}
-                  fallback={trackerMeta.fallback}
-                  src={trackerIconSrc}
-                  size="xs"
-                />
-                {trackerDisplayName}
-              </span>
-            )}
             {displayCategory && (
               <span className="flex items-center gap-1 flex-shrink-0">
                 <Folder className="h-3 w-3" />
@@ -609,31 +637,39 @@ function SwipeableCard({
             )}
           </div>
 
-          {/* Right side: Percentage and Speeds */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-muted-foreground">
-              {torrent.progress >= 0.99 && torrent.progress < 1 ? (
-                (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
-              ) : (
-                Math.round(torrent.progress * 100)
-              )}%
+          {/* Right side: Percentage and Speeds, or the added time of an idle complete torrent */}
+          {isComplete && !hasSpeeds ? (
+            <span className="text-muted-foreground flex-shrink-0">
+              {t("mobileCards.added", { time: formatRelativeTime(torrent.added_on) })}
             </span>
-            {/* Speeds */}
-            {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
-              <div className="flex items-center gap-1">
-                {torrent.dlspeed > 0 && (
-                  <span className="text-chart-2 font-medium">
-                    ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
-                  </span>
-                )}
-                {torrent.upspeed > 0 && (
-                  <span className="text-chart-3 font-medium">
-                    ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {!isComplete && (
+                <span className="text-muted-foreground">
+                  {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                    (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+                  ) : (
+                    Math.round(torrent.progress * 100)
+                  )}%
+                </span>
+              )}
+              {/* Speeds */}
+              {hasSpeeds && (
+                <div className="flex items-center gap-1">
+                  {torrent.dlspeed > 0 && (
+                    <span className="text-chart-2 font-medium">
+                      ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
+                    </span>
+                  )}
+                  {torrent.upspeed > 0 && (
+                    <span className="text-chart-3 font-medium">
+                      ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : viewMode === "normal" ? (
         /* Full version: Original layout with tracker, category, tags */
@@ -700,7 +736,7 @@ export function TorrentCardsMobile({
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   // Selection keys: hash for single-instance, `${instanceId}:${hash}` for unified scope.
-  const { selection, dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const { selection, dispatch: dispatchSelection, publishSummary } = useTorrentSelectionContext()
   const { isAllSelected, selected: selectedHashes, excluded: excludedFromSelectAll } = selection
   // Selection mode means that something is selected, Select all mode included.
   const selectionMode = hasSelection(selection)
@@ -784,52 +820,7 @@ export function TorrentCardsMobile({
     return newLookup
   }, [trackerCustomizationsQuery.data])
 
-  // Use the shared torrent actions hook
-  const torrentActions = useTorrentActions({
-    instanceId,
-    instanceIds,
-    onActionComplete: (action) => {
-      if (action === TORRENT_ACTIONS.DELETE) {
-        dispatchSelection({ type: "clear" })
-      }
-    },
-  })
-  const {
-    showDeleteDialog,
-    closeDeleteDialog,
-    deleteFiles,
-    setDeleteFiles,
-    isDeleteFilesLocked,
-    toggleDeleteFilesLock,
-    blockCrossSeeds,
-    setBlockCrossSeeds,
-    deleteCrossSeeds,
-    setDeleteCrossSeeds,
-    showTagsDialog,
-    setShowTagsDialog,
-    showCategoryDialog,
-    setShowCategoryDialog,
-    showLocationDialog,
-    setShowLocationDialog,
-    showShareLimitDialog,
-    setShowShareLimitDialog,
-    showSpeedLimitDialog,
-    setShowSpeedLimitDialog,
-    showTmmDialog,
-    setShowTmmDialog,
-    pendingTmmEnable,
-    showLocationWarningDialog,
-    setShowLocationWarningDialog,
-    isPending,
-    prepareDeleteAction,
-    prepareLocationAction,
-    prepareTmmAction,
-    proceedToLocationDialog,
-  } = torrentActions
-
-  const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
-  const availableTags = metadata?.tags || []
-  const availableCategories = metadata?.categories || {}
+  const { pick, isExporting } = useBulkActions()
 
   const debouncedSearch = useDebounce(globalFilter, 1000)
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
@@ -858,6 +849,8 @@ export function TorrentCardsMobile({
     }
   }, [effectiveSearch, dispatchSelection])
 
+  const [groupCopiesSetting, toggleGroupCopies] = usePersistedGroupCopies()
+
   // Fetch data
   const {
     torrents,
@@ -877,6 +870,10 @@ export function TorrentCardsMobile({
     reportNearEnd,
     listKey,
     isCrossInstanceEndpoint,
+    visibleRows,
+    groupExpansion,
+    toggleGroup,
+    copyGroupsReady,
   } = useTorrentListController({
     instanceId,
     instanceIds,
@@ -884,10 +881,10 @@ export function TorrentCardsMobile({
     filters,
     sort: backendSortField,
     order: sortOrder,
+    groupCopies: groupCopiesSetting,
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
-  const { exportTorrents, isExporting } = useTorrentExporter({ instanceId, incognitoMode })
   const supportsTrackerHealth = resolveTrackerHealthSupport({
     isUnifiedView: isAllInstancesView,
     capabilitySupport: capabilities?.supportsTrackerHealth,
@@ -913,78 +910,64 @@ export function TorrentCardsMobile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, allowSubcategories, onFilteredDataUpdate, supportsTrackerHealth]) // Update when data changes
 
+  const { describeRow: describeCopyGroupRow } = useCopyGroupRows({ rows: torrents, expansion: groupExpansion, selection, getSelectionIdentity })
+
   const tickedTorrentsRef = useRef(new Map<string, Torrent>())
   // Every bulk action on the cards reads this target (ADR 0034). The cards have no Column filters.
   const actionTarget = useMemo(() => {
+    if (!selectionMode) {
+      // A stable result while nothing is selected: torrents is a new array on each stream tick.
+      tickedTorrentsRef.current.clear()
+      return EMPTY_ACTION_TARGET
+    }
     const ticked = rememberTickedTorrents(tickedTorrentsRef.current, selectedHashes, torrents, getSelectionIdentity)
     const scope: ActionTargetScope = { instanceId, instanceIds, filters, columnFilters: null, search: effectiveSearch, isCrossInstance: isCrossInstanceEndpoint }
     return buildActionTarget(selection, scope, { loaded: torrents, ticked, totalCount })
-  }, [selection, selectedHashes, torrents, getSelectionIdentity, instanceId, instanceIds, filters, effectiveSearch, isCrossInstanceEndpoint, totalCount])
+  }, [selectionMode, selection, selectedHashes, torrents, getSelectionIdentity, instanceId, instanceIds, filters, effectiveSearch, isCrossInstanceEndpoint, totalCount])
   const { count: effectiveSelectionCount, previewTorrents: selectedTorrents } = actionTarget
   const actionInstanceIds = useMemo(() => actionTargetInstanceIds(actionTarget, instanceId), [actionTarget, instanceId])
   const supportsTorrentExport = useInstancesSupport(actionInstanceIds, "supportsTorrentExport")
 
   const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
 
-  const selectedTotalSize = useMemo(() => {
-    if (isAllSelected) {
-      const aggregateTotalSize = stats?.totalSize ?? 0
-
-      if (aggregateTotalSize <= 0) {
-        return 0
-      }
-
-      if (excludedFromSelectAll.size === 0) {
-        return aggregateTotalSize
-      }
-
-      const excludedSize = torrents.reduce((total, torrent) => {
-        if (excludedFromSelectAll.has(getSelectionIdentity(torrent))) {
-          return total + (torrent.size || 0)
-        }
-        return total
-      }, 0)
-
-      return Math.max(aggregateTotalSize - excludedSize, 0)
+  const totalSize = isAllSelected ? stats?.totalSize ?? 0 : 0
+  const excludedSize = useMemo(() => {
+    if (!isAllSelected || excludedFromSelectAll.size === 0) {
+      return 0
     }
-
-    return getTotalSize(selectedTorrents)
-  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, torrents, selectedTorrents, getSelectionIdentity])
-
+    return torrents.reduce((total, torrent) => excludedFromSelectAll.has(getSelectionIdentity(torrent)) ? total + (torrent.size || 0) : total, 0)
+  }, [isAllSelected, excludedFromSelectAll, torrents, getSelectionIdentity])
+  const selectedTotalSize = isAllSelected ? Math.max(totalSize - excludedSize, 0) : getTotalSize(selectedTorrents)
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
-  const {
-    crossSeedWarning,
-    hasCrossSeedTag,
-    runAction,
-    handleExportWrapper,
-    handleDeleteWrapper,
-    handleTagsWrapper,
-    handleSetCategoryWrapper,
-    handleSetLocationWrapper,
-    handleTmmConfirmWrapper,
-    handleSetShareLimitWrapper,
-    handleSetSpeedLimitsWrapper,
-  } = useTorrentListActions({
-    instanceId,
-    actionTarget,
-    actions: torrentActions,
-    exportTorrents,
-    sort: backendSortField,
-    order: sortOrder,
-  })
+  const listFacts = useMemo<ListFacts>(() => ({
+    isCrossInstance: Boolean(isCrossInstanceEndpoint),
+    categories,
+    tags,
+    allowSubcategories,
+    capabilities,
+    sortField: backendSortField,
+    sortOrder,
+  }), [isCrossInstanceEndpoint, categories, tags, allowSubcategories, capabilities, backendSortField, sortOrder])
+
+  // The bulk action module reads this value for its dialogs and requests.
+  useEffect(() => {
+    publishSummary({ actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts })
+  }, [publishSummary, actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts])
+  useEffect(() => () => publishSummary(null), [publishSummary])
 
   // Virtual scrolling with consistent spacing
   const virtualizer = useVirtualizer({
     count: loadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 86 : 180,
+    estimateSize: () => viewMode === "ultra-compact" ? 32 : viewMode === "compact" ? 90 : 180,
     overscan: 5,
-    // Provide a key to help with item tracking - use hash with index for uniqueness
+    // The list hook keeps one row per identity. A key without the index lets a card
+    // keep its place in the DOM when a group above it opens or closes.
     getItemKey: useCallback((index: number) => {
-      const torrent = torrents[index]
-      return torrent?.hash ? `${torrent.hash}-${index}` : `loading-${index}`
-    }, [torrents]),
+      const torrent = visibleRows[index]
+      return torrent ? getSelectionIdentity(torrent) : `loading-${index}`
+    }, [visibleRows, getSelectionIdentity]),
     // Optimized onChange handler following TanStack Virtual best practices
     onChange: (instance, sync) => {
       const vRows = instance.getVirtualItems();
@@ -1056,15 +1039,10 @@ export function TorrentCardsMobile({
     dispatchSelection(selectAllButtonEvent(selection, totalCount))
   }, [dispatchSelection, selection, totalCount])
 
-  const handleBulkAction = useCallback((action: TorrentAction, options?: { enable?: boolean }) => {
-    runAction(action, options)
+  const pickBulkAction = useCallback((bulkPick: BulkActionPick) => {
+    pick(bulkPick)
     setShowActionsSheet(false)
-  }, [runAction])
-
-  const handleExport = () => {
-    handleExportWrapper()
-    setShowActionsSheet(false)
-  }
+  }, [pick])
 
   const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
     instanceId,
@@ -1128,6 +1106,11 @@ export function TorrentCardsMobile({
                 t("statusBar.loadingTorrents")
               ) : totalCount === 0 ? (
                 t("mobileCards.noTorrentsFound")
+              ) : copyGroupsReady === false ? (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t("copyGroups.grouping")}
+                </span>
               ) : (
                 <>
                   {hasLoadedAll ? (
@@ -1135,7 +1118,7 @@ export function TorrentCardsMobile({
                   ) : isLoadingMore ? (
                     t("statusBar.loadingMore")
                   ) : (
-                    t("statusBar.torrentsLoaded", { loaded: loadedRows, total: totalCount })
+                    t("statusBar.torrentsLoaded", { loaded: torrents.length, total: totalCount })
                   )}
                 </>
               )}
@@ -1152,6 +1135,7 @@ export function TorrentCardsMobile({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
+                  <CopyGroupMenuItems groupCopies={groupCopiesSetting} onToggleGroupCopies={toggleGroupCopies} />
                   <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={sortField}
@@ -1239,7 +1223,7 @@ export function TorrentCardsMobile({
           }}
         >
           {virtualItems.map(virtualItem => {
-            const torrent = torrents[virtualItem.index]
+            const torrent = visibleRows[virtualItem.index]
             const selectionIdentity = getSelectionIdentity(torrent)
             const isSelected = isAllSelected ? !excludedFromSelectAll.has(selectionIdentity) : selectedHashes.has(selectionIdentity)
 
@@ -1259,6 +1243,9 @@ export function TorrentCardsMobile({
               >
                 <SwipeableCard
                   torrent={torrent}
+                  copyGroup={describeCopyGroupRow(torrent)}
+                  sortedField={backendSortField}
+                  onToggleCopyGroup={toggleGroup}
                   isSelected={isSelected}
                   onSelect={(selected) => handleSelect(selectionIdentity, selected)}
                   onClick={() => onTorrentSelect?.(torrent)}
@@ -1304,7 +1291,7 @@ export function TorrentCardsMobile({
         >
           <div className="flex items-center justify-around h-16">
             <button
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.RESUME)}
+              onClick={() => pickBulkAction({ action: "resume" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Play className="h-5 w-5" />
@@ -1312,7 +1299,7 @@ export function TorrentCardsMobile({
             </button>
 
             <button
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.PAUSE)}
+              onClick={() => pickBulkAction({ action: "pause" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Pause className="h-5 w-5" />
@@ -1320,9 +1307,7 @@ export function TorrentCardsMobile({
             </button>
 
             <button
-              onClick={() => {
-                setShowCategoryDialog(true)
-              }}
+              onClick={() => pickBulkAction({ action: "setCategory" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Folder className="h-5 w-5" />
@@ -1330,9 +1315,7 @@ export function TorrentCardsMobile({
             </button>
 
             <button
-              onClick={() => {
-                setShowTagsDialog(true)
-              }}
+              onClick={() => pickBulkAction({ action: "setTags" })}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Tag className="h-5 w-5" />
@@ -1367,7 +1350,7 @@ export function TorrentCardsMobile({
                   <>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: true })}
+                      onClick={() => pickBulkAction({ action: "forceStart", enable: true })}
                       className="justify-start"
                     >
                       <FastForward className="mr-2 h-4 w-4" />
@@ -1375,7 +1358,7 @@ export function TorrentCardsMobile({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: false })}
+                      onClick={() => pickBulkAction({ action: "forceStart", enable: false })}
                       className="justify-start"
                     >
                       <FastForward className="mr-2 h-4 w-4" />
@@ -1388,7 +1371,7 @@ export function TorrentCardsMobile({
               return (
                 <Button
                   variant="outline"
-                  onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: !allForceStarted })}
+                  onClick={() => pickBulkAction({ action: "forceStart", enable: !allForceStarted })}
                   className="justify-start"
                 >
                   <FastForward className="mr-2 h-4 w-4" />
@@ -1398,7 +1381,7 @@ export function TorrentCardsMobile({
             })()}
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.RECHECK)}
+              onClick={() => pickBulkAction({ action: "recheck" })}
               className="justify-start"
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -1406,7 +1389,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.REANNOUNCE)}
+              onClick={() => pickBulkAction({ action: "reannounce" })}
               className="justify-start"
             >
               <Radio className="mr-2 h-4 w-4" />
@@ -1420,7 +1403,7 @@ export function TorrentCardsMobile({
                   <>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: true })}
+                      onClick={() => pickBulkAction({ action: "toggleSequentialDownload", enable: true })}
                       className="justify-start"
                     >
                       <Blocks className="mr-2 h-4 w-4" />
@@ -1428,7 +1411,7 @@ export function TorrentCardsMobile({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: false })}
+                      onClick={() => pickBulkAction({ action: "toggleSequentialDownload", enable: false })}
                       className="justify-start"
                     >
                       <Blocks className="mr-2 h-4 w-4" />
@@ -1441,7 +1424,7 @@ export function TorrentCardsMobile({
               return (
                 <Button
                   variant="outline"
-                  onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: !allSeqDlEnabled })}
+                  onClick={() => pickBulkAction({ action: "toggleSequentialDownload", enable: !allSeqDlEnabled })}
                   className="justify-start"
                 >
                   <Blocks className="mr-2 h-4 w-4" />
@@ -1499,7 +1482,7 @@ export function TorrentCardsMobile({
             )}
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.INCREASE_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "increasePriority" })}
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
@@ -1507,7 +1490,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.DECREASE_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "decreasePriority" })}
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
@@ -1515,7 +1498,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.TOP_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "topPriority" })}
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
@@ -1523,7 +1506,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.BOTTOM_PRIORITY)}
+              onClick={() => pickBulkAction({ action: "bottomPriority" })}
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
@@ -1537,10 +1520,7 @@ export function TorrentCardsMobile({
                   <>
                     <Button
                       variant="outline"
-                      onClick={() => {
-                        prepareTmmAction(true)
-                        setShowActionsSheet(false)
-                      }}
+                      onClick={() => pickBulkAction({ action: "toggleAutoTMM", enable: true })}
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
@@ -1548,10 +1528,7 @@ export function TorrentCardsMobile({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => {
-                        prepareTmmAction(false)
-                        setShowActionsSheet(false)
-                      }}
+                      onClick={() => pickBulkAction({ action: "toggleAutoTMM", enable: false })}
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
@@ -1564,10 +1541,7 @@ export function TorrentCardsMobile({
               return (
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    prepareTmmAction(!allEnabled)
-                    setShowActionsSheet(false)
-                  }}
+                  onClick={() => pickBulkAction({ action: "toggleAutoTMM", enable: !allEnabled })}
                   className="justify-start"
                 >
                   {allEnabled ? (
@@ -1586,10 +1560,7 @@ export function TorrentCardsMobile({
             })()}
             <Button
               variant="outline"
-              onClick={() => {
-                setShowShareLimitDialog(true)
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "setShareLimit" })}
               className="justify-start"
             >
               <Sprout className="mr-2 h-4 w-4" />
@@ -1597,10 +1568,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                setShowSpeedLimitDialog(true)
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "setSpeedLimits" })}
               className="justify-start"
             >
               <Gauge className="mr-2 h-4 w-4" />
@@ -1608,10 +1576,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                prepareLocationAction()
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "setLocation" })}
               className="justify-start"
             >
               <FolderOpen className="mr-2 h-4 w-4" />
@@ -1620,7 +1585,7 @@ export function TorrentCardsMobile({
             {supportsTorrentExport && (
               <Button
                 variant="outline"
-                onClick={handleExport}
+                onClick={() => pickBulkAction({ action: "export" })}
                 disabled={isExporting}
                 className="justify-start"
               >
@@ -1630,10 +1595,7 @@ export function TorrentCardsMobile({
             )}
             <Button
               variant="destructive"
-              onClick={() => {
-                prepareDeleteAction()
-                setShowActionsSheet(false)
-              }}
+              onClick={() => pickBulkAction({ action: "delete" })}
               className="justify-start !bg-destructive !text-destructive-foreground"
             >
               <Trash2 className="mr-2 h-4 w-4" />
@@ -1642,109 +1604,6 @@ export function TorrentCardsMobile({
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Delete confirmation dialog */}
-      <DeleteTorrentDialog
-        open={showDeleteDialog}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeDeleteDialog()
-            crossSeedWarning.reset()
-          }
-        }}
-        count={effectiveSelectionCount}
-        totalSize={selectedTotalSize}
-        formattedSize={selectedFormattedSize}
-        deleteFiles={deleteFiles}
-        onDeleteFilesChange={setDeleteFiles}
-        isDeleteFilesLocked={isDeleteFilesLocked}
-        onToggleDeleteFilesLock={toggleDeleteFilesLock}
-        deleteCrossSeeds={deleteCrossSeeds}
-        onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-        showBlockCrossSeeds={hasCrossSeedTag}
-        blockCrossSeeds={blockCrossSeeds}
-        onBlockCrossSeedsChange={setBlockCrossSeeds}
-        crossSeedWarning={crossSeedWarning}
-        onConfirm={handleDeleteWrapper}
-        isAllSelected={isAllSelected}
-        previewTorrents={selectedTorrents}
-      />
-
-      {/* Tags dialog */}
-      <TagEditorDialog
-        open={showTagsDialog}
-        onOpenChange={setShowTagsDialog}
-        availableTags={availableTags || []}
-        selectedTorrents={selectedTorrents}
-        hashCount={effectiveSelectionCount}
-        selectionRequest={{ instanceId, ...actionTargetRequest(actionTarget) }}
-        onConfirm={handleTagsWrapper}
-        isPending={isPending}
-      />
-
-      {/* Category dialog */}
-      <SetCategoryDialog
-        open={showCategoryDialog}
-        onOpenChange={setShowCategoryDialog}
-        availableCategories={availableCategories}
-        hashCount={effectiveSelectionCount}
-        onConfirm={handleSetCategoryWrapper}
-        isPending={isPending}
-        initialCategory={getCommonCategory(selectedTorrents)}
-        useSubcategories={allowSubcategories}
-      />
-
-      {/* Share Limits Dialog */}
-      <ShareLimitDialog
-        open={showShareLimitDialog}
-        onOpenChange={setShowShareLimitDialog}
-        hashCount={effectiveSelectionCount}
-        torrents={selectedTorrents}
-        instanceIds={actionInstanceIds}
-        onConfirm={handleSetShareLimitWrapper}
-        isPending={isPending}
-      />
-
-      {/* Speed Limits Dialog */}
-      <SpeedLimitsDialog
-        open={showSpeedLimitDialog}
-        onOpenChange={setShowSpeedLimitDialog}
-        hashCount={effectiveSelectionCount}
-        torrents={selectedTorrents}
-        onConfirm={handleSetSpeedLimitsWrapper}
-        isPending={isPending}
-      />
-
-      {/* Set Location Dialog */}
-      <SetLocationDialog
-        open={showLocationDialog}
-        onOpenChange={setShowLocationDialog}
-        hashCount={effectiveSelectionCount}
-        initialLocation={getCommonSavePath(selectedTorrents)}
-        onConfirm={handleSetLocationWrapper}
-        isPending={isPending}
-        instanceId={instanceId}
-        capabilities={capabilities}
-      />
-
-      {/* TMM Confirmation Dialog */}
-      <TmmConfirmDialog
-        open={showTmmDialog}
-        onOpenChange={setShowTmmDialog}
-        count={effectiveSelectionCount}
-        enable={pendingTmmEnable}
-        onConfirm={handleTmmConfirmWrapper}
-        isPending={isPending}
-      />
-
-      {/* Location Warning Dialog */}
-      <LocationWarningDialog
-        open={showLocationWarningDialog}
-        onOpenChange={setShowLocationWarningDialog}
-        count={effectiveSelectionCount}
-        onConfirm={proceedToLocationDialog}
-        isPending={isPending}
-      />
 
       {/* Search Modal */}
       <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>

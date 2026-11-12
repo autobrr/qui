@@ -914,7 +914,7 @@
       ],
       "title": "Torrents by tracker",
       "type": "bargauge",
-      "description": "A torrent with trackers in more than one group counts in each group, so the bars can add up to more than the torrents in qBittorrent."
+      "description": "Each torrent counts in one group, so the bars add up to the torrents in qBittorrent."
     },
     {
       "datasource": {

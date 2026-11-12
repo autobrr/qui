@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Désactivé",
-      "enabled": "Activé",
       "connected": "Connecté",
       "disconnected": "Déconnecté"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Vérification TLS :",
       "tlsSkipped": "Ignorée",
       "tlsStrict": "Stricte",
-      "localFileAccess": "Accès fichiers locaux :",
-      "testingConnection": "Test de connexion..."
+      "testingConnection": "Test de connexion...",
+      "fileAccess": "Accès aux fichiers :"
     },
     "deleteDialog": {
       "title": "Supprimer l'instance",
@@ -111,7 +110,8 @@
       "none": "Aucun",
       "usernamePassword": "Nom d'utilisateur et mot de passe",
       "apiKey": "Clé API"
-    }
+    },
+    "sshAfterSave": "L'accès SSH aux fichiers de l'instance se configure dans les paramètres de l'instance après l'enregistrement."
   },
   "settingsButton": {
     "tooltip": "Paramètres de l'instance"
@@ -150,7 +150,8 @@
         "downloads": "Téléchargements",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "Limites de partage"
+        },
+        "ssh": {
+          "title": "Accès SSH",
+          "description": "Accéder aux fichiers de cette instance via SSH lorsque qui et qBittorrent tournent sur des machines différentes"
         }
       }
     },
@@ -724,10 +729,8 @@
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",
       "noInstancesDescription": "Aucune instance configurée. Ajoutez-en une dans les paramètres.",
-      "tooltip": "Trouve les fichiers sur disque non associés à un torrent qBittorrent.\nNécessite l'accès au système de fichiers local.",
+      "tooltip": "Trouve les fichiers sur disque non associés à un torrent qBittorrent.\nNécessite l'accès aux fichiers de chaque instance. Activez « Accès au système de fichiers local » ou configurez l'accès SSH dans les paramètres de l'instance.",
       "description": "Analyse les dossiers de téléchargement et identifie les fichiers orphelins.",
-      "noLocalAccess": "Pas d'accès local",
-      "noLocalAccessTooltip": "qui et qBittorrent doivent s'exécuter sur la même machine. Activez l'accès au système de fichiers local.",
       "remoteLimits": "La suppression et le nettoyage automatique sur une instance distante nécessitent l'identité des fichiers, que l'application ne peut lire que si le serveur lui permet d'exécuter GNU find et stat.",
       "remoteNoIdentity": "Cette instance distante ne le permet pas : l'application ne sait donc pas reconnaître deux chemins menant au même fichier, et un fichier accessible par un second chemin, par exemple via un montage bind, peut être listé même si un torrent l'utilise. Les analyses ici peuvent être consultées et exportées, mais pas supprimées.",
       "on": "On",
@@ -753,6 +756,8 @@
       "viewPreview": "Voir l'aperçu",
       "recentScans": "Analyses récentes",
       "scannedPaths": "Chemins sélectionnés pour l’analyse ({{total}})",
+      "scanPathsLoading": "Chargement des chemins d’analyse...",
+      "scanPathsLoadFailed": "Impossible de charger les chemins d’analyse",
       "zeroOrphans": "0 orphelins",
       "deletedStats": "{{deleted}} supprimés · {{size}}",
       "deletedFiles_one": "{{count}} fichier",
@@ -783,7 +788,9 @@
         "cancelFailed": "Échec de l'annulation"
       },
       "errorMessage": "Message d'erreur",
-      "scanPaths": "Chemins d’analyse"
+      "scanPaths": "Chemins d’analyse",
+      "noFilesystemAccess": "Pas d'accès au système de fichiers",
+      "noFilesystemAccessTooltip": "L'analyse d'orphelins nécessite l'accès aux fichiers de cette instance. Activez « Accès au système de fichiers local » ou configurez l'accès SSH dans les paramètres de l'instance."
     },
     "orphanScanPreview": {
       "title": "Aperçu des orphelins",
@@ -1278,14 +1285,14 @@
         "defaultSource": "Par défaut (qBittorrent)",
         "pathSource": "Chemin sur le serveur",
         "pathSourceWindowsUnsupported": "Chemin sur le serveur (non supporté sur Windows)",
-        "pathSourceLocalAccessRequired": "Chemin sur le serveur (requiert Accès local)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Entrez le chemin pour vérifier l'espace libre",
         "errors": {
           "unsupportedWindows": "Source d'espace basée sur un chemin non supportée sur Windows.",
-          "localAccessRequired": "Source d'espace basée sur un chemin requiert l'accès local.",
-          "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'."
-        }
+          "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'.",
+          "filesystemAccessRequired": "La source d'espace libre basée sur un chemin nécessite un accès au système de fichiers local ou via SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Chemin sur le serveur (nécessite un accès local ou SSH)"
       },
       "grouping": {
         "title": "Groupes de conditions",
@@ -1380,8 +1387,7 @@
       "enableDryRunPrompt": {
         "title": "Activer la simulation (dry run) ?",
         "description": "La simulation simule les actions sans rien modifier. Consultez l'historique d'activité.",
-        "enableWithout": "Activer sans simulation",
-        "enableWith": "Activer avec simulation"
+        "saveAndEnable": "Enregistrer et activer"
       },
       "customGroup": {
         "title": "Ajouter un groupe personnalisé",
@@ -1477,7 +1483,6 @@
         "switchedIntervalForFreeSpace": "Basculé sur un intervalle de 5m en raison du délai de nettoyage de l'Espace libre",
         "pathSourceUnsupportedWindows": "Source basée sur un chemin non supportée sur Windows. Basculement sur qBittorrent par défaut.",
         "switchFreeSpaceSourceDefault": "Basculer la source d'espace libre sur Défaut (qBittorrent)",
-        "enableLocalAccessOrDefault": "Activer l'accès local dans les paramètres de l'instance, ou utiliser Défaut (qBittorrent)",
         "enterPathOrDefault": "Entrez un chemin ou basculez la source d'espace sur Défaut (qBittorrent)",
         "addScoreRule": "Ajouter au moins une règle pour le tri par Score",
         "fieldMultiplierInvalid": "Le multiplicateur de champ doit être un nombre",
@@ -1494,7 +1499,8 @@
         "groupIdInvalid": "L'ID de groupe doit contenir uniquement des caractères alphanumériques et des tirets bas",
         "selectGroupKey": "Sélectionnez au moins une clé",
         "groupExists": "Un groupe avec cet ID existe déjà",
-        "customGroupAdded": "Groupe personnalisé ajouté"
+        "customGroupAdded": "Groupe personnalisé ajouté",
+        "setUpFilesystemAccessOrDefault": "Configurez un accès au système de fichiers local ou via SSH dans les paramètres de l'instance, ou utilisez Par défaut (qBittorrent)"
       },
       "trackerMatchInclude": "Inclure",
       "trackerMatchExclude": "Exclure"
@@ -1750,6 +1756,92 @@
       "testEmailQueued": "qBittorrent a mis l'e-mail de test en file d'attente",
       "testEmailQueuedDescription": "qBittorrent utilise les paramètres enregistrés. Vérifiez votre boîte de réception et le journal de qBittorrent pour les erreurs.",
       "testEmailFailed": "Échec de l'envoi de l'e-mail de test"
+    },
+    "ssh": {
+      "localWins": "L'accès au système de fichiers local est activé : qui lit les fichiers de cette instance localement et n'utilise pas ces paramètres SSH.",
+      "labels": {
+        "host": "Hôte SSH",
+        "hostDescription": "Nom d'hôte ou adresse IP de la machine qui contient les fichiers de cette instance, sans schéma ni port. Modifier l'hôte ou le port supprime la clé d'hôte épinglée : le prochain test redevient un premier contact.",
+        "port": "Port",
+        "username": "Nom d'utilisateur",
+        "privateKey": "Clé privée",
+        "privateKeyDescription": "Une clé privée OpenSSH sans phrase secrète. qui la stocke chiffrée et ne l'affiche plus jamais. Elle est de nouveau requise si l'hôte, le port ou le nom d'utilisateur change."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Une clé est enregistrée. Collez-en une nouvelle pour la remplacer."
+      },
+      "validation": {
+        "hostRequired": "L'hôte SSH est requis",
+        "portRange": "Le port doit être compris entre 1 et 65535",
+        "usernameRequired": "Le nom d'utilisateur est requis",
+        "keyRequired": "La clé privée est requise lorsque l'hôte, le port ou le nom d'utilisateur change"
+      },
+      "buttons": {
+        "save": "Enregistrer les paramètres SSH",
+        "clear": "Supprimer l'accès SSH",
+        "test": "Tester la connexion",
+        "testing": "Test en cours...",
+        "confirm": "Confirmer la clé d'hôte",
+        "replace": "Remplacer la clé d'hôte"
+      },
+      "test": {
+        "title": "Connexion",
+        "pinnedAtRest": "Clé d'hôte épinglée. Testez la connexion pour voir ce que l'hôte autorise.",
+        "unpinnedAtRest": "Aucune clé d'hôte épinglée pour l'instant. Testez la connexion pour confirmer l'empreinte de l'hôte.",
+        "saveFirst": "Enregistrez d'abord les modifications. Un test utilise les identifiants enregistrés."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Premier contact",
+          "text": "Comparez cette empreinte avec celle de l'hôte avant de la confirmer. Les connexions suivantes refuseront toute autre clé."
+        },
+        "pinned": {
+          "title": "Clé d'hôte épinglée"
+        },
+        "mismatch": {
+          "title": "La clé d'hôte a changé",
+          "text": "L'hôte a présenté une clé différente de celle épinglée. Ne remplacez l'épingle que si vous attendiez ce changement, par exemple après une réinstallation du serveur."
+        },
+        "pinUnreadable": {
+          "title": "Clé épinglée illisible",
+          "text": "L'épingle enregistrée ne peut pas être déchiffrée, généralement parce que la clé de chiffrement de qui a changé. Remplacez-la pour continuer.",
+          "noKey": "L'hôte n'a pas répondu, il n'y a donc aucune clé pour la remplacer."
+        },
+        "error": {
+          "title": "Échec de la connexion"
+        }
+      },
+      "fingerprint": {
+        "label": "Empreinte",
+        "pinned": "Épinglée",
+        "presented": "Présentée"
+      },
+      "probes": {
+        "tier": "Niveau : {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + commandes",
+        "tierHint": "Les commandes nécessitent un shell POSIX avec GNU find et stat sur l'hôte. Sans eux, qui n'utilise que SFTP et ne peut pas lire l'identité des fichiers.",
+        "sftp": "SFTP",
+        "statvfs": "Espace libre (statvfs)",
+        "hardlink": "Liens physiques (hardlink@openssh.com)",
+        "limits": "Extension limits",
+        "exec": "Commandes",
+        "gnuUserland": "GNU find et stat",
+        "yes": "Disponible",
+        "no": "Non disponible"
+      },
+      "replaceDialog": {
+        "title": "Remplacer la clé d'hôte épinglée ?",
+        "description": "qui fera désormais confiance à la clé présentée pour cet hôte et refusera la clé épinglée.",
+        "cancel": "Annuler",
+        "confirm": "Remplacer"
+      },
+      "toast": {
+        "saved": "Paramètres SSH enregistrés",
+        "cleared": "Accès SSH supprimé"
+      }
     }
   },
   "backups": {
@@ -1998,6 +2090,17 @@
       "failedToDeleteBackup": "Échec de la suppression de l'exécution de sauvegarde",
       "allBackupsDeleted": "Toutes les sauvegardes supprimées",
       "failedToDeleteBackups": "Échec de la suppression des sauvegardes"
+    }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Via SSH",
+    "none": "Aucun",
+    "localFull": "L'application lit et écrit les fichiers de cette instance sur cette machine.",
+    "limits": {
+      "noIdentity": "Pas d'identité des fichiers : l'application ne sait pas reconnaître deux chemins menant au même fichier. L'analyse d'orphelins ne peut pas supprimer ici, et une cible de lien physique existante bloque un ajout par lien physique.",
+      "noReflinks": "Pas de reflinks sur une instance distante.",
+      "noHardlinkExtension": "Pas de liens physiques : le serveur n'annonce pas hardlink@openssh.com. Un ajout de cross-seed par lien physique échoue ici, ou se fait en mode normal si « Repli sur le mode normal en cas d'erreur » est activé."
     }
   }
 }

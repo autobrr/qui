@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 type disappearingDirBackend struct {
@@ -625,17 +626,19 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 
 	ctx := context.Background()
 
-	sqlDB, err := sql.Open("sqlite", ":memory:")
+	// The stuck-run cutoff is a bound time, so the store needs a connection
+	// from the database module.
+	db := testdb.NewMigratedSQLite(t, "orphanscan-recover-stuck-runs")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("instance store: %v", err)
 	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	createOrphanScanSchema(t, sqlDB)
-	mustExec(t, sqlDB, `INSERT INTO instances (id) VALUES (1)`)
+	if _, err := instances.Create(ctx, "t", "http://127.0.0.1:8080", "u", "p", nil, nil, false, nil); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
 
 	// A deleting run should be failed immediately on startup.
-	res, err := sqlDB.ExecContext(ctx, `
+	res, err := db.ExecContext(ctx, `
 		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, scan_paths, files_found)
 		VALUES (1, 'deleting', 'manual', '[]', 2)
 	`)
@@ -648,7 +651,7 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 	}
 
 	// A fresh pending run should not be touched (threshold-based).
-	res, err = sqlDB.ExecContext(ctx, `
+	res, err = db.ExecContext(ctx, `
 		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, scan_paths, files_found)
 		VALUES (1, 'pending', 'manual', '[]', 0)
 	`)
@@ -660,7 +663,7 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 		t.Fatalf("last insert id: %v", err)
 	}
 
-	store := models.NewOrphanScanStore(&testQuerier{DB: sqlDB})
+	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, nil)
 	if err := svc.recoverStuckRuns(ctx); err != nil {
 		t.Fatalf("recoverStuckRuns: %v", err)

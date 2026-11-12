@@ -219,7 +219,7 @@ func (h *OIDCHandler) client(ctx context.Context) (*oidcClient, error) {
 }
 
 func (h *OIDCHandler) discoverClient(ctx context.Context) (*oidcClient, error) {
-	cfg := h.config
+	cfg := h.config.Live()
 	provider, usedIssuer, err := discoverOIDCProvider(ctx, cfg.OIDCIssuer)
 	if err != nil {
 		log.Warn().Err(err).Str("issuer", cfg.OIDCIssuer).Msg("OIDC provider discovery failed; the next OIDC login request retries it")
@@ -311,7 +311,7 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 		// The login page reads disableBuiltInLogin from this body to keep the password form hidden.
 		RespondJSON(w, http.StatusServiceUnavailable, oidcUnavailableResponse{
 			Error:               errOIDCProviderUnavailable.Error(),
-			DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
+			DisableBuiltInLogin: h.config.Live().OIDCDisableBuiltInLogin,
 		})
 		return
 	}
@@ -421,60 +421,10 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if userInfo != nil {
-		// Take the user-info email and its verified flag together, never an
-		// unverified user-info email with the verified flag of the ID token.
-		if userInfo.Email != "" {
-			claims.Email = userInfo.Email
-			claims.EmailVerified = oidcBool(userInfo.EmailVerified)
-		}
-
-		var userInfoClaims struct {
-			PreferredUsername string `json:"preferred_username"`
-			Name              string `json:"name"`
-			Nickname          string `json:"nickname"`
-			Picture           string `json:"picture"`
-		}
-		if err := userInfo.Claims(&userInfoClaims); err != nil {
-			log.Warn().Err(err).Msg("failed to parse claims from userinfo endpoint, proceeding with ID token claims if available")
-		} else {
-			log.Trace().
-				Str("userinfo_email", userInfo.Email).
-				Str("userinfo_username", userInfoClaims.PreferredUsername).
-				Str("userinfo_name", userInfoClaims.Name).
-				Str("userinfo_nickname", userInfoClaims.Nickname).
-				Msg("successfully parsed claims from userinfo endpoint")
-
-			// Merge userinfo claims with ID token claims
-			if userInfoClaims.PreferredUsername != "" {
-				claims.PreferredUsername = userInfoClaims.PreferredUsername
-			}
-			if userInfoClaims.Name != "" {
-				claims.Name = userInfoClaims.Name
-			}
-			if userInfoClaims.Nickname != "" {
-				claims.Nickname = userInfoClaims.Nickname
-			}
-			if userInfoClaims.Picture != "" {
-				claims.Picture = userInfoClaims.Picture
-			}
-		}
+		mergeUserInfoClaims(&claims, userInfo)
 	}
 
-	// Determine username from claims
-	username := claims.PreferredUsername
-	if username == "" {
-		if claims.Nickname != "" {
-			username = claims.Nickname
-		} else if claims.Name != "" {
-			username = claims.Name
-		} else if claims.Email != "" {
-			username = claims.Email
-		} else if claims.Sub != "" {
-			username = claims.Sub
-		} else {
-			username = "oidc_user"
-		}
-	}
+	username := oidcUsername(claims)
 
 	log.Trace().
 		Str("email", claims.Email).
@@ -484,10 +434,11 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Str("sub", claims.Sub).
 		Msg("successfully processed OIDC claims")
 
-	if !h.config.IsOIDCUserAllowed(claims.Sub, claims.VerifiedEmail()) {
+	cfg := h.config.Live()
+	if !cfg.IsOIDCUserAllowed(claims.Sub, claims.VerifiedEmail()) {
 		// Only the email check depends on user info. The error is logged above
 		// and can hold the provider response body, so it stays out of the reply.
-		if userInfoErr != nil && h.config.OIDCAllowedEmail != "" {
+		if userInfoErr != nil && cfg.OIDCAllowedEmail != "" {
 			RespondError(w, http.StatusBadGateway, "could not verify user: failed to get userinfo")
 			return
 		}
@@ -524,19 +475,19 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	frontendURL := "/dashboard" // Safe default
 
 	// Only construct absolute URLs if explicitly configured
-	if h.config.OIDCRedirectURL != "" {
+	if cfg.OIDCRedirectURL != "" {
 		// Parse the redirect URL to get the frontend base
-		if idx := strings.Index(h.config.OIDCRedirectURL, "/api/auth/oidc/callback"); idx > 0 {
-			candidateURL := h.config.OIDCRedirectURL[:idx] + "/dashboard"
+		if idx := strings.Index(cfg.OIDCRedirectURL, "/api/auth/oidc/callback"); idx > 0 {
+			candidateURL := cfg.OIDCRedirectURL[:idx] + "/dashboard"
 
 			// Validate the URL to ensure it's pointing to our application
-			if isValidRedirectURL(candidateURL, h.config.OIDCRedirectURL) {
+			if isValidRedirectURL(candidateURL, cfg.OIDCRedirectURL) {
 				frontendURL = candidateURL
 			}
 		}
-	} else if h.config.BaseURL != "" && h.config.BaseURL != "/" {
+	} else if cfg.BaseURL != "" && cfg.BaseURL != "/" {
 		// Use configured base URL
-		base := strings.TrimSuffix(h.config.BaseURL, "/")
+		base := strings.TrimSuffix(cfg.BaseURL, "/")
 		if base == "" {
 			base = "/"
 		}
@@ -545,14 +496,75 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	log.Trace().
 		Str("redirect_url", frontendURL).
-		Str("oidc_redirect_url", h.config.OIDCRedirectURL).
-		Str("base_url", h.config.BaseURL).
+		Str("oidc_redirect_url", cfg.OIDCRedirectURL).
+		Str("base_url", cfg.BaseURL).
 		Str("x_forwarded_proto", r.Header.Get("X-Forwarded-Proto")).
 		Str("x_forwarded_host", r.Header.Get("X-Forwarded-Host")).
 		Str("host", r.Host).
 		Msg("redirecting to frontend after OIDC callback")
 
 	http.Redirect(w, r, frontendURL, http.StatusFound)
+}
+
+// mergeUserInfoClaims overrides the ID token claims with the non-empty claims
+// from the userinfo endpoint.
+func mergeUserInfoClaims(claims *OIDCClaims, userInfo *oidc.UserInfo) {
+	// Take the user-info email and its verified flag together, never an
+	// unverified user-info email with the verified flag of the ID token.
+	if userInfo.Email != "" {
+		claims.Email = userInfo.Email
+		claims.EmailVerified = oidcBool(userInfo.EmailVerified)
+	}
+
+	var userInfoClaims struct {
+		PreferredUsername string `json:"preferred_username"`
+		Name              string `json:"name"`
+		Nickname          string `json:"nickname"`
+		Picture           string `json:"picture"`
+	}
+	if err := userInfo.Claims(&userInfoClaims); err != nil {
+		log.Warn().Err(err).Msg("failed to parse claims from userinfo endpoint, proceeding with ID token claims if available")
+		return
+	}
+
+	log.Trace().
+		Str("userinfo_email", userInfo.Email).
+		Str("userinfo_username", userInfoClaims.PreferredUsername).
+		Str("userinfo_name", userInfoClaims.Name).
+		Str("userinfo_nickname", userInfoClaims.Nickname).
+		Msg("successfully parsed claims from userinfo endpoint")
+
+	if userInfoClaims.PreferredUsername != "" {
+		claims.PreferredUsername = userInfoClaims.PreferredUsername
+	}
+	if userInfoClaims.Name != "" {
+		claims.Name = userInfoClaims.Name
+	}
+	if userInfoClaims.Nickname != "" {
+		claims.Nickname = userInfoClaims.Nickname
+	}
+	if userInfoClaims.Picture != "" {
+		claims.Picture = userInfoClaims.Picture
+	}
+}
+
+// oidcUsername picks the username from the claims: preferred username, then
+// nickname, name, email, and subject.
+func oidcUsername(claims OIDCClaims) string {
+	switch {
+	case claims.PreferredUsername != "":
+		return claims.PreferredUsername
+	case claims.Nickname != "":
+		return claims.Nickname
+	case claims.Name != "":
+		return claims.Name
+	case claims.Email != "":
+		return claims.Email
+	case claims.Sub != "":
+		return claims.Sub
+	default:
+		return "oidc_user"
+	}
 }
 
 // isValidRedirectURL validates that the redirect URL is safe
@@ -628,10 +640,11 @@ func (h *OIDCHandler) GetConfigResponse(ctx context.Context) (OIDCConfigResponse
 		authURL = client.oauthConfig.AuthCodeURL(state)
 	}
 
+	cfg := h.config.Live()
 	return OIDCConfigResponse{
-		Enabled:             h.config.OIDCEnabled,
+		Enabled:             cfg.OIDCEnabled,
 		AuthorizationURL:    authURL,
-		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
-		IssuerURL:           h.config.OIDCIssuer,
+		DisableBuiltInLogin: cfg.OIDCDisableBuiltInLogin,
+		IssuerURL:           cfg.OIDCIssuer,
 	}, state, verifier, nil
 }

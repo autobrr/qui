@@ -129,16 +129,71 @@
     "apiDocs": "Documentazione API",
     "description": "Le chiavi API consentono alle applicazioni esterne di accedere alle tue istanze qBittorrent.",
     "createButton": "Crea chiave API",
+    "editButton": "Modifica {{name}}",
+    "deleteButton": "Elimina {{name}}",
     "loading": "Caricamento chiavi API...",
     "empty": "Nessuna chiave API ancora creata",
     "createDialog": {
       "title": "Crea chiave API",
-      "description": "Assegna alla tua chiave API un nome descrittivo per ricordarne lo scopo.",
+      "description": "Dai un nome alla chiave e scegli solo l'accesso di cui ha bisogno.",
       "nameLabel": "Nome",
       "namePlaceholder": "es. Script di automazione",
       "nameRequired": "Il nome è obbligatorio",
       "submit": "Crea chiave API",
       "creating": "Creazione in corso..."
+    },
+    "editDialog": {
+      "title": "Modifica chiave API",
+      "description": "Le modifiche valgono dalla prossima richiesta di questa chiave. qui non mostra mai più la chiave stessa.",
+      "submit": "Salva modifiche",
+      "saving": "Salvataggio..."
+    },
+    "permissions": {
+      "title": "Permessi",
+      "help": "La scrittura include lettura ed esecuzione. L'esecuzione non include la lettura, perché le impostazioni contengono credenziali.",
+      "required": "Scegli almeno un permesso.",
+      "access": "Accesso",
+      "allAreas": "Tutte le aree",
+      "allAreasExcept": "Tutte le aree tranne {{areas}}",
+      "refusedByLimit": "Cross-Seed e lo scanner di directory rifiutano una chiave con un limite di istanze, quindi qui non salva questi permessi.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Mostra l'accesso per area di {{name}}",
+      "partialArea": "{{area}} (solo {{levels}})",
+      "legend": {
+        "title": "Un blocco per ogni area di permessi:",
+        "none": "nessun accesso"
+      },
+      "levels": {
+        "read": "lettura",
+        "run": "esecuzione",
+        "write": "scrittura"
+      },
+      "areas": {
+        "instances": "Istanze",
+        "torrents": "Torrent",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Scanner di directory",
+        "automations": "Automazioni",
+        "rss": "RSS",
+        "backups": "Backup",
+        "orphanScan": "Scansione orfani",
+        "externalPrograms": "Programmi esterni",
+        "indexers": "Indexer",
+        "arr": "Arr",
+        "notifications": "Notifiche",
+        "settings": "Impostazioni",
+        "logs": "Log",
+        "system": "Sistema"
+      }
+    },
+    "instanceLimit": {
+      "title": "Limite di istanze",
+      "help": "Scegli le istanze che questa chiave può raggiungere. Senza una scelta, la chiave raggiunge tutte le istanze, anche quelle aggiunte in seguito.",
+      "reaches": "Ambito",
+      "all": "Tutte le istanze",
+      "only": "Solo {{instances}}",
+      "none": "Nessuna istanza. Il limite contiene solo istanze eliminate.",
+      "deleted": "Istanza eliminata {{id}}"
     },
     "newKey": {
       "label": "La tua nuova chiave API",
@@ -156,7 +211,9 @@
       "created": "Chiave API creata con successo",
       "createFailed": "Impossibile creare la chiave API",
       "deleted": "Chiave API eliminata con successo",
-      "deleteFailed": "Impossibile eliminare la chiave API"
+      "deleteFailed": "Impossibile eliminare la chiave API",
+      "updated": "Chiave API aggiornata con successo",
+      "updateFailed": "Impossibile aggiornare la chiave API"
     }
   },
   "externalPrograms": {

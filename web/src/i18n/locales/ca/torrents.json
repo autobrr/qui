@@ -265,15 +265,13 @@
     "bottomPriorityBatch": "Prioritat mínima ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Reanomena",
-    "renameTorrent": "Reanomena el torrent",
-    "renameFile": "Reanomena el fitxer",
-    "renameFolder": "Reanomena la carpeta"
+    "renameTorrent": "Reanomena el torrent"
   },
   "trackersTable": {
     "status": "Estat",
     "tracker": "Tracker",
     "seeds": "Llav.",
+    "peers": "Parells",
     "leeches": "Sang.",
     "downloaded": "Baix.",
     "message": "Missatge",
@@ -691,7 +689,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "ratio": "Ràtio:"
+    "ratio": "Ràtio:",
+    "added": "Afegit {{time}}"
   },
   "crossSeedTable": {
     "name": "Nom",
@@ -1553,13 +1552,14 @@
       "dropped": "S'ha afegit el pack. Destinacions descartades: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Aquesta instància necessita accés al sistema de fitxers local per muntar un pack.",
+        "no_filesystem_access": "Aquesta instància necessita accés d'escriptura al sistema de fitxers per muntar un pack. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
         "no_link_mode": "Activa el mode hardlink o reflink en aquesta instància per seleccionar diverses destinacions.",
         "no_base_directory": "Configura un directori base d'enllaços en aquesta instància.",
         "no_episode_files": "No s'ha trobat cap fitxer d'episodi reproduïble en aquest pack.",
         "target_not_found": "No s'ha trobat la destinació en aquesta instància.",
         "incomplete": "La baixada de la destinació és incompleta.",
         "not_settled": "Aquest torrent encara s'està movent o comprovant. Torneu-ho a provar quan acabi.",
+        "errored": "Aquest torrent té un error o li falten fitxers. Corregiu-ho i torneu-ho a provar.",
         "no_episode_identity": "No s'ha pogut interpretar el número d'episodi.",
         "file_list_unavailable": "La llista de fitxers de la destinació no està disponible.",
         "episode_file_invalid": "La destinació ha de contenir un fitxer reproduïble amb la identitat d'episodi seleccionada.",
@@ -1677,6 +1677,34 @@
       "partialSuccess": "Se n'han afegit {{added}} i {{failed}} han fallat",
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} còpia més de {{name}}",
+    "copies_other": "{{count}} còpies més de {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A una còpia amagada li falten fitxers",
+      "error": "Una còpia amagada té un error",
+      "unregistered": "Una còpia amagada no està registrada",
+      "trackerError": "Una còpia amagada té un error del tracker",
+      "trackerDown": "El tracker d'una còpia amagada ha caigut"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
+    "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
+    "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupa les còpies",
+    "ungroupCopies": "Desagrupa les còpies",
+    "grouping": "S'està agrupant…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Agrupa els teus cross-seeds",
+      "description": "Mostra les còpies d'un torrent en una sola fila.",
+      "action": "Prova-ho"
     }
   }
 }

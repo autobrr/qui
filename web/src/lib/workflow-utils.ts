@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { api } from "@/lib/api"
 import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
+import type { QueryClient } from "@tanstack/react-query"
 
 // i18n-namespace: instances
 
@@ -145,19 +147,29 @@ export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
   return hasExclude ? "exclude" : "include"
 }
 
+/** Returns the rule names of an instance. Reads the server when the rule list is not loaded, and rejects when that read fails. */
+export async function loadWorkflowNames(queryClient: QueryClient, instanceId: number): Promise<string[]> {
+  const rules = await queryClient.ensureQueryData({
+    queryKey: ["automations", instanceId],
+    queryFn: () => api.listAutomations(instanceId),
+  })
+  return (rules ?? []).map(rule => rule.name)
+}
+
 /**
  * Create payload for import: the JSON as written, except that
  * - enabled is forced to false
  * - sortOrder is omitted, so the backend appends the rule
- * - name gets "(copy)" suffix via generateUniqueName
+ * - a name that the instance already has gets a copy suffix via generateUniqueName
  */
 export function fromImportFormat(
   data: WorkflowImport,
   existingNames: string[]
 ): AutomationInput {
+  const nameTaken = existingNames.some(name => name.toLowerCase() === data.name.toLowerCase())
   return {
     ...data,
-    name: generateUniqueName(data.name, existingNames),
+    name: nameTaken ? generateUniqueName(data.name, existingNames) : data.name,
     enabled: false, // Always start disabled
     sortOrder: undefined,
   }
@@ -172,15 +184,23 @@ export function toEditInput(rule: Automation, data: WorkflowImport): AutomationI
   }
 }
 
-/**
- * Creates an AutomationInput for duplicating a workflow.
- * Similar to fromImportFormat but takes an existing Automation.
- */
+/** Create payload for "Duplicate" on the same instance: an import of the exported rule that always gets a copy suffix. */
 export function toDuplicateInput(
   workflow: Automation,
   existingNames: string[]
 ): AutomationInput {
-  return fromImportFormat({ ...toExportFormat(workflow) }, existingNames)
+  return {
+    ...fromImportFormat({ ...toExportFormat(workflow) }, existingNames),
+    name: generateUniqueName(workflow.name, existingNames),
+  }
+}
+
+/** Create payload for "Copy to instance": an import of the exported rule on the target instance. */
+export function toCopyInput(
+  workflow: Automation,
+  targetNames: string[]
+): AutomationInput {
+  return fromImportFormat({ ...toExportFormat(workflow) }, targetNames)
 }
 
 /**

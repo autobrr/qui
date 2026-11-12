@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import type { ListFacts, TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import type { ActionTarget } from "@/lib/torrent-selection"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useEffect, useRef } from "react"
@@ -36,7 +36,11 @@ export interface UseTorrentTableNotificationsParams {
   // onSelectionChange effect inputs. The table publishes null when it unmounts.
   onSelectionChange?: (summary: TorrentSelectionSummary | null) => void
   actionTarget: ActionTarget
-  selectedTotalSize: number
+  totalSize: number
+  excludedSize: number
+  // The instance subset of the Unified view, published with the instance.
+  instanceIds?: number[]
+  listFacts: ListFacts
 }
 
 /**
@@ -65,7 +69,10 @@ export function useTorrentTableNotifications({
   supportsTrackerHealth,
   onSelectionChange,
   actionTarget,
-  selectedTotalSize,
+  totalSize,
+  excludedSize,
+  instanceIds,
+  listFacts,
 }: UseTorrentTableNotificationsParams): void {
   const lastMetadataRef = useRef<{
     instanceId?: number
@@ -148,8 +155,8 @@ export function useTorrentTableNotifications({
 
   // Call the callback when selection state changes
   useEffect(() => {
-    onSelectionChange?.({ actionTarget, selectedTotalSize })
-  }, [onSelectionChange, actionTarget, selectedTotalSize])
+    onSelectionChange?.({ actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts })
+  }, [onSelectionChange, actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts])
 
   useEffect(() => () => onSelectionChange?.(null), [onSelectionChange])
 }

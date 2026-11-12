@@ -27,6 +27,10 @@
 
 - A filter for `setQueriesData`, `invalidateQueries`, or `removeQueries` starts with the `queryKey` prefix of the feature. A bare `predicate` that reads key positions also matches the keys of other features, for example `["orphan-scan", id, "runs", 5]`. Their data has a different shape, and the update throws.
 
+## Mutations
+
+- `isPending` of a `useMutation` follows only the latest call. When one mutation sends two or more requests at the same time, keep a pending flag of your own that clears when all of them settle. Without it, the dialog shows as idle while a request still runs, and the user can submit again.
+
 ## Tables
 
 - In a table whose last column holds row actions, set the `pinEnd` prop on the `TableHead` and on each `TableCell` of that column. Import both from `@/components/ui/table`. Do not write your own sticky classes. When long text makes the table wider than its container, the table scrolls sideways, and the actions stay in view. Some browsers hide the sideways scrollbar, so without `pinEnd` the user does not see the actions.

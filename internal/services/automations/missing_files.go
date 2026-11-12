@@ -19,12 +19,12 @@ import (
 // detectMissingFiles checks which completed torrents have missing files on disk.
 // Returns a map of torrent hash to missing files boolean, and an error if
 // the backend cannot be resolved (callers must not treat errors as "no missing files").
-func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) (map[string]bool, error) {
+func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []*qbt.Torrent) (map[string]bool, error) {
 	result := make(map[string]bool)
 
 	// Only completed torrents — fast path before backend resolution.
 	var completedHashes []string
-	torrentByHash := make(map[string]qbt.Torrent)
+	torrentByHash := make(map[string]*qbt.Torrent)
 	for _, t := range torrents {
 		if t.Progress >= 1.0 {
 			completedHashes = append(completedHashes, t.Hash)
@@ -72,7 +72,7 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 // ponytail: no cache, so every evaluation stats every file again: 50,000
 // files take 3 to 4 minutes on the sftp tier, and a preview waits as long. A
 // cache is the upgrade if a field test or a user report shows a problem.
-func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrentByHash map[string]qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (result map[string]bool, connectionLost bool) {
+func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrentByHash map[string]*qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (result map[string]bool, connectionLost bool) {
 	d := backend.Paths()
 
 	// span is the run of paths that one torrent's files take in paths.

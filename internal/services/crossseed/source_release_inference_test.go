@@ -347,8 +347,8 @@ func TestSelectContentDetectionRelease_RepeatedFolderNameKeepsGroup(t *testing.T
 
 	source := svc.releaseCache.Parse(sourceName)
 	contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(sourceName, source, files)
-	require.True(t, usedFile, "must use the file: a sourceRelease fallback also has an empty group")
-	require.Empty(t, contentDetectionRelease.Group, "repeated folder name must not invent a group")
+	require.True(t, usedFile, "must use the file: a sourceRelease fallback also carries the bracket group")
+	require.Equal(t, "FanSubs", contentDetectionRelease.Group, "repeated folder name must not invent a group")
 
 	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
 	searchRelease := svc.selectSourceReleaseForSearch(source, contentDetectionRelease, files, contentInfo)

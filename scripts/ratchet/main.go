@@ -166,6 +166,11 @@ func compare(got, allow, base counts) []string {
 		return problems
 	}
 	for _, linter := range slices.Sorted(maps.Keys(allow)) {
+		// A linter that the base does not list is a new rule, which starts
+		// with the count of each file.
+		if _, ok := base[linter]; !ok {
+			continue
+		}
 		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
 			if want, was := allow[linter][file], base[linter][file]; want > was {
 				problems = append(problems, fmt.Sprintf("%s: the %s entry grew from %d to %d. The allowlist only shrinks.", file, linter, was, want))

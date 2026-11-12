@@ -129,16 +129,71 @@
     "apiDocs": "API 文档",
     "description": "API 密钥允许外部应用访问您的 qBittorrent 实例。",
     "createButton": "创建 API 密钥",
+    "editButton": "编辑 {{name}}",
+    "deleteButton": "删除 {{name}}",
     "loading": "正在加载 API 密钥...",
     "empty": "尚未创建任何 API 密钥",
     "createDialog": {
       "title": "创建 API 密钥",
-      "description": "为您的 API 密钥取一个描述性名称，以便记住其用途。",
+      "description": "为密钥命名，并只选择它需要的访问权限。",
       "nameLabel": "名称",
       "namePlaceholder": "例如：自动化脚本",
       "nameRequired": "名称为必填项",
       "submit": "创建 API 密钥",
       "creating": "创建中..."
+    },
+    "editDialog": {
+      "title": "编辑 API 密钥",
+      "description": "更改从此密钥的下一个请求起生效。qui 不会再次显示密钥本身。",
+      "submit": "保存更改",
+      "saving": "正在保存..."
+    },
+    "permissions": {
+      "title": "权限",
+      "help": "写入包含读取和运行。运行不包含读取，因为设置中保存着凭据。",
+      "required": "请至少选择一项权限。",
+      "access": "访问",
+      "allAreas": "全部区域",
+      "allAreasExcept": "除{{areas}}外的全部区域",
+      "refusedByLimit": "辅种和目录扫描器拒绝带实例限制的密钥，因此 qui 不会保存这些权限。",
+      "entry": "{{area}}：{{level}}",
+      "showByArea": "按区域显示 {{name}} 的访问权限",
+      "partialArea": "{{area}}（仅{{levels}}）",
+      "legend": {
+        "title": "每个权限区域一个方块：",
+        "none": "无权限"
+      },
+      "levels": {
+        "read": "读取",
+        "run": "运行",
+        "write": "写入"
+      },
+      "areas": {
+        "instances": "实例",
+        "torrents": "种子",
+        "crossSeed": "辅种",
+        "dirScan": "目录扫描器",
+        "automations": "自动化",
+        "rss": "RSS",
+        "backups": "备份",
+        "orphanScan": "孤立项目扫描",
+        "externalPrograms": "外部程序",
+        "indexers": "索引器",
+        "arr": "Arr",
+        "notifications": "通知",
+        "settings": "设置",
+        "logs": "日志",
+        "system": "系统"
+      }
+    },
+    "instanceLimit": {
+      "title": "实例限制",
+      "help": "选择此密钥可以访问的实例。不选择表示所有实例，包括以后添加的实例。",
+      "reaches": "可访问",
+      "all": "所有实例",
+      "only": "仅 {{instances}}",
+      "none": "无实例。该限制只包含已删除的实例。",
+      "deleted": "已删除的实例 {{id}}"
     },
     "newKey": {
       "label": "您的新 API 密钥",
@@ -156,7 +211,9 @@
       "created": "API 密钥创建成功",
       "createFailed": "创建 API 密钥失败",
       "deleted": "API 密钥已删除",
-      "deleteFailed": "删除 API 密钥失败"
+      "deleteFailed": "删除 API 密钥失败",
+      "updated": "API 密钥更新成功",
+      "updateFailed": "更新 API 密钥失败"
     }
   },
   "externalPrograms": {

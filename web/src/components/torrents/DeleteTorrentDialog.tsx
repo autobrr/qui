@@ -17,6 +17,7 @@ import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
 import { Checkbox } from "@/components/ui/checkbox"
+import type { MouseEvent } from "react"
 import { useTranslation } from "react-i18next"
 import type { Torrent } from "@/types"
 import { AlertTriangle } from "lucide-react"
@@ -42,7 +43,9 @@ interface DeleteTorrentDialogProps {
   blockCrossSeeds: boolean
   onBlockCrossSeedsChange: (checked: boolean) => void
   crossSeedWarning?: CrossSeedWarningResult | null
-  onConfirm: () => void
+  // The confirm button closes the dialog, unless the handler calls preventDefault on the event.
+  onConfirm: (event: MouseEvent<HTMLButtonElement>) => void
+  isPending?: boolean
   isAllSelected?: boolean
   // Loaded torrents that the delete reaches. In select all mode, the others are not loaded in the table.
   previewTorrents?: Torrent[]
@@ -65,6 +68,7 @@ export function DeleteTorrentDialog({
   onBlockCrossSeedsChange,
   crossSeedWarning,
   onConfirm,
+  isPending,
   isAllSelected = false,
   previewTorrents = [],
 }: DeleteTorrentDialogProps) {
@@ -78,7 +82,8 @@ export function DeleteTorrentDialog({
   const notLoaded = Math.max(0, count - previewTorrents.length)
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    // A delete that started cannot stop, so the dialog stays open until it ends.
+    <AlertDialog open={open} onOpenChange={(next) => isPending || onOpenChange(next)}>
       <AlertDialogContent className="sm:max-w-2xl">
         <AlertDialogHeader>
           <AlertDialogTitle>
@@ -116,6 +121,7 @@ export function DeleteTorrentDialog({
           onCheckedChange={onDeleteFilesChange}
           isLocked={isDeleteFilesLocked}
           onToggleLock={onToggleDeleteFilesLock}
+          disabled={isPending}
         />
         {crossSeedWarning && (
           <CrossSeedWarning
@@ -127,6 +133,7 @@ export function DeleteTorrentDialog({
             deleteCrossSeeds={deleteCrossSeeds}
             onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
             onSearch={crossSeedWarning.search}
+            disabled={isPending}
           />
         )}
         {showBlockCrossSeeds && (
@@ -135,6 +142,7 @@ export function DeleteTorrentDialog({
               id="blockCrossSeeds"
               checked={blockCrossSeeds}
               onCheckedChange={(checked) => onBlockCrossSeedsChange(checked === true)}
+              disabled={isPending}
             />
             <label
               htmlFor="blockCrossSeeds"
@@ -145,9 +153,10 @@ export function DeleteTorrentDialog({
           </div>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel>{t("deleteDialog.cancel")}</AlertDialogCancel>
+          <AlertDialogCancel disabled={isPending}>{t("deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
+            disabled={isPending}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {isLarge ? t("deleteDialog.deleteCount", { count: displayCount }) : t("deleteDialog.delete")}

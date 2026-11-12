@@ -527,7 +527,8 @@ func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 }
 
 // regression: #3626
-func TestCrossSeedManualTargetRefusesSourceThatIsNotSettled(t *testing.T) {
+// regression: #3707
+func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -536,21 +537,37 @@ func TestCrossSeedManualTargetRefusesSourceThatIsNotSettled(t *testing.T) {
 		name       = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
 		size       = int64(4 << 20)
 	)
-	instance := &models.Instance{ID: instanceID, Name: "main"}
-	target := qbt.Torrent{
-		Hash: targetHash, Name: name, Size: size, Progress: 1, State: qbt.TorrentStateMoving,
-		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + name + ".mkv",
+	tests := []struct {
+		name     string
+		state    qbt.TorrentState
+		progress float64
+		want     error
+	}{
+		{"moving", qbt.TorrentStateMoving, 1, ErrSourceNotSettled},
+		{"checked below 100%", qbt.TorrentStateCheckingUp, 0.4, ErrSourceNotSettled},
+		{"errored", qbt.TorrentStateError, 1, ErrSourceErrored},
+		{"missing files below 100%", qbt.TorrentStateMissingFiles, 0.4, ErrSourceErrored},
 	}
-	svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{targetHash: {{Name: name + ".mkv", Size: size}}})
-	sync := &recordingApplySyncManager{applyFakeSyncManager: svc.syncManager.(*applyFakeSyncManager)}
-	svc.syncManager = sync
-	withAdder(svc)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			target := qbt.Torrent{
+				Hash: targetHash, Name: name, Size: size, Progress: tt.progress, State: tt.state,
+				SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + name + ".mkv",
+			}
+			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{targetHash: {{Name: name + ".mkv", Size: size}}})
+			sync := &recordingApplySyncManager{applyFakeSyncManager: svc.syncManager.(*applyFakeSyncManager)}
+			svc.syncManager = sync
+			withAdder(svc)
 
-	_, err := svc.CrossSeed(t.Context(), &CrossSeedRequest{
-		TorrentData:       base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, name, name+".mkv", size)),
-		TargetInstanceIDs: []int{instanceID},
-		ManualTargetHash:  targetHash,
-	})
-	require.EqualError(t, err, "This torrent is still moving or being checked. Try again when it is done.")
-	require.Empty(t, sync.addOptions)
+			_, err := svc.CrossSeed(t.Context(), &CrossSeedRequest{
+				TorrentData:       base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, name, name+".mkv", size)),
+				TargetInstanceIDs: []int{instanceID},
+				ManualTargetHash:  targetHash,
+			})
+			require.EqualError(t, err, tt.want.Error())
+			require.Empty(t, sync.addOptions)
+		})
+	}
 }

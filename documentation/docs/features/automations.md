@@ -208,7 +208,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | --- | --- |
 | Hardlink Scope | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` (requires local filesystem access, see [Hardlink detection](#hardlink-detection)) |
 | Hardlink Scope (Cross-Instance) | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` across all instances (requires local filesystem access) |
-| Has Missing Files | Boolean: a completed torrent has files missing on disk (requires local filesystem access) |
+| Has Missing Files | Boolean: a completed torrent has files missing on disk (requires local filesystem access or [SSH access](./ssh-access.md)) |
 | Has Skipped Files | Boolean: one or more files are set to `Do not download`. qui reads file priorities from its files cache, so a priority change made outside qui can take up to 5 minutes to reach this field |
 
 ### State values
@@ -219,7 +219,7 @@ The State field matches these status buckets:
 | --- | --- |
 | `downloading` | Actively downloading |
 | `uploading` | Actively uploading |
-| `completed` | Download finished |
+| `completed` | Progress is 100%. Sidebar Completed reads the state of the torrent instead, so the two differ for a torrent that rechecks, moves, or has an error. |
 | `stopped` | Paused by user |
 | `active` | Has transfer activity |
 | `inactive` | No current activity |
@@ -354,7 +354,7 @@ When you edit workflows, qui provides immediate feedback for delete, category, a
 - It shows the current **impacted count** and a preview list of matching torrents.
 - For category and tag rules, the preview summary splits direct matches and cross-seed expansions.
 
-When you enable a delete, category, or tag workflow, qui opens a confirmation dialog that loads the same preview. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to enable the workflow at once. The workflow then acts on every matching torrent on its next run.
+When you save an enabled delete, category, or tag workflow in the workflow dialog, qui opens a confirmation dialog that loads the same preview. In the workflow list, this dialog opens when you flip the switch. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to save at once. If **Dry run** is off, an enabled workflow acts on every matching torrent on its next run. If **Dry run** is on, the workflow writes the result to automation activity and does not change the torrents.
 
 To run a dry-run immediately without waiting for interval execution:
 
@@ -380,6 +380,7 @@ To apply the actions of one saved workflow without a wait for its interval, use 
 qui then shows a confirmation dialog with the name and the actions of the workflow. Nothing changes until you click **Run now** in that dialog.
 
 - The run applies the actions to the torrents that match at that moment. It writes the same activity rows as a scheduled run.
+- If you close the page or lose the connection during a live run, the run continues until it ends. A dry run stops.
 - A disabled workflow also runs. It stays disabled after the run.
 - If the workflow is set to dry-run, the run is a simulation and writes dry-run activity rows.
 - After a delete rule with a Free Space condition deletes files, the same kind of rule waits 5 minutes before it deletes again. A manual run obeys this wait too.
@@ -596,7 +597,7 @@ If you enable "Include hardlinked copies" (available only with `deleteWithFilesI
 
 qui follows both hardlinks and shared file paths until it finds every affected torrent. If a hardlinked episode shares its path with a season pack, qui includes the pack and its other cross-seeds. If a file check fails, qui skips the entire deletion group.
 
-- **Requires**: You must enable Local Filesystem Access on the instance.
+- **Requires**: You must enable Local Filesystem Access on the instance. The option is not available on a [remote instance](./ssh-access.md).
 - **Safe scope**: qui includes only hardlinks fully contained within qBittorrent's torrent set. qui never follows hardlinks to files outside qBittorrent (for example, your media library).
 - **Preview**: The preview marks hardlink-expanded torrents as "Cross-seed (hardlinked)".
 - **Free Space projection**: If you use Free Space conditions, qui deduplicates hardlink groups in the space projection. Torrents that share the same physical files count once.
@@ -669,17 +670,19 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 
 The path must be absolute on the machine that runs qBittorrent, for example `/data/archive`, `D:\Archive` or `\\nas\media`. qBittorrent resolves a relative path against its own working directory and default save path, so the move fails or repeats on every run.
 
-When you save an enabled rule or start a dry run, qui renders the path for a sample torrent whose name and category are `sample` and whose tracker is `tracker`. It rejects the rule if the template is invalid or the result is relative. A template that renders nothing for the sample, such as `{{ if eq .Category "tv" }}/data/tv{{ end }}`, is accepted. When the rule runs, qui skips the move for any torrent whose path renders empty or relative, and logs a warning for a relative path.
+When you save an enabled rule or start a dry run, qui renders the path for a sample torrent whose name and category are `sample` and whose tracker is `tracker`. For the sample, `.CategorySavePath` is `/data/sample` and `.DefaultSavePath` is `/data`. It rejects the rule if the template is invalid or the result is relative. A template that renders nothing for the sample, such as `{{ if eq .Category "tv" }}/data/tv{{ end }}`, is accepted. When the rule runs, qui skips the move for any torrent whose path renders empty or relative, and logs a warning for a relative path.
 
-**Available template variables:**
+**Available template variables.** A **path segment** is a folder name on its own, so it needs a root in front of it, as in `/data/{{ .Category }}`. An **absolute path** already names a location and works on its own. The path qui sends to qBittorrent must be absolute either way.
 
-| Variable | Description |
-| --- | --- |
-| `.Name` | Torrent display name |
-| `.Hash` | Info hash |
-| `.Category` | qBittorrent category |
-| `.IsolationFolderName` | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
-| `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| Variable | Kind | Description |
+| --- | --- | --- |
+| `.Name` | Path segment | Torrent display name |
+| `.Hash` | Path segment | Info hash |
+| `.Category` | Path segment | qBittorrent category. A subcategory contains a `/`, so `tv/anime` renders as two folders. |
+| `.IsolationFolderName` | Path segment | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
+| `.Tracker` | Path segment | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| `.CategorySavePath` | Absolute path | The save path qBittorrent uses for the torrent's category with Automatic Torrent Management. See [Category save path](#category-save-path). |
+| `.DefaultSavePath` | Absolute path | qBittorrent's default save path, from its settings |
 
 **Template function:**
 
@@ -694,6 +697,26 @@ When you save an enabled rule or start a dry run, qui renders the path for a sam
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}`
+- Under the category's save path: `{{.CategorySavePath}}/done`
+- Under the default save path: `{{.DefaultSavePath}}/archive`
+
+#### Category save path
+
+`.CategorySavePath` follows the same rules as qBittorrent's Automatic Torrent Management:
+
+- No category: the default save path from qBittorrent's settings.
+- Category with an absolute save path: that path.
+- Category with a relative save path: the default save path, then that path. For example, `shows` becomes `/downloads/shows`.
+- Category with no save path: the default save path, then the category name. For example, `music` becomes `/downloads/music`.
+- Subcategory with no save path, such as `tv/anime`: this depends on the qBittorrent version.
+  - qBittorrent 5.2 and later, or 5.0 and 5.1 with subcategories turned on: the parent category's save path, then the last part of the name. If `tv` saves to `/media/tv`, `tv/anime` becomes `/media/tv/anime`.
+  - qBittorrent 4.x, or 5.0 and 5.1 with subcategories turned off: the default save path, then the full name: `/downloads/tv/anime`.
+
+qBittorrent changes some characters when it turns a category name into a folder name, and the rule changed in qBittorrent 5.3. Before 5.3, it replaces each run of `:?"*<>|` with a space. From 5.3, it replaces each run of reserved characters with `_`, and the reserved characters depend on the platform qBittorrent was built for. qui uses the rule of the instance's qBittorrent. See [Category folders](../advanced/compatibility.md#category-folders).
+
+Neither variable ends with a separator, so write `{{.CategorySavePath}}/done`. Some qBittorrent versions report save paths with a trailing `/`, and qui drops it. A bare root such as `/` stays as it is.
+
+If the torrent's category no longer exists in qBittorrent, a template that uses `.CategorySavePath` can't resolve, and qui skips the move or export for that torrent. `.DefaultSavePath` doesn't depend on the category, so a template that uses only `.DefaultSavePath` still resolves.
 
 ### Auto management
 
@@ -791,13 +814,15 @@ When multiple rules match the same torrent with Export to Instance actions, the 
 
 The save path field supports Go templates, the same as the [Move action](#move-path-templates).
 
-| Variable | Description |
-| --- | --- |
-| `.Name` | Torrent display name |
-| `.Hash` | Info hash |
-| `.Category` | qBittorrent category (on source instance) |
-| `.IsolationFolderName` | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
-| `.Tracker` | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| Variable | Kind | Description |
+| --- | --- | --- |
+| `.Name` | Path segment | Torrent display name |
+| `.Hash` | Path segment | Info hash |
+| `.Category` | Path segment | qBittorrent category (on source instance). A subcategory contains a `/`. |
+| `.IsolationFolderName` | Path segment | `<sanitized name>--<short hash>`, the name of the isolation folder that cross-seed uses when the plain name is taken. qui cuts a long name to 245 bytes. The short hash is the first 8 characters of the info hash. Use `{{ sanitize .Name }}` for the name without the hash. |
+| `.Tracker` | Path segment | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
+| `.CategorySavePath` | Absolute path | The torrent's [category save path](#category-save-path) on the source instance. If the target's folders differ, use a literal path. |
+| `.DefaultSavePath` | Absolute path | The source instance's default save path |
 
 | Function | Description |
 | --- | --- |
@@ -874,7 +899,7 @@ qui keeps the hardlink data of each instance for up to 10 minutes. Rules, previe
 
 - When a torrent is added, removed, or moved, qui reads that torrent and the torrents that share its files again at the next rule run.
 - A change only on disk, such as a library file that Sonarr or Radarr deletes after an upgrade, shows when qui reads all torrents again. That happens at the first rule run after the data is 10 minutes old. With the default interval of 15 minutes, every run reads all torrents again. Rules with shorter intervals, previews, and dry runs on the same instance can add up to 10 minutes.
-- A file list from qBittorrent can be up to 1 hour old. After a rename or a file priority change made outside qui, the scope of that torrent can stay unknown for up to 1 hour. The same changes made in qui refresh the file list at once, and the scope changes when qui reads all torrents again.
+- qui reuses a file list from qBittorrent until qBittorrent reports a new size or a new root folder for the torrent, and for at most 24 hours. A rename of the root folder, or of the file of a single-file torrent, shows when qui reads all torrents again. A rename of a file inside a folder, made outside qui and the qui proxy, changes neither value. After such a rename, the scope of that torrent can stay unknown or wrong for up to 24 hours. A rename made in qui or through the qui proxy refreshes the file list at once. The scope changes when qui reads all torrents again.
 
 The check before deletion (see above) reads the files of the torrent again and holds any torrent whose scope changed. For `HARDLINK_SCOPE_CROSS`, it does not read the files of other instances again. A change on another instance shows when qui reads all torrents again.
 
@@ -1129,7 +1154,7 @@ The `Has Missing Files` field detects whether any file of a completed torrent is
 - If **any** file is missing from its expected path, this condition returns `true`.
 
 :::note
-Requires "Local filesystem access" enabled on the instance.
+Requires filesystem access on the instance: "Local filesystem access", or [SSH access](./ssh-access.md) for a remote instance. On a remote instance, qui looks for the files on the remote machine. If the connection drops during the check, the torrents that qui did not check stay unknown until the next run.
 :::
 
 ## Important behavior
@@ -1267,13 +1292,13 @@ By default, Free Space uses qBittorrent's reported free space, based on its defa
 | Path on server | Reads free space from a specific filesystem path |
 
 :::note
-Path on server requires "Local Filesystem Access" enabled on the instance.
+Path on server requires filesystem access on the instance: "Local Filesystem Access", or [SSH access](./ssh-access.md) for a remote instance. With SSH access, qui reads the free space on the remote machine, and the server must report free space (see [Read the test result](./ssh-access.md#read-the-test-result)). If qui cannot reach the remote machine, the run fails and sends a notification. qui does not use the value from qBittorrent instead, because that value can come from a different disk.
 :::
 
 If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
 
 :::note
-qui does not support Path on server on Windows. The UI disables the option and switches legacy workflows back to the default when you open them.
+When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them.
 :::
 
 ### Batching
@@ -1286,7 +1311,7 @@ A rule can move as JSON. The rule menu has two entries, and the **Import** butto
 
 - **Export JSON** copies the rule to the clipboard.
 - **Edit as JSON** opens the rule's JSON in an editor. Save updates the rule in place. The rule keeps its enabled state and its position in the list.
-- **Import** creates a new rule from pasted JSON. The new rule starts disabled and goes to the end of the list.
+- **Import** creates a new rule from pasted JSON. The new rule starts disabled and goes to the end of the list. It keeps its name. If the instance already has a rule with that name, qui adds `(copy)` to the name.
 
 The JSON carries the name, the tracker fields, the conditions, the sorting config, the free space source, the interval, dry-run, and notify. It does not carry the id, the instance id, the enabled state, or the sort order. The export omits `intervalSeconds` at the default 15 minutes, `dryRun` when off, and `notify` when on; when you remove one of these keys, the rule goes back to that default.
 
@@ -1358,6 +1383,14 @@ Remove torrents the tracker no longer recognizes:
 - Tracker: `*`
 - Condition: `Unregistered is true`
 - Action: Delete (keep files)
+
+To see these torrents without a rule, select the **Unregistered** status filter in the sidebar.
+
+qui sets **Unregistered** when no tracker of the torrent works and the message of a failed tracker has a known phrase, for example "unregistered" or "torrent not found". The torrent must be 1 hour old or more. A message that names the passkey or the torrent pass, or says "User does not exist", does not count. qui reads the tracker messages again every 60 seconds, and a rule acts on the first match.
+
+A torrent with two trackers can match while it still works. If one tracker says unregistered and the other tracker is down, the torrent matches until the other tracker works again. On qBittorrent 5.1, the torrent can also match for a short time while the working tracker sends an announce.
+
+Run a dry run before you turn on the rule.
 
 ### Maintain minimum free space
 

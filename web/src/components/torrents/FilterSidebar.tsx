@@ -797,7 +797,7 @@ const FilterSidebarComponent = ({
     const realTrackers = torrentCounts ? Object.keys(torrentCounts)
       .filter(key => key.startsWith("tracker:"))
       .map(key => key.replace("tracker:", ""))
-      .filter(tracker => torrentCounts[`tracker:${tracker}`] > 0)
+      .filter(tracker => tracker !== "" && torrentCounts[`tracker:${tracker}`] > 0)
       .sort() : []
 
     return realTrackers
@@ -2840,7 +2840,7 @@ const FilterSidebarComponent = ({
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
-                      {getDisplayCount("tracker:")}
+                      {getDisplayCount("tracker:", incognitoMode ? getLinuxCount("no-tracker", 50) : undefined)}
                     </span>
                   </label>
 

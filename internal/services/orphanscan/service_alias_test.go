@@ -370,9 +370,11 @@ func TestRecordInUse_FileIDErr(t *testing.T) {
 	}
 }
 
-// A hardlink of a torrent's file in another root is kept too: a bind mount or
-// a symlinked folder can reach a hardlinked file as well.
-func TestExecuteScan_KeepsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
+// A hardlink of a torrent's file is its own directory entry, so in another
+// root it is an orphan like any other file, and its delete leaves the
+// torrent's file in place.
+// regression: #3908
+func TestExecuteScan_ListsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
 			var mirror, junk string
@@ -393,11 +395,46 @@ func TestExecuteScan_KeepsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 				writeFile(t, junk)
 			})
 
-			require.Equal(t, []string{junk}, f.listedPaths(t), "neither the hardlink nor its directory may be listed")
+			require.ElementsMatch(t, []string{junk, mirror, filepath.Dir(mirror)}, f.listedPaths(t))
 
 			f.svc.executeDeletion(t.Context(), 1, f.runID)
 			require.NoFileExists(t, junk)
-			require.FileExists(t, mirror)
+			require.NoFileExists(t, mirror)
+			require.FileExists(t, f.ownedFile)
+		})
+	}
+}
+
+// Another scan root reaches the torrent's folder through a symlinked folder,
+// as a bind mount would. The torrent's file has a second link outside the
+// roots, so its link count does not tell the alias from a hardlink: the
+// folder and the name do.
+// regression: #3908
+func TestExecuteScan_KeepsAliasOfAHardlinkedTorrentFileThroughASymlinkedFolder(t *testing.T) {
+	for _, category := range []string{"aaa", "zzz"} {
+		t.Run(category, func(t *testing.T) {
+			var alias, junk string
+			opts := orphanOnlyOptions{
+				scanCategoryPaths: true,
+				categoryFolders: func(defaultSavePath string) []string {
+					return []string{filepath.Join(filepath.Dir(defaultSavePath), category, "mydata")}
+				},
+			}
+			f := newOrphanOnlyFixture(t, "orphanscan-hardlinked-alias-"+category, opts, func(defaultSavePath string) {
+				base := filepath.Dir(defaultSavePath)
+				owned := filepath.Join(defaultSavePath, "mydata", "owned.mkv")
+				require.NoError(t, os.Link(owned, filepath.Join(base, "owned.mkv")))
+				symlinkOrSkip(t, defaultSavePath, filepath.Join(base, category))
+				alias = filepath.Join(base, category, "mydata", "owned.mkv")
+				junk = filepath.Join(defaultSavePath, "junk.mkv")
+				writeFile(t, junk)
+			})
+
+			require.Equal(t, []string{junk}, f.listedPaths(t), "neither the alias nor its directory may be listed")
+
+			f.svc.executeDeletion(t.Context(), 1, f.runID)
+			require.NoFileExists(t, junk)
+			require.FileExists(t, alias)
 			require.FileExists(t, f.ownedFile)
 		})
 	}

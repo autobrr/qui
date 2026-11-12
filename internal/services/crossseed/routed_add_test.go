@@ -231,7 +231,7 @@ func (r *routedRig) candidate() CrossSeedCandidate {
 	return CrossSeedCandidate{
 		InstanceID:   r.source.ID,
 		InstanceName: r.source.Name,
-		Torrents: []qbt.Torrent{{
+		Torrents: []*qbt.Torrent{{
 			Hash: routedMatched, Name: routedName, Progress: 1, Size: 100, Category: "movies",
 			SavePath: r.downloads, ContentPath: filepath.Join(r.downloads, routedName),
 		}},
@@ -969,7 +969,7 @@ func TestLibraryScanNeedsTheCrossSeedInstance(t *testing.T) {
 // route and sends nothing to the Cross-seed instance.
 func TestRoutedManualMatchPreviewShowsTheMappedPath(t *testing.T) {
 	r := newRoutedRig(t, true)
-	r.sync.cached = map[int][]qbittorrent.CrossInstanceTorrentView{r.source.ID: buildCrossInstanceViews(r.source, r.candidate().Torrents)}
+	r.sync.cached = map[int][]qbittorrent.CrossInstanceTorrentView{r.source.ID: buildCrossInstanceViews(r.source, []qbt.Torrent{*r.candidate().Torrents[0]})}
 	torrentBytes := createNamedFileTestTorrent(t, routedName, routedName+".mkv", 100)
 
 	resp, err := r.svc.ManualMatchProposals(r.ctx, r.source.ID, torrentBytes, "")

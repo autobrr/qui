@@ -166,7 +166,7 @@ async function openAndClose() {
 }
 
 describe("InstancePreferencesDialog", () => {
-  it("shows the Instance tab, then the qBittorrent tabs that have fields, in the qBittorrent order", async () => {
+  it("shows the Instance and SSH tabs, then the qBittorrent tabs that have fields, in the qBittorrent order", async () => {
     serveView()
 
     renderDialog()
@@ -174,6 +174,7 @@ describe("InstancePreferencesDialog", () => {
     await screen.findByRole("tab", { name: "preferences.dialog.tabs.downloads" })
     expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual([
       "preferences.dialog.tabs.instance",
+      "preferences.dialog.tabs.ssh",
       "preferences.dialog.tabs.behavior",
       "preferences.dialog.tabs.downloads",
       "preferences.dialog.tabs.connection",

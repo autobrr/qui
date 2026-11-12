@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -252,12 +252,12 @@ check-mojibake:
 		exit 1; \
 	fi
 
-# Write the generated files: the automation rule JSON reference in the docs and the query builder field table
+# Write the generated files: the automation rule JSON reference in the docs, the query builder field table, and the API key area table
 generate:
 	go run ./internal/automationsgen
 
 # Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, then lint
-precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend
 	@echo "Pre-commit checks passed."
 
 # Lint new Go issues since the develop merge-base, then all frontend files
@@ -275,6 +275,11 @@ lint-full:
 	golangci-lint run --timeout=10m
 	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
+
+# Type-check the frontend with the command that the frontend build runs first
+typecheck-frontend:
+	@echo "Type-checking frontend..."
+	cd $(WEB_DIR) && pnpm exec tsc -b
 
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet:
@@ -348,8 +353,8 @@ help:
 	@echo "  make fmt            - Format changed files only (fast, for iteration)"
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
-	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields)"
-	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet)"
+	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields, API key areas)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type check)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"

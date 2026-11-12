@@ -11,6 +11,7 @@ import { flexRender } from "@tanstack/react-table"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { ColumnFilterPopover } from "./ColumnFilterPopover"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
+import { centersSelectCheckbox } from "@/lib/torrent-table/row-display"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import type { TorrentTableHeader } from "./tanstackTableFeatures"
 
@@ -97,6 +98,7 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const primaryInputCanHover = useMediaQuery("(hover: hover)")
   const hideFilterUntilHover = primaryInputCanHover && !columnHasActiveFilter
   const columnFilterIconVisibilityClassName = hideFilterUntilHover ? "hidden group-hover:block focus-within:block [&:has(button[data-state=open])]:block" : undefined
+  const centerSelect = isSelectHeader && centersSelectCheckbox(header.getSize())
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -135,13 +137,13 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
       >
         {/* Header content */}
         <div
-          className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${isSelectHeader || isCompactHeader ? "justify-center" : ""
+          className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${centerSelect || isCompactHeader ? "justify-center" : ""
           }`}
         >
           <span
             className={`whitespace-nowrap ${!isPriorityHeader && !isCompactHeader ? "overflow-hidden flex-1 min-w-0" : ""
             } ${isCompactHeader ? "flex items-center w-full justify-center" : ""
-            } ${isSelectHeader ? "flex items-center justify-center" : ""}`}
+            } ${isSelectHeader ? `flex items-center ${centerSelect ? "justify-center" : "justify-start"}` : ""}`}
           >
             {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,

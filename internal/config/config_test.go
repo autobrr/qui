@@ -991,6 +991,85 @@ func TestBaseURLNormalization(t *testing.T) {
 	}
 }
 
+// regression: #2669
+func TestNewWithoutConfigDirOnlyLoadsConfigToml(t *testing.T) {
+	tests := []struct {
+		name        string
+		workFiles   map[string]string
+		workDirs    []string
+		defaultFile string
+		wantErr     string
+		wantPort    int
+		wantInWork  bool
+	}{
+		{name: "ini_in_working_dir", workFiles: map[string]string{"config.ini": "[general]\nkey=value with spaces\n"}, wantPort: 7476},
+		{
+			name:        "ini_does_not_shadow_default_toml",
+			workFiles:   map[string]string{"config.ini": "[general]\nport=1\n"},
+			defaultFile: testConfigContent,
+			wantPort:    8080,
+		},
+		{
+			name:        "toml_in_working_dir_wins",
+			workFiles:   map[string]string{"config.toml": "port = 9090\n"},
+			defaultFile: testConfigContent,
+			wantPort:    9090,
+			wantInWork:  true,
+		},
+		{
+			name:        "directory_named_config_toml_in_working_dir_is_skipped",
+			workDirs:    []string{"config.toml"},
+			defaultFile: testConfigContent,
+			wantPort:    8080,
+		},
+		{
+			name:      "malformed_toml_in_working_dir",
+			workFiles: map[string]string{"config.toml": "port = = 1\n"},
+			wantErr:   "failed to read config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			xdgDir := t.TempDir()
+			defaultDir := filepath.Join(xdgDir, "qui")
+			t.Setenv("XDG_CONFIG_HOME", xdgDir)
+			t.Setenv(envPrefix+"PORT", "")
+			t.Chdir(workDir)
+
+			for name, content := range tt.workFiles {
+				require.NoError(t, os.WriteFile(filepath.Join(workDir, name), []byte(content), 0o600))
+			}
+			for _, name := range tt.workDirs {
+				require.NoError(t, os.Mkdir(filepath.Join(workDir, name), 0o700))
+			}
+			if tt.defaultFile != "" {
+				require.NoError(t, os.MkdirAll(defaultDir, 0o700))
+				require.NoError(t, os.WriteFile(filepath.Join(defaultDir, "config.toml"), []byte(tt.defaultFile), 0o600))
+			}
+
+			cfg, err := New("")
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				var parseErr viper.ConfigParseError
+				require.ErrorAs(t, err, &parseErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantPort, cfg.Config.Port)
+
+			wantFile := filepath.Join(defaultDir, "config.toml")
+			if tt.wantInWork {
+				wantFile = filepath.Join(workDir, "config.toml")
+			}
+			assert.Equal(t, wantFile, cfg.viper.ConfigFileUsed())
+			_, statErr := os.Stat(filepath.Join(defaultDir, "config.toml"))
+			require.NoError(t, statErr)
+		})
+	}
+}
+
 func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 	previousLevel := zerolog.GlobalLevel()
 	t.Cleanup(func() {
@@ -1021,6 +1100,30 @@ func TestApplyDynamicChangesRejectsBothOIDCAllowedUserKeys(t *testing.T) {
 	// The rest of the reload still applies.
 	assert.Equal(t, []string{"https://new.example"}, cfg.Config.CORSAllowedOrigins)
 	assert.Equal(t, int32(1), listenerCalls.Load())
+}
+
+// regression: #3860
+func TestReloadChangesOnlyTheNextPublishedConfig(t *testing.T) {
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(testConfigContent+"externalProgramAllowList = [\"/old\"]\n"), 0o600))
+
+	cfg := &AppConfig{viper: viper.New(), Config: &domain.Config{}, version: "test", logManager: NewLogManager("test")}
+	require.NoError(t, cfg.load(path))
+	require.NoError(t, cfg.viper.Unmarshal(cfg.Config))
+	cfg.hydrateConfigFromViper()
+	cfg.PublishConfig()
+	inFlight := cfg.Config.Live()
+
+	require.NoError(t, os.WriteFile(path, []byte(testConfigContent+"externalProgramAllowList = [\"/new\"]\n"), 0o600))
+	cfg.reload()
+
+	assert.Equal(t, []string{"/old"}, inFlight.ExternalProgramAllowList, "a request in flight keeps the config it read")
+	assert.Equal(t, []string{"/new"}, cfg.Config.Live().ExternalProgramAllowList, "the next request reads the reloaded config")
 }
 
 // The watcher reads the file before configReloadDelay, so reload must read

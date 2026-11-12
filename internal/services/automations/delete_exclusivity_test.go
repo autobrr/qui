@@ -60,6 +60,14 @@ type stubTorrent struct {
 // Torrents that share a name share a content path and a file list, so they are cross-seeds.
 func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *stubQbt) {
 	t.Helper()
+	stub, sharing := newWriteStub(t, torrents)
+	svc, _, instanceIDs := newStubService(t, sharedFilesMatcher{sharing: sharing}, stub)
+	return svc, instanceIDs[0], stub
+}
+
+// newWriteStub returns the stub of newWriteStubService and the torrents that share files.
+func newWriteStub(t *testing.T, torrents []stubTorrent) (*stubQbt, map[string][]string) {
+	t.Helper()
 
 	entries := make([]string, 0, len(torrents))
 	files := make(map[string]string, len(torrents))
@@ -82,8 +90,7 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 			}
 		}
 	}
-	svc, _, instanceIDs := newStubService(t, sharedFilesMatcher{sharing: sharing}, stub)
-	return svc, instanceIDs[0], stub
+	return stub, sharing
 }
 
 // sharedFilesMatcher reports which stub torrents share files, as the cross-seed service does.
@@ -101,6 +108,10 @@ func (m sharedFilesMatcher) BuildCrossMatchSets(context.Context, int, CrossMatch
 		OtherInstanceSharedUnknown: m.otherUnknown,
 		OfflineLocalInstances:      m.offline,
 	}
+}
+
+func (m sharedFilesMatcher) OpenCrossMatchSession(ctx context.Context, instanceID int, needs CrossMatchNeeds) (CrossMatchSession, error) {
+	return cannedSession{m.BuildCrossMatchSets(ctx, instanceID, needs)}, nil
 }
 
 // dryRunActivityHashes returns the torrents each dry-run activity row lists, keyed like writeStubActions.

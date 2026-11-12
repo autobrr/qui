@@ -97,7 +97,7 @@ func (r *triggerRig) add(torrents ...qbtstub.Torrent) {
 	}
 	client, err := r.sm.clientPool.GetClientOffline(r.t.Context(), r.instanceID)
 	require.NoError(r.t, err)
-	require.NoError(r.t, client.GetSyncManager().Sync(r.t.Context()))
+	require.NoError(r.t, client.SyncOwner().Sync(r.t.Context()))
 }
 
 func (r *triggerRig) requireGone(rel string) {
@@ -134,7 +134,7 @@ func TestFolderCleanupTriggerKeepsMonitoredFolders(t *testing.T) {
 	custom.SavePath = r.p("torrents/from-watch/Show.S01E01-GRP")
 	r.add(watched, custom)
 
-	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA, hashB}, "deleteWithFiles"))
+	require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA, hashB}, true, DeleteActor{Kind: DeleteActorUser}))
 	r.requireGone("torrents/watch/Show.S01E01-GRP")
 	r.requireGone("torrents/from-watch/Show.S01E01-GRP")
 	r.requireKept("torrents/watch", "torrents/from-watch")
@@ -154,7 +154,7 @@ func TestFolderCleanupTriggerReadsPreferencesFresh(t *testing.T) {
 	r.stub.SetDefaultSavePath(r.p("torrents/new"))
 	r.add(qbtstub.Torrent{Hash: hashA, Name: "Rel", SavePath: r.p("torrents/new"), Layout: qbtstub.RootFolder, Files: []string{"a.mkv"}})
 
-	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
+	require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, true, DeleteActor{Kind: DeleteActorUser}))
 	r.requireGone("torrents/new/Rel")
 	r.requireKept("torrents/new")
 }
@@ -191,7 +191,7 @@ func TestFolderCleanupTriggerBulkDeleteWithFiles(t *testing.T) {
 	r := newTriggerRig(t)
 	r.add(r.perRelease(hashA, "tv"))
 
-	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
+	require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, true, DeleteActor{Kind: DeleteActorUser}))
 	r.requireGone("torrents/tv/Show.S01E01-GRP")
 	require.DirExists(t, r.p("torrents/tv"))
 }
@@ -205,7 +205,7 @@ func TestFolderCleanupTriggerDeleteWithFirstFileMissing(t *testing.T) {
 		Layout: qbtstub.NoRootFolder, Files: []string{"Show.S01E01.nfo", "Sample/sample.mkv", "Show.S01E01.mkv"}})
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.nfo")))
 
-	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
+	require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, true, DeleteActor{Kind: DeleteActorUser}))
 	r.requireGone("torrents/tv/Show.S01E01-GRP")
 	require.DirExists(t, r.p("torrents/tv"))
 }
@@ -215,7 +215,7 @@ func TestFolderCleanupTriggerBulkDeleteKeepsFiles(t *testing.T) {
 	r := newTriggerRig(t)
 	r.add(r.perRelease(hashA, "tv"))
 
-	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "delete"))
+	require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, false, DeleteActor{Kind: DeleteActorUser}))
 	require.FileExists(t, r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv"))
 	// Had the delete queued work, an emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
@@ -230,7 +230,7 @@ func TestFolderCleanupTriggerRunsAfterRequestCancellation(t *testing.T) {
 	r.add(r.perRelease(hashA, "tv"))
 
 	ctx, cancel := context.WithCancel(t.Context())
-	require.NoError(t, r.sm.BulkAction(ctx, r.instanceID, []string{hashA}, "deleteWithFiles"))
+	require.NoError(t, r.sm.DeleteTorrents(ctx, r.instanceID, []string{hashA}, true, DeleteActor{Kind: DeleteActorUser}))
 	cancel()
 	r.requireGone("torrents/tv/Show.S01E01-GRP")
 }
@@ -490,12 +490,12 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 			r.stub.SlowMoves = true
 			client, err := r.sm.clientPool.GetClientOffline(t.Context(), r.instanceID)
 			require.NoError(t, err)
-			before := client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
+			before := client.SyncOwner().SnapshotUnchecked().Torrents()[0]
 			syncs := r.stub.Syncs()
 
 			require.NoError(t, tc.op(r))
 			require.Eventually(t, func() bool {
-				row := client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{})[0]
+				row := client.SyncOwner().SnapshotUnchecked().Torrents()[0]
 				return row.SavePath != before.SavePath && row.ContentPath == before.ContentPath
 			}, 5*time.Second, 20*time.Millisecond, "the cache must show the new save path with the old content path")
 			// Let the second sync after the request land before the files move.
@@ -517,7 +517,7 @@ func TestFolderCleanupTriggerDoesNotWaitForCleanup(t *testing.T) {
 	fc := NewFolderCleanup(r.sm.folderCleanup.Load().pool, r.sm, &fakeIgnores{})
 	r.sm.SetFolderCleanup(fc)
 
-	require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
+	require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, true, DeleteActor{Kind: DeleteActorUser}))
 	require.DirExists(t, r.p("torrents/tv/Show.S01E01-GRP"))
 	require.Len(t, fc.pending, 1)
 
@@ -553,7 +553,7 @@ func TestFolderCleanupTriggerRejectedRequest(t *testing.T) {
 	r.add(r.perRelease(hashA, "tv"))
 	r.stub.Reject = 500
 
-	require.Error(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, "deleteWithFiles"))
+	require.Error(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, true, DeleteActor{Kind: DeleteActorUser}))
 	// Had the request queued work, the emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
@@ -791,7 +791,7 @@ func TestFolderCleanupBulkDeletePastAHungStat(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
-	require.NoError(t, r.sm.BulkAction(ctx, r.instanceID, []string{hashA, hashB}, "deleteWithFiles"))
+	require.NoError(t, r.sm.DeleteTorrents(ctx, r.instanceID, []string{hashA, hashB}, true, DeleteActor{Kind: DeleteActorUser}))
 	require.Equal(t, 1, r.stub.Writes("torrents/delete"))
 	r.requireGone("torrents/tv/Show.S01E01-GRP")
 	r.requireKept("torrents/movies/Film-GRP")
@@ -806,7 +806,7 @@ func TestFolderCleanupSnapshotStartsNoStatPastTheDeadline(t *testing.T) {
 	stats := backend.stats.Load()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	torrents := []qbt.Torrent{
+	torrents := []*qbt.Torrent{
 		{Hash: hashA, SavePath: r.p("torrents/tv"), ContentPath: r.p("torrents/tv/Rel-A")},
 		{Hash: hashB, SavePath: r.p("torrents/tv"), ContentPath: r.p("torrents/tv/Rel-B")},
 	}
@@ -878,8 +878,8 @@ func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 // regression: #3739
 func TestBulkDeleteNotifiesFilesChanged(t *testing.T) {
 	t.Parallel()
-	for _, action := range []string{"delete", "deleteWithFiles"} {
-		t.Run(action, func(t *testing.T) {
+	for _, deleteFiles := range []bool{false, true} {
+		t.Run(fmt.Sprintf("deleteFiles=%t", deleteFiles), func(t *testing.T) {
 			t.Parallel()
 			r := newTriggerRig(t)
 			r.add(r.perRelease(hashA, "tv"))
@@ -891,7 +891,7 @@ func TestBulkDeleteNotifiesFilesChanged(t *testing.T) {
 				got = append(got, hash)
 			})
 
-			require.NoError(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, action))
+			require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, deleteFiles, DeleteActor{Kind: DeleteActorUser}))
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -949,4 +949,19 @@ func TestEditPath(t *testing.T) {
 		require.Eventually(t, func() bool { return !r.syncPending() }, 5*time.Second, 10*time.Millisecond)
 		require.Equal(t, syncs+2, r.stub.Syncs(), "an accepted edit starts one sync")
 	})
+}
+
+// A delete names its actor, so BulkAction refuses one and sends nothing.
+func TestBulkActionRefusesDelete(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{"delete", "deleteWithFiles"} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			r := newTriggerRig(t)
+			r.add(r.perRelease(hashA, "tv"))
+
+			require.Error(t, r.sm.BulkAction(t.Context(), r.instanceID, []string{hashA}, action))
+			require.Zero(t, r.stub.Calls("torrents/delete"))
+		})
+	}
 }

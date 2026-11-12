@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -50,7 +49,7 @@ func TestApplyTagChanges(t *testing.T) {
 			sm := qbittorrent.NewSyncManager(clientPool, nil)
 			client, err := sm.GetClient(t.Context(), instance.ID)
 			require.NoError(t, err)
-			require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+			require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
 			svc := NewService(Config{}, instanceStore, nil, nil, nil, sm, nil, nil, nil, nil)
 			syncs := stub.Syncs()
@@ -68,7 +67,7 @@ func TestApplyTagChanges(t *testing.T) {
 			// The list reads this cache, so the sync must put the new tags in it.
 			require.Eventually(t, func() bool {
 				cached := map[string][]string{}
-				for _, torrent := range client.GetSyncManager().GetTorrentsUnchecked(qbt.TorrentFilterOptions{}) {
+				for _, torrent := range client.SyncOwner().SnapshotUnchecked().Torrents() {
 					cached[torrent.Hash] = slices.Sorted(slices.Values(splitTags(torrent.Tags)))
 				}
 				return slices.Equal(cached[hashA], []string{"keep", "new1"}) && slices.Equal(cached[hashB], []string{"new1", "new2"})
