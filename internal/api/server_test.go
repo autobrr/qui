@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
+	"time"
 	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
@@ -26,13 +27,19 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/internal/update"
@@ -153,6 +160,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	sessionManager := scs.New()
 
 	db := testdb.NewMigratedSQLite(t, "api-server")
+	encryptionKey := []byte("01234567890123456789012345678901")
+	dataDir := t.TempDir()
 
 	authService := auth.NewService(db)
 	_, err := authService.SetupUser(context.Background(), "test-user", "password123")
@@ -160,19 +169,35 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		require.NoError(t, err)
 	}
 
-	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
+	instanceStore, err := models.NewInstanceStore(db, encryptionKey)
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, clientPool.Close()) })
+
+	trackerIconService, err := trackericons.NewService(dataDir, "qui-test")
+	require.NoError(t, err)
+	peerClientIconService, err := peerclienticons.NewService(dataDir, "qui-test", nil)
 	require.NoError(t, err)
 
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 	notificationTargetStore := models.NewNotificationTargetStore(db)
-	notificationService := notifications.NewService(notificationTargetStore, &models.InstanceStore{}, log.Logger)
-	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, []byte("01234567890123456789012345678901"))
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger)
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, encryptionKey)
 	require.NoError(t, err)
+	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey)
+	require.NoError(t, err)
+	discScanStore := models.NewDiscScanStore(db)
+	jackettService := jackett.NewService(torznabIndexerStore)
+	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
+	require.NoError(t, err)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		&qbittorrent.SyncManager{},
+		syncManager,
 		nil,
 		nil,
 		trackerCustomizationStore,
@@ -190,24 +215,35 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Version:                   "test",
 		AuthService:               authService,
 		SessionManager:            sessionManager,
-		InstanceStore:             &models.InstanceStore{},
+		InstanceStore:             instanceStore,
 		ClientAPIKeyStore:         models.NewClientAPIKeyStore(db),
-		ClientPool:                &qbittorrent.ClientPool{},
-		SyncManager:               qbittorrent.NewSyncManager(nil, trackerCustomizationStore),
+		ExternalProgramStore:      models.NewExternalProgramStore(db),
+		ClientPool:                clientPool,
+		SyncManager:               syncManager,
 		WebHandler:                &web.Handler{},
-		LicenseService:            &license.Service{},
+		LicenseService:            license.NewLicenseService(database.NewLicenseRepo(db), nil, dataDir),
 		UpdateService:             &update.Service{},
 		TrackerIconService:        trackerIconService,
-		BackupService:             &backups.Service{},
+		PeerClientIconService:     peerClientIconService,
+		BackupService:             backups.NewService(models.NewBackupStore(db), syncManager, backups.Config{}, notificationService),
 		AutomationStore:           models.NewAutomationStore(db),
 		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		ClientSettingsStore:       models.NewClientSettingsStore(db),
+		ThemeSettingsStore:        models.NewThemeSettingsStore(db),
 		FilterViewStore:           models.NewFilterViewStore(db),
+		LogExclusionsStore:        models.NewLogExclusionsStore(db),
 		NotificationTargetStore:   notificationTargetStore,
 		NotificationService:       notificationService,
+		DiscScanStore:             discScanStore,
+		DiscScanService:           discscan.NewService(discScanStore),
 		DirScanService:            dirScanService,
-		JackettService:            jackett.NewService(torznabIndexerStore),
+		CrossSeedService:          crossSeedService,
+		CrossSeedRoutes:           crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, nil),
+		JackettService:            jackettService,
 		TorznabIndexerStore:       torznabIndexerStore,
+		ArrInstanceStore:          arrInstanceStore,
+		ArrService:                arr.NewService(arrInstanceStore, models.NewArrIDCacheStore(db)),
 	}
 }
 
