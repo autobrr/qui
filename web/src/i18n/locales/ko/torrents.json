@@ -1619,5 +1619,12 @@
     "groupCopies": "사본 묶기",
     "ungroupCopies": "사본 묶음 풀기",
     "grouping": "묶는 중…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Cross-Seed 묶기",
+      "description": "한 토렌트의 사본을 한 행으로 표시합니다.",
+      "action": "사용해 보기"
+    }
   }
 }

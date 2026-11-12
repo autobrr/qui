@@ -1859,5 +1859,12 @@
     "groupCopies": "Групувати копії",
     "ungroupCopies": "Розгрупувати копії",
     "grouping": "Групування…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Групуйте свої Cross-Seeds",
+      "description": "Показує копії одного торрента одним рядком.",
+      "action": "Спробувати"
+    }
   }
 }

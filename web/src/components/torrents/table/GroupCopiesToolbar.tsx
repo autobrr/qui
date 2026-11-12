@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { FeatureNotice } from "@/components/feature-notice/FeatureNotice"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { isDemo } from "@/lib/demo"
@@ -21,18 +22,20 @@ export function GroupCopiesToolbar({ groupCopies, onToggleGroupCopies }: GroupCo
   if (isDemo) return null
   return (
     <Tooltip disableHoverableContent={true}>
-      <TooltipTrigger asChild onFocus={(e) => e.preventDefault()}>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-pressed={groupCopies}
-          aria-label={t("copyGroups.groupCopies")}
-          className={cn(groupCopies && "border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary")}
-          onClick={onToggleGroupCopies}
-        >
-          {groupCopies ? <Group className="h-4 w-4" /> : <Ungroup className="h-4 w-4" />}
-        </Button>
-      </TooltipTrigger>
+      <FeatureNotice id="group-copies" onAction={onToggleGroupCopies}>
+        <TooltipTrigger asChild onFocus={(e) => e.preventDefault()}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-pressed={groupCopies}
+            aria-label={t("copyGroups.groupCopies")}
+            className={cn(groupCopies && "border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary")}
+            onClick={onToggleGroupCopies}
+          >
+            {groupCopies ? <Group className="h-4 w-4" /> : <Ungroup className="h-4 w-4" />}
+          </Button>
+        </TooltipTrigger>
+      </FeatureNotice>
       <TooltipContent>{groupCopies ? t("copyGroups.ungroupCopies") : t("copyGroups.groupCopies")}</TooltipContent>
     </Tooltip>
   )

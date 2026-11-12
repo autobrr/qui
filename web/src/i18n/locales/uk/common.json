@@ -106,6 +106,9 @@
     "select": "Вибрати",
     "copyValue": "Копіювати {{label}}"
   },
+  "featureNotice": {
+    "gotIt": "Зрозуміло"
+  },
   "placeholders": {
     "search": "Пошук...",
     "selectItems": "Вибрати елементи..."

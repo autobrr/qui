@@ -1619,5 +1619,12 @@
     "groupCopies": "合併副本",
     "ungroupCopies": "取消合併副本",
     "grouping": "正在分組…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "合併你的輔種",
+      "description": "將同一種子的多個副本顯示為一行。",
+      "action": "試試看"
+    }
   }
 }
