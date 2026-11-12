@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -93,11 +94,19 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 		return nil, errors.New("automation storage not configured")
 	}
 
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	previous, previousErr := s.GetAutomationSettings(ctx)
 	updated, err := s.automationStore.UpsertSettings(ctx, settings)
 	if err != nil {
 		return nil, fmt.Errorf("persist automation settings: %w", err)
 	}
-	s.forgetLocalReads()
+	// Of all settings, only the category mapping rules change a read.
+	if previousErr != nil || !slices.EqualFunc(previous.CategoryMappingRules, updated.CategoryMappingRules, func(a, b models.CategoryMappingRule) bool {
+		return a.ContentType == b.ContentType && slices.Equal(a.Categories, b.Categories)
+	}) {
+		s.forgetLocalReads()
+	}
 
 	s.signalAutomationWake()
 	s.partialPool.wake(partialPoolWake{})

@@ -207,6 +207,8 @@ type Service struct {
 	// excluded from matching. Set at startup via config.
 	recoverErroredTorrentsEnabled bool
 
+	// settingsMu makes the read, the save, and the forget of a settings save one step.
+	settingsMu       sync.Mutex
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
