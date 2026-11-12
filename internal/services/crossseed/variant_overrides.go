@@ -57,6 +57,7 @@ var (
 			"REPACK9",  // Ninth re-release
 			"REPACK10", // Tenth re-release
 			"PROPER",   // Correction to a flawed release
+			"RERIP",    // New rip of the same source
 		},
 		nil,
 		nil,

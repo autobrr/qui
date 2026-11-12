@@ -491,6 +491,24 @@ var corpusRows = []corpusRow{
 		want:          corpusNoMatch,
 	},
 	{
+		// regression: #4068
+		name:          "RERIP flag in a trailing bracket against the plain name",
+		source:        "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU [RERIP]",
+		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		// regression: #4068
+		name:          "RERIP flag in the name against the plain name",
+		source:        "Kaiju.Squad.S02E05.RERIP.1080p.WEB.H264-KAIJU",
+		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
 		// regression: #3292
 		name:          "REPACK flag in a trailing bracket against the flag in the name",
 		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
