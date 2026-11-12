@@ -130,7 +130,10 @@ If your container has a memory limit, set the `GOMEMLIMIT` environment variable 
 
 1. Find the memory limit of the container, for example `mem_limit` in Compose or `--memory` in `docker run`.
 2. Subtract 10% of the limit. If 10% is less than 64 MiB, subtract 64 MiB.
-3. Set `GOMEMLIMIT` to the result, with the suffix `MiB` or `GiB`.
+3. Round the result down to a whole number of MiB.
+4. Set `GOMEMLIMIT` to that number with the suffix `MiB`, for example `691MiB` for a limit of `768m`.
+
+Do not use a fraction such as `691.2MiB` or `1.5GiB`. With a fraction, qui stops at start with the error `malformed GOMEMLIMIT`.
 
 | Container limit | `GOMEMLIMIT` |
 | --- | --- |
