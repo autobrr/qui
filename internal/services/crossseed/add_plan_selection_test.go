@@ -29,7 +29,7 @@ type alignmentFailureSyncManager struct {
 	bulkActionErr error
 }
 
-func (*alignmentFailureSyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (*alignmentFailureSyncManager) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 {
 		return nil, nil
 	}
@@ -38,7 +38,7 @@ func (*alignmentFailureSyncManager) GetTorrents(_ context.Context, _ int, filter
 	for _, hash := range filter.Hashes {
 		torrents = append(torrents, qbt.Torrent{Hash: hash, Progress: 1.0})
 	}
-	return torrents, nil
+	return testTorrentRefs(torrents), nil
 }
 
 func (m *alignmentFailureSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -178,7 +178,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureBeatsLinkFallbackRecheckSucce
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)
@@ -244,7 +244,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)

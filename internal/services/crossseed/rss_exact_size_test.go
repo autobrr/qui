@@ -636,8 +636,8 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 
 func TestInvokeBoundAnnouncementMatchesStopsOnTopLevelSuccess(t *testing.T) {
 	matches := []boundAnnouncementMatch{
-		{instanceID: 1, torrent: qbt.Torrent{Hash: "first"}},
-		{instanceID: 1, torrent: qbt.Torrent{Hash: "second"}},
+		{instanceID: 1, torrent: &qbt.Torrent{Hash: "first"}},
+		{instanceID: 1, torrent: &qbt.Torrent{Hash: "second"}},
 	}
 	calls := 0
 	service := &Service{

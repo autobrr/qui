@@ -163,7 +163,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			matches = append(matches, boundAnnouncementMatch{
 				instanceID:   instance.ID,
 				instanceName: instance.Name,
-				torrent:      *torrent,
+				torrent:      torrent,
 				decision:     provenance.bindSource(instance.ID, torrent.Hash),
 			})
 		}
@@ -301,7 +301,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	// Start the file reads of all instances before the first wait, so a slow
 	// instance does not use up the wait of the others. The waits share one
 	// budget, so the check answers inside the time that autobrr waits. Each
-	// open check holds its own copy of a torrent list, so the check keeps the
+	// open check holds its own list of torrent views, so the check keeps the
 	// lists only when no instance waits for a file read.
 	pendingReads := make(map[int]*pendingLocalReads, len(instances))
 	views := make(map[int][]qbittorrent.CrossInstanceTorrentView, len(instances))
@@ -372,6 +372,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 			Int("torrentCount", len(torrentsView)).
 			Msg("Webhook check: scanning instance torrents for metadata matches")
 
+		logNearMisses := announcedGroup != "" && log.Debug().Enabled()
+
 		// Check each torrent for a match - iterate directly over torrentsView to avoid copying
 		for _, torrentView := range torrentsView {
 			if err := ctx.Err(); err != nil {
@@ -401,14 +403,14 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				sourceReads:            sourceReads,
 			})
 			if !decision.Accepted {
-				if evt := log.Debug(); evt.Enabled() && announcedGroup != "" {
+				if logNearMisses {
 					source := namedRelease{release: s.releaseCache.Parse(torrent.Name), rawName: torrent.Name}
 					// Only a name with a site can be the split side, and the other
 					// side must have none.
 					if m.normalizedGroupSiteIdentity(source.release) == announcedGroup ||
 						(source.release.Site != "") != (announcedCandidate.release.Site != "") &&
 							m.crossFieldGroupSiteFallback(source, announcedCandidate) {
-						evt.
+						log.Debug().
 							Str("source", "cross-seed.webhook").
 							Int("instanceId", instance.ID).
 							Str("incomingName", req.TorrentName).

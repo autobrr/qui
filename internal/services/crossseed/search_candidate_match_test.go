@@ -2109,7 +2109,7 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
-		CrossSeedCandidate{InstanceID: instanceID, InstanceName: instance.Name, Torrents: []qbt.Torrent{existing}, titleRescue: true},
+		CrossSeedCandidate{InstanceID: instanceID, InstanceName: instance.Name, Torrents: []*qbt.Torrent{&existing}, titleRescue: true},
 		nil,
 		"incoming",
 		"",

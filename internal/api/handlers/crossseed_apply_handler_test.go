@@ -60,8 +60,13 @@ type seasonPackHandlerSyncManager struct {
 	addCalls int
 }
 
-func (s *seasonPackHandlerSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	return s.torrents[instanceID], nil
+func (s *seasonPackHandlerSyncManager) GetTorrentRefs(_ context.Context, instanceID int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	torrents := s.torrents[instanceID]
+	refs := make([]*qbt.Torrent, len(torrents))
+	for i := range torrents {
+		refs[i] = new(torrents[i])
+	}
+	return refs, nil
 }
 
 func (s *seasonPackHandlerSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {

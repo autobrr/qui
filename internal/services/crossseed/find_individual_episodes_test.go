@@ -244,14 +244,14 @@ func newEpisodeSyncManager() *episodeSyncManager {
 	}
 }
 
-func (f *episodeSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *episodeSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	list := f.torrents[instanceID]
 	if list == nil {
 		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
 	}
 	copied := make([]qbt.Torrent, len(list))
 	copy(copied, list)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (f *episodeSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {

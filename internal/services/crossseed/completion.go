@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
@@ -442,7 +443,7 @@ func (s *Service) applyCompletionPollResultsLocked(
 	instanceID int,
 	lane *completionLane,
 	waits map[string]*completionWaitState,
-	torrents map[string]qbt.Torrent,
+	torrents map[string]*qbt.Torrent,
 	now time.Time,
 ) {
 	for hash, wait := range waits {
@@ -451,20 +452,19 @@ func (s *Service) applyCompletionPollResultsLocked(
 			continue
 		}
 
-		torrent, ok := torrents[hash]
+		current, ok := torrents[hash]
 		if !ok {
 			s.failMissingCompletionWaitLocked(instanceID, lane, hash, wait)
 			continue
 		}
 
-		current := torrent
-		wait.lastSeen = &current
+		wait.lastSeen = current
 
 		if s.keepWaitingForCompletion(instanceID, lane, hash, wait, current, now) {
 			continue
 		}
 
-		if s.sourceGate().check(&current, sourceFilter{}) == sourceIncomplete {
+		if s.sourceGate().check(current, sourceFilter{}) == sourceIncomplete {
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("hash", current.Hash).
@@ -482,7 +482,7 @@ func (s *Service) applyCompletionPollResultsLocked(
 			continue
 		}
 
-		s.completeCompletionWaitLocked(lane, hash, wait, &current, nil)
+		s.completeCompletionWaitLocked(lane, hash, wait, current, nil)
 	}
 }
 
@@ -491,10 +491,10 @@ func (s *Service) keepWaitingForCompletion(
 	lane *completionLane,
 	hash string,
 	wait *completionWaitState,
-	current qbt.Torrent,
+	current *qbt.Torrent,
 	now time.Time,
 ) bool {
-	if s.sourceGate().check(&current, sourceFilter{}) != sourceMovingOrChecking {
+	if s.sourceGate().check(current, sourceFilter{}) != sourceMovingOrChecking {
 		return false
 	}
 
@@ -537,7 +537,7 @@ func (s *Service) keepWaitingForCompletion(
 	return true
 }
 
-func (s *Service) retryCompletionWaitLocked(instanceID int, wait *completionWaitState, current qbt.Torrent, now time.Time) {
+func (s *Service) retryCompletionWaitLocked(instanceID int, wait *completionWaitState, current *qbt.Torrent, now time.Time) {
 	retryAfter := s.getCompletionRetryDelay()
 	retryAt := now.Add(retryAfter)
 	nextAttempt := wait.attempt + 1
@@ -558,7 +558,7 @@ func (s *Service) retryCompletionWaitLocked(instanceID int, wait *completionWait
 	wait.attempt = nextAttempt
 	wait.retryAt = retryAt
 	wait.deadline = retryAt.Add(wait.timeout)
-	wait.lastSeen = &current
+	wait.lastSeen = current
 	wait.checkingLogged = false
 }
 
@@ -682,23 +682,19 @@ func (s *Service) getCompletionTorrent(ctx context.Context, instanceID int, hash
 	if !ok {
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
-
-	current := torrent
-	return &current, nil
+	return torrent, nil
 }
 
-func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error) {
+func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, error) {
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	defer cancel()
 
-	torrents, err := s.syncManager.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{
-		Hashes: hashes,
-	})
+	torrents, err := s.syncManager.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
 
-	result := make(map[string]qbt.Torrent, len(torrents))
+	result := make(map[string]*qbt.Torrent, len(torrents))
 	for _, torrent := range torrents {
 		result[normalizeHash(torrent.Hash)] = torrent
 	}

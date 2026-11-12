@@ -87,17 +87,17 @@ type completionGazelleSyncMock struct {
 	exportHits      int
 }
 
-func (m *completionGazelleSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	m.getTorrentsHits++
 	if len(filter.Hashes) == 0 {
-		return []qbt.Torrent{m.torrent}, nil
+		return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 	}
 	for _, h := range filter.Hashes {
 		if normalizeHash(h) == normalizeHash(m.torrent.Hash) {
-			return []qbt.Torrent{m.torrent}, nil
+			return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 		}
 	}
-	return []qbt.Torrent{}, nil
+	return testTorrentRefs([]qbt.Torrent{}), nil
 }
 
 func (m *completionGazelleSyncMock) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -250,7 +250,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	svc.HandleTorrentCompletion(context.Background(), 1, src)
 
 	if syncMock.getTorrentsHits == 0 {
-		t.Fatalf("expected completion flow to call syncManager.GetTorrents for Gazelle even when jackett is nil")
+		t.Fatalf("expected completion flow to call syncManager.GetTorrentRefs for Gazelle even when jackett is nil")
 	}
 }
 
