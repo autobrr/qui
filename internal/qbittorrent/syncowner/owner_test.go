@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"slices"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -57,11 +56,35 @@ func TestOwner_NoMethodPassesTheLibrarySyncObject(t *testing.T) {
 	library := reflect.TypeFor[qbt.SyncManager]()
 	owner := reflect.TypeFor[*syncowner.Owner]()
 	for method := range owner.Methods() {
-		types := slices.AppendSeq(slices.Collect(method.Type.Ins()), method.Type.Outs())
-		for _, typ := range types {
-			if typ == library || (typ.Kind() == reflect.Pointer && typ.Elem() == library) {
-				t.Errorf("Owner.%s passes %s, the sync object of go-qbittorrent", method.Name, typ)
-			}
+		if carries(method.Type, library) {
+			t.Errorf("Owner.%s passes the sync object of go-qbittorrent: %s", method.Name, method.Type)
 		}
 	}
+}
+
+// carries reports whether a value of typ can hold a target: as the value, behind
+// a pointer, in a list, a map, or a channel, or through a callback.
+func carries(typ, target reflect.Type) bool {
+	if typ == target {
+		return true
+	}
+	switch typ.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Chan:
+		return carries(typ.Elem(), target)
+	case reflect.Map:
+		return carries(typ.Key(), target) || carries(typ.Elem(), target)
+	case reflect.Func:
+		for part := range typ.Ins() {
+			if carries(part, target) {
+				return true
+			}
+		}
+		for part := range typ.Outs() {
+			if carries(part, target) {
+				return true
+			}
+		}
+	default:
+	}
+	return false
 }

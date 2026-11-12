@@ -143,8 +143,9 @@ linters:
           pkg: ^(database/sql/driver|github\.com/jackc/pgx/v5/stdlib|github\.com/lib/pq|modernc\.org/sqlite)$
           msg: open SQLite and Postgres connections through internal/database, which sets the UTC time-zone handling
         # One package owns the sync object of go-qbittorrent (ADR 0051). The
-        # type rule also catches an interface or a field that holds the object.
-        - pattern: ^qbittorrent\.SyncManager$
+        # type rule also catches an interface or a field that holds the object,
+        # and each method call on an object that code got without the type name.
+        - pattern: ^qbittorrent\.SyncManager(\.\w+)?$
           pkg: ^github\.com/autobrr/go-qbittorrent$
           msg: only internal/qbittorrent/syncowner holds the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
         # qui has its own qbittorrent.NewSyncManager, so the library function and
