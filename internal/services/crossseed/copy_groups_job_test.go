@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -1064,4 +1065,29 @@ func TestCopyGroupsJob_AnEmptyMapWhenNoInstanceCanSync(t *testing.T) {
 		require.Equal(t, 1, h.publishes())
 		require.Equal(t, h.want(nil), h.last())
 	})
+}
+
+func TestCopyGroupsJob_SlicesReadASharedPathGroupOnce(t *testing.T) {
+	// A multi-file torrent without a subfolder makes its save path one shared-path group.
+	const movies = 6
+	fixtures := make([]copyGroupFixture, 0, movies+1)
+	fixtures = append(fixtures, copyGroupFixture{
+		instanceID: 1, hash: "flat", name: "Harbor.Sounds-GRP", savePath: "/data", content: "/data",
+		files: qbt.TorrentFiles{{Name: "01.flac", Size: 100, Priority: 1}, {Name: "02.flac", Size: 200, Priority: 1}},
+	})
+	for i := range movies {
+		name := fmt.Sprintf("Quiet.Harbor.%d.2019.1080p.BluRay.x264-GRP", i)
+		fixtures = append(fixtures, copyGroupFixture{
+			instanceID: 1, hash: fmt.Sprintf("movie%d", i), name: name, savePath: "/data", content: "/data/" + name,
+			files: qbt.TorrentFiles{{Name: name + "/" + name + ".mkv", Size: int64(5000 + i), Priority: 1}},
+		})
+	}
+	torrents, files := copyGroupInput(fixtures...)
+	var asked []string
+	job := &copyGroupsJob{svc: newTestService(), key: copyGroupTestKey, sliceFrom: 2}
+
+	_, _, err := job.findInSlices(t.Context(), torrents, heldCopyGroupFiles(files, &asked), nil, nil, func() {})
+
+	require.NoError(t, err)
+	require.Len(t, asked, len(fixtures))
 }
