@@ -1682,8 +1682,14 @@
   "copyGroups": {
     "copies_one": "{{count}} more copy of {{name}}",
     "copies_other": "{{count}} more copies of {{name}}",
-    "copiesWithProblem_one": "{{count}} more copy of {{name}}. A hidden copy has a problem",
-    "copiesWithProblem_other": "{{count}} more copies of {{name}}. A hidden copy has a problem",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A hidden copy has missing files",
+      "error": "A hidden copy has an error",
+      "unregistered": "A hidden copy is unregistered",
+      "trackerError": "A hidden copy has a tracker error",
+      "trackerDown": "The tracker of a hidden copy is down"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · {{count}} ticked",
     "badgeTicked_other": "+{{hidden}} · {{count}} ticked",

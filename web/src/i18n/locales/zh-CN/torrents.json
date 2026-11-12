@@ -1604,7 +1604,14 @@
   },
   "copyGroups": {
     "copies_other": "{{name}} 的另外 {{count}} 个副本",
-    "copiesWithProblem_other": "{{name}} 的另外 {{count}} 个副本。某个隐藏的副本有问题",
+    "labelWithProblem": "{{label}}。{{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "某个隐藏的副本文件丢失",
+      "error": "某个隐藏的副本出错",
+      "unregistered": "某个隐藏的副本未注册",
+      "trackerError": "某个隐藏的副本有 Tracker 错误",
+      "trackerDown": "某个隐藏的副本的 Tracker 离线"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_other": "+{{hidden}} · 已选 {{count}} 个",
     "hiddenTicked_other": "已选中 {{count}} 个隐藏的副本",

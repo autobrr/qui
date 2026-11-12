@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { CopyProblem } from "@/lib/torrent-table/row-display"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 
 // The ids of the open Copy groups. The state lives in browser memory only.
@@ -105,16 +106,26 @@ export function withSortedField<T extends Torrent>(top: T, firstSorted: T | unde
   return firstSorted && sortedField && sortedField in top ? { ...top, [sortedField]: firstSorted[sortedField as keyof T] } : top
 }
 
-function hasCopyProblem(row: Pick<Torrent, "state" | "tracker_health">): boolean {
-  return row.state === "error" || row.state === "missingFiles" || row.tracker_health !== undefined
+// Worst first.
+const COPY_PROBLEMS: readonly CopyProblem[] = ["missingFiles", "error", "unregistered", "tracker_error", "tracker_down"]
+
+function worstProblem(rows: Pick<Torrent, "state" | "tracker_health">[]): CopyProblem | undefined {
+  let worst = COPY_PROBLEMS.length
+  for (const row of rows) {
+    for (const value of [row.state, row.tracker_health]) {
+      const rank = COPY_PROBLEMS.indexOf(value as CopyProblem)
+      if (rank !== -1 && rank < worst) worst = rank
+    }
+  }
+  return COPY_PROBLEMS[worst]
 }
 
 interface CopyGroupSummary<T extends Torrent> {
   top: T
   /** The loaded members, the top row included. */
   size: number
-  /** A member other than the top row has a problem. */
-  hiddenProblem: boolean
+  /** The worst problem of the members other than the top row. */
+  hiddenProblem?: CopyProblem
   /** The member that placed the group in the sort. */
   firstSorted: T
 }
@@ -130,7 +141,7 @@ export function summarizeCopyGroups<T extends Torrent>(rows: T[]): Map<string, C
     summaries.set(id, {
       top,
       size: members.length,
-      hiddenProblem: members.some(member => member !== top && hasCopyProblem(member)),
+      hiddenProblem: worstProblem(members.filter(member => member !== top)),
       firstSorted: firstSorted || top,
     })
   }

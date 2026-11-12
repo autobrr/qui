@@ -7,7 +7,7 @@ import type { SpeedUnit } from "@/lib/speedUnits"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { withSortedField } from "@/lib/copy-groups"
 import { getLinuxIsoName } from "@/lib/incognito"
-import { centersSelectCheckbox, getCopyGroupAccentClass, getRowBackgroundClass } from "@/lib/torrent-table/row-display"
+import { centersSelectCheckbox, getCopyGroupAccentClass, getRowBackgroundClass, type CopyProblem } from "@/lib/torrent-table/row-display"
 import type { TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { cn } from "@/lib/utils"
 import type { Torrent } from "@/types"
@@ -71,7 +71,7 @@ export interface TorrentTableRowProps {
   /** The members other than the top row. */
   copies?: number
   /** Only on a collapsed group: a hidden copy has a problem. */
-  hiddenCopyProblem?: boolean
+  hiddenCopyProblem?: CopyProblem
   /** Only on a collapsed group outside Select all mode: the ticked copies that it hides. */
   hiddenCopyTicks?: number
   /** Only on a collapsed group whose first-sorted member is not the top row. */
@@ -126,7 +126,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   copyGroupId,
   copyGroupOpen = false,
   copies = 0,
-  hiddenCopyProblem = false,
+  hiddenCopyProblem,
   hiddenCopyTicks = 0,
   sortedTorrent,
   sortedColumnId,

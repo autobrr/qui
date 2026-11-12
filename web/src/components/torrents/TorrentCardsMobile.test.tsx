@@ -234,7 +234,7 @@ function renderGroups(rows: Torrent[] = copyGroupRows(), props: CardsProps = {})
 const cardNames = (container: HTMLElement) => Array.from(container.querySelectorAll("h3"), name => name.textContent)
 const cardOf = (container: HTMLElement, name: string) => within(container).getByText(name)
 const pills = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label^=\"copyGroups.\"]"))
-const warnings = (container: HTMLElement) => container.querySelectorAll("button[aria-label^=\"copyGroups.copiesWithProblem\"]")
+const warnings = (container: HTMLElement) => container.querySelectorAll("button[aria-label^=\"copyGroups.labelWithProblem\"]")
 const tickedCards = (container: HTMLElement) =>
   Array.from(container.querySelectorAll("[role=\"checkbox\"][aria-checked=\"true\"]"), box => box.closest(".cursor-pointer")?.querySelector("h3")?.textContent)
 

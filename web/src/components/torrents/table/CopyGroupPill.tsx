@@ -4,6 +4,7 @@
  */
 
 import { useMediaQuery } from "@/hooks/useMediaQuery"
+import { COPY_PROBLEM_DISPLAY, type CopyProblem } from "@/lib/torrent-table/row-display"
 import { cn } from "@/lib/utils"
 import { AlertTriangle, ChevronDown } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -14,8 +15,8 @@ interface CopyGroupPillProps {
   id: string
   open: boolean
   copies: number
-  /** Only on a collapsed group: a hidden copy has a problem. */
-  hiddenProblem: boolean
+  /** Only on a collapsed group: the worst problem of its hidden copies. */
+  hiddenProblem?: CopyProblem
   /** Only on a collapsed group outside Select all mode: the ticked copies that it hides. */
   hiddenTicks: number
   /** The name that the row shows, so each pill has its own accessible name. */
@@ -31,7 +32,8 @@ const HEIGHT: Record<CopyGroupPillSize, string> = { normal: "h-5", dense: "h-[18
 export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, name, size, onToggle }: CopyGroupPillProps) {
   const { t } = useTranslation("torrents")
   const canHover = useMediaQuery("(hover: hover)")
-  const copiesLabel = hiddenProblem ? t("copyGroups.copiesWithProblem", { count: copies, name }) : t("copyGroups.copies", { count: copies, name })
+  const problem = hiddenProblem && COPY_PROBLEM_DISPLAY[hiddenProblem]
+  const copiesLabel = problem ? t("copyGroups.labelWithProblem", { label: t("copyGroups.copies", { count: copies, name }), problem: t(problem.labelKey) }) : t("copyGroups.copies", { count: copies, name })
   const label = hiddenTicks > 0 ? t("copyGroups.labelWithTicks", { label: copiesLabel, ticks: t("copyGroups.hiddenTicked", { count: hiddenTicks }) }) : copiesLabel
   return (
     // The 18px pill takes 16px of its line, so it does not make the smallest card taller.
@@ -54,10 +56,10 @@ export function CopyGroupPill({ id, open, copies, hiddenProblem, hiddenTicks, na
           "before:absolute before:-inset-x-[5px] before:content-['']",
           canHover ? "before:-inset-y-[5px]" : "before:-inset-y-48",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-          open? "border-foreground/70 bg-transparent text-foreground hover:bg-muted": hiddenProblem? "border-destructive/50 bg-destructive/10 text-foreground hover:border-destructive hover:bg-destructive/20": "border-border bg-secondary text-secondary-foreground hover:border-foreground/30 hover:bg-muted"
+          open? "border-foreground/70 bg-transparent text-foreground hover:bg-muted": problem? cn(problem.className, problem.raisedHoverClass, "text-foreground"): "border-border bg-secondary text-secondary-foreground hover:border-foreground/30 hover:bg-muted"
         )}
       >
-        {hiddenProblem && <AlertTriangle className="mr-0.5 h-3.5 w-3.5 text-destructive" aria-hidden="true" />}
+        {problem && <AlertTriangle className={cn("mr-0.5 h-3.5 w-3.5", problem.iconClass)} aria-hidden="true" />}
         <span>{hiddenTicks > 0 ? t("copyGroups.badgeTicked", { hidden: copies, count: hiddenTicks }) : t("copyGroups.badge", { hidden: copies })}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden="true" />
       </button>

@@ -1682,8 +1682,14 @@
   "copyGroups": {
     "copies_one": "Mais {{count}} cópia de {{name}}",
     "copies_other": "Mais {{count}} cópias de {{name}}",
-    "copiesWithProblem_one": "Mais {{count}} cópia de {{name}}. Uma cópia oculta tem um problema",
-    "copiesWithProblem_other": "Mais {{count}} cópias de {{name}}. Uma cópia oculta tem um problema",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Uma cópia oculta tem arquivos ausentes",
+      "error": "Uma cópia oculta tem um erro",
+      "unregistered": "Uma cópia oculta não está registrada",
+      "trackerError": "Uma cópia oculta tem um erro de tracker",
+      "trackerDown": "O tracker de uma cópia oculta está fora"
+    },
     "badge": "+{{hidden}}",
     "badgeTicked_one": "+{{hidden}} · {{count}} selecionada",
     "badgeTicked_other": "+{{hidden}} · {{count}} selecionadas",
