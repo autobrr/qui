@@ -691,6 +691,26 @@ var corpusRows = []corpusRow{
 		},
 	},
 	{
+		// regression: #3286
+		name:          "UHD and a collection before WEB-DL against the plain WEB-DL",
+		source:        "Harbor.Lights.2022.2160p.UHD.AMZN.WEB-DL.DDP5.1.x265-GRP",
+		candidate:     "Harbor.Lights.2022.2160p.AMZN.WEB-DL.DDP5.1.x265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Harbor.Lights.2022.2160p.UHD.AMZN.WEB-DL.DDP5.1.x265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #3286
+		name:          "UHD and a collection before WEB-DL against a plain BluRay",
+		source:        "Harbor.Lights.2022.2160p.UHD.AMZN.WEB-DL.DDP5.1.x265-GRP",
+		candidate:     "Harbor.Lights.2022.2160p.BluRay.DDP5.1.x265-GRP",
+		sourceSize:    corpusEpisodeSize + corpusNFOSize,
+		sourceFiles:   corpusEpisodeWithNFO("Harbor.Lights.2022.2160p.UHD.AMZN.WEB-DL.DDP5.1.x265-GRP"),
+		candidateSize: corpusEpisodeSize,
+		want:          corpusNoMatch,
+	},
+	{
 		name:          "UHD BluRay against a WEB-DL",
 		source:        "Harbor.Lights.2022.2160p.UHD.BluRay.x265-GRP",
 		candidate:     "Harbor.Lights.2022.2160p.WEB-DL.x265-GRP",
