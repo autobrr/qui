@@ -22,7 +22,11 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-const needsPermissionPrefix = "API key needs "
+const (
+	needsPermissionPrefix = "API key needs "
+	// The logger middleware answers with this body after it recovers a handler panic.
+	handlerPanicBody = "Internal Server Error\n"
+)
 
 // Routes that a key without any Permission reaches. Every other /api route
 // must refuse it.
@@ -181,6 +185,8 @@ func TestEveryPermissionReachesEveryRouteExceptBrowserOnly(t *testing.T) {
 		status, body := rig.send(t, route.Method, path, key, nil)
 		require.False(t, strings.HasPrefix(body, needsPermissionPrefix), "%s %s: %d %q", route.Method, route.Path, status, body)
 		require.False(t, isInstanceLimitRefusal(body), "%s %s: a key with no Instance limit reaches every instance: %d %q", route.Method, route.Path, status, body)
+		// regression: #4055
+		require.NotEqual(t, handlerPanicBody, body, "%s %s: the handler panicked", route.Method, route.Path)
 	})
 }
 

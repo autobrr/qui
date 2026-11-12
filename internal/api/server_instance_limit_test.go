@@ -48,9 +48,6 @@ func (rig *instanceLimitRig) addInstance(t *testing.T, name string) int {
 	t.Helper()
 	inst, err := rig.instances.Create(t.Context(), name, "http://127.0.0.1:1", "admin", "secret", nil, nil, false, nil)
 	require.NoError(t, err)
-	// The instance list reads the recent errors of an active instance, and the test client pool has no error store.
-	_, err = rig.instances.SetActiveState(t.Context(), inst.ID, false)
-	require.NoError(t, err)
 	return inst.ID
 }
 
