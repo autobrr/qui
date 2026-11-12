@@ -153,7 +153,7 @@ func TestSubscriptionChangeOnOpenStream(t *testing.T) {
 			"connectionId": stream.connectionID,
 			"add":          []map[string]any{detailsStream(instanceID, "details-a", "aaa")},
 		}))
-		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
+		manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 		frames := stream.dataFrames(t, time.Second)
 		require.Equal(t, streamEventInit, frames["details-a"][0], "the init comes first")
 		require.NotContains(t, frames["main"], streamEventInit)
@@ -167,7 +167,7 @@ func TestSubscriptionChangeOnOpenStream(t *testing.T) {
 		frames = stream.dataFrames(t, time.Second)
 		require.Equal(t, map[string][]string{"details-b": {streamEventInit}}, frames)
 
-		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 2})
+		manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 		frames = stream.dataFrames(t, time.Second)
 		require.NotEmpty(t, frames["main"])
 		require.NotEmpty(t, frames["details-b"])
@@ -206,7 +206,7 @@ func TestSubscriptionChangeOnlyFromTheOpener(t *testing.T) {
 				require.Equal(t, tc.wantStatus, w.Code)
 				synctest.Wait()
 
-				manager.HandleMainData(1, &qbt.MainData{Rid: 1})
+				manager.HandleSyncUpdate(1, qbt.SyncUpdate{})
 				frames := stream.dataFrames(t, time.Second)
 				if tc.wantStatus == http.StatusNotFound {
 					require.NotEmpty(t, frames["main"], "the opener keeps its subscription")
@@ -271,7 +271,7 @@ func TestRemovedSubscriptionGetsNoFrameFromBuildInFlight(t *testing.T) {
 
 		// The tick of the details view is in its build when the view leaves.
 		release := provider.gateTorrentBuilds()
-		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
+		manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 		synctest.Wait()
 		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
 			"connectionId": stream.connectionID,
@@ -356,7 +356,7 @@ func TestStreamFrameReadsTheCacheWithThePasskeyAccessOfItsSubscriber(t *testing.
 				require.Equal(t, tc.wantFull, frameView().FullPasskeyAccess, "the init frame")
 				builds := provider.torrentsCallCount()
 
-				manager.HandleMainData(1, &qbt.MainData{Rid: 1})
+				manager.HandleSyncUpdate(1, qbt.SyncUpdate{})
 				require.NotEmpty(t, stream.dataFrames(t, time.Second)["main"])
 				require.Greater(t, provider.torrentsCallCount(), builds)
 				require.True(t, frameView().CacheOnly, "the tick frame")

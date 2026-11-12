@@ -129,11 +129,11 @@ func (s *Service) CopyGroupsSyncSink() qbittorrent.SyncEventSink {
 	return s.copyGroups
 }
 
-// HandleMainData wakes the job when a sync added or removed a torrent, or
+// HandleSyncUpdate wakes the job when a sync added or removed a torrent, or
 // changed what the group search reads of one. The first sync of an instance
 // wakes it at once.
-func (j *copyGroupsJob) HandleMainData(instanceID int, data *qbt.MainData) {
-	if j == nil || data == nil {
+func (j *copyGroupsJob) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
+	if j == nil {
 		return
 	}
 	j.mu.Lock()
@@ -141,21 +141,21 @@ func (j *copyGroupsJob) HandleMainData(instanceID int, data *qbt.MainData) {
 	seen := j.seen[instanceID]
 	first := seen == nil
 	if first {
-		seen = make(map[string]copyGroupsPrint, len(data.Torrents))
+		seen = make(map[string]copyGroupsPrint, update.Snapshot.Len())
 		j.seen[instanceID] = seen
 	}
 	changed := false
-	for _, hash := range data.Changes.Torrents {
-		torrent, ok := data.Torrents[hash]
+	for _, hash := range update.Changes.Torrents {
+		torrent, ok := update.Snapshot.Torrent(hash)
 		if !ok {
 			continue
 		}
-		if now := newCopyGroupsPrint(&torrent); seen[hash] != now {
+		if now := newCopyGroupsPrint(torrent); seen[hash] != now {
 			seen[hash] = now
 			changed = true
 		}
 	}
-	for _, hash := range data.Changes.TorrentsRemoved {
+	for _, hash := range update.Changes.TorrentsRemoved {
 		if _, ok := seen[hash]; ok {
 			delete(seen, hash)
 			changed = true

@@ -490,7 +490,7 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 // clock, so a failing instance keeps reporting its last good sync rather than now.
 //
 // Resolve this from callback fan-out goroutines rather than directly inside
-// OnError/OnUpdate so the qBittorrent sync loop is not blocked by stream publishing.
+// OnError/OnSyncUpdate so the qBittorrent sync loop is not blocked by stream publishing.
 func (m *StreamManager) instanceLastSuccessfulSync(ctx context.Context, instanceID int) time.Time {
 	if m.clientPool == nil || instanceID <= 0 {
 		return time.Time{}
@@ -792,12 +792,8 @@ func (m *StreamManager) removeInstanceSubscriberLocked(instanceID int, id string
 	delete(m.syncBackoff, instanceID)
 }
 
-// HandleMainData implements qbittorrent.SyncEventSink.
-func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
-	if data == nil {
-		return
-	}
-
+// HandleSyncUpdate implements qbittorrent.SyncEventSink.
+func (m *StreamManager) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	if m.closing.Load() {
 		return
 	}
@@ -806,16 +802,14 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 
 	meta := &StreamMeta{
 		InstanceID: instanceID,
-		RID:        data.Rid,
-		FullUpdate: data.FullUpdate,
 		Timestamp:  time.Now(),
 		// Counts ride the same frame as the rows they describe. Without this the
 		// sidebar only refreshed on the 60s tracker-health tick, so a new torrent
 		// sat in the table for up to a minute before the sidebar counted it.
 		IncludeCounts: true,
 	}
-	if qbittorrent.ServerStateOnly(data.Changes) {
-		meta.serverState = new(data.ServerState)
+	if qbittorrent.ServerStateOnly(update.Changes) {
+		meta.serverState = new(update.ServerState)
 	}
 
 	go m.publishInstance(instanceID, meta)
@@ -878,7 +872,7 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	}
 
 	// Resolve the staleness stamp and publish asynchronously so this callback's
-	// fan-out does not hold up the qBittorrent sync loop. Mirrors HandleMainData.
+	// fan-out does not hold up the qBittorrent sync loop. Mirrors HandleSyncUpdate.
 	go func() {
 		m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
 		m.publishToInstance(instanceID, payload)
@@ -2439,7 +2433,7 @@ func jitteredInterval(interval time.Duration) time.Duration {
 // healthy delta streak and gets the short budget. A sync that another caller
 // cancelled also resets the rid, but reports no failure here. The loop then waits
 // only the short budget, and the full update, which runs on its own deadline,
-// still lands through OnUpdate.
+// still lands through OnSyncUpdate.
 func (m *StreamManager) syncTimeout(instanceID int) time.Duration {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

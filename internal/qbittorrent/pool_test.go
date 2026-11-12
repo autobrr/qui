@@ -331,13 +331,12 @@ func TestClientPoolSyncEventSinksEachGetEveryUpdate(t *testing.T) {
 	pool.AddSyncEventSink(first)
 	pool.AddSyncEventSink(second)
 
-	data := &qbt.MainData{Rid: 7}
 	syncErr := errors.New("sync failed")
-	client1.dispatchMainData(data)
+	client1.dispatchSyncUpdate(qbt.SyncUpdate{})
 	client2.dispatchSyncError(syncErr)
 	sm.notifyTrackerHealthUpdated(2)
 
-	want := []string{"maindata:1", "error:2:sync failed", "health:2"}
+	want := []string{"update:1", "error:2:sync failed", "health:2"}
 	assert.Equal(t, want, first.events, "first consumer should get every update")
 	assert.Equal(t, want, second.events, "second consumer should get every update")
 }
@@ -389,7 +388,7 @@ func TestSyncEventSinksCallConsumersInRegistrationOrder(t *testing.T) {
 		&orderSyncEventSink{name: "second", calls: &calls},
 	}
 
-	sinks.HandleMainData(1, &qbt.MainData{})
+	sinks.HandleSyncUpdate(1, qbt.SyncUpdate{})
 	sinks.HandleSyncError(1, errors.New("sync failed"))
 	sinks.HandleTrackerHealthUpdated(1)
 
@@ -401,17 +400,19 @@ type orderSyncEventSink struct {
 	calls *[]string
 }
 
-func (o *orderSyncEventSink) HandleMainData(int, *qbt.MainData) { *o.calls = append(*o.calls, o.name) }
-func (o *orderSyncEventSink) HandleTrackerHealthUpdated(int)    { *o.calls = append(*o.calls, o.name) }
-func (o *orderSyncEventSink) HandleSyncError(int, error)        { *o.calls = append(*o.calls, o.name) }
+func (o *orderSyncEventSink) HandleSyncUpdate(int, qbt.SyncUpdate) {
+	*o.calls = append(*o.calls, o.name)
+}
+func (o *orderSyncEventSink) HandleTrackerHealthUpdated(int) { *o.calls = append(*o.calls, o.name) }
+func (o *orderSyncEventSink) HandleSyncError(int, error)     { *o.calls = append(*o.calls, o.name) }
 
 // recordingSyncEventSink records each update in the order it arrives.
 type recordingSyncEventSink struct {
 	events []string
 }
 
-func (r *recordingSyncEventSink) HandleMainData(instanceID int, _ *qbt.MainData) {
-	r.events = append(r.events, fmt.Sprintf("maindata:%d", instanceID))
+func (r *recordingSyncEventSink) HandleSyncUpdate(instanceID int, _ qbt.SyncUpdate) {
+	r.events = append(r.events, fmt.Sprintf("update:%d", instanceID))
 }
 
 func (r *recordingSyncEventSink) HandleTrackerHealthUpdated(instanceID int) {

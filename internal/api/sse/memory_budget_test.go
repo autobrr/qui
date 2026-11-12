@@ -20,7 +20,7 @@ import (
 // The bytes that the stream allocates to build the payload of one view on a
 // library of biglib.Size torrents (ADR 0051).
 func TestMemoryBudget_StreamPayload(t *testing.T) {
-	const budget = 21 * biglib.MB
+	const budget = 10 * biglib.MB
 
 	client, err := qbittorrent.NewClientWithTimeout(1, biglib.Serve(t, biglib.Torrents(biglib.Size)), "", "", "", nil, nil, false, time.Minute, time.Minute)
 	require.NoError(t, err)
