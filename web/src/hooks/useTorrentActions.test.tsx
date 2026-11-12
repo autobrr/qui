@@ -600,44 +600,6 @@ describe("useTorrentActions - rename", () => {
 })
 
 describe("useTorrentActions - prepare helpers", () => {
-  it("prepareRecheckAction opens the dialog for many torrents but acts immediately for a single one", async () => {
-    const { result } = renderActions()
-
-    // count > 1 -> open dialog, no immediate bulkAction
-    act(() => {
-      result.current.prepareRecheckAction(ticks("h1", "h2"))
-    })
-    expect(result.current.showRecheckDialog).toBe(true)
-    expect(mockedApi.bulkAction).not.toHaveBeenCalled()
-
-    // count <= 1 -> immediate action
-    await act(async () => {
-      result.current.prepareRecheckAction(ticks("solo"))
-    })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0)
-    })
-    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
-    expect(mockedApi.bulkAction.mock.calls[0][1].action).toBe("recheck")
-  })
-
-  it("prepareRecheckAction pins the single-torrent recheck to its instance so the unified view does not fan out by hash", async () => {
-    const { result } = renderActions({ instanceIds: [3, 4, 5] })
-
-    await act(async () => {
-      result.current.prepareRecheckAction(pairs([{ instanceId: 3, hash: "shared" }]))
-    })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0)
-    })
-    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
-    expect(mockedApi.bulkAction.mock.calls[0][1]).toMatchObject({
-      action: "recheck",
-      hashes: [],
-      targets: [{ instanceId: 3, hash: "shared" }],
-    })
-  })
-
   it("prepareTmmAction keeps the choice, and the confirm sends it for the Action target", async () => {
     const { result } = renderActions({ instanceIds: [3, 4, 5] })
 
@@ -673,23 +635,6 @@ describe("useTorrentActions - prepare helpers", () => {
   })
 })
 
-describe("useTorrentActions - dead query keys", () => {
-  it("never refetches or invalidates torrent-counts: no query registers that key", async () => {
-    const { result, refetchSpy, invalidateSpy } = renderActions()
-
-    await act(async () => {
-      result.current.handleAction("pause", ticks("h1"))
-    })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10000)
-    })
-
-    const touchedKeys = [...refetchSpy.mock.calls, ...invalidateSpy.mock.calls]
-      .map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
-    expect(touchedKeys).not.toContain("torrent-counts")
-  })
-})
-
 describe("useTorrentActions - post-action refetch backstop", () => {
   // Rows outside the SSE live window are only updated by these delayed
   // refetches. The first one can read the backend before its post-action sync
@@ -700,51 +645,6 @@ describe("useTorrentActions - post-action refetch backstop", () => {
       const key = (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey
       return Array.isArray(key) && key[0] === "torrents-list"
     }).length
-
-  it("schedules a follow-up list refetch after the first one", async () => {
-    const { result, refetchSpy } = renderActions()
-
-    await act(async () => {
-      result.current.handleAction("pause", ticks("h1"))
-    })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0)
-    })
-    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
-
-    expect(countListRefetches(refetchSpy)).toBe(0)
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
-    })
-    expect(countListRefetches(refetchSpy)).toBe(1)
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000)
-    })
-    expect(countListRefetches(refetchSpy)).toBe(2)
-  })
-
-  it("a burst of mutations collapses into one trailing refetch pair (per-instance debounce)", async () => {
-    const { result, refetchSpy } = renderActions()
-
-    // Five rapid actions: without debouncing this schedules 10 refetches.
-    for (const action of ["pause", "resume", "pause", "resume", "pause"] as const) {
-      await act(async () => {
-        result.current.handleAction(action, ticks("h1"))
-      })
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0)
-      })
-    }
-    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(5)
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10000)
-    })
-    // Only the last action's pair survives: one window refetch + one verification pass.
-    expect(countListRefetches(refetchSpy)).toBe(2)
-  })
 
   it("tag updates schedule the follow-up list refetch too", async () => {
     const { result, refetchSpy } = renderActions()
@@ -845,7 +745,5 @@ describe("useTorrentActions - stable handlers", () => {
 
     expect(result.current.handleAction).toBe(first.handleAction)
     expect(result.current.handleSetCategory).toBe(first.handleSetCategory)
-    expect(result.current.prepareRecheckAction).toBe(first.prepareRecheckAction)
-    expect(result.current.prepareReannounceAction).toBe(first.prepareReannounceAction)
   })
 })

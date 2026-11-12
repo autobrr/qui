@@ -4,9 +4,9 @@ name: Build PR image
 # release.yml only pushes images for in-repo PRs. The workflow file comes from
 # the ref it is dispatched on; only the build context is checked out from the
 # fork, so fork code never changes what runs with the repository token.
-# Premium themes are skipped: make themes-fetch would run the fork's Makefile
-# with THEMES_REPO_TOKEN. Caches are restore-only: fork code runs before a
-# save, and release.yml restores the same keys.
+# The community themes come from steps in this file, not from the fork's
+# Makefile. Caches are restore-only: fork code runs before a save, and
+# release.yml restores the same keys.
 on:
   workflow_dispatch:
     inputs:
@@ -55,6 +55,19 @@ jobs:
           ref: ${{ steps.pr.outputs.sha }}
           persist-credentials: false
 
+      - name: Fetch community themes
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: autobrr/qui-community-themes
+          ref: main
+          path: .themes-temp
+          sparse-checkout: themes
+          persist-credentials: false
+
+      # Files that start with "_" (the template) are not themes.
+      - name: Copy community themes
+        run: cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/
+
       - name: Set up Node
         uses: actions/setup-node@v7.1.0
         with:
@@ -86,6 +99,15 @@ jobs:
       - name: Build web frontend
         working-directory: web
         run: CI= pnpm run build
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+
+      - name: Write the notices file
+        run: go run ./scripts/notices
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4.7.0
@@ -138,5 +160,5 @@ jobs:
             echo
             echo "- source: \`${{ steps.pr.outputs.repo }}@${{ steps.pr.outputs.sha }}\` (PR ${{ steps.pr.outputs.state }})"
             echo "- platforms: \`${{ inputs.platforms }}\`"
-            echo "- premium themes: not included"
+            echo "- community themes: included"
           } >> "$GITHUB_STEP_SUMMARY"

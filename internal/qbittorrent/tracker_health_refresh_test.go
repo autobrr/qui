@@ -64,8 +64,8 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 	t.Cleanup(client.optimisticUpdates.Close)
 	// Later requests skip the network, so a synctest bubble can advance its clock.
 	serveInProcess(client.Client, handler)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
-	require.True(t, client.supportsTrackerInclude())
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
+	require.True(t, client.Supports(CapTrackerHealth))
 
 	rig.sm = NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 	rig.sm.SetSyncEventSink(rig.sink)

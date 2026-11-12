@@ -22,31 +22,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
-)
 
-var (
-	setTagsMinVersion                    = semver.MustParse("2.11.4")
-	setCommentMinVersion                 = semver.MustParse("2.12.1")
-	torrentCreationMinVersion            = semver.MustParse("2.11.2")
-	exportTorrentMinVersion              = semver.MustParse("2.8.11")
-	trackerEditingMinVersion             = semver.MustParse("2.2.0")
-	trackerIncludeMinVersion             = semver.MustParse("2.11.4")
-	announceFlagsMinVersion              = semver.MustParse("2.11.7") // qBittorrent 5.2: has_tracker_* flags in sync/maindata
-	filePriorityMinVersion               = semver.MustParse("2.2.0")
-	renameTorrentMinVersion              = semver.MustParse("2.0.0")
-	renameFileMinVersion                 = semver.MustParse("2.4.0")
-	renameFolderMinVersion               = semver.MustParse("2.7.0")
-	subcategoriesMinVersion              = semver.MustParse("2.9.0")
-	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
-	categorySavePathNestingMinVersion    = semver.MustParse("2.10.0") // qBittorrent 5.0; 4.6.x is 2.9.x
-	categoryFileNameMinVersion           = semver.MustParse("2.15.4") // qBittorrent 5.3; 5.2.x is 2.15.1, and dev builds at 2.15.3 predate the rule
-	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
-	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
-	testEmailMinVersion                  = semver.MustParse("2.11.2")
-	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
-	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
-	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
-	partialCategoryEditMinVersion        = semver.MustParse("2.16.1") // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 // splitHostUserinfo strips userinfo credentials from a host URL, returning the
@@ -79,34 +56,13 @@ type peerSyncEntry struct {
 
 type Client struct {
 	*qbt.Client
-	instanceID                 int
-	webAPIVersion              string
-	supportsSetTags            bool
-	supportsSetComment         bool
-	supportsTorrentCreation    bool
-	supportsTorrentExport      bool
-	supportsTrackerEditing     bool
-	supportsRenameTorrent      bool
-	supportsRenameFile         bool
-	supportsRenameFolder       bool
-	supportsFilePriority       bool
-	supportsSubcategories      bool
-	subcategoriesAlwaysEnabled bool
-	nestsCategorySavePaths     bool
-	categoryFileNames          bool
-	supportsTorrentTmpPath     bool
-	supportsPathAutocomplete   bool
-	supportsTestEmail          bool
-	trackerIncludeSupported    bool
-	supportsAnnounceFlags      bool
-	supportsSetRSSFeedURL      bool
-	supportsShareLimitsAction  bool
-	supportsShareLimitsMode    bool
-	partialCategoryEdit        bool
-	lastHealthCheck            time.Time
-	isHealthy                  bool
-	syncManager                *qbt.SyncManager
-	peerSyncManager            map[string]*peerSyncEntry
+	instanceID int
+	// version is nil while the Web API version is unknown.
+	version         *semver.Version
+	lastHealthCheck time.Time
+	isHealthy       bool
+	syncManager     *syncowner.Owner
+	peerSyncManager map[string]*peerSyncEntry
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates    *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions    map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
@@ -228,25 +184,20 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	syncOpts.DynamicSync = true
 
 	// Set up health check callbacks
-	syncOpts.OnUpdate = client.handleSyncUpdate
+	syncOpts.OnSyncUpdate = client.handleSyncUpdate
 
 	syncOpts.OnError = client.handleSyncManagerError
+	syncOpts.BeforeFullUpdate = client.refreshCapabilitiesBeforeFullUpdate
+	syncOpts.OnTorrentsLeftOut = client.handleTorrentsLeftOut
 
-	client.syncManager = qbtClient.NewSyncManager(syncOpts)
+	client.syncManager = syncowner.New(qbtClient, syncOpts)
 	// The tracker manager did not exist during the capability refresh above.
-	client.syncManager.Trackers().SetUseIncludeTrackers(client.supportsTrackerInclude())
+	client.syncManager.Trackers().SetUseIncludeTrackers(client.Supports(CapTrackerHealth))
 
 	log.Debug().
 		Int("instanceID", instanceID).
 		Str("host", instanceHost).
 		Str("webAPIVersion", client.GetWebAPIVersion()).
-		Bool("supportsSetTags", client.SupportsSetTags()).
-		Bool("supportsSetComment", client.SupportsSetComment()).
-		Bool("supportsTorrentCreation", client.SupportsTorrentCreation()).
-		Bool("supportsTorrentExport", client.SupportsTorrentExport()).
-		Bool("supportsTrackerEditing", client.SupportsTrackerEditing()).
-		Bool("supportsFilePriority", client.SupportsFilePriority()).
-		Bool("supportsSubcategories", client.SupportsSubcategories()).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
 
@@ -268,7 +219,7 @@ func (c *Client) GetLastHealthCheck() time.Time {
 // advances on failed sync attempts too and would mask a stalled instance from
 // readiness/staleness checks.
 func (c *Client) GetLastSyncUpdate() time.Time {
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return time.Time{}
 	}
@@ -289,18 +240,18 @@ func (c *Client) IsHealthy() bool {
 	return c.isHealthy
 }
 
-func (c *Client) handleSyncUpdate(data *qbt.MainData) {
-	c.prunePeerSyncManagers(data)
-	if !ServerStateOnly(data.Changes) {
+func (c *Client) handleSyncUpdate(update qbt.SyncUpdate) {
+	c.prunePeerSyncManagers(update.Snapshot)
+	if !ServerStateOnly(update.Changes) {
 		c.countsGen.Add(1)
 	}
 	c.updateHealthStatus(true)
-	c.updateServerState(data)
-	c.handleCompletionUpdates(data)
-	c.handleAddedUpdates(data)
-	log.Trace().Int("instanceID", c.instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
+	c.updateServerState(update.ServerState)
+	c.handleCompletionUpdates(update)
+	c.handleAddedUpdates(update)
+	log.Trace().Int("instanceID", c.instanceID).Int("torrentCount", update.Snapshot.Len()).Msg("Sync manager update received, marking client as healthy")
 
-	c.dispatchMainData(data)
+	c.dispatchSyncUpdate(update)
 }
 
 // handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
@@ -335,6 +286,14 @@ func (c *Client) handleSyncManagerError(err error) {
 	log.Warn().Err(err).Int("instanceID", c.instanceID).Msg("Sync manager error received, marking client as unhealthy")
 
 	c.dispatchSyncError(err)
+}
+
+// Before 5.3.0rc1, qBittorrent sends such a diff after it lost a sync response.
+func (c *Client) handleTorrentsLeftOut(hashes []string) {
+	log.Warn().
+		Int("instanceID", c.instanceID).
+		Int("torrents", len(hashes)).
+		Msg("qBittorrent sent new torrents with missing fields, waiting for the next full sync update")
 }
 
 // isContextStopped recognizes explicit context cancellation even after retry wrappers flatten the sentinel.
@@ -384,29 +343,11 @@ func IsDeadlineExpired(err error) bool {
 		strings.Contains(msg, "client.timeout exceeded")
 }
 
-func (c *Client) SupportsTorrentCreation() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTorrentCreation
-}
-
-func (c *Client) SupportsTrackerEditing() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTrackerEditing
-}
-
 // SetSyncEventSink registers the sink that should receive sync notifications.
 func (c *Client) SetSyncEventSink(sink SyncEventSink) {
 	c.mu.Lock()
 	c.syncEventSink = sink
 	c.mu.Unlock()
-}
-
-func (c *Client) SupportsTorrentExport() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTorrentExport
 }
 
 // truncateWebAPIVersion bounds error text when a proxy answers the webapiVersion
@@ -422,99 +363,106 @@ func truncateWebAPIVersion(s string) string {
 	return strings.ToValidUTF8(s[:maxLen], "") + "..."
 }
 
-// RefreshCapabilities fetches the latest WebAPI version information and recalculates feature support flags.
+// RefreshCapabilities reads the Web API version again. A failed read, or an
+// answer that is not a version, leaves the version unknown, and Supports
+// answers no until a read succeeds. A timed-out or cancelled read keeps the
+// last version: a saturated WebUI is slow, not changed, and a caller that
+// stops says nothing about the instance.
 func (c *Client) RefreshCapabilities(ctx context.Context) error {
-	version, err := c.GetWebAPIVersionCtx(ctx)
-	if err != nil {
+	version, err := c.fetchWebAPIVersion(ctx)
+	if IsDeadlineExpired(err) || isContextStopped(err) {
 		return err
 	}
 
-	version = strings.TrimSpace(version)
-	if version == "" {
-		return fmt.Errorf("%w: response body is empty", errInvalidWebAPIVersion)
-	}
-	if _, err := semver.NewVersion(version); err != nil {
-		return fmt.Errorf("%w %q: %w", errInvalidWebAPIVersion, truncateWebAPIVersion(version), err)
-	}
-
-	c.mu.Lock()
-	previousVersion := c.webAPIVersion
-	c.applyCapabilitiesLocked(version)
-	supportsInclude := c.trackerIncludeSupported
-	c.mu.Unlock()
-
-	// Update TrackerManager's include capability
-	if tm := c.trackerManager(); tm != nil {
-		tm.SetUseIncludeTrackers(supportsInclude)
-	}
-
-	if previousVersion != "" && previousVersion != version {
+	previous := c.setVersion(version)
+	if previous != nil && version != nil && !previous.Equal(version) {
 		log.Info().
 			Int("instanceID", c.instanceID).
-			Str("previousVersion", previousVersion).
-			Str("newVersion", version).
+			Str("previousVersion", previous.Original()).
+			Str("newVersion", version.Original()).
 			Msg("qBittorrent version changed, refreshed capabilities")
 	}
 
+	return err
+}
+
+// setVersion stores version, nil while unknown, and returns the previous one.
+func (c *Client) setVersion(version *semver.Version) *semver.Version {
+	c.mu.Lock()
+	previous := c.version
+	c.version = version
+	c.mu.Unlock()
+
+	if tm := c.trackerManager(); tm != nil {
+		tm.SetUseIncludeTrackers(versionSupports(version, CapTrackerHealth))
+	}
+	return previous
+}
+
+func (c *Client) fetchWebAPIVersion(ctx context.Context) (*semver.Version, error) {
+	raw, err := c.GetWebAPIVersionCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("%w: response body is empty", errInvalidWebAPIVersion)
+	}
+	version, err := semver.NewVersion(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w %q: %w", errInvalidWebAPIVersion, truncateWebAPIVersion(raw), err)
+	}
+	return version, nil
+}
+
+// refreshCapabilitiesBeforeFullUpdate reads the Web API version before a full
+// sync update reaches any consumer. qBittorrent sends one after each restart,
+// so an upgrade or a downgrade takes effect before the new list does. A failed
+// read leaves the version unknown and does not fail the sync, which succeeded:
+// OnError would mark the instance down and send the stream an error.
+func (c *Client) refreshCapabilitiesBeforeFullUpdate(ctx context.Context, _ *qbt.MainData) error {
+	err := c.RefreshCapabilities(ctx)
+	// A stopped sync, as at shutdown, is no failure of the instance.
+	if err == nil || isContextStopped(err) {
+		return nil
+	}
+	// RefreshCapabilities keeps the version on a timeout, for a health check.
+	// A full update can come from a restarted qBittorrent with another version.
+	if IsDeadlineExpired(err) {
+		c.setVersion(nil)
+	}
+	log.Warn().Err(err).Int("instanceID", c.instanceID).Msg("Failed to read the qBittorrent version on a full sync update")
 	return nil
 }
 
-func (c *Client) applyCapabilitiesLocked(version string) {
-	c.webAPIVersion = version
-
-	v, err := semver.NewVersion(version)
-	if err != nil {
-		log.Warn().
-			Int("instanceID", c.instanceID).
-			Str("webAPIVersion", version).
-			Err(err).
-			Msg("Failed to parse qBittorrent WebAPI version; leaving capability flags unchanged")
-		return
+// EnsureCapabilities reads the Web API version only when it is unknown. A
+// healthy client can still have an unknown version.
+func (c *Client) EnsureCapabilities(ctx context.Context) error {
+	if c.GetWebAPIVersion() != "" {
+		return nil
 	}
-
-	c.supportsSetTags = !v.LessThan(setTagsMinVersion)
-	c.supportsSetComment = !v.LessThan(setCommentMinVersion)
-	c.supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
-	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
-	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
-	c.trackerIncludeSupported = !v.LessThan(trackerIncludeMinVersion)
-	c.supportsAnnounceFlags = !v.LessThan(announceFlagsMinVersion)
-	c.supportsFilePriority = !v.LessThan(filePriorityMinVersion)
-	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
-	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
-	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
-	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
-	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
-	c.nestsCategorySavePaths = !v.LessThan(categorySavePathNestingMinVersion)
-	c.categoryFileNames = !v.LessThan(categoryFileNameMinVersion)
-	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
-	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
-	c.supportsTestEmail = !v.LessThan(testEmailMinVersion)
-	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
-	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
-	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
-	c.partialCategoryEdit = !v.LessThan(partialCategoryEditMinVersion)
+	return c.RefreshCapabilities(ctx)
 }
 
-// EditsCategoriesPartially reports whether an editCategory keeps the options
-// it leaves out (qBittorrent 5.3+). Before that, an edit replaces them all.
-func (c *Client) EditsCategoriesPartially() bool {
+// Supports reports whether the qBittorrent version of the instance has the
+// capability. While the version is unknown, it answers no.
+func (c *Client) Supports(capability Capability) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.partialCategoryEdit
+	return versionSupports(c.version, capability)
 }
 
-func (c *Client) updateServerState(data *qbt.MainData) {
+func (c *Client) updateServerState(state qbt.ServerState) {
 	c.serverStateMu.Lock()
 	defer c.serverStateMu.Unlock()
 
-	if data == nil || data.ServerState == (qbt.ServerState{}) {
+	if state == (qbt.ServerState{}) {
 		c.lastServerState = nil
 		return
 	}
 
-	stateCopy := data.ServerState
-	c.lastServerState = &stateCopy
+	c.lastServerState = &state
 }
 
 func (c *Client) clearServerState() {
@@ -536,89 +484,54 @@ func (c *Client) GetCachedServerState() *qbt.ServerState {
 	return &stateCopy
 }
 
-func (c *Client) SupportsRenameTorrent() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsRenameTorrent
+// hasAnyTorrent reports whether at least one of hashes is in the cache. It stops
+// at the first hit and copies no torrents.
+func (c *Client) hasAnyTorrent(hashes []string) bool {
+	syncManager := c.SyncOwner()
+	if syncManager == nil {
+		return false
+	}
+	snapshot := snapshotIndex(syncManager.Snapshot())
+	return slices.ContainsFunc(hashes, func(hash string) bool {
+		_, ok := snapshot.Torrent(hash)
+		return ok
+	})
 }
 
-func (c *Client) SupportsRenameFile() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsRenameFile
-}
-
-func (c *Client) SupportsRenameFolder() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsRenameFolder
-}
-
-func (c *Client) SupportsFilePriority() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsFilePriority
-}
-
-func (c *Client) SupportsSubcategories() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsSubcategories
-}
-
-func (c *Client) SubcategoriesAlwaysEnabled() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.subcategoriesAlwaysEnabled
-}
-
-// NestsCategorySavePaths reports whether this qBittorrent version can resolve an
-// empty category save path under the parent category. qBittorrent 4.6 shows
-// subcategories but always saves to the default save path plus the full name.
-func (c *Client) NestsCategorySavePaths() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.nestsCategorySavePaths
-}
-
-// CategoryFileNames reports whether this qBittorrent names the folder of a
-// category with no save path with toValidFileName, not toValidPath.
-func (c *Client) CategoryFileNames() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.categoryFileNames
-}
-
-func (c *Client) SupportsTorrentTmpPath() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTorrentTmpPath
-}
-
-func (c *Client) SupportsPathAutocomplete() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsPathAutocomplete
-}
-
-func (c *Client) SupportsTestEmail() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsTestEmail
-}
-
-// getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
-func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
-	syncManager := c.GetSyncManager()
+// getTorrentsByHashes returns the torrents of the hashes from the Sync
+// snapshot, visiting only those. It can start a sync when the data is stale.
+// The torrents are shared: copy one before you change it.
+func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
+	return torrentsByHash(snapshotIndex(syncManager.Snapshot()), hashes)
+}
 
-	return syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+// getTorrentsByHashesUnchecked is getTorrentsByHashes without a sync.
+func (c *Client) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+	syncManager := c.SyncOwner()
+	if syncManager == nil {
+		return nil
+	}
+	return torrentsByHash(snapshotIndex(syncManager.SnapshotUnchecked()), hashes)
+}
+
+// torrentsByHash returns the torrents of snapshot with one of hashes, in the
+// order of hashes. A repeated hash repeats its torrent.
+func torrentsByHash(snapshot torrentLookup, hashes []string) []*qbt.Torrent {
+	found := make([]*qbt.Torrent, 0, len(hashes))
+	for _, hash := range hashes {
+		if t, ok := snapshot.Torrent(hash); ok {
+			found = append(found, t)
+		}
+	}
+	return found
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	// Empty version means capabilities never loaded; sync updates stamp health, so keep probing.
+	// While the version is unknown, keep probing: sync updates stamp health.
 	if c.GetWebAPIVersion() != "" && c.IsHealthy() && time.Since(c.GetLastHealthCheck()) < minHealthCheckInterval {
 		return nil
 	}
@@ -635,99 +548,69 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) SupportsSetTags() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsSetTags
-}
-
-func (c *Client) SupportsSetComment() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsSetComment
-}
-
-func (c *Client) SupportsTrackerHealth() bool {
-	return c.supportsTrackerInclude()
-}
-
-func (c *Client) SupportsSetRSSFeedURL() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsSetRSSFeedURL
-}
-
-// SupportsShareLimitsAction reports whether extended setShareLimits is available for ratio,
-// seeding time, inactive seeding, and share-limit action (shareLimitsActionMinVersion, Web API 2.15.1+).
-func (c *Client) SupportsShareLimitsAction() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsShareLimitsAction
-}
-
-// SupportsShareLimitsMode reports whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll).
-// Gated by shareLimitsModeMinVersion (Web API 2.16.0+).
-func (c *Client) SupportsShareLimitsMode() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsShareLimitsMode
-}
-
+// GetWebAPIVersion returns the Web API version as qBittorrent reported it, or
+// "" while it is unknown. Ask Supports for a capability.
 func (c *Client) GetWebAPIVersion() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.webAPIVersion
+	if c.version == nil {
+		return ""
+	}
+	return c.version.Original()
 }
 
-func (c *Client) GetSyncManager() *qbt.SyncManager {
+func (c *Client) SyncOwner() *syncowner.Owner {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.syncManager
 }
 
 func (c *Client) trackerManager() *qbt.TrackerManager {
-	syncManager := c.GetSyncManager()
+	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
 	return syncManager.Trackers()
 }
 
-func (c *Client) supportsTrackerInclude() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.trackerIncludeSupported
-}
-
-// announceFlagsSupported reports whether sync/maindata carries the per-torrent
-// announce flags that tracker health follows.
-func (c *Client) announceFlagsSupported() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.supportsAnnounceFlags
-}
-
-func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+// trackerDetails returns the trackers of the torrents from the tracker cache
+// and fetches the hashes that the cache does not hold. A torrent that already
+// carries trackers keeps them. It writes the trackers into torrents, so pass
+// copies that the caller owns, never the torrents of a Sync snapshot.
+func (c *Client) trackerDetails(ctx context.Context, torrents []qbt.Torrent) (TrackerLookup, error) {
 	tm := c.trackerManager()
 	if tm == nil {
-		return torrents, nil, nil, errors.New("tracker manager unavailable")
+		return nil, errors.New("tracker manager unavailable")
 	}
 
-	enriched, trackerData := tm.HydrateTorrents(ctx, torrents)
-	return enriched, trackerData, nil, nil
+	_, lookup := tm.HydrateTorrents(ctx, torrents)
+	return lookup, nil
 }
 
 // refreshTrackers fetches tracker data for every torrent in one request, bypassing
-// the tracker cache. A torrent that the fetch does not return keeps no tracker data:
+// the tracker cache. A torrent that the fetch does not return gets no entry:
 // cached MainData can still hold a torrent that qBittorrent already deleted, and
 // that torrent must not block every pass.
-func (c *Client) refreshTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, error) {
+func (c *Client) refreshTrackers(ctx context.Context, torrents []*qbt.Torrent) (TrackerLookup, error) {
 	tm := c.trackerManager()
 	if tm == nil {
-		return torrents, errors.New("tracker manager unavailable")
+		return nil, errors.New("tracker manager unavailable")
 	}
-	torrents, _, err := tm.Refresh(ctx, torrents)
-	return torrents, err
+	_, lookup, err := tm.Refresh(ctx, trackerManagerInput(torrents))
+	return lookup, err
+}
+
+// trackerManagerInput builds the torrents that the tracker manager of
+// go-qbittorrent writes to. The manager reads only the hash and the trackers,
+// so the input holds only those, and the shared torrents of the Sync snapshot
+// stay as they are.
+func trackerManagerInput(torrents []*qbt.Torrent) []qbt.Torrent {
+	input := make([]qbt.Torrent, len(torrents))
+	for i, torrent := range torrents {
+		input[i].Hash = torrent.Hash
+		input[i].Trackers = torrent.Trackers
+	}
+	return input
 }
 
 func (c *Client) invalidateTrackerCache(hashes ...string) {
@@ -742,13 +625,9 @@ func (c *Client) getSyncEventSink() SyncEventSink {
 	return c.syncEventSink
 }
 
-func (c *Client) dispatchMainData(data *qbt.MainData) {
-	if data == nil {
-		return
-	}
-
+func (c *Client) dispatchSyncUpdate(update qbt.SyncUpdate) {
 	if sink := c.getSyncEventSink(); sink != nil {
-		sink.HandleMainData(c.instanceID, data)
+		sink.HandleSyncUpdate(c.instanceID, update)
 	}
 }
 
@@ -841,11 +720,7 @@ func (q *handlerQueue) run() {
 	}
 }
 
-func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
-	if data == nil {
-		return
-	}
-
+func (c *Client) handleCompletionUpdates(update qbt.SyncUpdate) {
 	c.completionMu.Lock()
 	if c.completionState == nil {
 		c.completionState = make(map[string]bool)
@@ -854,14 +729,16 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	notify := c.completionNotify
 	handler := c.completionHandler
 
-	pruneRemovedTorrents(c.completionState, data.Torrents)
+	for _, hash := range update.Changes.TorrentsRemoved {
+		delete(c.completionState, hash)
+	}
 
 	if !c.completionInit {
-		if len(data.Torrents) == 0 {
+		if update.Snapshot.Len() == 0 {
 			c.completionMu.Unlock()
 			return
 		}
-		for hash, torrent := range data.Torrents {
+		for _, torrent := range update.Snapshot.Torrents() {
 			// Mirror the steady-state trust model: while checking/moving or
 			// stopped, byte counts can be verification fractions, so a
 			// completed torrent observed there must baseline on the stamp
@@ -870,9 +747,9 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 			// re-downloading after a failed recheck keeps its stamp but must
 			// not baseline as complete, or its real completion never fires.
 			if isCheckingState(torrent.State) || isStoppedOrErrorState(torrent.State) {
-				c.completionState[hash] = hasCompletionStamp(&torrent)
+				c.completionState[torrent.Hash] = hasCompletionStamp(torrent)
 			} else {
-				c.completionState[hash] = isTorrentComplete(&torrent)
+				c.completionState[torrent.Hash] = isTorrentComplete(torrent)
 			}
 		}
 		c.completionInit = true
@@ -880,14 +757,19 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		return
 	}
 
+	// A torrent that the sync did not change keeps its completeness.
 	ready := make([]qbt.Torrent, 0)
-	for hash, torrent := range data.Torrents {
+	for _, hash := range update.Changes.Torrents {
+		torrent, ok := update.Snapshot.Torrent(hash)
+		if !ok {
+			continue
+		}
 		if isCheckingState(torrent.State) {
 			// Progress is verification progress while checking/moving; keep
 			// the last known state instead of misreading it.
 			continue
 		}
-		isComplete := isTorrentComplete(&torrent)
+		isComplete := isTorrentComplete(torrent)
 		if !isComplete && isStoppedOrErrorState(torrent.State) {
 			// One-way door for stopped/error states: qbit can serialize a
 			// stale verification fraction as progress there, so completeness
@@ -901,7 +783,7 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		c.completionState[hash] = isComplete
 
 		if !alreadyHandled && isComplete {
-			ready = append(ready, torrent)
+			ready = append(ready, *torrent)
 		}
 	}
 	c.completionMu.Unlock()
@@ -923,20 +805,7 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	c.completionQueue.push(calls...)
 }
 
-// pruneRemovedTorrents drops hashes missing from the merged torrent map.
-// go-qbittorrent never forwards TorrentsRemoved to OnUpdate.
-func pruneRemovedTorrents[V any](state map[string]V, torrents map[string]qbt.Torrent) {
-	maps.DeleteFunc(state, func(hash string, _ V) bool {
-		_, exists := torrents[hash]
-		return !exists
-	})
-}
-
-func (c *Client) handleAddedUpdates(data *qbt.MainData) {
-	if data == nil {
-		return
-	}
-
+func (c *Client) handleAddedUpdates(update qbt.SyncUpdate) {
 	c.addedMu.Lock()
 	if c.addedState == nil {
 		c.addedState = make(map[string]struct{})
@@ -944,24 +813,30 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 
 	handler := c.addedHandler
 
-	pruneRemovedTorrents(c.addedState, data.Torrents)
+	for _, hash := range update.Changes.TorrentsRemoved {
+		delete(c.addedState, hash)
+	}
 
 	if !c.addedInit {
-		if len(data.Torrents) == 0 {
+		if update.Snapshot.Len() == 0 {
 			c.addedMu.Unlock()
 			return
 		}
-		for hash := range data.Torrents {
-			c.addedState[hash] = struct{}{}
+		for _, torrent := range update.Snapshot.Torrents() {
+			c.addedState[torrent.Hash] = struct{}{}
 		}
 		c.addedInit = true
 		c.addedMu.Unlock()
 		return
 	}
 
-	ready := make([]qbt.Torrent, 0)
-	for hash, torrent := range data.Torrents {
+	ready := make([]*qbt.Torrent, 0)
+	for _, hash := range update.Changes.Torrents {
 		if _, ok := c.addedState[hash]; ok {
+			continue
+		}
+		torrent, ok := update.Snapshot.Torrent(hash)
+		if !ok {
 			continue
 		}
 		c.addedState[hash] = struct{}{}
@@ -974,7 +849,7 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 	}
 
 	now := time.Now()
-	ready = slices.DeleteFunc(ready, func(torrent qbt.Torrent) bool {
+	ready = slices.DeleteFunc(ready, func(torrent *qbt.Torrent) bool {
 		return torrent.AddedOn > 0 && now.Sub(time.Unix(torrent.AddedOn, 0)) > torrentAddedGraceWindow
 	})
 	if len(ready) == 0 {
@@ -1109,12 +984,11 @@ func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
 	return entry.manager
 }
 
-func (c *Client) prunePeerSyncManagers(data *qbt.MainData) {
+func (c *Client) prunePeerSyncManagers(snapshot *qbt.SyncSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// OnUpdate supplies the complete merged torrent map, including after a delta.
 	maps.DeleteFunc(c.peerSyncManager, func(hash string, entry *peerSyncEntry) bool {
-		if _, exists := data.Torrents[hash]; exists {
+		if _, exists := snapshot.Torrent(hash); exists {
 			return false
 		}
 		entry.timer.Stop()
@@ -1127,18 +1001,19 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
 	now := time.Now()
-	syncManager := c.GetSyncManager()
+	var snapshot torrentIndex = noTorrents{}
+	if syncManager := c.SyncOwner(); syncManager != nil {
+		snapshot = snapshotIndex(syncManager.Snapshot())
+	}
 
 	// Apply optimistic updates based on action using sync manager data
 	for _, hash := range hashes {
 		var originalState qbt.TorrentState
 		var progress float64
 
-		if syncManager != nil {
-			if torrent, exists := syncManager.GetTorrent(hash); exists {
-				originalState = torrent.State
-				progress = torrent.Progress
-			}
+		if torrent, exists := snapshot.Torrent(hash); exists {
+			originalState = torrent.State
+			progress = torrent.Progress
 		}
 
 		state := getTargetState(action, progress)

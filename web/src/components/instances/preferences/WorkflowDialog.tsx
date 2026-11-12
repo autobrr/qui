@@ -9,13 +9,13 @@ import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
   CONDITION_FIELDS,
   CATEGORY_UNCATEGORIZED_VALUE,
-  FIELD_REQUIREMENTS,
   SCORE_FIELDS,
   SORT_FIELDS,
   STATE_VALUE_REQUIREMENTS,
   getCapabilityReason,
+  getDisabledFields,
+  getRuleSkipReason,
   type Capabilities,
-  type DisabledField,
   type DisabledStateValue
 } from "@/components/query-builder/constants"
 import {
@@ -89,13 +89,14 @@ import type {
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Info, Loader2, Plus, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { RunWorkflowNowDialog } from "./RunWorkflowNowDialog"
-import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+import { DryRunToggle, WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+import { EDITING, workflowSaveFlowReducer } from "@/lib/workflow-save-flow"
 
 let ruleIdCounter = 0
 
@@ -149,6 +150,7 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   external_program: "preferences.workflowDialog.dryRun.actions.externalProgram",
   exported_to_instance: "preferences.workflowDialog.dryRun.actions.exportedToInstance",
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
+  rule_skipped: "preferences.workflowDialog.dryRun.actions.ruleSkipped",
 }
 
 // Outside the map: an action of this name would otherwise claim its own fallback.
@@ -210,6 +212,8 @@ function formatDryRunEventSummary(
     }
     case "dry_run_no_match":
       return t("preferences.workflowDialog.dryRun.summary.noMatches")
+    case "rule_skipped":
+      return getRuleSkipReason(details, t)
     case "paused":
     case "resumed":
     case "rechecked":
@@ -227,12 +231,6 @@ function formatDryRunEventSummary(
     default:
       return t("preferences.workflowDialog.dryRun.summary.completed")
   }
-}
-
-function getDisabledFields(capabilities: Capabilities, isRemote: boolean, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledField[] {
-  return Object.entries(FIELD_REQUIREMENTS)
-    .filter(([, capability]) => !capabilities[capability as keyof Capabilities])
-    .map(([field, capability]) => ({ field, reason: getCapabilityReason(capability, t, isRemote) }))
 }
 
 function getDisabledStateValues(capabilities: Capabilities, t: ReturnType<typeof useTranslation<"instances">>["t"]): DisabledStateValue[] {
@@ -584,27 +582,22 @@ const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
-  const simpleSortDisabledFields = useMemo(() => {
-    const reason = t("preferences.workflowDialog.priority.notSupportedForSimpleSort")
-    return SIMPLE_SORT_DISABLED_FIELDS.map(field => ({ field, reason }))
-  }, [t])
   const scoreMultiplierDisabledFields = useMemo(() => {
     const reason = t("preferences.workflowDialog.priority.notSupportedForScoreMultiplier")
     return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
   }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
-  const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
-  const [previewInput, setPreviewInput] = useState<FormState | null>(null)
-  const [previewError, setPreviewError] = useState<string | null>(null)
+  const loadedForm = useRef<FormState | null>(null)
+  const currentForm = useRef(formState)
+  const saveCheckRun = useRef(0)
+  const [saveFlow, dispatchSaveFlow] = useReducer(workflowSaveFlowReducer, EDITING)
+  const preview = saveFlow.step === "previewing" ? saveFlow.preview : null
+  const previewResult = preview?.status === "loaded" ? preview.result : null
   const previewRequestRef = useRef(0)
   const [livePreviewResult, setLivePreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [isLivePreviewLoading, setIsLivePreviewLoading] = useState(false)
   const [livePreviewError, setLivePreviewError] = useState<string | null>(null)
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [showRunNowDialog, setShowRunNowDialog] = useState(false)
-  const [enabledBeforePreview, setEnabledBeforePreview] = useState<boolean | null>(null)
-  const [showDryRunPrompt, setShowDryRunPrompt] = useState(false)
-  const [dryRunPromptedForNew, setDryRunPromptedForNew] = useState(false)
   const [latestDryRunEvents, setLatestDryRunEvents] = useState<AutomationActivity[]>([])
   const [latestDryRunError, setLatestDryRunError] = useState<string | null>(null)
   const [latestDryRunStartedAt, setLatestDryRunStartedAt] = useState<string | null>(null)
@@ -612,7 +605,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
-  const [isInitialLoading, setIsInitialLoading] = useState(false)
   // Speed limit units - track separately so they persist when value is cleared
   const [uploadSpeedUnit, setUploadSpeedUnit] = useState(1024) // Default MiB/s
   const [downloadSpeedUnit, setDownloadSpeedUnit] = useState(1024) // Default MiB/s
@@ -631,23 +623,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const livePreviewRequestRef = useRef(0)
   // Track whether we're in initial hydration to avoid noisy toasts when loading existing rules
   const isHydrating = useRef(true)
-  const dryRunPromptKey = rule?.id ? `workflow-dry-run-prompted:${rule.id}` : null
-
-  const hasPromptedDryRun = useCallback(() => {
-    if (!rule?.id) return dryRunPromptedForNew
-    if (typeof window === "undefined" || !dryRunPromptKey) return true
-    return window.localStorage.getItem(dryRunPromptKey) === "1"
-  }, [dryRunPromptKey, dryRunPromptedForNew, rule?.id])
-
-  const markDryRunPrompted = useCallback(() => {
-    if (!rule?.id) {
-      setDryRunPromptedForNew(true)
-      return
-    }
-    if (typeof window !== "undefined" && dryRunPromptKey) {
-      window.localStorage.setItem(dryRunPromptKey, "1")
-    }
-  }, [dryRunPromptKey, rule?.id])
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
   const indexerTrackerDomainsQuery = useIndexerTrackerDomains({ enabled: open })
@@ -680,7 +655,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   })
   const hasNotificationTargets = (notificationTargets ?? []).length > 0
 
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
@@ -694,12 +668,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const fieldCapabilities = useMemo<Capabilities>(
     () => ({
-      trackerHealth: supportsTrackerHealth,
+      supportsLiveReannounce: capabilities?.supportsLiveReannounce ?? false,
+      supportsListFieldsV5: capabilities?.supportsListFieldsV5 ?? false,
+      supportsTrackerHealth: capabilities?.supportsTrackerHealth ?? false,
+      supportsListCreatedBy: capabilities?.supportsListCreatedBy ?? false,
       read: canRead,
       trustedIdentity: hasTrustedIdentity,
     }),
-    [supportsTrackerHealth, canRead, hasTrustedIdentity]
+    [capabilities, canRead, hasTrustedIdentity]
   )
+  // A field the instance does not send cannot sort either. The first reason wins, so a field
+  // that cannot sort at all keeps the sort reason.
+  const simpleSortDisabledFields = useMemo(() => {
+    const reason = t("preferences.workflowDialog.priority.notSupportedForSimpleSort")
+    return [
+      ...SIMPLE_SORT_DISABLED_FIELDS.map(field => ({ field, reason })),
+      ...getDisabledFields(fieldCapabilities, isRemoteInstance, t),
+    ]
+  }, [t, fieldCapabilities, isRemoteInstance])
 
   // Callback for path autocomplete suggestion selection
   const handleFreeSpacePathSelect = useCallback((path: string) => {
@@ -1188,6 +1174,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprExportContentLayout,
         }
         setFormState(newState)
+        loadedForm.current = newState
       } else {
         setFormState(emptyFormState)
       }
@@ -1207,29 +1194,21 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [open, rule, mapDomainsToOptionValues])
 
   useEffect(() => {
+    currentForm.current = formState
+  }, [formState])
+
+  useEffect(() => {
     if (!open) {
-      setShowDryRunPrompt(false)
+      saveCheckRun.current += 1
+      dispatchSaveFlow({ type: "closed" })
       setLatestDryRunEvents([])
       setLatestDryRunError(null)
       setLatestDryRunStartedAt(null)
       setActivityRunDialog(null)
       setMovePathServerError(null)
       setMovePathDryRunAttempted(false)
-      return
     }
-    if (!rule) {
-      setDryRunPromptedForNew(false)
-    }
-  }, [open, rule])
-
-  useEffect(() => {
-    if (!open || !rule?.id || !rule.enabled) {
-      return
-    }
-    if (typeof window !== "undefined" && dryRunPromptKey) {
-      window.localStorage.setItem(dryRunPromptKey, "1")
-    }
-  }, [dryRunPromptKey, open, rule?.enabled, rule?.id])
+  }, [open])
 
   // Auto-switch delete mode from keep-files to deleteWithFiles when FREE_SPACE is used
   // This prevents users from creating invalid combinations that the backend would reject
@@ -1284,8 +1263,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return false
     }
     if (!pathSourceAvailable) {
-      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.localAccessRequired"))
-      toast.error(t("preferences.workflowDialog.toast.enableLocalAccessOrDefault"))
+      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.filesystemAccessRequired"))
+      toast.error(t("preferences.workflowDialog.toast.setUpFilesystemAccessOrDefault"))
       return false
     }
 
@@ -1591,7 +1570,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const isCategoryRule = formState.categoryEnabled
   // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
   const isTagRule = formState.tagEnabled && !formState.deleteEnabled && !formState.categoryEnabled
-  const previewCategory = (previewInput?.exprCategory ?? formState.exprCategory) || t("preferences.workflowDialog.uncategorized")
+  const previewCategory = formState.exprCategory || t("preferences.workflowDialog.uncategorized")
 
   // Check if condition uses FREE_SPACE field (for free space source UI - shown regardless of action)
   const conditionUsesFreeSpace = useMemo(() => {
@@ -1654,19 +1633,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         throw error
       }
     },
-    onSuccess: (result, { input, requestId }) => {
+    onSuccess: (result, { requestId }) => {
       // Ignore results that arrive after the user saved without waiting.
       if (requestId !== previewRequestRef.current) return
-      // Last warning before enabling a delete rule (even if 0 matches right now).
-      setPreviewInput(input)
-      setPreviewResult(result)
-      setIsInitialLoading(false)
+      dispatchSaveFlow({ type: "previewLoaded", result })
     },
     onError: (error, { requestId }) => {
       if (requestId !== previewRequestRef.current) return
       // Keep the dialog open: the user can still save without a preview.
-      setPreviewError(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.previewFailed"))
-      setIsInitialLoading(false)
+      dispatchSaveFlow({ type: "previewFailed", error: error instanceof Error ? error.message : t("preferences.workflowDialog.toast.previewFailed") })
     },
   })
 
@@ -1674,21 +1649,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // Reset preview view to "needed" when starting a new preview
     setPreviewView("needed")
     // Open dialog immediately with loading state
-    setPreviewResult(null)
-    setPreviewError(null)
-    setIsInitialLoading(true)
-    setShowConfirmDialog(true)
+    dispatchSaveFlow({ type: "previewStarted" })
     previewRequestRef.current += 1
     previewMutation.mutate({ input, view: "needed", requestId: previewRequestRef.current })
   }, [previewMutation])
 
   const loadMorePreview = useMutation({
     mutationFn: async () => {
-      if (!previewInput || !previewResult) {
+      if (!previewResult) {
         throw new Error("Preview data not available")
       }
       const payload = {
-        ...buildPayload(previewInput),
+        ...buildPayload(formState),
         previewLimit: previewPageSize,
         previewOffset: previewResult.examples.length,
         previewView: previewView,
@@ -1696,7 +1668,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return api.previewAutomation(instanceId, payload)
     },
     onSuccess: (result) => {
-      setPreviewResult(prev => prev ? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches } : result)
+      dispatchSaveFlow({ type: "morePreviewLoaded", result })
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.loadMoreFailed"))
@@ -1704,7 +1676,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   })
 
   const handleLoadMore = () => {
-    if (!previewInput || !previewResult) {
+    if (!previewResult) {
       return
     }
     loadMorePreview.mutate()
@@ -1783,23 +1755,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     latestDryRunError !== null ||
     latestDryRunStartedAt !== null
 
-  const livePreviewPayload = useMemo(() => {
-    if (!open) return null
-    if (!(isDeleteRule || isCategoryRule || isTagRule)) return null
-    if (isDeleteRule && !formState.actionCondition) return null
-    if (isCategoryRule && formState.exprCategory === undefined) return null
-    if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return null
-    if (!hasValidFreeSpaceSourceForLivePreview(formState)) return null
+  const livePreviewPayloadKey = useMemo(() => {
+    if (!open) return ""
+    if (!(isDeleteRule || isCategoryRule || isTagRule)) return ""
+    if (isDeleteRule && !formState.actionCondition) return ""
+    if (isCategoryRule && formState.exprCategory === undefined) return ""
+    if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return ""
+    if (!hasValidFreeSpaceSourceForLivePreview(formState)) return ""
 
     try {
-      return {
+      return JSON.stringify({
         ...buildPayload(formState),
+        // The preview reads neither switch, so a flip of one sends no request.
+        enabled: false,
+        dryRun: false,
         previewLimit: livePreviewPageSize,
         previewOffset: 0,
         previewView: "needed" as PreviewView,
-      }
+      })
     } catch {
-      return null
+      return ""
     }
   }, [
     buildPayload,
@@ -1812,13 +1787,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     open,
   ])
 
-  const livePreviewPayloadKey = useMemo(
-    () => livePreviewPayload ? JSON.stringify(livePreviewPayload) : "",
-    [livePreviewPayload]
-  )
-
   useEffect(() => {
-    if (!livePreviewPayload) {
+    if (!livePreviewPayloadKey) {
       livePreviewRequestRef.current += 1
       setLivePreviewResult(null)
       setLivePreviewError(null)
@@ -1833,7 +1803,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     const timeout = setTimeout(async () => {
       try {
-        const result = await api.previewAutomation(instanceId, livePreviewPayload)
+        const result = await api.previewAutomation(instanceId, JSON.parse(livePreviewPayloadKey))
         if (livePreviewRequestRef.current !== requestID) return
         setLivePreviewResult(result)
       } catch (error) {
@@ -1848,7 +1818,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }, 400)
 
     return () => clearTimeout(timeout)
-  }, [instanceId, livePreviewPayload, livePreviewPayloadKey, t])
+  }, [instanceId, livePreviewPayloadKey, t])
 
   const handleRunDryRunNow = () => {
     const dryRunInput: FormState = { ...formState }
@@ -1912,61 +1882,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return true
   }, [nonSelfInstances, t])
 
-  const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
-    if (checked && isDeleteRule && !formState.actionCondition) {
-      toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
-      return
-    }
-    if (checked && !validateCategory(formState)) return
-    if (checked && !validateTags(formState)) return
-    if (checked && !validateExportTarget(formState)) {
-      return
-    }
-
-    if (checked && (isDeleteRule || isCategoryRule || isTagRule)) {
-      const nextState = {
-        ...formState,
-        enabled: true,
-        dryRun: options?.forceDryRun ? true : formState.dryRun,
-      }
-      if (!validateFreeSpaceSource(nextState)) {
-        return
-      }
-      setEnabledBeforePreview(formState.enabled)
-      setFormState(nextState)
-      startPreview(nextState)
-      return
-    }
-
-    setFormState(prev => ({
-      ...prev,
-      enabled: checked,
-      dryRun: options?.forceDryRun ? true : prev.dryRun,
-    }))
-  }, [formState, isCategoryRule, isDeleteRule, isTagRule, startPreview, t, validateCategory, validateExportTarget, validateFreeSpaceSource, validateTags])
-
-  const handleEnabledToggle = useCallback((checked: boolean) => {
-    if (checked && !formState.dryRun && !hasPromptedDryRun()) {
-      setShowDryRunPrompt(true)
-      return
-    }
-    applyEnabledChange(checked)
-  }, [applyEnabledChange, formState.dryRun, hasPromptedDryRun])
-
   // Handler for switching preview view - refetches with new view and resets pagination
   const handlePreviewViewChange = async (newView: PreviewView) => {
-    if (!previewInput) return
+    if (!previewResult) return
     setPreviewView(newView)
     setIsLoadingPreviewView(true)
     try {
       const payload = {
-        ...buildPayload(previewInput),
+        ...buildPayload(formState),
         previewLimit: previewPageSize,
         previewOffset: 0,
         previewView: newView,
       }
       const result = await api.previewAutomation(instanceId, payload)
-      setPreviewResult(result)
+      dispatchSaveFlow({ type: "previewLoaded", result })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.switchViewFailed"))
     } finally {
@@ -1991,7 +1920,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   ]
 
   const handleExport = async () => {
-    if (!previewInput || !previewResult) return
+    if (!previewResult) return
 
     setIsExporting(true)
     try {
@@ -2002,7 +1931,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
       while (allItems.length < total) {
         const payload = {
-          ...buildPayload(previewInput),
+          ...buildPayload(formState),
           previewLimit: pageSize,
           previewOffset: offset,
           previewView,
@@ -2035,9 +1964,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     },
     onSuccess: () => {
       toast.success(t("preferences.workflowDialog.toast.workflowSaved", { action: rule ? "updated" : "created" }))
-      setShowConfirmDialog(false)
-      setPreviewResult(null)
-      setPreviewInput(null)
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
       onSuccess?.()
@@ -2055,6 +1981,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     setRegexErrors([]) // Clear previous errors
 
     const submitState: FormState = { ...formState }
+
+    if (rule && JSON.stringify(submitState) === JSON.stringify(loadedForm.current)) {
+      onOpenChange(false)
+      return
+    }
 
     if (!validateFreeSpaceSource(submitState)) {
       return
@@ -2165,6 +2096,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // Validate regex patterns before saving (only if enabling the workflow)
     const payload = buildPayload(submitState)
     if (submitState.enabled) {
+      saveCheckRun.current += 1
+      const checkRun = saveCheckRun.current
       try {
         const validation = await api.validateAutomationRegex(instanceId, payload)
         if (!validation.valid && validation.errors.length > 0) {
@@ -2176,32 +2109,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         // If validation endpoint fails, let the save attempt proceed
         // The backend will still reject invalid regexes
       }
+      // A newer Save or a close replaced this check, or the user edited the form. The next Save checks the new values.
+      if (checkRun !== saveCheckRun.current || JSON.stringify(currentForm.current) !== JSON.stringify(submitState)) return
     }
 
-    // For delete, category and tag rules, show preview as a last warning before enabling.
-    const needsPreview = (isDeleteRule || isCategoryRule || isTagRule) && submitState.enabled
-    if (needsPreview) {
+    if (!submitState.enabled) {
+      createOrUpdate.mutate(submitState)
+    } else if (isDeleteRule || isCategoryRule || isTagRule) {
       startPreview(submitState)
     } else {
-      createOrUpdate.mutate(submitState)
+      dispatchSaveFlow({ type: "dryRunAsked" })
     }
   }
 
-  const handleConfirmSave = () => {
-    if (!validateCategory(formState)) return
-    if (!validateTags(formState)) return
-    // Clear the stored value so onOpenChange won't restore it after successful save
-    setEnabledBeforePreview(null)
-    // Drop any preview still in flight; the user chose to save without it.
-    previewRequestRef.current += 1
-    if (!validateFreeSpaceSource(formState)) {
-      return
-    }
-    if (!validateExportTarget(formState)) {
-      return
-    }
-    createOrUpdate.mutate(formState)
-  }
+  const setDryRun = (dryRun: boolean) => setFormState(prev => ({ ...prev, dryRun }))
 
   return (
     <>
@@ -2576,6 +2497,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <p className="text-xs text-muted-foreground">
                           {t("preferences.workflowDialog.addConditionsToPreview")}
                         </p>
+                      ) : livePreviewResult.skipped ? (
+                        <p className="text-xs text-amber-500">{getRuleSkipReason(livePreviewResult.skipped, t)}</p>
                       ) : (
                         <>
                           <p className="text-xs text-muted-foreground">
@@ -3915,7 +3838,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <SelectContent>
                         <SelectItem value="qbittorrent">{t("preferences.workflowDialog.freeSpace.defaultSource")}</SelectItem>
                         <SelectItem value="path" disabled={!pathSourceAvailable}>
-                          {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
+                          {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceFilesystemAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
                       </SelectContent>
                     </Select>
@@ -4101,7 +4024,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <Switch
                     id="rule-enabled"
                     checked={formState.enabled}
-                    onCheckedChange={handleEnabledToggle}
+                    onCheckedChange={(checked) => setFormState(prev => ({ ...prev, enabled: checked }))}
                   />
                   <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.enabled")}</Label>
                 </div>
@@ -4109,7 +4032,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <Switch
                     id="rule-dry-run"
                     checked={formState.dryRun}
-                    onCheckedChange={(checked) => setFormState(prev => ({ ...prev, dryRun: checked }))}
+                    onCheckedChange={setDryRun}
                   />
                   <Label htmlFor="rule-dry-run" className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.dryRun")}</Label>
                 </div>
@@ -4209,21 +4132,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       />
 
       <WorkflowPreviewDialog
-        open={showConfirmDialog}
+        open={preview !== null}
         onOpenChange={(open) => {
           if (!open) {
-            // Restore enabled state if user cancels the preview
-            if (enabledBeforePreview !== null) {
-              setFormState(prev => ({ ...prev, enabled: enabledBeforePreview }))
-              setEnabledBeforePreview(null)
-            }
+            // Drop any preview still in flight, also when the user saves without it.
             previewRequestRef.current += 1
-            setPreviewResult(null)
-            setPreviewInput(null)
-            setPreviewError(null)
-            setIsInitialLoading(false)
+            previewMutation.reset()
+            dispatchSaveFlow({ type: "closed" })
           }
-          setShowConfirmDialog(open)
         }}
         title={
           isDeleteRule? (formState.enabled? t("preferences.workflowDialog.preview.confirmDeleteRule"): t("preferences.workflowDialog.preview.previewDeleteRule")): isCategoryRule? t("preferences.workflowDialog.preview.confirmCategoryChange", {
@@ -4280,9 +4196,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           )
         }
         preview={previewResult}
-        condition={previewInput?.actionCondition ?? formState.actionCondition}
-        onConfirm={handleConfirmSave}
-        previewError={previewError}
+        condition={formState.actionCondition}
+        onConfirm={() => createOrUpdate.mutate(formState)}
+        previewError={preview?.status === "failed" ? preview.error : null}
+        dryRun={formState.dryRun}
+        onDryRunChange={setDryRun}
         onLoadMore={handleLoadMore}
         isLoadingMore={loadMorePreview.isPending}
         confirmLabel={t("preferences.workflowDialog.saveRule")}
@@ -4295,8 +4213,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         isLoadingPreview={isLoadingPreviewView}
         onExport={handleExport}
         isExporting={isExporting}
-        isInitialLoading={isInitialLoading}
-        showScore={(previewInput?.sortingType ?? formState.sortingType) === "score"}
+        isInitialLoading={preview?.status === "loading"}
+        showScore={formState.sortingType === "score"}
       />
 
       {activityRunDialog && (
@@ -4312,7 +4230,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         />
       )}
 
-      <AlertDialog open={showDryRunPrompt} onOpenChange={setShowDryRunPrompt}>
+      <AlertDialog
+        open={saveFlow.step === "askingDryRun"}
+        onOpenChange={(open) => {
+          if (!open) dispatchSaveFlow({ type: "closed" })
+        }}
+      >
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>{t("preferences.workflowDialog.enableDryRunPrompt.title")}</AlertDialogTitle>
@@ -4320,27 +4243,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               {t("preferences.workflowDialog.enableDryRunPrompt.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <DryRunToggle checked={formState.dryRun} onCheckedChange={setDryRun} />
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowDialog.cancel")}</AlertDialogCancel>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                markDryRunPrompted()
-                setShowDryRunPrompt(false)
-                applyEnabledChange(true)
-              }}
-            >
-              {t("preferences.workflowDialog.enableDryRunPrompt.enableWithout")}
-            </Button>
-            <AlertDialogAction
-              onClick={() => {
-                markDryRunPrompted()
-                setShowDryRunPrompt(false)
-                applyEnabledChange(true, { forceDryRun: true })
-              }}
-            >
-              {t("preferences.workflowDialog.enableDryRunPrompt.enableWith")}
+            <AlertDialogAction onClick={() => createOrUpdate.mutate(formState)}>
+              {rule?.enabled ? t("preferences.workflowDialog.save") : t("preferences.workflowDialog.enableDryRunPrompt.saveAndEnable")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

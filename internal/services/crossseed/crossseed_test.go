@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -248,7 +249,7 @@ func TestFindBestCandidateMatch_SingleFileSourceVsPackWithSample(t *testing.T) {
 	candidate := CrossSeedCandidate{
 		InstanceID:   1,
 		InstanceName: "test",
-		Torrents: []qbt.Torrent{{
+		Torrents: []*qbt.Torrent{{
 			Hash:     "abc123",
 			Name:     "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP",
 			Progress: 1.0,
@@ -1634,6 +1635,19 @@ func (f *fakeInstanceStore) List(_ context.Context) ([]*models.Instance, error) 
 	return result, nil
 }
 
+// testTorrentRefs returns references to copies of torrents, as a read of the
+// Sync snapshot returns references.
+func testTorrentRefs(torrents []qbt.Torrent) []*qbt.Torrent {
+	if torrents == nil {
+		return nil
+	}
+	refs := make([]*qbt.Torrent, len(torrents))
+	for i := range torrents {
+		refs[i] = new(torrents[i])
+	}
+	return refs
+}
+
 type fakeSyncManager struct {
 	cached map[int][]internalqb.CrossInstanceTorrentView
 	all    map[int][]qbt.Torrent
@@ -1678,9 +1692,9 @@ func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent, files
 	}
 }
 
-func (f *fakeSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *fakeSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if torrents, ok := f.all[instanceID]; ok {
-		return torrents, nil
+		return testTorrentRefs(torrents), nil
 	}
 	return nil, fmt.Errorf("instance %d not found", instanceID)
 }
@@ -1777,8 +1791,8 @@ func (f *fakeSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (f *fakeSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
-	return nil, errors.New("GetQBittorrentSyncManager not implemented in fakeSyncManager")
+func (f *fakeSyncManager) GetSyncOwner(_ context.Context, _ int) (*syncowner.Owner, error) {
+	return nil, errors.New("GetSyncOwner not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -1910,7 +1924,7 @@ type mockRecoverSyncManager struct {
 	disappearAfterRecheck       bool                    // whether torrent disappears after recheck
 	bulkActionFails             bool                    // whether BulkAction should fail
 	keepInCheckingState         bool                    // whether to keep torrent in checking state
-	failGetTorrentsAfterRecheck bool                    // whether GetTorrents should fail after recheck
+	failGetTorrentsAfterRecheck bool                    // whether GetTorrentRefs should fail after recheck
 	setProgressToThreshold      bool                    // whether to set progress exactly at threshold
 	hasRechecked                bool                    // track if recheck has been called
 	secondRecheckCompletes      bool                    // whether second recheck should complete torrents
@@ -1938,12 +1952,12 @@ func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncMa
 	}
 }
 
-func (m *mockRecoverSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	m.calls = append(m.calls, "GetTorrents")
+func (m *mockRecoverSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	m.calls = append(m.calls, "GetTorrentRefs")
 
 	if m.failGetTorrentsAfterRecheck && m.hasRechecked {
 		// Return empty list to simulate torrent disappearing
-		return []qbt.Torrent{}, nil
+		return testTorrentRefs([]qbt.Torrent{}), nil
 	}
 
 	var result []qbt.Torrent
@@ -1958,7 +1972,7 @@ func (m *mockRecoverSyncManager) GetTorrents(_ context.Context, instanceID int, 
 			result = append(result, *torrent)
 		}
 	}
-	return result, nil
+	return testTorrentRefs(result), nil
 }
 
 func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
@@ -2059,7 +2073,7 @@ func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (m *mockRecoverSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (m *mockRecoverSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -2083,7 +2097,7 @@ func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {
 	mockSync := newMockRecoverSyncManager([]qbt.Torrent{normalTorrent})
 	svc := &Service{syncManager: mockSync}
 
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{normalTorrent})
+	err := svc.recoverErroredTorrents(context.Background(), 1, []*qbt.Torrent{&normalTorrent})
 	require.NoError(t, err)
 
 	// Should not have made any calls
@@ -2111,7 +2125,7 @@ func TestRecoverErroredTorrents_ContextCancelled(t *testing.T) {
 	// Cancel context immediately
 	cancel()
 
-	err := svc.recoverErroredTorrents(ctx, 1, []qbt.Torrent{erroredTorrent1, erroredTorrent2})
+	err := svc.recoverErroredTorrents(ctx, 1, []*qbt.Torrent{&erroredTorrent1, &erroredTorrent2})
 	require.Error(t, err)
 	assert.Equal(t, context.Canceled, err)
 }
@@ -2145,7 +2159,7 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent, missingFilesTorrent, downloadingTorrent, completedTorrent})
 	svc := &Service{syncManager: mockSync}
 
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent, missingFilesTorrent, downloadingTorrent, completedTorrent})
+	err := svc.recoverErroredTorrents(context.Background(), 1, []*qbt.Torrent{&erroredTorrent, &missingFilesTorrent, &downloadingTorrent, &completedTorrent})
 	require.NoError(t, err)
 
 	// Should have batched pause, recheck, and resume only on errored and missing files torrents
@@ -2265,14 +2279,14 @@ func newInfohashTestSyncManager() *infohashTestSyncManager {
 	}
 }
 
-func (f *infohashTestSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *infohashTestSyncManager) GetTorrentRefs(_ context.Context, instanceID int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	list := f.torrents[instanceID]
 	if list == nil {
 		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
 	}
 	copied := make([]qbt.Torrent, len(list))
 	copy(copied, list)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -2346,7 +2360,7 @@ func (f *infohashTestSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (f *infohashTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (f *infohashTestSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -2659,16 +2673,6 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	// Should proceed with download on error (graceful degradation)
 	assert.True(t, downloadCalled, "should download torrent when hash check fails")
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-}
-
-func TestIsSkippedCrossSeedResultStatusIncludesBelowThreshold(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, isSkippedCrossSeedResultStatus("below_threshold"))
-	assert.True(t, isSkippedCrossSeedResultStatus("requires_hardlink_reflink"))
-	assert.True(t, isSkippedCrossSeedResultStatus("content_mismatch"))
-	assert.False(t, isSkippedCrossSeedResultStatus("size_mismatch"))
-	assert.False(t, isSkippedCrossSeedResultStatus("hardlink_error"))
 }
 
 func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
@@ -3115,622 +3119,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 	}
 }
 
-func TestMatchesWebhookSourceFilters(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		torrent  *qbt.Torrent
-		settings *models.CrossSeedAutomationSettings
-		want     bool
-	}{
-		{
-			name:     "nil torrent returns false",
-			torrent:  nil,
-			settings: &models.CrossSeedAutomationSettings{},
-			want:     false,
-		},
-		{
-			name:     "nil settings returns false",
-			torrent:  &qbt.Torrent{Category: "movies"},
-			settings: nil,
-			want:     false,
-		},
-		{
-			name:     "empty filters match all torrents",
-			torrent:  &qbt.Torrent{Category: "movies", Tags: "cross-seed"},
-			settings: &models.CrossSeedAutomationSettings{},
-			want:     true,
-		},
-		{
-			name:    "exclude category skips matching torrent",
-			torrent: &qbt.Torrent{Category: "cross-seed-link"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude category allows non-matching torrent",
-			torrent: &qbt.Torrent{Category: "movies"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
-			},
-			want: true,
-		},
-		{
-			name:    "multiple exclude categories work",
-			torrent: &qbt.Torrent{Category: "temp"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeCategories: []string{"cross-seed-link", "temp", "staging"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude tag skips matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, temporary"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeTags: []string{"temporary"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude tag allows non-matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, important"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeTags: []string{"temporary"},
-			},
-			want: true,
-		},
-		{
-			name:    "include category requires match",
-			torrent: &qbt.Torrent{Category: "tv"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories: []string{"movies"},
-			},
-			want: false,
-		},
-		{
-			name:    "include category allows matching torrent",
-			torrent: &qbt.Torrent{Category: "movies"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories: []string{"movies", "tv"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag requires at least one match",
-			torrent: &qbt.Torrent{Tags: "important"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceTags: []string{"important", "priority"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag rejects when no match",
-			torrent: &qbt.Torrent{Tags: "random"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceTags: []string{"important", "priority"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude takes precedence over include",
-			torrent: &qbt.Torrent{Category: "movies"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories:        []string{"movies", "tv"},
-				WebhookSourceExcludeCategories: []string{"movies"},
-			},
-			want: false,
-		},
-		{
-			name:    "empty category with exclude filter passes",
-			torrent: &qbt.Torrent{Category: ""},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
-			},
-			want: true,
-		},
-		{
-			name:    "empty tags with include tag filter fails",
-			torrent: &qbt.Torrent{Tags: ""},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceTags: []string{"important"},
-			},
-			want: false,
-		},
-		{
-			name:    "tags are case-sensitive",
-			torrent: &qbt.Torrent{Tags: "Important"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceTags: []string{"important"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude tag takes precedence over include tag",
-			torrent: &qbt.Torrent{Tags: "important, blocked"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceTags:        []string{"important"},
-				WebhookSourceExcludeTags: []string{"blocked"},
-			},
-			want: false,
-		},
-		{
-			name:    "category and tag filters both apply - passes both",
-			torrent: &qbt.Torrent{Category: "movies", Tags: "important"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories: []string{"movies"},
-				WebhookSourceTags:       []string{"important"},
-			},
-			want: true,
-		},
-		{
-			name:    "passes category filter but fails tag filter",
-			torrent: &qbt.Torrent{Category: "movies", Tags: "random"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories: []string{"movies"},
-				WebhookSourceTags:       []string{"important"},
-			},
-			want: false,
-		},
-		{
-			name:    "passes tag filter but fails category filter",
-			torrent: &qbt.Torrent{Category: "tv", Tags: "important"},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories: []string{"movies"},
-				WebhookSourceTags:       []string{"important"},
-			},
-			want: false,
-		},
-		{
-			name:    "empty category with include category filter fails",
-			torrent: &qbt.Torrent{Category: ""},
-			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories: []string{"movies"},
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := matchesWebhookSourceFilters(tt.torrent, tt.settings)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func TestMatchesRSSSourceFilters(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		torrent  *qbt.Torrent
-		settings *models.CrossSeedAutomationSettings
-		want     bool
-	}{
-		{
-			name:     "nil torrent returns false",
-			torrent:  nil,
-			settings: &models.CrossSeedAutomationSettings{},
-			want:     false,
-		},
-		{
-			name:     "nil settings returns false",
-			torrent:  &qbt.Torrent{Category: "movies"},
-			settings: nil,
-			want:     false,
-		},
-		{
-			name:     "empty filters match all torrents",
-			torrent:  &qbt.Torrent{Category: "movies", Tags: "cross-seed"},
-			settings: &models.CrossSeedAutomationSettings{},
-			want:     true,
-		},
-		{
-			name:    "exclude category skips matching torrent",
-			torrent: &qbt.Torrent{Category: "AlphaRatio-Race"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceExcludeCategories: []string{"AlphaRatio-Race"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude category allows non-matching torrent",
-			torrent: &qbt.Torrent{Category: "AlphaRatio-LTS"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceExcludeCategories: []string{"AlphaRatio-Race"},
-			},
-			want: true,
-		},
-		{
-			name:    "multiple exclude categories work",
-			torrent: &qbt.Torrent{Category: "Mixed-Race"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceExcludeCategories: []string{"AlphaRatio-Race", "Mixed-Race", "TV-Race"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude tag skips matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, temporary"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceExcludeTags: []string{"temporary"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude tag allows non-matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, important"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceExcludeTags: []string{"temporary"},
-			},
-			want: true,
-		},
-		{
-			name:    "include category requires match",
-			torrent: &qbt.Torrent{Category: "TV-Race"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceCategories: []string{"TV-LTS", "Movies-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "include category allows matching torrent",
-			torrent: &qbt.Torrent{Category: "TV-LTS"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceCategories: []string{"TV-LTS", "Movies-LTS"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag requires at least one match",
-			torrent: &qbt.Torrent{Tags: "important"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceTags: []string{"important", "priority"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag rejects when no match",
-			torrent: &qbt.Torrent{Tags: "random"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceTags: []string{"important", "priority"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude takes precedence over include",
-			torrent: &qbt.Torrent{Category: "TV-LTS"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceCategories:        []string{"TV-LTS", "Movies-LTS"},
-				RSSSourceExcludeCategories: []string{"TV-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "empty category with exclude filter passes",
-			torrent: &qbt.Torrent{Category: ""},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceExcludeCategories: []string{"AlphaRatio-Race"},
-			},
-			want: true,
-		},
-		{
-			name:    "empty tags with include tag filter fails",
-			torrent: &qbt.Torrent{Tags: ""},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceTags: []string{"important"},
-			},
-			want: false,
-		},
-		{
-			name:    "tags are case-sensitive",
-			torrent: &qbt.Torrent{Tags: "Important"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceTags: []string{"important"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude tag takes precedence over include tag",
-			torrent: &qbt.Torrent{Tags: "important, blocked"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceTags:        []string{"important"},
-				RSSSourceExcludeTags: []string{"blocked"},
-			},
-			want: false,
-		},
-		{
-			name:    "category and tag filters both apply - passes both",
-			torrent: &qbt.Torrent{Category: "TV-LTS", Tags: "important"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceCategories: []string{"TV-LTS"},
-				RSSSourceTags:       []string{"important"},
-			},
-			want: true,
-		},
-		{
-			name:    "passes category filter but fails tag filter",
-			torrent: &qbt.Torrent{Category: "TV-LTS", Tags: "random"},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceCategories: []string{"TV-LTS"},
-				RSSSourceTags:       []string{"important"},
-			},
-			want: false,
-		},
-		{
-			name:    "empty category with include category filter fails",
-			torrent: &qbt.Torrent{Category: ""},
-			settings: &models.CrossSeedAutomationSettings{
-				RSSSourceCategories: []string{"TV-LTS"},
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := matchesRSSSourceFilters(tt.torrent, tt.settings)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-// mockCompletionFilterProvider is a test mock for CompletionFilterProvider interface.
-type mockCompletionFilterProvider struct {
-	categories        []string
-	tags              []string
-	excludeCategories []string
-	excludeTags       []string
-}
-
-func (m *mockCompletionFilterProvider) GetCategories() []string        { return m.categories }
-func (m *mockCompletionFilterProvider) GetTags() []string              { return m.tags }
-func (m *mockCompletionFilterProvider) GetExcludeCategories() []string { return m.excludeCategories }
-func (m *mockCompletionFilterProvider) GetExcludeTags() []string       { return m.excludeTags }
-
-func TestMatchesCompletionFilters(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		torrent  *qbt.Torrent
-		settings models.CompletionFilterProvider
-		want     bool
-	}{
-		{
-			name:     "nil torrent returns false",
-			torrent:  nil,
-			settings: &mockCompletionFilterProvider{},
-			want:     false,
-		},
-		{
-			name:     "nil settings returns false",
-			torrent:  &qbt.Torrent{Category: "movies"},
-			settings: nil,
-			want:     false,
-		},
-		{
-			name:     "empty filters match all torrents",
-			torrent:  &qbt.Torrent{Category: "movies", Tags: "cross-seed"},
-			settings: &mockCompletionFilterProvider{},
-			want:     true,
-		},
-		{
-			name:    "exclude category skips matching torrent",
-			torrent: &qbt.Torrent{Category: "AlphaRatio-Race"},
-			settings: &mockCompletionFilterProvider{
-				excludeCategories: []string{"AlphaRatio-Race"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude category allows non-matching torrent",
-			torrent: &qbt.Torrent{Category: "AlphaRatio-LTS"},
-			settings: &mockCompletionFilterProvider{
-				excludeCategories: []string{"AlphaRatio-Race"},
-			},
-			want: true,
-		},
-		{
-			name:    "include category requires match",
-			torrent: &qbt.Torrent{Category: "TV-Race"},
-			settings: &mockCompletionFilterProvider{
-				categories: []string{"TV-LTS", "Movies-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "include category allows matching torrent",
-			torrent: &qbt.Torrent{Category: "TV-LTS"},
-			settings: &mockCompletionFilterProvider{
-				categories: []string{"TV-LTS", "Movies-LTS"},
-			},
-			want: true,
-		},
-		{
-			name:    "exclude tag skips matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, temporary"},
-			settings: &mockCompletionFilterProvider{
-				excludeTags: []string{"temporary"},
-			},
-			want: false,
-		},
-		{
-			name:    "include tag requires at least one match",
-			torrent: &qbt.Torrent{Tags: "important"},
-			settings: &mockCompletionFilterProvider{
-				tags: []string{"important", "priority"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag rejects when no match",
-			torrent: &qbt.Torrent{Tags: "random"},
-			settings: &mockCompletionFilterProvider{
-				tags: []string{"important", "priority"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude takes precedence over include",
-			torrent: &qbt.Torrent{Category: "TV-LTS"},
-			settings: &mockCompletionFilterProvider{
-				categories:        []string{"TV-LTS", "Movies-LTS"},
-				excludeCategories: []string{"TV-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "category and tag filters both apply - passes both",
-			torrent: &qbt.Torrent{Category: "TV-LTS", Tags: "important"},
-			settings: &mockCompletionFilterProvider{
-				categories: []string{"TV-LTS"},
-				tags:       []string{"important"},
-			},
-			want: true,
-		},
-		{
-			name:    "passes category filter but fails tag filter",
-			torrent: &qbt.Torrent{Category: "TV-LTS", Tags: "random"},
-			settings: &mockCompletionFilterProvider{
-				categories: []string{"TV-LTS"},
-				tags:       []string{"important"},
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := matchesCompletionFilters(tt.torrent, tt.settings)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func TestMatchesSourceFilters(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		torrent *qbt.Torrent
-		req     *FindCandidatesRequest
-		want    bool
-	}{
-		{
-			name:    "nil torrent returns true (no filtering)",
-			torrent: nil,
-			req:     &FindCandidatesRequest{},
-			want:    true,
-		},
-		{
-			name:    "nil request returns true (no filtering)",
-			torrent: &qbt.Torrent{Category: "movies"},
-			req:     nil,
-			want:    true,
-		},
-		{
-			name:    "empty filters match all torrents",
-			torrent: &qbt.Torrent{Category: "movies", Tags: "cross-seed"},
-			req:     &FindCandidatesRequest{},
-			want:    true,
-		},
-		{
-			name:    "exclude category skips matching torrent",
-			torrent: &qbt.Torrent{Category: "AlphaRatio-Race"},
-			req: &FindCandidatesRequest{
-				SourceFilterExcludeCategories: []string{"AlphaRatio-Race"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude category allows non-matching torrent",
-			torrent: &qbt.Torrent{Category: "AlphaRatio-LTS"},
-			req: &FindCandidatesRequest{
-				SourceFilterExcludeCategories: []string{"AlphaRatio-Race"},
-			},
-			want: true,
-		},
-		{
-			name:    "include category requires match",
-			torrent: &qbt.Torrent{Category: "TV-Race"},
-			req: &FindCandidatesRequest{
-				SourceFilterCategories: []string{"TV-LTS", "Movies-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "include category allows matching torrent",
-			torrent: &qbt.Torrent{Category: "TV-LTS"},
-			req: &FindCandidatesRequest{
-				SourceFilterCategories: []string{"TV-LTS", "Movies-LTS"},
-			},
-			want: true,
-		},
-		{
-			name:    "exclude tag skips matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, temporary"},
-			req: &FindCandidatesRequest{
-				SourceFilterExcludeTags: []string{"temporary"},
-			},
-			want: false,
-		},
-		{
-			name:    "include tag requires at least one match",
-			torrent: &qbt.Torrent{Tags: "important"},
-			req: &FindCandidatesRequest{
-				SourceFilterTags: []string{"important", "priority"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag rejects when no match",
-			torrent: &qbt.Torrent{Tags: "random"},
-			req: &FindCandidatesRequest{
-				SourceFilterTags: []string{"important", "priority"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude takes precedence over include",
-			torrent: &qbt.Torrent{Category: "TV-LTS"},
-			req: &FindCandidatesRequest{
-				SourceFilterCategories:        []string{"TV-LTS", "Movies-LTS"},
-				SourceFilterExcludeCategories: []string{"TV-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "category and tag filters both apply - passes both",
-			torrent: &qbt.Torrent{Category: "TV-LTS", Tags: "important"},
-			req: &FindCandidatesRequest{
-				SourceFilterCategories: []string{"TV-LTS"},
-				SourceFilterTags:       []string{"important"},
-			},
-			want: true,
-		},
-		{
-			name:    "passes category filter but fails tag filter",
-			torrent: &qbt.Torrent{Category: "TV-LTS", Tags: "random"},
-			req: &FindCandidatesRequest{
-				SourceFilterCategories: []string{"TV-LTS"},
-				SourceFilterTags:       []string{"important"},
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := matchesSourceFilters(tt.torrent, tt.req)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
 // TestProcessAutomationCandidate_RespectsRSSSourceFilters verifies that RSS automation
 // passes RSS source filters through to the CrossSeedRequest. This is an integration test
 // that catches the bug where filters worked in isolation but weren't passed through the flow.
@@ -3876,10 +3264,10 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
 			// Verify RSS source filters were passed through
-			assert.Equal(t, tt.expectCategories, captured.SourceFilterCategories, "SourceFilterCategories mismatch")
-			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
-			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
-			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
+			assert.Equal(t, tt.expectCategories, captured.sourceFilter.categories, "categories mismatch")
+			assert.Equal(t, tt.expectTags, captured.sourceFilter.tags, "tags mismatch")
+			assert.Equal(t, tt.expectExcludeCategories, captured.sourceFilter.excludeCategories, "excludeCategories mismatch")
+			assert.Equal(t, tt.expectExcludeTags, captured.sourceFilter.excludeTags, "excludeTags mismatch")
 		})
 	}
 }
@@ -3891,14 +3279,14 @@ type rssFilterTestSyncManager struct {
 	props    map[int]map[string]*qbt.TorrentProperties
 }
 
-func (m *rssFilterTestSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *rssFilterTestSyncManager) GetTorrentRefs(_ context.Context, instanceID int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	list := m.torrents[instanceID]
 	if list == nil {
 		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
 	}
 	copied := make([]qbt.Torrent, len(list))
 	copy(copied, list)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (m *rssFilterTestSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -3968,7 +3356,7 @@ func (m *rssFilterTestSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (m *rssFilterTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (m *rssFilterTestSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -4134,132 +3522,10 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
 			// Verify completion source filters were passed through
-			assert.Equal(t, tt.expectCategories, captured.SourceFilterCategories, "SourceFilterCategories mismatch")
-			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
-			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
-			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
-		})
-	}
-}
-
-func TestMatchesSearchFilters(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		torrent *qbt.Torrent
-		opts    SearchRunOptions
-		want    bool
-	}{
-		{
-			name:    "nil torrent returns false",
-			torrent: nil,
-			opts:    SearchRunOptions{},
-			want:    false,
-		},
-		{
-			name:    "empty filters match all torrents",
-			torrent: &qbt.Torrent{Category: "movies", Tags: "cross-seed"},
-			opts:    SearchRunOptions{},
-			want:    true,
-		},
-		{
-			name:    "exclude category skips matching torrent",
-			torrent: &qbt.Torrent{Category: "movies-Race"},
-			opts: SearchRunOptions{
-				ExcludeCategories: []string{"movies-Race"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude category allows non-matching torrent",
-			torrent: &qbt.Torrent{Category: "movies-LTS"},
-			opts: SearchRunOptions{
-				ExcludeCategories: []string{"movies-Race"},
-			},
-			want: true,
-		},
-		{
-			name:    "include category requires match",
-			torrent: &qbt.Torrent{Category: "tv-Race"},
-			opts: SearchRunOptions{
-				Categories: []string{"movies-LTS", "tv-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "include category allows matching torrent",
-			torrent: &qbt.Torrent{Category: "movies-LTS"},
-			opts: SearchRunOptions{
-				Categories: []string{"movies-LTS", "tv-LTS"},
-			},
-			want: true,
-		},
-		{
-			name:    "exclude tag skips matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, temporary"},
-			opts: SearchRunOptions{
-				ExcludeTags: []string{"temporary"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude tag allows non-matching torrent",
-			torrent: &qbt.Torrent{Tags: "cross-seed, important"},
-			opts: SearchRunOptions{
-				ExcludeTags: []string{"temporary"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag requires at least one match",
-			torrent: &qbt.Torrent{Tags: "important"},
-			opts: SearchRunOptions{
-				Tags: []string{"important", "priority"},
-			},
-			want: true,
-		},
-		{
-			name:    "include tag rejects when no match",
-			torrent: &qbt.Torrent{Tags: "random"},
-			opts: SearchRunOptions{
-				Tags: []string{"important", "priority"},
-			},
-			want: false,
-		},
-		{
-			name:    "exclude takes precedence over include",
-			torrent: &qbt.Torrent{Category: "movies-LTS"},
-			opts: SearchRunOptions{
-				Categories:        []string{"movies-LTS", "tv-LTS"},
-				ExcludeCategories: []string{"movies-LTS"},
-			},
-			want: false,
-		},
-		{
-			name:    "category and tag filters both apply - passes both",
-			torrent: &qbt.Torrent{Category: "movies-LTS", Tags: "important"},
-			opts: SearchRunOptions{
-				Categories: []string{"movies-LTS"},
-				Tags:       []string{"important"},
-			},
-			want: true,
-		},
-		{
-			name:    "passes category filter but fails tag filter",
-			torrent: &qbt.Torrent{Category: "movies-LTS", Tags: "random"},
-			opts: SearchRunOptions{
-				Categories: []string{"movies-LTS"},
-				Tags:       []string{"important"},
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := matchesSearchFilters(tt.torrent, tt.opts)
-			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.expectCategories, captured.sourceFilter.categories, "categories mismatch")
+			assert.Equal(t, tt.expectTags, captured.sourceFilter.tags, "tags mismatch")
+			assert.Equal(t, tt.expectExcludeCategories, captured.sourceFilter.excludeCategories, "excludeCategories mismatch")
+			assert.Equal(t, tt.expectExcludeTags, captured.sourceFilter.excludeTags, "excludeTags mismatch")
 		})
 	}
 }

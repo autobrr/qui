@@ -7,7 +7,23 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// regression: #3726
+func TestParseLintPaths(t *testing.T) {
+	raw := []byte(`{"Issues": [
+		{"FromLinter": "gocognit", "Pos": {"Filename": "internal\\api\\handlers\\auth.go"}},
+		{"FromLinter": "gocognit", "Pos": {"Filename": "internal/api/handlers/auth.go"}},
+		{"FromLinter": "contextcheck", "Pos": {"Filename": "internal\\api/handlers/auth.go"}}
+	]}`)
+	got, err := parseLint(raw)
+	require.NoError(t, err)
+	assert.Equal(t, counts{
+		"gocognit":     {"internal/api/handlers/auth.go": 2},
+		"contextcheck": {"internal/api/handlers/auth.go": 1},
+	}, got)
+}
 
 func TestCompare(t *testing.T) {
 	allow := counts{"nilerr": {"a.go": 2, "b.go": 1}}
@@ -38,6 +54,15 @@ func TestCompare(t *testing.T) {
 			assert.Equal(t, tt.want, compare(tt.got, allow, tt.base))
 		})
 	}
+}
+
+// A new rule starts with the count of each file. Its entries can only shrink
+// once the base has them.
+func TestCompareNewLinter(t *testing.T) {
+	got := counts{"nilerr": {"a.go": 1}, "forbidigo": {"c.go": 3}}
+	assert.Empty(t, compare(got, got, counts{"nilerr": {"a.go": 1}}))
+	assert.Equal(t, []string{"c.go: the forbidigo entry grew from 3 to 4. The allowlist only shrinks."},
+		compare(counts{"forbidigo": {"c.go": 4}}, counts{"forbidigo": {"c.go": 4}}, counts{"forbidigo": {"c.go": 3}}))
 }
 
 func TestCompareZeroEntry(t *testing.T) {

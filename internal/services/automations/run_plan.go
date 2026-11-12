@@ -5,6 +5,7 @@ package automations
 
 import (
 	"context"
+	"encoding/json/v2"
 	"maps"
 	"slices"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // runPlan is what one run of the Automation rules does: for each Action, the torrents it
@@ -33,6 +35,138 @@ type runPlan struct {
 	programs       []pendingProgramExec
 	exports        []pendingExportToInstance
 	deletions      *deletionSelection
+}
+
+// RuleSkip says why a rule gets no Action on an instance: it reads a field that the instance
+// does not send. ADR 0039.
+type RuleSkip struct {
+	Field    string `json:"field"`
+	Requires string `json:"requires"` // what the field needs, for example "qBittorrent 5.0+"
+}
+
+type skippedRule struct {
+	RuleSkip
+
+	rule ruleRef
+}
+
+// reportedSkipKey keeps the dry-run entry of a rule apart from its live entry, so that a dry
+// run does not hide the entry of the live run.
+type reportedSkipKey struct {
+	ruleKey
+
+	dryRun bool
+}
+
+// versionedFields holds the fields that need a qBittorrent version, in a fixed order, so that
+// a rule always reports the same field.
+var versionedFields = func() []ConditionField {
+	var fields []ConditionField
+	for _, field := range slices.Sorted(maps.Keys(ConditionFields)) {
+		if ConditionFields[field].Requires.Capability != nil {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}()
+
+// instanceSupports answers for the current qBittorrent version of the instance. While the
+// version is unknown, every answer is no.
+func (s *Service) instanceSupports(ctx context.Context, instanceID int) func(qbittorrent.Capability) bool {
+	client, err := s.syncManager.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: no client to read the instance capabilities")
+		return func(qbittorrent.Capability) bool { return false }
+	}
+	// A failed read on a full sync update leaves the version unknown until something reads it again.
+	if err := client.EnsureCapabilities(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("automations: could not read the qBittorrent version")
+	}
+	return client.Supports
+}
+
+// ruleSkipOf reports the first field that the rule reads, in a condition or in its sort, and
+// that the instance does not send.
+func ruleSkipOf(rule *models.Automation, supports func(qbittorrent.Capability) bool) (RuleSkip, bool) {
+	for _, field := range versionedFields {
+		requires := ConditionFields[field].Requires
+		if !supports(*requires.Capability) && ruleUsesCondition(rule, field) {
+			return RuleSkip{Field: string(field), Requires: requires.Label}, true
+		}
+	}
+	return RuleSkip{}, false
+}
+
+// skipRulesWithUnknownFields splits the rules of one run. A rule that reads a field that the
+// instance does not send never reaches evaluation, because the "not" switch of a condition
+// turns a value that never matches into a value that always matches. A skipped rule stamps
+// its run, so that it does not fetch the torrent list on each tick.
+func (s *Service) skipRulesWithUnknownFields(ctx context.Context, instanceID int, rules []*models.Automation, now time.Time) ([]*models.Automation, []skippedRule) {
+	supports := s.instanceSupports(ctx, instanceID)
+	runnable := make([]*models.Automation, 0, len(rules))
+	var skipped []skippedRule
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, rule := range rules {
+		key := ruleKey{instanceID, rule.ID}
+		skip, ok := ruleSkipOf(rule, supports)
+		if !ok {
+			delete(s.reportedSkips, reportedSkipKey{ruleKey: key})
+			delete(s.reportedSkips, reportedSkipKey{ruleKey: key, dryRun: true})
+			runnable = append(runnable, rule)
+			continue
+		}
+		s.lastRuleRun[key] = now
+		skipped = append(skipped, skippedRule{RuleSkip: skip, rule: ruleRef{id: rule.ID, name: rule.Name}})
+	}
+	return runnable, skipped
+}
+
+// recordRuleSkips writes one activity entry for each skipped rule. A scheduled run writes
+// it once for each rule on each instance, as long as the reason stays. qui keeps this state in
+// memory, so after a restart it writes the entry again. A run that a person starts always
+// writes the entry, because the person waits for the reason.
+func (s *Service) recordRuleSkips(ctx context.Context, instanceID int, rules []skippedRule, force, dryRun bool) []*models.AutomationActivity {
+	if s.activityStore == nil {
+		return nil
+	}
+	outcome := models.ActivityOutcomeSkipped
+	if dryRun {
+		outcome = models.ActivityOutcomeDryRun
+	}
+	var activities []*models.AutomationActivity
+	for _, skipped := range rules {
+		key := reportedSkipKey{instanceID: instanceID, ruleID: skipped.rule.id, dryRun: dryRun}
+		s.mu.RLock()
+		reported := s.reportedSkips[key] == skipped.RuleSkip
+		s.mu.RUnlock()
+		if reported && !force {
+			continue
+		}
+		details, _ := json.Marshal(skipped.RuleSkip) //nolint:errchkjson // string fields cannot fail to encode
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Action:     models.ActivityActionRuleSkipped,
+			RuleID:     &skipped.rule.id,
+			RuleName:   skipped.rule.name,
+			Outcome:    outcome,
+			Details:    details,
+			CreatedAt:  time.Now().UTC(),
+		}
+		id, err := s.activityStore.CreateWithID(ctx, activity)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Int("ruleID", skipped.rule.id).Msg("automations: failed to record a skipped rule")
+			continue
+		}
+		activity.ID = id
+		activities = append(activities, activity)
+		s.mu.Lock()
+		s.reportedSkips[key] = skipped.RuleSkip
+		s.mu.Unlock()
+	}
+	// A later failure for another rule ends the run before its own signal.
+	s.publishActivity(instanceID, activities)
+	return activities
 }
 
 // targetLookup asks the target instance of an export if it already has the torrent. ADR 0005.
@@ -95,11 +229,12 @@ type runPlanInput struct {
 	instanceID    int
 	states        map[string]*torrentDesiredState
 	deletions     *deletionSelection
-	torrents      []qbt.Torrent
-	torrentByHash map[string]qbt.Torrent
+	torrents      []*qbt.Torrent
+	torrentByHash map[string]*qbt.Torrent
 	ruleByID      map[int]*models.Automation
-	crossSeeds    crossSeedGroups
+	crossSeeds    *crossSeedGroups
 	evalCtx       *EvalContext
+	scope         *ruleScope
 }
 
 // buildRunPlan builds the Run plan from the desired state of each torrent and the Deletion
@@ -136,7 +271,7 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		if _, deleting := deletions.byHash[hash]; deleting {
 			continue
 		}
-		torrent := torrentByHash[hash]
+		torrent := *torrentByHash[hash]
 
 		planSpeedAndState(&plan, hash, torrent, state)
 		planShareLimits(&plan.shareLimits, hash, torrent, state)
@@ -163,7 +298,10 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		}
 
 		if state.exportToInstance != nil {
-			plan.exports = append(plan.exports, s.planExport(ctx, hash, torrent, state, evalCtx))
+			export := s.planExport(ctx, hash, torrent, state, evalCtx)
+			// The export workers run in parallel, and the Rule scope serves one goroutine.
+			export.trackerDomain = in.scope.tracker(&torrent)
+			plan.exports = append(plan.exports, export)
 		}
 	}
 	plan.category = s.planCategories(ctx, in, categoryTriggers)
@@ -409,7 +547,7 @@ func (s *Service) planCategoryTrigger(ctx context.Context, in runPlanInput, grou
 	k := groupExpandKey{ruleID: rule.ID, groupID: state.categoryGroupID}
 	idx := groups.indexes[k]
 	if idx == nil {
-		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.categoryGroupID, in.torrents, s.syncManager)
+		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.categoryGroupID, in.torrents, in.scope)
 		groups.indexes[k] = idx
 	}
 	if idx == nil {
@@ -449,12 +587,10 @@ func (s *Service) categoryGroupEligible(ctx context.Context, in runPlanInput, ru
 	}
 	// GroupId is strict all-or-none: every member must satisfy the action condition.
 	catAction := getCategoryAction(rule)
-	if in.evalCtx != nil && catAction.condition != nil && ConditionUsesField(catAction.condition, FieldFreeSpace) {
-		in.evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-	activateRuleGrouping(in.evalCtx, rule, in.torrents, s.syncManager)
+	enterRule(in.evalCtx, rule, in.torrents, in.scope)
 	members := idx.MembersForHash(hash)
-	return allGroupMembersMatchCategoryAction(members, in.torrentByHash, catAction, in.evalCtx, in.crossSeeds)
+	return allGroupMembersMatchCategoryAction(members, in.torrentByHash, catAction, in.evalCtx, in.crossSeeds) &&
+		!in.scope.groupDropsMember(rule, members, in.torrentByHash)
 }
 
 // addMembers adds the other members of the expanded groups to the category.
@@ -515,23 +651,34 @@ type moveExpansion struct {
 	ruleByHash map[string]ruleRef
 	moved      map[string]struct{}
 	indexes    map[groupExpandKey]*groupIndex
+	// failedGroups holds the groups that failed a check for the group, so they cannot move
+	// for any trigger.
+	failedGroups map[ruleGroupKey]struct{}
+	groupChecks  int
+}
+
+func newMoveExpansion(in runPlanInput, ruleByHash map[string]ruleRef) *moveExpansion {
+	return &moveExpansion{in: in, ruleByHash: ruleByHash, moved: make(map[string]struct{}), failedGroups: make(map[ruleGroupKey]struct{})}
 }
 
 // planMoves expands the move of each trigger to the group members and the cross-seeds that
 // share files with it. A torrent already at the target path stays out, and a torrent moves to
 // one path only. A pulled-in torrent keeps the rule of the torrent that pulled it in.
 func (s *Service) planMoves(ctx context.Context, in runPlanInput, triggers plannedAction[string]) plannedAction[string] {
+	return s.expandMoves(ctx, newMoveExpansion(in, triggers.rules), triggers)
+}
+
+func (s *Service) expandMoves(ctx context.Context, m *moveExpansion, triggers plannedAction[string]) plannedAction[string] {
+	in := m.in
 	var planned plannedAction[string]
-	m := &moveExpansion{in: in, ruleByHash: triggers.rules, moved: make(map[string]struct{})}
 	for _, path := range slices.Sorted(maps.Keys(triggers.byTarget)) {
 		hashes := triggers.byTarget[path]
 		ruleByCrossSeedKey := crossSeedRuleRefsByKey(hashes, in.torrentByHash, m.ruleByHash, in.crossSeeds)
 		normalizedDest := normalizePath(path)
 
 		// Before moving, we need to expand move targets to avoid breaking related torrents.
-		var expandedHashes []string
+		var expandedHashes, legacyTriggers []string
 		m.indexes = make(map[groupExpandKey]*groupIndex)
-		legacyKeysToExpand := make(map[string]struct{})
 
 		for _, hash := range hashes {
 			if _, exists := m.moved[hash]; exists {
@@ -547,14 +694,12 @@ func (s *Service) planMoves(ctx context.Context, in runPlanInput, triggers plann
 			// Legacy cross-seed expansion behavior
 			expandedHashes = append(expandedHashes, hash)
 			m.moved[hash] = struct{}{}
-			if t, exists := in.torrentByHash[hash]; exists {
-				legacyKeysToExpand[in.crossSeeds.key(t)] = struct{}{}
+			if _, exists := in.torrentByHash[hash]; exists {
+				legacyTriggers = append(legacyTriggers, hash)
 			}
 		}
 
-		if len(legacyKeysToExpand) > 0 {
-			expandedHashes = append(expandedHashes, m.legacyCrossSeeds(legacyKeysToExpand, normalizedDest, ruleByCrossSeedKey)...)
-		}
+		expandedHashes = append(expandedHashes, m.legacyCrossSeeds(legacyTriggers, normalizedDest, ruleByCrossSeedKey)...)
 
 		for _, hash := range expandedHashes {
 			planned.add(path, hash, m.ruleByHash[hash])
@@ -580,8 +725,13 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 	rgk := groupExpandKey{ruleID: rule.ID, groupID: state.moveGroupID}
 	idx := m.indexes[rgk]
 	if idx == nil {
-		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.moveGroupID, in.torrents, s.syncManager)
+		idx = getOrBuildGroupIndexForRule(in.evalCtx, rule, state.moveGroupID, in.torrents, in.scope)
 		m.indexes[rgk] = idx
+	}
+
+	groupKey := ruleGroupKey{ruleID: rule.ID, key: idx.KeyForHash(hash)}
+	if _, failed := m.failedGroups[groupKey]; failed {
+		return nil
 	}
 
 	members := []string{hash}
@@ -590,25 +740,18 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 			members = found
 		}
 	}
-	if !groupHoldsSharedFiles(members, in.crossSeeds) {
+	m.groupChecks++
+	expand, verifyOverlap, minPercent := s.moveGroupChecks(in, rule, state.moveGroupID, idx, hash, members)
+	if !expand {
+		// A trigger without a group key is a group of its own.
+		if groupKey.key != "" {
+			m.failedGroups[groupKey] = struct{}{}
+		}
 		return nil
 	}
-
-	// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
-	if !s.shouldExpandGroupWithAmbiguityPolicy(ctx, in.instanceID, rule, state.moveGroupID, idx, hash, in.torrentByHash) {
-		return nil
-	}
-
-	// GroupId semantics are strict: every member must satisfy the move condition.
-	var cond *models.RuleCondition
-	if rule.Conditions != nil && rule.Conditions.Move != nil {
-		cond = rule.Conditions.Move.Condition
-	}
-	if in.evalCtx != nil && cond != nil && ConditionUsesField(cond, FieldFreeSpace) {
-		in.evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
-	}
-	activateRuleGrouping(in.evalCtx, rule, in.torrents, s.syncManager)
-	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) {
+	// Ambiguous ContentPath safety (ContentPath == SavePath): the files of the trigger must
+	// overlap the other members. Another trigger of the group can still pass.
+	if verifyOverlap && !s.triggerOverlapsGroup(ctx, in.instanceID, idx, hash, in.torrentByHash, minPercent) {
 		return nil
 	}
 
@@ -624,6 +767,31 @@ func (s *Service) planMoveGroup(ctx context.Context, m *moveExpansion, state *to
 	return expandedHashes
 }
 
+// moveGroupChecks runs the checks that give the same answer for every trigger in the group.
+// It returns whether the group can move, and whether each trigger must first pass the
+// overlap check with minPercent.
+func (s *Service) moveGroupChecks(in runPlanInput, rule *models.Automation, groupID string, idx *groupIndex, hash string, members []string) (expand, verifyOverlap bool, minPercent int) {
+	if !groupHoldsSharedFiles(members, in.crossSeeds) {
+		return false, false, 0
+	}
+	expand, verifyOverlap, minPercent = s.groupAmbiguityPolicy(rule, groupID, idx, hash)
+	if !expand {
+		return false, false, 0
+	}
+
+	// GroupId semantics are strict: every member must satisfy the move condition.
+	var cond *models.RuleCondition
+	if rule.Conditions != nil && rule.Conditions.Move != nil {
+		cond = rule.Conditions.Move.Condition
+	}
+	enterRule(in.evalCtx, rule, in.torrents, in.scope)
+	if !allGroupMembersMatchCondition(members, in.torrentByHash, cond, in.evalCtx) ||
+		in.scope.groupDropsMember(rule, members, in.torrentByHash) {
+		return false, false, 0
+	}
+	return true, verifyOverlap, minPercent
+}
+
 // canMove returns whether the torrent can still join a move to the path: it is not planned for
 // a path yet, not deleted, and not at the path already.
 func (m *moveExpansion) canMove(hash, normalizedDest string) bool {
@@ -637,15 +805,21 @@ func (m *moveExpansion) canMove(hash, normalizedDest string) bool {
 	return ok && normalizePath(t.SavePath) != normalizedDest
 }
 
-// legacyCrossSeeds returns the cross-seeds of the legacy triggers that move with them.
-func (m *moveExpansion) legacyCrossSeeds(keys map[string]struct{}, normalizedDest string, ruleByCrossSeedKey map[string]ruleRef) []string {
+// legacyCrossSeeds returns the cross-seeds of the legacy triggers that move with them: the
+// members of their groups, each group walked once.
+func (m *moveExpansion) legacyCrossSeeds(triggers []string, normalizedDest string, ruleByCrossSeedKey map[string]ruleRef) []string {
 	var expandedHashes []string
-	for _, t := range m.in.torrents {
-		if !m.canMove(t.Hash, normalizedDest) {
+	walked := make(map[string]struct{})
+	for _, trigger := range triggers {
+		key := m.in.crossSeeds.key(*m.in.torrentByHash[trigger])
+		if _, seen := walked[key]; seen {
 			continue
 		}
-		key := m.in.crossSeeds.key(t)
-		if _, matched := keys[key]; matched {
+		walked[key] = struct{}{}
+		for _, t := range m.in.crossSeeds.members(trigger) {
+			if !m.canMove(t.Hash, normalizedDest) {
+				continue
+			}
 			expandedHashes = append(expandedHashes, t.Hash)
 			m.moved[t.Hash] = struct{}{}
 			inheritRuleRefForCrossSeed(t.Hash, key, m.ruleByHash, ruleByCrossSeedKey)
@@ -656,8 +830,8 @@ func (m *moveExpansion) legacyCrossSeeds(keys map[string]struct{}, normalizedDes
 
 // planPreview builds the Run plan of the one rule that a preview shows, with only the actions
 // in keep. It also returns the torrents whose category or tags the rule changes on its own,
-// before the cross-seed expansion. The preview checks every torrent, also one that a run skips as recently processed.
-func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, torrents []qbt.Torrent, evalCtx *EvalContext, crossSeeds crossSeedGroups) (runPlan, map[string]struct{}) {
+// before the cross-seed expansion. The preview checks every torrent, also one in the Skip window.
+func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.Automation, keep models.ActionConditions, torrents []*qbt.Torrent, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope) (runPlan, map[string]struct{}) {
 	keep.SchemaVersion = rule.Conditions.SchemaVersion
 	keep.Grouping = rule.Conditions.Grouping
 	only := *rule
@@ -666,9 +840,16 @@ func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.
 	only.Enabled = true
 
 	states := make(map[string]*torrentDesiredState)
-	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, crossSeeds, s.syncManager, nil, nil, states)
+	executeBatch(instanceID, []*models.Automation{&only}, torrents, evalCtx, crossSeeds, scope, nil, states)
+	// A run adds the managed tags back to a torrent that dropped out of the rule. The preview
+	// shows no row for that torrent.
+	for i := range torrents {
+		if scope.answer(rule, torrents[i]) == scopeNoValue {
+			delete(states, torrents[i].Hash)
+		}
+	}
 
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	torrentByHash := make(map[string]*qbt.Torrent, len(torrents))
 	for _, t := range torrents {
 		torrentByHash[t.Hash] = t
 	}
@@ -686,9 +867,10 @@ func (s *Service) planPreview(ctx context.Context, instanceID int, rule *models.
 		deletions:     &deletionSelection{},
 		torrents:      torrents,
 		torrentByHash: torrentByHash,
-		ruleByID:      map[int]*models.Automation{only.ID: &only},
+		ruleByID:      map[int]*models.Automation{rule.ID: rule},
 		crossSeeds:    crossSeeds,
 		evalCtx:       evalCtx,
+		scope:         scope,
 	})
 	return plan, own
 }

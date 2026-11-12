@@ -71,6 +71,8 @@ Library Scan searches other trackers for torrents you already seed. Configure it
 - **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
 - **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
 
+The run details show a Skipped row with no cooldown if qBittorrent moves or checks a torrent at its turn. The same applies to a torrent that is not complete at its turn, and to a torrent with an error or missing files when error recovery is off.
+
 #### What the scan card counts
 
 The unit of a run is a search candidate: one source torrent, or one season group that season pack automation formed from episodes you seed.
@@ -104,6 +106,8 @@ Right-click any torrent in the list to open the cross-seed actions:
 - **Search Cross-Seeds**: Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds**: Shows the torrents in your library that hold the same data as the selected torrent. qui compares the files of each torrent and leaves out the files that search ignores, such as `.nfo` and `.srt` files. A torrent on the same instance that uses one of the same files on disk gets the Content badge. A hardlinked or reflinked copy gets the Hardlink or Reflink badge. A torrent with the same name or release gets the Name or Release badge when its file sizes pair one to one. That torrent is a separate copy, so it stays when you delete the selected torrent with its files. qui does not show other torrents. If qui cannot read a file list or check a link, Filter Cross-Seeds shows an error and does not filter the list.
 
+The search dialog refuses a torrent that qBittorrent moves or checks, and a torrent with an error or missing files when error recovery is off. A message tells you what to do, and qui searches no indexer.
+
 Interactive searches, scheduled or on-demand Library Scans, and completion searches use one reported-size rule. Strict release matching always runs first.
 
 An exact positive byte count can relax approved name differences. Reported size is evidence, not proof that the torrent has the same bytes.
@@ -131,7 +135,7 @@ qui ranks torrents from the same instance by file-size overlap with the uploaded
 
 When the upload parses as a season pack, you can select several episode torrents from the same instance. One selected target uses the existing manual match. If the upload does not parse as a season pack, the dialog permits only one target.
 
-Multiple targets require local filesystem access, hardlink or reflink mode, and a configured link base directory. The dialog shows why assembly is unavailable. Manual assembly works even when season pack automation is off.
+Multiple targets require a configured link base directory, and one of these: local filesystem access with hardlink or reflink mode, or a [remote instance](../ssh-access.md) with hardlink mode. The dialog shows why assembly is unavailable. Manual assembly works even when season pack automation is off.
 
 The check first selects a complete matching pack alone, if one exists. Otherwise, it suggests the episodes that automatic discovery pairs. You can change the selection or use search to add targets that the proposal list omits. The proposal limit grows with the pack episode count, up to 60 torrents. The dialog reports this limit when it truncates the list.
 
@@ -142,6 +146,8 @@ Piece boundary protection also applies to manual assembly in hardlink mode. It b
 qui adds the assembled pack paused and rechecks it. It resumes when verified progress reaches the linked byte fraction, with the assembly margin for piece boundaries. If a file moves between check and apply, qui drops that target, reports its name, and assembles the remaining files. Season pack run history records the matched count, coverage, and link mode.
 
 A manual selection bypasses candidate discovery and the category and content-type gates. Link mode per instance settings and tag and category treatment stay the same as the automatic pipeline. Every manual match runs a full recheck before it seeds; you cannot skip it, and it decides a wrong pick. A failed recheck leaves the torrent paused for manual review.
+
+qui refuses a target with an error or missing files when error recovery is off, and a target that qBittorrent moves or checks. The recheck rule above applies to each target that qui accepts.
 
 For one selected target, the dialog prefills the category from that torrent and the tags from the cross-seed tag settings. You can edit both. If **Use Custom Category** is on, every cross-seed goes to that one category. The dialog then shows the category and locks it. The save path shows the effective destination and is read-only. With **By Tracker** directory organization, the tracker folder comes from the announce URL in the uploaded file. The tracker does not need a configured indexer.
 
@@ -178,7 +184,7 @@ The delete dialog lists such a torrent with its instance name. qui finds it when
 
 qui does not compare every file of every torrent. It checks a torrent on another instance when it has the same save path or content path, the same name, the same release, or the same total size. Known limit: qui does not find a torrent that reads a file inside the folder of the selected torrent through a mount with another path, and that has another name, release, and total size. An example is a single episode that reads a file in a season pack through a second mount.
 
-qui does not check remote instances, also when two of them are on one host. qui cannot make sure that the file identity that a remote host reports is correct.
+qui does not check [remote instances](../ssh-access.md), also when two of them are on one host. qui cannot make sure that the file identity that a remote host reports is correct.
 
 If qui cannot read the torrent list of an instance with local filesystem access, the dialog shows the matches that it found and adds a line that it could not check that instance. If an instance with local filesystem access is turned off in qui, the dialog adds a line that it did not check that instance.
 

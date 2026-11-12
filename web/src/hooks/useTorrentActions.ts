@@ -154,6 +154,53 @@ export function resetPendingListRefetchesForTests() {
   pendingFinalRefetchAt = 0
 }
 
+// Removes the deleted rows from the cached lists of the instance at once, before the refetch.
+export function removeDeletedTorrents(queryClient: QueryClient, instanceId: number, variables: {
+  hashes: string[]
+  targets?: TorrentActionTarget[]
+  excludeTargets?: TorrentActionTarget[]
+  clientHashes?: string[]
+  clientCount?: number
+}) {
+  const cache = queryClient.getQueryCache()
+  const queries = cache.findAll({
+    queryKey: ["torrents-list", instanceId],
+    exact: false,
+  })
+
+  let hashesToRemove = variables.hashes
+  if (variables.clientHashes && variables.clientHashes.length > 0) {
+    hashesToRemove = variables.clientHashes
+  }
+  // A target on another instance is not in the list of this instance.
+  const otherInstanceCount = instanceId === ALL_INSTANCES_ID ? 0 : variables.targets?.filter(t => t.instanceId !== instanceId).length ?? 0
+  const optimisticRemoveCount = (variables.clientCount ?? hashesToRemove.length) - otherInstanceCount
+  // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
+  const targetKey = (t: { instanceId: number; hash: string }) => `${t.instanceId}:${t.hash}`
+  const targetKeys = variables.targets?.length ? new Set(variables.targets.map(targetKey)) : undefined
+  const excludedKeys = new Set(variables.excludeTargets?.map(targetKey))
+
+  queries.forEach((query) => {
+    queryClient.setQueryData(query.queryKey, (oldData: {
+      torrents?: Torrent[]
+      total?: number
+      totalCount?: number
+    }) => {
+      if (!oldData) return oldData
+      return {
+        ...oldData,
+        torrents: oldData.torrents?.filter((t: Torrent) => {
+          const key = `${getTorrentTargetInstanceId(t, instanceId)}:${t.hash}`
+          if (excludedKeys.has(key)) return true
+          return targetKeys ? !targetKeys.has(key) : !hashesToRemove.includes(t.hash)
+        }) || [],
+        total: Math.max(0, (oldData.total || 0) - optimisticRemoveCount),
+        totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - optimisticRemoveCount),
+      }
+    })
+  })
+}
+
 class TagBulkActionError extends Error {
   results: TagBulkActionResult[]
 
@@ -171,21 +218,84 @@ class TagBulkActionError extends Error {
   }
 }
 
+type TagRequest = Omit<Parameters<typeof api.bulkAction>[1], "action" | "tags">
+
+// The tag update of a tag editor plan: the removal first, then the addition.
+// A failure of either step throws a TagBulkActionError that names both steps.
+export async function updateTags(scope: number, plan: TagUpdatePlan, request: TagRequest) {
+  const results: TagBulkActionResult[] = []
+
+  const runTagBulkAction = async (action: "add" | "remove", tags: string[]) => {
+    try {
+      await api.bulkAction(scope, {
+        ...request,
+        action: action === "remove" ? "removeTags" : "addTags",
+        tags: tags.join(","),
+      })
+      results.push({ action, status: "success" })
+    } catch (error) {
+      results.push({
+        action,
+        status: "failed",
+        error: error instanceof Error ? error : new Error("Unknown tag update failure"),
+      })
+    }
+  }
+
+  if (plan.remove.length > 0) {
+    await runTagBulkAction("remove", plan.remove)
+  }
+
+  if (plan.add.length > 0) {
+    await runTagBulkAction("add", plan.add)
+  }
+
+  if (results.some(result => result.status === "failed")) {
+    throw new TagBulkActionError(results)
+  }
+}
+
+// The failure toast of a tag update. It names the step that failed and the step that succeeded.
+export function showTagUpdateError(t: Translate, error: Error, count: number) {
+  if (error instanceof TagBulkActionError) {
+    const succeeded = error.results.filter(result => result.status === "success").map(result => result.action)
+    const failed = error.results.filter(result => result.status === "failed")
+    const succeededLabel = succeeded.length > 0? t("actionToasts.partialTags.succeeded", {
+      actions: succeeded.map((action) => t(`actionToasts.partialTags.actions.${action}`)).join(` ${t("actionToasts.partialTags.and")} `),
+    }): ""
+    const failedLabel = failed.length > 0? t("actionToasts.partialTags.failed", {
+      actions: failed.map((result) => t(`actionToasts.partialTags.actions.${result.action}`)).join(` ${t("actionToasts.partialTags.and")} `),
+    }): t("actionToasts.partialTags.tagUpdateFailed")
+    const description = failed
+      .map(result => result.error?.message)
+      .filter((message): message is string => Boolean(message))
+      .join("; ")
+
+    toast.error(t("actionToasts.partialTags.title", { count }), {
+      description: [succeededLabel, failedLabel, description].filter(Boolean).join(". "),
+    })
+    return
+  }
+
+  toast.error(t("actionToasts.updateTagsFailed", { count }), {
+    description: error.message || t("actionToasts.unexpectedError"),
+  })
+}
+
+export async function invalidateInstanceCaches(queryClient: QueryClient, instanceId: number) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false }),
+    queryClient.invalidateQueries({ queryKey: ["instance-metadata", instanceId], exact: false }),
+  ])
+}
+
 export function useTorrentActions({ instanceId, instanceIds, onActionComplete }: UseTorrentActionsProps) {
   const { t } = useTranslation("torrents")
   const queryClient = useQueryClient()
-  const invalidateTorrentCaches = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ["torrents-list", instanceId],
-        exact: false,
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ["instance-metadata", instanceId],
-        exact: false,
-      }),
-    ])
-  }, [instanceId, queryClient])
+  const invalidateTorrentCaches = useCallback(
+    () => invalidateInstanceCaches(queryClient, instanceId),
+    [instanceId, queryClient]
+  )
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -203,8 +313,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
-  const [showRecheckDialog, setShowRecheckDialog] = useState(false)
-  const [showReannounceDialog, setShowReannounceDialog] = useState(false)
   const [showLocationDialog, setShowLocationDialog] = useState(false)
   const [showRenameTorrentDialog, setShowRenameTorrentDialog] = useState(false)
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
@@ -250,51 +358,12 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     onSuccess: async (_, variables) => {
       // Handle delete operations with optimistic updates
       if (variables.action === "delete") {
-
-        // Optimistically remove torrents from cached queries
-        const cache = queryClient.getQueryCache()
-        const queries = cache.findAll({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-        })
-
-        let hashesToRemove = variables.hashes
-        if (variables.clientHashes && variables.clientHashes.length > 0) {
-          hashesToRemove = variables.clientHashes
-        }
-        // A target on another instance is not in the list of this instance.
-        const otherInstanceCount = instanceId === ALL_INSTANCES_ID ? 0 : variables.targets?.filter(t => t.instanceId !== instanceId).length ?? 0
-        const optimisticRemoveCount = (variables.clientCount ?? hashesToRemove.length) - otherInstanceCount
-        // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
-        const targetKey = (t: { instanceId: number; hash: string }) => `${t.instanceId}:${t.hash}`
-        const targetKeys = variables.targets?.length ? new Set(variables.targets.map(targetKey)) : undefined
-        const excludedKeys = new Set(variables.excludeTargets?.map(targetKey))
-
-        queries.forEach((query) => {
-          queryClient.setQueryData(query.queryKey, (oldData: {
-            torrents?: Torrent[]
-            total?: number
-            totalCount?: number
-          }) => {
-            if (!oldData) return oldData
-            return {
-              ...oldData,
-              torrents: oldData.torrents?.filter((t: Torrent) => {
-                const key = `${getTorrentTargetInstanceId(t, instanceId)}:${t.hash}`
-                if (excludedKeys.has(key)) return true
-                return targetKeys ? !targetKeys.has(key) : !hashesToRemove.includes(t.hash)
-              }) || [],
-              total: Math.max(0, (oldData.total || 0) - optimisticRemoveCount),
-              totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - optimisticRemoveCount),
-            }
-          })
-        })
+        removeDeletedTorrents(queryClient, instanceId, variables)
 
         // Refetch later to sync with server
         scheduleListRefetches(variables.deleteFiles ? 5000 : 2000)
       } else {
-        // For other operations, refetch after delay
-        scheduleListRefetches(variables.action === "resume" || variables.action === "forceStart" ? 2000 : 1000)
+        scheduleListRefetches(actionRefetchDelay(variables.action))
       }
 
       // Show success toast
@@ -322,17 +391,12 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         setShowSpeedLimitDialog(false)
       } else if (variables.action === "setLocation") {
         setShowLocationDialog(false)
-      } else if (variables.action === "recheck") {
-        setShowRecheckDialog(false)
-      } else if (variables.action === "reannounce") {
-        setShowReannounceDialog(false)
       }
 
       onActionComplete?.(variables.action)
     },
     onError: (error: Error, variables) => {
-      const count = variables.hashes.length || variables.targets?.length || 1
-      toast.error(getActionErrorMessage(t, variables.action, count), {
+      toast.error(getActionErrorMessage(t, variables.action, failedActionCount(variables)), {
         description: error.message || t("actionToasts.unexpectedError"),
       })
     },
@@ -340,49 +404,21 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
   const updateTagsMutation = useMutation({
     mutationFn: async (data: TagUpdatePlan & Omit<TorrentActionData, "action" | "tags">) => {
-      const sharedPayload = {
-        hashes: data.hashes,
-        instanceIds: data.instanceIds,
-        targets: data.targets,
-        selectAll: data.selectAll,
-        filters: data.filters,
-        search: data.search,
-        excludeHashes: data.excludeHashes,
-        excludeTargets: data.excludeTargets,
-      }
-      const results: TagBulkActionResult[] = []
-
-      const runTagBulkAction = async (action: "add" | "remove", tags: string[]) => {
-        try {
-          await api.bulkAction(instanceId, {
-            ...sharedPayload,
-            action: action === "remove" ? "removeTags" : "addTags",
-            tags: tags.join(","),
-          })
-          results.push({ action, status: "success" })
-        } catch (error) {
-          results.push({
-            action,
-            status: "failed",
-            error: error instanceof Error ? error : new Error("Unknown tag update failure"),
-          })
-        }
-      }
-
-      if (data.remove.length > 0) {
-        await runTagBulkAction("remove", data.remove)
-      }
-
-      if (data.add.length > 0) {
-        await runTagBulkAction("add", data.add)
-      }
-
-      if (results.some(result => result.status === "failed")) {
+      try {
+        await updateTags(instanceId, data, {
+          hashes: data.hashes,
+          instanceIds: data.instanceIds,
+          targets: data.targets,
+          selectAll: data.selectAll,
+          filters: data.filters,
+          search: data.search,
+          excludeHashes: data.excludeHashes,
+          excludeTargets: data.excludeTargets,
+        })
+      } catch (error) {
         await invalidateTorrentCaches()
-        throw new TagBulkActionError(results)
+        throw error
       }
-
-      return { results }
     },
     onSuccess: async (_, variables) => {
       scheduleListRefetches(1000)
@@ -402,33 +438,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       onActionComplete?.("setTags")
     },
     onError: (error: Error, variables) => {
-      const count = variables.clientCount ?? variables.hashes.length ?? 1
-      if (error instanceof TagBulkActionError) {
-        setShowTagsDialog(false)
-        const succeeded = error.results.filter(result => result.status === "success").map(result => result.action)
-        const failed = error.results.filter(result => result.status === "failed")
-        const succeededLabel = succeeded.length > 0? t("actionToasts.partialTags.succeeded", {
-          actions: succeeded.map((action) => t(`actionToasts.partialTags.actions.${action}`)).join(` ${t("actionToasts.partialTags.and")} `),
-        }): ""
-        const failedLabel = failed.length > 0? t("actionToasts.partialTags.failed", {
-          actions: failed.map((result) => t(`actionToasts.partialTags.actions.${result.action}`)).join(` ${t("actionToasts.partialTags.and")} `),
-        }): t("actionToasts.partialTags.tagUpdateFailed")
-        const description = failed
-          .map(result => result.error?.message)
-          .filter((message): message is string => Boolean(message))
-          .join("; ")
-
-        toast.error(t("actionToasts.partialTags.title", { count }), {
-          description: [succeededLabel, failedLabel, description].filter(Boolean).join(". "),
-        })
-        return
-      }
-
       setShowTagsDialog(false)
-      void invalidateTorrentCaches()
-      toast.error(t("actionToasts.updateTagsFailed", { count }), {
-        description: error.message || t("actionToasts.unexpectedError"),
-      })
+      showTagUpdateError(t, error, variables.clientCount ?? variables.hashes.length ?? 1)
     },
   })
 
@@ -583,16 +594,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setShowSpeedLimitDialog(false)
   }, [mutateAsync, instanceIds])
 
-  const handleRecheck = useCallback(async (target: ActionTarget) => {
-    await mutateAsync({ action: "recheck", instanceIds, ...targetData(target) })
-    setShowRecheckDialog(false)
-  }, [mutateAsync, instanceIds])
-
-  const handleReannounce = useCallback(async (target: ActionTarget) => {
-    await mutateAsync({ action: "reannounce", instanceIds, ...targetData(target) })
-    setShowReannounceDialog(false)
-  }, [mutateAsync, instanceIds])
-
   const handleSetLocation = useCallback(async (location: string, target: ActionTarget) => {
     await mutateAsync({ action: "setLocation", instanceIds, ...targetData(target), location })
     setShowLocationDialog(false)
@@ -658,23 +659,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const prepareRenameFileAction = useCallback(() => setShowRenameFileDialog(true), [])
   const prepareRenameFolderAction = useCallback(() => setShowRenameFolderDialog(true), [])
 
-  // One torrent needs no confirmation.
-  const prepareRecheckAction = useCallback((target: ActionTarget) => {
-    if (target.count > 1) {
-      setShowRecheckDialog(true)
-    } else {
-      handleAction("recheck", target)
-    }
-  }, [handleAction])
-
-  const prepareReannounceAction = useCallback((target: ActionTarget) => {
-    if (target.count > 1) {
-      setShowReannounceDialog(true)
-    } else {
-      handleAction("reannounce", target)
-    }
-  }, [handleAction])
-
   const prepareTmmAction = useCallback((enable: boolean) => {
     setPendingTmmEnable(enable)
     setShowTmmDialog(true)
@@ -718,10 +702,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setShowShareLimitDialog,
     showSpeedLimitDialog,
     setShowSpeedLimitDialog,
-    showRecheckDialog,
-    setShowRecheckDialog,
-    showReannounceDialog,
-    setShowReannounceDialog,
     showLocationDialog,
     setShowLocationDialog,
     showRenameTorrentDialog,
@@ -747,8 +727,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     handleSetCategory,
     handleSetShareLimit,
     handleSetSpeedLimits,
-    handleRecheck,
-    handleReannounce,
     handleSetLocation,
     handleRenameTorrent,
     handleRenameFile,
@@ -762,8 +740,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     prepareCreateCategoryAction,
     prepareShareLimitAction,
     prepareSpeedLimitAction,
-    prepareRecheckAction,
-    prepareReannounceAction,
     prepareLocationAction,
     prepareRenameTorrentAction,
     prepareRenameFileAction,
@@ -776,7 +752,17 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
-function getActionErrorMessage(t: Translate, action: TorrentAction, count: number) {
+// The delay of the first list refetch after a successful action, other than a delete.
+export function actionRefetchDelay(action: TorrentAction) {
+  return action === "resume" || action === "forceStart" ? 2000 : 1000
+}
+
+// The count that a failure toast names.
+export function failedActionCount(request: { hashes: string[]; targets?: TorrentActionTarget[] }) {
+  return request.hashes.length || request.targets?.length || 1
+}
+
+export function getActionErrorMessage(t: Translate, action: TorrentAction, count: number) {
   switch (action) {
     case "resume":
       return t("actionToasts.failed.resume", { count })
@@ -822,7 +808,7 @@ function getActionErrorMessage(t: Translate, action: TorrentAction, count: numbe
 }
 
 // Helper function for success toasts
-function showSuccessToast(t: Translate, action: TorrentAction, count: number, deleteFiles?: boolean, enable?: boolean) {
+export function showSuccessToast(t: Translate, action: TorrentAction, count: number, deleteFiles?: boolean, enable?: boolean) {
   switch (action) {
     case "resume":
       toast.success(t("actionToasts.success.resume", { count }))

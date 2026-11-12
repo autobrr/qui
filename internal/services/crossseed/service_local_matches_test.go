@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 // localMatchSyncManager is a minimal fake for testing file overlap logic.
@@ -21,8 +22,7 @@ type localMatchSyncManager struct {
 	errorOnFetch error // If set, GetTorrentFilesBatch returns this error
 }
 
-//nolint:gocritic // Interface requires value type for TorrentFilterOptions
-func (m *localMatchSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *localMatchSyncManager) GetTorrentRefs(_ context.Context, _ int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	return nil, nil
 }
 
@@ -74,7 +74,7 @@ func (m *localMatchSyncManager) ExtractDomainFromURL(_ string) string {
 	return ""
 }
 
-func (m *localMatchSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
+func (m *localMatchSyncManager) GetSyncOwner(_ context.Context, _ int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 

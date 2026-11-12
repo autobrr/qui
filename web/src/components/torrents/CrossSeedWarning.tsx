@@ -25,6 +25,7 @@ interface CrossSeedWarningProps {
   deleteCrossSeeds: boolean
   onDeleteCrossSeedsChange: (checked: boolean) => void
   onSearch: () => void
+  disabled?: boolean
   className?: string
 }
 
@@ -50,6 +51,7 @@ export function CrossSeedWarning({
   deleteCrossSeeds,
   onDeleteCrossSeedsChange,
   onSearch,
+  disabled,
   className,
 }: CrossSeedWarningProps) {
   const { t } = useTranslation("torrents")
@@ -237,6 +239,7 @@ export function CrossSeedWarning({
           id="deleteCrossSeeds"
           checked={deleteCrossSeeds}
           onCheckedChange={(checked) => onDeleteCrossSeedsChange(checked === true)}
+          disabled={disabled}
         />
         <label
           htmlFor="deleteCrossSeeds"

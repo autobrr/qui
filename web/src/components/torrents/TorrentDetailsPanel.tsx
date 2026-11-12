@@ -24,10 +24,12 @@ import { getMatchTypeLabel, useLocalCrossSeedMatches } from "@/lib/cross-seed-ut
 import { DEFAULT_FILE_SORT } from "@/lib/file-tree"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxRatio, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
+import { matchPeerClient } from "@/lib/peer-client-icons"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { formatReannounceIn } from "@/lib/torrent-state-utils"
 import { breakableName, cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeer, Torrent, TorrentFile, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -36,6 +38,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
+import { PeerClientIcon } from "./details/PeerClientIcon"
 import { MobileCategoryTagsRow, MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
@@ -193,6 +196,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (!liveTorrent) return torrent
     return { ...torrent, ...liveTorrent }
   }, [torrent, liveTorrent])
+  // The row has no reannounce before qBittorrent 5.0, and the General tab then shows no Reannounce row.
+  const reannounceIn = displayTorrent?.reannounce !== undefined
+    ? formatReannounceIn(displayTorrent.state, displayTorrent.reannounce, t)
+    : undefined
 
   const { data: files, isLoading: loadingFiles } = useTorrentDetailTab(instanceId, isContentTabActive ? readyHash : null, "content")
 
@@ -1095,6 +1102,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <MobileInfoGroup title={t("detailsPanel.sections.timeInformation")}>
                     <MobileInfoRow label={t("generalTab.timeActive")}>{formatDuration(properties.time_elapsed || 0)}</MobileInfoRow>
                     <MobileInfoRow label={t("generalTab.seedingTime")}>{formatDuration(properties.seeding_time || 0)}</MobileInfoRow>
+                    {reannounceIn !== undefined && <MobileInfoRow label={t("tableColumns.reannounce")}>{reannounceIn}</MobileInfoRow>}
                     <MobileInfoRow label={t("detailsPanel.labels.added")}>{formatTimestamp(properties.addition_date, true)}</MobileInfoRow>
                     {properties.completion_date && properties.completion_date !== -1 && (
                       <MobileInfoRow label={t("detailsPanel.labels.completed")}>{formatTimestamp(properties.completion_date, true)}</MobileInfoRow>
@@ -1174,7 +1182,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             address={getPeerDisplayAddress(peer, incognitoMode)}
                             countryCode={peer.country_code}
                             country={peer.country}
-                            client={peer.client || t("detailsPanel.values.unknownClient")}
+                            client={peer.client?.trim() || matchPeerClient(peer.client, peer.peer_id_client).name || t("detailsPanel.values.unknownClient")}
+                            clientIcon={<PeerClientIcon client={peer.client} peerIdClient={peer.peer_id_client} />}
                             connection={peer.connection}
                             flags={peer.flags}
                             progressPercent={progressPercent}
@@ -1408,6 +1417,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               displayComment={displayComment}
               displayCreatedBy={displayCreatedBy}
               queueingEnabled={queueLimits.enabled}
+              reannounceIn={reannounceIn}
             />
           </TabsContent>
 

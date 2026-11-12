@@ -15,6 +15,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -420,7 +422,7 @@ func TestInstanceFoldersRefreshesStaleCapabilities(t *testing.T) {
 	t.Parallel()
 	stub := newFoldersStub(t, map[string]stubCategory{"tv": {save: "/media/tv"}, "tv/anime": {}})
 	r := newFoldersRig(map[int]*qbtstub.Server{1: stub})
-	r.sm.clientPool.clients[1].applyCapabilitiesLocked("2.9.3")
+	r.sm.clientPool.clients[1].version = semver.MustParse("2.9.3")
 
 	got, err := r.folders(t, 1)
 	require.NoError(t, err)
@@ -435,4 +437,60 @@ func TestInstanceFoldersFailWhenTheCategoriesCannotBeRead(t *testing.T) {
 	stub.CategoriesStatus = http.StatusInternalServerError
 	_, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).folders(t, 1)
 	require.Error(t, err)
+}
+
+// The app info refresh inside the folder check reads the version again. When
+// that second read fails, the folder rules still come from the first one.
+// regression: #3765
+func TestInstanceFoldersKeepTheRulesOfTheVersionRead(t *testing.T) {
+	t.Parallel()
+	stub := newFoldersStub(t, map[string]stubCategory{"tv": {save: "/media/tv"}, "tv/anime": {}})
+	stub.WebAPIVersion = "2.16.2"
+	r := newFoldersRig(map[int]*qbtstub.Server{1: stub})
+	client := r.sm.clientPool.clients[1]
+	client.Client = client.WithHTTPClient(&http.Client{Transport: peerSyncTestTransport(func(req *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		if req.URL.Path == "/api/v2/app/webapiVersion" && r.versionRequests.Add(1) > 1 {
+			rec.WriteHeader(http.StatusBadGateway)
+			return rec.Result(), nil
+		}
+		stub.Config.Handler.ServeHTTP(rec, req)
+		return rec.Result(), nil
+	})})
+	client.appInfoCache = &AppInfo{BuildInfo: &AppBuildInfo{Platform: "linux"}}
+
+	folders, err := r.folders(t, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, r.versionRequests.Load(), "the app info refresh read the version again")
+	require.Contains(t, folders.CategorySaveFolders, "/media/tv/anime")
+}
+
+func TestCategoryPathRule(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		version string
+		setup   func(s *qbtstub.Server)
+		want    CategoryPathRule
+	}{
+		{name: "4.6 subcategories on is flat", version: "2.9.3"},
+		{name: "5.1 subcategories on nests", want: CategoryPathRule{Nest: true, InheritsDownloadPath: true}},
+		{name: "5.1 subcategories off is flat", setup: func(s *qbtstub.Server) { s.SubcategoriesOff = true }, want: CategoryPathRule{InheritsDownloadPath: true}},
+		{name: "5.2 nests with subcategories off", version: "2.15.1", setup: func(s *qbtstub.Server) { s.SubcategoriesOff = true }, want: CategoryPathRule{Nest: true, InheritsDownloadPath: true}},
+		{name: "5.3 on Windows", version: "2.15.4", setup: func(s *qbtstub.Server) { s.Platform = "windows" }, want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows", InheritsDownloadPath: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			stub := newFoldersStub(t, nil)
+			stub.WebAPIVersion = tt.version
+			if tt.setup != nil {
+				tt.setup(stub)
+			}
+			prefs := &qbt.AppPreferences{UseSubcategories: !stub.SubcategoriesOff}
+			got, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).sm.CategoryPathRule(t.Context(), 1, prefs)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }

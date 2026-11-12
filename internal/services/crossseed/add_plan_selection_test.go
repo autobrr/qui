@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -28,7 +29,7 @@ type alignmentFailureSyncManager struct {
 	bulkActionErr error
 }
 
-func (*alignmentFailureSyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (*alignmentFailureSyncManager) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 {
 		return nil, nil
 	}
@@ -37,7 +38,7 @@ func (*alignmentFailureSyncManager) GetTorrents(_ context.Context, _ int, filter
 	for _, hash := range filter.Hashes {
 		torrents = append(torrents, qbt.Torrent{Hash: hash, Progress: 1.0})
 	}
-	return torrents, nil
+	return testTorrentRefs(torrents), nil
 }
 
 func (m *alignmentFailureSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -99,7 +100,7 @@ func (*alignmentFailureSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (*alignmentFailureSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*alignmentFailureSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -177,7 +178,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureBeatsLinkFallbackRecheckSucce
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)
@@ -243,7 +244,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)

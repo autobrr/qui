@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 
 function AppLayoutContent() {
@@ -80,9 +81,11 @@ export function AppLayout() {
   return (
     <LayoutRouteProvider>
       <TorrentSelectionProvider>
-        <MobileScrollProvider>
-          <AppLayoutContent />
-        </MobileScrollProvider>
+        <BulkActionProvider>
+          <MobileScrollProvider>
+            <AppLayoutContent />
+          </MobileScrollProvider>
+        </BulkActionProvider>
       </TorrentSelectionProvider>
     </LayoutRouteProvider>
   )

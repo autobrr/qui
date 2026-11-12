@@ -50,6 +50,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/sqlite3store"
@@ -565,6 +566,10 @@ func (app *Application) runServer() {
 	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
 		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")
 	}
+	if err := cfg.Config.ValidateOIDCAllowedUser(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid OIDC allowed user configuration")
+	}
+	config.WarnIfOIDCAllowedUserUnset(cfg.Config)
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
@@ -577,6 +582,12 @@ func (app *Application) runServer() {
 	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
 
+	peerClientIconService, err := peerclienticons.NewService(cfg.GetDataDir(), buildinfo.UserAgent, peerclienticons.Icons)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to prepare peer client icon cache")
+	}
+	peerClientIconService.SetFetchEnabled(cfg.Config.TrackerIconsFetchEnabled)
+
 	// Ensure the custom themes directory exists so users have a place to drop
 	// sideloaded *.css files. Non-fatal: the themes handler also ensures lazily.
 	if themesDir, err := cfg.EnsureCustomThemesDir(); err != nil {
@@ -584,6 +595,7 @@ func (app *Application) runServer() {
 	}
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
+		peerClientIconService.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
 	})
 
@@ -804,7 +816,7 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 
@@ -812,7 +824,7 @@ func (app *Application) runServer() {
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	}, crossSeedService.HandleTorrentCompletion)
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
 		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
@@ -820,6 +832,7 @@ func (app *Application) runServer() {
 	defer func() {
 		automationCancel()
 		crossSeedService.StopAutomation()
+		crossSeedService.StopCopyGroups()
 	}()
 	partialPoolCtx, partialPoolCancel := context.WithCancel(context.Background())
 	partialPoolDone := make(chan struct{})
@@ -935,6 +948,7 @@ func (app *Application) runServer() {
 		Restarter:                        restarter,
 		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
+		PeerClientIconService:            peerClientIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
 		CrossSeedService:                 crossSeedService,
@@ -983,6 +997,8 @@ func (app *Application) runServer() {
 	select {
 	case <-serverReady:
 		crossSeedService.StartAutomation(automationCtx)
+		clientPool.AddSyncEventSink(crossSeedService.CopyGroupsSyncSink())
+		crossSeedService.StartCopyGroups(automationCtx)
 		go func() {
 			defer close(partialPoolDone)
 			crossSeedService.RunPartialPoolCoordinator(partialPoolCtx)
@@ -1108,13 +1124,13 @@ type torrentHashAdapter struct {
 }
 
 func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
-	torrents, err := a.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := a.syncManager.GetAllTorrentRefs(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("get torrents: %w", err)
 	}
 	hashes := make([]string, len(torrents))
-	for i := range torrents {
-		hashes[i] = torrents[i].Hash
+	for i, torrent := range torrents {
+		hashes[i] = torrent.Hash
 	}
 	return hashes, nil
 }

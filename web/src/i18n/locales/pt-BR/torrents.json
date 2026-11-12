@@ -620,10 +620,7 @@
     "bottomPriorityBatch": "Prioridade Mínima ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Renomear",
-    "renameTorrent": "Renomear Torrent",
-    "renameFile": "Renomear Arquivo",
-    "renameFolder": "Renomear Pasta"
+    "renameTorrent": "Renomear Torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1239,6 +1236,7 @@
     "status": "Status",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Peers",
     "leeches": "Leeches",
     "downloaded": "DLs",
     "message": "Mensagem",
@@ -1502,7 +1500,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Pesquisa automática ao digitar"
     },
-    "ratio": "Ratio:"
+    "ratio": "Ratio:",
+    "added": "Adicionado {{time}}"
   },
   "tableView": {
     "ascending": "crescente",
@@ -1657,13 +1656,14 @@
       "dropped": "Pacote adicionado. Destinos descartados: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Esta instância precisa de acesso ao sistema de arquivos local para montar um pacote.",
+        "no_filesystem_access": "Esta instância precisa de acesso de escrita ao sistema de arquivos para montar um pacote. Ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
         "no_link_mode": "Ative hardlinks ou reflinks nesta instância para selecionar vários destinos.",
         "no_base_directory": "Configure um diretório base para os links desta instância.",
         "no_episode_files": "Nenhum arquivo de episódio reproduzível foi encontrado neste pacote.",
         "target_not_found": "Destino não encontrado nesta instância.",
         "incomplete": "O download do destino está incompleto.",
         "not_settled": "Este torrent ainda está sendo movido ou verificado. Tente novamente quando terminar.",
+        "errored": "Este torrent tem um erro ou arquivos ausentes. Corrija o problema e tente novamente.",
         "no_episode_identity": "Não foi possível reconhecer o número do episódio.",
         "file_list_unavailable": "A lista de arquivos do destino não está disponível.",
         "episode_file_invalid": "O destino deve conter um arquivo reproduzível com a identidade do episódio selecionado.",
@@ -1678,5 +1678,26 @@
         "add_failed": "Falha ao adicionar o torrent."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "Mais {{count}} cópia de {{name}}",
+    "copies_other": "Mais {{count}} cópias de {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Uma cópia oculta tem arquivos ausentes",
+      "error": "Uma cópia oculta tem um erro",
+      "unregistered": "Uma cópia oculta não está registrada",
+      "trackerError": "Uma cópia oculta tem um erro de tracker",
+      "trackerDown": "O tracker de uma cópia oculta está fora"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} selecionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} selecionadas",
+    "hiddenTicked_one": "{{count}} cópia oculta está selecionada",
+    "hiddenTicked_other": "{{count}} cópias ocultas estão selecionadas",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupar cópias",
+    "ungroupCopies": "Desagrupar cópias",
+    "grouping": "Agrupando…"
   }
 }

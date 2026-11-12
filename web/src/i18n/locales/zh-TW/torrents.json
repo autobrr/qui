@@ -568,10 +568,7 @@
     "bottomPriorityBatch": "最低優先順序 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "重新命名",
-    "renameTorrent": "重新命名種子",
-    "renameFile": "重新命名檔案",
-    "renameFolder": "重新命名資料夾"
+    "renameTorrent": "重新命名種子"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1169,6 +1166,7 @@
     "status": "狀態",
     "tracker": "Tracker",
     "seeds": "做種",
+    "peers": "節點",
     "leeches": "下載",
     "downloaded": "已完成",
     "message": "訊息",
@@ -1426,7 +1424,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
     },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "新增於{{time}}"
   },
   "tableView": {
     "ascending": "升序",
@@ -1580,13 +1579,14 @@
       "dropped": "整季包已加入。已排除的目標：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此實例需要本機檔案系統存取權限才能組裝整季包。",
+        "no_filesystem_access": "此實例需要檔案系統寫入權限才能組裝整季包。請在實例設定中啟用「本機檔案系統存取」或設定 SSH 存取。",
         "no_link_mode": "請在此實例上啟用硬連結或 reflink 模式，以選擇多個目標。",
         "no_base_directory": "請為此實例設定連結基礎目錄。",
         "no_episode_files": "此整季包中未找到可播放的單集檔案。",
         "target_not_found": "此實例中未找到目標種子。",
         "incomplete": "目標種子尚未下載完成。",
         "not_settled": "此種子仍在移動或檢查中。請在完成後重試。",
+        "errored": "此種子有錯誤或缺少檔案。請修復後重試。",
         "no_episode_identity": "無法解析集數。",
         "file_list_unavailable": "無法取得目標種子的檔案清單。",
         "episode_file_invalid": "目標種子必須僅包含一個與所選單集識別相符的可播放檔案。",
@@ -1601,5 +1601,23 @@
         "add_failed": "加入種子失敗。"
       }
     }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 個副本",
+    "labelWithProblem": "{{label}}。{{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "某個隱藏的副本檔案丟失",
+      "error": "某個隱藏的副本出錯",
+      "unregistered": "某個隱藏的副本未註冊",
+      "trackerError": "某個隱藏的副本有 Tracker 錯誤",
+      "trackerDown": "某個隱藏的副本的 Tracker 離線"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已選 {{count}} 個",
+    "hiddenTicked_other": "已選取 {{count}} 個隱藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合併副本",
+    "ungroupCopies": "取消合併副本",
+    "grouping": "正在分組…"
   }
 }

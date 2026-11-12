@@ -223,6 +223,7 @@ interface MobilePeerRowProps {
   countryCode?: string
   country?: string
   client: string
+  clientIcon: ReactNode
   connection?: string
   flags?: string
   progressPercent: number
@@ -231,7 +232,7 @@ interface MobilePeerRowProps {
   upSpeed: string
 }
 
-export function MobilePeerRow({ address, countryCode, country, client, connection, flags, progressPercent, isSeeder, downSpeed, upSpeed }: MobilePeerRowProps) {
+export function MobilePeerRow({ address, countryCode, country, client, clientIcon, connection, flags, progressPercent, isSeeder, downSpeed, upSpeed }: MobilePeerRowProps) {
   return (
     <div className="space-y-1 px-3 py-2.5">
       <div className="flex items-center gap-2">
@@ -244,6 +245,7 @@ export function MobilePeerRow({ address, countryCode, country, client, connectio
         </span>
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {clientIcon}
         <span className="min-w-0 flex-1 truncate">{[client, connection, flags].filter(Boolean).join(" · ")}</span>
         <div className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
           <div className={cn("h-full", isSeeder ? "bg-green-500" : "bg-foreground/60")} style={{ width: `${progressPercent}%` }} />

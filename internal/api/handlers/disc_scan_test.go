@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -43,7 +44,7 @@ func (f *fakeDiscResolver) GetTorrentProperties(context.Context, int, string) (*
 	return &qbt.TorrentProperties{SavePath: f.savePath}, nil
 }
 
-func (f *fakeDiscResolver) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *fakeDiscResolver) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	return nil, nil
 }
 

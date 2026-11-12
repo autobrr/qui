@@ -166,15 +166,20 @@ func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
 // fileKeys spans every root of a run. A second path to an nlink==1 file no
 // torrent owns is a bind mount or a path through a symlinked folder and is
 // listed once (#1212), while hardlinks no torrent owns are listed at every
-// path. A torrent's file protects every path with its identity, since a bind
-// mount or a symlinked folder can reach a hardlink too (#3449).
+// path. A torrent's file protects each path that is its own directory entry,
+// reached through a bind mount or a symlinked folder (#3449). Another hardlink
+// of it is listed.
 type fileKeys struct {
 	inUse map[fsops.FileKey]struct{}
 	// Single-link files no torrent owns, as a chain per key through one slab: one slice per key costs an allocation per orphan.
 	others map[fsops.FileKey]int
 	// linked holds the hardlinked ones, checked only against inUse, so their sizes go unused.
 	linked map[fsops.FileKey]int
-	refs   []aliasRef
+	// linkedInUse chains the paths of hardlinked torrent files, so linkedAliases can tell their aliases from other hardlinks.
+	linkedInUse map[fsops.FileKey]int
+	// relinked are the torrent files whose paths the walk met with one link and with more, so linkedInUse misses a path.
+	relinked map[fsops.FileKey]struct{}
+	refs     []aliasRef
 	// incomplete is set once a regular file had no key, so a second path to it could go unmatched.
 	incomplete bool
 	// fileDirs are the folders that hold a torrent file the walk met. Neither
@@ -190,18 +195,35 @@ type aliasRef struct {
 
 func newFileKeys() *fileKeys {
 	return &fileKeys{
-		inUse:    make(map[fsops.FileKey]struct{}),
-		others:   make(map[fsops.FileKey]int),
-		linked:   make(map[fsops.FileKey]int),
-		fileDirs: make(map[string]struct{}),
+		inUse:       make(map[fsops.FileKey]struct{}),
+		others:      make(map[fsops.FileKey]int),
+		linked:      make(map[fsops.FileKey]int),
+		linkedInUse: make(map[fsops.FileKey]int),
+		relinked:    make(map[fsops.FileKey]struct{}),
+		fileDirs:    make(map[string]struct{}),
+	}
+}
+
+func (k *fileKeys) addInUse(key fsops.FileKey, path string, nlinks uint64) {
+	_, seen := k.inUse[key]
+	_, linked := k.linkedInUse[key]
+	k.inUse[key] = struct{}{}
+	if seen && linked != (nlinks > 1) {
+		k.relinked[key] = struct{}{}
+	}
+	if nlinks > 1 {
+		k.chain(k.linkedInUse, key, path)
 	}
 }
 
 func (k *fileKeys) addOther(key fsops.FileKey, path string, nlinks uint64) int {
-	chains := k.others
 	if nlinks > 1 {
-		chains = k.linked
+		return k.chain(k.linked, key, path)
 	}
+	return k.chain(k.others, key, path)
+}
+
+func (k *fileKeys) chain(chains map[fsops.FileKey]int, key fsops.FileKey, path string) int {
 	prev, ok := chains[key]
 	if !ok {
 		prev = -1
@@ -221,8 +243,10 @@ func (k *fileKeys) of(entry fsops.WalkEntry, instance *models.Instance) (fsops.F
 
 // dropAliasOrphans runs once every root is walked, so walk and root order
 // cannot decide whether a delete reaches a torrent's file through an alias.
-func dropAliasOrphans(d fsops.PathDialect, orphans []OrphanFile, keys *fileKeys) []OrphanFile {
+func dropAliasOrphans(ctx context.Context, backend fsops.Backend, instance *models.Instance, orphans []OrphanFile, keys *fileKeys) []OrphanFile {
+	d := backend.Paths()
 	inUse, aliased := keys.inUseAndAliased()
+	inUse = append(inUse, keys.linkedAliases(ctx, backend, instance)...)
 	if len(aliased) == 0 && len(inUse) == 0 {
 		return orphans
 	}
@@ -252,8 +276,8 @@ func dropAliasOrphans(d fsops.PathDialect, orphans []OrphanFile, keys *fileKeys)
 	return out
 }
 
-// inUseAndAliased returns the paths of keys a torrent owns, and the newest ref
-// of each other key with more than one path.
+// inUseAndAliased returns the single-link paths of keys a torrent owns, and
+// the newest ref of each other key with more than one path.
 func (k *fileKeys) inUseAndAliased() (inUse []string, aliased []int) {
 	for key, head := range k.others {
 		if _, ok := k.inUse[key]; ok {
@@ -262,12 +286,53 @@ func (k *fileKeys) inUseAndAliased() (inUse []string, aliased []int) {
 			aliased = append(aliased, head)
 		}
 	}
+	return inUse, aliased
+}
+
+// linkedAliases returns the hardlinked paths no torrent owns that are a
+// torrent file's own directory entry: the same name in the same folder, seen
+// through a bind mount or a symlinked folder. It reads folder identities only
+// for the keys a torrent owns, in one batch.
+func (k *fileKeys) linkedAliases(ctx context.Context, backend fsops.Backend, instance *models.Instance) []string {
+	type match struct{ others, torrents int }
+	var (
+		inUse   []string
+		matches []match
+		dirs    []string
+	)
+	d := backend.Paths()
 	for key, head := range k.linked {
-		if _, ok := k.inUse[key]; ok {
+		if _, ok := k.inUse[key]; !ok {
+			continue
+		}
+		torrents, ok := k.linkedInUse[key]
+		if _, relinked := k.relinked[key]; !ok || relinked {
+			// A torrent path to the file was met with one link, so every path stays.
 			inUse = k.paths(inUse, head)
+			continue
+		}
+		matches = append(matches, match{head, torrents})
+		for _, h := range []int{head, torrents} {
+			for r := h; r >= 0; r = k.refs[r].prev {
+				dirs = append(dirs, d.Dir(k.refs[r].path))
+			}
 		}
 	}
-	return inUse, aliased
+	if len(matches) == 0 {
+		return inUse
+	}
+	ids := readDirIDs(ctx, backend, instance, dirs)
+	for _, m := range matches {
+		for r := m.others; r >= 0; r = k.refs[r].prev {
+			for t := m.torrents; t >= 0; t = k.refs[t].prev {
+				if sameEntry(d, ids, k.refs[r].path, k.refs[t].path) {
+					inUse = append(inUse, k.refs[r].path)
+					break
+				}
+			}
+		}
+	}
+	return inUse
 }
 
 func (k *fileKeys) paths(paths []string, head int) []string {
@@ -473,7 +538,7 @@ func recordInUse(ctx context.Context, root string, protected *protectedPaths, ba
 			return fmt.Errorf("file identity %s: %w", entry.Path, entry.FileIDErr)
 		}
 		if key, ok := keys.of(entry, instance); ok {
-			keys.inUse[key] = struct{}{}
+			keys.addInUse(key, entry.Path, entry.Nlinks)
 		}
 	}
 	return ctx.Err()
@@ -572,7 +637,7 @@ func walkScanRootWithUnitFilter(
 			}
 			w.keys.fileDirs[w.d.Dir(path)] = struct{}{}
 			if key, ok := w.keys.of(entry, w.instance); ok {
-				w.keys.inUse[key] = struct{}{}
+				w.keys.addInUse(key, path, entry.Nlinks)
 			}
 			continue
 		}
@@ -621,7 +686,7 @@ func walkScanRootWithUnitFilter(
 
 	orphans := w.orphans()
 	if ownKeys {
-		orphans = dropAliasOrphans(w.d, orphans, keys)
+		orphans = dropAliasOrphans(ctx, backend, instance, orphans, keys)
 	}
 	return orphans, w.candidateDirs(orphans), w.truncated, ctx.Err()
 }

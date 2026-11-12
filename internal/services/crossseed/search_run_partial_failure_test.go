@@ -22,17 +22,17 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// hashFilteringSyncManager honors the Hashes filter in GetTorrents so
+// hashFilteringSyncManager honors the Hashes filter in GetTorrentRefs so
 // per-candidate lookups see only the requested torrent.
 type hashFilteringSyncManager struct {
 	gazelleSkipHashSyncManager
 }
 
-func (g *hashFilteringSyncManager) GetTorrents(_ context.Context, _ int, opts qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (g *hashFilteringSyncManager) GetTorrentRefs(_ context.Context, _ int, opts internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(opts.Hashes) == 0 {
 		copied := make([]qbt.Torrent, len(g.torrents))
 		copy(copied, g.torrents)
-		return copied, nil
+		return testTorrentRefs(copied), nil
 	}
 	out := make([]qbt.Torrent, 0, len(opts.Hashes))
 	for _, torrent := range g.torrents {
@@ -42,7 +42,7 @@ func (g *hashFilteringSyncManager) GetTorrents(_ context.Context, _ int, opts qb
 			}
 		}
 	}
-	return out, nil
+	return testTorrentRefs(out), nil
 }
 
 // newSearchRunLoopFixture builds a Service with a running search-run state

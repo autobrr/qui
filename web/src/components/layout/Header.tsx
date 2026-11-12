@@ -46,7 +46,9 @@ import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
+import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
@@ -138,9 +140,10 @@ export function Header({
   const { state: layoutRouteState } = useLayoutRoute()
   const spreadsheetDisguise = useSpreadsheetDisguise()
 
-  const { selection, dispatch: dispatchSelection } = useTorrentSelectionContext()
+  const { selection } = useTorrentSelectionContext()
   const selectionSummary = useTorrentSelectionSummary()
-  const clearSelection = useCallback(() => dispatchSelection({ type: "clear" }), [dispatchSelection])
+  // CSS hides the header on the phone layout, so the management bar does not mount there.
+  const isMobile = useIsMobile()
 
   const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
@@ -176,9 +179,7 @@ export function Header({
   )
   const unifiedCapabilitiesResults = useQueries({
     queries: unifiedManageableInstances.map((instance) => ({
-      queryKey: ["instance-capabilities", instance.id],
-      queryFn: () => api.getInstanceCapabilities(instance.id),
-      staleTime: 60_000,
+      ...instanceCapabilitiesQuery(instance.id),
       enabled: isAllInstancesRoute,
     })),
   })
@@ -581,14 +582,11 @@ export function Header({
             )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
-          {selectionSummary && hasSelection(selection) && (
+          {!isMobile && selectionSummary && hasSelection(selection) && (
             <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}
-                instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
                 actionTarget={selectionSummary.actionTarget}
-                totalSelectionSize={selectionSummary.selectedTotalSize}
-                onComplete={clearSelection}
               />
             </div>
           )}

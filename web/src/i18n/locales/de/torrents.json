@@ -620,10 +620,7 @@
     "bottomPriorityBatch": "Niedrigste Priorität ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Umbenennen",
-    "renameTorrent": "Torrent umbenennen",
-    "renameFile": "Datei umbenennen",
-    "renameFolder": "Ordner umbenennen"
+    "renameTorrent": "Torrent umbenennen"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1239,6 +1236,7 @@
     "status": "Status",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Peers",
     "leeches": "Leeches",
     "downloaded": "DLs",
     "message": "Nachricht",
@@ -1502,7 +1500,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Sucht automatisch nach der Eingabe"
     },
-    "ratio": "Ratio:"
+    "ratio": "Ratio:",
+    "added": "Hinzugefügt {{time}}"
   },
   "tableView": {
     "ascending": "aufsteigend",
@@ -1657,13 +1656,14 @@
       "dropped": "Paket hinzugefügt. Ausgelassene Ziele: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Diese Instanz benötigt lokalen Dateisystemzugriff, um ein Paket zusammenzustellen.",
+        "no_filesystem_access": "Diese Instanz braucht Schreibzugriff auf das Dateisystem, um ein Paket zusammenzustellen. Aktiviere in den Instanzeinstellungen „Lokaler Dateisystemzugriff“ oder richte dort SSH-Zugriff ein.",
         "no_link_mode": "Aktiviere Hardlinks oder Reflinks für diese Instanz, um mehrere Ziele auszuwählen.",
         "no_base_directory": "Lege ein Basisverzeichnis für Links in dieser Instanz fest.",
         "no_episode_files": "In diesem Paket wurden keine abspielbaren Episodendateien gefunden.",
         "target_not_found": "Ziel in dieser Instanz nicht gefunden.",
         "incomplete": "Der Download des Ziels ist unvollständig.",
         "not_settled": "Dieser Torrent wird noch verschoben oder geprüft. Versuche es erneut, wenn der Vorgang abgeschlossen ist.",
+        "errored": "Dieser Torrent hat einen Fehler oder fehlende Dateien. Behebe das Problem und versuche es erneut.",
         "no_episode_identity": "Die Episodennummer konnte nicht erkannt werden.",
         "file_list_unavailable": "Die Dateiliste des Ziels ist nicht verfügbar.",
         "episode_file_invalid": "Das Ziel muss genau eine abspielbare Datei mit der ausgewählten Episodenkennung enthalten.",
@@ -1678,5 +1678,26 @@
         "add_failed": "Der Torrent konnte nicht hinzugefügt werden."
       }
     }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} weitere Kopie von {{name}}",
+    "copies_other": "{{count}} weitere Kopien von {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Einer ausgeblendeten Kopie fehlen Dateien",
+      "error": "Eine ausgeblendete Kopie hat einen Fehler",
+      "unregistered": "Eine ausgeblendete Kopie ist nicht registriert",
+      "trackerError": "Eine ausgeblendete Kopie hat einen Tracker-Fehler",
+      "trackerDown": "Der Tracker einer ausgeblendeten Kopie ist offline"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} ausgewählt",
+    "badgeTicked_other": "+{{hidden}} · {{count}} ausgewählt",
+    "hiddenTicked_one": "{{count}} ausgeblendete Kopie ist ausgewählt",
+    "hiddenTicked_other": "{{count}} ausgeblendete Kopien sind ausgewählt",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Kopien gruppieren",
+    "ungroupCopies": "Gruppierung der Kopien aufheben",
+    "grouping": "Gruppiere…"
   }
 }

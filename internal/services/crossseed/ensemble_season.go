@@ -97,7 +97,7 @@ func parseEnsembleSeasonPseudoHash(hash string) (ensembleGroupKey, bool) {
 // content dedup, so groups inherit the run scoping. packSource is the
 // instance's full torrent list: a seeded pack outside the run scope must still
 // suppress its group, or the search re-downloads a pack the user already has.
-func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torrent) []qbt.Torrent {
+func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torrent) []*qbt.Torrent {
 	type groupInfo struct {
 		displayTitle string
 		episodes     map[int]struct{}
@@ -107,8 +107,8 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 
 	// Any seeded or downloading pack suppresses its group; progress does not
 	// matter because the pack's presence already makes a search pointless.
-	for i := range packSource {
-		release := s.releaseCache.Parse(packSource[i].Name)
+	for _, pack := range packSource {
+		release := s.releaseCache.Parse(pack.Name)
 		if !isTVSeasonPack(release) {
 			continue
 		}
@@ -126,9 +126,8 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		}
 	}
 
-	for i := range torrents {
-		torrent := &torrents[i]
-		if torrent.Progress < 1.0 {
+	for _, torrent := range torrents {
+		if s.sourceGate().check(torrent, sourceFilter{}) != sourcePass {
 			continue
 		}
 		release := s.releaseCache.Parse(torrent.Name)
@@ -163,7 +162,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		}
 	}
 
-	virtual := make([]qbt.Torrent, 0, len(groups))
+	virtual := make([]*qbt.Torrent, 0, len(groups))
 	for key, group := range groups {
 		if len(group.episodes) < ensembleMinEpisodes {
 			continue
@@ -175,14 +174,14 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		if key.season > 0 {
 			name = fmt.Sprintf("%s S%02d", group.displayTitle, key.season)
 		}
-		virtual = append(virtual, qbt.Torrent{
+		virtual = append(virtual, &qbt.Torrent{
 			Hash:     ensembleSeasonPseudoHash(key),
 			Name:     name,
 			Progress: 1.0,
 		})
 	}
 
-	slices.SortFunc(virtual, func(a, b qbt.Torrent) int {
+	slices.SortFunc(virtual, func(a, b *qbt.Torrent) int {
 		return strings.Compare(a.Hash, b.Hash)
 	})
 	return virtual
@@ -207,25 +206,15 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		return false, nil
 	}
 
-	release := s.releaseCache.Parse(torrent.Name)
-	searchQuery := BuildTorznabQuery(torrent.Name, release, false)
-	contentInfo := DetermineContentType(release)
+	source := s.matcher().readName(torrent.Name)
+	searchReq := s.matcher().buildTorznabRequest(torznabRequestInput{
+		torrentName: torrent.Name,
+		source:      source,
+		contentInfo: DetermineContentType(source.release),
+		indexerIDs:  state.resolvedTorznabIndexerIDs,
+	}).req
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
-
-	searchReq := &jackett.TorznabSearchRequest{
-		Query:            searchQuery.Query,
-		ReleaseName:      torrent.Name,
-		Limit:            effectiveTorznabCrossSeedSearchLimit(0),
-		IndexerIDs:       state.resolvedTorznabIndexerIDs,
-		ReturnAllResults: true,
-	}
-	if len(contentInfo.Categories) > 0 {
-		searchReq.Categories = contentInfo.Categories
-	}
-	if searchQuery.Season != nil {
-		searchReq.Season = searchQuery.Season
-	}
 
 	resp, err := s.searchOnce(searchCtx, searchReq)
 	if err != nil {
@@ -249,7 +238,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		}
 	}
 
-	s.applyEnsembleSearchResults(ctx, state, torrent, key, searchQuery.Query, resp, processedAt)
+	s.applyEnsembleSearchResults(ctx, state, torrent, key, searchReq.Query, resp, processedAt)
 	return true, nil
 }
 

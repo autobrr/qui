@@ -40,7 +40,7 @@
     "download": "Téléchargement",
     "upload": "Envoi",
     "totalSize": "Taille Totale",
-    "totalSizeTooltip": "Taille totale de tous les torrents, y compris les cross-seeds",
+    "totalSizeTooltip": "Taille totale de tous les torrents. Les copies d'une release comptent une seule fois.",
     "freeSpace": "Espace Libre",
     "showMore": "Afficher plus",
     "showLess": "Afficher moins",
@@ -58,7 +58,6 @@
     "errors": "Erreurs",
     "reannounceTooltip": "Réannonce automatique au tracker activée",
     "altSpeedLimits": "Limites de vitesse alternatives : {{status}}",
-    "localFileAccess": "Accès aux fichiers locaux activé",
     "connectable": "Connectable",
     "portInfo": ". Port : {{port}}",
     "connectionStatus": "Statut de connexion qBittorrent : {{status}}",
@@ -76,6 +75,10 @@
       "disable": "Désactiver",
       "cancel": "Annuler"
     }
+  },
+  "uniqueSize": {
+    "calculating": "calcul en cours",
+    "calculatingTooltip": "qui lit les listes de fichiers pour trouver les copies de chaque release. En attendant, cette taille compte chaque cross-seed lié en entier."
   },
   "mobileOverview": {
     "instances": "Instances",

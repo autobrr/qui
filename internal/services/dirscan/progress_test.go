@@ -18,10 +18,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -59,6 +61,137 @@ func TestBuildTrackedFileUpsert_SearchedIndexerIDs(t *testing.T) {
 		require.Equal(t, models.DirScanFileStatusPending, fileModel.Status)
 		require.Nil(t, fileModel.SearchedIndexerIDs)
 	})
+}
+
+// regression: #3736
+func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
+	t.Parallel()
+
+	second := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
+	nanos := second.Add(123456789 * time.Nanosecond)
+
+	for _, tt := range []struct {
+		name        string
+		storedTime  time.Time
+		scannedTime time.Time
+		scannedSize int64
+		wantStatus  models.DirScanFileStatus
+		wantIndexer []int
+	}{
+		{name: "stored whole second, scanned nanos", storedTime: second, scannedTime: nanos, scannedSize: 100, wantStatus: models.DirScanFileStatusNoMatch, wantIndexer: []int{1}},
+		{name: "stored nanos, scanned whole second", storedTime: nanos, scannedTime: second, scannedSize: 100, wantStatus: models.DirScanFileStatusNoMatch, wantIndexer: []int{1}},
+		{name: "different second", storedTime: nanos, scannedTime: nanos.Add(time.Second), scannedSize: 100, wantStatus: models.DirScanFileStatusPending},
+		{name: "different size, same second", storedTime: nanos, scannedTime: nanos, scannedSize: 200, wantStatus: models.DirScanFileStatusPending},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			existing := &models.DirScanFile{
+				FilePath:           "/data/movies/movie.mkv",
+				FileSize:           100,
+				FileModTime:        tt.storedTime,
+				Status:             models.DirScanFileStatusNoMatch,
+				SearchedIndexerIDs: []int{1},
+			}
+			idx := &trackedFilesIndex{
+				byPath:   map[string]*models.DirScanFile{existing.FilePath: existing},
+				byFileID: map[fsops.FileKey]*models.DirScanFile{},
+			}
+			scanned := &ScannedFile{Path: existing.FilePath, Size: tt.scannedSize, ModTime: tt.scannedTime}
+
+			fileModel, err := buildTrackedFileUpsert(1, scanned, idx, &seedingIndex{}, nil)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantStatus, fileModel.Status)
+			require.Equal(t, tt.wantIndexer, fileModel.SearchedIndexerIDs)
+		})
+	}
+}
+
+// regression: #3736
+func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansSQLite(t *testing.T) {
+	t.Parallel()
+	runTrackedFileRescanTest(t, testdb.NewMigratedSQLite(t, "dirscan-rescan"))
+}
+
+// regression: #3736
+func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansPostgresIntegration(t *testing.T) {
+	runTrackedFileRescanTest(t, testdb.NewMigratedPostgres(t, "dirscan-rescan"))
+}
+
+// runTrackedFileRescanTest stores an mtime through the real store and scans it
+// again. Postgres reads it back in microseconds. The nanos sit at the top of the
+// second so a driver that rounded instead of truncating would fail here too.
+func runTrackedFileRescanTest(t *testing.T, db *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewDirScanStore(db)
+	svc := &Service{store: store}
+
+	for _, tt := range []struct {
+		name   string
+		zone   *time.Location
+		fileID hardlink.FileID
+	}{
+		{name: "utc", zone: time.UTC, fileID: hardlink.UnixFileID(7, 42)},
+		{name: "west-of-utc", zone: time.FixedZone("PST", -8*3600), fileID: hardlink.UnixFileID(7, 42)},
+		// Without a file ID only the INSERT writes the row.
+		{name: "west-of-utc-no-file-id", zone: time.FixedZone("PST", -8*3600)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+				Path:                "/data/" + tt.name,
+				Enabled:             true,
+				TargetInstanceID:    instance.ID,
+				ScanIntervalMinutes: 60,
+			})
+			require.NoError(t, err)
+
+			scanned := &ScannedFile{
+				Path:    "/data/" + tt.name + "/movie.mkv",
+				RelPath: "movie.mkv",
+				Size:    100,
+				ModTime: time.Date(2026, time.July, 1, 12, 0, 0, 999999999, tt.zone),
+				FileID:  tt.fileID,
+			}
+			root := &Searchee{Name: "movie", Path: scanned.Path, Files: []*ScannedFile{scanned}}
+			item := searcheeWorkItem{searchee: root}
+			result := &ScanResult{Searchees: []*Searchee{root}}
+			enabledIndexers := map[int]struct{}{1: {}}
+
+			tracked, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, nil, result, &seedingIndex{}, nil)
+			require.NoError(t, err)
+			require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, scanned, tracked, dirScanFileUpdate{
+				status:             models.DirScanFileStatusNoMatch,
+				searchedIndexerIDs: []int{1},
+			}))
+
+			rescan := func(t *testing.T) (*models.DirScanFile, bool) {
+				t.Helper()
+				idx, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, nil, result, &seedingIndex{}, nil)
+				require.NoError(t, err)
+				files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+				require.NoError(t, err)
+				require.Len(t, files, 1)
+				return files[0], workItemHasPendingFiles(item, idx, enabledIndexers)
+			}
+
+			file, pending := rescan(t)
+			require.Equal(t, models.DirScanFileStatusNoMatch, file.Status)
+			require.Equal(t, []int{1}, file.SearchedIndexerIDs)
+			require.False(t, pending)
+
+			scanned.ModTime = scanned.ModTime.Add(time.Second)
+			file, pending = rescan(t)
+			require.Equal(t, models.DirScanFileStatusPending, file.Status)
+			require.Nil(t, file.SearchedIndexerIDs)
+			require.True(t, pending)
+		})
+	}
 }
 
 // A tracked row keeps the tagged bytes; a rescan finds it by identity after a rename.
@@ -165,7 +298,7 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 			svc := &Service{torrentFiles: stubTorrentFiles{files: lists}}
 			backend := statBackend{Backend: local.NewBackend(), info: tt.info, err: tt.err}
 
-			index, err := svc.buildFileIDIndex(t.Context(), 1, backend, nil)
+			index, err := svc.buildFileIDIndex(t.Context(), &models.Instance{ID: 1, HasLocalFilesystemAccess: true}, backend, nil)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, index.complete)
 			require.Equal(t, tt.indexed, index.len())
@@ -228,13 +361,12 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 			}))
 			runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
 			require.NoError(t, err)
-			svc.backendPool = testBackendPool(&models.Instance{ID: dir.TargetInstanceID, HasLocalFilesystemAccess: true})
 			svc.torrentFiles = tt.qbt
 			l := zerolog.Nop()
 
-			scanResult, index, ok := svc.runScanPhase(ctx, dir, dir.Path, runID, &l)
+			scanResult, index, ok := svc.runScanPhase(ctx, dir, localScanTarget(), dir.Path, runID, &l)
 			require.True(t, ok)
-			_, err = svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, index, &l)
+			_, err = svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, index, &l)
 			require.NoError(t, err)
 
 			files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
@@ -289,7 +421,7 @@ func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
 			}}}
 			l := zerolog.Nop()
 
-			_, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, tt.seeding, &l)
+			_, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, tt.seeding, &l)
 			require.NoError(t, err)
 
 			files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)

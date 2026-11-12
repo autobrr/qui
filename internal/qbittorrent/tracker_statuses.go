@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ var defaultUnregisteredStatuses = []string{
 	"not exist",
 	"not registered",
 	"nuked",
+	"other:",
 	"pack is available",
 	"packs are available",
 	"problem with description",
@@ -97,18 +99,18 @@ var trackerDownStatuses = []string{
 	"<none>",
 }
 
-// trackerHealthOf decides the tracker health of a torrent. During the grace hour
+// trackerHealthOf decides the tracker health of a torrent from its trackers. During the grace hour
 // an unregistered message gives no unregistered label, because a tracker can say
 // that before it registers a new upload. The tracker down label can still show.
-func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
+func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now time.Time) TrackerHealth {
 	// Most torrents have no tracker data, so they skip the time math.
-	if torrent == nil || len(torrent.Trackers) == 0 {
+	if torrent == nil || len(trackers) == 0 {
 		return ""
 	}
 
 	graceOver := torrent.AddedOn <= 0 || now.Sub(time.Unix(torrent.AddedOn, 0)) >= time.Hour
 	var working, updating, unregistered, down, failed, pending bool
-	for _, tracker := range torrent.Trackers {
+	for _, tracker := range trackers {
 		switch tracker.Status {
 		case qbt.TrackerStatusDisabled:
 			// Skip DHT/PeX entries
@@ -145,13 +147,33 @@ func trackerHealthOf(torrent *qbt.Torrent, now time.Time) TrackerHealth {
 	return ""
 }
 
+// trackerAuthErrorStatuses lists tracker messages that reject the user's passkey
+// or account, not the torrent. "Passkey does not exist" and "User does not exist"
+// would match "not exist", and "unregistered torrent pass" would match "unregistered".
+var trackerAuthErrorStatuses = []string{
+	"passkey",
+	"torrent pass",
+	"user does not exist",
+}
+
 // TrackerMessageMatchesUnregistered reports whether the tracker message indicates an unregistered torrent.
+// A message that rejects the passkey or the user never does: after a passkey
+// reset every torrent of the tracker gets it, and the torrents still exist.
+// A URL in the message can carry a passkey parameter, so the passkey check
+// reads the message without its URLs.
 // libtorrent reports an HTTP status without a reason phrase as
 // "<code> (unknown HTTP error)". That text would match "unknown", but the
 // tracker did not answer, so it is removed before matching.
 func TrackerMessageMatchesUnregistered(message string) bool {
-	message = strings.ReplaceAll(message, "(unknown HTTP error)", "")
-	return trackerMessageMatches(message, defaultUnregisteredStatuses)
+	text := strings.ToLower(strings.ReplaceAll(message, "(unknown HTTP error)", ""))
+	if !slices.ContainsFunc(defaultUnregisteredStatuses, func(pattern string) bool { return strings.Contains(text, pattern) }) {
+		return false
+	}
+	authText := text
+	if strings.Contains(authText, "://") {
+		authText = urlPattern.ReplaceAllString(authText, "")
+	}
+	return !slices.ContainsFunc(trackerAuthErrorStatuses, func(pattern string) bool { return strings.Contains(authText, pattern) })
 }
 
 // TrackerMessageMatchesDown reports whether the tracker message indicates tracker outage.

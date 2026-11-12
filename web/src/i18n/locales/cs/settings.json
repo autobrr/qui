@@ -12,7 +12,7 @@
     "externalPrograms": "Externí programy",
     "notifications": "Notifikace",
     "dateTime": "Čas a jazyk",
-    "premiumThemes": "Premium motivy",
+    "premiumThemes": "Motivy",
     "security": "Bezpečnost",
     "logs": "Logy"
   },
@@ -129,16 +129,71 @@
     "apiDocs": "API dokumentace",
     "description": "API klíče umožňují externím aplikacím přístup k vašim qBittorrent instancem.",
     "createButton": "Vytvořit API klíč",
+    "editButton": "Upravit {{name}}",
+    "deleteButton": "Smazat {{name}}",
     "loading": "Načítám API klíče...",
     "empty": "Žádné API klíče vytvořeny",
     "createDialog": {
       "title": "Vytvořit API klíč",
-      "description": "Dejte svému API klíči popisný název, abyste si mohli jeho účel zapamatovat.",
+      "description": "Pojmenujte klíč a vyberte jen přístup, který potřebuje.",
       "nameLabel": "Název",
       "namePlaceholder": "např. Automatizační skript",
       "nameRequired": "Název je povinný",
       "submit": "Vytvořit API klíč",
       "creating": "Vytvářím..."
+    },
+    "editDialog": {
+      "title": "Upravit API klíč",
+      "description": "Změny platí od dalšího požadavku tohoto klíče. qui samotný klíč už nikdy nezobrazí.",
+      "submit": "Uložit změny",
+      "saving": "Ukládání..."
+    },
+    "permissions": {
+      "title": "Oprávnění",
+      "help": "Zápis zahrnuje čtení a spuštění. Spuštění nezahrnuje čtení, protože nastavení obsahuje přihlašovací údaje.",
+      "required": "Vyberte alespoň jedno oprávnění.",
+      "access": "Přístup",
+      "allAreas": "Všechny oblasti",
+      "allAreasExcept": "Všechny oblasti kromě: {{areas}}",
+      "refusedByLimit": "Křížové sdílení a skenovač adresářů odmítají klíč s omezením instancí, takže qui tato oprávnění neuloží.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Zobrazit přístup podle oblastí pro {{name}}",
+      "partialArea": "{{area}} (jen {{levels}})",
+      "legend": {
+        "title": "Jeden blok pro každou oblast oprávnění:",
+        "none": "bez přístupu"
+      },
+      "levels": {
+        "read": "čtení",
+        "run": "spuštění",
+        "write": "zápis"
+      },
+      "areas": {
+        "instances": "Instance",
+        "torrents": "Torrenty",
+        "crossSeed": "Křížové sdílení",
+        "dirScan": "Skenovač adresářů",
+        "automations": "Automatizace",
+        "rss": "RSS",
+        "backups": "Zálohy",
+        "orphanScan": "Vyhledání sirotků",
+        "externalPrograms": "Externí programy",
+        "indexers": "Indexery",
+        "arr": "Arr",
+        "notifications": "Notifikace",
+        "settings": "Nastavení",
+        "logs": "Logy",
+        "system": "Systém"
+      }
+    },
+    "instanceLimit": {
+      "title": "Omezení instancí",
+      "help": "Vyberte instance, ke kterým má tento klíč přístup. Bez výběru má přístup ke všem instancím, i k těm, které přidáte později.",
+      "reaches": "Dosah",
+      "all": "Všechny instance",
+      "only": "Jen {{instances}}",
+      "none": "Žádné instance. Omezení obsahuje jen smazané instance.",
+      "deleted": "Smazaná instance {{id}}"
     },
     "newKey": {
       "label": "Váš nový API klíč",
@@ -156,7 +211,9 @@
       "created": "API klíč vytvořen úspěšně",
       "createFailed": "Nepodařilo se vytvořit API klíč",
       "deleted": "API klíč smazán úspěšně",
-      "deleteFailed": "Nepodařilo se smazat API klíč"
+      "deleteFailed": "Nepodařilo se smazat API klíč",
+      "updated": "API klíč aktualizován úspěšně",
+      "updateFailed": "Nepodařilo se aktualizovat API klíč"
     }
   },
   "externalPrograms": {
@@ -422,38 +479,37 @@
     "selector": {
       "title": "Výběr motivu",
       "loadingDescription": "Načítám dostupné motivy...",
-      "description": "Vyberte z dostupných motivů. Premium motivy vyžadují platný licenční klíč.",
-      "verificationUnavailable": "Ověření licence není dostupné. Přepínání premium motivů je dočasně nedostupné.",
-      "notLoaded": "Premium motivy nejsou načteny",
-      "notLoadedDescription": "Nastavte",
-      "notLoadedAnd": "a spusťte",
-      "premium": "Premiový",
-      "pro": "Pro",
+      "description": "Vyberte z dostupných motivů. Některé motivy vyžadují platnou licenci.",
+      "verificationUnavailable": "Ověření licence není dostupné. Přepínání licencovaných motivů je dočasně nedostupné.",
+      "notLoaded": "Licencované motivy nejsou načteny",
+      "notLoadedDescription": "Spusťte",
       "free": "Zdarma",
       "locked": "Zamčený",
-      "lock": "Zamknout"
+      "lock": "Zamknout",
+      "showTheme": "Zobrazit",
+      "hideTheme": "Skrýt"
     },
     "toasts": {
-      "premiumRequired": "Vyžaduje se licence premium",
-      "premiumRequiredDescription": "Odemkněte premium motivy přidáním platné licence premium."
+      "premiumRequired": "Vyžaduje se licence",
+      "premiumRequiredDescription": "Přidejte platnou licenci a odemkněte všechny motivy."
     },
     "license": {
       "loadingTitle": "Správa licencí",
       "loadingDescription": "Načítám licenční motivy...",
       "managementTitle": "Správa licencí",
-      "managementDescription": "Spravujte svou licenci motivu a přístup k premium motivům",
+      "managementDescription": "Spravujte svou licenci k motivům",
       "providers": {
         "licensePortal": "licenční portál"
       },
       "status": {
-        "unlockTitle": "Odemknout premium motivy",
+        "unlockTitle": "Odemknout všechny motivy",
         "unlockDescription": "Zaplatíte kolik chcete (min $9.99) • Životní licence • Všechny motivy",
-        "activeTitle": "Premium přístup aktivní",
-        "activeDescription": "Máte přístup ke všem aktuálním a budoucím premium motivům",
+        "activeTitle": "Licence aktivní",
+        "activeDescription": "Máte přístup ke všem aktuálním a budoucím motivům",
         "activationRequiredTitle": "Vyžaduje se aktivace licence",
         "activationRequiredDescription": "Vaše licence musí být aktivována na této stroji",
         "offlineTitle": "Licenční služba je nedostupná",
-        "offlineDescription": "qui se 7 dní nemohl spojit s licenční službou, proto jsou premium motivy zamčené. qui ji kontroluje při spuštění a jednou denně. Motivy se odemknou, jakmile služba odpoví. Licenci nemusíte znovu aktivovat."
+        "offlineDescription": "qui se 7 dní nemohl spojit s licenční službou, proto jsou licencované motivy zamčené. qui ji kontroluje při spuštění a jednou denně. Motivy se odemknou, jakmile služba odpoví. Licenci nemusíte znovu aktivovat."
       },
       "portalHelp": {
         "prefix": "Koupit na DodoPayments, poté sem zadejte svůj licenční klíč. Pokud ztratíte klíč, obnovte ho přes",
@@ -505,7 +561,7 @@
         "addLicense": "Přidat licenci",
         "remove": "Odstranit",
         "removing": "Odstraňuji...",
-        "getPremium": "Získat premium",
+        "getPremium": "Získat licenci",
         "reactivate": "Reaktivovat licenci",
         "activating": "Aktivujeme...",
         "copyLicenseKey": "Kopírovat licenční klíč",
@@ -521,17 +577,17 @@
         "recoverPrefix": "Pokud je to potřeba, můžete ji obnovit později z vašeho"
       },
       "addDialog": {
-        "title": "Přidat premium licenci",
-        "description": "Zadejte svůj licenční klíč premium pro odemknutí všech premium motivů.",
+        "title": "Přidat licenci",
+        "description": "Zadejte svůj licenční klíč pro odemknutí všech motivů.",
         "label": "Licenční klíč",
-        "placeholder": "Zadejte svůj licenční klíč premium",
+        "placeholder": "Zadejte svůj licenční klíč",
         "recoverKey": "Obnovit klíč?",
         "validation": {
           "required": "Licenční klíč je povinný"
         }
       },
       "paymentDialog": {
-        "title": "Získat premium licenci",
+        "title": "Získat licenci",
         "description": "Zaplatíte kolik chcete (min $9.99) • Životní licence • Všechny motivy",
         "steps": {
           "choosePaymentMethod": {
@@ -563,10 +619,10 @@
       "copiedVerify": "Příkaz ověření zkopírován",
       "failedCopyVerify": "Nepodařilo se zkopírovat příkaz ověření",
       "toasts": {
-        "activationSuccessPremium": "Premium přístup aktivován! Děkujeme!",
-        "paymentCompleted": "Platba dokončena. Přidejte svůj licenční klíč premium pro dokončení nastavení.",
+        "activationSuccessPremium": "Licence aktivována! Děkujeme!",
+        "paymentCompleted": "Platba dokončena. Přidejte svůj licenční klíč pro dokončení nastavení.",
         "paymentNotCompleted": "Platba nebyla dokončena úspěšně.",
-        "returnedFromCheckout": "Vráceno z pokladny. Přidejte svůj licenční klíč premium, když budete připraveni.",
+        "returnedFromCheckout": "Vráceno z pokladny. Přidejte svůj licenční klíč, když budete připraveni.",
         "keyCopied": "Licenční klíč zkopírován do schránky",
         "copyFailed": "Nepodařilo se zkopírovat licenční klíč",
         "removedFromMachine": "Licence odstraněna z tohoto stroje"
@@ -575,9 +631,9 @@
     "custom": {
       "badge": "Vlastní",
       "title": "Vlastní motivy",
-      "lockedTitle": "Vlastní motivy jsou premiová funkce",
-      "lockedDescription": "Odemkněte premium a načítejte vlastní CSS soubory motivů z adresáře na disku.",
-      "unlockCta": "Odemknout premium",
+      "lockedTitle": "Vlastní motivy vyžadují licenci",
+      "lockedDescription": "Získejte licenci a načítejte vlastní CSS soubory motivů z adresáře na disku.",
+      "unlockCta": "Získat licenci",
       "refresh": "Obnovit",
       "detectedCount": "Nalezené motivy: {{total}}",
       "parseErrorsTitle": "Tyto soubory se nepodařilo zpracovat:",

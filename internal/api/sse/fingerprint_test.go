@@ -233,3 +233,44 @@ func TestFingerprintDistinguishesNaNRows(t *testing.T) {
 	b := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "B", Ratio: math.NaN()}})
 	require.NotEqual(t, a, b)
 }
+
+// A version read, or metadata that arrives for a magnet link, can give a row
+// Reannounce In, Popularity or Private with no other change in the torrent.
+// The stream sends the row again, so the page does not keep the dash.
+// regression: #3760, #3761
+func TestStreamResendsARowThatGainsAnOptionalValue(t *testing.T) {
+	gains := map[string]func(*qbittorrent.TorrentView){
+		"Reannounce": func(tv *qbittorrent.TorrentView) { tv.Reannounce = new(int64(30)) },
+		"Popularity": func(tv *qbittorrent.TorrentView) { tv.Popularity = new(0.0) },
+		"Private":    func(tv *qbittorrent.TorrentView) { tv.Private = new(false) },
+	}
+	for name, gain := range gains {
+		row := func(known bool) qbittorrent.TorrentView {
+			tv := qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "a", Name: "A", Reannounce: 30}}
+			if known {
+				gain(&tv)
+			}
+			return tv
+		}
+		for view, limit := range map[string]int{"list": 300, "details row": 1} {
+			t.Run(name+"/"+view, func(t *testing.T) {
+				g := &subscriptionGroup{}
+				opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: limit}}
+				g.buildUpdatePayload(opts, singleResp(row(false)), &StreamMeta{})
+				payload := g.buildUpdatePayload(opts, singleResp(row(true)), &StreamMeta{})
+				require.Equal(t, []string{"a"}, changedHashes(payload))
+			})
+		}
+		t.Run(name+"/cross-instance", func(t *testing.T) {
+			g := &subscriptionGroup{}
+			opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
+			cross := func(known bool) qbittorrent.CrossInstanceTorrentView {
+				tv := row(known)
+				return qbittorrent.CrossInstanceTorrentView{TorrentView: &tv, InstanceID: 1}
+			}
+			g.buildUpdatePayload(opts, crossResp(cross(false)), &StreamMeta{})
+			payload := g.buildUpdatePayload(opts, crossResp(cross(true)), &StreamMeta{})
+			require.Len(t, payload.Data.CrossInstanceTorrents, 1)
+		})
+	}
+}

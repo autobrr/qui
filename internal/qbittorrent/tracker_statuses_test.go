@@ -146,6 +146,12 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Other: Repack available, or grab internal:",
 			want:    true,
 		},
+		// regression: #3725
+		{
+			name:    "other removal reason",
+			message: "Other: No b-frame comps provided to coexist with current releases",
+			want:    true,
+		},
 		{
 			name:    "torrent has been rejected",
 			message: "Torrent has been rejected.",
@@ -156,8 +162,35 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Unknown torrent",
 			want:    true,
 		},
+		// regression: #3987
+		{
+			name:    "removal reason with a passkey only in a URL",
+			message: "Trumped: download the new torrent from https://tracker.example.invalid/download?id=1&passkey=abc",
+			want:    true,
+		},
 
 		// Non-matching messages
+		// regression: #3987
+		{
+			name:    "UNIT3D old passkey",
+			message: "Passkey does not exist! Please Re-download the .torrent",
+			want:    false,
+		},
+		{
+			name:    "UNIT3D-Announce unknown user",
+			message: "User does not exist. Please re-download the .torrent file.",
+			want:    false,
+		},
+		{
+			name:    "XBT old torrent pass",
+			message: "unregistered torrent pass",
+			want:    false,
+		},
+		{
+			name:    "TBDev unknown passkey",
+			message: "Unknown passkey. Please redownload the torrent from https://tracker.example.invalid - READ THE FAQ!",
+			want:    false,
+		},
 		{
 			name:    "libtorrent unknown HTTP error",
 			message: "504 (unknown HTTP error)",
@@ -239,13 +272,13 @@ func TestTrackerHealthOf(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			torrent := &qbt.Torrent{AddedOn: tt.addedOn, Trackers: tt.trackers}
-			if got := trackerHealthOf(torrent, now); got != tt.want {
+			if got := trackerHealthOf(torrent, torrent.Trackers, now); got != tt.want {
 				t.Errorf("trackerHealthOf() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 
-	if got := trackerHealthOf(nil, now); got != "" {
+	if got := trackerHealthOf(nil, []qbt.TorrentTracker{{Status: qbt.TrackerStatusNotWorking, Message: "timed out"}}, now); got != "" {
 		t.Errorf("trackerHealthOf(nil) = %q, want no health", got)
 	}
 }

@@ -51,20 +51,6 @@ func NewInstanceCrossSeedCompletionStore(db dbinterface.Querier) *InstanceCrossS
 	return &InstanceCrossSeedCompletionStore{db: db, cache: make(map[int]InstanceCrossSeedCompletionSettings)}
 }
 
-// GetCategories returns the categories filter.
-func (s *InstanceCrossSeedCompletionSettings) GetCategories() []string { return s.Categories }
-
-// GetTags returns the tags filter.
-func (s *InstanceCrossSeedCompletionSettings) GetTags() []string { return s.Tags }
-
-// GetExcludeCategories returns the excluded categories filter.
-func (s *InstanceCrossSeedCompletionSettings) GetExcludeCategories() []string {
-	return s.ExcludeCategories
-}
-
-// GetExcludeTags returns the excluded tags filter.
-func (s *InstanceCrossSeedCompletionSettings) GetExcludeTags() []string { return s.ExcludeTags }
-
 // DefaultInstanceCrossSeedCompletionSettings returns default values for a new instance.
 // Completion is disabled by default for safety.
 func DefaultInstanceCrossSeedCompletionSettings(instanceID int) *InstanceCrossSeedCompletionSettings {

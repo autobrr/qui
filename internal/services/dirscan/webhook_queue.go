@@ -4,19 +4,22 @@
 package dirscan
 
 import (
-	"path"
-	"path/filepath"
 	"strings"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
-func mergeWebhookScanRoots(directoryPath, existing, next string) string {
-	if strings.HasPrefix(directoryPath, "/") {
-		return mergeSlashWebhookScanRoots(directoryPath, existing, next)
-	}
+// PathWithinDirectory reports whether target is at or under dirPath, reading both
+// in d, the grammar of the directory's backend, and returns them cleaned.
+func PathWithinDirectory(d fsops.PathDialect, dirPath, target string) (cleanDir, cleanTarget string, ok bool) {
+	cleanDir, cleanTarget = d.Clean(dirPath), d.Clean(target)
+	return cleanDir, cleanTarget, isPathWithin(d, cleanDir, cleanTarget)
+}
 
-	dir := filepath.Clean(directoryPath)
-	current := normalizeQueuedWebhookRoot(dir, existing)
-	incoming := normalizeQueuedWebhookRoot(dir, next)
+func mergeWebhookScanRoots(d fsops.PathDialect, directoryPath, existing, next string) string {
+	dir := d.Clean(directoryPath)
+	current := normalizeQueuedWebhookRoot(d, dir, existing)
+	incoming := normalizeQueuedWebhookRoot(d, dir, next)
 
 	if current == incoming {
 		return current
@@ -25,73 +28,31 @@ func mergeWebhookScanRoots(directoryPath, existing, next string) string {
 		return dir
 	}
 
-	for candidate := current; candidate != "." && candidate != string(filepath.Separator); candidate = filepath.Dir(candidate) {
-		if isPathWithin(candidate, incoming) && isPathWithin(dir, candidate) {
-			return candidate
-		}
-		if candidate == dir {
+	// A queued root can sit outside dir after dir's path was edited, and
+	// d.Dir stops moving at a root, which on Windows is not one fixed spelling.
+	for candidate := current; ; {
+		if isPathWithin(d, candidate, dir) {
 			return dir
 		}
-	}
-
-	return dir
-}
-
-func mergeSlashWebhookScanRoots(directoryPath, existing, next string) string {
-	dir := path.Clean(directoryPath)
-	current := normalizeSlashWebhookRoot(dir, existing)
-	incoming := normalizeSlashWebhookRoot(dir, next)
-
-	if current == incoming {
-		return current
-	}
-	if current == dir || incoming == dir {
-		return dir
-	}
-
-	for candidate := current; candidate != "." && candidate != "/"; candidate = path.Dir(candidate) {
-		if isSlashPathWithin(candidate, incoming) && isSlashPathWithin(dir, candidate) {
+		if isPathWithin(d, candidate, incoming) && isPathWithin(d, dir, candidate) {
 			return candidate
 		}
-		if candidate == dir {
+		parent := d.Dir(candidate)
+		if parent == candidate {
 			return dir
 		}
+		candidate = parent
 	}
-
-	return dir
 }
 
-func normalizeQueuedWebhookRoot(directoryPath, scanRoot string) string {
+func normalizeQueuedWebhookRoot(d fsops.PathDialect, directoryPath, scanRoot string) string {
 	if scanRoot == "" {
-		return filepath.Clean(directoryPath)
+		return d.Clean(directoryPath)
 	}
-	return filepath.Clean(scanRoot)
+	return d.Clean(scanRoot)
 }
 
-func normalizeSlashWebhookRoot(directoryPath, scanRoot string) string {
-	if scanRoot == "" {
-		return path.Clean(directoryPath)
-	}
-	return path.Clean(strings.ReplaceAll(scanRoot, `\`, `/`))
-}
-
-func isPathWithin(base, target string) bool {
-	base = filepath.Clean(base)
-	target = filepath.Clean(target)
-	if base == target {
-		return true
-	}
-
-	rel, err := filepath.Rel(base, target)
-	if err != nil {
-		return false
-	}
-
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-func isSlashPathWithin(base, target string) bool {
-	base = path.Clean(base)
-	target = path.Clean(target)
-	return base == target || strings.HasPrefix(target, strings.TrimRight(base, "/")+"/")
+func isPathWithin(d fsops.PathDialect, base, target string) bool {
+	rel, err := d.Rel(base, target)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+d.Separator())
 }

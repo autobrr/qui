@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -86,17 +87,17 @@ type completionGazelleSyncMock struct {
 	exportHits      int
 }
 
-func (m *completionGazelleSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	m.getTorrentsHits++
 	if len(filter.Hashes) == 0 {
-		return []qbt.Torrent{m.torrent}, nil
+		return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 	}
 	for _, h := range filter.Hashes {
 		if normalizeHash(h) == normalizeHash(m.torrent.Hash) {
-			return []qbt.Torrent{m.torrent}, nil
+			return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 		}
 	}
-	return []qbt.Torrent{}, nil
+	return testTorrentRefs([]qbt.Torrent{}), nil
 }
 
 func (m *completionGazelleSyncMock) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -151,7 +152,7 @@ func (m *completionGazelleSyncMock) ExtractDomainFromURL(urlStr string) string {
 	return strings.TrimSpace(urlStr)
 }
 
-func (m *completionGazelleSyncMock) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (m *completionGazelleSyncMock) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -249,7 +250,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	svc.HandleTorrentCompletion(context.Background(), 1, src)
 
 	if syncMock.getTorrentsHits == 0 {
-		t.Fatalf("expected completion flow to call syncManager.GetTorrents for Gazelle even when jackett is nil")
+		t.Fatalf("expected completion flow to call syncManager.GetTorrentRefs for Gazelle even when jackett is nil")
 	}
 }
 

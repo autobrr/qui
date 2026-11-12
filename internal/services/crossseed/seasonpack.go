@@ -154,6 +154,8 @@ type seasonPackPrep struct {
 
 // prepareSeasonPack runs the shared validation pipeline for check and apply.
 // Returns (nil, reason, message, nil) on expected early exit, or (nil, "", "", err) on internal error.
+const seasonPackNoEligibleInstances = "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
+
 func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int, autonomous bool) (*seasonPackPrep, string, string, error) {
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -201,7 +203,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
 
 	threshold := settings.SeasonPackCoverageThreshold
@@ -255,7 +257,7 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 
 	eligible := filterLinkEligible(instances)
 	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
 
 	// Try to get episode total from metadata chain (Sonarr -> TVDB/TVMaze).
@@ -405,9 +407,9 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		case refusal == nil:
 			checks[inst.ID] = check
 			unblocked = append(unblocked, inst)
-		case refusal.Status == "blocked":
+		case refusal.Status == StatusBlocked:
 			blockedID = cmp.Or(blockedID, inst.ID)
-		case refusal.Status == "exists":
+		case refusal.Status == StatusExists:
 			message := fmt.Sprintf("torrent already exists on instance %d", receiverID)
 			if refusal.Message != existsInThisInstance {
 				message = refusal.Message
@@ -724,14 +726,19 @@ func (s *Service) planSeasonPack(
 		}
 		return nil, nil
 	}
-	if seasonPackFacts(prep, planBuild).Verdict().Refused {
+	facts := seasonPackFacts(prep, planBuild)
+	if facts.Verdict().Refused {
 		return nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
 
-	if linkMode == "hardlink" && !prep.settings.SkipPieceBoundarySafetyCheck {
-		if unsafe, result := hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths); unsafe {
-			return planBuild, episodes, fmt.Errorf("%w: %s", errUnsafePieceBoundary, result.Reason)
-		}
+	// A second ask, so Skip recheck wins over an unsafe piece. The error keeps
+	// layout_mismatch in run history and the plan that the preview shows.
+	var pieceSafety PieceBoundarySafetyResult
+	facts.UnsafePieces, pieceSafety = hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths)
+	facts.ReflinkAdd = linkMode == "reflink"
+	facts.SkipPieceBoundaryCheck = prep.settings.SkipPieceBoundarySafetyCheck
+	if facts.Verdict().Refused {
+		return planBuild, episodes, fmt.Errorf("%w: %s", errUnsafePieceBoundary, pieceSafety.Reason)
 	}
 
 	return planBuild, episodes, nil
@@ -1326,6 +1333,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	policy := seasonPackPolicy(settings)
 	policy.SkipSizeCheck = true
 	packEpisodeReleases := make(map[int]*rls.Release)
+	gate := s.sourceGate()
+	webhookFilter := defaultsFor(triggerWebhook, settings).sourceFilter
 
 	for i := range cached {
 		view := &cached[i]
@@ -1334,7 +1343,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 		torrent := view.Torrent
 
-		if !matchesWebhookSourceFilters(torrent, settings) {
+		answer := gate.check(torrent, webhookFilter)
+		if answer.lasting() {
 			continue
 		}
 
@@ -1414,7 +1424,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
 		// the pack (announce raced the episode's download or its move).
-		if !s.canGiveFiles(torrent) {
+		if answer != sourcePass {
 			log.Debug().
 				Str("pack", packRelease.Title).
 				Int("season", packRelease.Series).
