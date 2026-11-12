@@ -75,21 +75,21 @@ type maindataFilesClient struct {
 	onFetch func()
 }
 
-func (c *maindataFilesClient) getTorrentsByHashes(hashes []string) []qbt.Torrent {
+func (c *maindataFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
 	c.mu.Lock()
 	c.checkedReads++
 	c.mu.Unlock()
 	return c.getTorrentsByHashesUnchecked(hashes)
 }
 
-func (c *maindataFilesClient) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
+func (c *maindataFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var torrents []qbt.Torrent
+	var torrents []*qbt.Torrent
 	for _, hash := range hashes {
 		if torrent, ok := c.maindata[hash]; ok {
 			c.visited++
-			torrents = append(torrents, torrent)
+			torrents = append(torrents, &torrent)
 		}
 	}
 	return torrents

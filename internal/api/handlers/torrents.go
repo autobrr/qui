@@ -565,7 +565,18 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: req.Hashes})
+	// The matches keep the order of the Sync snapshot.
+	var torrents []*qbt.Torrent
+	if snapshot := syncManager.Snapshot(); snapshot != nil {
+		wanted := make(map[string]struct{}, len(req.Hashes))
+		for _, hash := range req.Hashes {
+			wanted[hash] = struct{}{}
+		}
+		torrents = snapshot.Matching(func(t *qbt.Torrent) bool {
+			_, ok := wanted[t.Hash]
+			return ok
+		})
+	}
 
 	matches := make([]qbittorrent.DuplicateTorrentMatch, len(torrents))
 	for i, torrent := range torrents {

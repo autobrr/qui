@@ -1124,13 +1124,13 @@ type torrentHashAdapter struct {
 }
 
 func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
-	torrents, err := a.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := a.syncManager.GetAllTorrentRefs(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("get torrents: %w", err)
 	}
 	hashes := make([]string, len(torrents))
-	for i := range torrents {
-		hashes[i] = torrents[i].Hash
+	for i, torrent := range torrents {
+		hashes[i] = torrent.Hash
 	}
 	return hashes, nil
 }

@@ -230,7 +230,7 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 	single := qbt.TorrentFiles{{Name: "a\\b.mkv"}}
 	require.Equal(t, "/data/real", actualSavePathFromContentPath(fsops.SlashPaths, "/data/tv", "/data/real/a\\b.mkv", single))
 
-	roots := scanRootsFromTorrents(fsops.SlashPaths, []qbt.Torrent{{SavePath: "//srv/data/", ContentPath: "/srv/data/x\\y"}})
+	roots := scanRootsFromTorrents(fsops.SlashPaths, []*qbt.Torrent{{SavePath: "//srv/data/", ContentPath: "/srv/data/x\\y"}})
 	slices.Sort(roots)
 	require.Equal(t, []string{"/srv/data", "/srv/data/x\\y"}, roots)
 
@@ -245,7 +245,7 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 func TestPathDialect_FileMapKeys(t *testing.T) {
 	t.Parallel()
 
-	torrents := []qbt.Torrent{{Hash: "h", SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}
+	torrents := []*qbt.Torrent{{Hash: "h", SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}
 	files := map[string]qbt.TorrentFiles{"h": {{Name: "Show/E01.mkv"}, {Name: "a\\b.mkv"}}}
 	result, err := buildFileMapFromTorrents(fsops.SlashPaths, torrents, files, false)
 	require.NoError(t, err)

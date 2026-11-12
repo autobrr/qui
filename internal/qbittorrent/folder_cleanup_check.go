@@ -218,7 +218,7 @@ func (c *FolderCleanup) buildScope(ctx context.Context, instanceID int, instance
 
 // indexLive marks every live torrent's paths and their ancestors, and returns
 // the items whose own row still holds them (waitsFor).
-func (s *cleanupScope) indexLive(torrents []qbt.Torrent, ready []*pendingFolder) map[*pendingFolder]struct{} {
+func (s *cleanupScope) indexLive(torrents []*qbt.Torrent, ready []*pendingFolder) map[*pendingFolder]struct{} {
 	d := s.d
 	byHash := make(map[string][]*pendingFolder, len(ready))
 	for _, item := range ready {
@@ -236,8 +236,7 @@ func (s *cleanupScope) indexLive(torrents []qbt.Torrent, ready []*pendingFolder)
 			s.markLive(p, 0)
 		}
 	}
-	for i := range torrents {
-		t := &torrents[i]
+	for _, t := range torrents {
 		for _, item := range byHash[canonicalizeHash(t.Hash)] {
 			if item.waitsFor(d, t) {
 				waiting[item] = struct{}{}

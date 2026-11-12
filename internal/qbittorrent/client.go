@@ -492,31 +492,43 @@ func (c *Client) hasAnyTorrent(hashes []string) bool {
 	if syncManager == nil {
 		return false
 	}
+	snapshot := snapshotIndex(syncManager.Snapshot())
 	return slices.ContainsFunc(hashes, func(hash string) bool {
-		_, ok := syncManager.GetTorrent(hash)
+		_, ok := snapshot.Torrent(hash)
 		return ok
 	})
 }
 
-// getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
-func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
+// getTorrentsByHashes returns the torrents of the hashes from the Sync
+// snapshot, visiting only those. It can start a sync when the data is stale.
+// The torrents are shared: copy one before you change it.
+func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
 	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
-
-	return syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+	return torrentsByHash(snapshotIndex(syncManager.Snapshot()), hashes)
 }
 
-// getTorrentsByHashesUnchecked returns the maindata entries of the hashes,
-// visiting only those, and never starts a sync.
-func (c *Client) getTorrentsByHashesUnchecked(hashes []string) []qbt.Torrent {
+// getTorrentsByHashesUnchecked is getTorrentsByHashes without a sync.
+func (c *Client) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
 	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
+	return torrentsByHash(snapshotIndex(syncManager.SnapshotUnchecked()), hashes)
+}
 
-	return syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{Hashes: hashes})
+// torrentsByHash returns the torrents of snapshot with one of hashes, in the
+// order of hashes. A repeated hash repeats its torrent.
+func torrentsByHash(snapshot torrentLookup, hashes []string) []*qbt.Torrent {
+	found := make([]*qbt.Torrent, 0, len(hashes))
+	for _, hash := range hashes {
+		if t, ok := snapshot.Torrent(hash); ok {
+			found = append(found, t)
+		}
+	}
+	return found
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
@@ -999,18 +1011,19 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
 	now := time.Now()
-	syncManager := c.SyncOwner()
+	var snapshot torrentIndex = noTorrents{}
+	if syncManager := c.SyncOwner(); syncManager != nil {
+		snapshot = snapshotIndex(syncManager.Snapshot())
+	}
 
 	// Apply optimistic updates based on action using sync manager data
 	for _, hash := range hashes {
 		var originalState qbt.TorrentState
 		var progress float64
 
-		if syncManager != nil {
-			if torrent, exists := syncManager.GetTorrent(hash); exists {
-				originalState = torrent.State
-				progress = torrent.Progress
-			}
+		if torrent, exists := snapshot.Torrent(hash); exists {
+			originalState = torrent.State
+			progress = torrent.Progress
 		}
 
 		state := getTargetState(action, progress)
