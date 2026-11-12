@@ -106,6 +106,9 @@
     "select": "Select",
     "copyValue": "Copy {{label}}"
   },
+  "featureNotice": {
+    "gotIt": "Got it"
+  },
   "placeholders": {
     "search": "Search...",
     "selectItems": "Select items..."

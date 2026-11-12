@@ -74,6 +74,7 @@ const SYNCED_PREFIXES = [
   "qui:torrent-mobile-sort:",
   "qui-show-empty-",
   "qui-selected-instance-",
+  "qui-feature-notice-seen:",
 ]
 
 function isSyncedKey(key: string): boolean {
@@ -122,6 +123,23 @@ const pending = new Map<string, string>()
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 // Opens after the first successful GET, so nothing fires while logged out.
 let syncReady = false
+const syncReadyListeners = new Set<() => void>()
+
+function setSyncReady(ready: boolean): void {
+  if (syncReady === ready) return
+  syncReady = ready
+  for (const listener of syncReadyListeners) listener()
+}
+
+function subscribeSyncReady(callback: () => void): () => void {
+  syncReadyListeners.add(callback)
+  return () => syncReadyListeners.delete(callback)
+}
+
+/** True once the first server snapshot is in localStorage, so a read returns the server value. */
+export function useClientSettingsLoaded(): boolean {
+  return useSyncExternalStore(subscribeSyncReady, () => syncReady)
+}
 
 // Durable outbox: the dirty key list mirrored to localStorage. The pagehide
 // keepalive PUT is not reliable (Chrome drops keepalive fetches from
@@ -291,7 +309,7 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
   } catch (error) {
     console.error("Failed to scan localStorage for client settings seed:", error)
   }
-  syncReady = true
+  setSyncReady(true)
   scheduleFlush()
 }
 
@@ -303,7 +321,7 @@ export function _resetClientSettingsForTests(): void {
   flushTimer = null
   flushInFlight = false
   flushRequestedInFlight = false
-  syncReady = false
+  setSyncReady(false)
   loadPersistedPending()
 }
 
@@ -343,6 +361,31 @@ interface ClientSettingOptions<T> {
   serialize?: (value: T) => string
 }
 
+function decode<T>(raw: string | null, { defaultValue, parse }: ClientSettingOptions<T>): T {
+  // "" is the cleared sentinel (settings never remove their key).
+  if (raw == null || raw === "") return defaultValue
+  try {
+    return parse(raw)
+  } catch {
+    return defaultValue
+  }
+}
+
+/** The current value of one setting, for code outside a component. */
+export function readClientSetting<T>(key: string, options: ClientSettingOptions<T>): T {
+  return decode(readRaw(key), options)
+}
+
+/** Calls back after any setting changes, in this tab or another one. Returns the unsubscribe. */
+export function subscribeClientSettings(callback: () => void): () => void {
+  window.addEventListener("storage", callback)
+  window.addEventListener(CHANGE_EVENT, callback)
+  return () => {
+    window.removeEventListener("storage", callback)
+    window.removeEventListener(CHANGE_EVENT, callback)
+  }
+}
+
 /**
  * One DB-backed setting as React state. All hook instances for a key stay in
  * sync in the same tab (change event) and across tabs (storage event); writes
@@ -374,15 +417,7 @@ export function useClientSetting<T>(
 
   const raw = useSyncExternalStore(subscribe, () => readRaw(key))
 
-  const value = useMemo(() => {
-    // "" is the cleared sentinel (settings never remove their key).
-    if (raw == null || raw === "") return defaultValue
-    try {
-      return parse(raw)
-    } catch {
-      return defaultValue
-    }
-  }, [raw, parse, defaultValue])
+  const value = useMemo(() => decode(raw, { defaultValue, parse }), [raw, parse, defaultValue])
 
   const valueRef = useRef(value)
   valueRef.current = value

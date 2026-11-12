@@ -106,6 +106,9 @@
     "select": "Selecciona",
     "copyValue": "Copia {{label}}"
   },
+  "featureNotice": {
+    "gotIt": "Entesos"
+  },
   "placeholders": {
     "search": "Cerca...",
     "selectItems": "Selecciona elements..."

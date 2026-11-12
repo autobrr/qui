@@ -106,6 +106,9 @@
     "select": "선택",
     "copyValue": "{{label}} 복사"
   },
+  "featureNotice": {
+    "gotIt": "확인"
+  },
   "placeholders": {
     "search": "검색...",
     "selectItems": "항목 선택..."

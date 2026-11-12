@@ -106,6 +106,9 @@
     "select": "Auswählen",
     "copyValue": "{{label}} kopieren"
   },
+  "featureNotice": {
+    "gotIt": "Verstanden"
+  },
   "placeholders": {
     "search": "Suchen...",
     "selectItems": "Elemente auswählen..."

@@ -1779,5 +1779,12 @@
     "groupCopies": "Seskupit kopie",
     "ungroupCopies": "Zrušit seskupení kopií",
     "grouping": "Seskupování…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Seskupte svá křížová sdílení",
+      "description": "Zobrazí kopie jednoho torrentu jako jeden řádek.",
+      "action": "Vyzkoušet"
+    }
   }
 }
