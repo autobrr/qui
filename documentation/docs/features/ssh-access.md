@@ -16,6 +16,7 @@ If qui runs on the same machine as qBittorrent, or sees the same files through a
 ## Requirements
 
 - An SSH login on the machine that holds the files of the instance.
+- The machine runs Linux or another POSIX system. qui does not support a Windows machine over SSH.
 - Key authentication for that login. qui does not log in with a password.
 - An SSH server with SFTP. Most servers and seedboxes have it.
 
