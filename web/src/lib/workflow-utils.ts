@@ -149,15 +149,16 @@ export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
  * Create payload for import: the JSON as written, except that
  * - enabled is forced to false
  * - sortOrder is omitted, so the backend appends the rule
- * - name gets "(copy)" suffix via generateUniqueName
+ * - a name that the instance already has gets a copy suffix via generateUniqueName
  */
 export function fromImportFormat(
   data: WorkflowImport,
   existingNames: string[]
 ): AutomationInput {
+  const nameTaken = existingNames.some(name => name.toLowerCase() === data.name.toLowerCase())
   return {
     ...data,
-    name: generateUniqueName(data.name, existingNames),
+    name: nameTaken ? generateUniqueName(data.name, existingNames) : data.name,
     enabled: false, // Always start disabled
     sortOrder: undefined,
   }
@@ -172,15 +173,23 @@ export function toEditInput(rule: Automation, data: WorkflowImport): AutomationI
   }
 }
 
-/**
- * Creates an AutomationInput for duplicating a workflow.
- * Similar to fromImportFormat but takes an existing Automation.
- */
+/** Create payload for "Duplicate" on the same instance: an import of the exported rule that always gets a copy suffix. */
 export function toDuplicateInput(
   workflow: Automation,
   existingNames: string[]
 ): AutomationInput {
-  return fromImportFormat({ ...toExportFormat(workflow) }, existingNames)
+  return {
+    ...fromImportFormat({ ...toExportFormat(workflow) }, existingNames),
+    name: generateUniqueName(workflow.name, existingNames),
+  }
+}
+
+/** Create payload for "Copy to instance": an import of the exported rule on the target instance. */
+export function toCopyInput(
+  workflow: Automation,
+  targetNames: string[]
+): AutomationInput {
+  return fromImportFormat({ ...toExportFormat(workflow) }, targetNames)
 }
 
 /**

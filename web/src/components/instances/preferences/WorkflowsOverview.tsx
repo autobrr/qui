@@ -60,6 +60,7 @@ import {
   fromImportFormat,
   getRuleTagActions,
   parseImportJSON,
+  toCopyInput,
   toDuplicateInput,
   toExportFormat,
   toExportJSON
@@ -590,7 +591,7 @@ export function WorkflowsOverview() {
   // Copy workflow to another instance
   const handleCopyToInstance = useCallback((sourceRule: Automation, targetInstanceId: number) => {
     const existingNames = getExistingNames(targetInstanceId)
-    const input = toDuplicateInput(sourceRule, existingNames)
+    const input = toCopyInput(sourceRule, existingNames)
     createWorkflow.mutate(
       { instanceId: targetInstanceId, payload: input },
       {

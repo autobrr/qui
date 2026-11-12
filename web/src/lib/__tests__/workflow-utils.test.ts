@@ -13,6 +13,7 @@ import {
   getTrackerMatchMode,
   getTrackerTokens,
   parseImportJSON,
+  toCopyInput,
   toDuplicateInput,
   toEditInput,
   toExportFormat,
@@ -92,8 +93,8 @@ describe("toExportFormat", () => {
 
 // Intent: turn clipboard JSON back into an AutomationInput. Two safety
 // invariants matter: imported automations always START disabled (so a paste
-// can't immediately fire side-effects) and the imported name is uniquified
-// so it can't clobber an existing automation by accident.
+// can't immediately fire side-effects) and an imported name that the
+// instance already has is uniquified, so two rules never share a name.
 describe("fromImportFormat", () => {
   const baseExport = (overrides: Partial<WorkflowImport> = {}): WorkflowImport => ({
     name: "Imported",
@@ -115,6 +116,11 @@ describe("fromImportFormat", () => {
 
   it("uniquifies the name against existing names", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["My workflow"]).name).toBe("My workflow (copy)")
+    expect(fromImportFormat(baseExport({ name: "My workflow" }), ["MY WORKFLOW", "My workflow (copy)"]).name).toBe("My workflow (copy 2)")
+  })
+
+  it("keeps the name when the instance has no rule with that name", () => {
+    expect(fromImportFormat(baseExport({ name: "My workflow" }), ["Other"]).name).toBe("My workflow")
   })
 
   // The backend resolves the two fields: a non-empty trackerPattern wins.
@@ -168,8 +174,9 @@ describe("getTrackerTokens", () => {
 })
 
 // Intent: duplicate within the same instance — equivalent to export+import
-// round-tripping. Guarantees the duplicate gets a fresh name and ships
-// disabled, same as a clipboard import.
+// round-tripping, except that the duplicate always gets a copy suffix, also
+// when the list of existing names is not loaded. It ships disabled, same as
+// a clipboard import.
 describe("toDuplicateInput", () => {
   it("round-trips through export -> import and produces a unique disabled copy", () => {
     const original = makeAutomation({ name: "Source", enabled: true, dryRun: true })
@@ -177,6 +184,27 @@ describe("toDuplicateInput", () => {
     expect(result.name).toBe("Source (copy)")
     expect(result.enabled).toBe(false)
     expect(result.dryRun).toBe(true)
+  })
+
+  it("adds a copy suffix when no existing name is known", () => {
+    expect(toDuplicateInput(makeAutomation({ name: "Source" }), []).name).toBe("Source (copy)")
+  })
+})
+
+// Intent: "Copy to instance" names the copy for the target instance. The
+// name stays when the target has no rule with it, and a name that is taken
+// there gets the same suffix as a duplicate.
+describe("toCopyInput", () => {
+  it("keeps the name when the target instance has no rule with that name", () => {
+    const result = toCopyInput(makeAutomation({ name: "Source", enabled: true }), ["Other"])
+    expect(result.name).toBe("Source")
+    expect(result.enabled).toBe(false)
+    expect(result.sortOrder).toBeUndefined()
+  })
+
+  it("adds a copy suffix when the target instance has the name in another case", () => {
+    expect(toCopyInput(makeAutomation({ name: "Source" }), ["source"]).name).toBe("Source (copy)")
+    expect(toCopyInput(makeAutomation({ name: "Source" }), ["SOURCE", "Source (copy)"]).name).toBe("Source (copy 2)")
   })
 })
 
