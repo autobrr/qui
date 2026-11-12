@@ -24,7 +24,7 @@ type reflinkFallbackSafetySyncManager struct {
 	addTorrentOpts map[string]string
 }
 
-func (*reflinkFallbackSafetySyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (*reflinkFallbackSafetySyncManager) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 	for _, hash := range filter.Hashes {
 		torrents = append(torrents, qbt.Torrent{Hash: hash})
@@ -32,7 +32,7 @@ func (*reflinkFallbackSafetySyncManager) GetTorrents(_ context.Context, _ int, f
 	if len(torrents) == 0 {
 		torrents = append(torrents, qbt.Torrent{Hash: "dummy"})
 	}
-	return torrents, nil
+	return testTorrentRefs(torrents), nil
 }
 
 func (m *reflinkFallbackSafetySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -187,7 +187,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	req := &CrossSeedRequest{}
@@ -231,7 +231,7 @@ func TestProcessCrossSeedCandidate_ReflinkAddAllowsSizeMismatch(t *testing.T) {
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents: []qbt.Torrent{{
+		Torrents: []*qbt.Torrent{{
 			Hash:        matchedHash,
 			Name:        torrentName,
 			Progress:    1.0,

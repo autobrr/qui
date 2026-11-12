@@ -49,7 +49,7 @@ func TestProcessCrossSeedCandidate_WindowsUNCSavePath(t *testing.T) {
 			candidate := CrossSeedCandidate{
 				InstanceID:   1,
 				InstanceName: "synthetic",
-				Torrents: []qbt.Torrent{{
+				Torrents: []*qbt.Torrent{{
 					Hash: "matchedhash", Name: name, Progress: 1, AutoManaged: true,
 					ContentPath: tc.contentPath,
 				}},

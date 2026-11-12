@@ -97,7 +97,7 @@ func parseEnsembleSeasonPseudoHash(hash string) (ensembleGroupKey, bool) {
 // content dedup, so groups inherit the run scoping. packSource is the
 // instance's full torrent list: a seeded pack outside the run scope must still
 // suppress its group, or the search re-downloads a pack the user already has.
-func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torrent) []qbt.Torrent {
+func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torrent) []*qbt.Torrent {
 	type groupInfo struct {
 		displayTitle string
 		episodes     map[int]struct{}
@@ -107,8 +107,8 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 
 	// Any seeded or downloading pack suppresses its group; progress does not
 	// matter because the pack's presence already makes a search pointless.
-	for i := range packSource {
-		release := s.releaseCache.Parse(packSource[i].Name)
+	for _, pack := range packSource {
+		release := s.releaseCache.Parse(pack.Name)
 		if !isTVSeasonPack(release) {
 			continue
 		}
@@ -126,8 +126,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		}
 	}
 
-	for i := range torrents {
-		torrent := &torrents[i]
+	for _, torrent := range torrents {
 		if s.sourceGate().check(torrent, sourceFilter{}) != sourcePass {
 			continue
 		}
@@ -163,7 +162,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		}
 	}
 
-	virtual := make([]qbt.Torrent, 0, len(groups))
+	virtual := make([]*qbt.Torrent, 0, len(groups))
 	for key, group := range groups {
 		if len(group.episodes) < ensembleMinEpisodes {
 			continue
@@ -175,14 +174,14 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		if key.season > 0 {
 			name = fmt.Sprintf("%s S%02d", group.displayTitle, key.season)
 		}
-		virtual = append(virtual, qbt.Torrent{
+		virtual = append(virtual, &qbt.Torrent{
 			Hash:     ensembleSeasonPseudoHash(key),
 			Name:     name,
 			Progress: 1.0,
 		})
 	}
 
-	slices.SortFunc(virtual, func(a, b qbt.Torrent) int {
+	slices.SortFunc(virtual, func(a, b *qbt.Torrent) int {
 		return strings.Compare(a.Hash, b.Hash)
 	})
 	return virtual

@@ -1133,7 +1133,7 @@ func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 		return corpusMatch
 	}
 	for _, candidate := range resp.Candidates {
-		if slices.ContainsFunc(candidate.Torrents, func(torrent qbt.Torrent) bool { return torrent.Hash == corpusSourceHash }) {
+		if slices.ContainsFunc(candidate.Torrents, func(torrent *qbt.Torrent) bool { return torrent.Hash == corpusSourceHash }) {
 			return corpusMatch
 		}
 	}
@@ -1212,7 +1212,7 @@ func crossMatchCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 func dedupCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(true)
-	deduped, _ := svc.deduplicateSourceTorrents(t.Context(), corpusInstanceID, []qbt.Torrent{row.sourceTorrent(), row.candidateTorrent()})
+	deduped, _ := svc.deduplicateSourceTorrents(t.Context(), corpusInstanceID, []*qbt.Torrent{new(row.sourceTorrent()), new(row.candidateTorrent())})
 	return corpusVerdictOf(len(deduped) == 1)
 }
 

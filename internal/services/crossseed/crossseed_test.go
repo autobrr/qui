@@ -249,7 +249,7 @@ func TestFindBestCandidateMatch_SingleFileSourceVsPackWithSample(t *testing.T) {
 	candidate := CrossSeedCandidate{
 		InstanceID:   1,
 		InstanceName: "test",
-		Torrents: []qbt.Torrent{{
+		Torrents: []*qbt.Torrent{{
 			Hash:     "abc123",
 			Name:     "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP",
 			Progress: 1.0,
@@ -1635,6 +1635,19 @@ func (f *fakeInstanceStore) List(_ context.Context) ([]*models.Instance, error) 
 	return result, nil
 }
 
+// testTorrentRefs returns references to copies of torrents, as a read of the
+// Sync snapshot returns references.
+func testTorrentRefs(torrents []qbt.Torrent) []*qbt.Torrent {
+	if torrents == nil {
+		return nil
+	}
+	refs := make([]*qbt.Torrent, len(torrents))
+	for i := range torrents {
+		refs[i] = new(torrents[i])
+	}
+	return refs
+}
+
 type fakeSyncManager struct {
 	cached map[int][]internalqb.CrossInstanceTorrentView
 	all    map[int][]qbt.Torrent
@@ -1679,9 +1692,9 @@ func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent, files
 	}
 }
 
-func (f *fakeSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *fakeSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if torrents, ok := f.all[instanceID]; ok {
-		return torrents, nil
+		return testTorrentRefs(torrents), nil
 	}
 	return nil, fmt.Errorf("instance %d not found", instanceID)
 }
@@ -1911,7 +1924,7 @@ type mockRecoverSyncManager struct {
 	disappearAfterRecheck       bool                    // whether torrent disappears after recheck
 	bulkActionFails             bool                    // whether BulkAction should fail
 	keepInCheckingState         bool                    // whether to keep torrent in checking state
-	failGetTorrentsAfterRecheck bool                    // whether GetTorrents should fail after recheck
+	failGetTorrentsAfterRecheck bool                    // whether GetTorrentRefs should fail after recheck
 	setProgressToThreshold      bool                    // whether to set progress exactly at threshold
 	hasRechecked                bool                    // track if recheck has been called
 	secondRecheckCompletes      bool                    // whether second recheck should complete torrents
@@ -1939,12 +1952,12 @@ func newMockRecoverSyncManager(initialTorrents []qbt.Torrent) *mockRecoverSyncMa
 	}
 }
 
-func (m *mockRecoverSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	m.calls = append(m.calls, "GetTorrents")
+func (m *mockRecoverSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	m.calls = append(m.calls, "GetTorrentRefs")
 
 	if m.failGetTorrentsAfterRecheck && m.hasRechecked {
 		// Return empty list to simulate torrent disappearing
-		return []qbt.Torrent{}, nil
+		return testTorrentRefs([]qbt.Torrent{}), nil
 	}
 
 	var result []qbt.Torrent
@@ -1959,7 +1972,7 @@ func (m *mockRecoverSyncManager) GetTorrents(_ context.Context, instanceID int, 
 			result = append(result, *torrent)
 		}
 	}
-	return result, nil
+	return testTorrentRefs(result), nil
 }
 
 func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
@@ -2084,7 +2097,7 @@ func TestRecoverErroredTorrents_NoErroredTorrents(t *testing.T) {
 	mockSync := newMockRecoverSyncManager([]qbt.Torrent{normalTorrent})
 	svc := &Service{syncManager: mockSync}
 
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{normalTorrent})
+	err := svc.recoverErroredTorrents(context.Background(), 1, []*qbt.Torrent{&normalTorrent})
 	require.NoError(t, err)
 
 	// Should not have made any calls
@@ -2112,7 +2125,7 @@ func TestRecoverErroredTorrents_ContextCancelled(t *testing.T) {
 	// Cancel context immediately
 	cancel()
 
-	err := svc.recoverErroredTorrents(ctx, 1, []qbt.Torrent{erroredTorrent1, erroredTorrent2})
+	err := svc.recoverErroredTorrents(ctx, 1, []*qbt.Torrent{&erroredTorrent1, &erroredTorrent2})
 	require.Error(t, err)
 	assert.Equal(t, context.Canceled, err)
 }
@@ -2146,7 +2159,7 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 	mockSync := newMockRecoverSyncManager([]qbt.Torrent{erroredTorrent, missingFilesTorrent, downloadingTorrent, completedTorrent})
 	svc := &Service{syncManager: mockSync}
 
-	err := svc.recoverErroredTorrents(context.Background(), 1, []qbt.Torrent{erroredTorrent, missingFilesTorrent, downloadingTorrent, completedTorrent})
+	err := svc.recoverErroredTorrents(context.Background(), 1, []*qbt.Torrent{&erroredTorrent, &missingFilesTorrent, &downloadingTorrent, &completedTorrent})
 	require.NoError(t, err)
 
 	// Should have batched pause, recheck, and resume only on errored and missing files torrents
@@ -2266,14 +2279,14 @@ func newInfohashTestSyncManager() *infohashTestSyncManager {
 	}
 }
 
-func (f *infohashTestSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *infohashTestSyncManager) GetTorrentRefs(_ context.Context, instanceID int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	list := f.torrents[instanceID]
 	if list == nil {
 		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
 	}
 	copied := make([]qbt.Torrent, len(list))
 	copy(copied, list)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -3266,14 +3279,14 @@ type rssFilterTestSyncManager struct {
 	props    map[int]map[string]*qbt.TorrentProperties
 }
 
-func (m *rssFilterTestSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *rssFilterTestSyncManager) GetTorrentRefs(_ context.Context, instanceID int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	list := m.torrents[instanceID]
 	if list == nil {
 		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
 	}
 	copied := make([]qbt.Torrent, len(list))
 	copy(copied, list)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (m *rssFilterTestSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {

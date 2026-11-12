@@ -21,7 +21,7 @@ import (
 // The bytes that one cross-seed webhook check allocates on a library of
 // biglib.Size torrents (ADR 0051).
 func TestMemoryBudget_WebhookCheck(t *testing.T) {
-	const budget = 32 * biglib.MB
+	const budget = 10 * biglib.MB
 
 	client, err := qbittorrent.NewClientWithTimeout(1, biglib.Serve(t, biglib.Torrents(biglib.Size)), "", "", "", nil, nil, false, time.Minute, time.Minute)
 	require.NoError(t, err)
@@ -57,4 +57,6 @@ func TestMemoryBudget_WebhookCheck(t *testing.T) {
 	})
 	t.Logf("one webhook check allocates %.1f MB", float64(allocated)/biglib.MB)
 	require.LessOrEqual(t, allocated, uint64(budget))
+	// The seal makes this sync panic with the hash of a torrent that a check changed.
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 }

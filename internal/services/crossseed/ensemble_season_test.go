@@ -208,7 +208,7 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 			if packSource == nil {
 				packSource = tt.torrents
 			}
-			virtual := service.buildEnsembleSeasonCandidates(tt.torrents, packSource)
+			virtual := service.buildEnsembleSeasonCandidates(testTorrentRefs(tt.torrents), testTorrentRefs(packSource))
 			var gotHashes, gotNames []string
 			for _, v := range virtual {
 				require.InDelta(t, 1.0, v.Progress, 0, "virtual entries must pass the completeness skip")

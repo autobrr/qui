@@ -1900,7 +1900,7 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, err
 	}
 
-	return sm.instanceTorrentViews(client, instanceID, name, syncManager.GetTorrents(qbt.TorrentFilterOptions{})), nil
+	return sm.instanceTorrentViews(client, instanceID, name, TorrentRefFilter{}.Select(syncManager.Snapshot())), nil
 }
 
 func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (string, error) {
@@ -1915,7 +1915,7 @@ func (sm *SyncManager) lookupInstanceName(ctx context.Context, instanceID int) (
 }
 
 // instanceTorrentViews sorts the views by name, then hash. It returns nil for no torrents.
-func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, torrents []qbt.Torrent) []CrossInstanceTorrentView {
+func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, instanceName string, torrents []*qbt.Torrent) []CrossInstanceTorrentView {
 	if len(torrents) == 0 {
 		return nil
 	}
@@ -1929,7 +1929,7 @@ func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, inst
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{
-			TorrentView:  new(rows.view(i, &torrents[i], cachedHealth.Health(torrents[i].Hash))),
+			TorrentView:  new(rows.view(i, torrents[i], cachedHealth.Health(torrents[i].Hash))),
 			InstanceID:   instanceID,
 			InstanceName: instanceName,
 		}

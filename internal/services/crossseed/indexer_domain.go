@@ -11,6 +11,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -65,16 +66,14 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Msg("filtering indexers by existing content")
 
 	// Get the source torrent being searched for
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
-		Hashes: []string{hash},
-	})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
 	if err != nil {
 		return indexerIDs, nil, nil, nil, err
 	}
 	if len(torrents) == 0 {
 		return indexerIDs, nil, nil, nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
-	sourceTorrent := &torrents[0]
+	sourceTorrent := torrents[0]
 
 	// Parse the source torrent to understand what content we're looking for
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)

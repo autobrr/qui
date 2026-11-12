@@ -103,8 +103,8 @@ func readSourceLoop(t *testing.T, respond crossSeedResponder) bool {
 		return respond(ctx, req)
 	}}
 	_, err := service.invokeBoundAnnouncementMatches(t.Context(), []boundAnnouncementMatch{
-		{instanceID: 1, instanceName: "main", torrent: qbt.Torrent{Hash: "source-one"}},
-		{instanceID: 1, instanceName: "main", torrent: qbt.Torrent{Hash: "source-two"}},
+		{instanceID: 1, instanceName: "main", torrent: &qbt.Torrent{Hash: "source-one"}},
+		{instanceID: 1, instanceName: "main", torrent: &qbt.Torrent{Hash: "source-two"}},
 	}, func(boundAnnouncementMatch) *CrossSeedRequest { return &CrossSeedRequest{} })
 	require.NoError(t, err)
 	return calls == 1

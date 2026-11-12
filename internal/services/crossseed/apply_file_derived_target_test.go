@@ -400,7 +400,7 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
-		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
+		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matched}},
 		[]byte("torrent"), incomingHash, "", episodeName,
 		&CrossSeedRequest{
 			StartPaused: &startPaused,
@@ -489,7 +489,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
-		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
+		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matched}},
 		[]byte("torrent"), incomingHash, "", rawEpisode,
 		&CrossSeedRequest{
 			StartPaused: &startPaused,

@@ -154,7 +154,7 @@ func TestFindBestCandidateMatch_SizeContainmentAgainstRenamedPack(t *testing.T) 
 	sourceFiles := qbt.TorrentFiles{{Name: "Show.S01E01.1080p.mkv", Size: 1 << 30}}
 
 	candidate := CrossSeedCandidate{
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			// Same show and season as the source: the discovery gates only pass
 			// same-release packs, so the fixture must model one.
 			{Hash: "pack", Name: "Show.S01.1080p.WEB-DL", Progress: 1.0},

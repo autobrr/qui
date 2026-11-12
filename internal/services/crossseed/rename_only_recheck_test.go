@@ -92,7 +92,7 @@ func newRenameOnlyService(t *testing.T, instance *models.Instance, matchedHash, 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instance.ID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	return service, sync, candidate
