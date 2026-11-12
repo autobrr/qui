@@ -25,7 +25,7 @@ type runSession struct {
 	evalCtx    *EvalContext
 	groups     *crossSeedGroups
 	// The Deletion selection sorts torrents in place, so position keeps the order at open.
-	torrents []qbt.Torrent
+	torrents []*qbt.Torrent
 	position map[string]int
 	links    map[string][]string
 	// groupsOff is set when no reader needs groups, so an ask reads nothing.
@@ -45,7 +45,7 @@ type runSession struct {
 
 // openRunSession opens the run session of evalCtx. It asks for nothing: each reader asks for the
 // torrents that it reads.
-func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents []qbt.Torrent, needs RuleNeeds, evalCtx *EvalContext) error {
+func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents []*qbt.Torrent, needs RuleNeeds, evalCtx *EvalContext) error {
 	session, err := s.crossMatcher.OpenCrossMatchSession(ctx, instanceID, needs.CrossMatch)
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (s *Service) openRunSession(ctx context.Context, instanceID int, torrents [
 	for i, t := range torrents {
 		r.position[t.Hash] = i
 	}
-	r.groups = &crossSeedGroups{byHash: make(map[string][]qbt.Torrent), session: r}
+	r.groups = &crossSeedGroups{byHash: make(map[string][]*qbt.Torrent), session: r}
 	evalCtx.crossSeeds = r.groups
 	return nil
 }
@@ -86,7 +86,7 @@ func conditionReadsCrossSeedFacts(cond *RuleCondition) bool {
 // the torrents that the rules evaluate: each torrent in the Rule scope of a rule that reads a
 // cross-seed field, with the members of the GroupID groups that the rule checks. A sort on such a
 // field scores every torrent, so it asks for the whole list.
-func askRuleFacts(rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope) {
+func askRuleFacts(rules []*models.Automation, torrents []*qbt.Torrent, evalCtx *EvalContext, scope *ruleScope) {
 	groups := evalCtx.crossSeeds
 	if groups == nil || groups.session == nil {
 		return
@@ -104,8 +104,7 @@ func askRuleFacts(rules []*models.Automation, torrents []qbt.Torrent, evalCtx *E
 		}
 		groupIDs := factGroupIDs(rule.Conditions)
 		askedGroups := make(map[askedFactGroup]struct{})
-		for i := range torrents {
-			t := &torrents[i]
+		for _, t := range torrents {
 			if scope.answer(rule, t) != scopeIn {
 				continue
 			}
@@ -223,7 +222,7 @@ func (g *crossSeedGroups) resolveDeletes(hashes, linkHashes []string, hardlinks 
 	}
 }
 
-func memberHashes(members []qbt.Torrent) []string {
+func memberHashes(members []*qbt.Torrent) []string {
 	hashes := make([]string, len(members))
 	for i, m := range members {
 		hashes[i] = m.Hash
@@ -243,7 +242,7 @@ func (g *crossSeedGroups) setContext(ctx context.Context) {
 }
 
 // With a run session, only a due tag rule that includes cross-seeds reads the group.
-func (g *crossSeedGroups) tagOwnerMembers(hash string) []qbt.Torrent {
+func (g *crossSeedGroups) tagOwnerMembers(hash string) []*qbt.Torrent {
 	if g != nil && g.session != nil && !g.session.tagGroups {
 		return nil
 	}
@@ -373,7 +372,7 @@ func (r *runSession) addGroups(starts []string) []string {
 	if len(groups) == 0 {
 		return nil
 	}
-	torrentByHash := make(map[string]qbt.Torrent, len(need))
+	torrentByHash := make(map[string]*qbt.Torrent, len(need))
 	for _, t := range r.torrents {
 		if _, ok := need[t.Hash]; ok {
 			torrentByHash[t.Hash] = t
@@ -381,7 +380,7 @@ func (r *runSession) addGroups(starts []string) []string {
 	}
 	var added []string
 	for _, hashes := range groups {
-		members := make([]qbt.Torrent, len(hashes))
+		members := make([]*qbt.Torrent, len(hashes))
 		for i, hash := range hashes {
 			members[i] = torrentByHash[hash]
 		}
@@ -460,13 +459,13 @@ func newFreeSpaceReadAhead(groups *crossSeedGroups, hardlinks *HardlinkIndex, ot
 }
 
 // ask must get the same sorted torrents and inScope on each call, with i ascending.
-func (a *freeSpaceReadAhead) ask(torrents []qbt.Torrent, i int, inScope func(*qbt.Torrent) bool) {
+func (a *freeSpaceReadAhead) ask(torrents []*qbt.Torrent, i int, inScope func(*qbt.Torrent) bool) {
 	if a == nil || i < a.next {
 		return
 	}
 	var batch []string
 	for ; i < len(torrents) && len(batch) < a.size; i++ {
-		if inScope(&torrents[i]) {
+		if inScope(torrents[i]) {
 			batch = append(batch, torrents[i].Hash)
 		}
 	}

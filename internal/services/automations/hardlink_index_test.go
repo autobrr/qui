@@ -726,10 +726,10 @@ func TestGetHardlinkIndex_CanceledFinalScanIsNotCached(t *testing.T) {
 	service := newHardlinkIndexService(t, instanceID, backend, qbt.TorrentFiles{{Name: "one.mkv"}, {Name: "two.mkv"}})
 	torrents := []qbt.Torrent{{Hash: hash, SavePath: dir}}
 
-	service.GetHardlinkIndex(scanCtx, instanceID, torrents)
+	service.GetHardlinkIndex(scanCtx, instanceID, torrentRefs(torrents))
 	require.ErrorIs(t, scanCtx.Err(), context.Canceled)
 
-	require.Equal(t, HardlinkScopeNone, service.GetHardlinkIndex(t.Context(), instanceID, torrents).ScopeByHash[hash])
+	require.Equal(t, HardlinkScopeNone, service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents)).ScopeByHash[hash])
 }
 
 // fakeFilesReader answers every hash with the same file list and holds no
@@ -947,7 +947,7 @@ func TestDeletionSelection_UnreadableHardlinkScopeDoesNotDelete(t *testing.T) {
 		{Hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SavePath: filepath.Join(dir, "a")},
 		{Hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SavePath: filepath.Join(dir, "b")},
 	}
-	index := service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents))
 	require.Empty(t, index.ScopeByHash)
 	rule := &models.Automation{
 		ID: 1, Enabled: true, TrackerPattern: "*",
@@ -987,7 +987,7 @@ func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
 	}
 	createFile(t, filepath.Join(torrents[1].SavePath, "data.bin"))
 	createFile(t, filepath.Join(torrents[2].SavePath, "data.bin"))
-	index := service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents))
 	require.NotContains(t, index.ScopeByHash, unknown)
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[stale])
 	require.NoError(t, os.Remove(filepath.Join(torrents[1].SavePath, "data.bin")))
@@ -1000,22 +1000,22 @@ func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
 	rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: scope}}}
 	rules := map[int]*models.Automation{1: rule}
 
-	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
+	blocked := service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentRefMap(torrentByHash), pending, rules)
 	require.Equal(t, map[string]string{unknown: "hardlink scope unknown", stale: "files no longer readable"}, blocked)
 
 	// An independent OR match still requires verification when the rule uses hardlink data.
 	rule.Conditions.Delete.Condition = &RuleCondition{Operator: OperatorOr, Conditions: []*RuleCondition{scope, category}}
 	require.True(t, EvaluateConditionWithContext(rule.Conditions.Delete.Condition, torrents[0], &EvalContext{InstanceHasTrustedIdentity: true}, 0))
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules)
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentRefMap(torrentByHash), pending, rules)
 	require.Contains(t, blocked, unknown)
 
-	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentByHash, pending, rules)
+	blocked = service.blockedDeleteCandidates(t.Context(), instanceID, nil, torrentRefMap(torrentByHash), pending, rules)
 	require.Len(t, blocked, len(torrents))
 
 	// Rules without hardlink data do not need a scope or a filesystem rescan.
 	rule.Conditions.Delete.Condition = category
 	for _, index := range []*HardlinkIndex{index, nil} {
-		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentByHash, pending, rules))
+		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentRefMap(torrentByHash), pending, rules))
 	}
 }
 
@@ -1141,7 +1141,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	all := []qbt.Torrent{{Hash: hashA, SavePath: dir}, {Hash: hashB, SavePath: dir}, {Hash: hashC, SavePath: dir}, {Hash: hashD, SavePath: dir}}
 	torrents := all[:2]
 
-	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(2), fileRequests.Load())
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 
@@ -1152,7 +1152,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	expireHardlinkIndex(t, rig.instanceID)
 	ageFilesCache(t, rig.db, 30*time.Minute)
 
-	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(2), fileRequests.Load())
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash[hashA])
 
@@ -1160,7 +1160,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	expireHardlinkIndex(t, rig.instanceID)
 	torrents = all[:3]
 
-	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(3), fileRequests.Load())
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashC])
 
@@ -1170,7 +1170,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	ageFilesCache(t, rig.db, 30*time.Minute)
 	torrents = all
 
-	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(4), fileRequests.Load())
 	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash[hashA])
 	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash[hashD])
@@ -1195,7 +1195,7 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 	})
 	torrents := []qbt.Torrent{{Hash: hashA, SavePath: dir}, {Hash: hashB, SavePath: dir}}
 
-	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(2), fileRequests.Load())
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 
@@ -1209,7 +1209,7 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 	expireHardlinkIndex(t, rig.instanceID)
 	ageFilesCache(t, rig.db, 30*time.Minute)
 
-	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(2), fileRequests.Load())
 	require.Empty(t, index.ScopeByHash[hashA])
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashB])
@@ -1220,7 +1220,7 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 	ageFilesCache(t, rig.db, 2*time.Hour)
 	rig.moveMaindata(t, singleFileTorrent(hashA, dir, "a-renamed.mkv"))
 
-	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(3), fileRequests.Load())
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashB])
@@ -1246,7 +1246,7 @@ func newTwoTorrentRig(t *testing.T, name string) (*hardlinkIndexRig, []qbt.Torre
 	})
 	torrents := []qbt.Torrent{{Hash: hashA, SavePath: dir}, {Hash: hashB, SavePath: dir}}
 
-	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(2), fileRequests.Load())
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 	return rig, torrents, fileRequests
@@ -1261,7 +1261,7 @@ func TestGetHardlinkIndex_RebuildTwoHoursLaterSendsNoFileRequest(t *testing.T) {
 	expireHardlinkIndex(t, rig.instanceID)
 	shiftFilesCache(t, rig.db, 2*time.Hour)
 
-	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(2), fileRequests.Load())
 	require.Equal(t, syncs, rig.qbit.syncs.Load(), "the print read sends no sync/maindata")
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[torrents[0].Hash])
@@ -1272,11 +1272,11 @@ func TestGetHardlinkIndex_RowPastItsBackstopIsFetchedOnce(t *testing.T) {
 
 	expireHardlinkIndex(t, rig.instanceID)
 	ageFilesCache(t, rig.db, 23*time.Hour)
-	rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(4), fileRequests.Load())
 
 	expireHardlinkIndex(t, rig.instanceID)
-	rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrentRefs(torrents))
 	require.Equal(t, int32(4), fileRequests.Load(), "the refetched lists are current again")
 }
 
@@ -1317,7 +1317,7 @@ func TestGetHardlinkIndex_IncrementalUpdatesDoNotDelayTheFullRebuild(t *testing.
 		addTorrent(name)
 	}
 
-	index := service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents))
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash["t1"])
 
 	// Sonarr links the file of t1 into its library. Nothing in qBittorrent changes.
@@ -1328,13 +1328,13 @@ func TestGetHardlinkIndex_IncrementalUpdatesDoNotDelayTheFullRebuild(t *testing.
 	for _, name := range []string{"t7", "t8"} {
 		ageHardlinkIndex(t, instanceID, hardlinkIndexTTL*2/5)
 		addTorrent(name)
-		index = service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+		index = service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents))
 		require.Equal(t, HardlinkScopeNone, index.ScopeByHash["t1"], "an incremental update does not read t1 again")
 	}
 
 	// The last full build is now older than hardlinkIndexTTL.
 	ageHardlinkIndex(t, instanceID, hardlinkIndexTTL*2/5)
-	index = service.GetHardlinkIndex(t.Context(), instanceID, torrents)
+	index = service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents))
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash["t1"], "the full rebuild reads t1 again")
 }
 
@@ -1388,7 +1388,7 @@ func TestBlockedDeleteCandidates_CrossInstanceScope(t *testing.T) {
 			service.filesReader = crossFilesReader{savePath: filepath.Join(dir, "b"), files: qbt.TorrentFiles{{Name: "movie.mkv"}}}
 
 			torrent := qbt.Torrent{Hash: hash, SavePath: filepath.Join(dir, "a")}
-			index := service.GetHardlinkIndex(t.Context(), instanceA.ID, []qbt.Torrent{torrent})
+			index := service.GetHardlinkIndex(t.Context(), instanceA.ID, torrentRefs([]qbt.Torrent{torrent}))
 			require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash[hash])
 			if tt.augment {
 				index.crossScopeMu.Lock()
@@ -1403,7 +1403,7 @@ func TestBlockedDeleteCandidates_CrossInstanceScope(t *testing.T) {
 
 			rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, Condition: tt.condition}}}
 			blocked := service.blockedDeleteCandidates(t.Context(), instanceA.ID, index,
-				map[string]qbt.Torrent{hash: torrent},
+				torrentRefMap(map[string]qbt.Torrent{hash: torrent}),
 				&deletionSelection{byHash: map[string]selectedDeletion{hash: {rule: ruleRef{id: 1}}}}, map[int]*models.Automation{1: rule})
 			require.Equal(t, tt.want, blocked)
 		})

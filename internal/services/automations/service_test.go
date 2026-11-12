@@ -288,7 +288,7 @@ func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
 	torrents := []qbt.Torrent{{Hash: "a"}}
 	evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(100, 0)}
 
-	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
+	scoreByHash := buildPreviewScoreMap(torrentRefs(torrents), rule, evalCtx)
 	evalCtx.activeFreeSpace = testFreeSpaceLedger(25, 0)
 
 	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
@@ -325,7 +325,7 @@ func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
 		},
 	}
 
-	torrents := []qbt.Torrent{
+	torrents := []*qbt.Torrent{
 		{Hash: "a", ContentPath: "/data/solo", SavePath: "/data"},
 		{Hash: "z", ContentPath: "/data/group", SavePath: "/data"},
 		{Hash: "y", ContentPath: "/data/group", SavePath: "/data"},
@@ -615,8 +615,8 @@ func TestCrossSeedRuleRefsByKey(t *testing.T) {
 	}
 
 	crossSeeds := testCrossSeedGroups([]qbt.Torrent{torrentByHash["h1"], torrentByHash["h2"], torrentByHash["h3"]})
-	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentByHash, ruleByHash, crossSeeds)
-	gotShuffled := crossSeedRuleRefsByKey([]string{"h3", "h2", "h1"}, torrentByHash, ruleByHash, crossSeeds)
+	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentRefMap(torrentByHash), ruleByHash, crossSeeds)
+	gotShuffled := crossSeedRuleRefsByKey([]string{"h3", "h2", "h1"}, torrentRefMap(torrentByHash), ruleByHash, crossSeeds)
 	require.Len(t, got, 2)
 	require.Len(t, gotShuffled, 2)
 
@@ -644,7 +644,7 @@ func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
 	// Only h2 opts into cross-seed expansion, so rule attribution must use it.
 	expandableHashes := []string{"h2"}
 	crossSeeds := testCrossSeedGroups([]qbt.Torrent{torrentByHash["h1"], torrentByHash["h2"]})
-	got := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, ruleByHash, crossSeeds)
+	got := crossSeedRuleRefsByKey(expandableHashes, torrentRefMap(torrentByHash), ruleByHash, crossSeeds)
 
 	key := crossSeeds.key(torrentByHash["h1"])
 	require.Len(t, got, 1)
@@ -826,7 +826,7 @@ func TestProcessTorrents_RunsTheMatchingRules(t *testing.T) {
 				rule.Conditions = &models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: fmt.Sprintf("rule-%d", rule.ID)}}
 			}
 			stats := make(map[int]*ruleRunStats)
-			states := processTorrents([]qbt.Torrent{tc.torrent}, tc.rules, nil, nil, noSkipWindow(tc.rules...), stats, nil)
+			states := processTorrents(torrentRefs([]qbt.Torrent{tc.torrent}), tc.rules, nil, nil, noSkipWindow(tc.rules...), stats, nil)
 			var got []int
 			for _, rule := range tc.rules {
 				if stats[rule.ID] != nil {
@@ -1064,7 +1064,7 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents), CrossSeedFilesByHash: filesByHash}
 	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
-	result := buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
+	result := buildDeletePreviewResult(torrentRefs(torrents), selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
 	assert.Equal(t, 2, result.TotalMatches)
 	assert.Zero(t, result.CrossSeedCount)
 }
@@ -1086,9 +1086,10 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 		"copy2":    {{Name: "02.mkv", Size: 1000}},
 		"pack2":    {{Name: "02.mkv", Size: 1000}, {Name: "03.mkv", Size: 1000}},
 	}
-	groups := &crossSeedGroups{byHash: map[string][]qbt.Torrent{
-		"copy": torrents[1:4], "pack": torrents[1:4], "episode2": torrents[1:4],
-		"copy2": torrents[4:], "pack2": torrents[4:],
+	refs := torrentRefs(torrents)
+	groups := &crossSeedGroups{byHash: map[string][]*qbt.Torrent{
+		"copy": refs[1:4], "pack": refs[1:4], "episode2": refs[1:4],
+		"copy2": refs[4:], "pack2": refs[4:],
 	}}
 	hardlinks := &HardlinkIndex{
 		DeleteSafeSignatureByHash:  map[string]string{"source": "one", "copy": "one", "episode2": "two", "copy2": "two"},
@@ -1109,9 +1110,9 @@ func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing
 				evalCtx.CrossSeedFilesByHash = nil
 			}
 			selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-				rules: []*models.Automation{rule}, torrents: torrents, evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(rule),
+				rules: []*models.Automation{rule}, torrents: torrentRefs(torrents), evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(rule),
 			})
-			result := buildDeletePreviewResult(torrents, selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
+			result := buildDeletePreviewResult(torrentRefs(torrents), selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
 			if unread {
 				require.Zero(t, result.TotalMatches, "a failed expansion must also keep the trigger")
 				require.True(t, selection.isClaimed("source"), "a trigger whose expansion failed gets no other action")
@@ -1131,8 +1132,8 @@ func TestSharedSidecarKeepsFilesAndBlocksGroupDeletion(t *testing.T) {
 		first.Hash:  {{Name: "first.mkv", Size: 1000}, {Name: "English.srt", Size: 10}},
 		second.Hash: {{Name: "second.mkv", Size: 2000}, {Name: "English.srt", Size: 10}},
 	}
-	require.True(t, shouldPreserveCrossSeedFiles(first, &crossSeedGroups{byHash: map[string][]qbt.Torrent{first.Hash: group, second.Hash: group}}, files))
-	_, ok := crossSeedGroupMembers(first, group, nil, cachedTorrentFilesFetcher(files))
+	require.True(t, shouldPreserveCrossSeedFiles(first, &crossSeedGroups{byHash: map[string][]*qbt.Torrent{first.Hash: torrentRefs(group), second.Hash: torrentRefs(group)}}, files))
+	_, ok := crossSeedGroupMembers(first, torrentRefs(group), nil, cachedTorrentFilesFetcher(files))
 	require.False(t, ok, "partial overlap must keep both torrents and their files")
 }
 
@@ -1235,7 +1236,7 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got, ok := crossSeedGroupMembers(trigger, tc.group, tc.skip, func(_ []string) (map[string]qbt.TorrentFiles, error) {
+			got, ok := crossSeedGroupMembers(trigger, torrentRefs(tc.group), tc.skip, func(_ []string) (map[string]qbt.TorrentFiles, error) {
 				if tc.filesErr != nil {
 					return nil, tc.filesErr
 				}
@@ -1264,7 +1265,7 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 
 		got, ok := crossSeedGroupMembers(
 			layoutTrigger,
-			[]qbt.Torrent{layoutTrigger, layoutCrossSeed},
+			torrentRefs([]qbt.Torrent{layoutTrigger, layoutCrossSeed}),
 			nil,
 			func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
 		)
@@ -1285,7 +1286,7 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 
 		got, ok := crossSeedGroupMembers(
 			episode1,
-			[]qbt.Torrent{episode1, episode2, pack},
+			torrentRefs([]qbt.Torrent{episode1, episode2, pack}),
 			nil,
 			func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
 		)
@@ -1809,10 +1810,10 @@ func dryRunTestPlan(t *testing.T, s *Service, torrents []qbt.Torrent, states map
 	plan := s.buildRunPlan(t.Context(), runPlanInput{
 		states:        states,
 		deletions:     &deletionSelection{},
-		torrents:      torrents,
-		torrentByHash: torrentByHash,
+		torrents:      torrentRefs(torrents),
+		torrentByHash: torrentRefMap(torrentByHash),
 		ruleByID:      ruleByID,
-		crossSeeds:    buildCrossSeedGroups(torrents, evalCtx),
+		crossSeeds:    buildCrossSeedGroups(torrentRefs(torrents), evalCtx),
 		evalCtx:       evalCtx,
 		scope:         noSkipWindow(slices.Collect(maps.Values(ruleByID))...),
 	})
@@ -1842,7 +1843,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		context.Background(),
 		1,
 		runPlan{resume: plannedTorrents{hashes: []string{"abc123", "abc123"}}, deletions: &deletionSelection{}},
-		map[string]qbt.Torrent{"abc123": torrent},
+		torrentRefMap(map[string]qbt.Torrent{"abc123": torrent}),
 		noSkipWindow(),
 		true,
 	)
@@ -1905,13 +1906,13 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		},
 	}
 
-	states := processTorrents(torrents, []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "h1")
 	require.NotContains(t, states, "h2")
 
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
 	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, map[int]*models.Automation{1: rule}, evalCtx)
-	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
 
 	require.Len(t, mockDB.activities, 1)
 	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
@@ -1991,7 +1992,7 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 
 	require.NotPanics(t, func() {
 		plan, torrentByHash := dryRunTestPlan(t, s, []qbt.Torrent{torrent}, states, ruleByID, nil)
-		_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
+		_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
 	})
 
 	require.Len(t, mockDB.activities, 1)
@@ -2065,7 +2066,7 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 	}
 
 	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, nil)
-	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
 
 	require.Len(t, mockDB.activities, 1)
 	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
@@ -2103,7 +2104,7 @@ func TestRecordDryRunActivities_MoveGroupSkipsGroupMissingSharedFilePeer(t *test
 			evalCtx := &EvalContext{SameInstanceContentByHash: map[string][]string{"a": {"b"}, "b": {"a"}}}
 
 			plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, evalCtx)
-			_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentByHash, noSkipWindow(), true)
+			_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
 
 			require.Len(t, mockDB.activities, 1)
 			if tc.wantMove {
@@ -2249,6 +2250,8 @@ func TestTrackerDataMissing(t *testing.T) {
 	withTrackers := qbt.Torrent{Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example/announce"}}}
 	withoutTrackers := qbt.Torrent{Tracker: "https://tracker.example/announce"}
 
+	withoutTrackers.Hash = "without"
+
 	tests := []struct {
 		name     string
 		torrents []qbt.Torrent
@@ -2261,7 +2264,7 @@ func TestTrackerDataMissing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := trackerDataMissing(tt.torrents); got != tt.want {
+			if got := trackerDataMissing(torrentRefs(tt.torrents), trackerLookupOf(tt.torrents...)); got != tt.want {
 				t.Errorf("trackerDataMissing() = %v, want %v", got, tt.want)
 			}
 		})

@@ -923,7 +923,7 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			require.NoError(t, err)
 
 			torrents := []*qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
-			lookup := trackerDetailsFromManager(t.Context(), client, torrents, nil)
+			lookup := trackerDetailsFromManager(t.Context(), client, torrents)
 
 			mu.Lock()
 			defer mu.Unlock()

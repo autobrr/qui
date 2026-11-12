@@ -35,13 +35,15 @@ type CategoryEntry struct {
 // EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
 	// The deletion projection uses the same snapshot and hardlink index as execution.
-	torrentsByHash map[string]qbt.Torrent
+	torrentsByHash map[string]*qbt.Torrent
 	hardlinkIndex  *HardlinkIndex
 	// crossSeeds holds the groups of the run session, when the rules need one.
 	crossSeeds *crossSeedGroups
 	// moveChecks holds what askActionGroups found during one processTorrents call.
 	moveChecks map[moveCheckKey]checkedMove
 
+	// trackers holds the tracker list of each torrent, when the rules read trackers.
+	trackers qbittorrent.TrackerLookup
 	// TrackerHealth is the tracker health snapshot of the instance. It is nil
 	// when the instance has no tracker health yet.
 	TrackerHealth *qbittorrent.TrackerHealthSnapshot
@@ -169,7 +171,7 @@ func normalizeName(s string) string {
 
 // BuildCategoryIndex builds the category lookup structures from a list of torrents.
 // Returns both the CategoryIndex (for O(1) EXISTS_IN) and CategoryNames (for CONTAINS_IN iteration).
-func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
+func BuildCategoryIndex(torrents []*qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
 	categoryIndex := make(map[string]map[string]map[string]struct{})
 	categoryNames := make(map[string][]CategoryEntry)
 
@@ -449,9 +451,9 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldTracker, FieldTrackers:
 		return compareTrackers(torrent, cond, ctx)
 	case FieldTrackerStatus:
-		return compareTrackerStatuses(torrent, cond)
+		return compareTrackerStatuses(torrent, cond, ctx)
 	case FieldTrackerMessage:
-		return compareTrackerMessages(torrent, cond)
+		return compareTrackerMessages(torrent, cond, ctx)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -812,19 +814,17 @@ func compareString(value string, cond *RuleCondition) bool {
 // so it can name a tracker that is down now. When no tracker answered yet, the field
 // is empty before qBittorrent 5.1 and holds the first tracker in the list from 5.1.
 func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
-	candidates := make([]string, 0, len(torrent.Trackers)*3+3)
+	trackers := ctx.trackersOf(torrent.Hash)
+	candidates := make([]string, 0, len(trackers)*3+3)
 	candidates = append(candidates, trackerCandidates(torrent.Tracker, ctx)...)
-	for _, tracker := range torrent.Trackers {
+	for _, tracker := range trackers {
 		candidates = append(candidates, trackerCandidates(tracker.Url, ctx)...)
 	}
 	return compareStringCandidates(candidates, cond)
 }
 
-func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition) bool {
-	if len(torrent.Trackers) == 0 {
-		return false
-	}
-	for _, tracker := range torrent.Trackers {
+func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
+	for _, tracker := range ctx.trackersOf(torrent.Hash) {
 		// Skip DHT/PeX/LSD pseudo-trackers: they are always reported as Disabled with
 		// no message and would otherwise spuriously satisfy "disabled"/NOT_EQUAL queries.
 		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
@@ -881,11 +881,8 @@ func matchesTrackerStatusValue(status int, value string) bool {
 	return false
 }
 
-func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition) bool {
-	if len(torrent.Trackers) == 0 {
-		return false
-	}
-	for _, tracker := range torrent.Trackers {
+func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
+	for _, tracker := range ctx.trackersOf(torrent.Hash) {
 		// Skip DHT/PeX/LSD pseudo-trackers: they carry no message and would otherwise
 		// make "message is nil" match nearly every torrent.
 		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
@@ -1245,4 +1242,11 @@ func splitTags(raw string) []string {
 		}
 	}
 	return result
+}
+
+func (ctx *EvalContext) trackersOf(hash string) []qbt.TorrentTracker {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.trackers.Trackers(hash)
 }

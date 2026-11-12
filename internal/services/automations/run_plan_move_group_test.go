@@ -18,8 +18,8 @@ import (
 // It returns the planned moves and the number of times the plan ran the checks for a group.
 func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext, order []string) (plannedAction[string], int) {
 	t.Helper()
-	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
-	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, crossSeeds, noSkipWindow(rule), nil, nil)
+	crossSeeds := buildCrossSeedGroups(torrentRefs(torrents), evalCtx)
+	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, crossSeeds, noSkipWindow(rule), nil, nil)
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 	for _, torrent := range torrents {
 		torrentByHash[torrent.Hash] = torrent
@@ -34,8 +34,8 @@ func planMoveTriggers(t *testing.T, svc *Service, torrents []qbt.Torrent, rule *
 	m := newMoveExpansion(runPlanInput{
 		states:        states,
 		deletions:     &deletionSelection{},
-		torrents:      torrents,
-		torrentByHash: torrentByHash,
+		torrents:      torrentRefs(torrents),
+		torrentByHash: torrentRefMap(torrentByHash),
 		ruleByID:      map[int]*models.Automation{rule.ID: rule},
 		crossSeeds:    crossSeeds,
 		evalCtx:       evalCtx,

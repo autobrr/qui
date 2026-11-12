@@ -76,7 +76,7 @@ func TestFreeSpaceLedger_Count(t *testing.T) {
 		}}
 		episode := qbt.Torrent{Hash: "ep", Size: 1000, ContentPath: "/data/Pack/ep1.mkv", SavePath: "/data/Pack"}
 		pack := qbt.Torrent{Hash: "pack", Size: 2000, ContentPath: "/data/Pack", SavePath: "/data"}
-		groups := buildCrossSeedGroups([]qbt.Torrent{episode, pack}, &EvalContext{
+		groups := buildCrossSeedGroups(torrentRefs([]qbt.Torrent{episode, pack}), &EvalContext{
 			SameInstanceContentByHash: map[string][]string{"ep": {"pack"}, "pack": {"ep"}},
 		})
 
@@ -174,14 +174,14 @@ func TestFreeSpaceLedger_EligibleViewCountsNothing(t *testing.T) {
 func TestFreeSpaceLedger_UnreadExpandedMemberDoesNotCount(t *testing.T) {
 	t.Parallel()
 	torrents, evalCtx, _ := mixedDeletionProjectionFixture()
-	evalCtx.torrentsByHash = make(map[string]qbt.Torrent)
-	for _, torrent := range torrents {
+	evalCtx.torrentsByHash = make(map[string]*qbt.Torrent)
+	for _, torrent := range torrentRefs(torrents) {
 		evalCtx.torrentsByHash[torrent.Hash] = torrent
 	}
 	sourceFiles := evalCtx.CrossSeedFilesByHash["source"]
 	delete(evalCtx.CrossSeedFilesByHash, "source")
 	ledger := countingLedger(DeleteModeWithFilesIncludeCrossSeeds, true)
-	groups := buildCrossSeedGroups(torrents, evalCtx)
+	groups := buildCrossSeedGroups(torrentRefs(torrents), evalCtx)
 
 	require.False(t, ledger.count(torrents[0], groups, evalCtx))
 	require.Zero(t, ledger.projectedFreedBytes())
@@ -202,7 +202,7 @@ func TestFreeSpaceLedger_ResetReadsZero(t *testing.T) {
 		"ep":   {{Name: "ep1.mkv", Size: 1000}},
 		"pack": {{Name: "Pack/ep1.mkv", Size: 1000}, {Name: "Pack/ep2.mkv", Size: 1000}},
 	}}
-	groups := buildCrossSeedGroups(torrents, &EvalContext{
+	groups := buildCrossSeedGroups(torrentRefs(torrents), &EvalContext{
 		SameInstanceContentByHash: map[string][]string{"ep": {"pack"}, "pack": {"ep"}},
 	})
 	ledger.count(torrents[0], groups, evalCtx)

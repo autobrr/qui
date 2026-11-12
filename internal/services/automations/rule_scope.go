@@ -34,7 +34,8 @@ const (
 // pass over the torrents of a rule asks it. It also gives the tracker domains of a torrent, which
 // it collects one time.
 type ruleScope struct {
-	skipped map[string]struct{}
+	skipped  map[string]struct{}
+	trackers qbittorrent.TrackerLookup
 	// noValue holds, for each rule ID, the field table tests of the fields that the rule reads.
 	noValue   map[int][]func(qbt.Torrent) bool
 	keyByHash map[string]string          // torrent hash -> domain set key
@@ -42,13 +43,14 @@ type ruleScope struct {
 	matches   map[string]map[string]bool // tracker pattern -> domain set key -> match
 }
 
-// newRuleScope opens the Rule scope for the rules as saved, after the torrents have their tracker
-// lists. skipped holds the torrents in the Skip window. A dry run and a preview pass nil. A
-// preview that plans one Action of a rule passes the whole rule, so that a field in another
-// Action still counts.
-func newRuleScope(rules []*models.Automation, skipped map[string]struct{}) *ruleScope {
+// newRuleScope opens the Rule scope for the rules as saved. trackers holds the tracker lists of
+// the torrents that the run loaded. skipped holds the torrents in the Skip window. A dry run and a
+// preview pass nil for skipped. A preview that plans one Action of a rule passes the whole rule, so
+// that a field in another Action still counts.
+func newRuleScope(rules []*models.Automation, skipped map[string]struct{}, trackers qbittorrent.TrackerLookup) *ruleScope {
 	r := &ruleScope{
 		skipped:   skipped,
+		trackers:  trackers,
 		noValue:   make(map[int][]func(qbt.Torrent) bool),
 		keyByHash: make(map[string]string),
 		domains:   make(map[string][]string),
@@ -84,13 +86,13 @@ func (r *ruleScope) answer(rule *models.Automation, torrent *qbt.Torrent) scopeA
 // groupDropsMember reports whether a member of the group drops out of the rule, so that a grouped
 // Action skips the group. A member drops out only when it has no value for a field that the rule
 // reads. A member on another tracker or in the Skip window stays a member.
-func (r *ruleScope) groupDropsMember(rule *models.Automation, members []string, torrentByHash map[string]qbt.Torrent) bool {
+func (r *ruleScope) groupDropsMember(rule *models.Automation, members []string, torrentByHash map[string]*qbt.Torrent) bool {
 	tests := r.noValue[rule.ID]
 	if len(tests) == 0 {
 		return false
 	}
 	return slices.ContainsFunc(members, func(hash string) bool {
-		member := torrentByHash[hash]
+		member := *torrentByHash[hash]
 		return slices.ContainsFunc(tests, func(noValue func(qbt.Torrent) bool) bool { return noValue(member) })
 	})
 }
@@ -112,7 +114,7 @@ func (r *ruleScope) tracker(torrent *qbt.Torrent) string {
 func (r *ruleScope) domainKey(torrent *qbt.Torrent) string {
 	key, ok := r.keyByHash[torrent.Hash]
 	if !ok {
-		domains := collectTrackerDomains(torrent)
+		domains := collectTrackerDomains(torrent, r.trackers.Trackers(torrent.Hash))
 		key = strings.Join(domains, ",")
 		r.keyByHash[torrent.Hash] = key
 		r.domains[key] = domains
@@ -199,7 +201,7 @@ func tokenMatchesDomain(token string, domains []string) bool {
 	return false
 }
 
-func collectTrackerDomains(t *qbt.Torrent) []string {
+func collectTrackerDomains(t *qbt.Torrent, trackers []qbt.TorrentTracker) []string {
 	domainSet := make(map[string]struct{})
 
 	if t.Tracker != "" {
@@ -208,7 +210,7 @@ func collectTrackerDomains(t *qbt.Torrent) []string {
 		}
 	}
 
-	for _, tr := range t.Trackers {
+	for _, tr := range trackers {
 		if tr.Url == "" {
 			continue
 		}

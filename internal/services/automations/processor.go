@@ -172,7 +172,7 @@ func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *rul
 
 // processTorrents processes all torrents against all rules, returning desired states.
 func processTorrents(
-	torrents []qbt.Torrent,
+	torrents []*qbt.Torrent,
 	rules []*models.Automation,
 	evalCtx *EvalContext,
 	crossSeeds *crossSeedGroups,
@@ -192,8 +192,7 @@ func processTorrents(
 		defer func() { evalCtx.moveChecks = nil }()
 	}
 
-	for i := range torrents {
-		torrent := &torrents[i]
+	for _, torrent := range torrents {
 		state := applyRulesToTorrent(torrent, rules, states[torrent.Hash], evalCtx, crossSeeds, scope, stats, torrents)
 		// Only store if there are actions to take
 		if state != nil && hasActions(state) {
@@ -207,7 +206,7 @@ func processTorrents(
 // applyRulesToTorrent applies each enabled rule that holds the torrent in its Rule scope to the
 // state of the torrent, in rule order. existing is the state from an earlier batch, or nil. It
 // returns nil when no rule handles the torrent.
-func applyRulesToTorrent(torrent *qbt.Torrent, rules []*models.Automation, existing *torrentDesiredState, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope, stats map[int]*ruleRunStats, allTorrents []qbt.Torrent) *torrentDesiredState {
+func applyRulesToTorrent(torrent *qbt.Torrent, rules []*models.Automation, existing *torrentDesiredState, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope, stats map[int]*ruleRunStats, allTorrents []*qbt.Torrent) *torrentDesiredState {
 	var state *torrentDesiredState
 	for _, rule := range rules {
 		if !rule.Enabled {
@@ -246,7 +245,7 @@ func applyRulesToTorrent(torrent *qbt.Torrent, rules []*models.Automation, exist
 
 // askActionGroups asks the run session once for the groups that the moves, tags and categories
 // read, before the rule loop reads them one torrent at a time.
-func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope, states map[string]*torrentDesiredState) {
+func askActionGroups(torrents []*qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, crossSeeds *crossSeedGroups, scope *ruleScope, states map[string]*torrentDesiredState) {
 	if evalCtx == nil || !crossSeeds.readsGroups() {
 		return
 	}
@@ -277,8 +276,7 @@ func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx
 	movedGroups := make(map[askedGroup]struct{})
 	categoryGroups := make(map[askedGroup]struct{})
 	var moveHashes, groupHashes []string
-	for i := range torrents {
-		torrent := &torrents[i]
+	for _, torrent := range torrents {
 		if state := states[torrent.Hash]; len(moveRules) > 0 && (state == nil || !state.shouldMove) {
 			moveHashes = append(moveHashes, moveAsks(torrent, moveRules, torrents, evalCtx, scope, movedGroups)...)
 		}
@@ -306,7 +304,7 @@ func askActionGroups(torrents []qbt.Torrent, rules []*models.Automation, evalCtx
 // Rule scope reads its group, with the members of the category GroupID that asked does not hold yet.
 // A tag rule in asksTagScope reads the group of each torrent in its scope. A category reads the
 // group only when its condition matches.
-func groupReadAsks(torrent *qbt.Torrent, rules []*models.Automation, asksTagScope map[*models.Automation]bool, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
+func groupReadAsks(torrent *qbt.Torrent, rules []*models.Automation, asksTagScope map[*models.Automation]bool, torrents []*qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
 	var hashes []string
 	for _, rule := range rules {
 		if !rule.Enabled || scope.answer(rule, torrent) != scopeIn {
@@ -344,7 +342,7 @@ type askedGroup struct {
 
 // groupIDMembers returns the members of the GroupID group of the torrent, or nil when asked
 // already holds the group.
-func groupIDMembers(rule *models.Automation, groupID, hash string, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
+func groupIDMembers(rule *models.Automation, groupID, hash string, torrents []*qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
 	idx := getOrBuildGroupIndexForRule(evalCtx, rule, groupID, torrents, scope)
 	group := askedGroup{rule, idx.KeyForHash(hash)}
 	if _, seen := asked[group]; seen {
@@ -356,7 +354,7 @@ func groupIDMembers(rule *models.Automation, groupID, hash string, torrents []qb
 
 // moveAsks returns the torrent when the move of a rule that holds it in its Rule scope can apply
 // to it, with the members of the move GroupID that asked does not hold yet.
-func moveAsks(torrent *qbt.Torrent, rules []*models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
+func moveAsks(torrent *qbt.Torrent, rules []*models.Automation, torrents []*qbt.Torrent, evalCtx *EvalContext, scope *ruleScope, asked map[askedGroup]struct{}) []string {
 	state := &torrentDesiredState{trackerDomains: scope.trackerDomains(torrent)}
 	var hashes []string
 	for _, rule := range rules {
@@ -380,7 +378,7 @@ func moveAsks(torrent *qbt.Torrent, rules []*models.Automation, torrents []qbt.T
 
 // enterRule makes the free space ledger and the grouping (GROUP_SIZE / IS_GROUPED) of the rule
 // active. Each pass calls it before it evaluates the rule.
-func enterRule(evalCtx *EvalContext, rule *models.Automation, allTorrents []qbt.Torrent, scope *ruleScope) {
+func enterRule(evalCtx *EvalContext, rule *models.Automation, allTorrents []*qbt.Torrent, scope *ruleScope) {
 	if evalCtx == nil {
 		return
 	}
@@ -392,7 +390,7 @@ func enterRule(evalCtx *EvalContext, rule *models.Automation, allTorrents []qbt.
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, scope *ruleScope, crossSeeds *crossSeedGroups, stats *ruleRunStats, allTorrents []qbt.Torrent) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, scope *ruleScope, crossSeeds *crossSeedGroups, stats *ruleRunStats, allTorrents []*qbt.Torrent) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -791,7 +789,7 @@ func shouldBlockMoveForCrossSeeds(torrent qbt.Torrent, moveAction *models.MoveAc
 		if other.Hash == torrent.Hash {
 			continue
 		}
-		if !EvaluateConditionWithContext(moveAction.Condition, other, evalCtx, 0) {
+		if !EvaluateConditionWithContext(moveAction.Condition, *other, evalCtx, 0) {
 			return true
 		}
 	}
@@ -1117,7 +1115,7 @@ func parseTorrentTags(tags string) map[string]struct{} {
 }
 
 func verifiedCrossSeedFileBytes(
-	torrents map[string]qbt.Torrent,
+	torrents map[string]*qbt.Torrent,
 	hashes map[string]struct{},
 	filesByHash map[string]qbt.TorrentFiles,
 	hardlinks *HardlinkIndex,
@@ -1156,8 +1154,9 @@ func verifiedCrossSeedFileBytes(
 		if len(filesByHash[hash]) == 0 {
 			return 0, false
 		}
+		torrent := *torrents[hash]
 		for _, file := range filesByHash[hash] {
-			resolvedPath := resolvedTorrentFilePath(torrents[hash], file.Name)
+			resolvedPath := resolvedTorrentFilePath(torrent, file.Name)
 			previousSize := maxSizeByPath[resolvedPath]
 			key, linked := idsByPath[resolvedPath]
 			if linked {
@@ -1226,7 +1225,7 @@ func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *
 // SortTorrents sorts the slice in-place based on the configuration.
 // Always applies Hash (ASC) as a deterministic tiebreaker.
 // Returns an error if the sorting configuration is invalid (e.g. unsupported field).
-func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) error {
+func SortTorrents(torrents []*qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) error {
 	if config != nil {
 		if config.SchemaVersion != "1" {
 			return fmt.Errorf("invalid schema version: %s", config.SchemaVersion)
@@ -1271,7 +1270,7 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 	if config != nil && config.Type == models.SortingTypeScore {
 		scores = make(map[string]float64, len(torrents))
 		for _, t := range torrents {
-			scores[t.Hash] = CalculateScore(t, config, evalCtx)
+			scores[t.Hash] = CalculateScore(*t, config, evalCtx)
 		}
 	}
 
@@ -1281,7 +1280,7 @@ func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx 
 	}
 
 	sort.Slice(torrents, func(i, j int) bool {
-		return compareTorrents(torrents[i], torrents[j], config, sortValue, scores, evalCtx)
+		return compareTorrents(*torrents[i], *torrents[j], config, sortValue, scores, evalCtx)
 	})
 
 	return nil

@@ -134,7 +134,7 @@ func newRoutedRig(t *testing.T, crossSeedLocal bool) *routedRig {
 // index returns the hardlink index of the Source instance with its cross-instance scope.
 func (r *routedRig) index(t *testing.T, torrents ...qbt.Torrent) *HardlinkIndex {
 	t.Helper()
-	index := r.service.GetHardlinkIndex(t.Context(), r.sourceID, torrents)
+	index := r.service.GetHardlinkIndex(t.Context(), r.sourceID, torrentRefs(torrents))
 	require.NotNil(t, index)
 	index.crossScopeMu.Lock()
 	if index.CrossScopeByHash == nil && index.buildState != nil {
@@ -271,7 +271,7 @@ func TestDeleteRecheckCountsRoutedLinks(t *testing.T) {
 			require.Equal(t, HardlinkScopeTorrentsOnly, matched[routedSourceHash], "the rule must select the torrent")
 
 			blocked := rig.service.blockedDeleteCandidates(t.Context(), rig.sourceID, index,
-				map[string]qbt.Torrent{routedSourceHash: rig.source},
+				torrentRefMap(map[string]qbt.Torrent{routedSourceHash: rig.source}),
 				&deletionSelection{byHash: map[string]selectedDeletion{routedSourceHash: {rule: ruleRef{id: 1}}}}, ruleByID)
 
 			require.Empty(t, blocked, "the re-check must see the routed link as a link to another torrent")
@@ -323,7 +323,7 @@ func TestHardlinkScopeIsUnknownWhileTheCrossSeedInstanceIsUnavailable(t *testing
 			rule := &models.Automation{Conditions: &ActionConditions{Delete: &DeleteAction{Enabled: true, IncludeHardlinks: true,
 				Condition: &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeTorrentsOnly}}}}
 			blocked := rig.service.blockedDeleteCandidates(t.Context(), rig.sourceID, index,
-				map[string]qbt.Torrent{routedSourceHash: rig.source},
+				torrentRefMap(map[string]qbt.Torrent{routedSourceHash: rig.source}),
 				&deletionSelection{byHash: map[string]selectedDeletion{routedSourceHash: {rule: ruleRef{id: 1}}}}, map[int]*models.Automation{1: rule})
 			require.Equal(t, map[string]string{routedSourceHash: "hardlink scope unknown"}, blocked)
 
@@ -412,7 +412,7 @@ func TestHardlinkIndexRoutedListsUseTheCrossSeedPrint(t *testing.T) {
 		crossSeedRoutes: crossseedroute.NewService(routeStore, instances, clients, backends),
 	}
 
-	index := service.GetHardlinkIndex(ctx, sourceInstance.ID, []qbt.Torrent{source})
+	index := service.GetHardlinkIndex(ctx, sourceInstance.ID, torrentRefs([]qbt.Torrent{source}))
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash])
 	require.Equal(t, int32(1), crossRequests.Load())
 
@@ -421,7 +421,7 @@ func TestHardlinkIndexRoutedListsUseTheCrossSeedPrint(t *testing.T) {
 	expireHardlinkIndex(t, sourceInstance.ID)
 	ageFilesCache(t, db, 2*time.Hour)
 
-	index = service.GetHardlinkIndex(ctx, sourceInstance.ID, []qbt.Torrent{source})
+	index = service.GetHardlinkIndex(ctx, sourceInstance.ID, torrentRefs([]qbt.Torrent{source}))
 	require.Equal(t, HardlinkScopeTorrentsOnly, index.ScopeByHash[routedSourceHash])
 	require.Equal(t, int32(1), crossRequests.Load())
 	require.Equal(t, int32(1), sourceRequests.Load())

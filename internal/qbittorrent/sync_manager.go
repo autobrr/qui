@@ -3362,10 +3362,7 @@ func trackerMessageMatches(message string, patterns []string) bool {
 // trackerDetailsFromManager returns the tracker details of the torrents from
 // the tracker manager of go-qbittorrent, for a qBittorrent below 5.2, which
 // has no announce flags. Below qBittorrent 5.1 it returns none.
-// The tracker manager writes the trackers into owned, the copies of torrents
-// that the caller owns. When owned is nil, it gets a new slice that holds only
-// the hash and the trackers of each torrent.
-func trackerDetailsFromManager(ctx context.Context, client *Client, torrents []*qbt.Torrent, owned []qbt.Torrent) TrackerLookup {
+func trackerDetailsFromManager(ctx context.Context, client *Client, torrents []*qbt.Torrent) TrackerLookup {
 	if client == nil || len(torrents) == 0 {
 		return nil
 	}
@@ -3381,10 +3378,7 @@ func trackerDetailsFromManager(ctx context.Context, client *Client, torrents []*
 		return nil
 	}
 
-	if owned == nil {
-		owned = trackerManagerInput(torrents)
-	}
-	lookup, err := client.trackerDetails(ctx, owned)
+	lookup, err := client.trackerDetails(ctx, trackerManagerInput(torrents))
 	if err != nil {
 		log.Debug().Err(err).Int("count", len(torrents)).Msg("Failed to fetch tracker details for enrichment")
 	}
@@ -4273,12 +4267,6 @@ func (sm *SyncManager) pendingStates(instanceID int, client *Client, lastSyncTim
 	return expected
 }
 
-// AttachTrackerURLs is TrackerURLs that writes the URLs into the torrents.
-func (sm *SyncManager) AttachTrackerURLs(ctx context.Context, instanceID int, torrents []qbt.Torrent) []qbt.Torrent {
-	sm.TrackerURLs(ctx, instanceID).writeTo(torrents)
-	return torrents
-}
-
 // TrackerURLs returns one tracker entry with only the URL for each tracker of
 // each torrent of an instance, from the MainData trackers map. It sends no
 // request to qBittorrent. Below qBittorrent 5.1 it returns none, as
@@ -4307,24 +4295,11 @@ func (sm *SyncManager) TrackerURLs(ctx context.Context, instanceID int) TrackerL
 	return lookup
 }
 
-// HydrateTorrentTrackers is TrackerDetails that writes the trackers into the
-// torrents.
-func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID int, torrents []qbt.Torrent) ([]qbt.Torrent, error) {
-	lookup, err := sm.trackerDetails(ctx, instanceID, torrentRefs(torrents), torrents)
-	lookup.writeTo(torrents)
-	return torrents, err
-}
-
 // TrackerDetails returns the trackers of the torrents with their status and
 // message, by hash. It returns none when it cannot get the client of the
 // instance, and below qBittorrent 5.1. On qBittorrent 5.2+ it returns an error
 // when a fetch fails, because some torrents then have no entry.
 func (sm *SyncManager) TrackerDetails(ctx context.Context, instanceID int, torrents []*qbt.Torrent) (TrackerLookup, error) {
-	return sm.trackerDetails(ctx, instanceID, torrents, nil)
-}
-
-// trackerDetails is TrackerDetails. owned works as in trackerDetailsFromManager.
-func (sm *SyncManager) trackerDetails(ctx context.Context, instanceID int, torrents []*qbt.Torrent, owned []qbt.Torrent) (TrackerLookup, error) {
 	if len(torrents) == 0 {
 		return nil, nil
 	}
@@ -4346,7 +4321,7 @@ func (sm *SyncManager) trackerDetails(ctx context.Context, instanceID int, torre
 		return lookup, nil
 	}
 
-	return trackerDetailsFromManager(ctx, client, torrents, owned), nil
+	return trackerDetailsFromManager(ctx, client, torrents), nil
 }
 
 func isSearchSeparator(c byte) bool {

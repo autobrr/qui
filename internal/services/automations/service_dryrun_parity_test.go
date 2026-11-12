@@ -102,6 +102,10 @@ type stubQbt struct {
 	// webAPIVersion replaces the default Web API version 2.10.0.
 	webAPIVersion string
 	fileReads     int // torrents/files requests
+	// trackers is the sync/maindata trackers map, as JSON.
+	trackers string
+	// trackerInfo is the torrents/info answer, as JSON.
+	trackerInfo string
 }
 
 func newStubQbt(t *testing.T, torrents string) *stubQbt {
@@ -128,9 +132,21 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(version))
 	case "/api/v2/sync/maindata":
 		s.mu.Lock()
-		torrents := s.torrents
+		torrents, trackers := s.torrents, s.trackers
 		s.mu.Unlock()
-		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + torrents + `}`))
+		if trackers != "" {
+			trackers = `,"trackers":` + trackers
+		}
+		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + torrents + trackers + `}`))
+	case "/api/v2/torrents/info":
+		s.mu.Lock()
+		info := s.trackerInfo
+		s.mu.Unlock()
+		if info == "" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(info))
 	case "/api/v2/torrents/files":
 		s.mu.Lock()
 		files, ok := s.files[r.URL.Query().Get("hash")]

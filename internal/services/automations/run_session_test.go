@@ -335,7 +335,7 @@ func openTestRunSession(t *testing.T, torrents []qbt.Torrent, links map[string][
 	svc := &Service{crossMatcher: matcher, filesReader: staticFilesReader(files)}
 	evalCtx := &EvalContext{}
 	needs := RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}}
-	require.NoError(t, svc.openRunSession(t.Context(), 1, torrents, needs, evalCtx))
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrentRefs(torrents), needs, evalCtx))
 	svc.loadCrossSeedFiles(t.Context(), 1, evalCtx.crossSeeds, evalCtx, nil)
 	return evalCtx, matcher
 }
@@ -399,7 +399,7 @@ func TestRunSession_HardlinkCopyLeadsToASecondGroup(t *testing.T) {
 		evalCtx.hardlinkIndex = hardlinks
 		svc := &Service{}
 		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-			rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(rule),
+			rules: []*models.Automation{rule}, torrents: torrentRefs(slices.Clone(torrents)), evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(rule),
 		})
 		return slices.Sorted(maps.Keys(selection.byHash))
 	}
@@ -416,7 +416,7 @@ func TestRunSession_HardlinkCopyLeadsToASecondGroup(t *testing.T) {
 	require.Equal(t, asks, matcher.requests(), "the expansion meets no miss")
 
 	whole := &EvalContext{SameInstanceContentByHash: links, CrossSeedFilesByHash: files}
-	require.Equal(t, selected(whole, buildCrossSeedGroups(torrents, whole)), scoped)
+	require.Equal(t, selected(whole, buildCrossSeedGroups(torrentRefs(torrents), whole)), scoped)
 	require.Equal(t, []string{"copy", "copy2", "episode2", "pack", "pack2", "source"}, scoped)
 }
 
@@ -476,8 +476,8 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 		}
 		svc := &Service{}
 		selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
-			rules: []*models.Automation{rule}, torrents: slices.Clone(torrents), evalCtx: evalCtx, crossSeeds: groups,
-			scope: newRuleScope([]*models.Automation{rule}, skipped),
+			rules: []*models.Automation{rule}, torrents: torrentRefs(slices.Clone(torrents)), evalCtx: evalCtx, crossSeeds: groups,
+			scope: newRuleScope([]*models.Automation{rule}, skipped, nil),
 		})
 		return outcome{slices.Sorted(maps.Keys(selection.byHash)), *evalCtx.freeSpaceLedgers[rule.ID]}
 	}
@@ -492,7 +492,7 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	}, matcher.requests())
 
 	whole := &EvalContext{SameInstanceContentByHash: links, CrossSeedFilesByHash: files}
-	require.Equal(t, run(whole, buildCrossSeedGroups(torrents, whole)), scoped)
+	require.Equal(t, run(whole, buildCrossSeedGroups(torrentRefs(torrents), whole)), scoped)
 	require.Equal(t, []string{"copyA", "copyB", "packA", "packB", "source"}, scoped.selected)
 	// The shared inode counts once, plus 02.mkv of each pack.
 	require.Equal(t, int64(3000), scoped.ledger.projectedFreedBytes())
@@ -509,14 +509,14 @@ func TestRunSession_OneWayLinkJoinsTheWholeComponent(t *testing.T) {
 	}
 	oneWay := map[string][]string{"a": {"x"}, "b": {"x"}}
 
-	oracle := buildCrossSeedGroups(torrents, &EvalContext{SameInstanceContentByHash: oneWay})
+	oracle := buildCrossSeedGroups(torrentRefs(torrents), &EvalContext{SameInstanceContentByHash: oneWay})
 	require.Len(t, oracle.members("b"), 2, "the oracle group of b holds only b and x")
 	require.False(t, shouldBlockCategoryChangeForCrossSeeds(torrents[2], []string{"keep"}, oracle))
 
 	matcher := &recordingMatcher{links: oneWay}
 	evalCtx := &EvalContext{}
 	svc := &Service{crossMatcher: matcher}
-	require.NoError(t, svc.openRunSession(t.Context(), 1, torrents, RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrentRefs(torrents), RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
 	for _, hash := range []string{"x", "a", "b"} {
 		require.ElementsMatch(t, []string{"x", "a", "b"}, memberHashes(evalCtx.crossSeeds.members(hash)), hash)
 	}
@@ -545,7 +545,7 @@ func TestRunSession_LaterAnswerFillsTheSameFilesMap(t *testing.T) {
 	reader := &countingFilesReader{staticFilesReader: files}
 	svc := &Service{crossMatcher: matcher, filesReader: reader}
 	evalCtx := &EvalContext{}
-	require.NoError(t, svc.openRunSession(t.Context(), 1, torrents, RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrentRefs(torrents), RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
 	svc.loadCrossSeedFiles(t.Context(), 1, evalCtx.crossSeeds, evalCtx, nil)
 	held := evalCtx.CrossSeedFilesByHash
 	require.Empty(t, held, "the load step reads nothing before an ask")
@@ -634,13 +634,13 @@ func TestRunSession_MoveAsksOnlyTheMatchedTorrents(t *testing.T) {
 			plan := func(evalCtx *EvalContext, groups *crossSeedGroups) ([]string, ruleRunStats) {
 				run := slices.Clone(torrents)
 				stats := make(map[int]*ruleRunStats)
-				states := processTorrents(run, []*models.Automation{tt.rule}, evalCtx, groups, noSkipWindow(tt.rule), stats, nil)
+				states := processTorrents(torrentRefs(run), []*models.Automation{tt.rule}, evalCtx, groups, noSkipWindow(tt.rule), stats, nil)
 				torrentByHash := make(map[string]qbt.Torrent, len(run))
 				for _, torrent := range run {
 					torrentByHash[torrent.Hash] = torrent
 				}
 				p := (&Service{}).buildRunPlan(t.Context(), runPlanInput{
-					instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: run, torrentByHash: torrentByHash,
+					instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: torrentRefs(run), torrentByHash: torrentRefMap(torrentByHash),
 					ruleByID: map[int]*models.Automation{tt.rule.ID: tt.rule}, crossSeeds: groups, evalCtx: evalCtx, scope: noSkipWindow(tt.rule),
 				})
 				return slices.Sorted(slices.Values(p.move.byTarget["/new"])), *stats[tt.rule.ID]
@@ -655,7 +655,7 @@ func TestRunSession_MoveAsksOnlyTheMatchedTorrents(t *testing.T) {
 			require.Equal(t, tt.wantMoved, moved)
 
 			whole := &EvalContext{SameInstanceContentByHash: links}
-			wholeMoved, wholeStats := plan(whole, buildCrossSeedGroups(torrents, whole))
+			wholeMoved, wholeStats := plan(whole, buildCrossSeedGroups(torrentRefs(torrents), whole))
 			require.Equal(t, wholeMoved, moved)
 			require.Equal(t, wholeStats, stats)
 		})
@@ -705,7 +705,7 @@ func TestRunSession_MoveMissReadsTheStateFirst(t *testing.T) {
 	torrent := qbt.Torrent{Hash: "t", SavePath: "/old", ContentPath: "/old/t.mkv"}
 	svc := &Service{crossMatcher: unknownSession{}}
 	evalCtx := &EvalContext{}
-	require.NoError(t, svc.openRunSession(t.Context(), 1, []qbt.Torrent{torrent}, RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrentRefs([]qbt.Torrent{torrent}), RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}}, evalCtx))
 	rule := &models.Automation{ID: 1, Name: "move", TrackerPattern: "*", Enabled: true,
 		Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/new"}}}
 	state := &torrentDesiredState{hash: torrent.Hash}
@@ -734,7 +734,7 @@ func TestMoveAsks_GroupMembersOnce(t *testing.T) {
 	asked := make(map[askedGroup]struct{})
 	hashes := make([]string, 0, 2*len(torrents))
 	for _, torrent := range torrents {
-		hashes = append(hashes, moveAsks(&torrent, []*models.Automation{rule}, torrents, evalCtx, noSkipWindow(rule), asked)...)
+		hashes = append(hashes, moveAsks(&torrent, []*models.Automation{rule}, torrentRefs(torrents), evalCtx, noSkipWindow(rule), asked)...)
 	}
 	require.Len(t, hashes, 2*len(torrents))
 }
@@ -765,7 +765,7 @@ func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
 	asked := make(map[askedGroup]struct{})
 	hashes := make([]string, 0, 2*len(torrents))
 	for _, torrent := range torrents {
-		hashes = append(hashes, moveAsks(&torrent, rules, torrents, evalCtx, noSkipWindow(rules...), asked)...)
+		hashes = append(hashes, moveAsks(&torrent, rules, torrentRefs(torrents), evalCtx, noSkipWindow(rules...), asked)...)
 	}
 	slices.Sort(hashes)
 	require.Equal(t, []string{"c1", "c2", "s1", "s2"}, slices.Compact(hashes))
@@ -933,7 +933,7 @@ func TestRunSession_FactMissReadsTheTorrentFirst(t *testing.T) {
 	matcher := &recordingMatcher{exists: map[string]struct{}{sessionA: {}}}
 	svc := &Service{crossMatcher: matcher}
 	evalCtx := &EvalContext{}
-	require.NoError(t, svc.openRunSession(t.Context(), 1, []qbt.Torrent{torrent}, RuleNeeds{CrossMatch: CrossMatchNeeds{SameExists: true}}, evalCtx))
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrentRefs([]qbt.Torrent{torrent}), RuleNeeds{CrossMatch: CrossMatchNeeds{SameExists: true}}, evalCtx))
 	require.Empty(t, matcher.requests())
 	require.True(t, EvaluateConditionWithContext(existsOnSameInstance(), torrent, evalCtx, 0))
 	require.True(t, EvaluateConditionWithContext(existsOnSameInstance(), torrent, evalCtx, 0))
@@ -946,7 +946,7 @@ func planRules(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation,
 	t.Helper()
 	run := slices.Clone(torrents)
 	stats := make(map[int]*ruleRunStats)
-	states := processTorrents(run, rules, evalCtx, groups, noSkipWindow(rules...), stats, nil)
+	states := processTorrents(torrentRefs(run), rules, evalCtx, groups, noSkipWindow(rules...), stats, nil)
 	torrentByHash := make(map[string]qbt.Torrent, len(run))
 	for _, torrent := range run {
 		torrentByHash[torrent.Hash] = torrent
@@ -956,7 +956,7 @@ func planRules(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation,
 		ruleByID[rule.ID] = rule
 	}
 	plan := (&Service{}).buildRunPlan(t.Context(), runPlanInput{
-		instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: run, torrentByHash: torrentByHash,
+		instanceID: 1, states: states, deletions: &deletionSelection{}, torrents: torrentRefs(run), torrentByHash: torrentRefMap(torrentByHash),
 		ruleByID: ruleByID, crossSeeds: groups, evalCtx: evalCtx, scope: noSkipWindow(rules...),
 	})
 	return plan, stats
@@ -969,7 +969,7 @@ func openRulesRunSession(t *testing.T, torrents []qbt.Torrent, links map[string]
 	matcher := &recordingMatcher{links: links}
 	svc := &Service{crossMatcher: matcher}
 	evalCtx := &EvalContext{}
-	require.NoError(t, svc.openRunSession(t.Context(), 1, torrents, NeedsFor(rules), evalCtx))
+	require.NoError(t, svc.openRunSession(t.Context(), 1, torrentRefs(torrents), NeedsFor(rules), evalCtx))
 	return evalCtx, matcher
 }
 
@@ -1035,7 +1035,7 @@ func TestRunSession_CategoryAsksOnlyTheMatchedTorrents(t *testing.T) {
 			require.Equal(t, tt.wantChanged, changed)
 
 			whole := &EvalContext{SameInstanceContentByHash: links}
-			wholePlan, wholeStats := planRules(t, torrents, rules, whole, buildCrossSeedGroups(torrents, whole))
+			wholePlan, wholeStats := planRules(t, torrents, rules, whole, buildCrossSeedGroups(torrentRefs(torrents), whole))
 			require.Equal(t, slices.Sorted(slices.Values(wholePlan.category.byTarget["new"])), changed)
 			require.Equal(t, *wholeStats[tt.rule.ID], *stats[tt.rule.ID])
 		})
@@ -1094,7 +1094,7 @@ func TestRunSession_TagAsksTheTrackerScopes(t *testing.T) {
 			require.NotEmpty(t, plan.tags)
 
 			whole := &EvalContext{SameInstanceContentByHash: links}
-			wholePlan, wholeStats := planRules(t, torrents, tt.rules, whole, buildCrossSeedGroups(torrents, whole))
+			wholePlan, wholeStats := planRules(t, torrents, tt.rules, whole, buildCrossSeedGroups(torrentRefs(torrents), whole))
 			require.Equal(t, wholePlan.tags, plan.tags)
 			for _, rule := range tt.rules {
 				require.Equal(t, *wholeStats[rule.ID], *stats[rule.ID])

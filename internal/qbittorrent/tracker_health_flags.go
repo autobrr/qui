@@ -42,22 +42,6 @@ func (l TrackerLookup) Trackers(hash string) []qbt.TorrentTracker {
 	return l[hash]
 }
 
-func (l TrackerLookup) writeTo(torrents []qbt.Torrent) {
-	for i := range torrents {
-		if trackers, ok := l[torrents[i].Hash]; ok {
-			torrents[i].Trackers = trackers
-		}
-	}
-}
-
-func torrentRefs(torrents []qbt.Torrent) []*qbt.Torrent {
-	refs := make([]*qbt.Torrent, len(torrents))
-	for i := range torrents {
-		refs[i] = &torrents[i]
-	}
-	return refs
-}
-
 type trackerDetail struct {
 	flags     announceFlags
 	trackers  []qbt.TorrentTracker
