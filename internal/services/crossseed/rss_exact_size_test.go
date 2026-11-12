@@ -206,7 +206,7 @@ func TestProcessAutomationCandidateRecheck(t *testing.T) {
 		},
 		{
 			name:         "split group",
-			sourceName:   "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]",
+			sourceName:   "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]",
 			announcement: "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI",
 		},
 	} {
@@ -508,7 +508,7 @@ func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
 	const (
 		instanceID = 15
 		size       = int64(1_000_000)
-		sourceName = "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]"
+		sourceName = "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]"
 		resultName = "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI"
 	)
 
@@ -748,7 +748,7 @@ func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *tes
 	)
 
 	safe := qbt.Torrent{Hash: "safe", Name: "Azure.Compass.S01.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
-	hard := qbt.Torrent{Hash: "hard", Name: "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]", TotalSize: size, Progress: 1}
+	hard := qbt.Torrent{Hash: "hard", Name: "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", TotalSize: size, Progress: 1}
 	safeInstance := &models.Instance{ID: safeInstanceID, Name: "safe"}
 	hardInstance := &models.Instance{ID: hardInstanceID, Name: "hard"}
 	sync := newFakeSyncManager(safeInstance, []qbt.Torrent{safe}, map[string]qbt.TorrentFiles{safe.Hash: {{Name: safe.Name + ".mkv", Size: size}}})

@@ -250,8 +250,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 			}
 			id := episodeIdentity{series: parsed.Series, episode: parsed.Episode}
 			if releases.IsEpisodeRange(parsed) {
-				eps := parsed.SeriesEpisodes()
-				id = episodeIdentity{series: eps[0][0], episode: eps[0][1]}
+				id = rangeEpisodeIdentity(parsed)
 			} else if id.episode <= 0 {
 				prep.rejected[hash] = "no_episode_identity"
 				continue

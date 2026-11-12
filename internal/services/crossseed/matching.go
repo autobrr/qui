@@ -542,8 +542,11 @@ func (m matcher) compareGroupSiteAndChecksum(comparison *releaseComparison, sour
 		sourceGroup = candidateSite
 	}
 
-	// Only enforce group matching if the source has a group tag
-	if sourceGroup != "" && !spaceJoined {
+	// Only enforce group matching if the source has a group tag. rls repeats a
+	// bracket tag such as [SubsPlease] into Group when the name has no other
+	// group, and the Site rule below judges that tag.
+	bracketGroup := sourceGroup != "" && sourceGroup == sourceSite && !releaseHasExplicitGroupTag(source)
+	if sourceGroup != "" && !bracketGroup && !spaceJoined {
 		candidateGroupIdentity := candidateGroup
 		if candidateGroupIdentity == "" {
 			candidateGroupIdentity = candidateSite
@@ -558,10 +561,9 @@ func (m matcher) compareGroupSiteAndChecksum(comparison *releaseComparison, sour
 	// If source has no group, we don't care about candidate's group
 
 	// Site field is used by anime releases where group is in brackets like [SubsPlease].
-	// rls parses these as Site rather than Group. Different fansub groups can never
-	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
-	// non-empty site tags as incompatible, but don't reject candidates that simply
-	// lack this metadata.
+	// Different fansub groups can never cross-seed, but many indexer titles omit the
+	// site tag entirely. Treat mismatched non-empty site tags as incompatible, but
+	// don't reject candidates that simply lack this metadata.
 	if sourceSite != "" && !spaceJoined {
 		candidateSiteIdentity := candidateSite
 		if candidateSiteIdentity == "" {
@@ -822,8 +824,10 @@ var sourceAliases = map[string]string{
 
 // normalizeSource converts a source string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
+// A UHD source prefix is dropped, so UHD.WEB-DL compares as WEB-DL and
+// UHD.BluRay as BluRay; the resolution check still tells 2160p from 1080p.
 func normalizeSource(source string) string {
-	upper := normalizeVariant(source)
+	upper := strings.TrimPrefix(normalizeVariant(source), "UHD.")
 	if canonical, ok := sourceAliases[upper]; ok {
 		return canonical
 	}
@@ -1327,8 +1331,10 @@ func (m matcher) streamingLargestFileMatch(sourceFiles, candidateFiles []Torrent
 func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Release) *rls.Release {
 	enriched := *fileRelease
 
-	// Fill in missing group from torrent.
-	if enriched.Group == "" && torrentRelease.Group != "" {
+	// Fill in missing group from torrent. A group that repeats the Site with no
+	// group tag is the bracket tag of the file, not a group of its own.
+	bracketGroup := enriched.Group != "" && enriched.Group == enriched.Site && !releaseHasExplicitGroupTag(fileRelease)
+	if (enriched.Group == "" || bracketGroup) && torrentRelease.Group != "" {
 		enriched.Group = torrentRelease.Group
 	}
 

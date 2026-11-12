@@ -678,7 +678,7 @@ func TestGroupExtraction(t *testing.T) {
 		wantGroup string
 	}{
 		{"standard group", "Movie.2020.1080p.BluRay.x264-GROUP", "GROUP"},
-		{"brackets", "Movie.2020.1080p.[GROUP]", ""},
+		{"brackets", "Movie.2020.1080p.[GROUP]", "GROUP"},
 		{"no group", "Movie.2020.1080p.BluRay.x264", ""},
 		{"underscore", "Show_S01E05_1080p-GROUP", "GROUP"},
 		{"multiple dashes", "Movie-2020-1080p-x264-GROUPName", "GROUPName"},
