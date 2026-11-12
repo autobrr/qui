@@ -6,6 +6,7 @@ package releases
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/autobrr/go-cache/ttlcache"
 	"github.com/autobrr/rls"
+	"github.com/autobrr/rls/taginfo"
 
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -31,6 +33,9 @@ var hdrTagMatchers = []struct {
 }
 
 var trailingTokenRegexCache sync.Map
+
+// releaseBuilder builds a release from its tags as rls.ParseString does.
+var releaseBuilder = rls.NewTagBuilder().Init(taginfo.All())
 
 // Parser caches rls parsing results so we do not repeatedly parse the same release names.
 //
@@ -83,7 +88,9 @@ func (p *Parser) Parse(name string) *rls.Release {
 		return cached
 	}
 
-	release := rls.ParseString(key)
+	// The cache keeps each release, so its tag list gets the exact size.
+	tags, end := rls.ParseTagsString(key)
+	release := releaseBuilder.Build(slices.Clone(tags), end)
 	enrichReleaseHDR(key, &release)
 	enrichUHDWebSource(&release)
 	enrichEpisodeRange(&release)
