@@ -128,7 +128,7 @@ A copy is a torrent of the same release on another tracker or another instance. 
 
 Two torrents are copies when qui matches them as cross-seeds and their files have the same sizes. Equal sizes keep a season pack apart from its episodes. A torrent with no file list, for example a magnet without metadata, stays a row of its own.
 
-Each group starts closed. The top row is the oldest copy, and a badge such as **+2** gives the number of hidden copies. A warning icon on the badge tells you that a hidden copy has a problem. The color of the badge shows the worst problem of the hidden copies. Red means that a copy has missing files, has an error, or is unregistered. Orange means a tracker error. Yellow means that the tracker of a copy is down. Click or tap the badge to open or close one group.
+Each group starts closed. The top row is the oldest copy, and a badge such as **+2** gives the number of hidden copies. A warning icon on the badge tells you that a hidden copy has a problem. The color of the badge shows the worst problem of the hidden copies. Red means that a copy has missing files, has an error, or is unregistered. Purple means a tracker error. Yellow means that the tracker of a copy is down. Click or tap the badge to open or close one group.
 
 Grouping changes only how the list looks:
 

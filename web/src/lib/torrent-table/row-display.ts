@@ -29,11 +29,11 @@ const RED: Tone = {
   raisedHoverClass: "hover:border-destructive hover:bg-destructive/20",
 }
 
-const ORANGE: Tone = {
-  className: "text-orange-500 border-orange-500/40 bg-orange-500/10",
-  iconClass: "text-orange-500",
-  hoverClass: "hover:bg-orange-500/10",
-  raisedHoverClass: "hover:border-orange-500 hover:bg-orange-500/20",
+const PURPLE: Tone = {
+  className: "text-purple-500 border-purple-500/40 bg-purple-500/10",
+  iconClass: "text-purple-500",
+  hoverClass: "hover:bg-purple-500/10",
+  raisedHoverClass: "hover:border-purple-500 hover:bg-purple-500/20",
 }
 
 const YELLOW: Tone = {
@@ -47,7 +47,7 @@ const YELLOW: Tone = {
 export const TRACKER_HEALTH_DISPLAY: Record<TrackerHealth, Tone & { labelKey: string, icon: LucideIcon }> = {
   unregistered: { labelKey: "tableColumns.unregistered", icon: XCircle, ...RED },
   tracker_down: { labelKey: "tableColumns.trackerDown", icon: AlertCircle, ...YELLOW },
-  tracker_error: { labelKey: "tableColumns.trackerError", icon: XCircle, ...ORANGE },
+  tracker_error: { labelKey: "tableColumns.trackerError", icon: XCircle, ...PURPLE },
 }
 
 export type CopyProblem = "missingFiles" | "error" | TrackerHealth
@@ -57,7 +57,7 @@ export const COPY_PROBLEM_DISPLAY: Record<CopyProblem, Tone & { labelKey: string
   missingFiles: { labelKey: "copyGroups.hiddenProblem.missingFiles", ...RED },
   error: { labelKey: "copyGroups.hiddenProblem.error", ...RED },
   unregistered: { labelKey: "copyGroups.hiddenProblem.unregistered", ...RED },
-  tracker_error: { labelKey: "copyGroups.hiddenProblem.trackerError", ...ORANGE },
+  tracker_error: { labelKey: "copyGroups.hiddenProblem.trackerError", ...PURPLE },
   tracker_down: { labelKey: "copyGroups.hiddenProblem.trackerDown", ...YELLOW },
 }
 
