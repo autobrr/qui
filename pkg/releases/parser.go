@@ -85,9 +85,33 @@ func (p *Parser) Parse(name string) *rls.Release {
 
 	release := rls.ParseString(key)
 	enrichReleaseHDR(key, &release)
+	enrichUHDWebSource(&release)
 	enrichEpisodeRange(&release)
 	p.cache.Set(key, &release, ttlcache.DefaultTTL)
 	return &release
+}
+
+// enrichUHDWebSource reads the web source of a name such as
+// "UHD.AMZN.WEB-DL". rls gives "UHD.BluRay" for a UHD tag that another tag
+// separates from its web source.
+func enrichUHDWebSource(release *rls.Release) {
+	if release.Source != "UHD.BluRay" {
+		return
+	}
+	bareUHD := false
+	for _, tag := range release.Tags() {
+		if !tag.Is(rls.TagTypeSource) {
+			continue
+		}
+		if strings.EqualFold(fmt.Sprintf("%o", tag), "UHD") {
+			bareUHD = true
+			continue
+		}
+		if source := tag.Normalize(); bareUHD && strings.HasPrefix(strings.ToUpper(source), "WEB") {
+			release.Source = "UHD." + source
+		}
+		return
+	}
 }
 
 // enrichEpisodeRange turns a multi-episode release such as "S00E02-E05" into a

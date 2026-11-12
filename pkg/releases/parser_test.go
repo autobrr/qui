@@ -241,3 +241,18 @@ func TestIsEpisodeRange(t *testing.T) {
 	// An absolute-only batch has no SxxEyy tag, so every tag counts.
 	require.True(t, IsEpisodeRange(parser.Parse("[Grp] Show Name - 01 - 12 [1080p]")))
 }
+
+// regression: #3286
+func TestParser_ReadsWebSourceAfterUHDAndAnotherTag(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+	for name, want := range map[string]string{
+		"Harbor.Lights.2022.2160p.UHD.AMZN.WEB-DL.DDP5.1.x265-GRP": "UHD.WEB-DL",
+		"Harbor.Lights.2022.2160p.UHD.NF.WEBRip.DDP5.1.x265-GRP":   "UHD.WEBRiP",
+		"Harbor.Lights.2022.2160p.UHD.DDP5.1.x265-GRP":             "UHD.BluRay",
+		"Harbor.Lights.2022.2160p.UHD.BluRay.DDP5.1.x265-GRP":      "UHD.BluRay",
+	} {
+		require.Equal(t, want, parser.Parse(name).Source, name)
+	}
+}
