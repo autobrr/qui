@@ -94,6 +94,8 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 		return nil, errors.New("automation storage not configured")
 	}
 
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
 	previous, previousErr := s.GetAutomationSettings(ctx)
 	updated, err := s.automationStore.UpsertSettings(ctx, settings)
 	if err != nil {

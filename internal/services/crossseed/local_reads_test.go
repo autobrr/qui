@@ -149,6 +149,7 @@ func TestCheckWebhookDropsReadsOfFillDuringSettingsSave(t *testing.T) {
 	require.Equal(t, []string{"folder", "folder"}, recorder.requests(), "the reads that the fill made with the old rules are not stored")
 }
 
+// regression: #4072
 func TestCheckWebhookKeepsReadsAfterSettingsSaveWithSameRules(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "local-reads-same-rules")
 	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
