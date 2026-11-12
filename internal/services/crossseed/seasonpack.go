@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -64,6 +65,18 @@ const seasonPackResumeSlack = 0.98
 type episodeIdentity struct {
 	series  int
 	episode int
+}
+
+// rangeEpisodeIdentity is the identity of a multi-episode name such as
+// "S01E01E02": its first episode. A range that starts at episode 0 takes the
+// next one, because episode 0 does not count as an episode (see isTVEpisode).
+func rangeEpisodeIdentity(r *rls.Release) episodeIdentity {
+	eps := r.SeriesEpisodes()
+	first := eps[0]
+	if i := slices.IndexFunc(eps, func(se []int) bool { return se[1] > 0 }); i >= 0 {
+		first = eps[i]
+	}
+	return episodeIdentity{series: first[0], episode: first[1]}
 }
 
 // episodeMatch records which local torrent provides a matched episode.
@@ -963,8 +976,8 @@ func (m matcher) parseSeasonPackEpisodePayload(
 		// the seeded file links instead of downloading again. Copy first: the
 		// parsed release is shared from the cache.
 		first := *parsed
-		eps := parsed.SeriesEpisodes()
-		first.Type, first.Series, first.Episode = rls.Episode, eps[0][0], eps[0][1]
+		id := rangeEpisodeIdentity(parsed)
+		first.Type, first.Series, first.Episode = rls.Episode, id.series, id.episode
 		parsed = &first
 	}
 	if !isTVEpisode(parsed) {
@@ -1148,16 +1161,12 @@ func stripSeasonPackRepackTags(values []string) []string {
 	filtered := make([]string, 0, len(values))
 	for _, value := range values {
 		normalized := normalizeVariant(value)
-		switch {
-		case normalized == "":
+		if normalized == "" || slices.ContainsFunc(variantTokens(normalized), func(token string) bool {
+			return slices.Contains(nonPackVariantOverrides.other, token)
+		}) {
 			continue
-		case variantValueMatches(normalized, "REPACK"):
-			continue
-		case variantValueMatches(normalized, "PROPER"):
-			continue
-		default:
-			filtered = append(filtered, value)
 		}
+		filtered = append(filtered, value)
 	}
 
 	return filtered
@@ -1372,8 +1381,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		if isRange {
 			// A multi-episode range parses with Episode 0. Identify it by its
 			// first episode, the same identity its file carries inside the pack.
-			eps := parsed.SeriesEpisodes()
-			id = episodeIdentity{series: eps[0][0], episode: eps[0][1]}
+			id = rangeEpisodeIdentity(parsed)
 		}
 		if packEpisodes != nil {
 			localSeasonless := parsed.Series == 0

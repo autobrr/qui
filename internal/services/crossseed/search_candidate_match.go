@@ -482,14 +482,15 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 
 // crossFieldGroupSiteFallback reports whether a group mismatch carries the
 // marks of rls splitting one fansub name across two fields. A bracket-anime
-// name puts the fansub tag in Site and leaves Group to the last unused word, so
-// "[KIRI] Show S01 [...][Batch]" parses as Group "Batch" plus Site "KIRI" while
-// the scene-styled counterpart "Show.S01...-KIRI" parses as Group "KIRI" with no
-// site. The evidence is the cross-field agreement between the split side's Site
-// and the tagged side's Group. A shared Site is never evidence: an indexer label
-// such as [eztv] also lands in Site and is stamped on every group that tracker
-// lists, so two of its listings agreeing there says nothing. Even then this is
-// eligibility for verification, never proof of identity.
+// name that ends in its fansub tag puts the tag in Site and leaves Group to the
+// last unused word, so "Show S01 [...][Batch][KIRI]" parses as Group "Batch"
+// plus Site "KIRI" while the scene-styled counterpart "Show.S01...-KIRI" parses
+// as Group "KIRI" with no site. The evidence is the cross-field agreement
+// between the split side's Site and the tagged side's Group. A shared Site is
+// never evidence: an indexer label such as [eztv] also lands in Site and is
+// stamped on every group that tracker lists, so two of its listings agreeing
+// there says nothing. Even then this is eligibility for verification, never
+// proof of identity.
 func (m matcher) crossFieldGroupSiteFallback(source, candidate namedRelease) bool {
 	_, ok := m.crossFieldGroupSiteFallbackIdentity(source, candidate)
 	return ok
