@@ -1311,7 +1311,7 @@ A rule can move as JSON. The rule menu has two entries, and the **Import** butto
 
 - **Export JSON** copies the rule to the clipboard.
 - **Edit as JSON** opens the rule's JSON in an editor. Save updates the rule in place. The rule keeps its enabled state and its position in the list.
-- **Import** creates a new rule from pasted JSON. The new rule starts disabled and goes to the end of the list.
+- **Import** creates a new rule from pasted JSON. The new rule starts disabled and goes to the end of the list. It keeps its name. If the instance already has a rule with that name, qui adds `(copy)` to the name.
 
 The JSON carries the name, the tracker fields, the conditions, the sorting config, the free space source, the interval, dry-run, and notify. It does not carry the id, the instance id, the enabled state, or the sort order. The export omits `intervalSeconds` at the default 15 minutes, `dryRun` when off, and `notify` when on; when you remove one of these keys, the rule goes back to that default.
 

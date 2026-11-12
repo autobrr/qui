@@ -59,7 +59,9 @@ import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib
 import {
   fromImportFormat,
   getRuleTagActions,
+  loadWorkflowNames,
   parseImportJSON,
+  toCopyInput,
   toDuplicateInput,
   toExportFormat,
   toExportJSON
@@ -555,11 +557,14 @@ export function WorkflowsOverview() {
     },
   })
 
-  // Get existing workflow names for an instance
-  const getExistingNames = useCallback((instanceId: number): string[] => {
-    const queryData = queryClient.getQueryData<Automation[]>(["automations", instanceId])
-    return queryData?.map(r => r.name) ?? []
-  }, [queryClient])
+  const getExistingNames = useCallback(async (instanceId: number): Promise<string[] | null> => {
+    try {
+      return await loadWorkflowNames(queryClient, instanceId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.createFailed"))
+      return null
+    }
+  }, [queryClient, t])
 
   // Export workflow to clipboard
   const handleExport = useCallback(async (rule: Automation) => {
@@ -574,8 +579,9 @@ export function WorkflowsOverview() {
   }, [t])
 
   // Duplicate workflow in the same instance
-  const handleDuplicate = useCallback((instanceId: number, rule: Automation) => {
-    const existingNames = getExistingNames(instanceId)
+  const handleDuplicate = useCallback(async (instanceId: number, rule: Automation) => {
+    const existingNames = await getExistingNames(instanceId)
+    if (!existingNames) return
     const input = toDuplicateInput(rule, existingNames)
     createWorkflow.mutate(
       { instanceId, payload: input },
@@ -588,9 +594,10 @@ export function WorkflowsOverview() {
   }, [getExistingNames, createWorkflow, t])
 
   // Copy workflow to another instance
-  const handleCopyToInstance = useCallback((sourceRule: Automation, targetInstanceId: number) => {
-    const existingNames = getExistingNames(targetInstanceId)
-    const input = toDuplicateInput(sourceRule, existingNames)
+  const handleCopyToInstance = useCallback(async (sourceRule: Automation, targetInstanceId: number) => {
+    const existingNames = await getExistingNames(targetInstanceId)
+    if (!existingNames) return
+    const input = toCopyInput(sourceRule, existingNames)
     createWorkflow.mutate(
       { instanceId: targetInstanceId, payload: input },
       {
@@ -614,7 +621,7 @@ export function WorkflowsOverview() {
   }
 
   // Handle import
-  const handleImport = useCallback(() => {
+  const handleImport = useCallback(async () => {
     if (!importInstanceId) return
 
     const result = parseImportJSON(importJSON)
@@ -623,7 +630,8 @@ export function WorkflowsOverview() {
       return
     }
 
-    const existingNames = getExistingNames(importInstanceId)
+    const existingNames = await getExistingNames(importInstanceId)
+    if (!existingNames) return
     const input = fromImportFormat(result.data, existingNames)
 
     createWorkflow.mutate(
