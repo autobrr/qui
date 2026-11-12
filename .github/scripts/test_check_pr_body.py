@@ -34,6 +34,7 @@ class TestCheckPRBody(unittest.TestCase):
                 TEMPLATE,
                 [
                     "Empty or unchanged template section: Description",
+                    "Empty or unchanged template section: Breaking change",
                     "Empty or unchanged template section: Behaviour change",
                     "Empty or unchanged template section: How has this been tested?",
                     "Empty or unchanged template section: Performance",
