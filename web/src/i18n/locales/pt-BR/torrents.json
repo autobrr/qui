@@ -1699,5 +1699,12 @@
     "groupCopies": "Agrupar cópias",
     "ungroupCopies": "Desagrupar cópias",
     "grouping": "Agrupando…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Agrupe seus Cross-Seeds",
+      "description": "Mostra as cópias de um torrent em uma única linha.",
+      "action": "Experimentar"
+    }
   }
 }

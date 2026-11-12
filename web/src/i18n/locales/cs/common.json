@@ -106,6 +106,9 @@
     "select": "Vybrat",
     "copyValue": "Kopírovat {{label}}"
   },
+  "featureNotice": {
+    "gotIt": "Rozumím"
+  },
   "placeholders": {
     "search": "Hledat...",
     "selectItems": "Vybrat položky..."

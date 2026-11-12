@@ -1619,5 +1619,12 @@
     "groupCopies": "合并副本",
     "ungroupCopies": "取消合并副本",
     "grouping": "正在分组…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "合并你的辅种",
+      "description": "将同一种子的多个副本显示为一行。",
+      "action": "试试看"
+    }
   }
 }

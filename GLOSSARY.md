@@ -70,6 +70,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Client settings
 
 - **Client setting**: A UI preference that qui stores for the user on the server, so it follows the user to every browser and tab, for example the sidebar state, filters, and column layout. _Avoid_: local setting.
+- **Feature notice**: A one-time bubble that points at a control and tells the user about a feature. It goes away for good when the user dismisses it or uses the feature. _Avoid_: banner, tip, tour, announcement.
 
 ## Orphan scan
 
