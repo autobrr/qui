@@ -440,6 +440,96 @@ var corpusRows = []corpusRow{
 		want:          corpusMatch,
 	},
 	{
+		// regression: #3730
+		name:           "bracket batch with a Batch tag against the same pack without it",
+		source:         "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
+		candidate:      "[KaijuSubs] Kaiju Squad S2 (1080p)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]", "[KaijuSubs] Kaiju Squad S2 - %02d (1080p) [ABCD1234]"),
+		candidateFiles: corpusPackFiles("[KaijuSubs] Kaiju Squad S2 (1080p)", "[KaijuSubs] Kaiju Squad S2 - %02d (1080p) [ABCD1234]"),
+		want:           corpusMatch,
+	},
+	{
+		// regression: #3730
+		name:           "bracket batch against the same pack with a Batch tag",
+		source:         "[KaijuSubs] Kaiju Squad S2 (1080p)",
+		candidate:      "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KaijuSubs] Kaiju Squad S2 (1080p)", "[KaijuSubs] Kaiju Squad S2 - %02d (1080p) [ABCD1234]"),
+		candidateFiles: corpusPackFiles("[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]", "[KaijuSubs] Kaiju Squad S2 - %02d (1080p) [ABCD1234]"),
+		want:           corpusMatch,
+	},
+	{
+		// regression: #3730
+		name:           "bracket batch with a Batch tag against the pack of another fansub",
+		source:         "[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]",
+		candidate:      "[OtherSubs] Kaiju Squad S2 (1080p)",
+		sourceSize:     corpusPackSize,
+		candidateSize:  corpusPackSize,
+		sourceFiles:    corpusPackFiles("[KaijuSubs] Kaiju Squad S2 (01-12) (1080p) [Batch]", "[KaijuSubs] Kaiju Squad S2 - %02d (1080p) [ABCD1234]"),
+		candidateFiles: corpusPackFiles("[OtherSubs] Kaiju Squad S2 (1080p)", "[OtherSubs] Kaiju Squad S2 - %02d (1080p) [ABCD1234]"),
+		want:           corpusNoMatch,
+	},
+	{
+		// regression: #4068
+		name:          "bracket fansub against a listing with no group",
+		source:        "[KaijuSubs] Kaiju Squad - 81 (1080p)",
+		candidate:     "Kaiju Squad - 81 (1080p)",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #4068
+		name:          "group tag that repeats its site label against another group under the label",
+		source:        "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-kaijutv[kaijutv]",
+		candidate:     "Kaiju.Squad.S02E05.1080p.WEB-DL.AAC2.0.H.264-OTHER[kaijutv]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		// regression: #4068
+		name:          "RERIP flag in a trailing bracket against the plain name",
+		source:        "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU [RERIP]",
+		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		// regression: #4068
+		name:          "RERIP flag in the name against the plain name",
+		source:        "Kaiju.Squad.S02E05.RERIP.1080p.WEB.H264-KAIJU",
+		candidate:     "Kaiju.Squad.S02E05.1080p.WEB.H264-KAIJU",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusRoundedSize,
+		want:          corpusNoMatch,
+	},
+	{
+		// regression: #3292
+		name:          "REPACK flag in a trailing bracket against the flag in the name",
+		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
+		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
+		},
+	},
+	{
+		// regression: #3292
+		name:          "REPACK flag in a trailing bracket at another size",
+		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
+		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize + corpusEpisodeSize/50,
+		want:          corpusNoMatch,
+	},
+	{
 		name:          "bracket fansub with a hyphen against its dash suffix",
 		source:        "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]",
 		candidate:     "Kaiju Squad S02E05 1080p BluRay FLAC 2.0 x265-Moe-Fansub",

@@ -22,7 +22,7 @@ qui uses strict matching to ensure that cross-seeds have identical files. Both r
 - Codec (x264, x265) and HDR format. A bare `HDR` counts as `HDR10`.
 - Audio format and channels
 - Language, edition, cut, and version (v2, v3)
-- Variants like IMAX, HYBRID, REPACK, PROPER
+- Variants like IMAX, HYBRID, REPACK, PROPER, RERIP
 
 Search has one exception for a HYBRID tag on only one name. If HYBRID is the only difference and the reported sizes are within the size tolerance, search keeps the result. The file comparison after the download then decides. RSS uses this rule too, but only for feed items with the exact size of a local torrent. If the sizes are outside the tolerance, the rejection reason shows the size gap, for example `HYBRID (size differs by 7.20%)`.
 
