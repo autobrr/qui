@@ -39,8 +39,10 @@
     "upload": "Upload",
     "download": "Download",
     "other": "Andere",
+    "otherCount": "Andere ({{groups}})",
     "total": "Gesamt",
     "gap": "Enthält eine Aufzeichnungslücke von {{duration}}",
+    "gapLabel": "Lücke {{duration}}",
     "foldedDay": "(ganzer Tag, UTC)",
     "empty": "Kein Transfer in diesem Zeitraum."
   },

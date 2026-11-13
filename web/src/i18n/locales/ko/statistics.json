@@ -38,8 +38,10 @@
     "upload": "업로드",
     "download": "다운로드",
     "other": "기타",
+    "otherCount": "기타 ({{groups}})",
     "total": "합계",
     "gap": "{{duration}}의 기록 공백 포함",
+    "gapLabel": "공백 {{duration}}",
     "foldedDay": "(하루 전체, UTC)",
     "empty": "이 기간에는 전송이 없습니다."
   },

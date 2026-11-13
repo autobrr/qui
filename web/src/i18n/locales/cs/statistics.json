@@ -40,8 +40,10 @@
     "upload": "Odesílání",
     "download": "Stahování",
     "other": "Ostatní",
+    "otherCount": "Ostatní ({{groups}})",
     "total": "Celkem",
     "gap": "Obsahuje mezeru v záznamu {{duration}}",
+    "gapLabel": "mezera {{duration}}",
     "foldedDay": "(celý den, UTC)",
     "empty": "V tomto období žádný přenos."
   },

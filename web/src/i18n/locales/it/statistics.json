@@ -40,8 +40,10 @@
     "upload": "Upload",
     "download": "Download",
     "other": "Altri",
+    "otherCount": "Altri ({{groups}})",
     "total": "Totale",
     "gap": "Include un’interruzione della registrazione di {{duration}}",
+    "gapLabel": "interruzione {{duration}}",
     "foldedDay": "(giorno intero, UTC)",
     "empty": "Nessun trasferimento in questo periodo."
   },

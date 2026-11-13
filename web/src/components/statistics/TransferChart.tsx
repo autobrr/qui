@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
+import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { byteTicks, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { formatBytes, formatDuration } from "@/lib/utils"
@@ -59,7 +59,8 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   }), [bars, groups, metric])
 
   const ticks = useMemo(() => byteTicks(Math.max(0, ...rows.map(row => row.total))), [rows])
-  const hasOther = rows.some(row => (row[OTHER] as number) > 0)
+  const otherGroups = useMemo(() => new Set(bars.flatMap(bar => [...bar.bytes].filter(([group, bytes]) => bytes[metric] > 0 && !groups.includes(group)).map(([group]) => group))).size, [bars, groups, metric])
+  const hasOther = otherGroups > 0
   const keys = [...groups.map((_, index) => `s${index}`), ...(hasOther ? [OTHER] : [])]
   const formatStart = (start: number, width: ChartUnit) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
   const formatTick = (start: number) => unit === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", hour: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short" })
@@ -71,7 +72,13 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
         <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value))} />
         <YAxis tickLine={false} axisLine={false} width={72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
         {rows.filter(row => row.gapSeconds > 0).map(row => (
-          <ReferenceLine key={row.start} x={row.start} stroke="#eab308" strokeDasharray="2 3" />
+          <ReferenceLine
+            key={row.start}
+            x={row.start}
+            stroke="#eab308"
+            strokeDasharray="2 3"
+            label={{ value: t("chart.gapLabel", { duration: formatDuration(row.gapSeconds) }), position: "top", fill: "var(--muted-foreground)", fontSize: 10 }}
+          />
         ))}
         <ChartTooltip
           cursor={{ fill: "var(--muted)", opacity: 0.5 }}
@@ -119,7 +126,18 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
             isAnimationActive={false}
           />
         ))}
-        <ChartLegend content={<ChartLegendContent />} itemSorter={null} />
+        <ChartLegend
+          content={() => (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 pt-3 text-xs text-muted-foreground">
+              {keys.map(key => (
+                <span key={key} className="inline-flex items-center gap-1.5">
+                  <span className="size-2 shrink-0 rounded-[2px]" style={{ background: `var(--color-${key})`, opacity: key === OTHER ? 0.45 : 1 }} />
+                  {key === OTHER ? t("chart.otherCount", { groups: otherGroups }) : config[key]?.label}
+                </span>
+              ))}
+            </div>
+          )}
+        />
       </BarChart>
     </ChartContainer>
   )

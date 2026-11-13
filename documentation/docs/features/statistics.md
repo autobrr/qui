@@ -32,6 +32,8 @@ Select the period at the top of the page:
 
 A day starts at midnight in the timezone of your browser.
 
+While the page stays open and in view, it moves a period that ends now forward each 5 minutes and loads the new transfer. qui writes the transfer each 5 minutes. A custom range does not move.
+
 If a period starts before the first recording, the page shows the label "Partial period". The numbers of such a period are too small, because qui did not record the start of the period.
 
 ## Instances
@@ -67,7 +69,7 @@ When qui first records an instance, the torrents already have upload and downloa
 
 A recording gap is a time when qui did not read an instance, for example while qui was stopped. qui does not lose the transfer of that time. It adds the transfer to the first hour after the gap, so that hour can show a tall bar.
 
-The chart marks each bar that includes a recording gap with a dashed yellow line. Point at the bar to see the length of the gap.
+The chart marks each bar that includes a recording gap with a dashed yellow line. The label above the line gives the length of the gap.
 
 ## Why the numbers differ from Server Statistics
 

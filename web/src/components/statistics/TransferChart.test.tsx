@@ -11,7 +11,10 @@ import { TransferChart } from "@/components/statistics/TransferChart"
 import "@/i18n"
 import type { StatisticsBar } from "@/lib/statistics"
 
-const i18n = vi.hoisted(() => ({ t: (key: string) => key, i18n: { resolvedLanguage: "en", language: "en" } }))
+const i18n = vi.hoisted(() => ({
+  t: (key: string, options?: Record<string, unknown>) => options?.groups === undefined ? key : `${key} groups=${String(options.groups)}`,
+  i18n: { resolvedLanguage: "en", language: "en" },
+}))
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => i18n,
@@ -35,5 +38,16 @@ describe("TransferChart", () => {
     const { container } = render(<TransferChart bars={bars} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />)
 
     expect(container.querySelectorAll(".recharts-reference-line").length).toBe(1)
+  })
+
+  it("names how many groups fold into Other", () => {
+    const bytes = (uploaded: number) => ({ uploaded, downloaded: 0 })
+    const bars: StatisticsBar[] = [
+      { start: Date.parse("2026-01-10T10:00:00Z"), width: "hour", gapSeconds: 0, bytes: new Map([["a.test", bytes(100)], ["b.test", bytes(5)], ["c.test", bytes(0)]]) },
+      { start: Date.parse("2026-01-10T11:00:00Z"), width: "hour", gapSeconds: 0, bytes: new Map([["a.test", bytes(100)], ["d.test", bytes(5)]]) },
+    ]
+    const { container } = render(<TransferChart bars={bars} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />)
+
+    expect(container.textContent).toContain("chart.otherCount groups=2")
   })
 })

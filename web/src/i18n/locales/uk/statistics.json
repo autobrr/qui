@@ -41,8 +41,10 @@
     "upload": "Віддача",
     "download": "Завантаження",
     "other": "Інші",
+    "otherCount": "Інші ({{groups}})",
     "total": "Усього",
     "gap": "Містить пропуск запису тривалістю {{duration}}",
+    "gapLabel": "пропуск {{duration}}",
     "foldedDay": "(цілий день, UTC)",
     "empty": "За цей період передач немає."
   },

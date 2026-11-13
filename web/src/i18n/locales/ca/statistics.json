@@ -40,8 +40,10 @@
     "upload": "Pujada",
     "download": "Baixada",
     "other": "Altres",
+    "otherCount": "Altres ({{groups}})",
     "total": "Total",
     "gap": "Inclou un buit d’enregistrament de {{duration}}",
+    "gapLabel": "buit {{duration}}",
     "foldedDay": "(dia sencer, UTC)",
     "empty": "No hi ha transferència en aquest període."
   },

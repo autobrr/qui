@@ -38,8 +38,10 @@
     "upload": "上傳",
     "download": "下載",
     "other": "其他",
+    "otherCount": "其他（{{groups}}）",
     "total": "合計",
     "gap": "包含 {{duration}} 的記錄空缺",
+    "gapLabel": "空缺 {{duration}}",
     "foldedDay": "（整天，UTC）",
     "empty": "此時段內沒有傳輸。"
   },

@@ -34,13 +34,15 @@
   },
   "chart": {
     "title": "Transfer over time",
-    "descriptionHour": "By tracker, for each hour",
-    "descriptionDay": "By tracker, for each day",
+    "descriptionHour": "By tracker, per hour",
+    "descriptionDay": "By tracker, per day",
     "upload": "Upload",
     "download": "Download",
     "other": "Other",
+    "otherCount": "Other ({{groups}})",
     "total": "Total",
     "gap": "Includes a recording gap of {{duration}}",
+    "gapLabel": "gap {{duration}}",
     "foldedDay": "(whole day, UTC)",
     "empty": "No transfer in this period."
   },

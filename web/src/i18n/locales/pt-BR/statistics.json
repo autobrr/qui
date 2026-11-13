@@ -40,8 +40,10 @@
     "upload": "Envio",
     "download": "Download",
     "other": "Outros",
+    "otherCount": "Outros ({{groups}})",
     "total": "Total",
     "gap": "Inclui uma lacuna de gravação de {{duration}}",
+    "gapLabel": "lacuna {{duration}}",
     "foldedDay": "(dia inteiro, UTC)",
     "empty": "Nenhuma transferência neste período."
   },
