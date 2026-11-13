@@ -116,6 +116,21 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "a delete note from after a reading does not name the cause of the delete that the reading shows",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
+				// The module gets the note of the second delete before it
+				// processes the reading that shows the first one.
+				note(at(7*time.Minute), byUser, "b"),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(5*time.Minute+30*time.Second))),
+				reading(at(10*time.Minute), torrent("a", 0, 0)),
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1, Other: 1},
+					deleted("b", at(10*time.Minute), 0, 0, byUser),
+					deleted("b", at(5*time.Minute), 0, 0, outside)),
+			},
+		},
+		{
 			name: "a delete note names a hash in upper or lower case",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
@@ -189,7 +204,8 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 					}},
 				}},
 				{deletes: &deletesCheck{
-					query: transferhistory.DeletesQuery{InstanceID: instanceID, From: at(6 * time.Minute), To: at(12 * time.Minute), Limit: 2},
+					// The delete of d has the time of its whole second, before this start.
+					query: transferhistory.DeletesQuery{InstanceID: instanceID, From: at(5 * time.Minute).Add(time.Millisecond), To: at(12 * time.Minute), Limit: 2},
 					want: transferhistory.DeletesAnswer{Counts: transferhistory.DeleteCounts{Other: 1}, Deletes: []transferhistory.DeleteEvent{
 						deleted("c", at(10*time.Minute), 0, 0, outside),
 					}},
@@ -300,6 +316,15 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 				reading(at(5*time.Minute), torrent("a", 0, 0), withV1(addedAt(torrent("v2", 150, 0), at(30*time.Second)), "v1")),
 				expectEvents(1, 0, 0),
 				expect(hourTotal, total("tracker.example", 150, 0, 0)),
+			},
+		},
+		{
+			name: "a magnet that changes its hash to the hash of a deleted record adds that record again",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("v2", 0, 0)),
+				reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("v1", 0, 0), at(4*time.Minute))),
+				reading(at(10*time.Minute), torrent("a", 0, 0), withV1(addedAt(torrent("v2", 0, 0), at(4*time.Minute)), "v1")),
+				expectEvents(2, 0, 2),
 			},
 		},
 		{

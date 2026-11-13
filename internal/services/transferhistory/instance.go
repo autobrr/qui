@@ -63,10 +63,10 @@ type instance struct {
 	lastWriteAt time.Time
 	// writeTimeout is the time limit of the next write, or zero for dbTimeout.
 	writeTimeout time.Duration
-	// records holds each record by its hash, also the deleted ones.
+	// records holds the record of each torrent that is in qBittorrent, and
+	// deleted holds the record of each other torrent, both by hash.
 	records map[string]*models.TransferHistoryRecord
-	// live is the number of records that are not deleted.
-	live int
+	deleted map[string]*models.TransferHistoryRecord
 
 	// changedRecords changed in more than their last counters.
 	changedRecords  map[*models.TransferHistoryRecord]struct{}
@@ -82,12 +82,17 @@ type instance struct {
 }
 
 func newInstance(id int, row *models.TransferHistoryInstance, records []*models.TransferHistoryRecord) *instance {
-	inst := &instance{id: id, records: make(map[string]*models.TransferHistoryRecord, len(records))}
+	inst := &instance{
+		id:      id,
+		records: make(map[string]*models.TransferHistoryRecord, len(records)),
+		deleted: make(map[string]*models.TransferHistoryRecord),
+	}
 	inst.reset()
 	for _, r := range records {
-		inst.records[r.Hash] = r
-		if !r.Deleted {
-			inst.live++
+		if r.Deleted {
+			inst.deleted[r.Hash] = r
+		} else {
+			inst.records[r.Hash] = r
 		}
 	}
 	if row != nil {
@@ -110,12 +115,11 @@ func (inst *instance) reset() {
 	inst.unwritten = false
 }
 
-// pass is one reading while apply reads it.
+// pass is one reading while apply reads it. first is set for the first
+// reading of the instance, and previous is the time of the reading before.
 type pass struct {
-	reading *Reading
-	// first is set for the first reading of the instance.
-	first bool
-	// previous is the time of the reading before this one.
+	reading  *Reading
+	first    bool
 	previous time.Time
 	mapper   *trackergroup.Mapper
 	hashes   map[string]struct{}
@@ -173,11 +177,11 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 		addTo(inst.categoryDays, totalKey{bucket: today, domain: rec.TrackerDomain, public: public, category: rec.Category, crossSeed: crossSeed}, up, down)
 	}
 
-	// Each torrent of the reading has a live record now, so a larger number
-	// of live records shows a delete.
-	if len(r.Torrents) < inst.live {
+	// Each torrent of the reading has a record in records now, so a larger
+	// number of records shows a delete.
+	if len(r.Torrents) < len(inst.records) {
 		for hash, rec := range inst.records {
-			if !rec.Deleted && !p.present(hash) {
+			if !p.present(hash) {
 				inst.delete(rec, r.Time, notes)
 			}
 		}
@@ -192,26 +196,16 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 // read returns the record of t, whether the reading adds the torrent, and
 // the bytes that the torrent moved since the last reading.
 func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryRecord, added bool, up, down int64) {
-	rec, seen := inst.records[t.Hash]
-	if !seen {
-		rec, seen = inst.changeHash(t, p)
-	}
 	// A torrent that qBittorrent had before the last reading, but left out of
 	// it, did not move its bytes since then.
 	leftOut := t.AddedAt.Before(p.previous.Add(-clockSkew))
-	if !seen {
-		rec = newRecord(t, p.mapper, p.reading.Time, p.first || leftOut)
-		inst.records[t.Hash] = rec
-		inst.live++
-		inst.changedCounters[rec] = struct{}{}
-		if rec.BaselineUploaded == 0 && rec.BaselineDownloaded == 0 {
-			up, down = t.Uploaded, t.Downloaded
+	rec, known := inst.records[t.Hash]
+	if !known {
+		if rec, added = inst.deleted[t.Hash]; added {
+			inst.addAgain(rec, t, p.reading.Time, leftOut)
+		} else if rec, known = inst.changeHash(t, p); !known {
+			return inst.add(t, p, leftOut)
 		}
-		return rec, true, up, down
-	}
-	added = rec.Deleted
-	if added {
-		inst.addAgain(rec, t, p.reading.Time, leftOut)
 	}
 	up, down = max(t.Uploaded-rec.LastUploaded, 0), max(t.Downloaded-rec.LastDownloaded, 0)
 	if up > 0 && rec.UploadFirst24h != nil && p.reading.Time.Before(t.AddedAt.Add(day)) {
@@ -221,9 +215,21 @@ func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryReco
 	return rec, added, up, down
 }
 
-// changeHash gives the record under the v1 infohash of t the hash of t, when
-// the hash of that record is gone from the reading. qBittorrent changes the
-// hash of a magnet that it added by its v1 hash when the metadata shows a
+// add makes the record of a torrent that qui sees for the first time. Its
+// bytes are transfer, unless they are in the Baseline.
+func (inst *instance) add(t *Torrent, p *pass, leftOut bool) (rec *models.TransferHistoryRecord, added bool, up, down int64) {
+	rec = newRecord(t, p.mapper, p.reading.Time, p.first || leftOut)
+	inst.records[t.Hash] = rec
+	inst.changedCounters[rec] = struct{}{}
+	if rec.BaselineUploaded == 0 && rec.BaselineDownloaded == 0 {
+		up, down = t.Uploaded, t.Downloaded
+	}
+	return rec, true, up, down
+}
+
+// changeHash gives the live record under the v1 infohash of t the hash of t,
+// when the hash of that record is gone from the reading. qBittorrent changes
+// the hash of a magnet that it added by its v1 hash when the metadata shows a
 // hybrid torrent.
 func (inst *instance) changeHash(t *Torrent, p *pass) (*models.TransferHistoryRecord, bool) {
 	rec, known := inst.records[t.InfohashV1]
@@ -258,7 +264,8 @@ func (inst *instance) addEvents(rec *models.TransferHistoryRecord, t *Torrent, a
 // unless qBittorrent left the torrent out of the readings since the delete.
 func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, now time.Time, leftOut bool) {
 	rec.Deleted = false
-	inst.live++
+	delete(inst.deleted, rec.Hash)
+	inst.records[rec.Hash] = rec
 	if leftOut {
 		return
 	}
@@ -274,10 +281,10 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 }
 
 // delete marks rec as deleted and adds its delete event, with the cause of
-// its note in notes.
+// its note in notes. A note from after the reading is for a later delete.
 func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, notes map[string]deleteNote) {
 	cause := DeleteCause{Kind: CauseOutside}
-	if n, noted := notes[rec.Hash]; noted {
+	if n, noted := notes[rec.Hash]; noted && !now.Before(n.time) {
 		cause = n.cause
 		delete(notes, rec.Hash)
 	}
@@ -291,7 +298,8 @@ func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, n
 	}
 	inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventDelete, Time: now, Delete: event})
 	rec.Deleted = true
-	inst.live--
+	delete(inst.records, rec.Hash)
+	inst.deleted[rec.Hash] = rec
 	inst.changedRecords[rec] = struct{}{}
 }
 

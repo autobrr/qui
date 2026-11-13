@@ -53,10 +53,10 @@ type deleteNote struct {
 }
 
 // NoteDelete gives the module a delete note. Give it before qBittorrent gets
-// the delete. The note lasts until a reading shows that the torrent is gone,
-// or until a reading from 5 minutes or more after the note still holds the
-// torrent. A delete without a note has the cause CauseOutside. A note after
-// Shutdown does nothing.
+// the delete. The note lasts until a reading from its time or later shows
+// that the torrent is gone, or until a reading from 5 minutes or more after
+// the note still holds the torrent. A delete without a note has the cause
+// CauseOutside. A note after Shutdown does nothing.
 func (m *Module) NoteDelete(n DeleteNote) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -94,8 +94,8 @@ var causeKindsOf = map[CauseFilter][]string{
 	OtherCauses:      {string(CauseBackupRestore), string(CauseClientProxy), string(CauseOutside)},
 }
 
-// DeletesQuery asks for a page of the delete events of one instance in the
-// period [From, To), with the newest first. A zero From is a period with no
+// DeletesQuery asks for a page of the delete events of one instance whose
+// time is in the period [From, To), with the newest first. A zero From is a period with no
 // start. Times are UTC. Limit is the size of the page, from 1 to 500, and
 // Offset is the number of newer events before it.
 type DeletesQuery struct {
@@ -161,11 +161,12 @@ func (m *Module) Deletes(ctx context.Context, q DeletesQuery) (DeletesAnswer, er
 	}
 	mapper := trackergroup.New(customizations)
 
+	// An event has the time of its whole second, so both ends round up.
 	var fromSecond int64
 	if !q.From.IsZero() {
-		fromSecond = q.From.Unix()
+		fromSecond = ceilSecond(q.From)
 	}
-	toSecond := endSecond(q.To)
+	toSecond := ceilSecond(q.To)
 	rows, err := m.store.Deletes(ctx, q.InstanceID, fromSecond, toSecond, causeKinds, q.Limit, q.Offset)
 	if err != nil {
 		return DeletesAnswer{}, err

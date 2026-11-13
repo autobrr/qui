@@ -158,7 +158,7 @@ func (a *answer) hours() (from, to int64) {
 	if !a.query.From.IsZero() {
 		from = hourOf(a.query.From)
 	}
-	return from, ceilDiv(endSecond(a.query.To), 3600)
+	return from, ceilDiv(ceilSecond(a.query.To), 3600)
 }
 
 // daysOf returns the stored UTC days that overlap the period [from, to).
@@ -166,16 +166,16 @@ func daysOf(from, to time.Time) (fromDay, toDay int64) {
 	if !from.IsZero() {
 		fromDay = dayOf(from)
 	}
-	return fromDay, ceilDiv(endSecond(to), 86400)
+	return fromDay, ceilDiv(ceilSecond(to), 86400)
 }
 
-// endSecond returns the end of a period in whole seconds, rounded up.
-func endSecond(to time.Time) int64 {
-	end := to.Unix()
-	if to.Nanosecond() > 0 {
-		end++
+// ceilSecond returns t in whole seconds since 1970, rounded up.
+func ceilSecond(t time.Time) int64 {
+	second := t.Unix()
+	if t.Nanosecond() > 0 {
+		second++
 	}
-	return end
+	return second
 }
 
 func groupOf(mapper *trackergroup.Mapper, domain string, public bool) string {
