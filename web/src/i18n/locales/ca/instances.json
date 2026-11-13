@@ -2102,5 +2102,10 @@
       "noReflinks": "Sense reflinks en una instància remota.",
       "noHardlinkExtension": "Sense hardlinks: el servidor no anuncia hardlink@openssh.com. Una addició de cross-seed per hardlink falla aquí, o s'afegeix en mode normal quan «Recorre al mode normal si hi ha un error» està activat."
     }
+  },
+  "deleteHistory": {
+    "label": "Elimina també l'historial de transferències",
+    "description": "Sense aquesta opció, qui conserva l'historial amb el nom de la instància.",
+    "failed": "La instància s'ha eliminat, però el seu historial no. Elimina'l a Configuració > Estadístiques."
   }
 }

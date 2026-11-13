@@ -2102,5 +2102,10 @@
       "noReflinks": "Pas de reflinks sur une instance distante.",
       "noHardlinkExtension": "Pas de liens physiques : le serveur n'annonce pas hardlink@openssh.com. Un ajout de cross-seed par lien physique échoue ici, ou se fait en mode normal si « Repli sur le mode normal en cas d'erreur » est activé."
     }
+  },
+  "deleteHistory": {
+    "label": "Supprimer aussi son historique de transfert",
+    "description": "Sans cette option, qui garde l'historique sous le nom de l'instance.",
+    "failed": "L'instance est supprimée, mais pas son historique. Supprimez-le dans Paramètres > Statistiques."
   }
 }

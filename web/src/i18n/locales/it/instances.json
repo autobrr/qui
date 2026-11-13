@@ -2102,5 +2102,10 @@
       "noReflinks": "Nessun reflink su un'istanza remota.",
       "noHardlinkExtension": "Nessun hardlink: il server non annuncia hardlink@openssh.com. Un'aggiunta cross-seed con hardlink qui fallisce, oppure aggiunge in modalità normale se «Ripiega sulla modalità normale in caso di errore» è attivo."
     }
+  },
+  "deleteHistory": {
+    "label": "Elimina anche la cronologia dei trasferimenti",
+    "description": "Senza questa opzione, qui mantiene la cronologia con il nome dell'istanza.",
+    "failed": "L'istanza è stata eliminata, ma la sua cronologia no. Eliminala in Impostazioni > Statistiche."
   }
 }

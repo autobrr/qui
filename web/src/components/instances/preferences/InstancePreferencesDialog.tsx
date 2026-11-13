@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DeleteHistoryCheckbox } from "@/components/instances/DeleteHistoryCheckbox"
 import { CrossSeedDeleteNotice, useCrossSeedDeleteCheck } from "@/components/cross-seed/RouteProtectionConfirm"
 import {
   AlertDialog,
@@ -168,6 +169,7 @@ export function InstancePreferencesDialog({
   const currentInstance = instances?.find(i => i.id === instanceId) ?? instance
   const displayInstanceName = currentInstance?.name ?? instanceName
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteHistory, setDeleteHistory] = useState(false)
   const deleteCheck = useCrossSeedDeleteCheck(instanceId, showDeleteDialog)
   const handleDeleted = () => {
     // Close dialog when instance is deleted
@@ -193,11 +195,16 @@ export function InstancePreferencesDialog({
 
   const handleDelete = () => {
     if (!currentInstance) return
-    deleteInstance({ id: currentInstance.id, name: currentInstance.name }, {
-      onSuccess: () => {
+    deleteInstance({ id: currentInstance.id, name: currentInstance.name, deleteHistory }, {
+      onSuccess: ({ historyError }) => {
         toast.success(t("card.toast.instanceDeletedTitle"), {
           description: t("card.toast.instanceDeletedDescription", { name: currentInstance.name }),
         })
+        if (historyError) {
+          toast.error(t("deleteHistory.failed"), {
+            description: historyError instanceof Error ? formatErrorMessage(historyError.message) : undefined,
+          })
+        }
         setShowDeleteDialog(false)
         handleDeleted()
       },
@@ -242,7 +249,10 @@ export function InstancePreferencesDialog({
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onClick={() => setShowDeleteDialog(true)}
+                      onClick={() => {
+                        setDeleteHistory(false)
+                        setShowDeleteDialog(true)
+                      }}
                       disabled={isDeleting}
                       className="text-destructive"
                     >
@@ -271,6 +281,7 @@ export function InstancePreferencesDialog({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <CrossSeedDeleteNotice check={deleteCheck} />
+          <DeleteHistoryCheckbox checked={deleteHistory} onCheckedChange={setDeleteHistory} disabled={isDeleting} />
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.dialog.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction

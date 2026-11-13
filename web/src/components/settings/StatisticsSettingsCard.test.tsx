@@ -15,14 +15,17 @@ import "@/i18n"
 import { server } from "@/test/msw/server"
 import type { TransferHistorySettings } from "@/types"
 
-const i18n = vi.hoisted(() => ({ t: (key: string) => key }))
+const i18n = vi.hoisted(() => ({
+  t: (key: string, values?: object) => (values ? `${key} ${JSON.stringify(values)}` : key),
+  i18n: { language: "en", resolvedLanguage: "en" },
+}))
 // The byte units come from the loaded locale, and the card text stays as keys.
 vi.mock("react-i18next", async (importOriginal) => ({ ...(await importOriginal<typeof import("react-i18next")>()), useTranslation: () => i18n }))
 
 // jsdom cannot open the Radix select, so the test drives a native select.
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ value, onValueChange, disabled, children }: { value: string; onValueChange: (value: string) => void; disabled?: boolean; children: ReactNode }) => (
-    <select aria-label="retention" value={value} disabled={disabled} onChange={(e: ChangeEvent<HTMLSelectElement>) => onValueChange(e.target.value)}>
+  Select: ({ name, value, onValueChange, disabled, children }: { name?: string; value: string; onValueChange: (value: string) => void; disabled?: boolean; children: ReactNode }) => (
+    <select aria-label={name ?? "retention"} value={value} disabled={disabled} onChange={(e: ChangeEvent<HTMLSelectElement>) => onValueChange(e.target.value)}>
       {children}
     </select>
   ),
@@ -34,6 +37,12 @@ vi.mock("@/components/ui/select", () => ({
 
 let stored: TransferHistorySettings
 let saved: unknown[]
+let engine: string
+let deletes: URLSearchParams[]
+const instances = [
+  { instanceId: 1, name: "Seedbox", firstRecordedAt: "2026-01-02T10:00:00Z" },
+  { instanceId: 7, name: "Old box", firstRecordedAt: "2025-06-01T10:00:00Z" },
+]
 
 function renderCard() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -49,10 +58,17 @@ function renderCard() {
 beforeEach(() => {
   stored = { recording: true, detailRetentionDays: 400 }
   saved = []
+  engine = "sqlite"
+  deletes = []
   server.use(
     http.get("*/api/transfer-history/status", () =>
-      HttpResponse.json({ instances: [], historyBytes: 3 * 1024 * 1024, settings: stored })
+      HttpResponse.json({ instances, historyBytes: 3 * 1024 * 1024, settings: stored })
     ),
+    http.get("*/api/application/info", () => HttpResponse.json({ database: { engine, target: "" } })),
+    http.delete("*/api/transfer-history", ({ request }) => {
+      deletes.push(new URL(request.url).searchParams)
+      return new HttpResponse(null, { status: 204 })
+    }),
     http.put("*/api/transfer-history/settings", async ({ request }) => {
       const body = (await request.json()) as TransferHistorySettings
       saved.push(body)
@@ -96,5 +112,49 @@ describe("StatisticsSettingsCard", () => {
     const size = await screen.findByTestId("statistics-history-size")
     expect(size.textContent).toContain("3")
     expect(size.textContent).toMatch(/MiB/)
+  })
+})
+
+describe("Delete history", () => {
+  it("deletes the history of one instance before a date after a confirmation that names both", async () => {
+    renderCard()
+    fireEvent.change(await screen.findByLabelText("statistics-delete-instance"), { target: { value: "7" } })
+    fireEvent.click(screen.getByRole("radio", { name: "statistics.deleteHistory.before" }))
+    fireEvent.change(screen.getByLabelText("statistics.deleteHistory.date"), { target: { value: "2026-03-01" } })
+    fireEvent.click(screen.getByRole("button", { name: "statistics.deleteHistory.button" }))
+
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog.textContent).toContain("statistics.deleteHistory.confirmBefore")
+    expect(dialog.textContent).toContain("\"name\":\"Old box\"")
+    await waitFor(() => expect(dialog.textContent).toContain("statistics.deleteHistory.sqliteSpace"))
+    expect(deletes).toEqual([])
+
+    fireEvent.click(screen.getByRole("button", { name: "statistics.deleteHistory.confirm" }))
+
+    await waitFor(() => expect(deletes).toHaveLength(1))
+    expect(Object.fromEntries(deletes[0])).toEqual({ instanceId: "7", before: new Date(2026, 2, 1).toISOString() })
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+  })
+
+  it("deletes everything of all instances", async () => {
+    engine = "postgres"
+    renderCard()
+    fireEvent.click(await screen.findByRole("button", { name: "statistics.deleteHistory.button" }))
+
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog.textContent).toContain("statistics.deleteHistory.confirmEverything")
+    expect(dialog.textContent).toContain("\"name\":\"statistics.deleteHistory.allInstances\"")
+    await waitFor(() => expect(dialog.textContent).toContain("statistics.deleteHistory.postgresSpace"))
+    fireEvent.click(screen.getByRole("button", { name: "statistics.deleteHistory.confirm" }))
+
+    await waitFor(() => expect(deletes).toHaveLength(1))
+    expect(Object.fromEntries(deletes[0])).toEqual({ instanceId: "all" })
+  })
+
+  it("asks for a date before it deletes before a date", async () => {
+    renderCard()
+    fireEvent.click(await screen.findByRole("radio", { name: "statistics.deleteHistory.before" }))
+
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "statistics.deleteHistory.button" }).disabled).toBe(true)
   })
 })

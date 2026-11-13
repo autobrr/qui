@@ -414,6 +414,26 @@
     "size": {
       "label": "Mida de l'historial"
     },
+    "deleteHistory": {
+      "label": "Elimina l'historial",
+      "description": "Elimina l'historial de transferències d'una instància o de totes les instàncies. No el podràs recuperar.",
+      "instance": "Instància",
+      "allInstances": "Totes les instàncies",
+      "unnamedInstance": "Instància {{id}}",
+      "everything": "Tot",
+      "before": "Tot abans d'una data",
+      "date": "Data",
+      "button": "Elimina l'historial",
+      "confirmTitle": "Vols eliminar l'historial?",
+      "confirmEverything": "qui elimina tot l'historial de {{name}}. L'enregistrament torna a començar amb una nova base. No es pot desfer.",
+      "confirmBefore": "qui elimina l'historial de {{name}} abans del {{date}}. Si l'enregistrament va començar abans d'aquesta data, també s'eliminen els bytes d'abans del primer enregistrament, i «Enregistrant des de» passa a aquesta data. No es pot desfer.",
+      "sqliteSpace": "El fitxer de la base de dades manté la mida. SQLite torna a fer servir l'espai lliure per a l'historial nou.",
+      "postgresSpace": "Eliminar-ho tot de totes les instàncies retorna l'espai al disc de seguida. Després d'una altra eliminació, Postgres torna a fer servir l'espai lliure per a l'historial nou.",
+      "cancel": "Cancel·la",
+      "confirm": "Elimina",
+      "deleted": "Historial eliminat",
+      "failed": "No s'ha pogut eliminar l'historial"
+    },
     "loadFailed": "No s'ha pogut carregar la configuració de les estadístiques",
     "toasts": {
       "saved": "S'ha desat la configuració de les estadístiques",

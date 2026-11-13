@@ -2072,5 +2072,10 @@
       "noReflinks": "遠端實例不支援引用連結。",
       "noHardlinkExtension": "無硬連結：伺服器未宣告支援 hardlink@openssh.com。交叉做種的硬連結新增在此會失敗；若已開啟「出錯時回退到一般模式」，則以一般模式新增。"
     }
+  },
+  "deleteHistory": {
+    "label": "同時刪除其傳輸歷史",
+    "description": "不勾選時，qui 會以該實例的名稱保留歷史。",
+    "failed": "實例已刪除，但其歷史未刪除。請在設定 > 統計中刪除。"
   }
 }

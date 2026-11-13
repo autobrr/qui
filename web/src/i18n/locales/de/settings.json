@@ -414,6 +414,26 @@
     "size": {
       "label": "Größe des Verlaufs"
     },
+    "deleteHistory": {
+      "label": "Verlauf löschen",
+      "description": "Löscht den Übertragungsverlauf einer Instanz oder aller Instanzen. Du kannst ihn nicht wiederherstellen.",
+      "instance": "Instanz",
+      "allInstances": "Alle Instanzen",
+      "unnamedInstance": "Instanz {{id}}",
+      "everything": "Alles",
+      "before": "Alles vor einem Datum",
+      "date": "Datum",
+      "button": "Verlauf löschen",
+      "confirmTitle": "Verlauf löschen?",
+      "confirmEverything": "qui löscht den gesamten Verlauf von {{name}}. Die Aufzeichnung beginnt neu mit einer neuen Basislinie. Das kann nicht rückgängig gemacht werden.",
+      "confirmBefore": "qui löscht den Verlauf von {{name}} vor dem {{date}}. Wenn die Aufzeichnung vor diesem Datum begann, werden auch die Bytes von vor der ersten Aufzeichnung gelöscht, und „Aufzeichnung seit“ wechselt auf dieses Datum. Das kann nicht rückgängig gemacht werden.",
+      "sqliteSpace": "Die Datenbankdatei behält ihre Größe. SQLite nutzt den freien Platz wieder für neuen Verlauf.",
+      "postgresSpace": "Wenn du alles von allen Instanzen löschst, gibt Postgres den Platz sofort an die Festplatte zurück. Nach einem anderen Löschen nutzt Postgres den freien Platz wieder für neuen Verlauf.",
+      "cancel": "Abbrechen",
+      "confirm": "Löschen",
+      "deleted": "Verlauf gelöscht",
+      "failed": "Verlauf konnte nicht gelöscht werden"
+    },
     "loadFailed": "Statistik-Einstellungen konnten nicht geladen werden",
     "toasts": {
       "saved": "Statistik-Einstellungen gespeichert",

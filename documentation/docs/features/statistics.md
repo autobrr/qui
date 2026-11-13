@@ -13,7 +13,7 @@ The Statistics page shows how much you uploaded and downloaded in a period. qui 
 
 qui records the transfer of each torrent from the moment that you upgrade to a version with Statistics. You do not have to turn it on. To stop the recording, see [Statistics settings](#statistics-settings). qui records with no browser open, from the torrent data that it already reads from qBittorrent. It sends no extra requests to qBittorrent.
 
-qui keeps the transfer of a torrent after you delete the torrent. It also keeps the history of an instance after you remove the instance.
+qui keeps the transfer of a torrent after you delete the torrent. It also keeps the history of an instance after you remove the instance, under the name of the instance. To delete the history together with the instance, tick **Also delete its transfer history** in the dialog that removes the instance. The tick box is off by default.
 
 The page shows "Recording since" with the date of the first recording of the selected instances.
 
@@ -103,6 +103,27 @@ The section shows how much space the history uses in the database. qui measures 
 On SQLite, a fold does not make the database file smaller. SQLite uses the free space again for new rows. After the retention time, each day deletes about as many rows as it adds, so the detail stops growing.
 
 An API key needs **Settings: write** to change these settings. A key with an instance limit cannot change them.
+
+### Delete history
+
+**Delete history** deletes the transfer history of one instance or of all instances. The list of instances also holds each removed instance that has history. You cannot get deleted history back.
+
+1. Select the instance, or **All instances**.
+2. Select **Everything**, or select **Everything before a date** and the date.
+3. Click **Delete history**. The dialog names the instance and the range.
+4. Click **Delete**.
+
+After a delete of everything, qui starts to record the instance again. The torrents that are in qBittorrent at that time go into a new Baseline, and "Recording since" shows the new date. A removed instance has no history after the delete.
+
+A delete before a date keeps each hour and each day from that date on. qui stores days as UTC days, so it keeps the whole UTC day that holds the start of your date. If recording started before the date, the Baseline goes too, and "Recording since" moves to the start of that UTC day. In a timezone east of UTC, that is the day before your date. The yearly row of a torrent goes when its year ends before the date.
+
+qui deletes in a series of short writes, so the other features of qui can write to the database between them. The Statistics page waits until the delete ends. qui records the transfer of that time when the delete ends.
+
+On SQLite, the database file keeps its size after a delete. SQLite uses the free space again for new history. On Postgres, a delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again.
+
+An API key needs **Settings: write** to delete history. A key with an instance limit cannot delete history.
+
+The tick box in the dialog that removes an instance sends a second request after the removal. If that request fails, qui removes the instance and keeps its history. You can then delete the history here.
 
 ## Why the numbers differ from Server Statistics
 

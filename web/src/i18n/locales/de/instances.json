@@ -2102,5 +2102,10 @@
       "noReflinks": "Keine Reflinks auf einer Remote-Instanz.",
       "noHardlinkExtension": "Keine Hardlinks: Der Server bietet hardlink@openssh.com nicht an. Ein Cross-Seed-Hinzufügen per Hardlink schlägt hier fehl oder fügt im regulären Modus hinzu, wenn „Bei Fehler auf regulären Modus zurückfallen“ aktiv ist."
     }
+  },
+  "deleteHistory": {
+    "label": "Auch den Übertragungsverlauf löschen",
+    "description": "Ohne diese Option behält qui den Verlauf unter dem Namen der Instanz.",
+    "failed": "Die Instanz ist gelöscht, ihr Verlauf aber nicht. Lösche ihn unter Einstellungen > Statistik."
   }
 }

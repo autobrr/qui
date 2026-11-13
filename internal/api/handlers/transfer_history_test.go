@@ -11,6 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/transferhistory"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestTransferRejectsAnUnknownTimeZone(t *testing.T) {
@@ -23,4 +27,30 @@ func TestTransferRejectsAnUnknownTimeZone(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "timeZone")
+}
+
+// A request that does not name the instances, or names a future time, must
+// not reach the module: without the check, it deletes everything.
+func TestDeleteHistoryRefusesAnUnclearRequest(t *testing.T) {
+	for _, query := range []string{"", "?instanceId=", "?instanceId=0", "?instanceId=all&before=2999-01-01T00:00:00Z", "?instanceId=1&before=yesterday"} {
+		t.Run(query, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			NewTransferHistoryHandler(nil).DeleteHistory(rec, httptest.NewRequest(http.MethodDelete, "/api/transfer-history"+query, nil))
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+		})
+	}
+}
+
+func TestDeleteHistoryAnswersNoContent(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "transfer-history-delete")
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+	for _, query := range []string{"?instanceId=1", "?instanceId=all&before=2026-01-02T00:00:00%2B01:00"} {
+		t.Run(query, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			NewTransferHistoryHandler(module).DeleteHistory(rec, httptest.NewRequest(http.MethodDelete, "/api/transfer-history"+query, nil))
+			require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+		})
+	}
 }

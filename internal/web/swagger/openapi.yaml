@@ -3767,6 +3767,40 @@ paths:
         '500':
           description: Failed to save transfer history settings
 
+  /api/transfer-history:
+    delete:
+      tags:
+        - Transfer History
+      summary: Delete transfer history
+      description: >-
+        Deletes the transfer history of one instance, also a removed one, or of all instances. Without before, qui deletes
+        everything: the next reading of the instance starts a new Baseline, and a removed instance has no history after that.
+        With before, qui deletes each UTC day before the UTC day of that time, so each row from that time on stays. When that
+        day starts after the first recording, the Baseline goes too, and the first recording moves to that day. qui deletes in a
+        series of short writes. On SQLite, the database file keeps its size, and SQLite uses the free space again. On Postgres,
+        a delete of everything of all instances returns the space at once. An API key with an instance limit cannot use this route.
+      parameters:
+        - in: query
+          name: instanceId
+          required: true
+          schema:
+            type: string
+          description: The instance ID, or `all` for all instances.
+        - in: query
+          name: before
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Delete the history before this time, in RFC 3339. The time must not be in the future.
+      responses:
+        '204':
+          description: The history is deleted
+        '400':
+          description: Invalid instanceId or before
+        '500':
+          description: Failed to delete transfer history
+
   /api/instances/{instanceID}/automations/{ruleID}/apply:
     post:
       tags:

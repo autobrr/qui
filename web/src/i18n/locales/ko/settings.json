@@ -414,6 +414,26 @@
     "size": {
       "label": "기록 크기"
     },
+    "deleteHistory": {
+      "label": "기록 삭제",
+      "description": "인스턴스 하나 또는 모든 인스턴스의 전송 기록을 삭제합니다. 되돌릴 수 없습니다.",
+      "instance": "인스턴스",
+      "allInstances": "모든 인스턴스",
+      "unnamedInstance": "인스턴스 {{id}}",
+      "everything": "전체",
+      "before": "날짜 이전 전체",
+      "date": "날짜",
+      "button": "기록 삭제",
+      "confirmTitle": "기록을 삭제할까요?",
+      "confirmEverything": "qui가 {{name}}의 모든 기록을 삭제합니다. 새 기준선으로 기록을 다시 시작합니다. 되돌릴 수 없습니다.",
+      "confirmBefore": "qui가 {{date}} 이전의 {{name}} 기록을 삭제합니다. 기록이 그 날짜 전에 시작되었으면 첫 기록 이전의 바이트도 삭제되고, \"…부터 기록 중\"이 그 날짜로 바뀝니다. 되돌릴 수 없습니다.",
+      "sqliteSpace": "데이터베이스 파일의 크기는 그대로입니다. SQLite가 빈 공간을 새 기록에 다시 사용합니다.",
+      "postgresSpace": "모든 인스턴스의 전체를 삭제하면 공간이 바로 디스크로 돌아갑니다. 다른 삭제 후에는 Postgres가 빈 공간을 새 기록에 다시 사용합니다.",
+      "cancel": "취소",
+      "confirm": "삭제",
+      "deleted": "기록이 삭제되었습니다",
+      "failed": "기록을 삭제하지 못했습니다"
+    },
     "loadFailed": "통계 설정을 불러오지 못했습니다",
     "toasts": {
       "saved": "통계 설정을 저장했습니다",

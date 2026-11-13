@@ -414,6 +414,26 @@
     "size": {
       "label": "Taille de l'historique"
     },
+    "deleteHistory": {
+      "label": "Supprimer l'historique",
+      "description": "Supprime l'historique de transfert d'une instance ou de toutes les instances. Vous ne pourrez pas le récupérer.",
+      "instance": "Instance",
+      "allInstances": "Toutes les instances",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Tout",
+      "before": "Tout avant une date",
+      "date": "Date",
+      "button": "Supprimer l'historique",
+      "confirmTitle": "Supprimer l'historique ?",
+      "confirmEverything": "qui supprime tout l'historique de {{name}}. L'enregistrement reprend avec une nouvelle base de référence. Cette action est irréversible.",
+      "confirmBefore": "qui supprime l'historique de {{name}} avant le {{date}}. Si l'enregistrement a commencé avant cette date, les octets d'avant le premier enregistrement sont aussi supprimés, et « Enregistrement depuis » passe à cette date. Cette action est irréversible.",
+      "sqliteSpace": "Le fichier de base de données garde sa taille. SQLite réutilise l'espace libre pour le nouvel historique.",
+      "postgresSpace": "Une suppression de tout pour toutes les instances rend l'espace au disque immédiatement. Après une autre suppression, Postgres réutilise l'espace libre pour le nouvel historique.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer",
+      "deleted": "Historique supprimé",
+      "failed": "Échec de la suppression de l'historique"
+    },
     "loadFailed": "Impossible de charger les paramètres des statistiques",
     "toasts": {
       "saved": "Paramètres des statistiques enregistrés",

@@ -114,11 +114,24 @@ export function useInstances() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
+    // The history delete needs Settings: write, so it is a second request. When
+    // it fails, the instance is gone and its history stays: historyError is set.
+    mutationFn: async ({ id, deleteHistory }: { id: number; name: string; deleteHistory?: boolean }) => {
+      await api.deleteInstance(id)
+      if (deleteHistory) {
+        try {
+          await api.deleteTransferHistory({ instanceId: id })
+        } catch (historyError) {
+          return { historyError }
+        }
+      }
+      return { historyError: undefined }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instances"] })
       // The delete removes each route to or from the instance.
       queryClient.invalidateQueries({ queryKey: crossSeedRoutesKey })
+      queryClient.invalidateQueries({ queryKey: ["transfer-history"] })
     },
   })
 
