@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-import { buildBars, byteTicks, customPeriod, labelledGaps, presetPeriod, previousPeriod, sumBytes, topGroups } from "@/lib/statistics"
+import { buildBars, byteTicks, customPeriod, formatGapLength, labelledGaps, presetPeriod, previousPeriod, sumBytes, topGroups } from "@/lib/statistics"
 import type { TransferHistoryRow } from "@/types"
 
 const originalTZ = process.env.TZ
@@ -124,6 +124,11 @@ describe("customPeriod", () => {
     expect(customPeriod(new Date(2026, 9, 26), new Date(2026, 10, 1), new Date(2026, 11, 1)).unit).toBe("hour")
     expect(customPeriod(new Date(2026, 9, 26), new Date(2026, 10, 2), new Date(2026, 11, 1)).unit).toBe("day")
   })
+
+  // regression: #4084
+  it("keeps hourly bars when the last day is in the future and the range up to now is 7 days or less", () => {
+    expect(customPeriod(new Date(2026, 10, 13), new Date(2026, 11, 13), new Date(2026, 10, 13, 12)).unit).toBe("hour")
+  })
 })
 
 describe("presetPeriod", () => {
@@ -147,5 +152,14 @@ describe("labelledGaps", () => {
   it("labels a gap only when it is far enough from the last labelled gap", () => {
     // 365 daily bars: a label needs 61 bars of room.
     expect([...labelledGaps([300, 340, 360, 364], 365)]).toEqual([300, 364])
+  })
+})
+
+describe("formatGapLength", () => {
+  // regression: #4084
+  it("names the units in the language of the page", () => {
+    expect(formatGapLength(5400, "en")).toBe("1h 30m")
+    expect(formatGapLength(5400, "zh-CN")).toBe("1小时 30分钟")
+    expect(formatGapLength(30, "en")).toBe("30s")
   })
 })

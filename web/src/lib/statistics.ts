@@ -64,8 +64,10 @@ export function customPeriod(firstDay: Date, lastDay: Date, now: Date): Statisti
   const from = firstDay
   const end = addLocalDays(lastDay, 1)
   const to = end < now ? end : now
+  // The bars cover the range up to now, so a future last day counts as today.
+  const shownLastDay = end < now ? lastDay : startOfLocalDay(now)
   // Count dates, not hours: a week with a change of the clock has 167 or 169 hours.
-  const days = Math.round((Date.UTC(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate()) - Date.UTC(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate())) / (24 * HOUR)) + 1
+  const days = Math.round((Date.UTC(shownLastDay.getFullYear(), shownLastDay.getMonth(), shownLastDay.getDate()) - Date.UTC(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate())) / (24 * HOUR)) + 1
   return { from, to, unit: unitOf(days) }
 }
 
@@ -249,4 +251,12 @@ export function labelledGaps(gapBars: number[], barCount: number): Set<number> {
     }
   }
   return labelled
+}
+
+/** Formats the length of a Recording gap in days, hours, and minutes, with the unit names of the locale. */
+export function formatGapLength(seconds: number, locale: string): string {
+  const parts: [number, string][] = [[Math.floor(seconds / 86_400), "day"], [Math.floor((seconds % 86_400) / 3600), "hour"], [Math.floor((seconds % 3600) / 60), "minute"]]
+  const shown = parts.filter(([value]) => value > 0)
+  const format = (value: number, unit: string) => new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "narrow" }).format(value)
+  return shown.length > 0 ? shown.map(([value, unit]) => format(value, unit)).join(" ") : format(seconds, "second")
 }

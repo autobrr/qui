@@ -4,9 +4,9 @@
  */
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import { byteTicks, labelledGaps, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
+import { byteTicks, formatGapLength, labelledGaps, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
-import { formatBytes, formatDuration } from "@/lib/utils"
+import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recharts"
@@ -78,7 +78,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
             x={row.start}
             stroke="#eab308"
             strokeDasharray="2 3"
-            label={gapLabels.has(index) ? { value: t("chart.gapLabel", { duration: formatDuration(row.gapSeconds) }), position: "top", fill: "var(--muted-foreground)", fontSize: 10 } : undefined}
+            label={gapLabels.has(index) ? { value: t("chart.gapLabel", { duration: formatGapLength(row.gapSeconds, locale) }), position: "top", fill: "var(--muted-foreground)", fontSize: 10 } : undefined}
           />
         ))}
         <ChartTooltip
@@ -108,7 +108,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
                     <span className="ml-auto pl-4 font-medium tabular-nums">{formatBytes(row.total)}</span>
                   </div>
                   {row.gapSeconds > 0 && (
-                    <div className="pt-1 text-yellow-600 dark:text-yellow-500">{t("chart.gap", { duration: formatDuration(row.gapSeconds) })}</div>
+                    <div className="pt-1 text-yellow-600 dark:text-yellow-500">{t("chart.gap", { duration: formatGapLength(row.gapSeconds, locale) })}</div>
                   )}
                 </div>
               </div>
