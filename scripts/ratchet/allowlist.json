@@ -49,7 +49,6 @@
     "internal/api/handlers/torrents.go": 2,
     "internal/backups/restore_execute.go": 2,
     "internal/backups/service.go": 3,
-    "internal/clientmigrate/deluge.go": 1,
     "internal/clientmigrate/rtorrent.go": 1,
     "internal/clientmigrate/transmission.go": 1,
     "internal/database/db.go": 1,
