@@ -76,7 +76,7 @@ function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHi
   if (result.rows && result.rows !== lastRows) {
     setLastRows(result.rows)
   }
-  return keepPrevious && !result.rows && !result.error && lastRows ? { rows: lastRows, pending: false } : result
+  return keepPrevious && enabled && !result.rows && !result.error && lastRows ? { rows: lastRows, pending: false } : result
 }
 
 function relativeChange(now: number, before: number): number | undefined {

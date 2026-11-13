@@ -196,6 +196,33 @@ describe("Statistics", () => {
     }
   })
 
+  it("drops the change of the old selection after a moved period", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 10)]
+      answer = ({ bucket, to }) => {
+        if (bucket === "day") {
+          return [row("a.test", 2048, 0, { width: "day" })]
+        }
+        return Date.parse(to ?? "") > Date.now() - DAY ? [row("a.test", 3072, 0, { width: "total" })] : [row("a.test", 2048, 0, { width: "total" })]
+      }
+      renderPage()
+      fireEvent.pointerDown(await screen.findByText("instances.all"), { button: 0, pointerType: "mouse" })
+      fireEvent.click(await screen.findByText("Seedbox"))
+      await expectTile("tiles.uploaded", "2 KiB | tiles.change change=+50%")
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      fireEvent.click(await screen.findByText("Home"))
+      fireEvent.click(await screen.findByText("Seedbox"))
+
+      await expectTile("tiles.uploaded", "2 KiB | ")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("finds an instance that starts recording while the page is open", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
