@@ -833,6 +833,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			})
 
 			r.With(allInstances, torrents.Read).Get("/transfer-history/status", transferHistoryHandler.Status)
+			r.With(allInstances, settings.Write).Put("/transfer-history/settings", transferHistoryHandler.UpdateSettings)
 		})
 	})
 

@@ -185,6 +185,7 @@ func TestRoutesThatSpanInstancesRefuseInstanceLimit(t *testing.T) {
 		{http.MethodPut, "/api/instances/order"}:                                     {},
 		{http.MethodPost, "/api/instances/{instanceID}/torrents/delete-cross-seeds"}: {},
 		{http.MethodGet, "/api/transfer-history/status"}:                             {},
+		{http.MethodPut, "/api/transfer-history/settings"}:                           {},
 	}
 	var refused int
 	walkAPIRoutes(t, rig.permissionRig, func(route routeKey, path string) {

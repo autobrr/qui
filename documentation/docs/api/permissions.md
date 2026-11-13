@@ -43,7 +43,7 @@ Each area offers only the levels in this table.
 | Indexers | Read indexers and their health, search | Not offered | Add, edit, delete, and test indexers, change the search cache settings |
 | Arr | Read Arr instances, resolve an external ID | Not offered | Add, edit, delete, and test Arr instances |
 | Notifications | Read targets and events | Not offered | Add, edit, delete, and test targets |
-| Settings | Read client settings, tracker customizations, the dashboard, and filter views | Not offered | Change these items and the theme settings |
+| Settings | Read client settings, tracker customizations, the dashboard, and filter views | Not offered | Change these items, the theme settings, and the Statistics settings |
 | Logs | Read log settings, exclusions, files, and the log stream | Not offered | Change log settings and exclusions |
 | System | Application information | Not offered | Not offered |
 
@@ -59,7 +59,7 @@ A key with an Instance limit follows these rules:
 
 - It reaches a route under an instance only when that instance is in the limit.
 - It sees only the instances in the limit in `GET /api/instances`.
-- It gets a `403` from cross-seed and Dir Scan routes, and from routes that span instances. These are the cross-instance torrent list, the torrent archive export, the delete-cross-seeds check, the instance order, and the list of instances with transfer history. These routes do not narrow their results to the limit.
+- It gets a `403` from cross-seed and Dir Scan routes, and from routes that span instances. These are the cross-instance torrent list, the torrent archive export, the delete-cross-seeds check, the instance order, the list of instances with transfer history, and the Statistics settings. These routes do not narrow their results to the limit.
 - It gets a `403` when a stream asks for another instance. The check also applies when an open stream adds an instance.
 - It gets a `403` when an automation exports to another instance.
 

@@ -12,6 +12,7 @@
     "externalPrograms": "Programmi esterni",
     "notifications": "Notifiche",
     "dateTime": "Ora e lingua",
+    "statistics": "Statistiche",
     "premiumThemes": "Temi",
     "security": "Sicurezza",
     "logs": "Log"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "Preferenze di data e ora salvate",
       "error": "Impossibile salvare le preferenze di data e ora"
+    }
+  },
+  "statistics": {
+    "cardTitle": "Statistiche",
+    "cardDescription": "qui registra l'upload e il download di ogni torrent nel suo database. Queste impostazioni valgono per tutte le istanze.",
+    "recording": {
+      "label": "Registra lo storico dei trasferimenti",
+      "description": "Quando è disattivato, qui non registra nulla e mantiene lo storico salvato. Il tempo in cui è disattivato diventa un'interruzione della registrazione."
+    },
+    "retention": {
+      "label": "Mantieni il dettaglio giornaliero per",
+      "description": "Dopo questo periodo, qui raggruppa i totali orari in giorni e i byte giornalieri di ogni torrent in una riga per anno. I totali restano uguali.",
+      "days90": "90 giorni",
+      "days400": "400 giorni",
+      "forever": "Sempre"
+    },
+    "size": {
+      "label": "Dimensione dello storico"
+    },
+    "loadFailed": "Impossibile caricare le impostazioni delle statistiche",
+    "toasts": {
+      "saved": "Impostazioni delle statistiche salvate",
+      "saveFailed": "Impossibile salvare le impostazioni delle statistiche"
     }
   },
   "security": {

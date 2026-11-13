@@ -12,6 +12,7 @@
     "externalPrograms": "Programes externs",
     "notifications": "Notificacions",
     "dateTime": "Hora i idioma",
+    "statistics": "Estadístiques",
     "premiumThemes": "Temes",
     "security": "Seguretat",
     "logs": "Registres"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "S'han desat les preferències de data i hora",
       "error": "No s'han pogut desar les preferències de data i hora"
+    }
+  },
+  "statistics": {
+    "cardTitle": "Estadístiques",
+    "cardDescription": "qui registra la pujada i la baixada de cada torrent a la seva base de dades. Aquesta configuració s'aplica a totes les instàncies.",
+    "recording": {
+      "label": "Registra l'historial de transferències",
+      "description": "Mentre està desactivat, qui no registra res i conserva l'historial desat. El temps que està desactivat esdevé una interrupció del registre."
+    },
+    "retention": {
+      "label": "Conserva el detall diari durant",
+      "description": "Després d'aquest temps, qui agrupa els totals per hora en dies, i els bytes diaris de cada torrent en una fila per any. Els totals no canvien.",
+      "days90": "90 dies",
+      "days400": "400 dies",
+      "forever": "Sempre"
+    },
+    "size": {
+      "label": "Mida de l'historial"
+    },
+    "loadFailed": "No s'ha pogut carregar la configuració de les estadístiques",
+    "toasts": {
+      "saved": "S'ha desat la configuració de les estadístiques",
+      "saveFailed": "No s'ha pogut desar la configuració de les estadístiques"
     }
   },
   "security": {

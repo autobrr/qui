@@ -12,6 +12,7 @@
     "externalPrograms": "Programas Externos",
     "notifications": "Notificações",
     "dateTime": "Data e Hora",
+    "statistics": "Estatísticas",
     "premiumThemes": "Temas",
     "security": "Segurança",
     "logs": "Logs"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "Preferências de data e hora salvas",
       "error": "Falha ao salvar preferências de data e hora"
+    }
+  },
+  "statistics": {
+    "cardTitle": "Estatísticas",
+    "cardDescription": "O qui registra o upload e o download de cada torrent no seu banco de dados. Estas configurações valem para todas as instâncias.",
+    "recording": {
+      "label": "Registrar histórico de transferências",
+      "description": "Enquanto estiver desativado, o qui não registra nada e mantém o histórico salvo. O tempo desativado vira uma lacuna de registro."
+    },
+    "retention": {
+      "label": "Manter detalhes diários por",
+      "description": "Após esse período, o qui agrupa os totais por hora em dias, e os bytes diários de cada torrent em uma linha por ano. Os totais continuam os mesmos.",
+      "days90": "90 dias",
+      "days400": "400 dias",
+      "forever": "Para sempre"
+    },
+    "size": {
+      "label": "Tamanho do histórico"
+    },
+    "loadFailed": "Falha ao carregar as configurações de estatísticas",
+    "toasts": {
+      "saved": "Configurações de estatísticas salvas",
+      "saveFailed": "Falha ao salvar as configurações de estatísticas"
     }
   },
   "security": {

@@ -66,6 +66,14 @@ type TransferRow struct {
 	Baseline *Bytes `json:"baseline,omitempty"`
 }
 
+// Status is the instances that have history, by instance id, the bytes that
+// the history takes in the database, and the settings.
+type Status struct {
+	Instances    []InstanceStatus `json:"instances"`
+	HistoryBytes int64            `json:"historyBytes"`
+	Settings     Settings         `json:"settings"`
+}
+
 // InstanceStatus is an instance that has history.
 type InstanceStatus struct {
 	InstanceID      int       `json:"instanceId"`
@@ -86,6 +94,8 @@ func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, 
 	if err != nil {
 		return nil, fmt.Errorf("read tracker customizations: %w", err)
 	}
+	m.foldMu.RLock()
+	defer m.foldMu.RUnlock()
 	a := answer{query: q, mapper: trackergroup.New(customizations), rows: make(map[rowKey]*TransferRow)}
 	if q.GroupBy == GroupByCategory {
 		err = a.byCategory(ctx, m.store)
@@ -124,24 +134,32 @@ func (q TransferQuery) validate() error {
 	return nil
 }
 
-// Status returns the instances that have history, by instance id.
-func (m *Module) Status(ctx context.Context) ([]InstanceStatus, error) {
+// Status answers the status query. It includes each reading that the module
+// got before the call, up to the last write that those readings made due.
+func (m *Module) Status(ctx context.Context) (Status, error) {
 	if err := m.settle(ctx); err != nil {
-		return nil, err
+		return Status{}, err
 	}
 	instances, err := m.store.Instances(ctx)
 	if err != nil {
-		return nil, err
+		return Status{}, err
 	}
-	out := make([]InstanceStatus, len(instances))
+	status := Status{Instances: make([]InstanceStatus, len(instances))}
 	for i, inst := range instances {
-		out[i] = InstanceStatus{InstanceID: inst.InstanceID, Name: inst.Name, FirstRecordedAt: inst.FirstRecordedAt}
+		status.Instances[i] = InstanceStatus{InstanceID: inst.InstanceID, Name: inst.Name, FirstRecordedAt: inst.FirstRecordedAt}
 	}
-	return out, nil
+	if status.HistoryBytes, err = m.historySize(ctx); err != nil {
+		return Status{}, err
+	}
+	if status.Settings, err = m.currentSettings(ctx); err != nil {
+		return Status{}, err
+	}
+	return status, nil
 }
 
 type rowKey struct {
 	group  string
+	width  Bucket
 	bucket int64
 }
 
@@ -149,6 +167,9 @@ type answer struct {
 	query  TransferQuery
 	mapper *trackergroup.Mapper
 	rows   map[rowKey]*TransferRow
+	// foldedFrom is set when the answer holds day rows of folded hours, so
+	// that the period starts at a whole day.
+	foldedFrom bool
 }
 
 func ceilDiv(a, b int64) int64 { return -floorDiv(-a, b) }
@@ -191,7 +212,7 @@ func groupOf(mapper *trackergroup.Mapper, domain string, public bool) string {
 }
 
 func (a *answer) row(group string, bucket int64, width Bucket, start time.Time) *TransferRow {
-	key := rowKey{group, bucket}
+	key := rowKey{group, width, bucket}
 	r := a.rows[key]
 	if r == nil {
 		r = &TransferRow{Group: group, Start: start, Width: width}
@@ -217,16 +238,51 @@ func (a *answer) startOf(width Bucket, bucket int64) time.Time {
 		return time.Unix(bucket*86400, 0).UTC()
 	case a.query.From.IsZero():
 		return time.Time{}
-	case a.query.GroupBy == GroupByCategory:
+	case a.query.GroupBy == GroupByCategory || a.foldedFrom:
 		return a.startOf(BucketDay, dayOf(a.query.From))
 	default:
 		return a.startOf(BucketHour, hourOf(a.query.From))
 	}
 }
 
+// byTracker reads the hourly totals, and the daily totals for the days whose
+// hours qui folded.
 func (a *answer) byTracker(ctx context.Context, store *models.TransferHistoryStore) error {
-	widthHours := map[Bucket]int64{BucketHour: 1, BucketDay: 24, BucketTotal: 0}[a.query.Bucket]
 	from, to := a.hours()
+	coverFrom, coverTo := from, to
+	detailDay, hasHours, err := store.HourlyDetailStart(ctx, a.query.InstanceID)
+	if err != nil {
+		return err
+	}
+	fromDay, toDay := daysOf(a.query.From, a.query.To)
+	if hasHours {
+		toDay = min(toDay, detailDay)
+	}
+	if fromDay < toDay {
+		from = max(from, toDay*24)
+		found, err := a.trackerDays(ctx, store, fromDay, toDay)
+		if err != nil {
+			return err
+		}
+		if found {
+			coverFrom, coverTo = fromDay*24, max(to, toDay*24)
+		}
+	}
+	if from < to {
+		if err := a.trackerHours(ctx, store, from, to); err != nil {
+			return err
+		}
+	}
+	if err := a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string {
+		return groupOf(a.mapper, b.TrackerDomain, b.Private != nil && !*b.Private)
+	}); err != nil {
+		return err
+	}
+	return a.addGaps(ctx, store, coverFrom, coverTo)
+}
+
+func (a *answer) trackerHours(ctx context.Context, store *models.TransferHistoryStore, from, to int64) error {
+	widthHours := map[Bucket]int64{BucketHour: 1, BucketDay: 24, BucketTotal: 0}[a.query.Bucket]
 	totals, err := store.TrackerTotals(ctx, a.query.InstanceID, from, to, widthHours)
 	if err != nil {
 		return err
@@ -235,20 +291,35 @@ func (a *answer) byTracker(ctx context.Context, store *models.TransferHistorySto
 		r := a.row(groupOf(a.mapper, t.TrackerDomain, t.Public), t.Bucket, a.query.Bucket, a.startOf(a.query.Bucket, t.Bucket))
 		addBytes(&r.Bytes, t.Uploaded, t.Downloaded, t.StatisticsCrossSeed)
 	}
-	if err := a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string {
-		return groupOf(a.mapper, b.TrackerDomain, b.Private != nil && !*b.Private)
-	}); err != nil {
-		return err
+	return nil
+}
+
+// trackerDays reads the daily totals of days [fromDay, toDay) by tracker,
+// and reports whether it found any. They answer a query for hours with day rows.
+func (a *answer) trackerDays(ctx context.Context, store *models.TransferHistoryStore, fromDay, toDay int64) (bool, error) {
+	width := BucketDay
+	if a.query.Bucket == BucketTotal {
+		width = BucketTotal
 	}
-	return a.addGaps(ctx, store, from, to, widthHours)
+	totals, err := store.TrackerDayTotals(ctx, a.query.InstanceID, fromDay, toDay, width == BucketTotal)
+	if err != nil {
+		return false, err
+	}
+	// A total row of the days must start at the first day.
+	a.foldedFrom = len(totals) > 0
+	for _, t := range totals {
+		r := a.row(groupOf(a.mapper, t.TrackerDomain, t.Public), t.Bucket, width, a.startOf(width, t.Bucket))
+		addBytes(&r.Bytes, t.Uploaded, t.Downloaded, t.StatisticsCrossSeed)
+	}
+	return len(totals) > 0, nil
 }
 
 // byCategory reads the daily totals, because qui stores the category totals
 // for each day.
 func (a *answer) byCategory(ctx context.Context, store *models.TransferHistoryStore) error {
-	width, widthHours := BucketDay, int64(24)
+	width := BucketDay
 	if a.query.Bucket == BucketTotal {
-		width, widthHours = BucketTotal, 0
+		width = BucketTotal
 	}
 	from, to := daysOf(a.query.From, a.query.To)
 	totals, err := store.CategoryTotals(ctx, a.query.InstanceID, from, to, width == BucketTotal)
@@ -262,16 +333,31 @@ func (a *answer) byCategory(ctx context.Context, store *models.TransferHistorySt
 	if err := a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string { return b.Category }); err != nil {
 		return err
 	}
-	return a.addGaps(ctx, store, from*24, to*24, widthHours)
+	return a.addGaps(ctx, store, from*24, to*24)
 }
 
-func (a *answer) addGaps(ctx context.Context, store *models.TransferHistoryStore, fromHour, toHour, widthHours int64) error {
-	gaps, err := store.GapSeconds(ctx, a.query.InstanceID, fromHour, toHour, widthHours)
+// addGaps adds the Recording gaps of hours [fromHour, toHour) to the rows
+// whose bucket holds them.
+func (a *answer) addGaps(ctx context.Context, store *models.TransferHistoryStore, fromHour, toHour int64) error {
+	gaps, err := store.GapSeconds(ctx, a.query.InstanceID, fromHour, toHour)
 	if err != nil {
 		return err
 	}
+	days := make(map[int64]int64, len(gaps))
+	var total int64
+	for hour, seconds := range gaps {
+		days[floorDiv(hour, 24)] += seconds
+		total += seconds
+	}
 	for key, r := range a.rows {
-		r.GapSeconds = gaps[key.bucket]
+		switch key.width {
+		case BucketHour:
+			r.GapSeconds = gaps[key.bucket]
+		case BucketDay:
+			r.GapSeconds = days[key.bucket]
+		case BucketTotal:
+			r.GapSeconds = total
+		}
 	}
 	return nil
 }

@@ -76,13 +76,33 @@ type Module struct {
 	customizations *models.TrackerCustomizationStore
 	parser         *releases.Parser
 
-	mu       sync.Mutex
-	queue    []Reading
-	notes    []DeleteNote
-	barriers []chan struct{}
-	stopping bool
-	wake     chan struct{}
-	done     chan struct{}
+	// settingsMu keeps the order of two SetSettings calls.
+	settingsMu sync.Mutex
+	// foldMu keeps a transfer query out of a fold of the hours.
+	foldMu    sync.RWMutex
+	foldRun   sync.Mutex
+	folds     sync.WaitGroup
+	foldCtx   context.Context
+	stopFolds context.CancelFunc
+
+	sizeMu sync.Mutex
+	size   int64
+	// sizeAt is when size was measured, or zero when it must be measured again.
+	sizeAt time.Time
+
+	mu             sync.Mutex
+	queue          []Reading
+	notes          []DeleteNote
+	barriers       []chan struct{}
+	stopping       bool
+	settings       Settings
+	settingsLoaded bool
+	// pause is set when recording goes off, and refold when the Detail
+	// retention changes, until the worker takes them.
+	pause  bool
+	refold bool
+	wake   chan struct{}
+	done   chan struct{}
 
 	// The worker owns these until it closes done.
 	instances map[int]*instance
@@ -94,6 +114,8 @@ type Module struct {
 	deleteNotes map[int]map[string][]deleteNote
 	mapper      *trackergroup.Mapper
 	shutdownErr error
+	// foldedDay is the UTC day of the last fold.
+	foldedDay int64
 }
 
 // New returns a running module that stores the history in db and names
@@ -109,16 +131,17 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		reloads:        make(map[int]struct{}),
 		deleteNotes:    make(map[int]map[string][]deleteNote),
 	}
+	m.foldCtx, m.stopFolds = context.WithCancel(context.Background())
 	go m.run()
 	return m
 }
 
 // Record gives the module a reading. It never waits for the database, and
 // the module takes the reading: the caller must not change it after the call.
-// A reading after Shutdown does nothing.
+// A reading after Shutdown or while recording is off does nothing.
 func (m *Module) Record(r Reading) {
 	m.mu.Lock()
-	if m.stopping {
+	if m.stopping || (m.settingsLoaded && !m.settings.Recording) {
 		m.mu.Unlock()
 		return
 	}
@@ -193,17 +216,39 @@ func (m *Module) settle(ctx context.Context) error {
 
 func (m *Module) run() {
 	defer close(m.done)
+	defer func() {
+		m.stopFolds()
+		m.folds.Wait()
+	}()
 	for range m.wake {
+		ready := m.settingsForReadings()
+
 		m.mu.Lock()
-		readings, notes, barriers, stopping := m.queue, m.notes, m.barriers, m.stopping
-		m.queue, m.notes, m.barriers = nil, nil, nil
+		var readings []Reading
+		settings := m.settings
+		if ready {
+			readings, m.queue = m.queue, nil
+			// The settings can say that recording is off since the readings came.
+			if !m.settings.Recording {
+				readings = nil
+			}
+		}
+		notes, barriers, stopping, pause, refold := m.notes, m.barriers, m.stopping, m.pause, m.refold
+		m.notes, m.barriers, m.pause, m.refold = nil, nil, false, false
 		m.mu.Unlock()
 
+		if refold {
+			m.foldedDay = 0
+		}
+		if pause {
+			m.pauseInstances()
+		}
 		for _, n := range notes {
 			m.keep(n, false)
 		}
 		for _, r := range readings {
 			m.process(r)
+			m.foldIfNewDay(dayOf(r.Time), settings.DetailRetentionDays)
 		}
 		if stopping {
 			errs := make([]error, 0, len(m.instances))
@@ -219,6 +264,25 @@ func (m *Module) run() {
 			return
 		}
 	}
+}
+
+// settingsForReadings reads the settings when readings wait, and reports
+// whether the worker can take them. Readings wait until the module knows
+// whether recording is on.
+func (m *Module) settingsForReadings() bool {
+	m.mu.Lock()
+	waiting, known := len(m.queue) > 0, m.settingsLoaded
+	m.mu.Unlock()
+	if !waiting || known {
+		return known
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+	if _, err := m.currentSettings(ctx); err != nil {
+		log.Warn().Err(err).Msg("transfer history: failed to read the settings; the next reading tries again")
+		return false
+	}
+	return true
 }
 
 func (m *Module) process(r Reading) {

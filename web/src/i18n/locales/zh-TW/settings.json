@@ -12,6 +12,7 @@
     "externalPrograms": "外部程式",
     "notifications": "通知",
     "dateTime": "時間與語言",
+    "statistics": "統計",
     "premiumThemes": "主題",
     "security": "安全",
     "logs": "日誌"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "日期和時間偏好已儲存",
       "error": "儲存日期和時間偏好失敗"
+    }
+  },
+  "statistics": {
+    "cardTitle": "統計",
+    "cardDescription": "qui 會在資料庫中記錄每個種子的上傳與下載。這些設定適用於所有實例。",
+    "recording": {
+      "label": "記錄傳輸歷史",
+      "description": "關閉時，qui 不記錄任何內容，並保留已儲存的歷史。關閉的期間會成為記錄空缺。"
+    },
+    "retention": {
+      "label": "保留每日詳情",
+      "description": "超過此時間後，qui 會將每小時的合計合併為天，並將每個種子的每日位元組合併為每年一列。合計維持不變。",
+      "days90": "90 天",
+      "days400": "400 天",
+      "forever": "永久"
+    },
+    "size": {
+      "label": "歷史大小"
+    },
+    "loadFailed": "無法載入統計設定",
+    "toasts": {
+      "saved": "統計設定已儲存",
+      "saveFailed": "無法儲存統計設定"
     }
   },
   "security": {

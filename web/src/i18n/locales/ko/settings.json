@@ -12,6 +12,7 @@
     "externalPrograms": "외부 프로그램",
     "notifications": "알림",
     "dateTime": "시간 및 언어",
+    "statistics": "통계",
     "premiumThemes": "테마",
     "security": "보안",
     "logs": "로그"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "날짜 및 시간 환경설정이 저장되었습니다",
       "error": "날짜 및 시간 환경설정을 저장하지 못했습니다"
+    }
+  },
+  "statistics": {
+    "cardTitle": "통계",
+    "cardDescription": "qui는 각 토렌트의 업로드와 다운로드를 데이터베이스에 기록합니다. 이 설정은 모든 인스턴스에 적용됩니다.",
+    "recording": {
+      "label": "전송 기록 저장",
+      "description": "꺼져 있는 동안 qui는 아무것도 기록하지 않고 저장된 기록을 유지합니다. 꺼져 있던 시간은 기록 공백이 됩니다."
+    },
+    "retention": {
+      "label": "일별 상세 보관 기간",
+      "description": "이 기간이 지나면 qui는 시간별 합계를 일 단위로, 각 토렌트의 일별 바이트를 연도별 한 행으로 합칩니다. 합계는 그대로입니다.",
+      "days90": "90일",
+      "days400": "400일",
+      "forever": "영구"
+    },
+    "size": {
+      "label": "기록 크기"
+    },
+    "loadFailed": "통계 설정을 불러오지 못했습니다",
+    "toasts": {
+      "saved": "통계 설정을 저장했습니다",
+      "saveFailed": "통계 설정을 저장하지 못했습니다"
     }
   },
   "security": {

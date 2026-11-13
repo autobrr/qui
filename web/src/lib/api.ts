@@ -56,6 +56,8 @@ import type {
   CrossSeedTorrentSearchSelection,
   DashboardSettings,
   DashboardSettingsInput,
+  TransferHistorySettings,
+  TransferHistorySettingsStatus,
   DirScanDirectory,
   DirScanDirectoryCreate,
   DirScanTriggerResponse,
@@ -2562,6 +2564,17 @@ class ApiClient {
 
   async updateDashboardSettings(data: DashboardSettingsInput): Promise<DashboardSettings> {
     return this.request<DashboardSettings>("/dashboard-settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getTransferHistorySettingsStatus(): Promise<TransferHistorySettingsStatus> {
+    return this.request<TransferHistorySettingsStatus>("/transfer-history/status")
+  }
+
+  async updateTransferHistorySettings(data: TransferHistorySettings): Promise<TransferHistorySettings> {
+    return this.request<TransferHistorySettings>("/transfer-history/settings", {
       method: "PUT",
       body: JSON.stringify(data),
     })
