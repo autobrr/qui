@@ -147,6 +147,7 @@ import type {
   WebSeed,
   SSHCredentials,
   SSHTestResponse,
+  LiveTrackerGroup,
   TransferHistoryInstance,
   TransferHistoryQuery,
   TransferHistoryRow
@@ -863,11 +864,19 @@ class ApiClient {
     if (query.from) {
       params.set("from", query.from.toISOString())
     }
+    if (query.group !== undefined) {
+      params.set("group", query.group)
+    }
     if (query.timeZone) {
       params.set("timeZone", query.timeZone)
     }
     const response = await this.request<{ rows: TransferHistoryRow[] }>(`/instances/${instanceId}/transfer-history?${params}`)
     return response.rows
+  }
+
+  async getTrackerGroups(instanceId: number): Promise<LiveTrackerGroup[]> {
+    const response = await this.request<{ groups: LiveTrackerGroup[] }>(`/instances/${instanceId}/tracker-groups`)
+    return response.groups
   }
 
   async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {

@@ -54,5 +54,46 @@
     "load": "Die Statistiken konnten nicht geladen werden: {{message}}"
   },
   "allTimeNote": "Gesamt enthält die Ausgangsbasis: die Bytes, die die Torrents hatten, als qui sie zuerst aufgezeichnet hat. Das Diagramm zeigt die Ausgangsbasis nicht, da sie kein Datum hat.",
-  "serverStatisticsNote": "Diese Zahlen addieren den Transfer jedes Torrents. Die Serverstatistik im Dashboard liest die Zähler von qBittorrent, die auch Protokollverkehr zählen, daher weichen die Zahlen ab."
+  "serverStatisticsNote": "Diese Zahlen addieren den Transfer jedes Torrents. Die Serverstatistik im Dashboard liest die Zähler von qBittorrent, die auch Protokollverkehr zählen, daher weichen die Zahlen ab.",
+  "table": {
+    "title": "Nach Tracker oder Kategorie",
+    "descriptionTracker": "Der Transfer des Zeitraums für jeden Tracker. Klicke auf eine Zeile, um ihre Details zu öffnen.",
+    "descriptionCategory": "Der Transfer des Zeitraums für jede Kategorie, unter der Kategorie, die jeder Torrent hatte, als die Bytes übertragen wurden. Klicke auf eine Zeile, um ihre Details zu öffnen.",
+    "groupBy": "Gruppieren nach",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Kategorie"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "category": "Kategorie",
+      "uploaded": "Hochgeladen",
+      "downloaded": "Heruntergeladen",
+      "ratio": "Ratio",
+      "buffer": "Buffer",
+      "torrents": "Torrents",
+      "size": "Größe",
+      "seeded": "Geseedet"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Gesamt",
+    "noCategory": "Keine Kategorie",
+    "liveError": "Die Torrents, die jetzt in qBittorrent sind, konnten nicht geladen werden: {{message}}",
+    "liveNote": "Torrents, Größe und Geseedet beschreiben die Torrents, die jetzt in qBittorrent sind, nicht den Zeitraum. Geseedet ist ihr gesamter Upload geteilt durch ihre Größe.",
+    "categoryNote": "qui speichert die Summen der Kategorien für jeden UTC-Tag. Ein Zeitraum, der innerhalb eines UTC-Tages beginnt oder endet, zählt den ganzen Tag. Daher kann die Summe der Kategorien von den Zahlen oben abweichen.",
+    "baselineNote": "Für Gesamt enthält jede Zeile die Ausgangsbasis ihrer Torrents."
+  },
+  "detail": {
+    "share": "Anteil am Upload",
+    "shareOf": "von {{total}}",
+    "crossSeed": "Von Cross-Seeds",
+    "crossSeedShare": "{{percent}} des eigenen Uploads",
+    "bestHour": "Beste Stunde",
+    "bestDay": "Bester Tag",
+    "averageHour": "Durchschnitt pro Stunde",
+    "averageDay": "Durchschnitt pro Tag",
+    "chartHour": "{{group}} pro Stunde",
+    "chartDay": "{{group}} pro Tag",
+    "chartLegend": "Upload über der Linie, Download darunter"
+  }
 }

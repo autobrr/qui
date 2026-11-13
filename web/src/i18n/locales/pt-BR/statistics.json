@@ -55,5 +55,46 @@
     "load": "Não foi possível carregar as estatísticas: {{message}}"
   },
   "allTimeNote": "Desde o início inclui a base inicial: os bytes que os torrents tinham quando o qui os gravou pela primeira vez. O gráfico não mostra a base inicial, porque ela não tem data.",
-  "serverStatisticsNote": "Estes números somam a transferência de cada torrent. As estatísticas do servidor no painel leem os contadores do qBittorrent, que também contam o tráfego do protocolo, por isso os números são diferentes."
+  "serverStatisticsNote": "Estes números somam a transferência de cada torrent. As estatísticas do servidor no painel leem os contadores do qBittorrent, que também contam o tráfego do protocolo, por isso os números são diferentes.",
+  "table": {
+    "title": "Por tracker ou categoria",
+    "descriptionTracker": "A transferência do período para cada tracker. Clique em uma linha para abrir o detalhe.",
+    "descriptionCategory": "A transferência do período para cada categoria, sob a categoria que cada torrent tinha quando os bytes foram transferidos. Clique em uma linha para abrir o detalhe.",
+    "groupBy": "Agrupar por",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Categoria"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "category": "Categoria",
+      "uploaded": "Enviado",
+      "downloaded": "Baixado",
+      "ratio": "Ratio",
+      "buffer": "Buffer",
+      "torrents": "Torrents",
+      "size": "Tamanho",
+      "seeded": "Semeados"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Total",
+    "noCategory": "Nenhuma categoria",
+    "liveError": "Não foi possível carregar os torrents que estão no qBittorrent agora: {{message}}",
+    "liveNote": "Torrents, Tamanho e Semeados descrevem os torrents que estão no qBittorrent agora, não o período. Semeados é o envio total deles dividido pelo tamanho.",
+    "categoryNote": "O qui grava os totais das categorias para cada dia UTC. Um período que começa ou termina dentro de um dia UTC conta o dia inteiro, então o total das categorias pode ser diferente dos números no topo.",
+    "baselineNote": "Desde o início, cada linha inclui a base inicial dos seus torrents."
+  },
+  "detail": {
+    "share": "Parte do envio",
+    "shareOf": "de {{total}}",
+    "crossSeed": "De cross-seeds",
+    "crossSeedShare": "{{percent}} do seu envio",
+    "bestHour": "Melhor hora",
+    "bestDay": "Melhor dia",
+    "averageHour": "Média por hora",
+    "averageDay": "Média por dia",
+    "chartHour": "{{group}} por hora",
+    "chartDay": "{{group}} por dia",
+    "chartLegend": "Envio acima da linha, download abaixo dela"
+  }
 }

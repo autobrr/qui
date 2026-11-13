@@ -107,6 +107,11 @@ func expect(query transferhistory.TransferQuery, want ...transferhistory.Transfe
 	return step{check: &check{query: query, want: want}}
 }
 
+func withGroup(query transferhistory.TransferQuery, group string) transferhistory.TransferQuery {
+	query.Group = &group
+	return query
+}
+
 var (
 	restart = step{restart: true}
 	// crash drops the module without a write, as when qui crashes.
@@ -408,6 +413,20 @@ func TestTransferHistoryRecordingPostgresIntegration(t *testing.T) {
 					total("Public", 80, 8, 0),
 					total("a.example", 60, 6, 0),
 					total("tracker.example", 10, 1, 0)),
+			},
+		},
+		{
+			name: "one group limits the answer to the bytes of that group",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0)),
+				reading(at(5*time.Minute),
+					torrent("a", 10, 1),
+					onTracker(torrent("b", 20, 2), "b.example", "a.example"),
+					inCategory(onTracker(torrent("c", 40, 4), "a.example"), "")),
+				expect(withGroup(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker}, "a.example"),
+					transferhistory.TransferRow{Group: "a.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Uploaded: 60, Downloaded: 6}),
+				expect(withGroup(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketDay, GroupBy: transferhistory.GroupByCategory}, ""),
+					transferhistory.TransferRow{Group: "", Start: day10, Width: transferhistory.BucketDay, Uploaded: 40, Downloaded: 4}),
 			},
 		},
 	}

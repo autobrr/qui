@@ -48,6 +48,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 - **Sync snapshot**: The torrents of one instance as one sync left them. Every reader of that sync shares it, and no reader changes it. _Avoid_: copy, sync cache, snapshot alone (a backup run is also a snapshot).
 
+## Torrent details
+
+- **Piece bar**: The bar in the General tab of a torrent that is not complete. It shows where the finished and downloading pieces are. When one column holds more than one piece, its color shows the share of each state, so the bar matches the qBittorrent pieces bar. _Avoid_: progress bar (that is the progress column in the torrent list).
+
 ## Statistics
 
 - **Statistics**: The page that shows Transfer history. _Avoid_: stats page, history page.

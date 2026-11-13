@@ -53,5 +53,46 @@
     "load": "無法載入統計：{{message}}"
   },
   "allTimeNote": "全部時間包含基準：qui 首次記錄時種子已有的位元組數。基準沒有日期，因此圖表不顯示基準。",
-  "serverStatisticsNote": "這些數字是每個種子傳輸量的總和。儀表板上的伺服器統計讀取 qBittorrent 的計數器，其中也包含協定流量，因此數字會不同。"
+  "serverStatisticsNote": "這些數字是每個種子傳輸量的總和。儀表板上的伺服器統計讀取 qBittorrent 的計數器，其中也包含協定流量，因此數字會不同。",
+  "table": {
+    "title": "依 Tracker 或分類",
+    "descriptionTracker": "每個 Tracker 在此時段內的傳輸量。點擊一列可開啟詳細資料。",
+    "descriptionCategory": "每個分類在此時段內的傳輸量，依位元組傳輸時種子所在的分類統計。點擊一列可開啟詳細資料。",
+    "groupBy": "分組依據",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "分類"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "category": "分類",
+      "uploaded": "已上傳",
+      "downloaded": "已下載",
+      "ratio": "分享率",
+      "buffer": "緩衝",
+      "torrents": "種子數",
+      "size": "大小",
+      "seeded": "做種量"
+    },
+    "seededValue": "{{value}}x",
+    "total": "合計",
+    "noCategory": "無分類",
+    "liveError": "無法載入 qBittorrent 中目前的種子：{{message}}",
+    "liveNote": "種子數、大小和做種量描述的是 qBittorrent 中目前的種子，而不是此時段。做種量是它們的總上傳量除以大小。",
+    "categoryNote": "qui 依 UTC 日儲存分類合計。在 UTC 日中間開始或結束的時段會計入整天，因此分類合計可能與頂部的數字不同。",
+    "baselineNote": "全部時間中，每一列都包含其種子的基準。"
+  },
+  "detail": {
+    "share": "上傳佔比",
+    "shareOf": "共 {{total}}",
+    "crossSeed": "來自輔種",
+    "crossSeedShare": "佔其上傳的 {{percent}}",
+    "bestHour": "最佳小時",
+    "bestDay": "最佳日",
+    "averageHour": "每小時平均",
+    "averageDay": "每日平均",
+    "chartHour": "{{group}} 每小時",
+    "chartDay": "{{group}} 每日",
+    "chartLegend": "線上方為上傳，下方為下載"
+  }
 }

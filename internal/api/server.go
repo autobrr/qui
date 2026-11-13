@@ -432,6 +432,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	transferHistoryHandler := handlers.NewTransferHistoryHandler(s.transferHistory)
 	systemNoticeHandler := handlers.NewSystemNoticeHandler(s.systemNotices)
+	trackerGroupsHandler := handlers.NewTrackerGroupsHandler(s.syncManager, s.trackerCustomizationStore)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
@@ -733,6 +734,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(torrents.Read).Get("/transfer-history", transferHistoryHandler.Transfer)
 					r.With(torrents.Read).Get("/transfer-history/library", transferHistoryHandler.Library)
 					r.With(torrents.Read).Get("/transfer-history/deletes", transferHistoryHandler.Deletes)
+					r.With(torrents.Read).Get("/tracker-groups", trackerGroupsHandler.List)
 
 					// Automations
 					r.Route("/automations", func(r chi.Router) {
