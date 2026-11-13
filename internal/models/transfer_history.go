@@ -60,6 +60,9 @@ type TransferHistoryRecord struct {
 	// LoadInstance leaves them empty.
 	BaselineTrackerDomain string
 	BaselineCategory      string
+	// BaselineStatisticsCrossSeed is the Statistics cross-seed flag of the
+	// Baseline. It is nil while the Baseline follows StatisticsCrossSeed.
+	BaselineStatisticsCrossSeed *bool
 	// Deleted is set while the torrent is not in qBittorrent.
 	Deleted bool
 	// Completed is set when the torrent completed since the user added it last.
@@ -215,7 +218,8 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT t.id, t.hash, t.name, t.tracker_domain, t.category, t.private, t.size, t.release_group,
 			t.resolution, t.source, t.content_type, t.statistics_cross_seed, c.uploaded, c.downloaded,
-			t.upload_first_24h, t.baseline_uploaded, t.baseline_downloaded, t.deleted, t.completed
+			t.upload_first_24h, t.baseline_uploaded, t.baseline_downloaded, t.deleted, t.completed,
+			t.baseline_statistics_cross_seed
 		FROM transfer_history_torrents t
 		JOIN transfer_history_counters c ON c.torrent_id = t.id
 		WHERE t.instance_id = ?`, instanceID)
@@ -227,11 +231,11 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 	var records []*TransferHistoryRecord
 	for rows.Next() {
 		var r TransferHistoryRecord
-		var private, crossSeed sql.NullBool
+		var private, crossSeed, baselineCrossSeed sql.NullBool
 		var first24h sql.NullInt64
 		if err := rows.Scan(&r.ID, &r.Hash, &r.Name, &r.TrackerDomain, &r.Category, &private, &r.Size,
 			&r.ReleaseGroup, &r.Resolution, &r.Source, &r.ContentType, &crossSeed,
-			&r.LastUploaded, &r.LastDownloaded, &first24h, &r.BaselineUploaded, &r.BaselineDownloaded, &r.Deleted, &r.Completed); err != nil {
+			&r.LastUploaded, &r.LastDownloaded, &first24h, &r.BaselineUploaded, &r.BaselineDownloaded, &r.Deleted, &r.Completed, &baselineCrossSeed); err != nil {
 			return nil, nil, fmt.Errorf("scan transfer history record: %w", err)
 		}
 		if private.Valid {
@@ -239,6 +243,9 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 		}
 		if crossSeed.Valid {
 			r.StatisticsCrossSeed = &crossSeed.Bool
+		}
+		if baselineCrossSeed.Valid {
+			r.BaselineStatisticsCrossSeed = &baselineCrossSeed.Bool
 		}
 		if first24h.Valid {
 			r.UploadFirst24h = &first24h.Int64
@@ -401,17 +408,18 @@ func (s *TransferHistoryStore) Writes(ctx context.Context, instanceID int) (int6
 func upsertTransferHistoryRecords(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, records []*TransferHistoryRecord) (map[string]int64, error) {
 	ids := make(map[string]int64, len(records))
 	for chunk := range transferHistoryChunks(records) {
-		args := make([]any, 0, len(chunk)*19)
+		args := make([]any, 0, len(chunk)*20)
 		for _, r := range chunk {
 			args = append(args, instanceID, r.Hash, r.Name, r.TrackerDomain, r.Category, r.Private, r.Size,
 				r.ReleaseGroup, r.Resolution, r.Source, r.ContentType, r.StatisticsCrossSeed,
-				r.UploadFirst24h, r.BaselineUploaded, r.BaselineDownloaded, r.BaselineTrackerDomain, r.BaselineCategory, r.Deleted, r.Completed)
+				r.UploadFirst24h, r.BaselineUploaded, r.BaselineDownloaded, r.BaselineTrackerDomain, r.BaselineCategory, r.Deleted, r.Completed,
+				r.BaselineStatisticsCrossSeed)
 		}
 		query := dbinterface.BuildQueryWithPlaceholders(`
 			INSERT INTO transfer_history_torrents (instance_id, hash, name, tracker_domain, category, private,
 				size, release_group, resolution, source, content_type, statistics_cross_seed,
 				upload_first_24h, baseline_uploaded, baseline_downloaded, baseline_tracker_domain, baseline_category,
-				deleted, completed)
+				deleted, completed, baseline_statistics_cross_seed)
 			VALUES %s
 			ON CONFLICT (instance_id, hash) DO UPDATE SET
 				name = excluded.name,
@@ -426,8 +434,9 @@ func upsertTransferHistoryRecords(ctx context.Context, tx dbinterface.TxQuerier,
 				statistics_cross_seed = excluded.statistics_cross_seed,
 				upload_first_24h = excluded.upload_first_24h,
 				deleted = excluded.deleted,
-				completed = excluded.completed
-			RETURNING id, hash`, 19, len(chunk))
+				completed = excluded.completed,
+				baseline_statistics_cross_seed = excluded.baseline_statistics_cross_seed
+			RETURNING id, hash`, 20, len(chunk))
 		if err := scanTransferHistoryIDs(ctx, tx, query, args, ids); err != nil {
 			return nil, err
 		}
@@ -587,15 +596,17 @@ func (s *TransferHistoryStore) GapSeconds(ctx context.Context, instanceID int, f
 }
 
 // Baselines returns the Baseline of the records of an instance, by the
-// tracker domain and category at the first sight of each record, and by its
-// private flag and Statistics cross-seed flag now.
+// tracker domain and category at the first sight of each record, by its
+// private flag now, and by the Statistics cross-seed flag of its first life.
 func (s *TransferHistoryStore) Baselines(ctx context.Context, instanceID int) ([]TransferHistoryBaseline, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT baseline_tracker_domain, private, baseline_category, COALESCE(statistics_cross_seed, FALSE),
+		SELECT baseline_tracker_domain, private, baseline_category,
+			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE),
 			CAST(SUM(baseline_uploaded) AS BIGINT), CAST(SUM(baseline_downloaded) AS BIGINT)
 		FROM transfer_history_torrents
 		WHERE instance_id = ? AND (baseline_uploaded > 0 OR baseline_downloaded > 0)
-		GROUP BY baseline_tracker_domain, private, baseline_category, COALESCE(statistics_cross_seed, FALSE)`,
+		GROUP BY baseline_tracker_domain, private, baseline_category,
+			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE)`,
 		instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("read transfer history baselines: %w", err)

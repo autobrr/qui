@@ -295,6 +295,7 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 	delete(inst.deleted, rec.Hash)
 	inst.records[rec.Hash] = rec
 	if leftOut {
+		rec.BaselineStatisticsCrossSeed = nil
 		return
 	}
 	rec.LastUploaded, rec.LastDownloaded = 0, 0
@@ -322,6 +323,10 @@ func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, n
 		rec.Final = nil
 	}
 	inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventDelete, Time: now, Delete: event})
+	// A later life decides the flag again, and the Baseline keeps this one.
+	if rec.BaselineStatisticsCrossSeed == nil {
+		rec.BaselineStatisticsCrossSeed = new(rec.StatisticsCrossSeed != nil && *rec.StatisticsCrossSeed)
+	}
 	rec.Deleted = true
 	delete(inst.records, rec.Hash)
 	inst.deleted[rec.Hash] = rec

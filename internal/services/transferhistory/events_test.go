@@ -335,6 +335,36 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "the Baseline of a torrent keeps the flag of its first life",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), complete(torrent("b", 400, 0))),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(10*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(9*time.Minute))),
+				restart,
+				reading(at(15*time.Minute), torrent("a", 0, 0), complete(addedAt(torrent("b", 0, 1000), at(9*time.Minute)))),
+				reading(at(20*time.Minute), torrent("a", 0, 0), complete(addedAt(torrent("b", 0, 1000), at(9*time.Minute)))),
+				expect(transferhistory.TransferQuery{To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
+					transferhistory.TransferRow{
+						Group: "tracker.example", Width: transferhistory.BucketTotal, Downloaded: 1000, GapSeconds: 300,
+						Baseline: &transferhistory.Bytes{Uploaded: 400, StatisticsCrossSeedUploaded: 400},
+					}),
+			},
+		},
+		{
+			name: "the Baseline of a torrent that returns with an old added time follows the flag of the same life",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), addedAt(torrent("b", 400, 0), at(-30*24*time.Hour))),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(10*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 400, 0), at(-30*24*time.Hour))),
+				reading(at(15*time.Minute), torrent("a", 0, 0), complete(addedAt(torrent("b", 400, 0), at(-30*24*time.Hour)))),
+				expect(transferhistory.TransferQuery{To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
+					transferhistory.TransferRow{
+						Group: "tracker.example", Width: transferhistory.BucketTotal,
+						Baseline: &transferhistory.Bytes{Uploaded: 400, StatisticsCrossSeedUploaded: 400},
+					}),
+			},
+		},
+		{
 			name: "a torrent that returns with an old added time continues its count",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0), addedAt(torrent("b", 500, 0), at(-30*24*time.Hour))),
