@@ -1,0 +1,56 @@
+{
+  "title": "Statistics",
+  "recordingSince": "Recording since {{date}}",
+  "notRecording": "qui has not recorded any transfer yet.",
+  "partial": "Partial period",
+  "periods": {
+    "24h": "24 hours",
+    "7d": "7 days",
+    "30d": "30 days",
+    "1y": "Year",
+    "all": "All time",
+    "custom": "Custom"
+  },
+  "customRange": {
+    "from": "First day",
+    "to": "Last day",
+    "apply": "Apply",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "All instances",
+    "count_one": "{{count}} instance",
+    "count_other": "{{count}} instances",
+    "removed": "removed"
+  },
+  "tiles": {
+    "uploaded": "Uploaded",
+    "downloaded": "Downloaded",
+    "ratio": "Ratio",
+    "buffer": "Buffer {{buffer}}",
+    "crossSeed": "From cross-seeds",
+    "crossSeedShare": "{{percent}}% of the upload",
+    "change": "{{change}} against the period before"
+  },
+  "chart": {
+    "title": "Transfer over time",
+    "descriptionHour": "By tracker, for each hour",
+    "descriptionDay": "By tracker, for each day",
+    "upload": "Upload",
+    "download": "Download",
+    "other": "Other",
+    "total": "Total",
+    "gap": "Includes a recording gap of {{duration}}",
+    "foldedDay": "(whole day, UTC)",
+    "empty": "No transfer in this period."
+  },
+  "groups": {
+    "public": "Public",
+    "noTracker": "No tracker"
+  },
+  "errors": {
+    "load": "Could not load the statistics: {{message}}"
+  },
+  "allTimeNote": "All time includes the Baseline: the bytes that the torrents had when qui first recorded them. The chart does not show the Baseline, because it has no date.",
+  "serverStatisticsNote": "These numbers add up the transfer of each torrent. Server Statistics on the Dashboard reads the counters of qBittorrent, which also count protocol traffic, so the numbers differ."
+}

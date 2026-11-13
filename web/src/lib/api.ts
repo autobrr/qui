@@ -143,7 +143,10 @@ import type {
   WarningResponse,
   WebSeed,
   SSHCredentials,
-  SSHTestResponse
+  SSHTestResponse,
+  TransferHistoryInstance,
+  TransferHistoryQuery,
+  TransferHistoryRow
 } from "@/types"
 import type {
   ArrInstance,
@@ -850,6 +853,20 @@ class ApiClient {
 
   async getTransferInfo(id: number): Promise<TransferInfo> {
     return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
+  }
+
+  async getTransferHistory(instanceId: number, query: TransferHistoryQuery): Promise<TransferHistoryRow[]> {
+    const params = new URLSearchParams({ to: query.to.toISOString(), bucket: query.bucket, groupBy: query.groupBy })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    const response = await this.request<{ rows: TransferHistoryRow[] }>(`/instances/${instanceId}/transfer-history?${params}`)
+    return response.rows
+  }
+
+  async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {
+    const response = await this.request<{ instances: TransferHistoryInstance[] }>("/transfer-history/status")
+    return response.instances
   }
 
   async getInstanceReannounceActivity(

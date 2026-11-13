@@ -1,0 +1,57 @@
+{
+  "title": "Statistiky",
+  "recordingSince": "Záznam od {{date}}",
+  "notRecording": "qui zatím nezaznamenal žádný přenos.",
+  "partial": "Neúplné období",
+  "periods": {
+    "24h": "24 hodin",
+    "7d": "7 dní",
+    "30d": "30 dní",
+    "1y": "Rok",
+    "all": "Celkem",
+    "custom": "Vlastní"
+  },
+  "customRange": {
+    "from": "První den",
+    "to": "Poslední den",
+    "apply": "Použít",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Všechny instance",
+    "count_one": "{{count}} instance",
+    "count_few": "{{count}} instance",
+    "count_other": "{{count}} instancí",
+    "removed": "odebraná"
+  },
+  "tiles": {
+    "uploaded": "Odesláno",
+    "downloaded": "Staženo",
+    "ratio": "Poměr",
+    "buffer": "Rezerva {{buffer}}",
+    "crossSeed": "Z cross-seedů",
+    "crossSeedShare": "{{percent}} % odeslaných dat",
+    "change": "{{change}} oproti předchozímu období"
+  },
+  "chart": {
+    "title": "Přenos v čase",
+    "descriptionHour": "Podle trackeru, po hodinách",
+    "descriptionDay": "Podle trackeru, po dnech",
+    "upload": "Odesílání",
+    "download": "Stahování",
+    "other": "Ostatní",
+    "total": "Celkem",
+    "gap": "Obsahuje mezeru v záznamu {{duration}}",
+    "foldedDay": "(celý den, UTC)",
+    "empty": "V tomto období žádný přenos."
+  },
+  "groups": {
+    "public": "Veřejné",
+    "noTracker": "Bez trackeru"
+  },
+  "errors": {
+    "load": "Statistiky se nepodařilo načíst: {{message}}"
+  },
+  "allTimeNote": "Celkem zahrnuje výchozí stav: bajty, které torrenty měly, když je qui poprvé zaznamenal. Graf výchozí stav neukazuje, protože nemá datum.",
+  "serverStatisticsNote": "Tato čísla sčítají přenos jednotlivých torrentů. Statistiky serveru na nástěnce čtou čítače qBittorrentu, které počítají i provoz protokolu, proto se čísla liší."
+}

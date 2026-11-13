@@ -1,0 +1,57 @@
+{
+  "title": "Statistiche",
+  "recordingSince": "Registrazione dal {{date}}",
+  "notRecording": "qui non ha ancora registrato alcun trasferimento.",
+  "partial": "Periodo parziale",
+  "periods": {
+    "24h": "24 ore",
+    "7d": "7 giorni",
+    "30d": "30 giorni",
+    "1y": "Anno",
+    "all": "Dall’inizio",
+    "custom": "Personalizzato"
+  },
+  "customRange": {
+    "from": "Primo giorno",
+    "to": "Ultimo giorno",
+    "apply": "Applica",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Tutte le istanze",
+    "count_one": "{{count}} istanza",
+    "count_many": "{{count}} istanze",
+    "count_other": "{{count}} istanze",
+    "removed": "rimossa"
+  },
+  "tiles": {
+    "uploaded": "Caricati",
+    "downloaded": "Scaricati",
+    "ratio": "Rapporto",
+    "buffer": "Margine {{buffer}}",
+    "crossSeed": "Dai cross-seed",
+    "crossSeedShare": "{{percent}}% del caricamento",
+    "change": "{{change}} rispetto al periodo precedente"
+  },
+  "chart": {
+    "title": "Trasferimento nel tempo",
+    "descriptionHour": "Per tracker, per ora",
+    "descriptionDay": "Per tracker, per giorno",
+    "upload": "Upload",
+    "download": "Download",
+    "other": "Altri",
+    "total": "Totale",
+    "gap": "Include un’interruzione della registrazione di {{duration}}",
+    "foldedDay": "(giorno intero, UTC)",
+    "empty": "Nessun trasferimento in questo periodo."
+  },
+  "groups": {
+    "public": "Pubblico",
+    "noTracker": "Nessun tracker"
+  },
+  "errors": {
+    "load": "Impossibile caricare le statistiche: {{message}}"
+  },
+  "allTimeNote": "Dall’inizio include la base iniziale: i byte che i torrent avevano quando qui li ha registrati per la prima volta. Il grafico non mostra la base iniziale, perché non ha una data.",
+  "serverStatisticsNote": "Questi numeri sommano il trasferimento di ogni torrent. Le statistiche del server nella dashboard leggono i contatori di qBittorrent, che contano anche il traffico di protocollo, quindi i numeri sono diversi."
+}
