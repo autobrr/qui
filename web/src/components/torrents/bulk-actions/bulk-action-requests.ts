@@ -11,6 +11,8 @@ import type { Torrent } from "@/types"
 import type { QueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
+// i18n-namespace: torrents
+
 // Const object for better developer experience and refactoring safety
 export const TORRENT_ACTIONS = {
   PAUSE: "pause",

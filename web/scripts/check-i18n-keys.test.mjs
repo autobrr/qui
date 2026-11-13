@@ -220,3 +220,16 @@ test("resolves a namespace prefix in a key property", () => {
     "src/example.tsx: common.nav.dashbaord",
   ])
 })
+
+test("checks t calls in a file with no useTranslation against its directive namespace", () => {
+  const source = `
+    // i18n-namespace: torrents
+    export function toastFor(t) {
+      return [t("columns.name"), t("columns.nmae")]
+    }
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: torrents.columns.nmae",
+  ])
+})

@@ -117,14 +117,16 @@ export function collectMissingKeysForSource({
     checkKey(namespace, key)
   }
 
-  if (!defaultNamespace) {
+  // A helper that takes t as a parameter names its namespace with the directive.
+  const callNamespace = defaultNamespace ?? directiveNamespace
+  if (!callNamespace) {
     return [...missingKeys]
   }
 
   for (const match of source.matchAll(translationCallPattern)) {
     const rawKey = match[1]
     const optionsSource = match[2]
-    const { namespace, key } = resolveNamespaceAndKey(rawKey, optionsSource, defaultNamespace)
+    const { namespace, key } = resolveNamespaceAndKey(rawKey, optionsSource, callNamespace)
 
     if (!namespace) {
       continue
