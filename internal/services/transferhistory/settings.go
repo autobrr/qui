@@ -113,6 +113,13 @@ func (m *Module) foldIfNewDay(today int64, retentionDays int) {
 		return
 	}
 	beforeDay := today - int64(retentionDays)
+	// The changes in memory can hold a day that the fold covers, as for an
+	// instance that is offline. A later write would make that day partial again.
+	for _, inst := range m.instances {
+		if inst.holdsDaysBefore(beforeDay) {
+			_ = m.write(inst)
+		}
+	}
 	// The lock is taken here, so that a query after this reading sees the fold.
 	m.foldMu.Lock()
 	m.folds.Go(func() {

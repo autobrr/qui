@@ -343,3 +343,36 @@ func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 10, 0)}})
 	require.Error(t, module.Shutdown(t.Context()))
 }
+
+// An instance that goes offline keeps its last changes in memory. A fold
+// while it is away must not leave those changes to recreate a folded day.
+func TestAFoldWritesTheChangesInMemoryFirstPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+		require.NoError(t, module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 90}))
+		const away = 2
+		record := func(instanceID int, at time.Time, uploaded int64) {
+			module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at, Torrents: []transferhistory.Torrent{torrent("a", uploaded, 0)}})
+			_, err := module.Status(t.Context())
+			require.NoError(t, err)
+		}
+		record(away, at(0), 0)
+		record(away, at(5*time.Minute), 100)
+		// No write is due yet, and then the instance goes offline.
+		record(away, at(7*time.Minute), 150)
+		// Another instance starts a fold that covers day 10.
+		day101 := day10.Add(91*24*time.Hour + 10*time.Hour)
+		record(instanceID, day101, 0)
+		transferhistory.WaitForFolds(module)
+		record(away, day101.Add(time.Hour), 150)
+
+		rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
+			InstanceID: away, From: day10, To: day11, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker,
+		})
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{row("tracker.example", day10, transferhistory.BucketDay, 150, 0, 0, 0)}, rows)
+	})
+}
