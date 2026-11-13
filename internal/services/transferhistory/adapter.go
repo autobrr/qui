@@ -88,7 +88,9 @@ func (a *Adapter) takePending(instanceID int) {
 	inst := a.instance(instanceID)
 	inst.timer = nil
 	update := inst.pending
-	if update == nil {
+	// While recording is off, the adapter builds no reading.
+	if update == nil || !a.module.recording() {
+		inst.pending = nil
 		a.mu.Unlock()
 		return
 	}
