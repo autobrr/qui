@@ -13,6 +13,8 @@ The Statistics page shows how much you uploaded and downloaded in a period. qui 
 
 qui records the transfer of each torrent from the moment that you upgrade to a version with Statistics. You do not have to turn it on. To stop the recording, see [Statistics settings](#statistics-settings). qui records with no browser open, from the torrent data that it already reads from qBittorrent. It sends no extra requests to qBittorrent.
 
+qui also records the size of your library and the state of each instance. For each day, it stores the torrent count, the total size with each torrent counted in full, and the [Unique size](./dashboard.md#unique-size) of the last reading of the day. A day without a completed Copy groups build has no Unique size. For each hour, it stores the torrent count of each torrent state, the free disk space that qBittorrent reports, and the highest upload and download speed that qui saw.
+
 qui keeps the transfer of a torrent after you delete the torrent. It also keeps the history of an instance after you remove the instance.
 
 The page shows "Recording since" with the date of the first recording of the selected instances.
@@ -87,14 +89,15 @@ This setting tells qui how long to keep the detail of the history. The values ar
 
 The value sets how far back a chart of hours shows one bar for each hour. 400 days covers a full year and one more month. 90 days covers a 30-day period and the 30 days before it, and the history uses less space. With forever, the history grows each day.
 
-The detail is the upload and download of each tracker for each hour, and of each torrent for each day. After the time that you select, qui folds the old detail into larger rows:
+The detail is the upload and download of each tracker for each hour, the upload and download of each torrent for each day, and the state of each instance for each hour. After the time that you select, qui folds the old detail into larger rows:
 
 - The hours of a day become one row for that day.
 - The days of a torrent become one row for each year.
+- qui deletes the state of each instance for each hour: the torrent counts by state, the free disk space, and the highest speeds.
 
 A fold does not change the total of a whole UTC day. A folded day is a UTC day, so its bar starts at midnight UTC, not at midnight in the timezone of your browser. A period that starts or ends inside a folded day counts the whole day. A chart of hours shows one bar for each day in a folded period. qui folds at the first reading of each new UTC day and at the first reading after qui starts. When you select a shorter time, the next reading folds. You cannot get folded detail back.
 
-qui keeps these rows forever: the daily totals of each tracker and category, the yearly rows of each torrent, the record of each torrent, and the events for adds, completions, and deletes.
+qui keeps these rows forever: the daily totals of each tracker and category, the yearly rows of each torrent, the record of each torrent, the events for adds, completions, and deletes, and the library of each day.
 
 ### History size
 

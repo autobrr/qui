@@ -158,25 +158,53 @@ type TransferHistoryGap struct {
 	Seconds int64
 }
 
+// TransferHistoryLibraryDay is the library of an instance on one UTC day.
+// Day counts days since 1970-01-01. UniqueSize is nil for a day without a
+// completed Copy groups build.
+type TransferHistoryLibraryDay struct {
+	Day        int64
+	Torrents   int64
+	TotalSize  int64
+	UniqueSize *int64
+}
+
+// TransferHistoryInstanceHour is the state of an instance in one UTC hour.
+// Hour counts hours since 1970-01-01. States holds the torrent count of each
+// qBittorrent state. The speeds are the highest of the readings of the hour,
+// in bytes per second. A reading holds the highest speed since the reading
+// before it, so up to one minute before the hour can count toward it.
+type TransferHistoryInstanceHour struct {
+	Hour             int64
+	States           map[string]int64
+	FreeDisk         int64
+	MaxUploadSpeed   int64
+	MaxDownloadSpeed int64
+}
+
 // TransferHistoryWrite is one write of one instance. Records holds each
 // record with ID 0 and each record that changed in more than its last
 // counters. Counters holds each record whose last counters changed.
 // TorrentDays, TrackerHours, CategoryDays, and Gaps add to the stored rows.
+// LibraryDays and InstanceHours replace the stored rows of their day or hour,
+// except that a stored Unique size stays when the write has none, and the
+// speeds keep the highest value.
 type TransferHistoryWrite struct {
 	InstanceID      int
 	FirstRecordedAt time.Time
 	LastReadingAt   time.Time
 	// Number is the number of this write of the instance: one more than the
 	// stored writes.
-	Number       int64
-	Records      []*TransferHistoryRecord
-	Counters     []*TransferHistoryRecord
-	TorrentDays  []TransferHistoryTorrentDay
-	TrackerHours []TransferHistoryTotal
-	CategoryDays []TransferHistoryTotal
-	Gaps         []TransferHistoryGap
-	HashChanges  []TransferHistoryHashChange
-	Events       []TransferHistoryEvent
+	Number        int64
+	Records       []*TransferHistoryRecord
+	Counters      []*TransferHistoryRecord
+	TorrentDays   []TransferHistoryTorrentDay
+	TrackerHours  []TransferHistoryTotal
+	CategoryDays  []TransferHistoryTotal
+	Gaps          []TransferHistoryGap
+	HashChanges   []TransferHistoryHashChange
+	Events        []TransferHistoryEvent
+	LibraryDays   []TransferHistoryLibraryDay
+	InstanceHours []TransferHistoryInstanceHour
 }
 
 // TransferHistoryBaseline is the Baseline of the torrents that share a key.
@@ -382,10 +410,71 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 		return nil, fmt.Errorf("write transfer history events: %w", err)
 	}
 
+	if err := writeTransferHistoryLibrary(ctx, tx, w); err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrTransferHistoryCommitUnknown, err)
 	}
 	return ids, nil
+}
+
+func writeTransferHistoryLibrary(ctx context.Context, tx dbinterface.TxQuerier, w *TransferHistoryWrite) error {
+	if err := execTransferHistoryChunks(ctx, tx, w.LibraryDays, 5, `
+		INSERT INTO transfer_history_library_days (instance_id, day, torrents, total_size, unique_size)
+		VALUES %s
+		ON CONFLICT (instance_id, day) DO UPDATE SET
+			torrents = excluded.torrents,
+			total_size = excluded.total_size,
+			unique_size = COALESCE(excluded.unique_size, transfer_history_library_days.unique_size)`,
+		func(d TransferHistoryLibraryDay) []any {
+			return []any{w.InstanceID, d.Day, d.Torrents, d.TotalSize, d.UniqueSize}
+		}); err != nil {
+		return fmt.Errorf("write transfer history library days: %w", err)
+	}
+
+	if err := execTransferHistoryChunks(ctx, tx, w.InstanceHours, 5, `
+		INSERT INTO transfer_history_instance_hours (instance_id, hour, free_disk, max_upload_speed, max_download_speed)
+		VALUES %s
+		ON CONFLICT (instance_id, hour) DO UPDATE SET
+			free_disk = excluded.free_disk,
+			max_upload_speed = CASE WHEN excluded.max_upload_speed > transfer_history_instance_hours.max_upload_speed
+				THEN excluded.max_upload_speed ELSE transfer_history_instance_hours.max_upload_speed END,
+			max_download_speed = CASE WHEN excluded.max_download_speed > transfer_history_instance_hours.max_download_speed
+				THEN excluded.max_download_speed ELSE transfer_history_instance_hours.max_download_speed END`,
+		func(h TransferHistoryInstanceHour) []any {
+			return []any{w.InstanceID, h.Hour, h.FreeDisk, h.MaxUploadSpeed, h.MaxDownloadSpeed}
+		}); err != nil {
+		return fmt.Errorf("write transfer history instance hours: %w", err)
+	}
+
+	// The state counts of an hour are those of its last reading, so they
+	// replace the stored counts of the hour.
+	type stateCount struct {
+		hour     int64
+		state    string
+		torrents int64
+	}
+	var states []stateCount
+	for _, h := range w.InstanceHours {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM transfer_history_state_hours WHERE instance_id = ? AND hour = ?`, w.InstanceID, h.Hour); err != nil {
+			return fmt.Errorf("write transfer history state hours: %w", err)
+		}
+		for state, torrents := range h.States {
+			states = append(states, stateCount{hour: h.Hour, state: state, torrents: torrents})
+		}
+	}
+	if err := execTransferHistoryChunks(ctx, tx, states, 4, `
+		INSERT INTO transfer_history_state_hours (instance_id, hour, state, torrents)
+		VALUES %s`,
+		func(c stateCount) []any {
+			return []any{w.InstanceID, c.hour, c.state, c.torrents}
+		}); err != nil {
+		return fmt.Errorf("write transfer history state hours: %w", err)
+	}
+	return nil
 }
 
 // Writes returns the number of writes that stored an instance, or 0 when the
@@ -719,6 +808,36 @@ func (s *TransferHistoryStore) EventCounts(ctx context.Context, instanceID int, 
 	return counts, nil
 }
 
+// LibraryDays returns the stored library of each UTC day of days [fromDay,
+// toDay), with the oldest day first.
+func (s *TransferHistoryStore) LibraryDays(ctx context.Context, instanceID int, fromDay, toDay int64) ([]TransferHistoryLibraryDay, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT day, torrents, total_size, unique_size
+		FROM transfer_history_library_days
+		WHERE instance_id = ? AND day >= ? AND day < ?
+		ORDER BY day`, instanceID, fromDay, toDay)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history library days: %w", err)
+	}
+	defer rows.Close()
+	var days []TransferHistoryLibraryDay
+	for rows.Next() {
+		var d TransferHistoryLibraryDay
+		var unique sql.NullInt64
+		if err := rows.Scan(&d.Day, &d.Torrents, &d.TotalSize, &unique); err != nil {
+			return nil, fmt.Errorf("scan transfer history library day: %w", err)
+		}
+		if unique.Valid {
+			d.UniqueSize = new(unique.Int64)
+		}
+		days = append(days, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history library days: %w", err)
+	}
+	return days, nil
+}
+
 // transferHistoryDeletes is the WHERE clause of the delete events of seconds
 // [fromSecond, toSecond). causeKinds limits them to those kinds of cause when
 // it is not empty.
@@ -985,9 +1104,13 @@ func (s *TransferHistoryStore) TrackerDayTotals(ctx context.Context, instanceID 
 	return totals, nil
 }
 
-// FoldHours deletes the hourly totals of an instance before beforeDay, a few
-// whole days in each delete. The daily totals hold the same bytes.
+// FoldHours deletes the hourly totals and the hourly state of an instance
+// before beforeDay, a few whole days in each delete. The daily totals hold the
+// same bytes. No daily row holds the state.
 func (s *TransferHistoryStore) FoldHours(ctx context.Context, instanceID int, beforeDay int64) error {
+	if err := s.deleteInstanceHours(ctx, instanceID, beforeDay); err != nil {
+		return err
+	}
 	for {
 		day, ok, err := s.HourlyDetailStart(ctx, instanceID)
 		if err != nil {
@@ -1002,6 +1125,42 @@ func (s *TransferHistoryStore) FoldHours(ctx context.Context, instanceID int, be
 			return fmt.Errorf("fold transfer history hours: %w", err)
 		}
 	}
+}
+
+// deleteInstanceHours deletes the state of an instance in the hours before
+// beforeDay, a few whole days in each transaction.
+func (s *TransferHistoryStore) deleteInstanceHours(ctx context.Context, instanceID int, beforeDay int64) error {
+	for {
+		var first sql.NullInt64
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT MIN(hour) FROM transfer_history_instance_hours WHERE instance_id = ?`, instanceID).Scan(&first); err != nil {
+			return fmt.Errorf("read the first transfer history instance hour: %w", err)
+		}
+		if !first.Valid || first.Int64 >= beforeDay*24 {
+			return nil
+		}
+		end := min(first.Int64/24+foldHourDays, beforeDay) * 24
+		if err := s.deleteInstanceHoursBefore(ctx, instanceID, end); err != nil {
+			return err
+		}
+	}
+}
+
+func (s *TransferHistoryStore) deleteInstanceHoursBefore(ctx context.Context, instanceID int, hour int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transfer history instance hour delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, table := range []string{"transfer_history_instance_hours", "transfer_history_state_hours"} {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE instance_id = ? AND hour < ?`, instanceID, hour); err != nil {
+			return fmt.Errorf("delete transfer history instance hours: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transfer history instance hour delete: %w", err)
+	}
+	return nil
 }
 
 // FoldTorrentDays moves the daily bytes of each torrent before beforeDay into
