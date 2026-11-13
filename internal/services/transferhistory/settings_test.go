@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -349,6 +350,7 @@ func (u unreadableSettings) QueryRowContext(ctx context.Context, query string, a
 	return u.DB.QueryRowContext(ctx, query, args...)
 }
 
+// regression: #4085
 func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	module := transferhistory.New(unreadableSettings{db}, models.NewTrackerCustomizationStore(db))
@@ -358,33 +360,45 @@ func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 
 // An instance that goes offline keeps its last changes in memory. A fold
 // while it is away must not leave those changes to recreate a folded day.
+// regression: #4085
 func TestAFoldWritesTheChangesInMemoryFirstPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
-		db := newDB(t)
-		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
-		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
-		require.NoError(t, module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 90}))
-		const away = 2
-		record := func(instanceID int, at time.Time, uploaded int64) {
-			module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at, Torrents: []transferhistory.Torrent{torrent("a", uploaded, 0)}})
-			_, err := module.Status(t.Context())
-			require.NoError(t, err)
-		}
-		record(away, at(0), 0)
-		record(away, at(5*time.Minute), 100)
-		// No write is due yet, and then the instance goes offline.
-		record(away, at(7*time.Minute), 150)
-		// Another instance starts a fold that covers day 10.
-		day101 := day10.Add(91*24*time.Hour + 10*time.Hour)
-		record(instanceID, day101, 0)
-		transferhistory.WaitForFolds(module)
-		record(away, day101.Add(time.Hour), 150)
-
-		rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
-			InstanceID: away, From: day10, To: day11, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker,
+		t.Run("the write succeeds", func(t *testing.T) {
+			db := newDB(t)
+			foldWhileAway(t, db, db)
 		})
-		require.NoError(t, err)
-		require.Equal(t, []transferhistory.TransferRow{row("tracker.example", day10, transferhistory.BucketDay, 150, 0, 0, 0)}, rows)
+		// The fourth write is the one before the fold. The next reading folds again.
+		t.Run("the write before the fold fails", func(t *testing.T) {
+			db := newDB(t)
+			foldWhileAway(t, &failedCommit{DB: db, fail: 4}, db)
+		})
 	})
+}
+
+func foldWhileAway(t *testing.T, q dbinterface.Querier, db *database.DB) {
+	module := transferhistory.New(q, models.NewTrackerCustomizationStore(db))
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+	require.NoError(t, module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 90}))
+	const away = 2
+	record := func(instanceID int, at time.Time, uploaded int64) {
+		module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at, Torrents: []transferhistory.Torrent{torrent("a", uploaded, 0)}})
+		_, err := module.Status(t.Context())
+		require.NoError(t, err)
+		transferhistory.WaitForFolds(module)
+	}
+	record(away, at(0), 0)
+	record(away, at(5*time.Minute), 100)
+	// No write is due yet, and then the instance goes offline.
+	record(away, at(7*time.Minute), 150)
+	// Another instance starts a fold that covers day 10.
+	day101 := day10.Add(91*24*time.Hour + 10*time.Hour)
+	record(instanceID, day101, 0)
+	record(away, day101.Add(time.Hour), 150)
+
+	rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
+		InstanceID: away, From: day10, To: day11, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []transferhistory.TransferRow{row("tracker.example", day10, transferhistory.BucketDay, 150, 0, 0, 0)}, rows)
 }

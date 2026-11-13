@@ -105,21 +105,19 @@ func (m *Module) pauseInstances() {
 // transfer query waits until the fold of the hours ends, because it reads the
 // hours. The fold of the torrent days moves each byte in one transaction.
 func (m *Module) foldIfNewDay(today int64, retentionDays int) {
-	if today <= m.foldedDay {
-		return
-	}
-	m.foldedDay = today
-	if retentionDays == 0 {
+	if today <= m.foldedDay || retentionDays == 0 {
 		return
 	}
 	beforeDay := today - int64(retentionDays)
 	// The changes in memory can hold a day that the fold covers, as for an
-	// instance that is offline. A later write would make that day partial again.
+	// instance that is offline. A later write would make that day partial
+	// again, so a failed write stops the fold until the next reading.
 	for _, inst := range m.instances {
-		if inst.holdsDaysBefore(beforeDay) {
-			_ = m.write(inst)
+		if inst.holdsDaysBefore(beforeDay) && m.write(inst) != nil {
+			return
 		}
 	}
+	m.foldedDay = today
 	// The lock is taken here, so that a query after this reading sees the fold.
 	m.foldMu.Lock()
 	m.folds.Go(func() {
