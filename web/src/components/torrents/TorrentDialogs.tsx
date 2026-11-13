@@ -1208,7 +1208,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   useSubcategories = false,
 }: SetCategoryDialogProps) {
   const { t } = useTranslation("torrents")
-  const [categoryInput, setCategoryInput] = useState("")
+  const [choice, setChoice] = useState<{ source: "list" | "typed"; category: string }>({ source: "list", category: "" })
   const [searchQuery, setSearchQuery] = useState("")
   const [dialogCategories, setDialogCategories] = useState<Record<string, Category>>({})
   const [dialogUseSubcategories, setDialogUseSubcategories] = useState(useSubcategories)
@@ -1222,7 +1222,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   // finished loading, hydrate exactly once when the first non-empty list arrives.
   useEffect(() => {
     if (open && !wasOpen.current) {
-      setCategoryInput(initialCategory)
+      setChoice({ source: "list", category: initialCategory })
       setSearchQuery("")
       setDialogCategories(availableCategories || {})
       setDialogUseSubcategories(useSubcategories)
@@ -1237,13 +1237,13 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   }, [availableCategories, availableCategoryCount, dialogCategoryCount, initialCategory, open, useSubcategories])
 
   const handleConfirm = useCallback(() => {
-    onConfirm(categoryInput)
-    setCategoryInput("")
+    onConfirm(choice.category)
+    setChoice({ source: "list", category: "" })
     setSearchQuery("")
-  }, [categoryInput, onConfirm])
+  }, [choice.category, onConfirm])
 
   const handleCancel = useCallback(() => {
-    setCategoryInput("")
+    setChoice({ source: "list", category: "" })
     setSearchQuery("")
     onOpenChange(false)
   }, [onOpenChange])
@@ -1357,9 +1357,9 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                   {/* No category option */}
                   <button
                     type="button"
-                    onClick={() => setCategoryInput("")}
+                    onClick={() => setChoice({ source: "list", category: "" })}
                     className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                      categoryInput === "" ? "bg-accent" : ""
+                      choice.source === "list" && choice.category === "" ? "bg-accent" : ""
                     }`}
                   >
                     <span className="text-sm text-muted-foreground italic">{t("dialogs.setCategory.noCategory")}</span>
@@ -1370,9 +1370,9 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                       <button
                         key={category.name}
                         type="button"
-                        onClick={() => setCategoryInput(category.name)}
+                        onClick={() => setChoice({ source: "list", category: category.name })}
                         className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                          categoryInput === category.name ? "bg-accent" : ""
+                          choice.source === "list" && choice.category === category.name ? "bg-accent" : ""
                         }`}
                         title={category.name}
                       >
@@ -1402,8 +1402,8 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
             <Input
               id="newCategory"
               placeholder={t("dialogs.setCategory.createPlaceholder")}
-              value={categoryInput && !categoryList.includes(categoryInput) ? categoryInput : ""}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setCategoryInput(e.target.value)}
+              value={choice.source === "typed" || !Object.hasOwn(dialogCategories, choice.category) ? choice.category : ""}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setChoice({ source: e.target.value ? "typed" : "list", category: e.target.value })}
               onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === "Enter") {
                   handleConfirm()
