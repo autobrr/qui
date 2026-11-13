@@ -2106,6 +2106,6 @@
   "deleteHistory": {
     "label": "Also delete its transfer history",
     "description": "Without this, qui keeps the history under the name of the instance.",
-    "failed": "The instance is deleted, but its history is not. Delete it in Settings > Statistics."
+    "failed": "The instance is deleted, but qui could not delete all of its history. Look in Settings > Statistics, and delete the rest there."
   }
 }

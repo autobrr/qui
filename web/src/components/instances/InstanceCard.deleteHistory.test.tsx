@@ -22,10 +22,12 @@ const instance = { id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActi
 
 let requests: string[]
 let historyStatus: number
+let historyAnswer: Promise<void>
 
 beforeEach(() => {
   requests = []
   historyStatus = 204
+  historyAnswer = Promise.resolve()
   server.use(
     http.get("*/api/instances", () => HttpResponse.json([instance])),
     http.get("*/api/cross-seed/routes", () => HttpResponse.json([])),
@@ -33,8 +35,9 @@ beforeEach(() => {
       requests.push("DELETE /api/instances/1")
       return HttpResponse.json({ message: "Instance deleted successfully" })
     }),
-    http.delete("*/api/transfer-history", ({ request }) => {
+    http.delete("*/api/transfer-history", async ({ request }) => {
       requests.push(`DELETE /api/transfer-history${new URL(request.url).search}`)
+      await historyAnswer
       return historyStatus === 204 ? new HttpResponse(null, { status: 204 }) : HttpResponse.json({ error: "Failed to delete transfer history" }, { status: historyStatus })
     })
   )
@@ -88,9 +91,26 @@ describe("the instance removal dialog", () => {
     await removeInstance(true)
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
-      "The instance is deleted, but its history is not. Delete it in Settings > Statistics.",
+      "The instance is deleted, but qui could not delete all of its history. Look in Settings > Statistics, and delete the rest there.",
       expect.anything()
     ))
     expect(toast.success).toHaveBeenCalled()
+  })
+
+  it("says that the history stays when the card is gone before the history delete fails", async () => {
+    historyStatus = 500
+    let answer = () => {}
+    historyAnswer = new Promise(resolve => { answer = resolve })
+    await removeInstance(true)
+    await waitFor(() => expect(requests).toEqual(["DELETE /api/instances/1", "DELETE /api/transfer-history?instanceId=1"]))
+
+    // A refetch of the instance list removes the card of the removed instance.
+    cleanup()
+    answer()
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      "The instance is deleted, but qui could not delete all of its history. Look in Settings > Statistics, and delete the rest there.",
+      expect.anything()
+    ))
   })
 })

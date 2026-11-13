@@ -2106,6 +2106,6 @@
   "deleteHistory": {
     "label": "Supprimer aussi son historique de transfert",
     "description": "Sans cette option, qui garde l'historique sous le nom de l'instance.",
-    "failed": "L'instance est supprimée, mais pas son historique. Supprimez-le dans Paramètres > Statistiques."
+    "failed": "L'instance est supprimée, mais qui n'a pas pu supprimer tout son historique. Consultez Paramètres > Statistiques et supprimez le reste."
   }
 }

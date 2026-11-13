@@ -123,7 +123,7 @@ On SQLite, the database file keeps its size after a delete. SQLite uses the free
 
 An API key needs **Settings: write** to delete history. A key with an instance limit cannot delete history.
 
-The tick box in the dialog that removes an instance sends a second request after the removal. If that request fails, qui removes the instance and keeps its history. You can then delete the history here.
+The tick box in the dialog that removes an instance sends a second request after the removal. If that request fails, qui removes the instance, and a part or all of its history can stay. You can delete the rest here.
 
 ## Why the numbers differ from Server Statistics
 

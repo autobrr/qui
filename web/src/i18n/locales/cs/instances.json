@@ -2142,6 +2142,6 @@
   "deleteHistory": {
     "label": "Smazat i historii přenosů",
     "description": "Bez této volby qui ponechá historii pod názvem instance.",
-    "failed": "Instance je smazaná, ale její historie ne. Smažte ji v Nastavení > Statistiky."
+    "failed": "Instance je smazaná, ale qui nedokázal smazat celou její historii. Podívejte se do Nastavení > Statistiky a smažte zbytek tam."
   }
 }

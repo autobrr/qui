@@ -196,15 +196,10 @@ export function InstancePreferencesDialog({
   const handleDelete = () => {
     if (!currentInstance) return
     deleteInstance({ id: currentInstance.id, name: currentInstance.name, deleteHistory }, {
-      onSuccess: ({ historyError }) => {
+      onSuccess: () => {
         toast.success(t("card.toast.instanceDeletedTitle"), {
           description: t("card.toast.instanceDeletedDescription", { name: currentInstance.name }),
         })
-        if (historyError) {
-          toast.error(t("deleteHistory.failed"), {
-            description: historyError instanceof Error ? formatErrorMessage(historyError.message) : undefined,
-          })
-        }
         setShowDeleteDialog(false)
         handleDeleted()
       },

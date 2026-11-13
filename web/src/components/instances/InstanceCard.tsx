@@ -142,15 +142,10 @@ export function InstanceCard({
 
   const handleDelete = () => {
     deleteInstance({ id: instance.id, name: instance.name, deleteHistory }, {
-      onSuccess: ({ historyError }) => {
+      onSuccess: () => {
         toast.success(t("card.toast.instanceDeletedTitle"), {
           description: t("card.toast.instanceDeletedDescription", { name: instance.name }),
         })
-        if (historyError) {
-          toast.error(t("deleteHistory.failed"), {
-            description: historyError instanceof Error ? formatErrorMessage(historyError.message) : undefined,
-          })
-        }
         setShowDeleteDialog(false)
       },
       onError: (error) => {

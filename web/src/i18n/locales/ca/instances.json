@@ -2106,6 +2106,6 @@
   "deleteHistory": {
     "label": "Elimina també l'historial de transferències",
     "description": "Sense aquesta opció, qui conserva l'historial amb el nom de la instància.",
-    "failed": "La instància s'ha eliminat, però el seu historial no. Elimina'l a Configuració > Estadístiques."
+    "failed": "La instància s'ha eliminat, però qui no ha pogut eliminar tot el seu historial. Mira a Configuració > Estadístiques i elimina-hi la resta."
   }
 }

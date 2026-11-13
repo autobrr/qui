@@ -2106,6 +2106,6 @@
   "deleteHistory": {
     "label": "Auch den Übertragungsverlauf löschen",
     "description": "Ohne diese Option behält qui den Verlauf unter dem Namen der Instanz.",
-    "failed": "Die Instanz ist gelöscht, ihr Verlauf aber nicht. Lösche ihn unter Einstellungen > Statistik."
+    "failed": "Die Instanz ist gelöscht, aber qui konnte nicht ihren ganzen Verlauf löschen. Sieh unter Einstellungen > Statistik nach und lösche den Rest dort."
   }
 }

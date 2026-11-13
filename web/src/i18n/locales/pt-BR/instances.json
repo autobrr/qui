@@ -2106,6 +2106,6 @@
   "deleteHistory": {
     "label": "Excluir também o histórico de transferências",
     "description": "Sem isso, o qui mantém o histórico com o nome da instância.",
-    "failed": "A instância foi excluída, mas o histórico não. Exclua-o em Configurações > Estatísticas."
+    "failed": "A instância foi excluída, mas o qui não conseguiu excluir todo o histórico. Veja em Configurações > Estatísticas e exclua o restante por lá."
   }
 }

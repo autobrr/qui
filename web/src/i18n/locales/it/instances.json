@@ -2106,6 +2106,6 @@
   "deleteHistory": {
     "label": "Elimina anche la cronologia dei trasferimenti",
     "description": "Senza questa opzione, qui mantiene la cronologia con il nome dell'istanza.",
-    "failed": "L'istanza è stata eliminata, ma la sua cronologia no. Eliminala in Impostazioni > Statistiche."
+    "failed": "L'istanza è stata eliminata, ma qui non è riuscito a eliminare tutta la sua cronologia. Controlla in Impostazioni > Statistiche ed elimina il resto da lì."
   }
 }
