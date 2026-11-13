@@ -338,22 +338,14 @@ func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawN
 		titles = appendTitleAndAlts(titles, m.parseReleaseName(rawTitle))
 	}
 
-	// rls ends the title at a slash, so an indexer listing like
-	// "Fate/strange Fake S01 ..." parses as "Fate" while the dot-separated source
-	// name parses as "Fate strange Fake". Read the slash as a separator too and
-	// keep both spellings.
-	//
-	// Keep only the reading that extends the truncated title: dropping the slash
-	// also re-splits artist from title ("AC/DC - Back In Black" -> title "Back In
-	// Black"), which would reach a different artist's album.
-	//
-	// TODO: drop this block at the next rls bump if
-	// TestReleasesMatch_SlashInTitleReadsAsSeparator still passes without it. rls
-	// merely keeping "/" inside Title is not enough: NormalizeForMatching passes
-	// "/" through, so "fate/strange fake" still will not equal "fate strange fake".
-	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
+	// rls keeps a slash in the title ("Fate/strange Fake") and ends the title at a
+	// backslash ("Fate"), while the dot-separated name parses as "Fate strange
+	// Fake". NormalizeForMatching keeps "/", so also read the slash as a
+	// separator. Keep only the reading that extends the title: dropping the slash
+	// also re-splits artist from title ("AC/DC - Back In Black").
+	if unslashed := slashAsSeparator.Replace(rawName); unslashed != rawName {
 		parsed := m.parseReleaseName(unslashed)
-		if strings.HasPrefix(parsed.Title, releaseTitle(release)) {
+		if strings.HasPrefix(parsed.Title, slashAsSeparator.Replace(releaseTitle(release))) {
 			titles = appendTitleAndAlts(titles, parsed)
 		}
 	}
@@ -370,6 +362,20 @@ func normalizedTitleSetContainsAny(titles, extraTitles []string) bool {
 		}
 	}
 	return false
+}
+
+var slashAsSeparator = strings.NewReplacer("/", " ", `\`, " ")
+
+// sameServiceCollection folds the two codes rls reads for one streaming
+// service: Apple TV+ was renamed Apple TV, and Max was renamed HBO Max.
+func sameServiceCollection(collection string) string {
+	switch collection {
+	case "atv":
+		return "atvp"
+	case "max":
+		return "hmax"
+	}
+	return collection
 }
 
 func releaseTitle(release *rls.Release) string {
@@ -647,8 +653,8 @@ func (m matcher) compareFormatAndCodec(comparison *releaseComparison, source, ca
 	// the service tag from otherwise identical names, so a tag on only one
 	// side is not evidence of a different master; the per-file size comparison
 	// downstream catches real mismatches before anything is injected.
-	sourceCollection := normalizer.Normalize(source.Collection)
-	candidateCollection := normalizer.Normalize(candidate.Collection)
+	sourceCollection := sameServiceCollection(normalizer.Normalize(source.Collection))
+	candidateCollection := sameServiceCollection(normalizer.Normalize(candidate.Collection))
 	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
 		comparison.add(differenceCollection)
 	}
