@@ -221,12 +221,23 @@ func (m *Module) run() {
 		m.folds.Wait()
 	}()
 	for range m.wake {
-		ready := m.settingsForReadings()
+		settingsErr := m.settingsForReadings()
 
 		m.mu.Lock()
+		ready := m.settingsLoaded
+		if !ready && len(m.queue) > 0 && settingsErr == nil {
+			// The readings came after the check: the next wake reads the
+			// settings, and only then do the queries before it get their answer.
+			m.mu.Unlock()
+			m.signal()
+			continue
+		}
 		var readings []Reading
+		var dropped int
 		settings := m.settings
-		if ready {
+		if !ready {
+			dropped = len(m.queue)
+		} else {
 			readings, m.queue = m.queue, nil
 			// The settings can say that recording is off since the readings came.
 			if !m.settings.Recording {
@@ -251,9 +262,12 @@ func (m *Module) run() {
 			m.foldIfNewDay(dayOf(r.Time), settings.DetailRetentionDays)
 		}
 		if stopping {
-			errs := make([]error, 0, len(m.instances))
+			errs := make([]error, 0, len(m.instances)+1)
 			for _, inst := range m.instances {
 				errs = append(errs, m.write(inst))
+			}
+			if dropped > 0 {
+				errs = append(errs, fmt.Errorf("drop %d readings that wait for the settings: %w", dropped, settingsErr))
 			}
 			m.shutdownErr = errors.Join(errs...)
 		}
@@ -266,23 +280,23 @@ func (m *Module) run() {
 	}
 }
 
-// settingsForReadings reads the settings when readings wait, and reports
-// whether the worker can take them. Readings wait until the module knows
-// whether recording is on.
-func (m *Module) settingsForReadings() bool {
+// settingsForReadings reads the settings when readings wait, and returns the
+// error of that read. Readings wait until the module knows whether recording
+// is on.
+func (m *Module) settingsForReadings() error {
 	m.mu.Lock()
 	waiting, known := len(m.queue) > 0, m.settingsLoaded
 	m.mu.Unlock()
 	if !waiting || known {
-		return known
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 	if _, err := m.currentSettings(ctx); err != nil {
 		log.Warn().Err(err).Msg("transfer history: failed to read the settings; the next reading tries again")
-		return false
+		return err
 	}
-	return true
+	return nil
 }
 
 func (m *Module) process(r Reading) {

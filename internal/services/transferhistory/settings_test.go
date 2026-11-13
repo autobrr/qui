@@ -5,6 +5,8 @@ package transferhistory_test
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/transferhistory"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func settings(recording bool, retentionDays int) step {
@@ -320,4 +323,23 @@ func TestSetSettingsRefusesAnotherRetention(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	err := module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 30})
 	require.ErrorIs(t, err, transferhistory.ErrInvalidSettings)
+}
+
+// unreadableSettings fails each read of the Statistics settings.
+type unreadableSettings struct{ *database.DB }
+
+func (u unreadableSettings) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if strings.Contains(query, "transfer_history_settings") {
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+		return u.DB.QueryRowContext(ctx, query, args...)
+	}
+	return u.DB.QueryRowContext(ctx, query, args...)
+}
+
+func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	module := transferhistory.New(unreadableSettings{db}, models.NewTrackerCustomizationStore(db))
+	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 10, 0)}})
+	require.Error(t, module.Shutdown(t.Context()))
 }
