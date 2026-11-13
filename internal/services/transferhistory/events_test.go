@@ -156,6 +156,17 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "delete notes that arrive out of the order of their time name the cause by their time",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
+				note(at(7*time.Minute), byProxy, "b"),
+				note(at(4*time.Minute), byUser, "b"),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1},
+					deleted("b", at(5*time.Minute), 0, 0, byUser)),
+			},
+		},
+		{
 			name: "a delete note names a hash in upper or lower case",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),

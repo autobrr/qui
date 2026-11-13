@@ -75,6 +75,8 @@ func (m *Module) keep(n DeleteNote) {
 	for _, hash := range n.Hashes {
 		hash = strings.ToLower(hash)
 		notes[hash] = append(notes[hash], deleteNote{cause: n.Cause, time: n.Time})
+		// Two callers can give their notes out of the order of their time.
+		slices.SortStableFunc(notes[hash], func(x, y deleteNote) int { return x.time.Compare(y.time) })
 	}
 }
 
