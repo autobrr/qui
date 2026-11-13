@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -814,84 +816,105 @@ func TestAWriteThatPassesItsTimeLimitGetsMoreTimePostgresIntegration(t *testing.
 	})
 }
 
+type localDay struct {
+	start    time.Time
+	uploaded int64
+}
+
+// recordDays records readings of the torrent a, which qui first sees at the
+// first reading, and returns the days of the queries.
+func recordDays(t *testing.T, db *database.DB, uploads []transferhistory.Reading, queries []transferhistory.TransferQuery) [][]localDay {
+	t.Helper()
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+	for _, r := range uploads {
+		r.InstanceID = instanceID
+		module.Record(r)
+		_, err := module.Status(t.Context())
+		require.NoError(t, err)
+	}
+	answers := make([][]localDay, 0, len(queries))
+	for _, query := range queries {
+		query.InstanceID, query.Bucket, query.GroupBy = instanceID, transferhistory.BucketDay, transferhistory.GroupByTracker
+		rows, err := module.Transfer(t.Context(), query)
+		require.NoError(t, err)
+		days := make([]localDay, 0, len(rows))
+		for _, row := range rows {
+			require.Equal(t, transferhistory.BucketDay, row.Width)
+			days = append(days, localDay{row.Start, row.Uploaded})
+		}
+		answers = append(answers, days)
+	}
+	return answers
+}
+
+// uploads returns a reading of the torrent a at each time, with the upload
+// counter at each value.
+func uploads(first time.Time, readings map[time.Time]int64) []transferhistory.Reading {
+	a := func(uploaded int64) transferhistory.Torrent { return addedAt(torrent("a", uploaded, 0), first) }
+	times := slices.SortedFunc(maps.Keys(readings), time.Time.Compare)
+	out := make([]transferhistory.Reading, 0, 1+len(times))
+	out = append(out, transferhistory.Reading{Time: first, Torrents: []transferhistory.Torrent{a(0)}})
+	for _, at := range times {
+		out = append(out, transferhistory.Reading{Time: at, Torrents: []transferhistory.Torrent{a(readings[at])}})
+	}
+	return out
+}
+
 func TestDayBucketsStartAtTheMidnightsOfTheTimeZonePostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	newYork, err := time.LoadLocation("America/New_York")
 	require.NoError(t, err)
-	first := time.Date(2026, 10, 31, 12, 0, 30, 0, time.UTC)
-	a := func(uploaded int64) transferhistory.Torrent { return addedAt(torrent("a", uploaded, 0), first) }
 	// Daylight saving time in New York ends on 2026-11-01 at 06:00 UTC.
-	readings := []transferhistory.Reading{
-		{Time: first, Torrents: []transferhistory.Torrent{a(0)}},
-		{Time: time.Date(2026, 11, 1, 3, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(100)}},  // Oct 31, 23:30 EDT
-		{Time: time.Date(2026, 11, 1, 4, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(300)}},  // Nov 1, 00:30 EDT
-		{Time: time.Date(2026, 11, 2, 4, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(700)}},  // Nov 1, 23:30 EST
-		{Time: time.Date(2026, 11, 2, 5, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(1500)}}, // Nov 2, 00:30 EST
-	}
+	readings := uploads(time.Date(2026, 10, 31, 12, 0, 30, 0, time.UTC), map[time.Time]int64{
+		time.Date(2026, 11, 1, 3, 30, 30, 0, time.UTC): 100,  // Oct 31, 23:30 EDT
+		time.Date(2026, 11, 1, 4, 30, 30, 0, time.UTC): 300,  // Nov 1, 00:30 EDT
+		time.Date(2026, 11, 2, 4, 30, 30, 0, time.UTC): 700,  // Nov 1, 23:30 EST
+		time.Date(2026, 11, 2, 5, 30, 30, 0, time.UTC): 1500, // Nov 2, 00:30 EST
+	})
 	to := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
-
-	type day struct {
-		start    time.Time
-		uploaded int64
-	}
-	cases := []struct {
-		name     string
-		from     time.Time
-		location *time.Location
-		want     []day
-	}{
-		{
-			name: "without a time zone, the days are UTC days",
-			from: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC),
-			want: []day{
-				{time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), 300},
-				{time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), 1200},
-			},
-		},
-		{
-			name:     "a day of New York holds its hours on both sides of the change to winter time",
-			from:     time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC),
-			location: newYork,
-			want: []day{
-				{time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC), 100},
-				{time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC), 600},
-				{time.Date(2026, 11, 2, 5, 0, 0, 0, time.UTC), 800},
-			},
-		},
-		{
-			name:     "a period with no start has the same days",
-			location: newYork,
-			want: []day{
-				{time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC), 100},
-				{time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC), 600},
-				{time.Date(2026, 11, 2, 5, 0, 0, 0, time.UTC), 800},
-			},
-		},
+	newYorkDays := []localDay{
+		{time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC), 100},
+		{time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC), 600},
+		{time.Date(2026, 11, 2, 5, 0, 0, 0, time.UTC), 800},
 	}
 
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
-		db := newDB(t)
-		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
-		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
-		for _, r := range readings {
-			r.InstanceID = instanceID
-			module.Record(r)
-			_, err := module.Status(t.Context())
-			require.NoError(t, err)
-		}
+		got := recordDays(t, newDB(t), readings, []transferhistory.TransferQuery{
+			{From: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC), To: to},
+			{From: time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC), To: to, Location: newYork},
+			{To: to, Location: newYork},
+		})
+		require.Equal(t, [][]localDay{
+			{
+				{time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), 300},
+				{time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), 1200},
+			},
+			newYorkDays,
+			newYorkDays,
+		}, got, "UTC days, New York days, and New York days of a period with no start")
+	})
+}
 
-		for _, tc := range cases {
-			rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
-				InstanceID: instanceID, From: tc.from, To: to, Bucket: transferhistory.BucketDay, GroupBy: transferhistory.GroupByTracker, Location: tc.location,
-			})
-			require.NoError(t, err, tc.name)
-			got := make([]day, 0, len(rows))
-			for _, row := range rows {
-				require.Equal(t, transferhistory.BucketDay, row.Width, tc.name)
-				got = append(got, day{row.Start, row.Uploaded})
-			}
-			require.Equal(t, tc.want, got, tc.name)
-		}
+func TestADayWithoutAMidnightStartsAtTheChangeToSummerTimePostgresIntegration(t *testing.T) {
+	t.Parallel()
+
+	santiago, err := time.LoadLocation("America/Santiago")
+	require.NoError(t, err)
+	// Summer time in Santiago starts on 2026-09-06 at 04:00 UTC, so that day has no midnight.
+	readings := uploads(time.Date(2026, 9, 5, 12, 0, 30, 0, time.UTC), map[time.Time]int64{
+		time.Date(2026, 9, 6, 3, 30, 30, 0, time.UTC): 100, // Sep 5, 23:30 -04
+		time.Date(2026, 9, 6, 4, 30, 30, 0, time.UTC): 300, // Sep 6, 01:30 -03
+	})
+
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		got := recordDays(t, newDB(t), readings, []transferhistory.TransferQuery{
+			{From: time.Date(2026, 9, 5, 4, 0, 0, 0, time.UTC), To: time.Date(2026, 9, 7, 3, 0, 0, 0, time.UTC), Location: santiago},
+		})
+		require.Equal(t, [][]localDay{{
+			{time.Date(2026, 9, 5, 4, 0, 0, 0, time.UTC), 100},
+			{time.Date(2026, 9, 6, 4, 0, 0, 0, time.UTC), 200},
+		}}, got)
 	})
 }

@@ -220,8 +220,7 @@ func (a *answer) startOf(width Bucket, bucket int64) time.Time {
 	case width == BucketHour:
 		return time.Unix(bucket*3600, 0).UTC()
 	case width == BucketDay:
-		year, month, day := time.Unix(bucket*86400, 0).UTC().Date()
-		return time.Date(year, month, day, 0, 0, 0, 0, a.dayLocation()).UTC()
+		return startOfLocalDay(time.Unix(bucket*86400, 0).UTC(), a.dayLocation())
 	case a.query.From.IsZero():
 		return time.Time{}
 	case a.query.GroupBy == GroupByCategory:
@@ -231,7 +230,8 @@ func (a *answer) startOf(width Bucket, bucket int64) time.Time {
 	}
 }
 
-// dayLocation returns the time zone of the day buckets of the answer.
+// dayLocation returns the time zone of the day buckets of the answer. The
+// days of categories are always UTC days, because qui stores them so.
 func (a *answer) dayLocation() *time.Location {
 	if a.query.Location == nil || a.query.GroupBy == GroupByCategory {
 		return time.UTC
@@ -239,8 +239,8 @@ func (a *answer) dayLocation() *time.Location {
 	return a.query.Location
 }
 
-// trackerBuckets returns the buckets of the hours [from, to) of a query by
-// Tracker group.
+// trackerBuckets returns how the store groups the hours [from, to) of a query
+// by Tracker group: by local day of the query zone for a day bucket.
 func (a *answer) trackerBuckets(ctx context.Context, store *models.TransferHistoryStore, from, to int64) (models.TransferHistoryBuckets, error) {
 	if a.query.Bucket != BucketDay {
 		return models.TransferHistoryBuckets{Width: map[Bucket]int64{BucketHour: 1, BucketTotal: 0}[a.query.Bucket]}, nil
@@ -260,6 +260,18 @@ func (a *answer) trackerBuckets(ctx context.Context, store *models.TransferHisto
 		}
 	}
 	return models.TransferHistoryBuckets{Offsets: zoneOffsets(a.dayLocation(), from, to)}, nil
+}
+
+// startOfLocalDay returns the first instant in loc of the date of day. Where
+// summer time starts at midnight, the day starts at the change, not at a
+// midnight that does not exist.
+func startOfLocalDay(day time.Time, loc *time.Location) time.Time {
+	year, month, date := day.Date()
+	start := time.Date(year, month, date, 0, 0, 0, 0, loc)
+	if start.Day() != date {
+		_, start = start.ZoneBounds()
+	}
+	return start.UTC()
 }
 
 // zoneOffsets returns the offsets from UTC of loc in the hours [fromHour,

@@ -63,6 +63,18 @@ describe("buildBars", () => {
     }
   })
 
+  it("puts a day row on its own day when the day has no midnight", () => {
+    process.env.TZ = "America/Santiago"
+    try {
+      const row: TransferHistoryRow = { group: "a.test", start: "2026-09-06T03:00:00Z", width: "day", gapSeconds: 0, uploaded: 200, downloaded: 0, statisticsCrossSeedUploaded: 0 }
+      const bars = buildBars([[row]], { from: new Date(2026, 8, 5), to: new Date(2026, 8, 7) }, "day")
+
+      expect(bars.map(bar => [bar.start, bar.bytes.get("a.test")?.uploaded])).toEqual([[new Date(2026, 8, 5).getTime(), undefined], [new Date(2026, 8, 6).getTime(), 200]])
+    } finally {
+      process.env.TZ = "America/New_York"
+    }
+  })
+
   it("draws a folded day as one day bar in an hourly chart", () => {
     const rows: TransferHistoryRow[] = [
       { group: "a.test", start: "2026-01-10T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 500, downloaded: 0, statisticsCrossSeedUploaded: 0 },
@@ -91,6 +103,17 @@ describe("previousPeriod", () => {
     const period = presetPeriod("24h", new Date("2026-01-10T14:01:00Z"))
 
     expect(previousPeriod(period)).toEqual({ from: new Date("2026-01-08T16:00:00Z"), to: new Date("2026-01-09T15:00:00Z"), unit: "hour" })
+  })
+
+  it("ends at a whole hour when the period starts inside an hour", () => {
+    process.env.TZ = "Asia/Kolkata"
+    try {
+      const period = presetPeriod("30d", new Date("2026-01-10T14:01:00Z"))
+
+      expect(previousPeriod(period)?.to).toEqual(new Date("2025-12-11T18:00:00Z"))
+    } finally {
+      process.env.TZ = "America/New_York"
+    }
   })
 })
 

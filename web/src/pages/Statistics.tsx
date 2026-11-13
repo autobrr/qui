@@ -32,7 +32,8 @@ import { Loader2 } from "lucide-react"
 import { useCallback, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
-const BROWSER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+// A browser that cannot find its zone reports Etc/Unknown. The days are then UTC days.
+const BROWSER_TIME_ZONE = ((zone: string) => zone === "Etc/Unknown" ? undefined : zone)(Intl.DateTimeFormat().resolvedOptions().timeZone)
 
 // Names that the backend gives to the Tracker groups without a tracker domain.
 const PUBLIC_GROUP = "Public"
@@ -97,7 +98,7 @@ export function Statistics() {
   const ready = statusQuery.isSuccess
   const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
   const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
-  const compared = useInstanceRows(selected, comparable ? { from: period.from, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
+  const compared = useInstanceRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
   const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
 
   const since = useMemo(() => recordingSince(selected), [selected])

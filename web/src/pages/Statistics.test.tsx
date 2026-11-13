@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
   }
   return {
     i18n: { t, i18n: { resolvedLanguage: "en", language: "en" } },
-    incognito: false,
+    incognitoMode: [false, () => {}] as [boolean, () => void],
   }
 })
 
@@ -31,7 +31,7 @@ vi.mock("react-i18next", async (importOriginal) => ({
 }))
 vi.mock("@/lib/incognito", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/incognito")>(),
-  useIncognitoMode: () => [mocks.incognito, () => {}],
+  useIncognitoMode: () => mocks.incognitoMode,
 }))
 vi.mock("@/components/statistics/TransferChart", () => ({
   TransferChart: ({ bars, groups, displayName }: { bars: StatisticsBar[]; groups: string[]; displayName: (group: string) => string }) => (
@@ -86,7 +86,7 @@ beforeEach(() => {
     unobserve() {}
     disconnect() {}
   })
-  mocks.incognito = false
+  mocks.incognitoMode = [false, () => {}]
   requests = []
   configuredIds = [1, 2]
   statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 400)]
@@ -149,7 +149,7 @@ describe("Statistics", () => {
       if (bucket === "day") {
         return [row("a.test", 4096, 1024, { width: "day" })]
       }
-      // The period before ends 30 days back, and the period ends with the hour that still runs.
+      // The period ends at the start of the hour that still runs. The period before ends 30 days back.
       return to === runningHour ? [row("a.test", 3072, 1024, { width: "total" })] : [row("a.test", 2048, 2048, { width: "total" })]
     }
     renderPage()
@@ -208,7 +208,7 @@ describe("Statistics", () => {
   })
 
   it("masks the tracker names in incognito mode", async () => {
-    mocks.incognito = true
+    mocks.incognitoMode = [true, () => {}]
     answer = ({ bucket }) => bucket === "day" ? [row("tracker.private.test", 1024, 0, { width: "day" }), row("Public", 512, 0, { width: "day" })] : []
     renderPage()
 

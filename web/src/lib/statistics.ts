@@ -76,13 +76,19 @@ export function comparisonEnd(period: StatisticsPeriod): Date {
   return startOfHour(period.to)
 }
 
-/** Returns the period before, as long as the period up to its comparison end, or undefined for a period with no start. */
+/**
+ * Returns the period before, or undefined for a period with no start. It ends
+ * at the hour of the start of the period, so that both periods hold the same
+ * whole hours: in a timezone with a half-hour offset, a period starts inside
+ * an hour.
+ */
 export function previousPeriod(period: StatisticsPeriod): StatisticsPeriod | undefined {
   if (!period.from) {
     return undefined
   }
-  const length = comparisonEnd(period).getTime() - period.from.getTime()
-  return length > 0 ? { from: new Date(period.from.getTime() - length), to: period.from, unit: period.unit } : undefined
+  const start = startOfHour(period.from)
+  const length = comparisonEnd(period).getTime() - start.getTime()
+  return length > 0 ? { from: new Date(start.getTime() - length), to: start, unit: period.unit } : undefined
 }
 
 /** Returns the first recording of the instances, or undefined when no instance has history. */
@@ -165,7 +171,7 @@ export function buildBars(rowsByInstance: TransferHistoryRow[][], range: { from:
       const bucket = row.width + row.start
       let bar = buckets.get(bucket)
       if (!bar) {
-        const key = barKey(new Date(row.start), unit)
+        const key = barKey(new Date(row.start), row.width, unit)
         // In a timezone with a half-hour offset, the first stored hour starts before the first local day.
         bar = barAt(unit === "day" ? Math.max(first, key) : key)
         if (row.width === "day") {
@@ -200,8 +206,12 @@ export function buildBars(rowsByInstance: TransferHistoryRow[][], range: { from:
   return [...bars.values()].sort((a, b) => a.start - b.start)
 }
 
-function barKey(start: Date, unit: ChartUnit): number {
-  return unit === "hour" ? start.getTime() : startOfLocalDay(start).getTime()
+function barKey(start: Date, width: TransferHistoryRow["width"], unit: ChartUnit): number {
+  if (unit === "hour") {
+    return start.getTime()
+  }
+  // A day row counts by its middle, so a start a few hours off its midnight stays on its day.
+  return startOfLocalDay(width === "day" ? new Date(start.getTime() + 12 * HOUR) : start).getTime()
 }
 
 /** The start of the chart of a period. A period with no start draws from the day of the first recording. */
