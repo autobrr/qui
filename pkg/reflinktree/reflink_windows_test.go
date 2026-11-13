@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 )
 
@@ -741,6 +742,82 @@ func TestSupportsReflink_ReportsProbeFailureReason(t *testing.T) {
 	}
 }
 
+// regression: #4074
+func TestCloneFile_AlignsIntegrityBeforeClone(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		source      uint16
+		destination uint16
+		sourceFlags uint32
+		setErr      error
+	}{
+		{name: "on_off", source: 2},
+		{name: "off_on", destination: 2},
+		{name: "on_on", source: 2, destination: 2},
+		{name: "off_off"},
+		{name: "checksum_enforcement_off", source: 2, destination: 2, sourceFlags: 1},
+		{name: "cannot_align", source: 2, setErr: windows.ERROR_ACCESS_DENIED},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "source.bin")
+			dst := filepath.Join(dir, "clone.bin")
+			require.NoError(t, os.WriteFile(src, []byte("01234567"), 0o600))
+			restoreWindowsHelpers(t)
+			volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
+			filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
+			clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
+			var sourceHandle, destinationHandle windows.Handle
+			destination := fileIntegrityInformation{ChecksumAlgorithm: tt.destination}
+			getFileIntegrityFn = func(handle windows.Handle) (fileIntegrityInformation, error) {
+				if sourceHandle == 0 {
+					sourceHandle = handle
+					return fileIntegrityInformation{ChecksumAlgorithm: tt.source, Flags: tt.sourceFlags}, nil
+				}
+				destinationHandle = handle
+				return destination, nil
+			}
+			setCalls := 0
+			setFileIntegrityFn = func(handle windows.Handle, info fileIntegrityInformation) error {
+				require.NotEqual(t, sourceHandle, handle, "source must never be changed")
+				require.Equal(t, destinationHandle, handle)
+				setCalls++
+				if tt.setErr != nil {
+					return tt.setErr
+				}
+				destination = info
+				return nil
+			}
+			setFileEndFn = func(windows.Handle, string, int64) error {
+				require.NoError(t, tt.setErr, "resize ran after integrity failure")
+				require.Equal(t, tt.source, destination.ChecksumAlgorithm)
+				require.Equal(t, tt.sourceFlags, destination.Flags)
+				return nil
+			}
+			duplicateExtentFn = func(windows.Handle, windows.Handle, int64, int64, int64) error {
+				require.Equal(t, tt.source, destination.ChecksumAlgorithm)
+				require.Equal(t, tt.sourceFlags, destination.Flags)
+				return nil
+			}
+
+			err := cloneFile(src, dst)
+			if tt.setErr != nil {
+				require.ErrorIs(t, err, tt.setErr)
+				require.ErrorContains(t, err, "Integrity Streams settings differ")
+				_, statErr := os.Stat(dst)
+				require.ErrorIs(t, statErr, os.ErrNotExist)
+			} else {
+				require.NoError(t, err)
+			}
+			if tt.source == tt.destination && tt.sourceFlags == 0 {
+				require.Zero(t, setCalls)
+			} else {
+				require.Equal(t, 1, setCalls)
+			}
+		})
+	}
+}
+
 func restoreWindowsHelpers(t *testing.T) {
 	originalResolveSourcePath := resolveSourcePathFn
 	originalLstatPath := lstatPathFn
@@ -748,6 +825,11 @@ func restoreWindowsHelpers(t *testing.T) {
 	originalIsSparseFile := isSparseFileFn
 	originalMarkFileSparse := markFileSparseFn
 	originalSetFileEnd := setFileEndFn
+	originalGetFileIntegrity := getFileIntegrityFn
+	originalSetFileIntegrity := setFileIntegrityFn
+	getFileIntegrityFn = func(windows.Handle) (fileIntegrityInformation, error) {
+		return fileIntegrityInformation{}, nil
+	}
 	originalVolumeRoot := volumeRootForPathFn
 	originalSameFilesystem := sameFilesystemFn
 	originalFilesystemName := filesystemNameForVolFn
@@ -761,6 +843,8 @@ func restoreWindowsHelpers(t *testing.T) {
 		isSparseFileFn = originalIsSparseFile
 		markFileSparseFn = originalMarkFileSparse
 		setFileEndFn = originalSetFileEnd
+		getFileIntegrityFn = originalGetFileIntegrity
+		setFileIntegrityFn = originalSetFileIntegrity
 		volumeRootForPathFn = originalVolumeRoot
 		sameFilesystemFn = originalSameFilesystem
 		filesystemNameForVolFn = originalFilesystemName
