@@ -4,9 +4,11 @@
 package transferhistory
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -128,6 +130,13 @@ func syncer(t *testing.T, owner *syncowner.Owner, syncManager *qbittorrent.SyncM
 	}, module
 }
 
+// queued returns the readings that wait for the worker of m.
+func queued(m *Module) []Reading {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.queue)
+}
+
 func TestAdapterTakesTheLastUpdateBeforeAQuietTime(t *testing.T) {
 	owner, syncManager, uploaded := newAdapterRig(t)
 	synctest.Test(t, func(t *testing.T) {
@@ -141,10 +150,10 @@ func TestAdapterTakesTheLastUpdateBeforeAQuietTime(t *testing.T) {
 		time.Sleep(time.Minute)
 		synctest.Wait()
 
-		require.Len(t, module.queue, 2)
-		last := module.queue[1]
-		require.Equal(t, int64(100), last.Torrents[0].Uploaded)
-		require.Equal(t, module.queue[0].Time.Add(20*time.Second), last.Time)
+		require.Len(t, queued(module), 2)
+		readings := queued(module)
+		require.Equal(t, int64(100), readings[1].Torrents[0].Uploaded)
+		require.Equal(t, readings[0].Time.Add(20*time.Second), readings[1].Time)
 	})
 }
 
@@ -159,13 +168,46 @@ func TestAdapterBuildsAtMostOneReadingIn50Seconds(t *testing.T) {
 		// The update of second 2 waits, and the timer builds it at second 50.
 		time.Sleep(48 * time.Second)
 		synctest.Wait()
-		require.Len(t, module.queue, 2)
+		require.Len(t, queued(module), 2)
 
 		time.Sleep(2 * time.Second)
 		sync()
-		require.Len(t, module.queue, 2, "a build 2 seconds after the last one")
+		require.Len(t, queued(module), 2, "a build 2 seconds after the last one")
 		time.Sleep(time.Minute)
 		synctest.Wait()
-		require.Len(t, module.queue, 3)
+		require.Len(t, queued(module), 3)
+	})
+}
+
+func TestAdapterKeepsThe50SecondsAfterARecovery(t *testing.T) {
+	owner, syncManager, _ := newAdapterRig(t)
+	synctest.Test(t, func(t *testing.T) {
+		module := &Module{wake: make(chan struct{}, 1)}
+		adapter := NewAdapter(module, syncManager)
+		sync := func() {
+			require.NoError(t, owner.Sync(t.Context()))
+			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked()})
+			synctest.Wait()
+		}
+
+		sync()
+		time.Sleep(2 * time.Second)
+		// This update waits, with a timer for second 50.
+		sync()
+		time.Sleep(8 * time.Second)
+		adapter.HandleSyncError(1, errors.New("sync failed"))
+		time.Sleep(10 * time.Second)
+		// The first successful sync after the failure is built at second 20.
+		sync()
+		require.Len(t, queued(module), 2)
+		time.Sleep(2 * time.Second)
+		sync()
+
+		time.Sleep(28 * time.Second)
+		synctest.Wait()
+		require.Len(t, queued(module), 2, "a build 30 seconds after the last one")
+		time.Sleep(20 * time.Second)
+		synctest.Wait()
+		require.Len(t, queued(module), 3)
 	})
 }

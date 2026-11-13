@@ -88,8 +88,9 @@ func (a *Adapter) takePending(instanceID int) {
 		a.mu.Unlock()
 		return
 	}
-	if inst.building {
-		inst.timer = time.AfterFunc(time.Second, func() { a.takePending(instanceID) })
+	// A reading after a failed read can start a build while the timer runs.
+	if wait := time.Until(inst.lastBuild.Add(minReadingInterval)); inst.building || wait > 0 {
+		inst.timer = time.AfterFunc(max(wait, time.Second), func() { a.takePending(instanceID) })
 		a.mu.Unlock()
 		return
 	}

@@ -124,6 +124,11 @@ const transferHistoryChunk = 200
 // returned an error. The database can hold the write or not.
 var ErrTransferHistoryCommitUnknown = errors.New("transfer history commit outcome unknown")
 
+// ErrTransferHistoryWriteNumber is the error of a write whose Number is not
+// one more than the stored writes of the instance, as when the database
+// already holds a write with that number. The write stores nothing.
+var ErrTransferHistoryWriteNumber = errors.New("transfer history write number does not follow the stored writes")
+
 // LoadInstance returns the instance row, or nil when the instance has no
 // history, and its records.
 func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int) (*TransferHistoryInstance, []*TransferHistoryRecord, error) {
@@ -180,7 +185,8 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 
 // Write stores w in one transaction and returns the id of each record in
 // Records, by hash. After an error, the stored rows stay as they were, unless
-// the error is ErrTransferHistoryCommitUnknown.
+// the error is ErrTransferHistoryCommitUnknown. It returns
+// ErrTransferHistoryWriteNumber when w.Number does not follow the stored writes.
 func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrite) (map[string]int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -188,15 +194,22 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO transfer_history_instances (instance_id, name, first_recorded_at, last_reading_at, writes)
 		VALUES (?, COALESCE((SELECT name FROM instances_view WHERE id = ?), ''), ?, ?, ?)
 		ON CONFLICT (instance_id) DO UPDATE SET
 			name = COALESCE((SELECT name FROM instances_view WHERE id = excluded.instance_id), transfer_history_instances.name),
 			last_reading_at = excluded.last_reading_at,
-			writes = excluded.writes`,
-		w.InstanceID, w.InstanceID, w.FirstRecordedAt, w.LastReadingAt, w.Number); err != nil {
+			writes = excluded.writes
+		WHERE transfer_history_instances.writes = excluded.writes - 1`,
+		w.InstanceID, w.InstanceID, w.FirstRecordedAt, w.LastReadingAt, w.Number)
+	if err != nil {
 		return nil, fmt.Errorf("write transfer history instance: %w", err)
+	}
+	if stored, err := result.RowsAffected(); err != nil {
+		return nil, fmt.Errorf("write transfer history instance: %w", err)
+	} else if stored == 0 {
+		return nil, ErrTransferHistoryWriteNumber
 	}
 
 	ids, err := upsertTransferHistoryRecords(ctx, tx, w.InstanceID, w.Records)

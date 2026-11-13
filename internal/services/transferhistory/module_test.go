@@ -704,3 +704,40 @@ func TestAReloadKeepsTheTransferOfATorrentAddedBeforeItPostgresIntegration(t *te
 		require.Equal(t, []transferhistory.TransferRow{{Group: "tracker.example", Width: transferhistory.BucketTotal, Uploaded: 500}}, rows)
 	})
 }
+
+// lateCommit commits the second write but reports an error, as
+// lostCommitAnswer does. The check that follows still reads the count from
+// before that commit, as when the commit lands after the check.
+type lateCommit struct {
+	lostCommitAnswer
+	checks int
+}
+
+func (l *lateCommit) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if strings.Contains(query, "SELECT writes") && l.writes == 2 && l.checks == 0 {
+		l.checks++
+		return l.DB.QueryRowContext(ctx, "SELECT writes - 1 FROM transfer_history_instances WHERE instance_id = ?", args...)
+	}
+	return l.DB.QueryRowContext(ctx, query, args...)
+}
+
+func TestACommitThatLandsAfterTheCheckCountsOncePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&lateCommit{DB: db}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+		module.Record(*reading(at(5*time.Minute), torrent("a", 100, 0)).reading)
+		// The write of this reading has the number of the write that landed.
+		module.Record(*reading(at(10*time.Minute), torrent("a", 150, 0)).reading)
+		module.Record(*reading(at(11*time.Minute), torrent("a", 180, 0)).reading)
+
+		query := hourTotal
+		query.InstanceID = instanceID
+		rows, err := module.Transfer(t.Context(), query)
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 180, 0, 0)}, rows)
+	})
+}

@@ -252,6 +252,12 @@ const (
 // outcome tells whether a write that returned err is stored anyway, as when
 // the answer of the commit got lost. Its totals must not count twice.
 func (m *Module) outcome(err error, w *models.TransferHistoryWrite) writeOutcome {
+	// The database holds an earlier write with this number: its commit
+	// returned an error and landed after the check below. The changes in
+	// memory hold that write and the changes since.
+	if errors.Is(err, models.ErrTransferHistoryWriteNumber) {
+		return unknown
+	}
 	if !errors.Is(err, models.ErrTransferHistoryCommitUnknown) {
 		return notStored
 	}
@@ -298,7 +304,7 @@ func (m *Module) write(inst *instance) error {
 			// The stored counters decide the next difference, so no byte
 			// counts twice. The bytes of a torrent that is gone at the next
 			// reading are lost.
-			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: a write has an unknown outcome; the next reading loads the stored history again")
+			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: cannot tell which changes are stored; the next reading loads the stored history again")
 			m.reloads[inst.id] = struct{}{}
 			delete(m.instances, inst.id)
 			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
