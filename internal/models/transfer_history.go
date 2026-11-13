@@ -31,6 +31,8 @@ type TransferHistoryInstance struct {
 	Name            string
 	FirstRecordedAt time.Time
 	LastReadingAt   time.Time
+	// Writes is the number of writes that stored the instance.
+	Writes int64
 }
 
 // TransferHistoryRecord is the stored record of one torrent. ID is 0 until a
@@ -53,6 +55,11 @@ type TransferHistoryRecord struct {
 	UploadFirst24h      *int64
 	BaselineUploaded    int64
 	BaselineDownloaded  int64
+	// BaselineTrackerDomain and BaselineCategory are the values at the first
+	// sight of the torrent. Only the insert of a record stores them, so
+	// LoadInstance leaves them empty.
+	BaselineTrackerDomain string
+	BaselineCategory      string
 }
 
 // TransferHistoryTorrentDay is the transfer of one torrent on one UTC day.
@@ -90,12 +97,15 @@ type TransferHistoryWrite struct {
 	InstanceID      int
 	FirstRecordedAt time.Time
 	LastReadingAt   time.Time
-	Records         []*TransferHistoryRecord
-	Counters        []*TransferHistoryRecord
-	TorrentDays     []TransferHistoryTorrentDay
-	TrackerHours    []TransferHistoryTotal
-	CategoryDays    []TransferHistoryTotal
-	Gaps            []TransferHistoryGap
+	// Number is the number of this write of the instance: one more than the
+	// stored writes.
+	Number       int64
+	Records      []*TransferHistoryRecord
+	Counters     []*TransferHistoryRecord
+	TorrentDays  []TransferHistoryTorrentDay
+	TrackerHours []TransferHistoryTotal
+	CategoryDays []TransferHistoryTotal
+	Gaps         []TransferHistoryGap
 }
 
 // TransferHistoryBaseline is the Baseline of the torrents that share a key.
@@ -119,9 +129,9 @@ var ErrTransferHistoryCommitUnknown = errors.New("transfer history commit outcom
 func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int) (*TransferHistoryInstance, []*TransferHistoryRecord, error) {
 	inst := TransferHistoryInstance{InstanceID: instanceID}
 	err := s.db.QueryRowContext(ctx, `
-		SELECT name, first_recorded_at, last_reading_at
+		SELECT name, first_recorded_at, last_reading_at, writes
 		FROM transfer_history_instances
-		WHERE instance_id = ?`, instanceID).Scan(&inst.Name, &inst.FirstRecordedAt, &inst.LastReadingAt)
+		WHERE instance_id = ?`, instanceID).Scan(&inst.Name, &inst.FirstRecordedAt, &inst.LastReadingAt, &inst.Writes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, nil
 	}
@@ -179,12 +189,13 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO transfer_history_instances (instance_id, name, first_recorded_at, last_reading_at)
-		VALUES (?, COALESCE((SELECT name FROM instances_view WHERE id = ?), ''), ?, ?)
+		INSERT INTO transfer_history_instances (instance_id, name, first_recorded_at, last_reading_at, writes)
+		VALUES (?, COALESCE((SELECT name FROM instances_view WHERE id = ?), ''), ?, ?, ?)
 		ON CONFLICT (instance_id) DO UPDATE SET
 			name = COALESCE((SELECT name FROM instances_view WHERE id = excluded.instance_id), transfer_history_instances.name),
-			last_reading_at = excluded.last_reading_at`,
-		w.InstanceID, w.InstanceID, w.FirstRecordedAt, w.LastReadingAt); err != nil {
+			last_reading_at = excluded.last_reading_at,
+			writes = excluded.writes`,
+		w.InstanceID, w.InstanceID, w.FirstRecordedAt, w.LastReadingAt, w.Number); err != nil {
 		return nil, fmt.Errorf("write transfer history instance: %w", err)
 	}
 
@@ -266,36 +277,36 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 	return ids, nil
 }
 
-// LastReadingAt returns the time of the last reading that a write stored for
-// an instance, or the zero time when the instance has no history.
-func (s *TransferHistoryStore) LastReadingAt(ctx context.Context, instanceID int) (time.Time, error) {
-	var at time.Time
+// Writes returns the number of writes that stored an instance, or 0 when the
+// instance has no history.
+func (s *TransferHistoryStore) Writes(ctx context.Context, instanceID int) (int64, error) {
+	var writes int64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT last_reading_at FROM transfer_history_instances WHERE instance_id = ?`, instanceID).Scan(&at)
+		SELECT writes FROM transfer_history_instances WHERE instance_id = ?`, instanceID).Scan(&writes)
 	if errors.Is(err, sql.ErrNoRows) {
-		return time.Time{}, nil
+		return 0, nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("read transfer history last reading: %w", err)
+		return 0, fmt.Errorf("read transfer history writes: %w", err)
 	}
-	return at, nil
+	return writes, nil
 }
 
 // upsertTransferHistoryRecords writes the records and returns the id of each
-// hash. An existing record keeps its Baseline.
+// hash. An existing record keeps its Baseline, with its tracker domain and category.
 func upsertTransferHistoryRecords(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, records []*TransferHistoryRecord) (map[string]int64, error) {
 	ids := make(map[string]int64, len(records))
 	for chunk := range transferHistoryChunks(records) {
-		args := make([]any, 0, len(chunk)*15)
+		args := make([]any, 0, len(chunk)*17)
 		for _, r := range chunk {
 			args = append(args, instanceID, r.Hash, r.Name, r.TrackerDomain, r.Category, r.Private, r.Size,
 				r.ReleaseGroup, r.Resolution, r.Source, r.ContentType, r.StatisticsCrossSeed,
-				r.UploadFirst24h, r.BaselineUploaded, r.BaselineDownloaded)
+				r.UploadFirst24h, r.BaselineUploaded, r.BaselineDownloaded, r.BaselineTrackerDomain, r.BaselineCategory)
 		}
 		query := dbinterface.BuildQueryWithPlaceholders(`
 			INSERT INTO transfer_history_torrents (instance_id, hash, name, tracker_domain, category, private,
 				size, release_group, resolution, source, content_type, statistics_cross_seed,
-				upload_first_24h, baseline_uploaded, baseline_downloaded)
+				upload_first_24h, baseline_uploaded, baseline_downloaded, baseline_tracker_domain, baseline_category)
 			VALUES %s
 			ON CONFLICT (instance_id, hash) DO UPDATE SET
 				name = excluded.name,
@@ -309,7 +320,7 @@ func upsertTransferHistoryRecords(ctx context.Context, tx dbinterface.TxQuerier,
 				content_type = excluded.content_type,
 				statistics_cross_seed = excluded.statistics_cross_seed,
 				upload_first_24h = excluded.upload_first_24h
-			RETURNING id, hash`, 15, len(chunk))
+			RETURNING id, hash`, 17, len(chunk))
 		if err := scanTransferHistoryIDs(ctx, tx, query, args, ids); err != nil {
 			return nil, err
 		}
@@ -469,15 +480,15 @@ func (s *TransferHistoryStore) GapSeconds(ctx context.Context, instanceID int, f
 }
 
 // Baselines returns the Baseline of the records of an instance, by the
-// tracker domain, private flag, category, and Statistics cross-seed flag of
-// each record now.
+// tracker domain and category at the first sight of each record, and by its
+// private flag and Statistics cross-seed flag now.
 func (s *TransferHistoryStore) Baselines(ctx context.Context, instanceID int) ([]TransferHistoryBaseline, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tracker_domain, private, category, COALESCE(statistics_cross_seed, FALSE),
+		SELECT baseline_tracker_domain, private, baseline_category, COALESCE(statistics_cross_seed, FALSE),
 			CAST(SUM(baseline_uploaded) AS BIGINT), CAST(SUM(baseline_downloaded) AS BIGINT)
 		FROM transfer_history_torrents
 		WHERE instance_id = ? AND (baseline_uploaded > 0 OR baseline_downloaded > 0)
-		GROUP BY tracker_domain, private, category, COALESCE(statistics_cross_seed, FALSE)`,
+		GROUP BY baseline_tracker_domain, private, baseline_category, COALESCE(statistics_cross_seed, FALSE)`,
 		instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("read transfer history baselines: %w", err)

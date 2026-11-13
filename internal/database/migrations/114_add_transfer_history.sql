@@ -5,17 +5,21 @@
 -- history of an instance stays when the user removes the instance. Hours and
 -- days are integer counts of UTC hours and days since 1970-01-01.
 
+-- writes counts the writes that stored the instance, so that a write whose
+-- commit returns an error can tell whether it is stored.
 CREATE TABLE IF NOT EXISTS transfer_history_instances (
     instance_id       INTEGER PRIMARY KEY,
     name              TEXT NOT NULL,
     first_recorded_at TIMESTAMP NOT NULL,
-    last_reading_at   TIMESTAMP NOT NULL
+    last_reading_at   TIMESTAMP NOT NULL,
+    writes            INTEGER NOT NULL
 );
 
 -- One record for each torrent that qui saw. private is NULL when qBittorrent
 -- does not report it. statistics_cross_seed is NULL until the torrent
 -- completes. upload_first_24h is NULL when qui first saw the torrent after
--- its first 24 hours.
+-- its first 24 hours. The Baseline stays under baseline_tracker_domain and
+-- baseline_category, the values at the first sight of the torrent.
 CREATE TABLE IF NOT EXISTS transfer_history_torrents (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     instance_id           INTEGER NOT NULL,
@@ -33,6 +37,8 @@ CREATE TABLE IF NOT EXISTS transfer_history_torrents (
     upload_first_24h      INTEGER,
     baseline_uploaded     INTEGER NOT NULL,
     baseline_downloaded   INTEGER NOT NULL,
+    baseline_tracker_domain TEXT NOT NULL,
+    baseline_category     TEXT NOT NULL,
     UNIQUE (instance_id, hash)
 );
 

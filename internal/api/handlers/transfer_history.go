@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transferhistory"
 )
 
-// TransferHistoryHandler answers the Transfer history routes.
 type TransferHistoryHandler struct {
 	module *transferhistory.Module
 }

@@ -56,6 +56,8 @@ type instance struct {
 	id              int
 	firstRecordedAt time.Time
 	lastReadingAt   time.Time
+	// writes is the number of writes that stored the instance.
+	writes int64
 	// resumed is set until the first reading after a load of stored history.
 	resumed     bool
 	lastWriteAt time.Time
@@ -81,6 +83,7 @@ func newInstance(id int, row *models.TransferHistoryInstance, records []*models.
 	if row != nil {
 		inst.firstRecordedAt = row.FirstRecordedAt
 		inst.lastReadingAt = row.LastReadingAt
+		inst.writes = row.Writes
 		inst.resumed = true
 	}
 	return inst
@@ -105,9 +108,7 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 	} else {
 		inst.addGap(r)
 	}
-	// Whole seconds survive a round trip through each engine, so a write can
-	// be found again by its reading time.
-	inst.lastReadingAt = r.Time.Truncate(time.Second)
+	inst.lastReadingAt = r.Time
 	inst.resumed = false
 	inst.unwritten = true
 
@@ -117,17 +118,12 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 		rec, seen := inst.records[t.Hash]
 		var up, down int64
 		if !seen {
-			rec = &models.TransferHistoryRecord{Hash: t.Hash}
-			inst.records[t.Hash] = rec
 			// A torrent that qBittorrent had before the last reading, but left
 			// out of it, did not move its bytes since then.
-			if first || t.AddedAt.Before(previous.Add(-clockSkew)) {
-				rec.BaselineUploaded, rec.BaselineDownloaded = t.Uploaded, t.Downloaded
-			} else {
+			rec = newRecord(t, mapper, r.Time, first || t.AddedAt.Before(previous.Add(-clockSkew)))
+			inst.records[t.Hash] = rec
+			if rec.BaselineUploaded == 0 && rec.BaselineDownloaded == 0 {
 				up, down = t.Uploaded, t.Downloaded
-			}
-			if !t.AddedAt.IsZero() && r.Time.Before(t.AddedAt.Add(day)) {
-				rec.UploadFirst24h = new(t.Uploaded)
 			}
 		} else {
 			up, down = max(t.Uploaded-rec.LastUploaded, 0), max(t.Downloaded-rec.LastDownloaded, 0)
@@ -153,6 +149,20 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 		addTo(inst.trackerHours, totalKey{bucket: hour, domain: rec.TrackerDomain, public: public, crossSeed: crossSeed}, up, down)
 		addTo(inst.categoryDays, totalKey{bucket: today, domain: rec.TrackerDomain, public: public, category: rec.Category, crossSeed: crossSeed}, up, down)
 	}
+}
+
+// newRecord returns the record of a torrent at its first sight. Its bytes go
+// into the Baseline when inBaseline is set.
+func newRecord(t *Torrent, mapper *trackergroup.Mapper, now time.Time, inBaseline bool) *models.TransferHistoryRecord {
+	rec := &models.TransferHistoryRecord{Hash: t.Hash}
+	if inBaseline {
+		rec.BaselineUploaded, rec.BaselineDownloaded = t.Uploaded, t.Downloaded
+		rec.BaselineTrackerDomain, rec.BaselineCategory = mapper.StoredDomain(t.TrackerDomains), t.Category
+	}
+	if !t.AddedAt.IsZero() && now.Before(t.AddedAt.Add(day)) {
+		rec.UploadFirst24h = new(t.Uploaded)
+	}
+	return rec
 }
 
 // addGap stores a Recording gap that ends at r: the time since the last
@@ -242,6 +252,7 @@ func (inst *instance) changes() *models.TransferHistoryWrite {
 		InstanceID:      inst.id,
 		FirstRecordedAt: inst.firstRecordedAt,
 		LastReadingAt:   inst.lastReadingAt,
+		Number:          inst.writes + 1,
 		Records:         slices.Collect(maps.Values(inst.changedRecords)),
 		Counters:        make([]*models.TransferHistoryRecord, 0, len(inst.changedCounters)),
 	}

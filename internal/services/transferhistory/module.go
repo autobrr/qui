@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	// writeInterval is the time between two writes of an instance.
 	writeInterval = 5 * time.Minute
 	// minGap is the shortest time without a read that counts as a Recording gap.
 	minGap = 5 * time.Minute
@@ -30,7 +29,6 @@ const (
 	// worker. A newer reading pushes out the oldest: the counters are
 	// cumulative, so its bytes land with the next reading.
 	maxQueued = 4
-	// dbTimeout bounds each load and write of the worker.
 	dbTimeout = 30 * time.Second
 )
 
@@ -38,8 +36,9 @@ const (
 type Reading struct {
 	InstanceID int
 	Time       time.Time
-	// FailedSince is the time of the first failed read after the reading
-	// before this one, or zero.
+	// FailedSince is the start of a time without a successful read that this
+	// reading ends: the first failed read, or the reading before this one
+	// when the instance got a new qBittorrent client. It is zero otherwise.
 	FailedSince time.Time
 	// Torrents is the full torrent list of the instance.
 	Torrents []Torrent
@@ -61,7 +60,6 @@ type Torrent struct {
 	AddedAt    time.Time
 }
 
-// Module is the Transfer history module.
 type Module struct {
 	store          *models.TransferHistoryStore
 	customizations *models.TrackerCustomizationStore
@@ -75,7 +73,10 @@ type Module struct {
 	done     chan struct{}
 
 	// The worker owns these until it closes done.
-	instances   map[int]*instance
+	instances map[int]*instance
+	// reloads holds the last reading of each instance that a write with an
+	// unknown outcome dropped from memory.
+	reloads     map[int]time.Time
 	mapper      *trackergroup.Mapper
 	shutdownErr error
 }
@@ -90,6 +91,7 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		wake:           make(chan struct{}, 1),
 		done:           make(chan struct{}),
 		instances:      make(map[int]*instance),
+		reloads:        make(map[int]time.Time),
 	}
 	go m.run()
 	return m
@@ -208,6 +210,12 @@ func (m *Module) process(r Reading) {
 			log.Warn().Err(err).Int("instanceID", r.InstanceID).Msg("transfer history: failed to load the history of the instance; the next reading tries again")
 			return
 		}
+		// qui kept reading the instance, so the time since its stored
+		// reading is no Recording gap.
+		if at, ok := m.reloads[r.InstanceID]; ok {
+			inst.lastReadingAt, inst.resumed = at, false
+			delete(m.reloads, r.InstanceID)
+		}
 		m.instances[r.InstanceID] = inst
 	}
 	inst.apply(r, m.mapper, m.parser)
@@ -248,11 +256,11 @@ func (m *Module) outcome(err error, w *models.TransferHistoryWrite) writeOutcome
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
-	last, checkErr := m.store.LastReadingAt(ctx, w.InstanceID)
+	writes, checkErr := m.store.Writes(ctx, w.InstanceID)
 	switch {
 	case checkErr != nil:
 		return unknown
-	case last.Equal(w.LastReadingAt):
+	case writes == w.Number:
 		return stored
 	default:
 		return notStored
@@ -274,6 +282,7 @@ func (m *Module) write(inst *instance) error {
 	if !inst.hasChanges() {
 		return nil
 	}
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 	w := inst.changes()
@@ -286,8 +295,10 @@ func (m *Module) write(inst *instance) error {
 			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
 		case unknown:
 			// The stored counters decide the next difference, so no byte
-			// counts twice and none is lost.
+			// counts twice. The bytes of a torrent that is gone at the next
+			// reading are lost.
 			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: a write has an unknown outcome; the next reading loads the stored history again")
+			m.reloads[inst.id] = inst.lastReadingAt
 			delete(m.instances, inst.id)
 			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
 		}
@@ -297,7 +308,10 @@ func (m *Module) write(inst *instance) error {
 			rec.ID = ids[rec.Hash]
 		}
 	}
+	inst.writes = w.Number
 	inst.reset()
+	log.Debug().Int("instanceID", inst.id).Int("torrents", len(w.Counters)).Dur("elapsed", time.Since(start)).
+		Msg("transfer history: wrote the changes")
 	if err := m.refreshMapper(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Warn().Err(err).Msg("transfer history: failed to read the tracker customizations")
 	}

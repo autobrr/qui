@@ -18,6 +18,7 @@ Small totals tables hold the same bytes for each tracker domain and hour, and fo
 ## Consequences
 
 - The shape of the stored data is hard to change after the first release, because the old bytes cannot be recorded again.
-- A torrent that moves to another category keeps its old bytes under the old category.
+- A torrent that moves to another category keeps its old bytes under the old category. Its Baseline stays under the tracker domain and category of its first recording.
+- Each reading copies the values that the recorder needs from each torrent. This is the exception to ADR 0051 for the recorder: a reading waits in a queue, and a reference to the Sync snapshot would keep the whole snapshot in memory. The adapter builds at most one reading each 50 seconds for each instance, one at a time, and at most 4 readings of an instance wait.
 - The upload from Statistics cross-seeds in the totals leaves out the bytes that a torrent uploaded before it got the flag.
 - The totals of the Statistics page never equal Server Statistics on the Dashboard.

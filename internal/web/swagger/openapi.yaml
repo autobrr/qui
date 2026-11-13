@@ -10605,7 +10605,7 @@ components:
         start:
           type: string
           format: date-time
-          description: Start of the bucket, or of the period for a total row. Absent for a total row of a period with no start.
+          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups and UTC days for categories, and starts at the first of them. Absent for a total row of a period with no start.
         width:
           type: string
           enum: [hour, day, total]

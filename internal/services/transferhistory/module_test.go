@@ -67,11 +67,12 @@ func public(t transferhistory.Torrent) transferhistory.Torrent {
 	return t
 }
 
-// step is a reading, a check, or a restart of the module.
+// step is a reading, a check, or a restart or a crash of the module.
 type step struct {
 	reading *transferhistory.Reading
 	check   *check
 	restart bool
+	crash   bool
 }
 
 type check struct {
@@ -94,10 +95,17 @@ func expect(query transferhistory.TransferQuery, want ...transferhistory.Transfe
 	return step{check: &check{query: query, want: want}}
 }
 
-var restart = step{restart: true}
+var (
+	restart = step{restart: true}
+	// crash drops the module without a write, as when qui crashes.
+	crash = step{crash: true}
+)
 
 // The hour of t0, by tracker, as one total.
 var hourTotal = transferhistory.TransferQuery{From: time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC), To: time.Date(2026, 11, 10, 11, 0, 0, 0, time.UTC), Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker}
+
+// The UTC day of t0.
+var day10 = time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC)
 
 func total(group string, uploaded, downloaded, crossSeedUploaded int64) transferhistory.TransferRow {
 	return transferhistory.TransferRow{
@@ -117,6 +125,11 @@ func runSteps(t *testing.T, db *database.DB, steps []step) {
 			module.Record(*s.reading)
 		case s.restart:
 			require.NoError(t, module.Shutdown(t.Context()))
+			module = transferhistory.New(db, customizations)
+		case s.crash:
+			// A query waits until the module processed each reading.
+			_, err := module.Status(t.Context())
+			require.NoError(t, err)
 			module = transferhistory.New(db, customizations)
 		case s.check != nil:
 			rows, err := module.Transfer(t.Context(), s.check.query)
@@ -244,6 +257,20 @@ func TestTransferHistoryRecording(t *testing.T) {
 			},
 		},
 		{
+			name: "a crash of qui loses no bytes",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0)),
+				reading(at(5*time.Minute), torrent("a", 100, 0)),
+				reading(at(8*time.Minute), torrent("a", 150, 0)),
+				crash,
+				reading(at(12*time.Minute), torrent("a", 300, 0)),
+				expect(hourTotal, transferhistory.TransferRow{
+					Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketTotal,
+					Uploaded: 300, GapSeconds: int64(7 * time.Minute / time.Second),
+				}),
+			},
+		},
+		{
 			name: "failed reads store the Recording gap from the first failure",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0)),
@@ -260,8 +287,33 @@ func TestTransferHistoryRecording(t *testing.T) {
 				reading(at(5*time.Minute), torrent("a", 100, 0)),
 				reading(at(10*time.Minute), inCategory(torrent("a", 250, 0), "movies")),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByCategory},
-					transferhistory.TransferRow{Group: "movies", Start: hourTotal.From, Width: transferhistory.BucketTotal, Uploaded: 150},
-					transferhistory.TransferRow{Group: "tv", Start: hourTotal.From, Width: transferhistory.BucketTotal, Uploaded: 100}),
+					transferhistory.TransferRow{Group: "movies", Start: day10, Width: transferhistory.BucketTotal, Uploaded: 150},
+					transferhistory.TransferRow{Group: "tv", Start: day10, Width: transferhistory.BucketTotal, Uploaded: 100}),
+			},
+		},
+		{
+			name: "a torrent that moves keeps its Baseline under the category and tracker of its first recording",
+			steps: []step{
+				reading(at(0), torrent("a", 100, 0)),
+				restart,
+				reading(at(4*time.Minute), onTracker(inCategory(torrent("a", 150, 0), "movies"), "other.example")),
+				expect(transferhistory.TransferQuery{To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByCategory},
+					transferhistory.TransferRow{Group: "movies", Width: transferhistory.BucketTotal, Uploaded: 50},
+					transferhistory.TransferRow{Group: "tv", Width: transferhistory.BucketTotal, Baseline: &transferhistory.Bytes{Uploaded: 100}}),
+				expect(transferhistory.TransferQuery{To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
+					transferhistory.TransferRow{Group: "other.example", Width: transferhistory.BucketTotal, Uploaded: 50},
+					transferhistory.TransferRow{Group: "tracker.example", Width: transferhistory.BucketTotal, Baseline: &transferhistory.Bytes{Uploaded: 100}}),
+			},
+		},
+		{
+			name: "a total starts at the first stored bucket that it covers",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0)),
+				reading(at(5*time.Minute), torrent("a", 100, 0)),
+				expect(transferhistory.TransferQuery{From: hourTotal.From.Add(30 * time.Minute), To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
+					total("tracker.example", 100, 0, 0)),
+				expect(transferhistory.TransferQuery{From: hourTotal.From.Add(30 * time.Minute), To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByCategory},
+					transferhistory.TransferRow{Group: "tv", Start: day10, Width: transferhistory.BucketTotal, Uploaded: 100}),
 			},
 		},
 		{
@@ -270,18 +322,18 @@ func TestTransferHistoryRecording(t *testing.T) {
 				reading(at(0), torrent("a", 0, 0)),
 				reading(at(5*time.Minute), torrent("a", 100, 0)),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByCategory},
-					transferhistory.TransferRow{Group: "tv", Start: time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC), Width: transferhistory.BucketDay, Uploaded: 100}),
+					transferhistory.TransferRow{Group: "tv", Start: day10, Width: transferhistory.BucketDay, Uploaded: 100}),
 			},
 		},
 		{
 			name: "a Statistics cross-seed and a torrent without the flag upload to one tracker in one hour",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0)),
-				// x completes with 0.5% of its size downloaded, y with 50%.
-				reading(at(5*time.Minute), torrent("a", 0, 0), complete(torrent("x", 0, 5)), complete(torrent("y", 0, 500))),
-				reading(at(10*time.Minute), torrent("a", 0, 0), complete(torrent("x", 200, 5)), complete(torrent("y", 300, 500))),
+				// x completes with 0.5% of its size downloaded, y with exactly 1%.
+				reading(at(5*time.Minute), torrent("a", 0, 0), complete(torrent("x", 0, 5)), complete(torrent("y", 0, 10))),
+				reading(at(10*time.Minute), torrent("a", 0, 0), complete(torrent("x", 200, 5)), complete(torrent("y", 300, 10))),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker},
-					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Uploaded: 500, Downloaded: 505, StatisticsCrossSeedUploaded: 200}),
+					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Uploaded: 500, Downloaded: 15, StatisticsCrossSeedUploaded: 200}),
 			},
 		},
 		{
@@ -519,7 +571,7 @@ type lostCommitAndCheck struct {
 }
 
 func (l *lostCommitAndCheck) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	if strings.Contains(query, "SELECT last_reading_at") && l.writes == 2 && l.checks == 0 {
+	if strings.Contains(query, "SELECT writes") && l.writes == 2 && l.checks == 0 {
 		l.checks++
 		return l.DB.QueryRowContext(ctx, "SELECT no_such_column FROM transfer_history_instances")
 	}
@@ -536,6 +588,90 @@ func TestACommitWithALostAnswerAndAFailedCheckCountsOnce(t *testing.T) {
 		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
 		module.Record(*reading(at(5*time.Minute), torrent("a", 100, 0)).reading)
 		// Readings come each minute, so the reload stores no Recording gap.
+		module.Record(*reading(at(6*time.Minute), torrent("a", 150, 0)).reading)
+
+		query := hourTotal
+		query.InstanceID = instanceID
+		rows, err := module.Transfer(t.Context(), query)
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 150, 0, 0)}, rows)
+	})
+}
+
+// failedCommit rolls back the write transaction with the number fail at its
+// commit, and reports an error. With failCheck, the read that follows fails
+// too.
+type failedCommit struct {
+	*database.DB
+	fail      int
+	failCheck bool
+	writes    int
+	checks    int
+}
+
+type failedCommitTx struct {
+	dbinterface.TxQuerier
+	fail bool
+}
+
+func (tx *failedCommitTx) Commit() error {
+	if tx.fail {
+		_ = tx.Rollback()
+		return errors.New("disk I/O error")
+	}
+	return tx.TxQuerier.Commit()
+}
+
+func (f *failedCommit) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := f.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	f.writes++
+	return &failedCommitTx{TxQuerier: tx, fail: f.writes == f.fail}, nil
+}
+
+func (f *failedCommit) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if f.failCheck && strings.Contains(query, "SELECT writes") && f.writes == f.fail && f.checks == 0 {
+		f.checks++
+		return f.DB.QueryRowContext(ctx, "SELECT no_such_column FROM transfer_history_instances")
+	}
+	return f.DB.QueryRowContext(ctx, query, args...)
+}
+
+func TestAFailedCommitInTheSecondOfTheLastWriteKeepsItsChanges(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		customizations := models.NewTrackerCustomizationStore(db)
+		first := transferhistory.New(db, customizations)
+		first.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+		require.NoError(t, first.Shutdown(t.Context()))
+
+		module := transferhistory.New(&failedCommit{DB: db, fail: 1}, customizations)
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+		// The first write after a load is due at once, in the second of the
+		// last stored write.
+		module.Record(*reading(at(500*time.Millisecond), torrent("a", 100, 0)).reading)
+		module.Record(*reading(at(6*time.Minute), torrent("a", 150, 0)).reading)
+
+		query := hourTotal
+		query.InstanceID = instanceID
+		rows, err := module.Transfer(t.Context(), query)
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 150, 0, 0)}, rows)
+	})
+}
+
+func TestAFailedCommitAndAFailedCheckStoreNoRecordingGap(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+		module.Record(*reading(at(5*time.Minute), torrent("a", 100, 0)).reading)
 		module.Record(*reading(at(6*time.Minute), torrent("a", 150, 0)).reading)
 
 		query := hourTotal

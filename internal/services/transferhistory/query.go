@@ -52,7 +52,9 @@ type Bytes struct {
 
 // TransferRow is the transfer of one group in one bucket. A row can be
 // coarser than the query asks: Width tells its bucket. Start is the start of
-// the bucket, or of the period for a total. GapSeconds is the length of the
+// the bucket. A total covers each whole stored bucket that overlaps the
+// period, hours for Tracker groups and UTC days for categories, and starts at
+// the first of them. GapSeconds is the length of the
 // Recording gaps that ended in the bucket. Baseline is set on the total rows
 // of a period with no start.
 type TransferRow struct {
@@ -198,13 +200,17 @@ func addBytes(b *Bytes, uploaded, downloaded int64, crossSeed bool) {
 
 // startOf returns the start time of a bucket of an answer row.
 func (a *answer) startOf(width Bucket, bucket int64) time.Time {
-	switch width {
-	case BucketHour:
+	switch {
+	case width == BucketHour:
 		return time.Unix(bucket*3600, 0).UTC()
-	case BucketDay:
+	case width == BucketDay:
 		return time.Unix(bucket*86400, 0).UTC()
+	case a.query.From.IsZero():
+		return time.Time{}
+	case a.query.GroupBy == GroupByCategory:
+		return a.startOf(BucketDay, dayOf(a.query.From))
 	default:
-		return a.query.From
+		return a.startOf(BucketHour, hourOf(a.query.From))
 	}
 }
 

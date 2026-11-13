@@ -35,6 +35,11 @@ type adapterInstance struct {
 	// building is set while a goroutine builds a reading, so that the
 	// readings of an instance reach the module in order.
 	building bool
+	// pending is the newest update that came too soon after the last
+	// reading. timer takes it when the interval ends, because qBittorrent
+	// sends no update until the next change.
+	pending *qbt.SyncUpdate
+	timer   *time.Timer
 }
 
 func NewAdapter(module *Module, syncManager *qbittorrent.SyncManager) *Adapter {
@@ -59,20 +64,63 @@ func (a *Adapter) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	inst := a.instance(instanceID)
-	// A new client of the instance counts its snapshots from 1 again: the
-	// instance was off, so qui did not read it since the last reading.
-	if number := update.Snapshot.Number(); number <= inst.lastSnapshot && inst.failedSince.IsZero() {
-		inst.failedSince = inst.lastReading
-	}
-	inst.lastSnapshot = update.Snapshot.Number()
-	if inst.building || now.Sub(inst.lastReading) < minReadingInterval {
+	failedSince, take := inst.take(now, update.Snapshot.Number())
+	if !take {
+		inst.pending = &update
+		if inst.timer == nil {
+			inst.timer = time.AfterFunc(time.Until(inst.lastReading.Add(minReadingInterval)), func() { a.takePending(instanceID) })
+		}
 		return
 	}
-	inst.lastReading = now
-	inst.building = true
-	failedSince := inst.failedSince
-	inst.failedSince = time.Time{}
 	go a.record(instanceID, update, now, failedSince)
+}
+
+// takePending builds a reading from the update that waits, if one does.
+func (a *Adapter) takePending(instanceID int) {
+	a.mu.Lock()
+	inst := a.instance(instanceID)
+	inst.timer = nil
+	update := inst.pending
+	if update == nil {
+		a.mu.Unlock()
+		return
+	}
+	if inst.building {
+		inst.timer = time.AfterFunc(time.Second, func() { a.takePending(instanceID) })
+		a.mu.Unlock()
+		return
+	}
+	now := update.Snapshot.Time().UTC()
+	failedSince := inst.start(now)
+	a.mu.Unlock()
+	a.record(instanceID, *update, now, failedSince)
+}
+
+// take reports whether the sync at now with the snapshot number gives a
+// reading, and the failure time that the reading ends.
+func (inst *adapterInstance) take(now time.Time, number uint64) (failedSince time.Time, ok bool) {
+	// A new client of the instance counts its snapshots from 1 again: the
+	// instance was off, so qui did not read it since the last reading.
+	if number <= inst.lastSnapshot && inst.failedSince.IsZero() {
+		inst.failedSince = inst.lastReading
+	}
+	inst.lastSnapshot = number
+	// The first successful sync after a failure ends the time without a read.
+	if inst.building || (inst.failedSince.IsZero() && now.Sub(inst.lastReading) < minReadingInterval) {
+		return time.Time{}, false
+	}
+	return inst.start(now), true
+}
+
+// start marks a reading at now and returns the failure time that it ends.
+func (inst *adapterInstance) start(now time.Time) (failedSince time.Time) {
+	inst.lastReading, inst.building, inst.pending = now, true, nil
+	// A held-back update can be older than a failure that is not over yet.
+	if inst.failedSince.After(now) {
+		return time.Time{}
+	}
+	failedSince, inst.failedSince = inst.failedSince, time.Time{}
+	return failedSince
 }
 
 func (a *Adapter) record(instanceID int, update qbt.SyncUpdate, now, failedSince time.Time) {
@@ -105,7 +153,11 @@ func (a *Adapter) HandleTrackerHealthUpdated(int) {}
 func (a *Adapter) HandleSyncError(instanceID int, _ error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if inst := a.instance(instanceID); inst.failedSince.IsZero() {
-		inst.failedSince = time.Now().UTC()
+	a.instance(instanceID).failed(time.Now().UTC())
+}
+
+func (inst *adapterInstance) failed(now time.Time) {
+	if inst.failedSince.IsZero() {
+		inst.failedSince = now
 	}
 }
