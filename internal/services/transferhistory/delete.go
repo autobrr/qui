@@ -66,8 +66,13 @@ func (m *Module) DeleteHistory(ctx context.Context, d HistoryDelete) error {
 	}
 }
 
-// deleteHistory runs on the worker. No fold runs beside it.
+// deleteHistory runs on the worker. No fold runs beside it, and a transfer
+// query waits until the delete ends, so that it does not read a part of it.
 func (m *Module) deleteHistory(d HistoryDelete) error {
+	m.foldRun.Lock()
+	defer m.foldRun.Unlock()
+	m.foldMu.Lock()
+	defer m.foldMu.Unlock()
 	if !d.Before.IsZero() {
 		if err := m.unload(d); err != nil {
 			return err
@@ -75,8 +80,6 @@ func (m *Module) deleteHistory(d HistoryDelete) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), deleteTimeout)
 	defer cancel()
-	m.foldRun.Lock()
-	defer m.foldRun.Unlock()
 	defer m.dropSize()
 
 	ids := []int{d.InstanceID}
