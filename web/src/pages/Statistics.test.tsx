@@ -389,6 +389,14 @@ describe("Statistics", () => {
     expect(screen.queryByText("chart.empty")).toBeNull()
   })
 
+  it("shows the error in the table when the status fails", async () => {
+    server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
+    renderPage()
+
+    // The line at the top of the page and the table both show it.
+    expect(await screen.findAllByText("errors.load message=database is locked")).toHaveLength(2)
+  })
+
   it("says that a period with no transfer has none", async () => {
     renderPage()
 

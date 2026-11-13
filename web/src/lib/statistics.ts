@@ -244,6 +244,19 @@ export function chartRange(period: StatisticsPeriod, since: Date | undefined): {
   return from && { from, to: period.to }
 }
 
+/**
+ * The range of the chart of a category. qui stores the category totals for each UTC day, so the first bar is the
+ * local day that holds the middle of the first UTC day. A range of local days could put two UTC days on one bar.
+ */
+export function categoryRange(period: StatisticsPeriod, since: Date | undefined): { from: Date; to: Date } | undefined {
+  const start = period.from ?? since
+  if (!start) {
+    return undefined
+  }
+  const firstUtcDay = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())
+  return { from: new Date(firstUtcDay + 12 * HOUR), to: period.to }
+}
+
 /** Returns about count ticks from 0 past max, on round numbers of the byte unit of max. */
 export function byteTicks(max: number, count = 4): number[] {
   if (max <= 0) {
@@ -328,10 +341,20 @@ export function barBytes(bar: StatisticsBar): Record<Metric, number> {
   return total
 }
 
-/** Returns the number of bars that end after the first recording, so that an average leaves out the bars before it. */
-export function recordedBarCount(bars: StatisticsBar[], since: Date | undefined): number {
+/**
+ * Returns the number of units of the chart that its bars cover after the first recording, so that an average leaves
+ * out the time before it. A folded day of an hourly chart is a UTC day of 24 hours.
+ */
+export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, unit: ChartUnit): number {
   const first = since?.getTime() ?? -Infinity
-  return bars.filter(bar => bar.start + (bar.width === "hour" ? HOUR : 24 * HOUR) > first).length
+  let units = 0
+  for (const bar of bars) {
+    const end = bar.width === "hour" || unit === "hour" ? bar.start + (bar.width === "hour" ? HOUR : 24 * HOUR) : addLocalDays(new Date(bar.start), 1).getTime()
+    if (end > first) {
+      units += unit === "hour" ? (end - bar.start) / HOUR : 1
+    }
+  }
+  return units
 }
 
 /** Returns the bar with the most upload, or undefined when no bar has upload. */

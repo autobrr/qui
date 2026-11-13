@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-import { buildBars, byteTicks, customPeriod, formatGapLength, labelledGaps, presetPeriod, previousPeriod, sumBytes, topGroups } from "@/lib/statistics"
+import { buildBars, byteTicks, categoryRange, customPeriod, formatGapLength, labelledGaps, presetPeriod, previousPeriod, recordedUnits, sumBytes, topGroups } from "@/lib/statistics"
 import type { TransferHistoryRow } from "@/types"
 
 const originalTZ = process.env.TZ
@@ -86,6 +86,49 @@ describe("buildBars", () => {
       ["2026-01-10T00:00:00.000Z", "day"],
       ["2026-01-11T00:00:00.000Z", "hour"],
     ])
+  })
+})
+
+describe("categoryRange", () => {
+  it("keeps two UTC days of a category apart when the period starts inside the second one east of UTC", () => {
+    process.env.TZ = "Asia/Shanghai"
+    try {
+      const day = (start: string, uploaded: number): TransferHistoryRow => ({ group: "tv", start, width: "day", gapSeconds: 0, uploaded, downloaded: 0, statisticsCrossSeedUploaded: 0 })
+      // 24 hours from 03:00 on January 2 in Shanghai, which is 19:00 UTC on January 1.
+      const period = { from: new Date(2026, 0, 2, 3), to: new Date(2026, 0, 3, 3), unit: "hour" as const }
+      const bars = buildBars([[day("2026-01-01T00:00:00Z", 100), day("2026-01-02T00:00:00Z", 200)]], categoryRange(period, undefined)!, "day")
+
+      expect(bars.map(bar => bar.bytes.get("tv")?.uploaded)).toEqual([100, 200, undefined])
+    } finally {
+      process.env.TZ = "America/New_York"
+    }
+  })
+
+  it("adds no empty first day west of UTC", () => {
+    const day: TransferHistoryRow = { group: "tv", start: "2026-01-02T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 100, downloaded: 0, statisticsCrossSeedUploaded: 0 }
+    const period = { from: new Date("2026-01-02T03:00:00Z"), to: new Date("2026-01-03T03:00:00Z"), unit: "hour" as const }
+    const bars = buildBars([[day]], categoryRange(period, undefined)!, "day")
+
+    expect(bars[0].bytes.get("tv")?.uploaded).toBe(100)
+  })
+})
+
+describe("recordedUnits", () => {
+  it("counts a folded day of an hourly chart as 24 hours", () => {
+    const rows: TransferHistoryRow[] = [
+      { group: "a.test", start: "2026-01-10T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 500, downloaded: 0, statisticsCrossSeedUploaded: 0 },
+      hourRow("2026-01-11T00:00:00Z", "a.test", 7),
+    ]
+    const bars = buildBars([rows], { from: new Date("2026-01-10T00:00:00Z"), to: new Date("2026-01-11T01:00:00Z") }, "hour")
+
+    expect(recordedUnits(bars, undefined, "hour")).toBe(25)
+  })
+
+  it("counts a 25-hour day when the first recording is in its last hour", () => {
+    // In New York, November 1, 2026 has 25 hours.
+    const bars = buildBars([[]], { from: new Date(2026, 10, 1), to: new Date(2026, 10, 2) }, "day")
+
+    expect(recordedUnits(bars, new Date(2026, 10, 1, 23, 30), "day")).toBe(1)
   })
 })
 

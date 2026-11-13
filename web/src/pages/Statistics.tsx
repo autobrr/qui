@@ -281,7 +281,7 @@ export function Statistics() {
           grouping={grouping}
           onGroupingChange={setGrouping}
           rows={loading ? undefined : tableRows}
-          error={chart.error ?? (period.from ? undefined : allTime.error) ?? (byCategory ? categories.error : undefined)}
+          error={statusQuery.error ?? chart.error ?? (period.from ? undefined : allTime.error) ?? (byCategory ? categories.error : undefined)}
           liveLoaded={liveIds.length > 0 && live.groups !== undefined}
           liveError={live.error}
           period={shown.period}
