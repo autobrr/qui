@@ -4,7 +4,7 @@
  */
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import { byteTicks, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
+import { byteTicks, labelledGaps, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { formatBytes, formatDuration } from "@/lib/utils"
 import { useMemo } from "react"
@@ -58,6 +58,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
     return row
   }), [bars, groups, metric])
 
+  const gapLabels = useMemo(() => labelledGaps(rows.flatMap((row, index) => row.gapSeconds > 0 ? [index] : []), rows.length), [rows])
   const ticks = useMemo(() => byteTicks(Math.max(0, ...rows.map(row => row.total))), [rows])
   const otherGroups = useMemo(() => new Set(bars.flatMap(bar => [...bar.bytes].filter(([group, bytes]) => bytes[metric] > 0 && !groups.includes(group)).map(([group]) => group))).size, [bars, groups, metric])
   const hasOther = otherGroups > 0
@@ -71,13 +72,13 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
         <CartesianGrid vertical={false} />
         <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value))} />
         <YAxis tickLine={false} axisLine={false} width={72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
-        {rows.filter(row => row.gapSeconds > 0).map(row => (
+        {rows.map((row, index) => row.gapSeconds > 0 && (
           <ReferenceLine
             key={row.start}
             x={row.start}
             stroke="#eab308"
             strokeDasharray="2 3"
-            label={{ value: t("chart.gapLabel", { duration: formatDuration(row.gapSeconds) }), position: "top", fill: "var(--muted-foreground)", fontSize: 10 }}
+            label={gapLabels.has(index) ? { value: t("chart.gapLabel", { duration: formatDuration(row.gapSeconds) }), position: "top", fill: "var(--muted-foreground)", fontSize: 10 } : undefined}
           />
         ))}
         <ChartTooltip

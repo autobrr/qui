@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-import { buildBars, byteTicks, customPeriod, presetPeriod, previousPeriod, sumBytes, topGroups } from "@/lib/statistics"
+import { buildBars, byteTicks, customPeriod, labelledGaps, presetPeriod, previousPeriod, sumBytes, topGroups } from "@/lib/statistics"
 import type { TransferHistoryRow } from "@/types"
 
 const originalTZ = process.env.TZ
@@ -140,5 +140,12 @@ describe("byteTicks", () => {
     const MiB = 1024 ** 2
 
     expect(byteTicks(381 * MiB)).toEqual([0, 100, 200, 300, 400].map(value => value * MiB))
+  })
+})
+
+describe("labelledGaps", () => {
+  it("labels a gap only when it is far enough from the last labelled gap", () => {
+    // 365 daily bars: a label needs 61 bars of room.
+    expect([...labelledGaps([300, 340, 360, 364], 365)]).toEqual([300, 364])
   })
 })

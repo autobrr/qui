@@ -233,3 +233,20 @@ export function byteTicks(max: number, count = 4): number[] {
   const step = ([1, 2, 2.5, 5, 10].map(factor => factor * power).find(factor => factor >= raw) ?? raw) * unit
   return Array.from({ length: Math.ceil(max / step) + 1 }, (_, index) => index * step)
 }
+
+/**
+ * Returns the bars whose Recording gap gets a label: a gap at least a sixth
+ * of the chart after the last labelled gap, so that labels do not overlap.
+ */
+export function labelledGaps(gapBars: number[], barCount: number): Set<number> {
+  const spacing = Math.ceil(barCount / 6)
+  const labelled = new Set<number>()
+  let last = -Infinity
+  for (const bar of gapBars) {
+    if (bar - last >= spacing) {
+      labelled.add(bar)
+      last = bar
+    }
+  }
+  return labelled
+}
