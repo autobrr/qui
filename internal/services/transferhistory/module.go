@@ -93,6 +93,7 @@ type Module struct {
 	mu             sync.Mutex
 	queue          []Reading
 	notes          []DeleteNote
+	deletes        []deleteRequest
 	barriers       []chan struct{}
 	stopping       bool
 	settings       Settings
@@ -109,6 +110,9 @@ type Module struct {
 	// reloads holds each instance that a write with an unknown outcome
 	// dropped from memory.
 	reloads map[int]struct{}
+	// removed holds each instance whose history a delete removed after the
+	// user removed the instance. The module drops its readings.
+	removed map[int]struct{}
 	// deleteNotes holds the delete notes of each instance, by hash, in the
 	// order of their time.
 	deleteNotes map[int]map[string][]deleteNote
@@ -129,6 +133,7 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		done:           make(chan struct{}),
 		instances:      make(map[int]*instance),
 		reloads:        make(map[int]struct{}),
+		removed:        make(map[int]struct{}),
 		deleteNotes:    make(map[int]map[string][]deleteNote),
 	}
 	m.foldCtx, m.stopFolds = context.WithCancel(context.Background())
@@ -242,6 +247,9 @@ func (m *Module) run() {
 			m.process(r)
 			m.foldIfNewDay(dayOf(r.Time), w.settings.DetailRetentionDays)
 		}
+		for _, d := range w.deletes {
+			d.done <- m.deleteHistory(d.HistoryDelete)
+		}
 		if w.stopping {
 			m.shutdownErr = m.writeAll(w.dropped, settingsErr)
 		}
@@ -259,6 +267,7 @@ type work struct {
 	settings Settings
 	readings []Reading
 	notes    []DeleteNote
+	deletes  []deleteRequest
 	barriers []chan struct{}
 	// dropped is the number of readings that wait for settings that the
 	// module could not read.
@@ -274,8 +283,8 @@ func (m *Module) take(settingsErr error) (work, bool) {
 	if !m.settingsLoaded && len(m.queue) > 0 && settingsErr == nil {
 		return work{}, false
 	}
-	w := work{settings: m.settings, barriers: m.barriers, stopping: m.stopping, pause: m.pause, refold: m.refold}
-	m.barriers, m.pause, m.refold = nil, false, false
+	w := work{settings: m.settings, deletes: m.deletes, barriers: m.barriers, stopping: m.stopping, pause: m.pause, refold: m.refold}
+	m.deletes, m.barriers, m.pause, m.refold = nil, nil, false, false
 	switch {
 	case !m.settingsLoaded:
 		// The delete notes wait until the settings tell whether recording
@@ -330,6 +339,9 @@ func (m *Module) settingsForReadings() error {
 }
 
 func (m *Module) process(r Reading) {
+	if _, removed := m.removed[r.InstanceID]; removed {
+		return
+	}
 	inst := m.instances[r.InstanceID]
 	loaded := inst == nil
 	if loaded {

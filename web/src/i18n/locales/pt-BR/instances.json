@@ -2102,5 +2102,10 @@
       "noReflinks": "Sem reflinks em uma instância remota.",
       "noHardlinkExtension": "Sem hardlinks: o servidor não anuncia hardlink@openssh.com. Uma adição de cross-seed por hardlink falha aqui, ou adiciona no modo regular quando \"Retornar ao modo regular em caso de erro\" está ativado."
     }
+  },
+  "deleteHistory": {
+    "label": "Excluir também o histórico de transferências",
+    "description": "Sem isso, o qui mantém o histórico com o nome da instância.",
+    "failed": "A instância foi excluída, mas o qui não conseguiu excluir todo o histórico. Veja em Configurações > Estatísticas e exclua o restante por lá."
   }
 }

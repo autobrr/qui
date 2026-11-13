@@ -2072,5 +2072,10 @@
       "noReflinks": "远程实例不支持引用链接。",
       "noHardlinkExtension": "无硬链接：服务器未声明支持 hardlink@openssh.com。交叉做种的硬链接添加在此会失败；若已开启“出错时回退到常规模式”，则以常规模式添加。"
     }
+  },
+  "deleteHistory": {
+    "label": "同时删除其传输历史",
+    "description": "不勾选时，qui 会以该实例的名称保留历史。",
+    "failed": "实例已删除，但 qui 未能删除其全部历史。请在设置 > 统计中查看并删除其余部分。"
   }
 }

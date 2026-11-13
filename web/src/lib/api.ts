@@ -2609,6 +2609,15 @@ class ApiClient {
     })
   }
 
+  /** Deletes the history of one instance or of all instances: everything, or the UTC days before the day of `before`. */
+  async deleteTransferHistory(target: { instanceId: number | "all"; before?: Date }): Promise<void> {
+    const params = new URLSearchParams({ instanceId: String(target.instanceId) })
+    if (target.before) {
+      params.set("before", target.before.toISOString())
+    }
+    return this.request<void>(`/transfer-history?${params}`, { method: "DELETE" })
+  }
+
   // Log Exclusions endpoints
   async getLogExclusions(): Promise<LogExclusions> {
     return this.request<LogExclusions>("/log-exclusions")

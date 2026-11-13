@@ -80,8 +80,11 @@ type step struct {
 	check     *check
 	deletes   *deletesCheck
 	library   *libraryCheck
-	restart   bool
-	crash     bool
+	// historyDelete deletes history, and instances checks the instances of the status query.
+	historyDelete *transferhistory.HistoryDelete
+	instances     *[]transferhistory.InstanceStatus
+	restart       bool
+	crash         bool
 }
 
 type check struct {
@@ -159,6 +162,12 @@ func runSteps(t *testing.T, db *database.DB, steps []step) {
 			} else {
 				require.Equal(t, s.library.want, rows, "step %d", i)
 			}
+		case s.historyDelete != nil:
+			require.NoError(t, module.DeleteHistory(t.Context(), *s.historyDelete), "step %d", i)
+		case s.instances != nil:
+			status, err := module.Status(t.Context())
+			require.NoError(t, err, "step %d", i)
+			require.Equal(t, *s.instances, status.Instances, "step %d", i)
 		case s.restart:
 			require.NoError(t, module.Shutdown(t.Context()))
 			module = transferhistory.New(db, customizations)

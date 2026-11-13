@@ -2102,5 +2102,10 @@
       "noReflinks": "No reflinks on a remote instance.",
       "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
     }
+  },
+  "deleteHistory": {
+    "label": "Also delete its transfer history",
+    "description": "Without this, qui keeps the history under the name of the instance.",
+    "failed": "The instance is deleted, but qui could not delete all of its history. Look in Settings > Statistics, and delete the rest there."
   }
 }
