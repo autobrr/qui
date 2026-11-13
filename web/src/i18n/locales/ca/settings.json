@@ -406,7 +406,7 @@
     },
     "retention": {
       "label": "Conserva el detall diari durant",
-      "description": "Després d'aquest temps, qui agrupa els totals per hora en dies, i els bytes diaris de cada torrent en una fila per any. Els totals no canvien.",
+      "description": "Després d'aquest temps, qui agrupa els totals per hora en dies, i els bytes diaris de cada torrent en una fila per any. Els totals no canvien. Si trieu un temps més curt, qui agrupa el detall més antic a la lectura següent i no el podeu recuperar.",
       "days90": "90 dies",
       "days400": "400 dies",
       "forever": "Sempre"

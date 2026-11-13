@@ -17,7 +17,7 @@ Open **Settings → Statistics** to control the recording. The settings apply to
 
 This switch stops and starts the recording. Recording is on by default.
 
-While the switch is off, qui does not read the transfer of your instances, and it keeps the history that it stored. That time is a Recording gap. When you turn the switch on again, qui puts the bytes that your torrents moved during the gap on the first hour after the gap. qui also stores the length of the gap, so the Statistics page can mark that day.
+While the switch is off, qui does not read the transfer of your instances, and it keeps the history that it stored. That time is a Recording gap. When you turn the switch on again, qui puts the bytes that your torrents moved during the gap on the first hour after the gap. qui also stores the length of the gap, so the Statistics page can mark that day. A torrent that someone deletes while the switch is off shows the cause "outside qui", because qui does not keep track of deletes during that time.
 
 ### Keep daily detail for
 
@@ -28,7 +28,7 @@ The detail is the upload and download of each tracker for each hour, and of each
 - The hours of a day become one row for that day.
 - The days of a torrent become one row for each year.
 
-A fold does not change the total of a whole UTC day. A period that starts or ends inside a folded day counts the whole day. A chart of hours shows one bar for each day in a folded period. qui folds at the first reading of each new UTC day and at the first reading after qui starts. When you select a shorter time, the next reading folds.
+A fold does not change the total of a whole UTC day. A period that starts or ends inside a folded day counts the whole day. A chart of hours shows one bar for each day in a folded period. qui folds at the first reading of each new UTC day and at the first reading after qui starts. When you select a shorter time, the next reading folds. You cannot get folded detail back.
 
 qui keeps these rows forever: the daily totals of each tracker and category, the yearly rows of each torrent, the record of each torrent, and the events for adds, completions, and deletes.
 

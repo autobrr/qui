@@ -406,7 +406,7 @@
     },
     "retention": {
       "label": "Uchovávat denní podrobnosti po dobu",
-      "description": "Po této době qui sloučí hodinové součty do dnů a denní bajty každého torrentu do jednoho řádku za rok. Součty zůstanou stejné.",
+      "description": "Po této době qui sloučí hodinové součty do dnů a denní bajty každého torrentu do jednoho řádku za rok. Součty zůstanou stejné. Když zvolíte kratší dobu, qui starší podrobnosti sloučí při příštím čtení a nelze je obnovit.",
       "days90": "90 dní",
       "days400": "400 dní",
       "forever": "Navždy"

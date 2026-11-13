@@ -406,7 +406,7 @@
     },
     "retention": {
       "label": "Keep daily detail for",
-      "description": "After this time, qui folds the hourly totals into days, and the daily bytes of each torrent into one row for each year. The totals stay the same.",
+      "description": "After this time, qui folds the hourly totals into days, and the daily bytes of each torrent into one row for each year. The totals stay the same. When you select a shorter time, qui folds the older detail at the next reading, and you cannot get it back.",
       "days90": "90 days",
       "days400": "400 days",
       "forever": "Forever"

@@ -406,7 +406,7 @@
     },
     "retention": {
       "label": "Tägliche Details behalten für",
-      "description": "Nach dieser Zeit fasst qui die stündlichen Summen zu Tagen zusammen und die täglichen Bytes jedes Torrents zu einer Zeile pro Jahr. Die Summen bleiben gleich.",
+      "description": "Nach dieser Zeit fasst qui die stündlichen Summen zu Tagen zusammen und die täglichen Bytes jedes Torrents zu einer Zeile pro Jahr. Die Summen bleiben gleich. Wenn du eine kürzere Zeit wählst, fasst qui die älteren Details bei der nächsten Abfrage zusammen, und du kannst sie nicht zurückholen.",
       "days90": "90 Tage",
       "days400": "400 Tage",
       "forever": "Immer"

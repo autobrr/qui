@@ -406,7 +406,7 @@
     },
     "retention": {
       "label": "Mantieni il dettaglio giornaliero per",
-      "description": "Dopo questo periodo, qui raggruppa i totali orari in giorni e i byte giornalieri di ogni torrent in una riga per anno. I totali restano uguali.",
+      "description": "Dopo questo periodo, qui raggruppa i totali orari in giorni e i byte giornalieri di ogni torrent in una riga per anno. I totali restano uguali. Se scegli un periodo più breve, qui raggruppa il dettaglio più vecchio alla lettura successiva e non puoi recuperarlo.",
       "days90": "90 giorni",
       "days400": "400 giorni",
       "forever": "Sempre"

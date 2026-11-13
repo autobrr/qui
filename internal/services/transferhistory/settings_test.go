@@ -271,6 +271,18 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "a delete note while the switch is off is dropped",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
+				reading(at(5*time.Minute), torrent("a", 0, 0), torrent("b", 0, 0)),
+				recordingOff,
+				note(at(6*time.Minute), byUser, "a"),
+				recordingOn,
+				reading(at(10*time.Minute), torrent("b", 0, 0)),
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, deleted("a", at(10*time.Minute), 0, 0, outside)),
+			},
+		},
+		{
 			name: "the switch stays off after a restart",
 			steps: []step{
 				reading(at(0), torrent("a", 10, 0)),

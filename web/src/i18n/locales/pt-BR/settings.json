@@ -406,7 +406,7 @@
     },
     "retention": {
       "label": "Manter detalhes diários por",
-      "description": "Após esse período, o qui agrupa os totais por hora em dias, e os bytes diários de cada torrent em uma linha por ano. Os totais continuam os mesmos.",
+      "description": "Após esse período, o qui agrupa os totais por hora em dias, e os bytes diários de cada torrent em uma linha por ano. Os totais continuam os mesmos. Se você escolher um período menor, o qui agrupa os detalhes mais antigos na próxima leitura, e não é possível recuperá-los.",
       "days90": "90 dias",
       "days400": "400 dias",
       "forever": "Para sempre"
