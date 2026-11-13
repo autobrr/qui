@@ -391,6 +391,66 @@ var corpusRows = []corpusRow{
 		want:           corpusNoMatch,
 	},
 	{
+		// regression: #3823
+		// The NFO keeps the sizes apart, so title rescue cannot make the match.
+		name:           "two dotted AKAs against a listing with the titles in another order",
+		source:         "Alpha.Film.AKA.Beta.Film.AKA.Gamma.Film.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP.mkv",
+		candidate:      "Gamma Film AKA Alpha Film 1999 1080p BluRay REMUX AVC FLAC 1.0-GRP",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusEpisodeSize + corpusNFOSize,
+		candidateFiles: corpusEpisodeWithNFO("Gamma.Film.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP"),
+		want:           corpusMatch,
+	},
+	{
+		// regression: #3823
+		name:           "two dotted AKAs against a listing with only the second and third title",
+		source:         "Alpha.Film.AKA.Beta.Film.AKA.Gamma.Film.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP.mkv",
+		candidate:      "Gamma Film AKA Beta Film 1999 1080p BluRay REMUX AVC FLAC 1.0-GRP",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusEpisodeSize + corpusNFOSize,
+		candidateFiles: corpusEpisodeWithNFO("Gamma.Film.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP"),
+		want:           corpusMatch,
+	},
+	{
+		// regression: #3823
+		name:           "lowercase aka against a listing with the titles in another order",
+		source:         "Alpha.Film.aka.Beta.Film.1999.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-GRP",
+		candidate:      "Beta Film aka Alpha Film 1999 1080p BluRay REMUX AVC  DTS-HD MA 5.1-GRP",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusEpisodeSize + corpusNFOSize,
+		candidateFiles: corpusEpisodeWithNFO("Beta.Film.1999.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-GRP"),
+		want:           corpusMatch,
+	},
+	{
+		// regression: #3823
+		// "Aka" is a word of the title, not an AKA marker.
+		name:           "title word Aka against the title after it",
+		source:         "Mister.Aka.Manson.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP.mkv",
+		candidate:      "Manson 1999 1080p BluRay REMUX AVC FLAC 1.0-GRP",
+		sourceSize:     corpusEpisodeSize,
+		candidateSize:  corpusEpisodeSize + corpusNFOSize,
+		candidateFiles: corpusEpisodeWithNFO("Manson.1999.1080p.BluRay.REMUX.AVC.FLAC.1.0-GRP"),
+		want:           corpusNoMatch,
+	},
+	{
+		// regression: #2997
+		name:          "leading CJK title bracket against the same name without it",
+		source:        "Harbor.Lights.2022.S01E01.1080p.WEB.H264-GRP",
+		candidate:     "[港灯].Harbor.Lights.2022.S01E01.1080p.WEB.H264-GRP",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
+		// regression: #3549
+		name:          "bare software name against the tracker name with the platform list",
+		source:        "Harbor.Toolkit-GRP",
+		candidate:     "Harbor.Toolkit-GRP (2019) [Windows / Multi-Language / Full ISO]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+	},
+	{
 		name:           "slash title",
 		source:         "Kaiju.Squad.Zero.S02E05.1080p.WEB.H264-GRP",
 		candidate:      "Kaiju/Squad Zero S02E05 1080p WEB H264-GRP",
@@ -525,6 +585,27 @@ var corpusRows = []corpusRow{
 		name:          "REPACK flag in a trailing bracket at another size",
 		source:        "Kaiju Squad (2020) REPACK (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
 		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize + corpusEpisodeSize/50,
+		want:          corpusNoMatch,
+	},
+	{
+		// regression: #3292
+		name:          "REPACK2 flag in a trailing bracket against the flag in the name",
+		source:        "Kaiju Squad (2020) REPACK2 (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
+		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK2]",
+		sourceSize:    corpusEpisodeSize,
+		candidateSize: corpusEpisodeSize,
+		want:          corpusMatch,
+		differences: map[matchPath]corpusDifference{
+			pathDedup: allowedDifference(corpusNoMatch, reasonDedupNoExactSize),
+		},
+	},
+	{
+		// regression: #3292
+		name:          "REPACK2 flag in a trailing bracket at another size",
+		source:        "Kaiju Squad (2020) REPACK2 (1080p BDRip x265 10bit AC3 5.1 - Kyo)[Mura]",
+		candidate:     "Kaiju Squad (2020) (1080p BluRay x265 SDR DD 5.1 English - Kyo Mura) [REPACK2]",
 		sourceSize:    corpusEpisodeSize,
 		candidateSize: corpusEpisodeSize + corpusEpisodeSize/50,
 		want:          corpusNoMatch,

@@ -326,16 +326,16 @@ func (m matcher) appendNormalizedReleaseTitles(dst []string, release *rls.Releas
 }
 
 // appendReleaseTitles appends the titles that the matcher reads from a name:
-// the main title first, then the alternate title, each AKA part, and each side
-// of a slash title. An entry can be "". The title without the Season numeral
-// is not one of them, because it depends on the season of the other side.
+// the main title first, then each other name of an AKA title, each AKA part,
+// and each side of a slash title. An entry can be "". The title without the
+// Season numeral is not one of them, because it depends on the season of the
+// other side.
 func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawName string) []string {
-	titles = append(titles, releaseTitle(release), releaseAlt(release))
+	titles = appendTitleAndAlts(titles, release)
 
 	// Cached parse: this runs once per library torrent per search.
 	for _, rawTitle := range m.rawAKATitleParts(rawName) {
-		parsed := m.parseReleaseName(rawTitle)
-		titles = append(titles, parsed.Title, parsed.Alt)
+		titles = appendTitleAndAlts(titles, m.parseReleaseName(rawTitle))
 	}
 
 	// rls ends the title at a slash, so an indexer listing like
@@ -354,7 +354,7 @@ func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawN
 	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
 		parsed := m.parseReleaseName(unslashed)
 		if strings.HasPrefix(parsed.Title, releaseTitle(release)) {
-			titles = append(titles, parsed.Title, parsed.Alt)
+			titles = appendTitleAndAlts(titles, parsed)
 		}
 	}
 
@@ -435,11 +435,11 @@ func appendRomanNumeral(dst []byte, n int) []byte {
 	return dst
 }
 
-func releaseAlt(release *rls.Release) string {
+func appendTitleAndAlts(titles []string, release *rls.Release) []string {
 	if release == nil {
-		return ""
+		return append(titles, "")
 	}
-	return release.Alt
+	return append(append(titles, release.Title), release.Alt...)
 }
 
 func (m matcher) rawAKATitleParts(rawName string) []string {

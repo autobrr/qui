@@ -394,7 +394,7 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 			candidate: rls.Release{
 				Type:   rls.Series,
 				Title:  "Black Gear, Maze Patrol",
-				Alt:    "Kuro Gear no Meiro Tansaku",
+				Alt:    []string{"Kuro Gear no Meiro Tansaku"},
 				Series: 2,
 				Source: "WEB-DL",
 			},
@@ -427,7 +427,7 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 			candidate: rls.Release{
 				Type:   rls.Series,
 				Title:  "Kuro Gear Outer Ring",
-				Alt:    "Kuro Gear Outer Ring",
+				Alt:    []string{"Kuro Gear Outer Ring"},
 				Series: 1,
 			},
 			expectedMatch:  false,
