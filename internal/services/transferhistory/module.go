@@ -222,69 +222,85 @@ func (m *Module) run() {
 	}()
 	for range m.wake {
 		settingsErr := m.settingsForReadings()
-
-		m.mu.Lock()
-		ready := m.settingsLoaded
-		if !ready && len(m.queue) > 0 && settingsErr == nil {
+		w, ok := m.take(settingsErr)
+		if !ok {
 			// The readings came after the check: the next wake reads the
 			// settings, and only then do the queries before it get their answer.
-			m.mu.Unlock()
 			m.signal()
 			continue
 		}
-		var readings []Reading
-		var dropped int
-		settings := m.settings
-		if !ready {
-			dropped = len(m.queue)
-		} else {
-			readings, m.queue = m.queue, nil
-			// The settings can say that recording is off since the readings came.
-			if !m.settings.Recording {
-				readings = nil
-			}
-		}
-		notes, barriers, stopping, pause, refold := m.notes, m.barriers, m.stopping, m.pause, m.refold
-		m.notes, m.barriers, m.pause, m.refold = nil, nil, false, false
-		m.mu.Unlock()
-
-		// No reading clears the delete notes while recording is off. Notes can
-		// come before the module reads the settings after a start.
-		if ready && !settings.Recording {
-			notes = nil
-			clear(m.deleteNotes)
-		}
-
-		if refold {
+		if w.refold {
 			m.foldedDay = 0
 		}
-		if pause {
+		if w.pause {
 			m.pauseInstances()
 		}
-		for _, n := range notes {
+		for _, n := range w.notes {
 			m.keep(n, false)
 		}
-		for _, r := range readings {
+		for _, r := range w.readings {
 			m.process(r)
-			m.foldIfNewDay(dayOf(r.Time), settings.DetailRetentionDays)
+			m.foldIfNewDay(dayOf(r.Time), w.settings.DetailRetentionDays)
 		}
-		if stopping {
-			errs := make([]error, 0, len(m.instances)+1)
-			for _, inst := range m.instances {
-				errs = append(errs, m.write(inst))
-			}
-			if dropped > 0 {
-				errs = append(errs, fmt.Errorf("drop %d readings that wait for the settings: %w", dropped, settingsErr))
-			}
-			m.shutdownErr = errors.Join(errs...)
+		if w.stopping {
+			m.shutdownErr = m.writeAll(w.dropped, settingsErr)
 		}
-		for _, b := range barriers {
+		for _, b := range w.barriers {
 			close(b)
 		}
-		if stopping {
+		if w.stopping {
 			return
 		}
 	}
+}
+
+// work is what the worker takes at one wake.
+type work struct {
+	settings Settings
+	readings []Reading
+	notes    []DeleteNote
+	barriers []chan struct{}
+	// dropped is the number of readings that wait for settings that the
+	// module could not read.
+	dropped                 int
+	stopping, pause, refold bool
+}
+
+// take takes the work of one wake. It reports false, and takes nothing, when
+// readings wait for settings that the module did not try to read yet.
+func (m *Module) take(settingsErr error) (work, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.settingsLoaded && len(m.queue) > 0 && settingsErr == nil {
+		return work{}, false
+	}
+	w := work{settings: m.settings, notes: m.notes, barriers: m.barriers, stopping: m.stopping, pause: m.pause, refold: m.refold}
+	m.notes, m.barriers, m.pause, m.refold = nil, nil, false, false
+	switch {
+	case !m.settingsLoaded:
+		w.dropped = len(m.queue)
+	case m.settings.Recording:
+		w.readings, m.queue = m.queue, nil
+	default:
+		// No reading clears the delete notes while recording is off. Notes
+		// can come before the module reads the settings after a start.
+		m.queue, w.notes = nil, nil
+		clear(m.deleteNotes)
+	}
+	return w, true
+}
+
+// writeAll writes the changes of each instance, at shutdown, and returns the
+// error of each write that failed and of the readings that it drops.
+func (m *Module) writeAll(dropped int, settingsErr error) error {
+	errs := make([]error, 0, len(m.instances)+1)
+	for _, inst := range m.instances {
+		errs = append(errs, m.write(inst))
+	}
+	if dropped > 0 {
+		errs = append(errs, fmt.Errorf("drop %d readings that wait for the settings: %w", dropped, settingsErr))
+	}
+	return errors.Join(errs...)
 }
 
 // settingsForReadings reads the settings when readings wait, and returns the
