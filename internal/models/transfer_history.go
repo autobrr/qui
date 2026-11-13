@@ -60,6 +60,75 @@ type TransferHistoryRecord struct {
 	// LoadInstance leaves them empty.
 	BaselineTrackerDomain string
 	BaselineCategory      string
+	// BaselineStatisticsCrossSeed is the Statistics cross-seed flag of the
+	// Baseline. It is nil while the Baseline follows StatisticsCrossSeed.
+	BaselineStatisticsCrossSeed *bool
+	// Deleted is set while the torrent is not in qBittorrent.
+	Deleted bool
+	// Completed is set when the torrent completed since the user added it last.
+	Completed bool
+	// Final holds the values of the last reading that held the torrent. No
+	// column stores it, so LoadInstance leaves it nil.
+	Final *TransferHistoryFinal
+}
+
+// TransferHistoryFinal is what a delete event keeps of a torrent, apart from
+// its last counters.
+type TransferHistoryFinal struct {
+	Ratio          float64
+	SeedingSeconds int64
+}
+
+type TransferHistoryEventKind string
+
+const (
+	TransferHistoryEventAdd        TransferHistoryEventKind = "add"
+	TransferHistoryEventCompletion TransferHistoryEventKind = "completion"
+	TransferHistoryEventDelete     TransferHistoryEventKind = "delete"
+)
+
+// TransferHistoryEvent is one add, completion, or delete of a torrent.
+// Delete is set on a delete event only.
+type TransferHistoryEvent struct {
+	Record *TransferHistoryRecord
+	Kind   TransferHistoryEventKind
+	Time   time.Time
+	Delete *TransferHistoryDelete
+}
+
+// TransferHistoryDelete is what a delete event holds. Ratio and
+// SeedingSeconds are nil when no reading held the torrent since qui started.
+// CauseName is the name of the automation rule or of the Client Proxy API key.
+type TransferHistoryDelete struct {
+	Uploaded       int64
+	Downloaded     int64
+	Ratio          *float64
+	SeedingSeconds *int64
+	CauseKind      string
+	CauseName      string
+}
+
+type TransferHistoryHashChange struct {
+	From string
+	To   string
+}
+
+// TransferHistoryDeleteRow is a stored delete event with its torrent.
+type TransferHistoryDeleteRow struct {
+	Time          time.Time
+	Hash          string
+	Name          string
+	TrackerDomain string
+	Private       *bool
+	TransferHistoryDelete
+}
+
+// TransferHistoryEventCount is the number of events of one kind on one UTC
+// day. Day counts days since 1970-01-01.
+type TransferHistoryEventCount struct {
+	Day   int64
+	Kind  TransferHistoryEventKind
+	Count int64
 }
 
 // TransferHistoryTorrentDay is the transfer of one torrent on one UTC day.
@@ -106,6 +175,8 @@ type TransferHistoryWrite struct {
 	TrackerHours []TransferHistoryTotal
 	CategoryDays []TransferHistoryTotal
 	Gaps         []TransferHistoryGap
+	HashChanges  []TransferHistoryHashChange
+	Events       []TransferHistoryEvent
 }
 
 // TransferHistoryBaseline is the Baseline of the torrents that share a key.
@@ -147,7 +218,8 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT t.id, t.hash, t.name, t.tracker_domain, t.category, t.private, t.size, t.release_group,
 			t.resolution, t.source, t.content_type, t.statistics_cross_seed, c.uploaded, c.downloaded,
-			t.upload_first_24h, t.baseline_uploaded, t.baseline_downloaded
+			t.upload_first_24h, t.baseline_uploaded, t.baseline_downloaded, t.deleted, t.completed,
+			t.baseline_statistics_cross_seed
 		FROM transfer_history_torrents t
 		JOIN transfer_history_counters c ON c.torrent_id = t.id
 		WHERE t.instance_id = ?`, instanceID)
@@ -159,11 +231,11 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 	var records []*TransferHistoryRecord
 	for rows.Next() {
 		var r TransferHistoryRecord
-		var private, crossSeed sql.NullBool
+		var private, crossSeed, baselineCrossSeed sql.NullBool
 		var first24h sql.NullInt64
 		if err := rows.Scan(&r.ID, &r.Hash, &r.Name, &r.TrackerDomain, &r.Category, &private, &r.Size,
 			&r.ReleaseGroup, &r.Resolution, &r.Source, &r.ContentType, &crossSeed,
-			&r.LastUploaded, &r.LastDownloaded, &first24h, &r.BaselineUploaded, &r.BaselineDownloaded); err != nil {
+			&r.LastUploaded, &r.LastDownloaded, &first24h, &r.BaselineUploaded, &r.BaselineDownloaded, &r.Deleted, &r.Completed, &baselineCrossSeed); err != nil {
 			return nil, nil, fmt.Errorf("scan transfer history record: %w", err)
 		}
 		if private.Valid {
@@ -171,6 +243,9 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 		}
 		if crossSeed.Valid {
 			r.StatisticsCrossSeed = &crossSeed.Bool
+		}
+		if baselineCrossSeed.Valid {
+			r.BaselineStatisticsCrossSeed = &baselineCrossSeed.Bool
 		}
 		if first24h.Valid {
 			r.UploadFirst24h = &first24h.Int64
@@ -210,6 +285,15 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 		return nil, fmt.Errorf("write transfer history instance: %w", err)
 	} else if stored == 0 {
 		return nil, ErrTransferHistoryWriteNumber
+	}
+
+	// A record that no write stored yet has no row to change.
+	for _, change := range w.HashChanges {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE transfer_history_torrents SET hash = ? WHERE instance_id = ? AND hash = ?`,
+			change.To, w.InstanceID, change.From); err != nil {
+			return nil, fmt.Errorf("write transfer history hash change: %w", err)
+		}
 	}
 
 	ids, err := upsertTransferHistoryRecords(ctx, tx, w.InstanceID, w.Records)
@@ -284,6 +368,20 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 		return nil, fmt.Errorf("write transfer history gaps: %w", err)
 	}
 
+	if err := execTransferHistoryChunks(ctx, tx, w.Events, 10, `
+		INSERT INTO transfer_history_events
+			(instance_id, torrent_id, kind, second, uploaded, downloaded, ratio, seeding_seconds, cause_kind, cause_name)
+		VALUES %s`,
+		func(e TransferHistoryEvent) []any {
+			d := e.Delete
+			if d == nil {
+				return []any{w.InstanceID, idOf(e.Record), e.Kind, e.Time.Unix(), nil, nil, nil, nil, nil, nil}
+			}
+			return []any{w.InstanceID, idOf(e.Record), e.Kind, e.Time.Unix(), d.Uploaded, d.Downloaded, d.Ratio, d.SeedingSeconds, d.CauseKind, d.CauseName}
+		}); err != nil {
+		return nil, fmt.Errorf("write transfer history events: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrTransferHistoryCommitUnknown, err)
 	}
@@ -310,16 +408,18 @@ func (s *TransferHistoryStore) Writes(ctx context.Context, instanceID int) (int6
 func upsertTransferHistoryRecords(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, records []*TransferHistoryRecord) (map[string]int64, error) {
 	ids := make(map[string]int64, len(records))
 	for chunk := range transferHistoryChunks(records) {
-		args := make([]any, 0, len(chunk)*17)
+		args := make([]any, 0, len(chunk)*20)
 		for _, r := range chunk {
 			args = append(args, instanceID, r.Hash, r.Name, r.TrackerDomain, r.Category, r.Private, r.Size,
 				r.ReleaseGroup, r.Resolution, r.Source, r.ContentType, r.StatisticsCrossSeed,
-				r.UploadFirst24h, r.BaselineUploaded, r.BaselineDownloaded, r.BaselineTrackerDomain, r.BaselineCategory)
+				r.UploadFirst24h, r.BaselineUploaded, r.BaselineDownloaded, r.BaselineTrackerDomain, r.BaselineCategory, r.Deleted, r.Completed,
+				r.BaselineStatisticsCrossSeed)
 		}
 		query := dbinterface.BuildQueryWithPlaceholders(`
 			INSERT INTO transfer_history_torrents (instance_id, hash, name, tracker_domain, category, private,
 				size, release_group, resolution, source, content_type, statistics_cross_seed,
-				upload_first_24h, baseline_uploaded, baseline_downloaded, baseline_tracker_domain, baseline_category)
+				upload_first_24h, baseline_uploaded, baseline_downloaded, baseline_tracker_domain, baseline_category,
+				deleted, completed, baseline_statistics_cross_seed)
 			VALUES %s
 			ON CONFLICT (instance_id, hash) DO UPDATE SET
 				name = excluded.name,
@@ -332,8 +432,11 @@ func upsertTransferHistoryRecords(ctx context.Context, tx dbinterface.TxQuerier,
 				source = excluded.source,
 				content_type = excluded.content_type,
 				statistics_cross_seed = excluded.statistics_cross_seed,
-				upload_first_24h = excluded.upload_first_24h
-			RETURNING id, hash`, 17, len(chunk))
+				upload_first_24h = excluded.upload_first_24h,
+				deleted = excluded.deleted,
+				completed = excluded.completed,
+				baseline_statistics_cross_seed = excluded.baseline_statistics_cross_seed
+			RETURNING id, hash`, 20, len(chunk))
 		if err := scanTransferHistoryIDs(ctx, tx, query, args, ids); err != nil {
 			return nil, err
 		}
@@ -493,15 +596,17 @@ func (s *TransferHistoryStore) GapSeconds(ctx context.Context, instanceID int, f
 }
 
 // Baselines returns the Baseline of the records of an instance, by the
-// tracker domain and category at the first sight of each record, and by its
-// private flag and Statistics cross-seed flag now.
+// tracker domain and category at the first sight of each record, by its
+// private flag now, and by the Statistics cross-seed flag of its first life.
 func (s *TransferHistoryStore) Baselines(ctx context.Context, instanceID int) ([]TransferHistoryBaseline, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT baseline_tracker_domain, private, baseline_category, COALESCE(statistics_cross_seed, FALSE),
+		SELECT baseline_tracker_domain, private, baseline_category,
+			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE),
 			CAST(SUM(baseline_uploaded) AS BIGINT), CAST(SUM(baseline_downloaded) AS BIGINT)
 		FROM transfer_history_torrents
 		WHERE instance_id = ? AND (baseline_uploaded > 0 OR baseline_downloaded > 0)
-		GROUP BY baseline_tracker_domain, private, baseline_category, COALESCE(statistics_cross_seed, FALSE)`,
+		GROUP BY baseline_tracker_domain, private, baseline_category,
+			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE)`,
 		instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("read transfer history baselines: %w", err)
@@ -547,4 +652,154 @@ func (s *TransferHistoryStore) Instances(ctx context.Context) ([]TransferHistory
 		return nil, fmt.Errorf("read transfer history instances: %w", err)
 	}
 	return instances, nil
+}
+
+// EventCounts returns the number of events of each kind on each UTC day of
+// days [fromDay, toDay).
+func (s *TransferHistoryStore) EventCounts(ctx context.Context, instanceID int, fromDay, toDay int64) ([]TransferHistoryEventCount, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT second / 86400, kind, COUNT(*)
+		FROM transfer_history_events
+		WHERE instance_id = ? AND kind IN (?, ?, ?) AND second >= ? AND second < ?
+		GROUP BY second / 86400, kind`,
+		instanceID, TransferHistoryEventAdd, TransferHistoryEventCompletion, TransferHistoryEventDelete,
+		fromDay*86400, toDay*86400)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history event counts: %w", err)
+	}
+	defer rows.Close()
+	var counts []TransferHistoryEventCount
+	for rows.Next() {
+		var c TransferHistoryEventCount
+		if err := rows.Scan(&c.Day, &c.Kind, &c.Count); err != nil {
+			return nil, fmt.Errorf("scan transfer history event count: %w", err)
+		}
+		counts = append(counts, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history event counts: %w", err)
+	}
+	return counts, nil
+}
+
+// transferHistoryDeletes is the WHERE clause of the delete events of seconds
+// [fromSecond, toSecond). causeKinds limits them to those kinds of cause when
+// it is not empty.
+func transferHistoryDeletes(instanceID int, fromSecond, toSecond int64, causeKinds []string) (where string, args []any) {
+	where = "e.instance_id = ? AND e.kind = ? AND e.second >= ? AND e.second < ?"
+	args = []any{instanceID, TransferHistoryEventDelete, fromSecond, toSecond}
+	if len(causeKinds) > 0 {
+		where += " AND e.cause_kind IN (?" + strings.Repeat(", ?", len(causeKinds)-1) + ")"
+		for _, kind := range causeKinds {
+			args = append(args, kind)
+		}
+	}
+	return where, args
+}
+
+// Deletes returns a page of the delete events of seconds
+// [fromSecond, toSecond), with the newest first. causeKinds limits them to
+// those kinds of cause when it is not empty.
+func (s *TransferHistoryStore) Deletes(ctx context.Context, instanceID int, fromSecond, toSecond int64, causeKinds []string, limit, offset int) ([]TransferHistoryDeleteRow, error) {
+	where, args := transferHistoryDeletes(instanceID, fromSecond, toSecond, causeKinds)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT e.second, t.hash, t.name, t.tracker_domain, t.private, e.uploaded, e.downloaded,
+			e.ratio, e.seeding_seconds, e.cause_kind, e.cause_name
+		FROM transfer_history_events e
+		JOIN transfer_history_torrents t ON t.id = e.torrent_id
+		WHERE `+where+`
+		ORDER BY e.second DESC, e.id DESC
+		LIMIT ? OFFSET ?`, append(args, limit, offset)...)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history deletes: %w", err)
+	}
+	defer rows.Close()
+	var deletes []TransferHistoryDeleteRow
+	for rows.Next() {
+		var d TransferHistoryDeleteRow
+		var second int64
+		var private sql.NullBool
+		var ratio sql.NullFloat64
+		var seedingSeconds sql.NullInt64
+		if err := rows.Scan(&second, &d.Hash, &d.Name, &d.TrackerDomain, &private, &d.Uploaded, &d.Downloaded,
+			&ratio, &seedingSeconds, &d.CauseKind, &d.CauseName); err != nil {
+			return nil, fmt.Errorf("scan transfer history delete: %w", err)
+		}
+		d.Time = time.Unix(second, 0).UTC()
+		if private.Valid {
+			d.Private = &private.Bool
+		}
+		if ratio.Valid {
+			d.Ratio = &ratio.Float64
+		}
+		if seedingSeconds.Valid {
+			d.SeedingSeconds = &seedingSeconds.Int64
+		}
+		deletes = append(deletes, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history deletes: %w", err)
+	}
+	return deletes, nil
+}
+
+// DeleteCauseCounts returns the number of delete events of seconds
+// [fromSecond, toSecond), by kind of cause.
+func (s *TransferHistoryStore) DeleteCauseCounts(ctx context.Context, instanceID int, fromSecond, toSecond int64) (map[string]int64, error) {
+	where, args := transferHistoryDeletes(instanceID, fromSecond, toSecond, nil)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT e.cause_kind, COUNT(*)
+		FROM transfer_history_events e
+		WHERE `+where+`
+		GROUP BY e.cause_kind`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history delete counts: %w", err)
+	}
+	defer rows.Close()
+	counts := make(map[string]int64)
+	for rows.Next() {
+		var kind string
+		var count int64
+		if err := rows.Scan(&kind, &count); err != nil {
+			return nil, fmt.Errorf("scan transfer history delete count: %w", err)
+		}
+		counts[kind] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history delete counts: %w", err)
+	}
+	return counts, nil
+}
+
+// TransferHistoryDeleteKey names a delete event by the hash of its torrent
+// and its time in whole seconds since 1970-01-01 UTC.
+type TransferHistoryDeleteKey struct {
+	Hash   string
+	Second int64
+}
+
+// DeleteEventsSince returns the delete events of an instance from fromSecond on.
+func (s *TransferHistoryStore) DeleteEventsSince(ctx context.Context, instanceID int, fromSecond int64) (map[TransferHistoryDeleteKey]struct{}, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT t.hash, e.second
+		FROM transfer_history_events e
+		JOIN transfer_history_torrents t ON t.id = e.torrent_id
+		WHERE e.instance_id = ? AND e.kind = ? AND e.second >= ?`,
+		instanceID, TransferHistoryEventDelete, fromSecond)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history delete events: %w", err)
+	}
+	defer rows.Close()
+	events := make(map[TransferHistoryDeleteKey]struct{})
+	for rows.Next() {
+		var key TransferHistoryDeleteKey
+		if err := rows.Scan(&key.Hash, &key.Second); err != nil {
+			return nil, fmt.Errorf("scan transfer history delete event: %w", err)
+		}
+		events[key] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history delete events: %w", err)
+	}
+	return events, nil
 }

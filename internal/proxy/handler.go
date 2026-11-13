@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -42,6 +44,7 @@ type Handler struct {
 	instanceStore     *models.InstanceStore
 	syncManager       *qbittorrent.SyncManager
 	writeNoter        writeNoter
+	deleteNoter       deleteNoter
 	reannounceCache   *reannounce.SettingsCache
 	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
@@ -67,6 +70,12 @@ type basicAuthCredentials struct {
 // writeNoter learns of each proxied request that can change the torrent list.
 type writeNoter interface {
 	NoteWrite(instanceID int)
+}
+
+// deleteNoter learns who deletes which torrents through the proxy, before
+// qBittorrent gets the delete.
+type deleteNoter interface {
+	NoteProxiedDelete(ctx context.Context, instanceID int, hashes []string, keyName string)
 }
 
 type sessionRefresher interface {
@@ -123,6 +132,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		instanceStore:     instanceStore,
 		syncManager:       syncManager,
 		writeNoter:        syncManager,
+		deleteNoter:       syncManager,
 		reannounceCache:   cache,
 		reannounceService: svc,
 		bufferPool:        bufferPool,
@@ -2025,6 +2035,29 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 	h.proxy.ServeHTTP(w, r)
 }
 
+// deleteHashes returns the torrents that a torrents/delete request names, as
+// qBittorrent reads them from a urlencoded or a multipart body
+// (RequestParser::parsePostMessage): the last value of "hashes".
+func deleteHashes(r *http.Request, body []byte) ([]string, bool) {
+	if form, ok := parseQBTForm(r, body); ok {
+		return splitHashes(form.get("hashes")), true
+	}
+	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "multipart/form-data" {
+		return nil, false
+	}
+	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(int64(len(body)))
+	if err != nil {
+		return nil, false
+	}
+	defer func() { _ = form.RemoveAll() }()
+	values := form.Value["hashes"]
+	if len(values) == 0 {
+		return nil, false
+	}
+	return splitHashes(values[len(values)-1]), true
+}
+
 // handleDeleteTorrents handles /api/v2/torrents/delete and invalidates file cache
 func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -2093,6 +2126,9 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	if noted, ok := deleteHashes(r, bodyBytes); ok {
+		h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
+	}
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
 		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
 			strings.EqualFold(form.get("deleteFiles"), "true")

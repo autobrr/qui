@@ -4,6 +4,7 @@
 package transferhistory
 
 import (
+	"cmp"
 	"sync"
 	"time"
 
@@ -17,8 +18,10 @@ import (
 // counters are cumulative, so a skipped sync loses no bytes.
 const minReadingInterval = 50 * time.Second
 
-// Adapter builds readings from the sync updates of each instance. Register it
-// with qbittorrent.ClientPool.AddSyncEventSink.
+// Adapter builds readings from the sync updates of each instance, and gives
+// the module the delete notes of the sync manager. Register it with
+// qbittorrent.ClientPool.AddSyncEventSink and with
+// qbittorrent.SyncManager.SetDeleteNoter.
 type Adapter struct {
 	module *Module
 	sync   *qbittorrent.SyncManager
@@ -135,6 +138,7 @@ func (a *Adapter) record(instanceID int, update qbt.SyncUpdate, now, failedSince
 	for i, t := range torrents {
 		reading.Torrents[i] = Torrent{
 			Hash:           t.Hash,
+			InfohashV1:     t.InfohashV1,
 			Name:           t.Name,
 			Category:       t.Category,
 			TrackerDomains: facts[i].TrackerDomains,
@@ -144,6 +148,8 @@ func (a *Adapter) record(instanceID int, update qbt.SyncUpdate, now, failedSince
 			Downloaded:     t.Downloaded,
 			Complete:       facts[i].Complete,
 			AddedAt:        time.Unix(t.AddedOn, 0).UTC(),
+			Ratio:          t.Ratio,
+			SeedingSeconds: t.SeedingTime,
 		}
 	}
 	a.module.Record(reading)
@@ -165,4 +171,15 @@ func (inst *adapterInstance) failed(now time.Time) {
 	if inst.failedSince.IsZero() {
 		inst.failedSince = now
 	}
+}
+
+// NoteDelete gives the module a delete note with the actor as the cause. The
+// kinds of a delete actor are kinds of cause.
+func (a *Adapter) NoteDelete(instanceID int, hashes []string, actor qbittorrent.DeleteActor) {
+	a.module.NoteDelete(DeleteNote{
+		InstanceID: instanceID,
+		Time:       time.Now().UTC(),
+		Hashes:     hashes,
+		Cause:      DeleteCause{Kind: CauseKind(actor.Kind), Name: cmp.Or(actor.RuleName, actor.KeyName)},
+	})
 }

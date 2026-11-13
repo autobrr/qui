@@ -3587,6 +3587,122 @@ paths:
         '500':
           description: Failed to read transfer history
 
+  /api/instances/{instanceID}/transfer-history/library:
+    get:
+      tags:
+        - Transfer History
+      summary: Get the library of an instance for each day
+      description: >-
+        Returns one row for each UTC day that overlaps the period and has stored data, with the oldest day first. A row
+        holds the number of torrents that qui saw added, completed, and deleted on that day. qui finds these events when it
+        reads the torrent list, so an event has the time of that read. The torrents that an instance has at its first
+        recording get no add event and no completion event. A removed instance keeps its history.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: from
+          in: query
+          description: Start of the period, RFC 3339. Leave it out for a period with no start.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End of the period, RFC 3339. The default is now.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Library rows, ordered by day
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferHistoryLibraryRow'
+        '400':
+          description: Invalid instance ID or query
+        '500':
+          description: Failed to read transfer history
+
+  /api/instances/{instanceID}/transfer-history/deletes:
+    get:
+      tags:
+        - Transfer History
+      summary: List the deleted torrents of an instance
+      description: >-
+        Returns a page of the torrents that left the instance in the period, with the newest delete first. Each delete names
+        its cause: an automation rule, the user in qui, a backup restore, a Client Proxy API key, or outside qui. A delete
+        that qui did not start has the cause outside. The counts cover the whole period and each cause, also with a cause
+        filter. A removed instance keeps its history.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: from
+          in: query
+          description: Start of the period, RFC 3339. Leave it out for a period with no start.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End of the period, RFC 3339. The default is now.
+          schema:
+            type: string
+            format: date-time
+        - name: cause
+          in: query
+          description: Limits the deletes to one kind of cause. The value other selects a backup restore, a Client Proxy API key, and outside qui. Leave it out for each cause.
+          schema:
+            type: string
+            enum: [automation, user, other]
+        - name: limit
+          in: query
+          description: Size of the page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          description: Number of newer deletes before the page.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A page of deletes and the count of each kind of cause
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deletes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferHistoryDelete'
+                  counts:
+                    type: object
+                    description: Number of deletes in the period for each value of the cause filter.
+                    properties:
+                      automation:
+                        type: integer
+                        format: int64
+                      user:
+                        type: integer
+                        format: int64
+                      other:
+                        type: integer
+                        format: int64
+        '400':
+          description: Invalid instance ID or query
+        '500':
+          description: Failed to read transfer history
+
   /api/transfer-history/status:
     get:
       tags:
@@ -10624,6 +10740,73 @@ components:
           format: int64
         baseline:
           $ref: '#/components/schemas/TransferHistoryBytes'
+
+    TransferHistoryLibraryRow:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date-time
+          description: Start of the UTC day.
+        torrents:
+          type: integer
+          format: int64
+          description: Number of torrents. Absent when qui stored no value for the day.
+        totalSize:
+          type: integer
+          format: int64
+          description: Total size in bytes. Absent when qui stored no value for the day.
+        uniqueSize:
+          type: integer
+          format: int64
+          description: Unique size in bytes, with each Copy group counted one time. Absent when qui stored no value for the day.
+        added:
+          type: integer
+          format: int64
+        completed:
+          type: integer
+          format: int64
+        deleted:
+          type: integer
+          format: int64
+
+    TransferHistoryDelete:
+      type: object
+      properties:
+        time:
+          type: string
+          format: date-time
+          description: Time of the first read of the torrent list without the torrent.
+        hash:
+          type: string
+        name:
+          type: string
+        trackerGroup:
+          type: string
+        uploaded:
+          type: integer
+          format: int64
+          description: The upload counter of the torrent at the last read that held it.
+        downloaded:
+          type: integer
+          format: int64
+          description: The download counter of the torrent at the last read that held it.
+        ratio:
+          type: number
+          description: The ratio that qBittorrent reported at the last read that held the torrent. Absent when qui did not read the torrent between its start and the delete.
+        seedingSeconds:
+          type: integer
+          format: int64
+          description: The seeding time that qBittorrent reported at the last read that held the torrent. Absent when qui did not read the torrent between its start and the delete.
+        cause:
+          type: object
+          properties:
+            kind:
+              type: string
+              enum: [automation, user, backupRestore, clientProxy, outside]
+            name:
+              type: string
+              description: Name of the automation rule or of the Client Proxy API key. Absent for the other kinds.
 
     TransferHistoryInstance:
       type: object

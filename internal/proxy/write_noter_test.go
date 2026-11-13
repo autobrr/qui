@@ -4,6 +4,7 @@
 package proxy
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -40,6 +41,27 @@ func (f *fakeWriteNoter) taken() []int {
 	return writes
 }
 
+type proxiedDelete struct {
+	instanceID int
+	hashes     []string
+	keyName    string
+	// deletesSent is the number of delete requests that qBittorrent got
+	// before the note.
+	deletesSent int
+}
+
+type fakeDeleteNoter struct {
+	stub *qbtstub.Server
+	mu   sync.Mutex
+	seen []proxiedDelete
+}
+
+func (f *fakeDeleteNoter) NoteProxiedDelete(_ context.Context, instanceID int, hashes []string, keyName string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seen = append(f.seen, proxiedDelete{instanceID, hashes, keyName, f.stub.Writes("torrents/delete")})
+}
+
 func TestProxyNotesTorrentWrites(t *testing.T) {
 	t.Parallel()
 
@@ -66,6 +88,8 @@ func TestProxyNotesTorrentWrites(t *testing.T) {
 	handler := NewHandler(pool, models.NewClientAPIKeyStore(db), instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/")
 	noter := &fakeWriteNoter{}
 	handler.writeNoter = noter
+	deletes := &fakeDeleteNoter{stub: stub}
+	handler.deleteNoter = deletes
 	router := chi.NewRouter()
 	handler.Routes(router)
 
@@ -86,4 +110,20 @@ func TestProxyNotesTorrentWrites(t *testing.T) {
 	send(http.MethodGet, "torrents/info", "")
 	send(http.MethodGet, "torrents/properties?hash="+proxyHashA, "")
 	require.Empty(t, noter.taken(), "a GET is no write")
+
+	send(http.MethodPost, "torrents/delete", "hashes="+proxyHashA+"|"+proxyHashB+"&deleteFiles=false")
+	require.Equal(t, 1, stub.Writes("torrents/delete"), "the proxy forwards the delete")
+	require.Equal(t, []proxiedDelete{{instance.ID, []string{proxyHashA, proxyHashB}, "autobrr", 0}}, deletes.seen,
+		"the delete note names the Client Proxy API key, before qBittorrent gets the delete")
+
+	// qBittorrent also reads a multipart body, and keeps the last value of a field.
+	multipartBody := "--rig\r\nContent-Disposition: form-data; name=\"hashes\"\r\n\r\n" + proxyHashA + "\r\n" +
+		"--rig\r\nContent-Disposition: form-data; name=\"hashes\"\r\n\r\n" + proxyHashB + "\r\n" +
+		"--rig\r\nContent-Disposition: form-data; name=\"deleteFiles\"\r\n\r\nfalse\r\n--rig--\r\n"
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/proxy/"+rawKey+"/api/v2/torrents/delete", strings.NewReader(multipartBody))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=rig")
+	router.ServeHTTP(httptest.NewRecorder(), req)
+	require.Len(t, deletes.seen, 2, "a multipart delete gets a delete note")
+	require.Equal(t, []string{proxyHashB}, deletes.seen[1].hashes)
+	require.Equal(t, "autobrr", deletes.seen[1].keyName)
 }

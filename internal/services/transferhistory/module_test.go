@@ -67,10 +67,14 @@ func public(t transferhistory.Torrent) transferhistory.Torrent {
 	return t
 }
 
-// step is a reading, a check, or a restart or a crash of the module.
+// step is a reading, a delete note, a check, or a restart or a crash of the
+// module.
 type step struct {
 	reading *transferhistory.Reading
+	note    *transferhistory.DeleteNote
 	check   *check
+	deletes *deletesCheck
+	library *libraryCheck
 	restart bool
 	crash   bool
 }
@@ -123,6 +127,24 @@ func runSteps(t *testing.T, db *database.DB, steps []step) {
 		switch {
 		case s.reading != nil:
 			module.Record(*s.reading)
+			// At most 4 readings wait for the module, so each step waits
+			// until the module processed its reading.
+			_, err := module.Status(t.Context())
+			require.NoError(t, err, "step %d", i)
+		case s.note != nil:
+			module.NoteDelete(*s.note)
+		case s.deletes != nil:
+			answer, err := module.Deletes(t.Context(), s.deletes.query)
+			require.NoError(t, err, "step %d", i)
+			require.Equal(t, s.deletes.want, answer, "step %d", i)
+		case s.library != nil:
+			rows, err := module.Library(t.Context(), s.library.query)
+			require.NoError(t, err, "step %d", i)
+			if len(s.library.want) == 0 {
+				require.Empty(t, rows, "step %d", i)
+			} else {
+				require.Equal(t, s.library.want, rows, "step %d", i)
+			}
 		case s.restart:
 			require.NoError(t, module.Shutdown(t.Context()))
 			module = transferhistory.New(db, customizations)
