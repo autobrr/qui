@@ -15,7 +15,7 @@ qui records the transfer of each torrent from the moment that you upgrade to a v
 
 qui keeps the transfer of a torrent after you delete the torrent. It also keeps the history of an instance after you remove the instance.
 
-The page shows "Recording since" with the date of the first recording.
+The page shows "Recording since" with the date of the first recording of the selected instances.
 
 ## Period
 
@@ -34,7 +34,7 @@ A day starts at midnight in the timezone of your browser.
 
 While the page stays open and in view, it moves a period that ends now forward each 5 minutes and loads the new transfer. qui writes the transfer each 5 minutes. A custom range does not move.
 
-If a period starts before the first recording, the page shows the label "Partial period". The numbers of such a period are too small, because qui did not record the start of the period.
+If a period starts before the first recording of a selected instance, the page shows the label "Partial period". The numbers of such a period are too small, because qui did not record the start of the period for that instance.
 
 ## Instances
 
@@ -49,7 +49,7 @@ If you have two or more instances with history, select **All instances** or a se
 | Ratio | Uploaded divided by Downloaded. Below the ratio, the buffer is Uploaded minus Downloaded |
 | From cross-seeds | The upload of the torrents that completed with less than 1% of their size downloaded, and its share of the upload |
 
-If qui recorded the period before in full, Uploaded and Downloaded also show the change against that period. The period before has the same length and ends where the selected period starts.
+If qui recorded the period before in full, Uploaded and Downloaded also show the change against that period. qui stores the transfer of each whole hour, so the change leaves out the hour that still runs. The period before has the same length as the rest of the selected period. It ends at the start of the hour in which the selected period starts.
 
 ## Chart
 
