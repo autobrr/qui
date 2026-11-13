@@ -55,6 +55,8 @@ let statuses: TransferHistoryInstance[]
 let configuredIds: number[]
 let answer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
+// While set, the transfer route waits for it before it answers.
+let hold: Promise<void> | undefined
 
 function row(group: string, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
   return { group, start: new Date(Date.now() - DAY).toISOString(), width: "hour", gapSeconds: 0, uploaded, downloaded, statisticsCrossSeedUploaded: 0, ...extra }
@@ -89,16 +91,18 @@ beforeEach(() => {
   })
   mocks.incognitoMode = [false, () => {}]
   requests = []
+  hold = undefined
   configuredIds = [1, 2]
   statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 400)]
   answer = () => []
   server.use(
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/instances", () => HttpResponse.json(configuredIds.map(id => ({ id, name: `instance ${id}`, isActive: true })))),
-    http.get("*/api/instances/:id/transfer-history", ({ params, request }) => {
+    http.get("*/api/instances/:id/transfer-history", async ({ params, request }) => {
       const url = new URL(request.url)
       const transfer = { instanceId: Number(params.id), bucket: url.searchParams.get("bucket") ?? "", from: url.searchParams.get("from"), to: url.searchParams.get("to"), timeZone: url.searchParams.get("timeZone") }
       requests.push(transfer)
+      await hold
       return HttpResponse.json({ rows: answer(transfer) })
     })
   )
@@ -144,13 +148,18 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
   })
 
-  it("moves a preset period forward while the page stays open", async () => {
+  it("moves a preset period forward while the page stays open, and keeps the old numbers until the new ones load", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
+      answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
       renderPage()
-      await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
+      await expectTile("tiles.uploaded", "2 KiB | ")
       const firstEnd = requests.find(request => request.bucket === "day")?.to
       requests = []
+      let release = () => {}
+      hold = new Promise(resolve => {
+        release = resolve
+      })
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
@@ -158,15 +167,37 @@ describe("Statistics", () => {
 
       await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
       expect(Date.parse(requests.find(request => request.bucket === "day")?.to ?? "")).toBeGreaterThan(Date.parse(firstEnd ?? ""))
+      await expectTile("tiles.uploaded", "2 KiB | ")
+      release()
     } finally {
       vi.useRealTimers()
     }
   })
 
+  it("finds an instance that starts recording while the page is open", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      statuses = []
+      renderPage()
+      await screen.findByText("notRecording")
+      statuses = [recordedDaysAgo(1, "Seedbox", 0)]
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      expect(await screen.findByText(/^recordingSince date=/)).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // regression: #4084
   it("does not apply a custom range that starts after today", async () => {
     renderPage()
     fireEvent.click(await screen.findByText("periods.custom"))
-    const tomorrow = new Date(Date.now() + DAY)
+    const now = new Date()
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
     const day = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`
     fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: day } })
     fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: day } })

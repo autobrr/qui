@@ -118,6 +118,7 @@ describe("previousPeriod", () => {
 })
 
 describe("customPeriod", () => {
+  // regression: #4084
   it("keeps hourly bars for seven dates across a change of the clock", () => {
     // In New York, October 26 to November 1, 2026 lasts 169 hours.
     expect(customPeriod(new Date(2026, 9, 26), new Date(2026, 10, 1), new Date(2026, 11, 1)).unit).toBe("hour")

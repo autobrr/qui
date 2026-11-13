@@ -919,6 +919,7 @@ func TestADayWithoutAMidnightStartsAtTheChangeToSummerTimePostgresIntegration(t 
 	})
 }
 
+// regression: #4084
 func TestDayBucketsPastTheZoneDataPostgresIntegration(t *testing.T) {
 	t.Parallel()
 

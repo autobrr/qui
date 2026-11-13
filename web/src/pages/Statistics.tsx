@@ -27,7 +27,7 @@ import {
 } from "@/lib/statistics"
 import { formatBytes } from "@/lib/utils"
 import type { TransferHistoryBytes, TransferHistoryInstance, TransferHistoryQuery, TransferHistoryRow } from "@/types"
-import { keepPreviousData, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
+import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
@@ -63,15 +63,20 @@ function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHi
     error: results.find(result => result.error)?.error ?? undefined,
     pending: enabled && results.some(result => result.isPending),
   }), [enabled])
-  return useQueries({
+  const result = useQueries({
     queries: instances.map(instance => ({
       queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
       queryFn: () => api.getTransferHistory(instance.instanceId, query!),
       enabled,
-      placeholderData: keepPrevious ? keepPreviousData : undefined,
     })),
     combine,
   })
+  // A new period gives new query keys, so the queries hold no previous data to show while they load.
+  const [lastRows, setLastRows] = useState(result.rows)
+  if (result.rows && result.rows !== lastRows) {
+    setLastRows(result.rows)
+  }
+  return keepPrevious && !result.rows && !result.error && lastRows ? { rows: lastRows, pending: false } : result
 }
 
 function relativeChange(now: number, before: number): number | undefined {
@@ -106,7 +111,8 @@ export function Statistics() {
   const [metric, setMetric] = useState<Metric>("uploaded")
   const { period } = periodState
 
-  const statusQuery = useQuery({ queryKey: ["transfer-history", "status"], queryFn: () => api.getTransferHistoryStatus() })
+  // An instance that starts recording while the page is open joins at the next move of the period.
+  const statusQuery = useQuery({ queryKey: ["transfer-history", "status"], queryFn: () => api.getTransferHistoryStatus(), refetchInterval: MOVE_AFTER })
   const instancesQuery = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances() })
   const statuses = useMemo(() => statusQuery.data ?? [], [statusQuery.data])
   const selected = useMemo(
