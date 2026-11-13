@@ -149,6 +149,8 @@ func runSteps(t *testing.T, db *database.DB, steps []step) {
 	}
 }
 
+// engines runs a test on SQLite and on Postgres. The CI Postgres job runs
+// only tests whose names contain PostgresIntegration, so each caller has it.
 func engines(t *testing.T, run func(t *testing.T, db func(t *testing.T) *database.DB)) {
 	t.Run("sqlite", func(t *testing.T) {
 		t.Parallel()
@@ -159,7 +161,7 @@ func engines(t *testing.T, run func(t *testing.T, db func(t *testing.T) *databas
 	})
 }
 
-func TestTransferHistoryRecording(t *testing.T) {
+func TestTransferHistoryRecordingPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -446,7 +448,7 @@ func TestRecordDoesNotWaitForTheDatabase(t *testing.T) {
 	require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 250, 0, 0)}, rows)
 }
 
-func TestTrackerRenameChangesThePast(t *testing.T) {
+func TestTrackerRenameChangesThePastPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
@@ -473,7 +475,7 @@ func TestTrackerRenameChangesThePast(t *testing.T) {
 	})
 }
 
-func TestStatusKeepsTheNameOfARemovedInstance(t *testing.T) {
+func TestStatusKeepsTheNameOfARemovedInstancePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
@@ -529,7 +531,7 @@ func (l *lostCommitAnswer) BeginTx(ctx context.Context, opts *sql.TxOptions) (db
 	return &lostAnswerTx{TxQuerier: tx, lose: l.writes == 2}, nil
 }
 
-func TestACommitWithALostAnswerCountsOnce(t *testing.T) {
+func TestACommitWithALostAnswerCountsOncePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
@@ -578,7 +580,7 @@ func (l *lostCommitAndCheck) QueryRowContext(ctx context.Context, query string, 
 	return l.DB.QueryRowContext(ctx, query, args...)
 }
 
-func TestACommitWithALostAnswerAndAFailedCheckCountsOnce(t *testing.T) {
+func TestACommitWithALostAnswerAndAFailedCheckCountsOncePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
@@ -639,7 +641,7 @@ func (f *failedCommit) QueryRowContext(ctx context.Context, query string, args .
 	return f.DB.QueryRowContext(ctx, query, args...)
 }
 
-func TestAFailedCommitInTheSecondOfTheLastWriteKeepsItsChanges(t *testing.T) {
+func TestAFailedCommitInTheSecondOfTheLastWriteKeepsItsChangesPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
@@ -663,7 +665,7 @@ func TestAFailedCommitInTheSecondOfTheLastWriteKeepsItsChanges(t *testing.T) {
 	})
 }
 
-func TestAFailedCommitAndAFailedCheckStoreNoRecordingGap(t *testing.T) {
+func TestAFailedCommitAndAFailedCheckStoreNoRecordingGapPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
