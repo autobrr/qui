@@ -493,6 +493,44 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 
+// regression: #2538
+func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
+	sm := &SyncManager{}
+	torrents := []qbt.Torrent{
+		{Name: "[Grp] Some Show - 05 [1080p].mkv", Category: "anime", Tags: "fansub, weekly"},
+		{Name: "Who Is It? [Grp]", Category: "music"},
+		{Name: "Ubuntu.20.04.LTS.Desktop.amd64.iso", Category: "linux", Tags: "ubuntu, desktop"},
+		{Name: "Disc1.iso", Category: "games"},
+		{Name: "Movie.2023.1080p.BluRay.x264", Category: "movies", Tags: "action, drama"},
+	}
+
+	tests := []struct {
+		name   string
+		search string
+		want   []string
+	}{
+		{"bracketed group tag", "[Grp] Some Show", []string{"[Grp] Some Show - 05 [1080p].mkv"}},
+		{"full bracketed name", "[Grp] Some Show - 05 [1080p].mkv", []string{"[Grp] Some Show - 05 [1080p].mkv"}},
+		{"unbalanced bracket", "[Grp", []string{"[Grp] Some Show - 05 [1080p].mkv", "Who Is It? [Grp]"}},
+		{"glob with a bad pattern falls back to literal", "It? [Grp", []string{"Who Is It? [Grp]"}},
+		{"full name holding a question mark and brackets", "Who Is It? [Grp]", []string{"Who Is It? [Grp]"}},
+		{"star on name", "*.iso", []string{"Ubuntu.20.04.LTS.Desktop.amd64.iso", "Disc1.iso"}},
+		{"question mark on name", "disc?.iso", []string{"Disc1.iso"}},
+		{"star on category", "mov*", []string{"Movie.2023.1080p.BluRay.x264"}},
+		{"star on a single tag", "dra*", []string{"Movie.2023.1080p.BluRay.x264"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			for _, torrent := range sm.filterTorrentsBySearch(torrentRefs(torrents), tt.search) {
+				got = append(got, torrent.Name)
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 // TestSyncManager_SearchFunctionality tests the search and filtering logic
 func TestSyncManager_SearchFunctionality(t *testing.T) {
 	sm := &SyncManager{}
@@ -550,8 +588,8 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		assert.Len(t, results, 2, "Should match names, not hashes")
 	})
 
-	t.Run("filterTorrentsByGlob pattern match", func(t *testing.T) {
-		results := sm.filterTorrentsByGlob(torrentRefs(torrents), "*.iso")
+	t.Run("filterTorrentsBySearch glob pattern match", func(t *testing.T) {
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "*.iso")
 
 		// Should find all ISO files
 		assert.GreaterOrEqual(t, len(results), 3, "Should find at least 3 ISO files")
@@ -561,9 +599,9 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		}
 	})
 
-	t.Run("filterTorrentsByGlob episode example skips season packs", func(t *testing.T) {
+	t.Run("filterTorrentsBySearch glob episode example skips season packs", func(t *testing.T) {
 		// The search help offers this pattern; ? would also hit a season-only name.
-		results := sm.filterTorrentsByGlob([]*qbt.Torrent{
+		results := sm.filterTorrentsBySearch([]*qbt.Torrent{
 			{Name: "Some.Show.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 			{Name: "Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		}, "*S[0-9][0-9]E[0-9][0-9]*")

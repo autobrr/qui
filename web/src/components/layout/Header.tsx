@@ -242,7 +242,7 @@ export function Header({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, shouldShowInstanceControls])
 
-  const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
+  const isGlobSearch = !!searchValue && /[*?]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [showSupport, setShowSupport] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
