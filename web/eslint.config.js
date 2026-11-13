@@ -6,6 +6,28 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+const copyGroupImportPattern = {
+  regex: '(^|/)copy-groups$',
+  importNames: ['summarizeCopyGroups', 'countTickedCopies'],
+  message: 'Both Layouts read a Copy group through one hook. Use useCopyGroupRows from "@/hooks/useCopyGroupRows" instead.',
+}
+
+const torrentListImportPatterns = [{
+  regex: '(^|/)useTorrentsList$',
+  allowTypeImports: true,
+  message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
+}, {
+  // The torrent-table hooks that moved into the controller. The hooks that stay outside it stay allowed.
+  regex: '(^|/)torrent-table/(useBulkActionWrappers|useCrossSeedOrchestration|useFilterLifecycle)$',
+  message: 'The list controller owns this. Use useTorrentListController or useTorrentListActions from "@/hooks/useTorrentListController" instead.',
+}, copyGroupImportPattern]
+
+const radixDialogImportPattern = {
+  regex: '^@radix-ui/react-(alert-)?dialog$',
+  allowTypeImports: true,
+  message: 'Use @/components/ui/dialog or @/components/ui/alert-dialog.',
+}
+
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
   {
@@ -45,6 +67,35 @@ export default tseslint.config([
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     }
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: [
+      'src/hooks/useTorrentListController.ts',
+      'src/hooks/useTorrentListController.test.tsx',
+      'src/hooks/useTorrentsList.test.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns, radixDialogImportPattern],
+      }],
+    },
+  },
+  {
+    // The shared hook is the one reader of the Copy group summaries, so only that pattern is lifted here.
+    files: ['src/hooks/useCopyGroupRows.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns.filter(pattern => pattern !== copyGroupImportPattern), radixDialogImportPattern],
+      }],
+    },
+  },
+  {
+    // The shared dialog components wrap Radix, so only the Radix pattern is lifted here.
+    files: ['src/components/ui/{dialog,alert-dialog,sheet}.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: torrentListImportPatterns }],
+    },
   },
   {
     files: ['scripts/**/*.mjs'],

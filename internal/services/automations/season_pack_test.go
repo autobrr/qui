@@ -36,14 +36,14 @@ func newSeasonPackInstanceStore(t *testing.T, active []bool) *models.InstanceSto
 
 func TestSeasonPackStatus(t *testing.T) {
 	parser := releases.NewDefaultParser()
-	packs := buildSeasonPackSet(parser, []qbt.Torrent{
+	packs := buildSeasonPackSet(parser, torrentRefs([]qbt.Torrent{
 		{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		{Name: "Show.Name.S01.Extended.Cut.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		{Name: "Other.Show.S01-S03.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		{Name: "Special.Show.S00.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		{Name: "Show.Name.Complete.Series.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		{Name: "Show.Name.S01E05E06.1080p.WEB-DL.DDP5.1.H.264-GRP"},
-	})
+	}))
 
 	tests := []struct {
 		name string
@@ -79,7 +79,7 @@ func TestSeasonPackStatus(t *testing.T) {
 
 func TestSeasonPackStatus_EditionPackDoesNotCoverPlainEpisode(t *testing.T) {
 	parser := releases.NewDefaultParser()
-	packs := buildSeasonPackSet(parser, []qbt.Torrent{{Name: "Show.Name.S01.Extended.Cut.1080p.WEB-DL.DDP5.1.H.264-GRP"}})
+	packs := buildSeasonPackSet(parser, torrentRefs([]qbt.Torrent{{Name: "Show.Name.S01.Extended.Cut.1080p.WEB-DL.DDP5.1.H.264-GRP"}}))
 	require.Equal(t, SeasonPackStatusUnpacked, seasonPackStatus(parser.Parse("Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 	require.Equal(t, SeasonPackStatusPacked, seasonPackStatus(parser.Parse("Show.Name.S01E03.Extended.Cut.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 }
@@ -101,7 +101,7 @@ func TestSeasonPackStatus_RuleGate(t *testing.T) {
 
 func TestSeasonPackStatus_EpisodeRangeWithoutPack(t *testing.T) {
 	parser := releases.NewDefaultParser()
-	packs := buildSeasonPackSet(parser, []qbt.Torrent{{Name: "Show.Name.S01E05E06.1080p.WEB-DL.DDP5.1.H.264-GRP"}})
+	packs := buildSeasonPackSet(parser, torrentRefs([]qbt.Torrent{{Name: "Show.Name.S01E05E06.1080p.WEB-DL.DDP5.1.H.264-GRP"}}))
 	require.Empty(t, packs, "an episode range is not a pack")
 	require.Equal(t, SeasonPackStatusUnpacked, seasonPackStatus(parser.Parse("Show.Name.S01E05E06.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 }
@@ -175,7 +175,7 @@ func TestSeasonPackStatus_PreviewScoreRuleGate(t *testing.T) {
 		}},
 	}}
 	s := &Service{releaseParser: releases.NewDefaultParser()}
-	evalCtx, _, err := s.buildEvalContext(t.Context(), 1, nil, []qbt.Torrent{{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"}}, previewNeeds(rule))
+	evalCtx, _, err := s.buildEvalContext(t.Context(), 1, nil, torrentRefs([]qbt.Torrent{{Name: "Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"}}), previewNeeds(rule), nil)
 	require.NoError(t, err)
 	require.Len(t, evalCtx.SeasonPackSet, 1)
 }

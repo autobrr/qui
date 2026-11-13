@@ -6,7 +6,7 @@
 import { isStreamUsable, streamFallbackPollInterval } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { refreshChangedCapabilities, useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
@@ -15,6 +15,7 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import { isCrossSeedExpr } from "@/lib/torrent-filters"
 import type {
+  Category,
   CrossInstanceTorrent,
   QBittorrentAppInfo,
   Torrent,
@@ -23,7 +24,7 @@ import type {
   TorrentResponse,
   TorrentStreamPayload
 } from "@/types"
-import { replaceEqualDeep, useQuery, useQueryClient } from "@tanstack/react-query"
+import { hashKey, replaceEqualDeep, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 /** Fallback REST polling interval used while the torrent SSE stream is unavailable. */
@@ -45,6 +46,11 @@ export const LOADED_WINDOW_POLL_INTERVAL_MS = 10000
 // avoids tearing the stream down on quick tab switches; on refocus it resumes at once
 // and refetchOnWindowFocus pulls fresh data immediately.
 export const STREAM_HIDDEN_PAUSE_DELAY_MS = 30000
+
+// The API omits empty categories and tags. One identity per value stops the
+// table from sending the parent the same update on each render.
+const NO_CATEGORIES: Record<string, Category> = {}
+const NO_TAGS: string[] = []
 
 // Drop duplicate rows, keeping the first occurrence's position with the last
 // occurrence's data (Map insertion order is first-set, values are last-set): in
@@ -160,6 +166,8 @@ interface UseTorrentsListOptions {
   sort?: string
   order?: "asc" | "desc"
   instanceIds?: number[]
+  /** Ask the server for Copy groups. Filter Cross-Seeds never asks. */
+  groupCopies?: boolean
 }
 
 /**
@@ -184,13 +192,15 @@ export function useTorrentsList(
     sort = "added_on",
     order = "desc",
     instanceIds,
+    groupCopies = false,
   } = options
   const isAllInstancesView = isAllInstancesScope(instanceId)
 
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
-  const [lastRequestTime, setLastRequestTime] = useState(0)
+  // A ref, not state: two scroll callbacks of one render must see the first request.
+  const lastRequestTimeRef = useRef(0)
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
   const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
@@ -286,6 +296,7 @@ export function useTorrentsList(
 
   const isCrossSeedFiltering = isCrossSeedExpr(filters?.expr)
   const useCrossInstanceEndpoint = isAllInstancesView || isCrossSeedFiltering
+  const requestGroups = groupCopies && !isCrossSeedFiltering
 
   const instanceIdsKey = useMemo(
     () => (instanceIds && instanceIds.length > 0 ? [...instanceIds].sort((left, right) => left - right).join(",") : ""),
@@ -293,7 +304,7 @@ export function useTorrentsList(
   )
   const filterKey = JSON.stringify(filters)
   const searchKey = search || ""
-  const viewScopeKey = `${instanceId}|${instanceIdsKey}|${filterKey}|${searchKey}|${sort}|${order}|${useCrossInstanceEndpoint}|${isCrossSeedFiltering}`
+  const viewScopeKey = `${instanceId}|${instanceIdsKey}|${filterKey}|${searchKey}|${sort}|${order}|${useCrossInstanceEndpoint}|${isCrossSeedFiltering}|${requestGroups}`
   // Lets old stream callbacks detect committed scope changes without observing
   // abandoned render state.
   const currentViewScopeKeyRef = useRef(viewScopeKey)
@@ -302,8 +313,8 @@ export function useTorrentsList(
   }, [viewScopeKey])
 
   const streamQueryKey = useMemo(
-    () => ["torrents-list", instanceId, instanceIdsKey, 0, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
-    [instanceId, instanceIdsKey, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering]
+    () => ["torrents-list", instanceId, instanceIdsKey, 0, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering, requestGroups] as const,
+    [instanceId, instanceIdsKey, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering, requestGroups]
   )
 
   const { instances } = useInstances()
@@ -351,6 +362,7 @@ export function useTorrentsList(
         order,
         search: search || undefined,
         filters,
+        groupCopies: requestGroups,
       }
     }
 
@@ -362,12 +374,13 @@ export function useTorrentsList(
       order,
       search: search || undefined,
       filters,
+      groupCopies: requestGroups,
     }
-  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, isCrossSeedFiltering, streamInstanceIds, order, pageSize, search, sort])
+  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, isCrossSeedFiltering, streamInstanceIds, order, pageSize, search, sort, requestGroups])
 
   const listQueryKey = useMemo(
-    () => ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
-    [instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering]
+    () => ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering, requestGroups] as const,
+    [instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering, requestGroups]
   )
 
   const handleStreamPayload = useCallback(
@@ -438,6 +451,7 @@ export function useTorrentsList(
       rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
       updateAppInfoCache(data)
       updateMetadataCache(data)
+      refreshChangedCapabilities(queryClient, data)
 
       if (rowsChanged) {
         setAllTorrents(prev => mergeStreamedRows(prev, data, Boolean(useCrossInstanceEndpoint)))
@@ -480,7 +494,7 @@ export function useTorrentsList(
   // Use JSON.stringify to avoid resetting on every object reference change during polling
   useEffect(() => {
     setCurrentPage(0)
-    setLastRequestTime(0)
+    lastRequestTimeRef.current = 0
     setAllTorrents([])
     setHasLoadedAll(false)
     setLastKnownTotal(0)
@@ -527,6 +541,7 @@ export function useTorrentsList(
             search,
             filters,
             instanceIds,
+            groupCopies: requestGroups,
           }, signal)
         }
 
@@ -538,6 +553,7 @@ export function useTorrentsList(
           search,
           filters,
           preferCached: preferCachedQuery,
+          groupCopies: requestGroups,
         }, signal)
       }
 
@@ -557,9 +573,12 @@ export function useTorrentsList(
         return response
       }
 
-      const pages = await Promise.all(
-        Array.from({ length: currentPage + 1 }, (_, page) => fetchPage(page))
-      )
+      const fetchWindow = () => Promise.all(Array.from({ length: currentPage + 1 }, (_, page) => fetchPage(page)))
+      let pages = await fetchWindow()
+      // The server can start or stop grouping between two of these parallel requests.
+      if (pages.some(page => page.copyGroupsReady !== pages[0].copyGroupsReady)) {
+        pages = await fetchWindow()
+      }
       const combined = combineWindowPages(pages)
       responseRevisions.set(combined, revisionAtStart)
       const snapshot = getNewerStreamSnapshot(combined)
@@ -573,8 +592,15 @@ export function useTorrentsList(
     // A recent window refresh already covers every loaded page on tab return.
     staleTime: currentPage > 0 ? LOADED_WINDOW_POLL_INTERVAL_MS : 0,
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
-    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
-    placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
+    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state.
+    // Key part 3 is the page. Data from another view stays out: the parent keeps the categories and tags
+    // of one render, and a switch from a scrolled list renders once before the page resets.
+    placeholderData: currentPage > 0
+      ? (previousData, previousQuery) =>
+        previousQuery && hashKey(previousQuery.queryKey.map((part, index) => index === 3 ? 0 : part)) === hashKey(streamQueryKey)
+          ? previousData
+          : undefined
+      : undefined,
     // SSE owns only page zero. Healthy streams let later pages refresh more
     // slowly. A stream that is not usable sets the poll for every page.
     refetchInterval: !pollingEnabled
@@ -599,6 +625,33 @@ export function useTorrentsList(
   const activeData = scopedStreamSnapshot && (shouldDisablePolling || getNewerStreamSnapshot(data))
     ? scopedStreamSnapshot
     : data ?? scopedStreamSnapshot
+
+  // When the server starts or stops grouping, the later pages still hold the
+  // other shape: flat rows beside their groups, or rows that a flat page 0
+  // pushed out of the merge. Refetch the loaded window at once instead of at
+  // the next window poll.
+  const copyGroupsReady = activeData?.copyGroupsReady
+  const lastCopyGroupsReadyRef = useRef<{ scopeKey: string; ready: boolean } | null>(null)
+  const windowRepairPendingRef = useRef(false)
+  const readyFromWindow = activeData === data && Boolean(data?.windowPageCount)
+  // The first load of a later page fetches only that page, so the repair waits for it.
+  const pageLoaded = data !== undefined && !isPlaceholderData
+  useEffect(() => {
+    if (copyGroupsReady !== undefined) {
+      const previous = lastCopyGroupsReadyRef.current
+      lastCopyGroupsReadyRef.current = { scopeKey: viewScopeKey, ready: copyGroupsReady }
+      if (previous?.scopeKey === viewScopeKey && previous.ready !== copyGroupsReady) {
+        windowRepairPendingRef.current = true
+      }
+    }
+    // A window response already holds every loaded page in one shape.
+    if (currentPage === 0 || readyFromWindow) {
+      windowRepairPendingRef.current = false
+    } else if (windowRepairPendingRef.current && pageLoaded) {
+      windowRepairPendingRef.current = false
+      void refetch()
+    }
+  }, [copyGroupsReady, currentPage, pageLoaded, readyFromWindow, refetch, viewScopeKey])
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -628,6 +681,7 @@ export function useTorrentsList(
     if (!newerStreamSnapshotExists) {
       updateAppInfoCache(data)
       updateMetadataCache(data)
+      refreshChangedCapabilities(queryClient, data)
       rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
 
       if (data.total !== undefined) {
@@ -689,7 +743,7 @@ export function useTorrentsList(
       }
     }
 
-  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, getNewerStreamSnapshot, rememberCountsSnapshot, updateAppInfoCache, updateMetadataCache, viewScopeKey])
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, getNewerStreamSnapshot, queryClient, rememberCountsSnapshot, updateAppInfoCache, updateMetadataCache, viewScopeKey])
 
   const loadMore = () => {
     const now = Date.now()
@@ -699,11 +753,11 @@ export function useTorrentsList(
     }
 
     // Throttle repeated scroll callbacks.
-    if (now - lastRequestTime < 500) {
+    if (now - lastRequestTimeRef.current < 500) {
       return
     }
 
-    setLastRequestTime(now)
+    lastRequestTimeRef.current = now
     if (isError && currentPage !== lastProcessedPage) {
       // Retry the pending page instead of skipping rows after a failed request.
       void refetch()
@@ -787,8 +841,9 @@ export function useTorrentsList(
     stats,
     counts: effectiveCounts,
     appInfo: activeData?.appInfo ?? data?.appInfo ?? null,
-    categories: activeData?.categories ?? data?.categories,
-    tags: activeData?.tags ?? data?.tags,
+    // undefined means that no response has arrived for this view.
+    categories: activeData ? activeData.categories ?? NO_CATEGORIES : undefined,
+    tags: activeData ? activeData.tags ?? NO_TAGS : undefined,
     trackerHealthSupported: activeData?.trackerHealthSupported ?? data?.trackerHealthSupported ?? false,
     supportsTorrentCreation: isAllInstancesView ? false : capabilities?.supportsTorrentCreation ?? true,
     capabilities: isAllInstancesView ? undefined : capabilities,
@@ -816,5 +871,7 @@ export function useTorrentsList(
     streamRetrying: streamState.retrying,
     streamNextRetryAt: streamState.nextRetryAt,
     streamRetryAttempt: streamState.retryAttempt,
+    // Only when the request asked for groups: false while the server has no Copy groups yet.
+    copyGroupsReady,
   }
 }

@@ -141,6 +141,12 @@ func categoryFolder(d fsops.PathDialect, name string, rule CategoryPathRule) str
 	if _, after, found := strings.CutLast(name, "/"); found {
 		folder = after
 	}
+	return CategoryFolderName(folder, rule)
+}
+
+// CategoryFolderName is the folder qBittorrent names after a category with no
+// save path: folder is the full name, or only its last segment under rule.Nest.
+func CategoryFolderName(folder string, rule CategoryPathRule) string {
 	switch {
 	case folder == "":
 		// A name that ends in "/" adds no segment.

@@ -130,6 +130,8 @@
     "error": "檢查輔種失敗",
     "retry": "重試",
     "noCrossSeeds": "未找到輔種",
+    "uncheckedOffline": "無法檢查 {{instance}}：qui 無法連線到它。",
+    "uncheckedDisabled": "未檢查 {{instance}}：它已在 qui 中停用。",
     "deleteCrossSeeds": "這些輔種也將被刪除",
     "deletingFilesBreaks": "刪除檔案將破壞這些輔種",
     "dataPreserved": "檢測到輔種——資料將被保留",
@@ -566,10 +568,7 @@
     "bottomPriorityBatch": "最低優先順序 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "重新命名",
-    "renameTorrent": "重新命名種子",
-    "renameFile": "重新命名檔案",
-    "renameFolder": "重新命名資料夾"
+    "renameTorrent": "重新命名種子"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -762,7 +761,8 @@
       "fewerIndexers": "嘗試選擇更少的索引器進行搜尋",
       "useRss": "使用 RSS 自動化功能進行持續輔種",
       "checkIndexers": "檢查索引器頁面以檢視哪些被限流"
-    }
+    },
+    "routedTo": "輔種將新增到輔種實例 {{instance}}。"
   },
   "columnFilter": {
     "filterColumn": "篩選 {{column}}",
@@ -952,7 +952,6 @@
     "torrentCount_other": "{{count}} 個種子",
     "torrentsLoaded": "已載入 {{loaded}}/{{total}} 個種子",
     "scrollForMore": "（捲動載入更多）",
-    "loading": "載入中...",
     "freeSpace": "可用空間",
     "switchToBits": "切換到每秒位元（bps）",
     "switchToBytes": "切換到每秒位元組（B/s）",
@@ -1018,7 +1017,6 @@
     "closePanel": "關閉詳情面板",
     "unknownError": "未知錯誤",
     "toast": {
-      "copied": "{{type}} 已複製到剪貼簿",
       "copyFailed": "複製到剪貼簿失敗",
       "peersAdded": "節點新增成功",
       "peersFailed": "新增節點失敗：{{error}}",
@@ -1065,20 +1063,14 @@
       "loadedSummary_other": "在所有實例中找到 {{count}} 個匹配種子",
       "deleteMatches": "刪除匹配項（{{count}}）",
       "deleteThisTorrent": "刪除此種子",
-      "checkingMoreInstances": "正在檢查更多實例...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "完全相同的種子（相同 info hash）",
-      "savePathMatch": "儲存路徑",
-      "savePathDescription": "相同的儲存目錄和檔名",
-      "selectTorrent": "選擇 {{name}}"
+      "selectTorrent": "選擇 {{name}}",
+      "openTorrent": "開啟 {{name}}"
     },
     "sections": {
       "generalInformation": "一般資訊",
       "transferStatistics": "傳輸統計",
-      "speed": "速度",
       "queueManagement": "佇列管理",
       "timeInformation": "時間資訊",
-      "timestamps": "時間戳",
       "activeTrackers": "活躍 Tracker",
       "connectedPeers": "已連線節點",
       "fileContents": "檔案內容"
@@ -1105,22 +1097,17 @@
       "added": "新增時間",
       "completed": "完成時間",
       "created": "建立時間",
-      "leechers": "下載者",
-      "peerProgress": "節點進度",
-      "connection": "連線：",
-      "flags": "標誌："
+      "leechers": "下載者"
     },
     "counts": {
       "trackers_other": "{{count}} 個 Tracker",
       "connectedPeers_other": "已連線 {{count}} 個節點",
-      "httpSources_other": "{{count}} 個來源",
       "selectedFiles": "已選 {{selected}}/{{total}}",
       "files_other": "{{count}} 個檔案"
     },
     "values": {
       "normal": "正常",
       "queued": "排隊中（{{state}}）",
-      "seeder": "做種者",
       "unknownClient": "未知用戶端"
     },
     "actions": {
@@ -1129,14 +1116,12 @@
       "selectAll": "全部",
       "selectNone": "無"
     },
-    "peer": {
-      "flagLabel": "標誌 {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "未找到檔案"
     },
     "selectAll": "全選",
-    "deselectAll": "取消全選"
+    "deselectAll": "取消全選",
+    "trackerMessageHidden": "隱身模式下已隱藏 Tracker 訊息"
   },
   "generalTab": {
     "name": "名稱：",
@@ -1181,6 +1166,7 @@
     "status": "狀態",
     "tracker": "Tracker",
     "seeds": "做種",
+    "peers": "節點",
     "leeches": "下載",
     "downloaded": "已完成",
     "message": "訊息",
@@ -1293,11 +1279,7 @@
       }
     },
     "noMatches": "未在其他實例上找到匹配的種子",
-    "loadFailed": "無法檢查交叉做種匹配。請重新載入後重試。",
-    "toast": {
-      "savePathCopied": "儲存路徑已複製",
-      "copyFailed": "複製失敗"
-    }
+    "loadFailed": "無法檢查交叉做種匹配。請重新載入後重試。"
   },
   "addTorrentDialog": {
     "title": "新增新種子",
@@ -1442,7 +1424,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
     },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "新增於{{time}}"
   },
   "tableView": {
     "ascending": "升序",
@@ -1574,6 +1557,7 @@
     "tags": "標籤",
     "newTagPlaceholder": "輸入標籤後按 Enter",
     "savePath": "儲存路徑（實際目標位置）",
+    "routedTo": "輔種將新增到輔種實例 {{instance}}。",
     "cancel": "取消",
     "apply": "新增輔種",
     "applying": "正在新增...",
@@ -1595,12 +1579,14 @@
       "dropped": "整季包已加入。已排除的目標：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此實例需要本機檔案系統存取權限才能組裝整季包。",
+        "no_filesystem_access": "此實例需要檔案系統寫入權限才能組裝整季包。請在實例設定中啟用「本機檔案系統存取」或設定 SSH 存取。",
         "no_link_mode": "請在此實例上啟用硬連結或 reflink 模式，以選擇多個目標。",
         "no_base_directory": "請為此實例設定連結基礎目錄。",
         "no_episode_files": "此整季包中未找到可播放的單集檔案。",
         "target_not_found": "此實例中未找到目標種子。",
         "incomplete": "目標種子尚未下載完成。",
+        "not_settled": "此種子仍在移動或檢查中。請在完成後重試。",
+        "errored": "此種子有錯誤或缺少檔案。請修復後重試。",
         "no_episode_identity": "無法解析集數。",
         "file_list_unavailable": "無法取得目標種子的檔案清單。",
         "episode_file_invalid": "目標種子必須僅包含一個與所選單集識別相符的可播放檔案。",
@@ -1614,6 +1600,31 @@
         "link_failed": "建立連結失敗。",
         "add_failed": "加入種子失敗。"
       }
+    }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 個副本",
+    "labelWithProblem": "{{label}}。{{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "某個隱藏的副本檔案丟失",
+      "error": "某個隱藏的副本出錯",
+      "unregistered": "某個隱藏的副本未註冊",
+      "trackerError": "某個隱藏的副本有 Tracker 錯誤",
+      "trackerDown": "某個隱藏的副本的 Tracker 離線"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已選 {{count}} 個",
+    "hiddenTicked_other": "已選取 {{count}} 個隱藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合併副本",
+    "ungroupCopies": "取消合併副本",
+    "grouping": "正在分組…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "合併你的輔種",
+      "description": "將同一種子的多個副本顯示為一行。",
+      "action": "試試看"
     }
   }
 }

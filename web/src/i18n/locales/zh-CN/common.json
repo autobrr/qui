@@ -101,17 +101,22 @@
     "cancel": "取消",
     "close": "关闭",
     "create": "创建",
-    "copyPath": "复制路径",
     "scrollToTop": "回到顶部",
     "search": "搜索",
-    "select": "选择"
+    "select": "选择",
+    "copyValue": "复制 {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "知道了"
   },
   "placeholders": {
     "search": "搜索...",
     "selectItems": "选择项目..."
   },
   "feedback": {
-    "noResultsFound": "未找到结果。"
+    "noResultsFound": "未找到结果。",
+    "copied": "{{label}} 已复制到剪贴板",
+    "copyFailed": "复制到剪贴板失败"
   },
   "errors": {
     "unknown": "未知错误",
@@ -150,11 +155,10 @@
     "dark": "深色",
     "system": "跟随系统",
     "theme": "主题",
-    "premium": "高级",
     "switchedToMode": "已切换到{{mode}}模式",
     "switchedToTheme": "已切换到{{theme}}主题",
     "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",
-    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。"
+    "premiumThemeError": "此主题需要许可证。请前往设置 > 主题激活许可证。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",
@@ -237,6 +241,9 @@
     "perkSuffix": "身份组，以及我们永远的感谢。",
     "yearly": "{{price}} / 年",
     "monthly": "{{price}} / 月",
-    "notLicense": "高级主题是单独的一次性购买。"
+    "notLicense": "主题许可证是单独的一次性购买。"
+  },
+  "labels": {
+    "path": "路径"
   }
 }

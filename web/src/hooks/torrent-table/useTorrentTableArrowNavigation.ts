@@ -108,6 +108,10 @@ export function useTorrentTableArrowNavigation({
       const cursorIndex = findCursorIndex()
 
       if (event.key === "Enter") {
+        // A focused button or link acts on Enter itself, for example the "+N" pill of a Copy group.
+        if (event.target instanceof Element && event.target.closest("button, a[href]")) {
+          return
+        }
         const row = rows[cursorIndex]
         if (!row || selectedTorrent) {
           return

@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Vypnuto",
-      "enabled": "Zapnuto",
       "connected": "Připojeno",
       "disconnected": "Odpojeno"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS ověření:",
       "tlsSkipped": "Přeskočit",
       "tlsStrict": "Striktní",
-      "localFileAccess": "Lokální přístup k souborům:",
-      "testingConnection": "Testuji připojení..."
+      "testingConnection": "Testuji připojení...",
+      "fileAccess": "Přístup k souborům:"
     },
     "deleteDialog": {
       "title": "Smazat instanci",
@@ -111,7 +110,8 @@
       "none": "Žádná",
       "usernamePassword": "Uživatelské jméno a heslo",
       "apiKey": "API klíč"
-    }
+    },
+    "sshAfterSave": "Přístup přes SSH k souborům instance se nastavuje v nastavení instance po uložení."
   },
   "settingsButton": {
     "tooltip": "Nastavení instance"
@@ -150,7 +150,8 @@
         "downloads": "Stahování",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "Limity sdílení"
+        },
+        "ssh": {
+          "title": "Přístup přes SSH",
+          "description": "Přistupujte k souborům této instance přes SSH, když qui a qBittorrent běží na různých strojích"
         }
       }
     },
@@ -505,7 +510,6 @@
       "dryRun": "Zkušební běh",
       "removed": "Odebráno",
       "executed": "Vykonáno",
-      "copyHash": "Kopírovat hash",
       "original": "Původní: {{domain}}",
       "programLabel": "Program: {{name}}",
       "ruleLabel": "Pravidlo: {{name}}",
@@ -557,7 +561,8 @@
         "move": "Přesunout",
         "externalProgram": "Externí program",
         "dryRun": "Zkušební běh",
-        "exportToInstance": "Exportovat do instance"
+        "exportToInstance": "Exportovat do instance",
+        "ruleSkipped": "Pravidlo nespuštěno"
       },
       "shareLimit": {
         "global": "Globální",
@@ -635,6 +640,7 @@
         "cancel": "Zrušit",
         "delete": "Smazat"
       },
+      "enableTagRule": "Aktivovat pravidlo pro tagy",
       "enableDeleteRule": "Aktivovat pravidlo pro smazání",
       "enableCategoryRule": "Aktivovat pravidlo pro kategorii → {{category}}",
       "enableRuleImmediately": "Potvrzením se toto pravidlo okamžitě aktivuje.",
@@ -683,10 +689,29 @@
         "exportedTorrents": "Exportováno {{count}} torrentů do CSV",
         "exportFailed": "Nepodařilo se exportovat náhled",
         "deletedActivityEntries": "Smazáno {{count}} aktivit",
-        "deleteActivityFailed": "Nepodařilo se smazat aktivitu",
-        "hashCopied": "Hash zkopírován"
+        "deleteActivityFailed": "Nepodařilo se smazat aktivitu"
       },
-      "exported": "Exportováno"
+      "exported": "Exportováno",
+      "skipped": "Přeskočeno"
+    },
+    "runWorkflowNow": {
+      "action": "Spustit nyní",
+      "title": "Spustit \"{{name}}\" nyní?",
+      "description": "qui nyní jednou spustí uložený postup automatizace a použije jeho akce na odpovídající torrenty. Spustí se i tehdy, když je postup vypnutý.",
+      "dryRunDescription": "Tento postup automatizace je nastaven jako zkušební běh, takže qui jen zaznamená, co by udělal. Žádný torrent se nezmění.",
+      "actions": "Akce",
+      "cancel": "Zrušit",
+      "confirm": "Spustit nyní",
+      "toast": {
+        "running": "Spouští se \"{{name}}\"…",
+        "completed": "Běh dokončen pro \"{{name}}\"",
+        "noChanges": "Běh dokončen pro \"{{name}}\". Žádný torrent nepotřeboval změnu.",
+        "completedWithErrors": "Běh pro \"{{name}}\" skončil s chybami. Podívejte se do protokolu aktivity.",
+        "dryRunCompleted": "Zkušební běh dokončen pro \"{{name}}\"",
+        "inProgress": "Probíhá jiný běh. Zkuste to za chvíli znovu.",
+        "failed": "Postup automatizace se nepodařilo spustit",
+        "skipped": "„{{name}}“ se nespustilo. Podívejte se do protokolu aktivity."
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Načítá se náhled. To může trvat nějakou dobu...",
@@ -728,10 +753,8 @@
     "orphanScanOverview": {
       "title": "Vyhledání sirotků",
       "noInstancesDescription": "Žádné instance nenastaveny. Přidejte jednu v Nastavení pro použití této služby.",
-      "tooltip": "Vyhledává soubory na disku, které nejsou přidruženy k žádnému torrentu v qBittorrentu.\nVyžaduje povolený přístup k místnímu souborovému systému pro každou instanci.",
+      "tooltip": "Vyhledává soubory na disku, které nejsou přidruženy k žádnému torrentu v qBittorrentu.\nPotřebuje přístup k souborům každé instance. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance.",
       "description": "Vyhledává soubory v adresářích pro stahování a identifikuje nepárové soubory (sirotky) pro vyčištění.",
-      "noLocalAccess": "Žádný přístup k místnímu souborovému systému",
-      "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání sirotků.",
       "remoteLimits": "Mazání a automatické vyčištění na vzdálené instanci potřebují identitu souborů, kterou qui přečte jen tehdy, když mu server dovolí spouštět GNU find a stat.",
       "remoteNoIdentity": "Tato vzdálená instance je spouštět nedovoluje, takže qui nepozná, že dvě cesty vedou ke stejnému souboru, a soubor dostupný přes druhou cestu, například přes bind mount, se může objevit v seznamu, i když ho používá torrent. Výsledky vyhledávání zde lze zobrazit a exportovat, ale ne smazat.",
       "on": "Zapnuto",
@@ -762,6 +785,8 @@
       "viewPreview": "Zobrazit náhled",
       "recentScans": "Nedávné vyhledávání",
       "scannedPaths": "Vybrané cesty ke skenování ({{total}})",
+      "scanPathsLoading": "Načítání cest ke skenování...",
+      "scanPathsLoadFailed": "Cesty ke skenování se nepodařilo načíst",
       "zeroOrphans": "0 sirotků",
       "deletedStats": "{{deleted}} smazáno · {{size}}",
       "deletedFiles_one": "{{count}} soubor",
@@ -775,7 +800,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Částečná chyba - zkontrolujte nedávná vyhledávání",
       "partialFailureExpand": "Částečná chyba - rozbalte pro detaily",
-      "copiedToClipboard": "Zkopírováno do schránky",
       "noScansYet": "Žádné vyhledávání nebylo spuštěno. Klikněte na \"Vyhledat\" pro vyhledání sirotků.",
       "statusClean": "Čisté",
       "statusPartial": "Částečné skenování",
@@ -795,7 +819,11 @@
         "scanStartFailed": "Selhala spuštění vyhledávání",
         "scanCanceled": "Vyhledávání zrušeno",
         "cancelFailed": "Selhala zrušení"
-      }
+      },
+      "errorMessage": "Chybová zpráva",
+      "scanPaths": "Cesty ke skenování",
+      "noFilesystemAccess": "Žádný přístup k souborovému systému",
+      "noFilesystemAccessTooltip": "Vyhledání sirotků potřebuje přístup k souborům této instance. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance."
     },
     "orphanScanPreview": {
       "title": "Náhled sirotků",
@@ -951,8 +979,6 @@
       "ratio": "Poměr",
       "added": "Přidáno",
       "original": "Originál: {{domain}}",
-      "hashCopied": "Hash zkopírován",
-      "copyHash": "Kopírovat hash",
       "loading": "Načítá se...",
       "notAvailable": "Podrobnosti spuštění nejsou dostupné (v paměti pouze).",
       "failedToLoad": "Selhalo načítání podrobností spuštění.",
@@ -980,7 +1006,8 @@
         "external_program": "Externí program",
         "auto_managed": "Automatická správa",
         "dry_run_no_match": "Zkušební běh (bez shody)",
-        "exported_to_instance": "Exportováno do instance"
+        "exported_to_instance": "Exportováno do instance",
+        "rule_skipped": "Pravidlo nespuštěno"
       }
     },
     "reannounceOverview": {
@@ -1016,8 +1043,6 @@
       "tryDifferentSearch": "Zkuste jiný hledaný termín nebo vymažte filtr.",
       "eventsWillAppear": "Události se zde objeví, když jsou detekovány zamrzlé torrenty.",
       "enableMonitoring": "Povolte monitorování pro začátek sledování zamrzlých torrentů.",
-      "hashCopied": "Hash zkopírován",
-      "copyHash": "Kopírovat hash",
       "outcomes": {
         "succeeded": "Úspěšné",
         "failed": "Selhalo",
@@ -1187,6 +1212,7 @@
         "title": "Akce",
         "addAction": "Přidat akci",
         "selectAction": "Vybrat akci...",
+        "runOrderHelp": "Akce se provádějí v zobrazeném pořadí. Každá akce vidí torrent ve stavu, v jakém byl na začátku běhu, takže externí program spuštěný po přesunu stále dostane starou cestu pro uložení.",
         "speedLimits": "Omezení rychlosti",
         "shareLimits": "Omezení sdílení",
         "pause": "Pozastavit",
@@ -1239,6 +1265,7 @@
         "strategyReplace": "Nahradit v klientu",
         "replaceDescription": "Nahrazující režim vynutí úplné obnovení těchto tagů před použitím tohoto pravidla.",
         "managedDescription": "Spravovaný režim udržuje tagy s aktualizacemi založenými na rozdílech; Úplná synchronizace přidává tagy k shodám a odebírá je z neshodných.",
+        "includeAffectedCrossSeeds": "Zahrnout ovlivněné křížové seedy",
         "useTrackerName": "Použít název trackeru jako tag",
         "useDisplayName": "Použít název zobrazení",
         "aboutDisplayNames": "O názvech zobrazení",
@@ -1299,14 +1326,14 @@
         "defaultSource": "Výchozí (qBittorrent)",
         "pathSource": "Cesta na serveru",
         "pathSourceWindowsUnsupported": "Cesta na serveru (nepodporováno na Windows)",
-        "pathSourceLocalAccessRequired": "Cesta na serveru (vyžaduje místní přístup)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Zadejte cestu, na které se má kontrolovat volné místo (např. montážní bod)",
         "errors": {
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
-          "localAccessRequired": "Zdroj volného místa založený na cestě vyžaduje místní přístup k souborovému systému.",
-          "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\"."
-        }
+          "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\".",
+          "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje lokální přístup k souborovému systému nebo přístup přes SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Cesta na serveru (vyžaduje lokální nebo SSH přístup)"
       },
       "grouping": {
         "title": "Skupiny podmínek",
@@ -1383,11 +1410,13 @@
       "preview": {
         "confirmDeleteRule": "Potvrdit smazání pravidla",
         "previewDeleteRule": "Náhled smazání pravidla",
+        "confirmTagChange": "Potvrdit změny tagů",
         "confirmCategoryChange": "Potvrdit změnu kategorie → {{category}}",
         "deleteEnabledSummary": "Toto pravidlo ovlivní {{count}} torrent, které aktuálně odpovídají.",
         "deleteEnabledSummary_other": "Toto pravidlo ovlivní {{count}} torrenty, které aktuálně odpovídají.",
         "deleteDisabledSummary": "{{count}} torrent by odpovídal tomuto pravidlu, pokud by byl povolen.",
         "deleteDisabledSummary_other": "{{count}} torrenty by odpovídaly tomuto pravidlu, pokud by byl povolen.",
+        "tagPrefix": "Toto pravidlo aktualizuje tagy u",
         "categoryPrefix": "Toto pravidlo přesune",
         "torrents": "{{count}} torrentů",
         "torrents_other": "{{count}} torrentů",
@@ -1399,8 +1428,7 @@
       "enableDryRunPrompt": {
         "title": "Povolit simulaci?",
         "description": "Simulace neprovádí žádné akce. Můžete zkontrolovat ovlivněné torrenty v logu aktivit.",
-        "enableWithout": "Povolit bez simulace",
-        "enableWith": "Povolit se simulací"
+        "saveAndEnable": "Uložit a povolit"
       },
       "customGroup": {
         "title": "Přidat vlastní skupinu",
@@ -1449,7 +1477,8 @@
           "moved": "Přesunuto",
           "externalProgram": "Externí program",
           "noMatches": "Žádné shody",
-          "exportedToInstance": "Exportováno do instance"
+          "exportedToInstance": "Exportováno do instance",
+          "ruleSkipped": "Pravidlo nespuštěno"
         },
         "actionFallback": "Neznámá akce ({{action}})",
         "summary": {
@@ -1495,7 +1524,6 @@
         "switchedIntervalForFreeSpace": "Přepnuto na 5 minutový interval, protože smazání volného místa má ~5 minutové spoždění",
         "pathSourceUnsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows. Přepnuto na výchozí (qBittorrent).",
         "switchFreeSpaceSourceDefault": "Přepnout zdroj volného místa na výchozí (qBittorrent)",
-        "enableLocalAccessOrDefault": "Povolit místní přístup k souborovému systému v nastavení instance, nebo použít výchozí (qBittorrent)",
         "enterPathOrDefault": "Zadejte cestu nebo přepněte zdroj volného místa zpět na výchozí (qBittorrent)",
         "addScoreRule": "Přidat alespoň jedno pravidlo skóre pro řazení skóre",
         "fieldMultiplierInvalid": "Multiplikátor pole musí být platné číslo",
@@ -1512,7 +1540,8 @@
         "groupIdInvalid": "ID skupiny musí obsahovat pouze alfanumerické znaky a podtržítka",
         "selectGroupKey": "Vyberte alespoň jeden klíč",
         "groupExists": "Skupina s tímto ID již existuje",
-        "customGroupAdded": "Vlastní skupina přidána"
+        "customGroupAdded": "Vlastní skupina přidána",
+        "setUpFilesystemAccessOrDefault": "Nastavte lokální nebo SSH přístup k souborovému systému v nastavení instance, nebo použijte Výchozí (qBittorrent)"
       },
       "trackerMatchInclude": "Zahrnout",
       "trackerMatchExclude": "Vyloučit"
@@ -1762,6 +1791,92 @@
       "testEmailQueued": "qBittorrent zařadil testovací e-mail do fronty",
       "testEmailQueuedDescription": "qBittorrent použije uložená nastavení. Zkontrolujte doručenou poštu a v logu qBittorrentu chyby.",
       "testEmailFailed": "Testovací e-mail se nepodařilo odeslat"
+    },
+    "ssh": {
+      "localWins": "Lokální přístup k souborům je zapnutý, takže qui čte soubory této instance lokálně a tato nastavení SSH nepoužívá.",
+      "labels": {
+        "host": "Hostitel SSH",
+        "hostDescription": "Název hostitele nebo IP adresa stroje, na kterém jsou soubory této instance, bez schématu a portu. Změna hostitele nebo portu zahodí připnutý klíč hostitele, takže další test je znovu prvním kontaktem.",
+        "port": "Port",
+        "username": "Uživatelské jméno",
+        "privateKey": "Soukromý klíč",
+        "privateKeyDescription": "Soukromý klíč OpenSSH bez hesla. qui ho ukládá šifrovaný a už ho nikdy nezobrazí. Je znovu potřeba, když se změní hostitel, port nebo uživatelské jméno."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Klíč je uložen. Vložte nový, pokud ho chcete nahradit."
+      },
+      "validation": {
+        "hostRequired": "Hostitel SSH je povinný",
+        "portRange": "Port musí být mezi 1 a 65535",
+        "usernameRequired": "Uživatelské jméno je povinné",
+        "keyRequired": "Soukromý klíč je potřeba, když se změní hostitel, port nebo uživatelské jméno"
+      },
+      "buttons": {
+        "save": "Uložit nastavení SSH",
+        "clear": "Odebrat přístup přes SSH",
+        "test": "Testovat připojení",
+        "testing": "Testuje se...",
+        "confirm": "Potvrdit klíč hostitele",
+        "replace": "Nahradit klíč hostitele"
+      },
+      "test": {
+        "title": "Připojení",
+        "pinnedAtRest": "Klíč hostitele je připnutý. Otestujte připojení a zjistěte, co hostitel umožňuje.",
+        "unpinnedAtRest": "Zatím není připnutý žádný klíč hostitele. Otestujte připojení a potvrďte otisk hostitele.",
+        "saveFirst": "Nejdříve uložte změny. Test používá uložené přihlašovací údaje."
+      },
+      "status": {
+        "unpinned": {
+          "title": "První kontakt",
+          "text": "Před potvrzením porovnejte tento otisk s otiskem hostitele. Pozdější připojení odmítnou jakýkoli jiný klíč."
+        },
+        "pinned": {
+          "title": "Klíč hostitele připnut"
+        },
+        "mismatch": {
+          "title": "Klíč hostitele se změnil",
+          "text": "Hostitel předložil jiný klíč než připnutý. Připnutý klíč nahraďte jen tehdy, když změnu očekáváte, například po přeinstalaci serveru."
+        },
+        "pinUnreadable": {
+          "title": "Připnutý klíč je nečitelný",
+          "text": "Uložený připnutý klíč nelze dešifrovat, obvykle proto, že se změnil šifrovací klíč qui. Pro pokračování ho nahraďte.",
+          "noKey": "Hostitel neodpověděl, takže není žádný klíč, kterým by se dal nahradit."
+        },
+        "error": {
+          "title": "Připojení selhalo"
+        }
+      },
+      "fingerprint": {
+        "label": "Otisk",
+        "pinned": "Připnutý",
+        "presented": "Předložený"
+      },
+      "probes": {
+        "tier": "Úroveň: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + příkazy",
+        "tierHint": "Příkazy potřebují na hostiteli POSIX shell s GNU find a stat. Bez nich qui používá jen SFTP a nemůže číst identitu souborů.",
+        "sftp": "SFTP",
+        "statvfs": "Volné místo (statvfs)",
+        "hardlink": "Pevné odkazy (hardlink@openssh.com)",
+        "limits": "Rozšíření limits",
+        "exec": "Příkazy",
+        "gnuUserland": "GNU find a stat",
+        "yes": "K dispozici",
+        "no": "Není k dispozici"
+      },
+      "replaceDialog": {
+        "title": "Nahradit připnutý klíč hostitele?",
+        "description": "qui bude od teď pro tohoto hostitele důvěřovat předloženému klíči a připnutý odmítne.",
+        "cancel": "Zrušit",
+        "confirm": "Nahradit"
+      },
+      "toast": {
+        "saved": "Nastavení SSH uloženo",
+        "cleared": "Přístup přes SSH odebrán"
+      }
     }
   },
   "backups": {
@@ -2011,6 +2126,17 @@
       "success": "Úspěch",
       "failed": "Selhalo",
       "canceled": "Zrušeno"
+    }
+  },
+  "access": {
+    "local": "Lokální",
+    "remote": "Přes SSH",
+    "none": "Žádný",
+    "localFull": "qui čte a zapisuje soubory této instance na tomto počítači.",
+    "limits": {
+      "noIdentity": "Bez identity souborů: qui nepozná, že dvě cesty vedou ke stejnému souboru. Vyhledání sirotků zde nemůže mazat a existující cíl hardlinku zastaví přidání přes hardlink.",
+      "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
+      "noHardlinkExtension": "Bez hardlinků: server neoznamuje hardlink@openssh.com. Přidání cross-seedu přes hardlink zde selže, nebo se přidá ve standardním režimu, když je zapnuto „Při chybě přepnout na standardní režim“."
     }
   }
 }

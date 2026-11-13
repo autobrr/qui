@@ -138,12 +138,12 @@ func (i *RTorrentImport) Migrate() error {
 				dir = filepath.Join(home, dir[2:])
 			}
 		}
-		dir = filepath.Clean(dir)
+		dir = filepath.Clean(replacePath(dir, i.opts.PathReplaces))
 
-		// also catches POSIX session paths on a Windows host: cross-OS
-		// migration cannot work because the save paths would be unusable
+		// also catches POSIX session paths on a Windows host that no
+		// --replace-path rule maps
 		if !filepath.IsAbs(dir) {
-			log.Warn().Msgf("(%d/%d) %s download directory %q is not an absolute path on this OS, skipping", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
+			log.Warn().Msgf("(%d/%d) %s download directory %q is not an absolute path on this OS, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
 			skipped++
 			continue
 		}

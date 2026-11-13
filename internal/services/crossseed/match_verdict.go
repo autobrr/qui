@@ -190,8 +190,8 @@ type matchPolicy struct {
 	// check set it.
 	AllowMissingCandidateGroup bool
 	// SkipSizeCheck drops the size check after the match classes. The first
-	// pass of the season pack check, Local matches, cross-match sets, and the
-	// content prefilter set it, because the file check after each of them
+	// pass of the season pack check, the batch matcher, and the content
+	// prefilter set it, because the file check after each of them
 	// compares the file sizes. Dedup sets it because it has no sizes.
 	SkipSizeCheck bool
 	// SeasonPack holds the season pack matching settings. Only the season pack

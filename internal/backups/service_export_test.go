@@ -170,8 +170,12 @@ type concurrentExportStub struct {
 	maxInflight int
 }
 
-func (s *concurrentExportStub) GetAllTorrents(context.Context, int) ([]qbt.Torrent, error) {
-	return append([]qbt.Torrent(nil), s.torrents...), nil
+func (s *concurrentExportStub) GetAllTorrentRefs(context.Context, int) ([]*qbt.Torrent, error) {
+	refs := make([]*qbt.Torrent, len(s.torrents))
+	for i := range s.torrents {
+		refs[i] = &s.torrents[i]
+	}
+	return refs, nil
 }
 
 func (s *concurrentExportStub) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
@@ -182,8 +186,8 @@ func (s *concurrentExportStub) GetTags(context.Context, int) ([]string, error) {
 	return nil, nil
 }
 
-func (s *concurrentExportStub) GetInstanceWebAPIVersion(context.Context, int) (string, error) {
-	return "", nil
+func (s *concurrentExportStub) OmitsTrackersOnExport(context.Context, int) (bool, error) {
+	return false, nil
 }
 
 func (s *concurrentExportStub) ExportTorrent(ctx context.Context, _ int, hash string) ([]byte, string, string, error) {

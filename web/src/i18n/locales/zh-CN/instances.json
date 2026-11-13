@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "已禁用",
-      "enabled": "已启用",
       "connected": "已连接",
       "disconnected": "已断开"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "TLS 验证：",
       "tlsSkipped": "已跳过",
       "tlsStrict": "严格",
-      "localFileAccess": "本地文件系统访问：",
-      "testingConnection": "正在测试连接..."
+      "testingConnection": "正在测试连接...",
+      "fileAccess": "文件访问："
     },
     "deleteDialog": {
       "title": "删除实例",
@@ -111,7 +110,8 @@
       "none": "无",
       "usernamePassword": "用户名和密码",
       "apiKey": "API 密钥"
-    }
+    },
+    "sshAfterSave": "保存后，可在实例设置中配置通过 SSH 访问该实例的文件。"
   },
   "settingsButton": {
     "tooltip": "实例设置"
@@ -150,7 +150,8 @@
         "downloads": "下载",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "做种限制"
+        },
+        "ssh": {
+          "title": "SSH 访问",
+          "description": "当 qui 与 qBittorrent 运行在不同机器上时，通过 SSH 访问此实例的文件"
         }
       }
     },
@@ -505,7 +510,6 @@
       "dryRun": "模拟运行",
       "removed": "已移除",
       "executed": "已执行",
-      "copyHash": "复制哈希",
       "original": "原始：{{domain}}",
       "programLabel": "程序：{{name}}",
       "ruleLabel": "规则：{{name}}",
@@ -555,7 +559,8 @@
         "move": "移动",
         "externalProgram": "外部程序",
         "dryRun": "模拟运行",
-        "exportToInstance": "导出到实例"
+        "exportToInstance": "导出到实例",
+        "ruleSkipped": "规则未运行"
       },
       "shareLimit": {
         "global": "全局",
@@ -599,6 +604,7 @@
         "cancel": "取消",
         "delete": "删除"
       },
+      "enableTagRule": "启用标签规则",
       "enableDeleteRule": "启用删除规则",
       "enableCategoryRule": "启用分类规则 → {{category}}",
       "enableRuleImmediately": "确认后将立即启用此规则。",
@@ -647,10 +653,29 @@
         "exportedTorrents": "已导出 {{count}} 个种子到 CSV",
         "exportFailed": "导出预览失败",
         "deletedActivityEntries": "已删除 {{count}} 条活动记录",
-        "deleteActivityFailed": "删除活动失败",
-        "hashCopied": "哈希已复制"
+        "deleteActivityFailed": "删除活动失败"
       },
-      "exported": "已导出"
+      "exported": "已导出",
+      "skipped": "已跳过"
+    },
+    "runWorkflowNow": {
+      "action": "立即运行",
+      "title": "立即运行“{{name}}”？",
+      "description": "qui 会立即运行一次已保存的工作流，并对匹配的种子应用其操作。即使工作流已禁用也会运行。",
+      "dryRunDescription": "此工作流设置为模拟运行，qui 只记录将要执行的操作，不会更改任何种子。",
+      "actions": "操作",
+      "cancel": "取消",
+      "confirm": "立即运行",
+      "toast": {
+        "running": "正在运行“{{name}}”…",
+        "completed": "“{{name}}”运行完成",
+        "noChanges": "“{{name}}”运行完成。没有需要更改的种子。",
+        "completedWithErrors": "“{{name}}”运行完成，但有错误。请查看活动日志。",
+        "dryRunCompleted": "“{{name}}”的模拟运行已完成",
+        "inProgress": "已有运行正在进行。请稍后再试。",
+        "failed": "运行工作流失败",
+        "skipped": "“{{name}}”未运行。请查看活动日志。"
+      }
     },
     "workflowPreview": {
       "loadingPreview": "正在加载预览，这可能需要一些时间...",
@@ -692,10 +717,8 @@
     "orphanScanOverview": {
       "title": "孤立项目扫描",
       "noInstancesDescription": "未配置实例。请在设置中添加实例以使用此服务。",
-      "tooltip": "查找磁盘上与 qBittorrent 中任何种子都不关联的文件。\n需要为每个实例启用本地文件系统访问。",
+      "tooltip": "查找磁盘上与 qBittorrent 中任何种子都不关联的文件。\n需要访问每个实例的文件。请在实例设置中启用“本地文件系统访问”或设置 SSH 访问。",
       "description": "扫描下载目录并识别孤立文件以进行清理。",
-      "noLocalAccess": "无本地访问权限",
-      "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立项目扫描。",
       "remoteLimits": "在远程实例上删除和自动清理需要文件标识，只有服务器允许 qui 运行 GNU find 和 stat 时才能读取。",
       "remoteNoIdentity": "此远程实例不允许这样做，因此 qui 无法判断两个路径是否指向同一文件，可通过第二个路径访问的文件（例如通过 bind mount）即使正被种子使用，也可能出现在列表中。此处的扫描只能预览和导出，不能删除。",
       "on": "开",
@@ -718,6 +741,8 @@
       "viewPreview": "查看预览",
       "recentScans": "近期扫描",
       "scannedPaths": "选定的扫描路径（{{total}}）",
+      "scanPathsLoading": "正在加载扫描路径…",
+      "scanPathsLoadFailed": "无法加载扫描路径",
       "zeroOrphans": "0 个孤立项目",
       "deletedStats": "已删除 {{deleted}} · {{size}}",
       "deletedFiles_other": "{{count}} 个文件",
@@ -725,7 +750,6 @@
       "deletedSeparator": "、",
       "partialFailure": "部分失败 - 请查看近期扫描",
       "partialFailureExpand": "部分失败 - 展开查看详情",
-      "copiedToClipboard": "已复制到剪贴板",
       "noScansYet": "尚未运行扫描。点击\"立即扫描\"查找孤立项目。",
       "statusClean": "清洁",
       "statusPartial": "部分扫描",
@@ -745,7 +769,11 @@
         "scanStartFailed": "启动扫描失败",
         "scanCanceled": "扫描已取消",
         "cancelFailed": "取消失败"
-      }
+      },
+      "errorMessage": "错误信息",
+      "scanPaths": "扫描路径",
+      "noFilesystemAccess": "无文件系统访问权限",
+      "noFilesystemAccessTooltip": "孤立项目扫描需要访问此实例的文件。请在实例设置中启用“本地文件系统访问”或设置 SSH 访问。"
     },
     "orphanScanPreview": {
       "title": "孤立项目预览",
@@ -889,8 +917,6 @@
       "ratio": "分享率",
       "added": "添加时间",
       "original": "原始：{{domain}}",
-      "hashCopied": "哈希已复制",
-      "copyHash": "复制哈希",
       "loading": "加载中...",
       "notAvailable": "运行详情不可用（仅存于内存中）。",
       "failedToLoad": "加载运行详情失败。",
@@ -918,7 +944,8 @@
         "external_program": "外部程序",
         "auto_managed": "自动管理",
         "dry_run_no_match": "模拟运行（无匹配）",
-        "exported_to_instance": "导出到实例"
+        "exported_to_instance": "导出到实例",
+        "rule_skipped": "规则未运行"
       }
     },
     "reannounceOverview": {
@@ -954,8 +981,6 @@
       "tryDifferentSearch": "尝试不同的搜索词或清除筛选器。",
       "eventsWillAppear": "检测到停滞的种子时，事件将显示在此处。",
       "enableMonitoring": "启用监控以开始跟踪停滞的种子。",
-      "hashCopied": "哈希已复制",
-      "copyHash": "复制哈希",
       "outcomes": {
         "succeeded": "成功",
         "failed": "失败",
@@ -1123,6 +1148,7 @@
         "title": "操作",
         "addAction": "添加操作",
         "selectAction": "选择操作...",
+        "runOrderHelp": "操作按显示的顺序执行。每个操作看到的都是本次运行开始时的种子状态，因此在移动之后运行的外部程序仍会收到旧的保存路径。",
         "speedLimits": "速度限制",
         "shareLimits": "分享限制",
         "pause": "暂停",
@@ -1175,6 +1201,7 @@
         "strategyReplace": "在客户端中替换",
         "replaceDescription": "替换模式会在应用此规则前强制对这些标签进行全客户端范围的重置。",
         "managedDescription": "托管模式通过差异更新保持标签准确；完全同步会为匹配项添加标签，并从不匹配项中移除标签。",
+        "includeAffectedCrossSeeds": "包含受影响的辅种",
         "useTrackerName": "使用 Tracker 名称作为标签",
         "useDisplayName": "使用显示名称",
         "aboutDisplayNames": "关于显示名称",
@@ -1235,14 +1262,14 @@
         "defaultSource": "默认（qBittorrent）",
         "pathSource": "服务器路径",
         "pathSourceWindowsUnsupported": "服务器路径（Windows 不支持）",
-        "pathSourceLocalAccessRequired": "服务器路径（需要本地访问权限）",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "输入要检查可用空间的路径（例如挂载点）",
         "errors": {
           "unsupportedWindows": "Windows 不支持基于路径的可用空间来源。",
-          "localAccessRequired": "基于路径的可用空间来源需要本地文件系统访问权限。",
-          "pathRequired": "使用\"服务器路径\"时，路径为必填项。"
-        }
+          "pathRequired": "使用\"服务器路径\"时，路径为必填项。",
+          "filesystemAccessRequired": "基于路径的可用空间来源需要本地或 SSH 文件系统访问权限。"
+        },
+        "pathSourceFilesystemAccessRequired": "服务器路径（需要本地或 SSH 访问）"
       },
       "grouping": {
         "title": "分组条件组",
@@ -1319,11 +1346,13 @@
       "preview": {
         "confirmDeleteRule": "确认删除规则",
         "previewDeleteRule": "预览删除规则",
+        "confirmTagChange": "确认标签更改",
         "confirmCategoryChange": "确认分类更改 → {{category}}",
         "deleteEnabledSummary": "此规则将影响当前匹配的 {{count}} 个种子。",
         "deleteEnabledSummary_other": "此规则将影响当前匹配的 {{count}} 个种子。",
         "deleteDisabledSummary": "如果启用，{{count}} 个种子将匹配此规则。",
         "deleteDisabledSummary_other": "如果启用，{{count}} 个种子将匹配此规则。",
+        "tagPrefix": "此规则将更新以下种子的标签：",
         "categoryPrefix": "此规则将移动",
         "torrents": "{{count}} 个种子",
         "torrents_other": "{{count}} 个种子",
@@ -1335,8 +1364,7 @@
       "enableDryRunPrompt": {
         "title": "启用模拟运行？",
         "description": "模拟运行会模拟所有操作而不做任何实际更改。你可以在活动日志中查看受影响的种子。",
-        "enableWithout": "不启用模拟运行",
-        "enableWith": "启用模拟运行"
+        "saveAndEnable": "保存并启用"
       },
       "customGroup": {
         "title": "添加自定义分组",
@@ -1385,7 +1413,8 @@
           "moved": "移动",
           "externalProgram": "外部程序",
           "noMatches": "无匹配",
-          "exportedToInstance": "导出到实例"
+          "exportedToInstance": "导出到实例",
+          "ruleSkipped": "规则未运行"
         },
         "actionFallback": "未知操作（{{action}}）",
         "summary": {
@@ -1431,7 +1460,6 @@
         "switchedIntervalForFreeSpace": "已切换到 5 分钟间隔，因为可用空间删除有约 5 分钟的冷却时间",
         "pathSourceUnsupportedWindows": "Windows 不支持基于路径的可用空间来源。已切换到 qBittorrent 默认值。",
         "switchFreeSpaceSourceDefault": "将可用空间来源切换为默认（qBittorrent）",
-        "enableLocalAccessOrDefault": "请在实例设置中启用本地文件系统访问，或使用默认（qBittorrent）",
         "enterPathOrDefault": "请输入路径或将可用空间来源切换回默认（qBittorrent）",
         "addScoreRule": "得分排序至少需要一条得分规则",
         "fieldMultiplierInvalid": "字段乘数必须是有效数字",
@@ -1448,7 +1476,8 @@
         "groupIdInvalid": "分组 ID 只能包含字母、数字和下划线",
         "selectGroupKey": "请至少选择一个键",
         "groupExists": "已存在具有此 ID 的分组",
-        "customGroupAdded": "已添加自定义分组"
+        "customGroupAdded": "已添加自定义分组",
+        "setUpFilesystemAccessOrDefault": "请在实例设置中设置本地或 SSH 文件系统访问，或使用默认（qBittorrent）"
       },
       "trackerMatchInclude": "包含",
       "trackerMatchExclude": "排除"
@@ -1698,6 +1727,92 @@
       "testEmailQueued": "qBittorrent 已将测试邮件加入队列",
       "testEmailQueuedDescription": "qBittorrent 使用已保存的设置。请检查收件箱，并在 qBittorrent 日志中查看错误。",
       "testEmailFailed": "发送测试邮件失败"
+    },
+    "ssh": {
+      "localWins": "本地文件系统访问已开启，qui 会在本地读取此实例的文件，不使用这些 SSH 设置。",
+      "labels": {
+        "host": "SSH 主机",
+        "hostDescription": "存放此实例文件的机器的主机名或 IP 地址，不含协议和端口。更改主机或端口会丢弃已固定的主机密钥，下次测试将再次视为首次连接。",
+        "port": "端口",
+        "username": "用户名",
+        "privateKey": "私钥",
+        "privateKeyDescription": "不带密码短语的 OpenSSH 私钥。qui 会加密存储且不再显示。主机、端口或用户名更改后需要重新提供。"
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "已存储一个密钥。粘贴新密钥即可替换。"
+      },
+      "validation": {
+        "hostRequired": "SSH 主机为必填项",
+        "portRange": "端口必须在 1 到 65535 之间",
+        "usernameRequired": "用户名为必填项",
+        "keyRequired": "主机、端口或用户名更改后需要提供私钥"
+      },
+      "buttons": {
+        "save": "保存 SSH 设置",
+        "clear": "移除 SSH 访问",
+        "test": "测试连接",
+        "testing": "测试中...",
+        "confirm": "确认主机密钥",
+        "replace": "替换主机密钥"
+      },
+      "test": {
+        "title": "连接",
+        "pinnedAtRest": "主机密钥已固定。测试连接以查看主机允许的功能。",
+        "unpinnedAtRest": "尚未固定主机密钥。测试连接以确认主机的指纹。",
+        "saveFirst": "请先保存更改。测试使用已保存的凭据。"
+      },
+      "status": {
+        "unpinned": {
+          "title": "首次连接",
+          "text": "确认前请将此指纹与主机的指纹进行比对。之后的连接将拒绝任何其他密钥。"
+        },
+        "pinned": {
+          "title": "主机密钥已固定"
+        },
+        "mismatch": {
+          "title": "主机密钥已更改",
+          "text": "主机提供的密钥与已固定的不同。仅在预期发生变化时（例如服务器重装后）才替换固定的密钥。"
+        },
+        "pinUnreadable": {
+          "title": "固定的密钥无法读取",
+          "text": "无法解密已存储的固定密钥，通常是因为 qui 的加密密钥已更改。请替换后继续。",
+          "noKey": "主机未响应，因此没有可用于替换的密钥。"
+        },
+        "error": {
+          "title": "连接失败"
+        }
+      },
+      "fingerprint": {
+        "label": "指纹",
+        "pinned": "已固定",
+        "presented": "本次提供"
+      },
+      "probes": {
+        "tier": "级别：{{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + 命令执行",
+        "tierHint": "命令执行需要主机上有带 GNU find 和 stat 的 POSIX shell。否则 qui 仅使用 SFTP，无法读取文件标识。",
+        "sftp": "SFTP",
+        "statvfs": "可用空间（statvfs）",
+        "hardlink": "硬链接（hardlink@openssh.com）",
+        "limits": "limits 扩展",
+        "exec": "命令执行",
+        "gnuUserland": "GNU find 和 stat",
+        "yes": "可用",
+        "no": "不可用"
+      },
+      "replaceDialog": {
+        "title": "替换已固定的主机密钥？",
+        "description": "qui 今后将信任此主机本次提供的密钥，并拒绝已固定的密钥。",
+        "cancel": "取消",
+        "confirm": "替换"
+      },
+      "toast": {
+        "saved": "SSH 设置已保存",
+        "cleared": "已移除 SSH 访问"
+      }
     }
   },
   "backups": {
@@ -1945,6 +2060,17 @@
       "failedToDeleteBackup": "删除备份失败",
       "allBackupsDeleted": "所有备份已删除",
       "failedToDeleteBackups": "删除备份失败"
+    }
+  },
+  "access": {
+    "local": "本地",
+    "remote": "通过 SSH",
+    "none": "无",
+    "localFull": "qui 在本机读写此实例的文件。",
+    "limits": {
+      "noIdentity": "无文件标识：qui 无法判断两个路径是否指向同一文件。孤立项目扫描在此无法删除，且已存在的硬链接目标会阻止硬链接添加。",
+      "noReflinks": "远程实例不支持引用链接。",
+      "noHardlinkExtension": "无硬链接：服务器未声明支持 hardlink@openssh.com。交叉做种的硬链接添加在此会失败；若已开启“出错时回退到常规模式”，则以常规模式添加。"
     }
   }
 }

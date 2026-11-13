@@ -86,8 +86,8 @@ describe("getStatusBadgeProps", () => {
     const props = getStatusBadgeProps(torrent, true, t)
     expect(props.label).toBe(enTorrents.tableColumns.trackerError)
     expect(props.variant).toBe("outline")
-    expect(props.className).toContain("text-orange-500")
-    expect(props.iconClass).toBe("text-orange-500")
+    expect(props.className).toContain("text-purple-500")
+    expect(props.iconClass).toBe("text-purple-500")
   })
 
   it("overrides for unregistered", () => {

@@ -282,7 +282,7 @@ describe("Install update", () => {
     await advance(3_000)
     expect(screen.getByText("application.restart.overlay.slowTitle")).toBeTruthy()
     expect(screen.getByText(updateResult.rollbackCommand)).toBeTruthy()
-    expect(screen.getByTitle(/^application\.copyTitle/)).toBeTruthy()
+    expect(screen.getByTitle(/^actions\.copyValue/)).toBeTruthy()
     const docs = screen.getByText("application.update.overlay.rollbackDocs").closest("a")
     expect(docs?.getAttribute("href")).toContain("#roll-back-an-update")
     expect(screen.queryByText(/application\.update\.overlay\.noBackup/)).toBeNull()

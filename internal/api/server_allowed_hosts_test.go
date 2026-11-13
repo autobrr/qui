@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 func TestAllowedHostsAdmission(t *testing.T) {
@@ -68,7 +70,7 @@ func TestAllowedHostsWithCredentials(t *testing.T) {
 	deps.Config.Config.AllowedHosts = []string{"localhost"}
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
-	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "allowed-hosts-test")
+	apiKey, _, err := deps.AuthService.CreateAPIKey(t.Context(), "allowed-hosts-test", models.AllPermissions(), nil)
 	require.NoError(t, err)
 	session, err := deps.SessionManager.Load(t.Context(), "")
 	require.NoError(t, err)
@@ -80,8 +82,8 @@ func TestAllowedHostsWithCredentials(t *testing.T) {
 	for _, credential := range []string{"session", "API key", "none"} {
 		for _, host := range []string{"localhost", "attacker.test"} {
 			t.Run(credential+"/"+host, func(t *testing.T) {
-				// This endpoint uses only the local database, with no client warm-up.
-				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/api-keys", nil)
+				// This endpoint sits behind auth and needs no client warm-up.
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/version", nil)
 				req.Host = host
 				if credential == "session" {
 					req.AddCookie(&http.Cookie{Name: deps.SessionManager.Cookie.Name, Value: token})

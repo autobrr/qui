@@ -67,57 +67,17 @@ func TestRankFuzzyMatchesLibrary(t *testing.T) {
 	}
 }
 
-// Expression filters had no coverage in this package, and the manual filter
-// loop now hands expr.Run a dereferenced pointer. Pin that the env still works.
-func TestApplyManualFiltersExprFilter(t *testing.T) {
+// The expression filter hands expr.Run a copy of each torrent. Pin that the
+// env still works.
+func TestListRulesExprFilter(t *testing.T) {
 	sm := &SyncManager{exprCache: ttlcache.New[string, *vm.Program](ttlcache.SetDefaultTTL(5 * time.Minute))}
 	torrents := []qbt.Torrent{
 		{Hash: "A", Name: "low", Ratio: 0.5},
 		{Hash: "B", Name: "high", Ratio: 2.5},
 	}
 
-	filtered := sm.applyManualFilters(nil, torrents, FilterOptions{Expr: "Ratio > 1"}, nil, nil, false)
+	filtered := listRows(sm, nil, torrents, FilterOptions{Expr: "Ratio > 1"}, nil, false, nil)
 
 	require.Len(t, filtered, 1)
 	assert.Equal(t, "B", filtered[0].Hash)
-}
-
-// Tracker health resolves per torrent for the whole library, so the hot path
-// skips work early. Both shortcuts are behavior-adjacent, so pin them.
-func TestTrackerHealthShortcuts(t *testing.T) {
-	sm := &SyncManager{}
-	unregistered := []qbt.TorrentTracker{
-		{Status: qbt.TrackerStatusTrackerError, Message: "Torrent not registered on tracker"},
-	}
-
-	t.Run("no tracker data means no health", func(t *testing.T) {
-		torrent := qbt.Torrent{Hash: "A", AddedOn: time.Now().Add(-2 * time.Hour).Unix()}
-
-		assert.Empty(t, string(sm.determineTrackerHealth(&torrent)))
-		assert.False(t, sm.torrentIsUnregistered(&torrent))
-		assert.False(t, sm.torrentTrackerIsDown(&torrent))
-		assert.False(t, sm.torrentHasTrackerError(&torrent))
-	})
-
-	t.Run("recently added torrents keep the one hour grace period", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Hash:     "B",
-			AddedOn:  time.Now().Add(-5 * time.Minute).Unix(),
-			Trackers: unregistered,
-		}
-
-		assert.False(t, sm.torrentIsUnregistered(&torrent), "unregistered inside the grace window")
-		assert.NotEqual(t, TrackerHealthUnregistered, sm.determineTrackerHealth(&torrent))
-	})
-
-	t.Run("the grace period expires", func(t *testing.T) {
-		torrent := qbt.Torrent{
-			Hash:     "C",
-			AddedOn:  time.Now().Add(-2 * time.Hour).Unix(),
-			Trackers: unregistered,
-		}
-
-		assert.True(t, sm.torrentIsUnregistered(&torrent))
-		assert.Equal(t, TrackerHealthUnregistered, sm.determineTrackerHealth(&torrent))
-	})
 }

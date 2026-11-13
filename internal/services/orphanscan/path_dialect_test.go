@@ -6,6 +6,8 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"io/fs"
 	"path"
 	"slices"
@@ -20,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 // winRootTestDialect carries Windows drive and UNC roots through ignore matching on
@@ -142,11 +145,14 @@ func (b *slashBackend) children(dir string) []fsops.DirEntry {
 }
 
 func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, error) {
+	// Each file and folder is its own inode, as the identity checks need.
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(p))
 	if _, ok := b.dirs[p]; ok {
-		return &fsops.LstatInfo{Path: p, IsDir: true, Nlinks: 1}, nil
+		return &fsops.LstatInfo{Path: p, IsDir: true, FileID: hardlink.UnixFileID(1, h.Sum64()), Nlinks: 1}, nil
 	}
 	if size, ok := b.files[p]; ok {
-		return &fsops.LstatInfo{Path: p, Size: size, Nlinks: 1}, nil
+		return &fsops.LstatInfo{Path: p, Size: size, FileID: hardlink.UnixFileID(1, h.Sum64()), Nlinks: 1}, nil
 	}
 	return nil, &fs.PathError{Op: "lstat", Path: p, Err: fs.ErrNotExist}
 }
@@ -224,7 +230,7 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 	single := qbt.TorrentFiles{{Name: "a\\b.mkv"}}
 	require.Equal(t, "/data/real", actualSavePathFromContentPath(fsops.SlashPaths, "/data/tv", "/data/real/a\\b.mkv", single))
 
-	roots := scanRootsFromTorrents(fsops.SlashPaths, []qbt.Torrent{{SavePath: "//srv/data/", ContentPath: "/srv/data/x\\y"}})
+	roots := scanRootsFromTorrents(fsops.SlashPaths, []*qbt.Torrent{{SavePath: "//srv/data/", ContentPath: "/srv/data/x\\y"}})
 	slices.Sort(roots)
 	require.Equal(t, []string{"/srv/data", "/srv/data/x\\y"}, roots)
 
@@ -239,9 +245,9 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 func TestPathDialect_FileMapKeys(t *testing.T) {
 	t.Parallel()
 
-	torrents := []qbt.Torrent{{Hash: "h", SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}
+	torrents := []*qbt.Torrent{{Hash: "h", SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}
 	files := map[string]qbt.TorrentFiles{"h": {{Name: "Show/E01.mkv"}, {Name: "a\\b.mkv"}}}
-	result, err := buildFileMapFromTorrents(fsops.SlashPaths, torrents, files)
+	result, err := buildFileMapFromTorrents(fsops.SlashPaths, torrents, files, false)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"/srv/data"}, result.scanRoots)
@@ -600,4 +606,55 @@ func TestService_PathDialectWithoutABackendPool(t *testing.T) {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 	_, err := svc.PathDialect(t.Context(), 1)
 	require.Error(t, err)
+}
+
+func TestScanRootsOverlap(t *testing.T) {
+	t.Parallel()
+
+	win := winRootTestDialect{fsops.HostPaths}
+	tests := []struct {
+		name string
+		d    fsops.PathDialect
+		a, b []string
+		want bool
+	}{
+		{"equal", fsops.SlashPaths, []string{"/data/tv"}, []string{"/data/tv"}, true},
+		{"b inside a", fsops.SlashPaths, []string{"/data"}, []string{"/data/tv/Show"}, true},
+		{"a inside b", fsops.SlashPaths, []string{"/data/tv/Show"}, []string{"/data"}, true},
+		{"sibling prefix", fsops.SlashPaths, []string{"/data/tv"}, []string{"/data/tv2"}, false},
+		{"letter case", fsops.SlashPaths, []string{"/Data/TV"}, []string{"/data/tv"}, true},
+		{"match after misses", fsops.SlashPaths, []string{"/srv/a", "/data/tv"}, []string{"/srv/b", "/data/tv/x"}, true},
+		{"empty entries", fsops.SlashPaths, []string{"", "/data/tv"}, []string{"/srv"}, false},
+		{"empty a", fsops.SlashPaths, nil, []string{"/data"}, false},
+		{"empty b", fsops.SlashPaths, []string{"/data"}, nil, false},
+		{"windows drive root", win, []string{`D:\`}, []string{`D:\TV\Show`}, true},
+		{"windows other drive", win, []string{`D:\`}, []string{`E:\TV`}, false},
+		{"windows letter case", win, []string{`D:\TV`}, []string{`d:\tv\show`}, true},
+		{"windows unc share root", win, []string{`\\server\share`}, []string{`\\server\share\tv`}, true},
+		{"windows unc sibling share", win, []string{`\\server\share`}, []string{`\\server\share2\tv`}, false},
+		{"windows empty entries", win, []string{""}, []string{`D:\TV`, ""}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, scanRootsOverlap(tt.d, tt.a, tt.b))
+		})
+	}
+}
+
+func BenchmarkScanRootsOverlap(b *testing.B) {
+	a := make([]string, 2122)
+	for i := range a {
+		a[i] = fmt.Sprintf("/data/Media/TV/Show %04d", i)
+	}
+	other := make([]string, 1500)
+	for i := range other {
+		other[i] = fmt.Sprintf("/mnt/Other/Movies/Film %04d", i)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if scanRootsOverlap(fsops.SlashPaths, a, other) {
+			b.Fatal("built roots must not overlap")
+		}
+	}
 }

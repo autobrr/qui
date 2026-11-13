@@ -4,6 +4,8 @@
  */
 
 import type {
+  ApiKey,
+  ApiKeyRequest,
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
@@ -29,7 +31,12 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedBlocklistEntry,
+  CrossSeedRoute,
+  CrossSeedRouteRow,
+  CrossSeedRouteStatus,
+  CrossSeedRouteTestResult,
   CrossSeedInstanceResult,
+  CrossSeedResultClass,
   CrossSeedQueryDegradedReason,
   CrossSeedSearchDecisionTrace,
   CrossSeedRun,
@@ -130,10 +137,13 @@ import type {
   ThemeSettings,
   ThemeSlot,
   ThemeSlots,
+  UncheckedInstance,
   User,
   VersionInfo,
   WarningResponse,
-  WebSeed
+  WebSeed,
+  SSHCredentials,
+  SSHTestResponse
 } from "@/types"
 import type {
   ArrInstance,
@@ -485,8 +495,11 @@ type RawCrossSeedInstanceResult = {
   instance_name: string
   success: boolean
   status: string
+  class: CrossSeedResultClass
   message?: string
   matched_torrent?: RawCrossSeedMatchedTorrent
+  cross_seed_instance_id?: number
+  cross_seed_instance_name?: string
 }
 
 function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): CrossSeedInstanceResult {
@@ -495,7 +508,10 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
     instanceName: instance.instance_name,
     success: instance.success,
     status: instance.status,
+    class: instance.class,
     message: instance.message,
+    crossSeedInstanceId: instance.cross_seed_instance_id,
+    crossSeedInstanceName: instance.cross_seed_instance_name,
     matchedTorrent: instance.matched_torrent? {
       hash: instance.matched_torrent.hash ?? "",
       name: instance.matched_torrent.name ?? "",
@@ -554,6 +570,8 @@ export interface StreamSubscription {
   search?: string
   filters?: TorrentFilters | null
   summary?: boolean
+  groupCopies?: boolean
+  uniqueSize?: boolean
 }
 
 function normalizeStreamSubscription(stream: StreamSubscription) {
@@ -568,6 +586,8 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
     search: stream.search ?? "",
     filters: serializeFilters(stream.filters) ?? null,
     summary: stream.summary ?? false,
+    ...(stream.groupCopies ? { groupCopies: true } : {}),
+    ...(stream.uniqueSize ? { uniqueSize: true } : {}),
   }
 }
 
@@ -727,17 +747,40 @@ class ApiClient {
     authorizationUrl: string
     disableBuiltInLogin: boolean
     issuerUrl: string
+    providerUnavailable: boolean
   }> {
     try {
-      return await this.request("/auth/oidc/config")
-    } catch {
-      // Return default config if OIDC is not configured
-      return {
-        enabled: false,
-        authorizationUrl: "",
-        disableBuiltInLogin: false,
-        issuerUrl: "",
+      const config = await this.request<{
+        enabled: boolean
+        authorizationUrl: string
+        disableBuiltInLogin: boolean
+        issuerUrl: string
+      }>("/auth/oidc/config")
+      return { ...config, providerUnavailable: false }
+    } catch (error) {
+      // 503: OIDC is configured, but qui has not reached the identity provider yet.
+      if (error instanceof APIError && error.status === 503) {
+        const data = error.data as { disableBuiltInLogin?: boolean } | undefined
+        return {
+          enabled: true,
+          authorizationUrl: "",
+          disableBuiltInLogin: data?.disableBuiltInLogin === true,
+          issuerUrl: "",
+          providerUnavailable: true,
+        }
       }
+      // OIDC is off: 404 when the routes are not registered, 428 before setup (RequireSetup skips it when OIDC is on).
+      if (error instanceof APIError && (error.status === 404 || error.status === 428)) {
+        return {
+          enabled: false,
+          authorizationUrl: "",
+          disableBuiltInLogin: false,
+          issuerUrl: "",
+          providerUnavailable: false,
+        }
+      }
+      // A 429 from the /auth throttle or a network error says nothing about the login policy.
+      throw error
     }
   }
 
@@ -779,6 +822,26 @@ class ApiClient {
 
   async testConnection(id: number): Promise<{ connected: boolean; message: string }> {
     return this.request(`/instances/${id}/test`, { method: "POST" })
+  }
+
+  async setSSHCredentials(id: number, data: SSHCredentials): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "PUT", body: JSON.stringify(data) })
+  }
+
+  async clearSSHCredentials(id: number): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "DELETE" })
+  }
+
+  async testSSH(id: number): Promise<SSHTestResponse> {
+    return this.request<SSHTestResponse>(`/instances/${id}/ssh-test`, { method: "POST" })
+  }
+
+  async confirmSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
+  async replaceSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key/replace`, { method: "POST", body: JSON.stringify({ hostKey }) })
   }
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
@@ -971,6 +1034,8 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       preferCached?: boolean
+      groupCopies?: boolean
+      uniqueSize?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -982,6 +1047,8 @@ class ApiClient {
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.preferCached) searchParams.set("prefer", "stale")
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
+    if (params.uniqueSize) searchParams.set("uniqueSize", "true")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`,
@@ -1065,6 +1132,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       instanceIds?: number[]
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1078,6 +1146,7 @@ class ApiClient {
     if (params.instanceIds && params.instanceIds.length > 0) {
       searchParams.set("instanceIds", params.instanceIds.join(","))
     }
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     const response = await this.request<TorrentResponse>(
       `/torrents/cross-instance?${searchParams}`,
@@ -1272,19 +1341,15 @@ class ApiClient {
   }
 
   /**
-   * Get local cross-seed matches for a torrent across all instances.
-   * Uses proper release metadata parsing (rls library), not fuzzy string matching.
-   *
-   * @param strict - When true, fail if file overlap checks can't complete (use for delete dialogs)
+   * Get the cross-seeds of a torrent on every active instance, from the batch matcher.
+   * Rejects when a file list or a link check cannot be read.
    */
   async getLocalCrossSeedMatches(
     instanceId: number,
-    hash: string,
-    strict = false
+    hash: string
   ): Promise<LocalCrossSeedMatch[]> {
-    const params = strict ? "?strict=true" : ""
     const raw = await this.request<RawLocalMatchesResponse>(
-      `/cross-seed/torrents/${instanceId}/${hash}/local-matches${params}`,
+      `/cross-seed/torrents/${instanceId}/${hash}/local-matches`,
       { method: "GET" }
     )
     return toLocalCrossSeedMatches(raw)
@@ -1294,6 +1359,7 @@ class ApiClient {
    * Get the torrents that a delete of the selected torrents with their files affects.
    * Takes the selection of a bulk action, so a select-all delete checks every selected
    * torrent in one request. The selected torrents are not in the result.
+   * uncheckedInstances names the instances that the check could not read.
    */
   async getDeleteCrossSeeds(
     instanceId: number,
@@ -1307,12 +1373,17 @@ class ApiClient {
       instanceIds?: number[]
     },
     signal?: AbortSignal
-  ): Promise<LocalCrossSeedMatch[]> {
-    const raw = await this.request<RawLocalMatchesResponse>(
+  ): Promise<{ matches: LocalCrossSeedMatch[]; uncheckedInstances: UncheckedInstance[] }> {
+    const raw = await this.request<RawLocalMatchesResponse & {
+      unchecked_instances: Array<{ instance_id: number; instance_name: string; reason: UncheckedInstance["reason"] }>
+    }>(
       `/instances/${instanceId}/torrents/delete-cross-seeds`,
       { method: "POST", body: JSON.stringify({ ...selection, filters: serializeFilters(selection.filters) }), signal }
     )
-    return toLocalCrossSeedMatches(raw)
+    return {
+      matches: toLocalCrossSeedMatches(raw),
+      uncheckedInstances: raw.unchecked_instances.map(u => ({ instanceId: u.instance_id, instanceName: u.instance_name, reason: u.reason })),
+    }
   }
 
   async searchCrossSeedTorrent(
@@ -1688,6 +1759,32 @@ class ApiClient {
   async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {
     return this.request<CrossSeedAutomationSettings & { warning?: string }>("/cross-seed/settings", {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listCrossSeedRoutes(): Promise<CrossSeedRoute[]> {
+    return this.request<CrossSeedRoute[]>("/cross-seed/routes")
+  }
+
+  async getCrossSeedRoute(sourceInstanceId: number): Promise<CrossSeedRouteStatus | null> {
+    return this.request<CrossSeedRouteStatus | null>(`/cross-seed/routes/${sourceInstanceId}`)
+  }
+
+  async saveCrossSeedRoute(sourceInstanceId: number, payload: { crossSeedInstanceId: number; rows: CrossSeedRouteRow[] }): Promise<CrossSeedRoute> {
+    return this.request<CrossSeedRoute>(`/cross-seed/routes/${sourceInstanceId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async clearCrossSeedRoute(sourceInstanceId: number): Promise<void> {
+    await this.request(`/cross-seed/routes/${sourceInstanceId}`, { method: "DELETE" })
+  }
+
+  async testCrossSeedRoute(sourceInstanceId: number, payload: { crossSeedInstanceId: number; rows: CrossSeedRouteRow[] }): Promise<CrossSeedRouteTestResult> {
+    return this.request<CrossSeedRouteTestResult>(`/cross-seed/routes/${sourceInstanceId}/test`, {
+      method: "POST",
       body: JSON.stringify(payload),
     })
   }
@@ -2074,6 +2171,12 @@ class ApiClient {
     })
   }
 
+  async applyAutomationNow(instanceId: number, ruleId: number): Promise<AutomationDryRunResult> {
+    return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/${ruleId}/apply`, {
+      method: "POST",
+    })
+  }
+
   async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
     return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
@@ -2124,20 +2227,21 @@ class ApiClient {
   }
 
   // API Key endpoints
-  async getApiKeys(): Promise<{
-    id: number
-    name: string
-    key?: string
-    createdAt: string
-    lastUsedAt?: string
-  }[]> {
+  async getApiKeys(): Promise<ApiKey[]> {
     return this.request("/api-keys")
   }
 
-  async createApiKey(name: string): Promise<{ id: number; key: string; name: string }> {
+  async createApiKey(data: ApiKeyRequest): Promise<{ id: number; key: string; name: string }> {
     return this.request("/api-keys", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateApiKey(id: number, data: ApiKeyRequest): Promise<ApiKey> {
+    return this.request(`/api-keys/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     })
   }
 

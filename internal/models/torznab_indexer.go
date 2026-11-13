@@ -1089,11 +1089,23 @@ func (s *TorznabIndexerStore) GetLatencyStats(ctx context.Context, indexerID int
 
 	stats := make([]TorznabIndexerLatencyStats, 0)
 	for rows.Next() {
-		var s TorznabIndexerLatencyStats
-		if err := rows.Scan(&s.IndexerID, &s.OperationType, &s.TotalRequests, &s.SuccessfulRequests, &s.AvgLatencyMs, &s.MinLatencyMs, &s.MaxLatencyMs, &s.SuccessRatePct, &s.LastMeasuredAt); err != nil {
+		var stat TorznabIndexerLatencyStats
+		var lastMeasuredAt dbinterface.NullTime
+		if err := rows.Scan(
+			&stat.IndexerID,
+			&stat.OperationType,
+			&stat.TotalRequests,
+			&stat.SuccessfulRequests,
+			&stat.AvgLatencyMs,
+			&stat.MinLatencyMs,
+			&stat.MaxLatencyMs,
+			&stat.SuccessRatePct,
+			&lastMeasuredAt,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan latency stats: %w", err)
 		}
-		stats = append(stats, s)
+		stat.LastMeasuredAt = lastMeasuredAt.Time
+		stats = append(stats, stat)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -1113,6 +1125,7 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 
 	var health TorznabIndexerHealth
 	var enabled int
+	var lastMeasuredAt dbinterface.NullTime
 	err := s.db.QueryRowContext(ctx, query, indexerID).Scan(
 		&health.IndexerID,
 		&health.IndexerName,
@@ -1123,7 +1136,7 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 		&health.AvgLatencyMs,
 		&health.SuccessRatePct,
 		&health.RequestsLast7d,
-		&health.LastMeasuredAt,
+		&lastMeasuredAt,
 	)
 	health.Enabled = SQLiteIntToBool(enabled)
 
@@ -1132,6 +1145,9 @@ func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*To
 			return nil, ErrTorznabIndexerNotFound
 		}
 		return nil, fmt.Errorf("failed to get health: %w", err)
+	}
+	if lastMeasuredAt.Valid {
+		health.LastMeasuredAt = &lastMeasuredAt.Time
 	}
 
 	return &health, nil
@@ -1155,10 +1171,25 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 	for rows.Next() {
 		var health TorznabIndexerHealth
 		var enabled int
-		if err := rows.Scan(&health.IndexerID, &health.IndexerName, &enabled, &health.LastTestStatus, &health.ErrorsLast24h, &health.UnresolvedErrors, &health.AvgLatencyMs, &health.SuccessRatePct, &health.RequestsLast7d, &health.LastMeasuredAt); err != nil {
+		var lastMeasuredAt dbinterface.NullTime
+		if err := rows.Scan(
+			&health.IndexerID,
+			&health.IndexerName,
+			&enabled,
+			&health.LastTestStatus,
+			&health.ErrorsLast24h,
+			&health.UnresolvedErrors,
+			&health.AvgLatencyMs,
+			&health.SuccessRatePct,
+			&health.RequestsLast7d,
+			&lastMeasuredAt,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan health: %w", err)
 		}
 		health.Enabled = SQLiteIntToBool(enabled)
+		if lastMeasuredAt.Valid {
+			health.LastMeasuredAt = &lastMeasuredAt.Time
+		}
 		healthList = append(healthList, health)
 	}
 
@@ -1171,16 +1202,10 @@ func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexe
 
 // CleanupOldLatency removes latency records older than the specified duration
 func (s *TorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
-	cutoff := time.Now().UTC().Add(-olderThan)
-	cutoffArg := any(cutoff)
-	if dbinterface.DialectOf(s.db) == "sqlite" {
-		cutoffArg = cutoff.Format(time.DateTime)
-	}
-
 	result, err := s.db.ExecContext(ctx, `
 		DELETE FROM torznab_indexer_latency
 		WHERE measured_at < ?
-	`, cutoffArg)
+	`, time.Now().Add(-olderThan))
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup old latency: %w", err)
 	}

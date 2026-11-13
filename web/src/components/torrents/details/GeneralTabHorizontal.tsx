@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Button } from "@/components/ui/button"
+import { CopyButton } from "@/components/ui/copy-button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { TruncatedText } from "@/components/ui/truncated-text"
@@ -11,12 +11,11 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useTorrentDetailTab } from "@/hooks/useTorrentDetailTab"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
-import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent, TorrentProperties } from "@/types"
-import { Copy, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { memo, useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 import { PieceBar } from "./PieceBar"
 import { StatRow } from "./StatRow"
 
@@ -37,6 +36,8 @@ interface GeneralTabHorizontalProps {
   displayComment?: string
   displayCreatedBy?: string
   queueingEnabled?: boolean
+  // The formatted time until the next announce; undefined hides the row.
+  reannounceIn?: string
 }
 
 export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
@@ -56,6 +57,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   displayComment,
   displayCreatedBy,
   queueingEnabled,
+  reannounceIn,
 }: GeneralTabHorizontalProps) {
   const { t } = useTranslation("torrents")
   const { formatTimestamp } = useDateTimeFormatters()
@@ -94,15 +96,6 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
     const progress = total > 0 ? (have / total) * 100 : 0
     return { have, total, progress }
   }, [needsPieceStates, pieceStates, properties?.completion_date, properties?.pieces_have, properties?.pieces_num])
-
-  const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await copyTextToClipboard(text)
-      toast.success(t("detailsPanel.toast.copied", { type: label }))
-    } catch {
-      toast.error(t("detailsPanel.toast.copyFailed"))
-    }
-  }
 
   const downloadLimitLabel = downloadLimit > 0? formatSpeedWithUnit(downloadLimit, speedUnit): t("generalTab.unlimited")
   const uploadLimitLabel = uploadLimit > 0? formatSpeedWithUnit(uploadLimit, speedUnit): t("generalTab.unlimited")
@@ -143,14 +136,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               {displayName || t("generalTab.na")}
             </TruncatedText>
             {displayName && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => copyToClipboard(displayName, t("generalTab.name"))}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
+              <CopyButton value={displayName} label={t("detailsPanel.labels.torrentName")} className="h-5 w-5" iconClassName="h-4 w-4" />
             )}
           </div>
           <div className="flex items-start gap-2 min-w-0">
@@ -173,14 +159,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               {displayInfohashV1 || t("generalTab.na")}
             </TruncatedText>
             {displayInfohashV1 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => copyToClipboard(displayInfohashV1, t("generalTab.hashV1"))}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
+              <CopyButton value={displayInfohashV1} label={t("detailsPanel.labels.infoHashV1")} className="h-5 w-5" iconClassName="h-4 w-4" />
             )}
           </div>
           {displayInfohashV2 && (
@@ -191,14 +170,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               <TruncatedText className="text-xs font-mono text-muted-foreground">
                 {displayInfohashV2}
               </TruncatedText>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => copyToClipboard(displayInfohashV2, t("generalTab.hashV2"))}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
+              <CopyButton value={displayInfohashV2} label={t("detailsPanel.labels.infoHashV2")} className="h-5 w-5" iconClassName="h-4 w-4" />
             </div>
           )}
         </div>
@@ -213,14 +185,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               {displaySavePath || t("generalTab.na")}
             </TruncatedText>
             {displaySavePath && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => copyToClipboard(displaySavePath, t("generalTab.savePath"))}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
+              <CopyButton value={displaySavePath} label={t("detailsPanel.labels.savePath")} className="h-5 w-5" iconClassName="h-4 w-4" />
             )}
           </div>
           {tempPathEnabled && displayTempPath ? (
@@ -231,14 +196,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               <TruncatedText className="text-xs font-mono text-muted-foreground">
                 {displayTempPath}
               </TruncatedText>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 shrink-0"
-                onClick={() => copyToClipboard(displayTempPath, t("generalTab.tempPath"))}
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
+              <CopyButton value={displayTempPath} label={t("detailsPanel.labels.downloadPath")} className="h-5 w-5" iconClassName="h-4 w-4" />
             </div>
           ) : null}
         </div>
@@ -327,6 +285,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.time")}</h4>
             <StatRow label={t("generalTab.timeActive")} value={formatDuration(properties.time_elapsed || 0)} />
             <StatRow label={t("generalTab.seedingTime")} value={formatDuration(properties.seeding_time || 0)} />
+            {reannounceIn !== undefined && <StatRow label={t("tableColumns.reannounce")} value={reannounceIn} />}
             <StatRow label={t("generalTab.addedOn")} value={formatTimestamp(properties.addition_date, true)} />
             {properties.completion_date > 0 && (
               <StatRow label={t("generalTab.completedOn")} value={formatTimestamp(properties.completion_date, true)} />

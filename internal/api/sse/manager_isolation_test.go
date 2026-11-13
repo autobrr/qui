@@ -191,7 +191,7 @@ func TestSlowClientDoesNotBlockOthers(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -209,7 +209,7 @@ func TestSlowClientDoesNotBlockOthers(t *testing.T) {
 	receive(t, subscribed, "connection B to subscribe")
 
 	// Fire an update; B must receive a tick frame promptly while A's reader sits idle.
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 	updateB := readerB.waitForTick(t, 5*time.Second)
 	require.True(t, isTickEvent(updateB.event), "expected a tick frame, got %q", updateB.event)
 }

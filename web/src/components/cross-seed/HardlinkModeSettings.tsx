@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CrossSeedRouteForm } from "@/components/cross-seed/CrossSeedRouteForm"
 import { PooledCompletionSetting } from "@/components/cross-seed/PooledCompletionSetting"
+import { countRoutedTorrents, RouteProtectionConfirmDialog } from "@/components/cross-seed/RouteProtectionConfirm"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,6 +18,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { useInstances } from "@/hooks/useInstances"
+import { api } from "@/lib/api"
 import type { Instance } from "@/types"
 import { ChevronDown, Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -26,6 +29,13 @@ import { toast } from "sonner"
 // a remote instance has Write (#2942).
 function reflinkAllowed(instance: Instance): boolean {
   return instance.capabilities.write && instance.filesystemMode === "local"
+}
+
+// ponytail: trims, joins repeated separators after the first character (a UNC
+// prefix stays), drops a trailing separator, and applies NFC as the server keys
+// do. A path with "." or ".." segments reads as removed and opens one confirm too many.
+function baseDirKey(dir: string): string {
+  return dir.trim().normalize("NFC").replace(/(?<=.)([\\/])[\\/]+/g, "$1").replace(/(?<=.)[\\/]+$/, "")
 }
 
 /** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
@@ -49,6 +59,8 @@ export function HardlinkModeSettings({
   }
   const [formMap, setFormMap] = useState<Record<number, InstanceFormState>>({})
   const [isOpen, setIsOpen] = useState<boolean | undefined>(undefined)
+  const [checking, setChecking] = useState(false)
+  const [pendingSave, setPendingSave] = useState<{ instance: Instance; crossSeedName: string; routedTorrents: number | null } | null>(null)
 
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -125,6 +137,30 @@ export function HardlinkModeSettings({
       return
     }
 
+    // A switch to Regular or an empty list on a Source instance gets the
+    // server's refusal (#3259). Removing a base folder of a route asks first.
+    // The route is read now, not from a cached list, because another tab can have saved one.
+    if (form.useHardlinks || form.useReflinks) {
+      setChecking(true)
+      void api.getCrossSeedRoute(instance.id)
+        .then(route => {
+          const kept = form.hardlinkBaseDir.split(",").map(baseDirKey)
+          // The read also has an empty row for a base folder saved after the route,
+          // and the orphan scan protects the torrents under it.
+          const removed = route?.rows.filter(row => !kept.includes(baseDirKey(row.baseDir))) ?? []
+          if (!route || !removed.length) return saveInstance(instance)
+          const crossSeedName = instances?.find(i => i.id === route.crossSeedInstanceId)?.name ?? ""
+          setPendingSave({ instance, crossSeedName, routedTorrents: countRoutedTorrents(removed) })
+        })
+        .catch((error: Error) => toast.error(t("routeConfirm.routeReadFailed", { source: instance.name }), { description: error.message }))
+        .finally(() => setChecking(false))
+      return
+    }
+    saveInstance(instance)
+  }
+
+  const saveInstance = (instance: Instance) => {
+    const form = getForm(instance)
     updateInstance({
       id: instance.id,
       data: {
@@ -241,7 +277,8 @@ export function HardlinkModeSettings({
                         <RadioGroup
                           value={form.useReflinks ? "reflink" : form.useHardlinks ? "hardlink" : "regular"}
                           onValueChange={(value) => handleModeChange(instance.id, value as "regular" | "hardlink" | "reflink", form)}
-                          disabled={isUpdating}
+                          // The dialog counts the form read at Save, so the form waits for the route read.
+                          disabled={isUpdating || checking}
                           className="space-y-2"
                         >
                           <div className="flex items-start gap-3">
@@ -292,6 +329,7 @@ export function HardlinkModeSettings({
                                 placeholder={t("rules.baseDirectoriesPlaceholder")}
                                 value={form.hardlinkBaseDir}
                                 onChange={(e) => handleFormChange(instance.id, "hardlinkBaseDir", e.target.value, form)}
+                                disabled={checking}
                               />
                             </div>
 
@@ -302,6 +340,7 @@ export function HardlinkModeSettings({
                                 onValueChange={(value: "flat" | "by-tracker" | "by-instance") =>
                                   handleFormChange(instance.id, "hardlinkDirPreset", value, form)
                                 }
+                                disabled={checking}
                               >
                                 <SelectTrigger>
                                   <SelectValue />
@@ -321,6 +360,7 @@ export function HardlinkModeSettings({
                                 onCheckedChange={(checked) =>
                                   handleFormChange(instance.id, "fallbackToRegularMode", checked === true, form)
                                 }
+                                disabled={checking}
                               />
                               <div className="flex items-center gap-1.5">
                                 <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
@@ -339,12 +379,15 @@ export function HardlinkModeSettings({
                         <Button
                           size="sm"
                           onClick={() => handleSave(instance)}
-                          disabled={isUpdating}
+                          // A second click during the route read would start a second check.
+                          disabled={isUpdating || checking}
                         >
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           {t("rules.saveChanges")}
                         </Button>
                       )}
+
+                      <CrossSeedRouteForm instance={instance} localWrite={canEnableReflink} />
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -355,6 +398,17 @@ export function HardlinkModeSettings({
           {pooledCompletionSetting}
         </div>
       </CollapsibleContent>
+      <RouteProtectionConfirmDialog
+        open={pendingSave !== null}
+        onOpenChange={(open) => !open && setPendingSave(null)}
+        sourceName={pendingSave?.instance.name ?? ""}
+        crossSeedName={pendingSave?.crossSeedName ?? ""}
+        routedTorrents={pendingSave?.routedTorrents}
+        onConfirm={() => {
+          if (pendingSave) saveInstance(pendingSave.instance)
+          setPendingSave(null)
+        }}
+      />
     </Collapsible>
   )
 }

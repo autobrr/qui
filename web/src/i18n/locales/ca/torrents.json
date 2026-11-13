@@ -134,6 +134,8 @@
     "error": "No s'ha pogut comprovar si hi ha cross-seed",
     "retry": "Torna-ho a provar",
     "noCrossSeeds": "No s'ha trobat cap cross-seed",
+    "uncheckedOffline": "No s'ha pogut comprovar {{instance}}: qui no hi pot accedir.",
+    "uncheckedDisabled": "No s'ha comprovat {{instance}}: està desactivada a qui.",
     "deleteCrossSeeds": "Aquests cross-seed també s'eliminaran",
     "deletingFilesBreaks": "Si elimines els fitxers, trencaràs aquests cross-seed",
     "dataPreserved": "S'han detectat cross-seed: les dades es conservaran",
@@ -263,15 +265,13 @@
     "bottomPriorityBatch": "Prioritat mínima ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Reanomena",
-    "renameTorrent": "Reanomena el torrent",
-    "renameFile": "Reanomena el fitxer",
-    "renameFolder": "Reanomena la carpeta"
+    "renameTorrent": "Reanomena el torrent"
   },
   "trackersTable": {
     "status": "Estat",
     "tracker": "Tracker",
     "seeds": "Llav.",
+    "peers": "Parells",
     "leeches": "Sang.",
     "downloaded": "Baix.",
     "message": "Missatge",
@@ -556,7 +556,6 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} de {{total}} torrents carregats",
     "scrollForMore": "(desplaça't per veure'n més)",
-    "loading": "S'està carregant...",
     "freeSpace": "Espai lliure",
     "switchToBits": "Canvia a bits per segon (bps)",
     "switchToBytes": "Canvia a bytes per segon (B/s)",
@@ -690,7 +689,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "ratio": "Ràtio:"
+    "ratio": "Ràtio:",
+    "added": "Afegit {{time}}"
   },
   "crossSeedTable": {
     "name": "Nom",
@@ -731,11 +731,7 @@
       }
     },
     "noMatches": "No s'ha trobat cap torrent coincident a les altres instàncies",
-    "loadFailed": "No s'han pogut comprovar les coincidències de cross-seed. Torna a carregar per provar-ho de nou.",
-    "toast": {
-      "savePathCopied": "S'ha copiat el camí de desada",
-      "copyFailed": "No s'ha pogut copiar"
-    }
+    "loadFailed": "No s'han pogut comprovar les coincidències de cross-seed. Torna a carregar per provar-ho de nou."
   },
   "filterSidebar": {
     "views": {
@@ -1021,7 +1017,6 @@
     "closePanel": "Tanca el plafó de detalls",
     "unknownError": "Error desconegut",
     "toast": {
-      "copied": "S'ha copiat {{type}} al porta-retalls",
       "copyFailed": "No s'ha pogut copiar al porta-retalls",
       "peersAdded": "S'han afegit els parells correctament",
       "peersFailed": "No s'han pogut afegir els parells: {{error}}",
@@ -1073,20 +1068,14 @@
       "loadedSummary_other": "S'han trobat {{count}} torrents coincidents a totes les instàncies",
       "deleteMatches": "Elimina les coincidències ({{count}})",
       "deleteThisTorrent": "Elimina aquest torrent",
-      "checkingMoreInstances": "S'estan comprovant més instàncies...",
-      "infoHashMatch": "Info hash",
-      "infoHashDescription": "Exactament el mateix torrent (mateix info hash)",
-      "savePathMatch": "Camí de desada",
-      "savePathDescription": "Mateix directori de desada i mateix nom de fitxer",
-      "selectTorrent": "Selecciona {{name}}"
+      "selectTorrent": "Selecciona {{name}}",
+      "openTorrent": "Obre {{name}}"
     },
     "sections": {
       "generalInformation": "Informació general",
       "transferStatistics": "Estadístiques de transferència",
-      "speed": "Velocitat",
       "queueManagement": "Gestió de la cua",
       "timeInformation": "Informació de temps",
-      "timestamps": "Marques de temps",
       "activeTrackers": "Trackers actius",
       "connectedPeers": "Parells connectats",
       "fileContents": "Contingut dels fitxers"
@@ -1113,18 +1102,13 @@
       "added": "Afegit",
       "completed": "Completat",
       "created": "Creat",
-      "leechers": "Sangoneres",
-      "peerProgress": "Progrés del parell",
-      "connection": "Connexió:",
-      "flags": "Indicadors:"
+      "leechers": "Sangoneres"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "connectedPeers_one": "{{count}} parell connectat",
       "connectedPeers_other": "{{count}} parells connectats",
-      "httpSources_one": "{{count}} font",
-      "httpSources_other": "{{count}} fonts",
       "selectedFiles": "{{selected}} de {{total}} seleccionats",
       "files_one": "{{count}} fitxer",
       "files_other": "{{count}} fitxers"
@@ -1132,7 +1116,6 @@
     "values": {
       "normal": "Normal",
       "queued": "{{state}} a la cua",
-      "seeder": "Llavor",
       "unknownClient": "Client desconegut"
     },
     "actions": {
@@ -1141,14 +1124,12 @@
       "selectAll": "Tots",
       "selectNone": "Cap"
     },
-    "peer": {
-      "flagLabel": "Indicador {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "No s'ha trobat cap fitxer"
     },
     "selectAll": "Selecciona-ho tot",
-    "deselectAll": "Desselecciona-ho tot"
+    "deselectAll": "Desselecciona-ho tot",
+    "trackerMessageHidden": "Missatge del tracker ocult en mode incògnit"
   },
   "generalTab": {
     "name": "Nom:",
@@ -1525,7 +1506,8 @@
       "fewerIndexers": "Prova de cercar amb menys indexadors seleccionats",
       "useRss": "Fes servir l'automatització d'RSS per al cross-seeding continu",
       "checkIndexers": "Mira la pàgina d'indexadors per veure quins tenen límit de freqüència"
-    }
+    },
+    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}."
   },
   "manualCrossSeed": {
     "title": "Coincidència manual de cross-seed",
@@ -1548,6 +1530,7 @@
     "tags": "Etiquetes",
     "newTagPlaceholder": "Afegeix una etiqueta i prem Retorn",
     "savePath": "Camí de desada (destinació efectiva)",
+    "routedTo": "El cross-seed va a la instància de cross-seed {{instance}}.",
     "cancel": "Cancel·la",
     "apply": "Afegeix el cross-seed",
     "applying": "S'està afegint...",
@@ -1569,12 +1552,14 @@
       "dropped": "S'ha afegit el pack. Destinacions descartades: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Aquesta instància necessita accés al sistema de fitxers local per muntar un pack.",
+        "no_filesystem_access": "Aquesta instància necessita accés d'escriptura al sistema de fitxers per muntar un pack. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
         "no_link_mode": "Activa el mode hardlink o reflink en aquesta instància per seleccionar diverses destinacions.",
         "no_base_directory": "Configura un directori base d'enllaços en aquesta instància.",
         "no_episode_files": "No s'ha trobat cap fitxer d'episodi reproduïble en aquest pack.",
         "target_not_found": "No s'ha trobat la destinació en aquesta instància.",
         "incomplete": "La baixada de la destinació és incompleta.",
+        "not_settled": "Aquest torrent encara s'està movent o comprovant. Torneu-ho a provar quan acabi.",
+        "errored": "Aquest torrent té un error o li falten fitxers. Corregiu-ho i torneu-ho a provar.",
         "no_episode_identity": "No s'ha pogut interpretar el número d'episodi.",
         "file_list_unavailable": "La llista de fitxers de la destinació no està disponible.",
         "episode_file_invalid": "La destinació ha de contenir un fitxer reproduïble amb la identitat d'episodi seleccionada.",
@@ -1692,6 +1677,34 @@
       "partialSuccess": "Se n'han afegit {{added}} i {{failed}} han fallat",
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} còpia més de {{name}}",
+    "copies_other": "{{count}} còpies més de {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A una còpia amagada li falten fitxers",
+      "error": "Una còpia amagada té un error",
+      "unregistered": "Una còpia amagada no està registrada",
+      "trackerError": "Una còpia amagada té un error del tracker",
+      "trackerDown": "El tracker d'una còpia amagada ha caigut"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
+    "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
+    "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupa les còpies",
+    "ungroupCopies": "Desagrupa les còpies",
+    "grouping": "S'està agrupant…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Agrupa els teus cross-seeds",
+      "description": "Mostra les còpies d'un torrent en una sola fila.",
+      "action": "Prova-ho"
     }
   }
 }

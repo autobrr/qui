@@ -144,6 +144,36 @@ describe("mergeStreamedFirstPage", () => {
   })
 })
 
+describe("mergeStreamedFirstPage with Copy groups", () => {
+  // A page holds top rows and the members of their groups. The Group
+  // representative carries first_sorted; the other members carry only the id.
+  type GroupedRow = Row & { copy_group?: { id: string; first_sorted?: { instance_id: number; hash: string } } }
+  const top = (hash: string, id?: string): GroupedRow =>
+    id ? { hash, copy_group: { id, first_sorted: { instance_id: 1, hash } } } : { hash }
+  const member = (hash: string, id: string): GroupedRow => ({ hash, copy_group: { id } })
+
+  it("keeps the later pages when page 0 gets longer because a group gained a copy", () => {
+    // Page size 2 top rows: page 0 [A+a1, B], page 1 [C, D].
+    const prev = [top("A", "g"), member("a1", "g"), top("B"), top("C"), top("D")]
+    const next = [top("A", "g"), member("a1", "g"), member("a2", "g"), top("B")]
+    expect(hashes(mergeStreamedFirstPage(prev, next, 6))).toEqual(["A", "a1", "a2", "B", "C", "D"])
+  })
+
+  it("drops the old members of page 0 when page 0 gets shorter", () => {
+    // a1 and a2 were deleted, so page 0 shrinks from 4 rows to 2.
+    const prev = [top("A", "g"), member("a1", "g"), member("a2", "g"), top("B"), top("C")]
+    const next = [top("A"), top("B")]
+    expect(hashes(mergeStreamedFirstPage(prev, next, 3))).toEqual(["A", "B", "C"])
+  })
+
+  it("keeps the later members of a group whose representative moved up into page 0", () => {
+    // An earlier merge kept a1 and a2 after their representative left them for page 0.
+    const prev = [top("A"), member("a1", "g"), member("a2", "g"), top("B")]
+    const next = [top("A")]
+    expect(hashes(mergeStreamedFirstPage(prev, next, 4))).toEqual(["A", "a1", "a2", "B"])
+  })
+})
+
 describe("applyOrderedDelta", () => {
   type Named = { hash: string; name: string }
   const named = (hash: string, name = hash): Named => ({ hash, name })

@@ -10,6 +10,9 @@ import { endsWithSeparator, lastSeparatorIndex, pathSeparator } from "@/lib/path
 import { useDirectoryContent } from "./useDirectoryContent";
 
 const MAX_SUGGESTIONS = 100;
+// Stable fallback for a query without data. An inline `= []` is a new array each
+// render, which resets the highlight after every arrow key.
+const NO_ENTRIES: string[] = [];
 
 type UsePathAutocompleteOptions = {
   /** Also list files; a selected file closes the dropdown instead of descending into it. */
@@ -53,10 +56,10 @@ export function usePathAutocomplete(
   );
 
   const enabled = Boolean(deferredInput?.trim());
-  const { data: directoryEntries = [] } = useDirectoryContent(instanceId, parentPath, { enabled });
+  const { data: directoryEntries = NO_ENTRIES } = useDirectoryContent(instanceId, parentPath, { enabled });
   // Second query instead of mode=all with metadata: it works on qBittorrent 5.0
   // and returns full paths, while withMetadata needs 5.2 and returns basenames.
-  const { data: fileEntries = [] } = useDirectoryContent(instanceId, parentPath, {
+  const { data: fileEntries = NO_ENTRIES } = useDirectoryContent(instanceId, parentPath, {
     enabled: includeFiles && enabled,
     mode: "files",
   });
@@ -70,7 +73,8 @@ export function usePathAutocomplete(
     return matches.slice(0, MAX_SUGGESTIONS);
   }, [directoryEntries, fileEntries, includeFiles, filterTerm]);
 
-  // Update highlighted index when suggestions change
+  // Reset the highlight when the input or the suggestions change. The input is a
+  // dependency because a case-only edit leaves the suggestions unchanged.
   useEffect(() => {
     if (dismissed) {
       setHighlightedIndex(-1);
@@ -81,7 +85,7 @@ export function usePathAutocomplete(
       return;
     }
     setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
-  }, [suggestions, dismissed]);
+  }, [suggestions, dismissed, deferredInput]);
 
   /** Selects an entry. A directory gets a trailing separator and keeps the dropdown open for the next level; a file closes it. */
   const selectSuggestion = useCallback(
@@ -147,7 +151,6 @@ export function usePathAutocomplete(
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value);
     setDismissed(false);
-    setHighlightedIndex(-1);
   }, []);
 
   const handleSelect = useCallback(
