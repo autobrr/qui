@@ -123,6 +123,7 @@ describe("computePieceBarFill", () => {
     expect(computePieceBarFill(column, 12)).toEqual({ finishedPixels: 1, downloadingPixels: 0 })
   })
 
+  // regression: #4097
   it("fills each column of a finished torrent to the whole height when a column holds a part of a piece", () => {
     const columns = computePieceBarColumns(Array(11592).fill(FINISHED), 1000)
 
@@ -131,6 +132,7 @@ describe("computePieceBarFill", () => {
     expect(notFull).toEqual([])
   })
 
+  // regression: #4097
   it("draws a finished piece that ends at a column edge in its own column only", () => {
     const states: number[] = Array(1400).fill(MISSING)
     states[1021] = FINISHED
