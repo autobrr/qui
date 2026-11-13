@@ -314,6 +314,27 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "a torrent that the user adds again and downloads is no Statistics cross-seed in its new life",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), complete(torrent("b", 0, 0))),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(10*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(9*time.Minute))),
+				reading(at(15*time.Minute), torrent("a", 0, 0), complete(addedAt(torrent("b", 0, 1000), at(9*time.Minute)))),
+				reading(at(20*time.Minute), torrent("a", 0, 0), complete(addedAt(torrent("b", 100, 1000), at(9*time.Minute)))),
+				expect(hourTotal, total("tracker.example", 100, 1000, 0)),
+			},
+		},
+		{
+			name: "a torrent that the user adds again with its data on disk is a Statistics cross-seed in its new life",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), complete(torrent("b", 0, 1000))),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(10*time.Minute), torrent("a", 0, 0), complete(addedAt(torrent("b", 0, 0), at(9*time.Minute)))),
+				reading(at(15*time.Minute), torrent("a", 0, 0), complete(addedAt(torrent("b", 100, 0), at(9*time.Minute)))),
+				expect(hourTotal, total("tracker.example", 100, 0, 100)),
+			},
+		},
+		{
 			name: "a torrent that returns with an old added time continues its count",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0), addedAt(torrent("b", 500, 0), at(-30*24*time.Hour))),

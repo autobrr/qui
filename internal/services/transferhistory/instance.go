@@ -258,6 +258,7 @@ func (inst *instance) changeHash(rec *models.TransferHistoryRecord, hash string)
 func (inst *instance) continueIn(returned, magnet *models.TransferHistoryRecord) {
 	returned.LastUploaded, returned.LastDownloaded = magnet.LastUploaded, magnet.LastDownloaded
 	returned.Completed, returned.UploadFirst24h = magnet.Completed, magnet.UploadFirst24h
+	returned.StatisticsCrossSeed = magnet.StatisticsCrossSeed
 	returned.Final, magnet.Final = magnet.Final, nil
 	returned.Deleted, magnet.Deleted = false, true
 	delete(inst.deleted, returned.Hash)
@@ -286,8 +287,9 @@ func (inst *instance) addEvents(rec *models.TransferHistoryRecord, t *Torrent, a
 	}
 }
 
-// addAgain starts a new life of a deleted record. Its counters start at zero,
-// unless qBittorrent left the torrent out of the readings since the delete.
+// addAgain starts a new life of a deleted record. Its counters start at zero
+// and it gets its Statistics cross-seed flag again, unless qBittorrent left
+// the torrent out of the readings since the delete.
 func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, now time.Time, leftOut bool) {
 	rec.Deleted = false
 	delete(inst.deleted, rec.Hash)
@@ -300,6 +302,7 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 	// counters are still zero.
 	inst.changedCounters[rec] = struct{}{}
 	rec.Completed = false
+	rec.StatisticsCrossSeed = nil
 	rec.UploadFirst24h = nil
 	if now.Before(t.AddedAt.Add(day)) {
 		rec.UploadFirst24h = new(int64(0))

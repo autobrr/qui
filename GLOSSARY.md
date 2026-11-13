@@ -53,7 +53,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Transfer history**: The upload and download bytes that qui recorded, for each period, torrent, tracker, and category. It keeps the bytes of deleted torrents. _Avoid_: bandwidth (that is a speed), tracker history.
 - **Baseline**: The upload and download bytes that a torrent already had when qui first recorded its instance. It has no date. All-time numbers include it, and charts do not. _Avoid_: backfill, opening balance.
 - **Recording gap**: A time when qui did not observe an instance. The bytes of the gap land on the first hour after it, with a mark. _Avoid_: missing data, downtime.
-- **Statistics cross-seed**: In Statistics, a torrent that completed with less than 1% of its size downloaded. It gets this role when it completes, and it keeps the role after that. A torrent that the user created, or added again with its data on disk, also has this role. _Avoid_: copy (that is a member of a Copy group).
+- **Statistics cross-seed**: In Statistics, a torrent that completed with less than 1% of its size downloaded. It gets this role when it completes, and it keeps the role until the user deletes the torrent. A torrent that the user created, or added again with its data on disk, also has this role. _Avoid_: copy (that is a member of a Copy group).
 
 ## Peers
 
