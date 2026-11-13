@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import type { TransferHistoryInstance } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -36,14 +35,18 @@ function startOfDate(value: string): Date {
   return new Date(year, month - 1, day)
 }
 
+/** The date of a date input as text, with no shift to another time zone. */
+function formatDate(value: string, locale: string): string {
+  return startOfDate(value).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
+}
+
 function today(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
 }
 
 export function StatisticsDeleteHistory({ instances }: { instances: TransferHistoryInstance[] }) {
-  const { t } = useTranslation("settings")
-  const { formatDateOnly } = useDateTimeFormatters()
+  const { t, i18n } = useTranslation("settings")
   const queryClient = useQueryClient()
   const [target, setTarget] = useState(ALL)
   const [range, setRange] = useState<Range>("everything")
@@ -60,13 +63,16 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
     onSuccess: () => {
       // A delete of everything takes the instance out of the list.
       setTarget(ALL)
-      void queryClient.invalidateQueries({ queryKey: ["transfer-history"] })
       toast.success(t("statistics.deleteHistory.deleted"))
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t("statistics.deleteHistory.failed"))
     },
-    onSettled: () => setConfirming(false),
+    onSettled: () => {
+      setConfirming(false)
+      // A delete that fails can still have deleted a part of the history.
+      void queryClient.invalidateQueries({ queryKey: ["transfer-history"] })
+    },
   })
 
   const instanceName = (instance: TransferHistoryInstance) => instance.name || t("statistics.deleteHistory.unnamedInstance", { id: instance.instanceId })
@@ -127,7 +133,7 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
             <AlertDialogTitle>{t("statistics.deleteHistory.confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {range === "before" && date !== ""
-                ? t("statistics.deleteHistory.confirmBefore", { name, date: formatDateOnly(startOfDate(date).getTime() / 1000) })
+                ? t("statistics.deleteHistory.confirmBefore", { name, date: formatDate(date, i18n.resolvedLanguage ?? i18n.language) })
                 : t("statistics.deleteHistory.confirmEverything", { name })}
             </AlertDialogDescription>
           </AlertDialogHeader>

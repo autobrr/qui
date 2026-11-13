@@ -126,6 +126,7 @@ describe("Delete history", () => {
     const dialog = await screen.findByRole("alertdialog")
     expect(dialog.textContent).toContain("statistics.deleteHistory.confirmBefore")
     expect(dialog.textContent).toContain("\"name\":\"Old box\"")
+    expect(dialog.textContent).toContain("\"date\":\"Mar 1, 2026\"")
     await waitFor(() => expect(dialog.textContent).toContain("statistics.deleteHistory.sqliteSpace"))
     expect(deletes).toEqual([])
 
