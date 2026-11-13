@@ -249,17 +249,35 @@ function utcDayStart(time: Date): number {
 }
 
 /**
- * The range of the chart of a category. qui stores the category totals for each UTC day, so the bars are the local
- * days that hold the middle of each UTC day that the period overlaps. A range of local days could put two UTC days
- * on one bar, or add a local day that holds no UTC day.
+ * Builds the bars of the chart of a category: one bar for each UTC day that the period overlaps, because qui stores
+ * the category totals for each UTC day. A bar starts at the local midnight of the date of its UTC day, so that its
+ * label shows the date of the stored day in each timezone. A period with no start begins at the first recording.
  */
-export function categoryRange(period: StatisticsPeriod, since: Date | undefined): { from: Date; to: Date } | undefined {
+export function buildCategoryBars(rowsByInstance: TransferHistoryRow[][], period: StatisticsPeriod, since: Date | undefined): StatisticsBar[] | undefined {
   const start = period.from ?? since
   if (!start) {
     return undefined
   }
-  const lastUtcDay = utcDayStart(new Date(period.to.getTime() - 1))
-  return { from: new Date(utcDayStart(start) + 12 * HOUR), to: new Date(lastUtcDay + 12 * HOUR + 1) }
+  const bars = new Map<number, StatisticsBar>()
+  const lastDay = utcDayStart(new Date(period.to.getTime() - 1))
+  for (let day = utcDayStart(start); day <= lastDay; day += 24 * HOUR) {
+    const date = new Date(day)
+    bars.set(day, { start: new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()).getTime(), width: "day", bytes: new Map(), gapSeconds: 0 })
+  }
+  for (const rows of rowsByInstance) {
+    for (const row of rows) {
+      const bar = row.start ? bars.get(utcDayStart(new Date(row.start))) : undefined
+      if (!bar) {
+        continue
+      }
+      const bytes = bar.bytes.get(row.group) ?? { uploaded: 0, downloaded: 0 }
+      bytes.uploaded += row.uploaded
+      bytes.downloaded += row.downloaded
+      bar.bytes.set(row.group, bytes)
+      bar.gapSeconds = Math.max(bar.gapSeconds, row.gapSeconds)
+    }
+  }
+  return [...bars.values()]
 }
 
 /** Returns about count ticks from 0 past max, on round numbers of the byte unit of max. */
@@ -349,7 +367,7 @@ export function barBytes(bar: StatisticsBar): Record<Metric, number> {
 /**
  * Returns the number of units of the chart that its bars cover after the first recording, so that an average leaves
  * out the time before it. A folded day of an hourly chart is a UTC day of 24 hours. With utcDays, each day bar stands
- * for the UTC day of its date, as the bars of categoryRange do.
+ * for the UTC day of its date, as the bars of buildCategoryBars do.
  */
 export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, unit: ChartUnit, utcDays = false): number {
   const first = since?.getTime() ?? -Infinity

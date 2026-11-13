@@ -15,7 +15,7 @@ import {
   bestBar,
   recordedUnits,
   buildBars,
-  categoryRange,
+  buildCategoryBars,
   chartRange,
   formatBuffer,
   formatRatio,
@@ -245,8 +245,14 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   }
   const bars = useMemo(() => {
     const shown = transfer.rows ? { rows: transfer.rows, period } : last?.key === key ? last : undefined
-    const range = shown && (grouping === "category" ? categoryRange(shown.period, since) : chartRange(shown.period, since))
-    return shown && range ? buildBars(shown.rows, range, unit) : undefined
+    if (!shown) {
+      return undefined
+    }
+    if (grouping === "category") {
+      return buildCategoryBars(shown.rows, shown.period, since)
+    }
+    const range = chartRange(shown.period, since)
+    return range && buildBars(shown.rows, range, unit)
   }, [transfer.rows, period, last, key, since, unit, grouping])
   const best = bars && bestBar(bars, unit)
   const uploaded = bars?.reduce((sum, bar) => sum + barBytes(bar).uploaded, 0) ?? 0
