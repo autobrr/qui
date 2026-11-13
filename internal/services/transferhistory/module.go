@@ -45,13 +45,16 @@ type Reading struct {
 	// reading ends: the first failed read, or the reading before this one
 	// when the instance got a new qBittorrent client. It is zero otherwise.
 	FailedSince time.Time
-	// Torrents is the full torrent list of the instance.
+	// Torrents is the full torrent list of the instance. A torrent that is
+	// absent from it is deleted.
 	Torrents []Torrent
 }
 
 // Torrent is one torrent of a Reading.
 type Torrent struct {
-	Hash           string
+	Hash string
+	// InfohashV1 is the v1 infohash, or empty for a torrent without one.
+	InfohashV1     string
 	Name           string
 	Category       string
 	TrackerDomains []string
@@ -63,6 +66,9 @@ type Torrent struct {
 	Downloaded int64
 	Complete   bool
 	AddedAt    time.Time
+	// Ratio and SeedingSeconds are the values that qBittorrent reports.
+	Ratio          float64
+	SeedingSeconds int64
 }
 
 type Module struct {
@@ -72,6 +78,7 @@ type Module struct {
 
 	mu       sync.Mutex
 	queue    []Reading
+	notes    []DeleteNote
 	barriers []chan struct{}
 	stopping bool
 	wake     chan struct{}
@@ -81,7 +88,9 @@ type Module struct {
 	instances map[int]*instance
 	// reloads holds each instance that a write with an unknown outcome
 	// dropped from memory.
-	reloads     map[int]struct{}
+	reloads map[int]struct{}
+	// deleteNotes holds the delete notes of each instance, by hash.
+	deleteNotes map[int]map[string]deleteNote
 	mapper      *trackergroup.Mapper
 	shutdownErr error
 }
@@ -97,6 +106,7 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		done:           make(chan struct{}),
 		instances:      make(map[int]*instance),
 		reloads:        make(map[int]struct{}),
+		deleteNotes:    make(map[int]map[string]deleteNote),
 	}
 	go m.run()
 	return m
@@ -184,10 +194,13 @@ func (m *Module) run() {
 	defer close(m.done)
 	for range m.wake {
 		m.mu.Lock()
-		readings, barriers, stopping := m.queue, m.barriers, m.stopping
-		m.queue, m.barriers = nil, nil
+		readings, notes, barriers, stopping := m.queue, m.notes, m.barriers, m.stopping
+		m.queue, m.notes, m.barriers = nil, nil, nil
 		m.mu.Unlock()
 
+		for _, n := range notes {
+			m.keep(n)
+		}
 		for _, r := range readings {
 			m.process(r)
 		}
@@ -224,7 +237,7 @@ func (m *Module) process(r Reading) {
 		}
 		m.instances[r.InstanceID] = inst
 	}
-	inst.apply(r, m.mapper, m.parser)
+	inst.apply(r, m.mapper, m.parser, m.deleteNotes[r.InstanceID])
 	if r.Time.Sub(inst.lastWriteAt) >= writeInterval {
 		_ = m.write(inst)
 		inst.lastWriteAt = r.Time

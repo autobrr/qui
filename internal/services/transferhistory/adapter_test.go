@@ -211,3 +211,22 @@ func TestAdapterKeepsThe50SecondsAfterARecovery(t *testing.T) {
 		require.Len(t, queued(module), 3)
 	})
 }
+
+// A reading without a torrent deletes it, so a failed sync must give no reading.
+func TestAdapterGivesNoReadingForAFailedSync(t *testing.T) {
+	owner, syncManager, _ := newAdapterRig(t)
+	synctest.Test(t, func(t *testing.T) {
+		module := &Module{wake: make(chan struct{}, 1)}
+		adapter := NewAdapter(module, syncManager)
+		require.NoError(t, owner.Sync(t.Context()))
+		adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked()})
+		synctest.Wait()
+		require.Len(t, queued(module), 1)
+
+		time.Sleep(time.Minute)
+		adapter.HandleSyncError(1, errors.New("sync failed"))
+		time.Sleep(2 * time.Minute)
+		synctest.Wait()
+		require.Len(t, queued(module), 1)
+	})
+}

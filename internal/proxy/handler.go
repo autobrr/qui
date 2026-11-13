@@ -42,6 +42,7 @@ type Handler struct {
 	instanceStore     *models.InstanceStore
 	syncManager       *qbittorrent.SyncManager
 	writeNoter        writeNoter
+	deleteNoter       deleteNoter
 	reannounceCache   *reannounce.SettingsCache
 	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
@@ -67,6 +68,12 @@ type basicAuthCredentials struct {
 // writeNoter learns of each proxied request that can change the torrent list.
 type writeNoter interface {
 	NoteWrite(instanceID int)
+}
+
+// deleteNoter learns who deletes which torrents through the proxy, before
+// qBittorrent gets the delete.
+type deleteNoter interface {
+	NoteProxiedDelete(ctx context.Context, instanceID int, hashes []string, keyName string)
 }
 
 type sessionRefresher interface {
@@ -123,6 +130,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		instanceStore:     instanceStore,
 		syncManager:       syncManager,
 		writeNoter:        syncManager,
+		deleteNoter:       syncManager,
 		reannounceCache:   cache,
 		reannounceService: svc,
 		bufferPool:        bufferPool,
@@ -2093,6 +2101,9 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	if form, ok := parseQBTForm(r, bodyBytes); ok {
+		h.deleteNoter.NoteProxiedDelete(ctx, instanceID, splitHashes(form.get("hashes")), clientAPIKey.ClientName)
+	}
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
 		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
 			strings.EqualFold(form.get("deleteFiles"), "true")

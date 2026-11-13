@@ -725,6 +725,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(torrents.Read).Get("/trackers", torrentsHandler.GetActiveTrackers)
 
 					r.With(torrents.Read).Get("/transfer-history", transferHistoryHandler.Transfer)
+					r.With(torrents.Read).Get("/transfer-history/library", transferHistoryHandler.Library)
+					r.With(torrents.Read).Get("/transfer-history/deletes", transferHistoryHandler.Deletes)
 
 					// Automations
 					r.Route("/automations", func(r chi.Router) {

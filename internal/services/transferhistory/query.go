@@ -98,15 +98,24 @@ func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, 
 	return a.sorted(), nil
 }
 
-// ErrInvalidQuery is the error of a transfer query that the module cannot answer.
-var ErrInvalidQuery = errors.New("invalid transfer query")
+// ErrInvalidQuery is the error of a query that the module cannot answer.
+var ErrInvalidQuery = errors.New("invalid query")
+
+func validatePeriod(from, to time.Time) error {
+	switch {
+	case to.IsZero():
+		return fmt.Errorf("%w: no end", ErrInvalidQuery)
+	case !from.IsZero() && !from.Before(to):
+		return fmt.Errorf("%w: the start is not before the end", ErrInvalidQuery)
+	}
+	return nil
+}
 
 func (q TransferQuery) validate() error {
+	if err := validatePeriod(q.From, q.To); err != nil {
+		return err
+	}
 	switch {
-	case q.To.IsZero():
-		return fmt.Errorf("%w: no end", ErrInvalidQuery)
-	case !q.From.IsZero() && !q.From.Before(q.To):
-		return fmt.Errorf("%w: the start is not before the end", ErrInvalidQuery)
 	case q.Bucket != BucketHour && q.Bucket != BucketDay && q.Bucket != BucketTotal:
 		return fmt.Errorf("%w: unknown bucket %q", ErrInvalidQuery, q.Bucket)
 	case q.GroupBy != GroupByTracker && q.GroupBy != GroupByCategory:
@@ -149,26 +158,27 @@ func (a *answer) hours() (from, to int64) {
 	if !a.query.From.IsZero() {
 		from = hourOf(a.query.From)
 	}
-	return from, ceilDiv(a.endSecond(), 3600)
+	return from, ceilDiv(endSecond(a.query.To), 3600)
 }
 
-func (a *answer) days() (from, to int64) {
-	if !a.query.From.IsZero() {
-		from = dayOf(a.query.From)
+// daysOf returns the stored UTC days that overlap the period [from, to).
+func daysOf(from, to time.Time) (fromDay, toDay int64) {
+	if !from.IsZero() {
+		fromDay = dayOf(from)
 	}
-	return from, ceilDiv(a.endSecond(), 86400)
+	return fromDay, ceilDiv(endSecond(to), 86400)
 }
 
-// endSecond returns the end of the period in whole seconds, rounded up.
-func (a *answer) endSecond() int64 {
-	end := a.query.To.Unix()
-	if a.query.To.Nanosecond() > 0 {
+// endSecond returns the end of a period in whole seconds, rounded up.
+func endSecond(to time.Time) int64 {
+	end := to.Unix()
+	if to.Nanosecond() > 0 {
 		end++
 	}
 	return end
 }
 
-func (a *answer) groupOf(domain string, public bool) string {
+func groupOf(mapper *trackergroup.Mapper, domain string, public bool) string {
 	var private *bool
 	if public {
 		private = new(false)
@@ -177,7 +187,7 @@ func (a *answer) groupOf(domain string, public bool) string {
 	if domain != "" {
 		domains = []string{domain}
 	}
-	return a.mapper.Of(domains, private).Name
+	return mapper.Of(domains, private).Name
 }
 
 func (a *answer) row(group string, bucket int64, width Bucket, start time.Time) *TransferRow {
@@ -222,11 +232,11 @@ func (a *answer) byTracker(ctx context.Context, store *models.TransferHistorySto
 		return err
 	}
 	for _, t := range totals {
-		r := a.row(a.groupOf(t.TrackerDomain, t.Public), t.Bucket, a.query.Bucket, a.startOf(a.query.Bucket, t.Bucket))
+		r := a.row(groupOf(a.mapper, t.TrackerDomain, t.Public), t.Bucket, a.query.Bucket, a.startOf(a.query.Bucket, t.Bucket))
 		addBytes(&r.Bytes, t.Uploaded, t.Downloaded, t.StatisticsCrossSeed)
 	}
 	if err := a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string {
-		return a.groupOf(b.TrackerDomain, b.Private != nil && !*b.Private)
+		return groupOf(a.mapper, b.TrackerDomain, b.Private != nil && !*b.Private)
 	}); err != nil {
 		return err
 	}
@@ -240,7 +250,7 @@ func (a *answer) byCategory(ctx context.Context, store *models.TransferHistorySt
 	if a.query.Bucket == BucketTotal {
 		width, widthHours = BucketTotal, 0
 	}
-	from, to := a.days()
+	from, to := daysOf(a.query.From, a.query.To)
 	totals, err := store.CategoryTotals(ctx, a.query.InstanceID, from, to, width == BucketTotal)
 	if err != nil {
 		return err

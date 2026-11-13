@@ -620,6 +620,7 @@ type SyncManager struct {
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 
 	folderCleanup atomic.Pointer[FolderCleanup]
+	deleteNoter   atomic.Pointer[DeleteNoter]
 
 	syncEventSinkMu sync.RWMutex
 	syncEventSink   SyncEventSink
@@ -2256,10 +2257,12 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	if action == "delete" || action == "deleteWithFiles" {
 		return fmt.Errorf("bulk action %s needs an actor, use DeleteTorrents", action)
 	}
-	return sm.bulkAction(ctx, instanceID, hashes, action)
+	return sm.bulkAction(ctx, instanceID, hashes, action, DeleteActor{})
 }
 
-func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+// bulkAction performs action on the torrents. actor is who started a delete,
+// and is not read for another action.
+func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []string, action string, actor DeleteActor) error {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
@@ -2387,6 +2390,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 	case "resume":
 		err = client.ResumeCtx(ctx, canonicalHashes)
 	case "delete":
+		sm.noteDelete(instanceID, canonicalHashes, actor)
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, false)
 		// Invalidate caches for deleted torrents
 		if err == nil {
@@ -2400,6 +2404,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 			}
 		}
 	case "deleteWithFiles":
+		sm.noteDelete(instanceID, canonicalHashes, actor)
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {

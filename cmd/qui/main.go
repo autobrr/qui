@@ -672,7 +672,9 @@ func (app *Application) runServer() {
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
 	transferHistory := transferhistory.New(db, trackerCustomizationStore)
-	clientPool.AddSyncEventSink(transferhistory.NewAdapter(transferHistory, syncManager))
+	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
+	clientPool.AddSyncEventSink(transferHistoryAdapter)
+	syncManager.SetDeleteNoter(transferHistoryAdapter)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
