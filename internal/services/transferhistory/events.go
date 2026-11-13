@@ -47,9 +47,12 @@ type DeleteNote struct {
 	Cause      DeleteCause
 }
 
+// deleteNote is one delete note of a torrent. kept is set on a note that the
+// module made from a delete event of a write with an unknown outcome.
 type deleteNote struct {
 	cause DeleteCause
 	time  time.Time
+	kept  bool
 }
 
 // NoteDelete gives the module a delete note. Give it before qBittorrent gets
@@ -66,7 +69,7 @@ func (m *Module) NoteDelete(n DeleteNote) {
 	}
 }
 
-func (m *Module) keep(n DeleteNote) {
+func (m *Module) keep(n DeleteNote, kept bool) {
 	notes := m.deleteNotes[n.InstanceID]
 	if notes == nil {
 		notes = make(map[string][]deleteNote, len(n.Hashes))
@@ -74,16 +77,16 @@ func (m *Module) keep(n DeleteNote) {
 	}
 	for _, hash := range n.Hashes {
 		hash = strings.ToLower(hash)
-		notes[hash] = append(notes[hash], deleteNote{cause: n.Cause, time: n.Time})
+		notes[hash] = append(notes[hash], deleteNote{cause: n.Cause, time: n.Time, kept: kept})
 		// Two callers can give their notes out of the order of their time.
 		slices.SortStableFunc(notes[hash], func(x, y deleteNote) int { return x.time.Compare(y.time) })
 	}
 }
 
 // keepCauses makes a delete note again from each delete event of a write
-// that the module cannot tell is stored. If the write is not stored, the next
-// reading shows the delete again, and its note is gone. If it is stored, the
-// load of the history drops the note.
+// that the module cannot tell is stored. If the write is not stored, the
+// first reading after the load of the stored history shows the delete again,
+// and its note is gone.
 func (m *Module) keepCauses(instanceID int, events []models.TransferHistoryEvent) {
 	for _, e := range events {
 		if e.Delete == nil || CauseKind(e.Delete.CauseKind) == CauseOutside {
@@ -92,8 +95,33 @@ func (m *Module) keepCauses(instanceID int, events []models.TransferHistoryEvent
 		m.keep(DeleteNote{
 			InstanceID: instanceID, Time: e.Time, Hashes: []string{e.Record.Hash},
 			Cause: DeleteCause{Kind: CauseKind(e.Delete.CauseKind), Name: e.Delete.CauseName},
-		})
+		}, true)
 	}
+}
+
+// dropStoredCauses drops each kept note whose delete event the stored history holds.
+func (m *Module) dropStoredCauses(ctx context.Context, instanceID int) error {
+	notes := m.deleteNotes[instanceID]
+	first := int64(-1)
+	for _, list := range notes {
+		for _, n := range list {
+			if n.kept && (first < 0 || n.time.Unix() < first) {
+				first = n.time.Unix()
+			}
+		}
+	}
+	if first < 0 {
+		return nil
+	}
+	stored, err := m.store.DeleteEventsSince(ctx, instanceID, first)
+	if err != nil {
+		return err
+	}
+	dropNotes(notes, func(hash string, n deleteNote) bool {
+		_, isStored := stored[models.TransferHistoryDeleteKey{Hash: hash, Second: n.time.Unix()}]
+		return n.kept && isStored
+	})
+	return nil
 }
 
 // takeNote returns the cause of the delete of hash that the reading at now
@@ -119,14 +147,11 @@ func dropOldNotes(notes map[string][]deleteNote, now time.Time) {
 	dropNotes(notes, func(_ string, n deleteNote) bool { return !now.Before(n.time.Add(noteLife)) })
 }
 
-// dropSpentNotes drops each note whose delete the loaded history of inst
-// holds: the record is deleted, and the last stored reading is from the time
-// of the note or later.
-func dropSpentNotes(notes map[string][]deleteNote, inst *instance) {
-	dropNotes(notes, func(hash string, n deleteNote) bool {
-		_, deleted := inst.deleted[hash]
-		return deleted && !inst.lastReadingAt.Before(n.time)
-	})
+// dropKeptNotes drops each kept note. The first reading after a load shows
+// each delete that the stored history does not hold, so a kept note that it
+// did not take belongs to no delete.
+func dropKeptNotes(notes map[string][]deleteNote) {
+	dropNotes(notes, func(_ string, n deleteNote) bool { return n.kept })
 }
 
 func dropNotes(notes map[string][]deleteNote, drop func(hash string, n deleteNote) bool) {

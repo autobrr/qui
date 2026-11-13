@@ -614,12 +614,7 @@ func TestALostCommitAnswerAndAFailedCheckGiveTheCauseOnceThenOutsidePostgresInte
 		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
-		// At most 4 readings wait for the module, so each one settles.
-		record := func(s step) {
-			module.Record(*s.reading)
-			_, err := module.Status(t.Context())
-			require.NoError(t, err)
-		}
+		record := settled(t, module)
 		record(reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)))
 		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
 		record(reading(at(5*time.Minute), torrent("a", 0, 0)))
@@ -633,4 +628,68 @@ func TestALostCommitAnswerAndAFailedCheckGiveTheCauseOnceThenOutsidePostgresInte
 		require.Equal(t, outside, answer.Deletes[0].Cause, "the delete of the second life")
 		require.Equal(t, byRule, answer.Deletes[1].Cause, "the delete of the first life")
 	})
+}
+
+// The write with the delete and the new add is stored, but the module cannot
+// tell. The torrent is in qBittorrent again, so only the stored events show
+// that the delete is stored.
+func TestALostCommitAnswerDropsTheCauseOfATorrentThatCameBackPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+		record := settled(t, module)
+
+		record(reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)))
+		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
+		record(reading(at(2*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(3*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
+		record(reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
+		record(reading(at(6*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(11*time.Minute), torrent("a", 0, 0)))
+
+		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, answer.Deletes, 2)
+		require.Equal(t, outside, answer.Deletes[0].Cause, "the delete of the second life")
+		require.Equal(t, byRule, answer.Deletes[1].Cause, "the delete of the first life")
+	})
+}
+
+// The write with the delete and the new add is not stored. The torrent is in
+// the first reading after the reload, so no reading shows the delete again.
+func TestAFailedCommitDropsTheCauseOfATorrentThatCameBackPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+		record := settled(t, module)
+
+		record(reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)))
+		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
+		record(reading(at(2*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(3*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
+		record(reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
+		record(reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
+		record(reading(at(6*time.Minute+30*time.Second), torrent("a", 0, 0)))
+		record(reading(at(12*time.Minute), torrent("a", 0, 0)))
+
+		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, answer.Deletes, 1)
+		require.Equal(t, outside, answer.Deletes[0].Cause)
+	})
+}
+
+// settled returns a function that gives the module a reading and waits until
+// the module processed it, because at most 4 readings wait for the module.
+func settled(t *testing.T, module *transferhistory.Module) func(step) {
+	return func(s step) {
+		t.Helper()
+		module.Record(*s.reading)
+		_, err := module.Status(t.Context())
+		require.NoError(t, err)
+	}
 }

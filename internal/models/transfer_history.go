@@ -770,3 +770,36 @@ func (s *TransferHistoryStore) DeleteCauseCounts(ctx context.Context, instanceID
 	}
 	return counts, nil
 }
+
+// TransferHistoryDeleteKey names a delete event by the hash of its torrent
+// and its time in whole seconds since 1970-01-01 UTC.
+type TransferHistoryDeleteKey struct {
+	Hash   string
+	Second int64
+}
+
+// DeleteEventsSince returns the delete events of an instance from fromSecond on.
+func (s *TransferHistoryStore) DeleteEventsSince(ctx context.Context, instanceID int, fromSecond int64) (map[TransferHistoryDeleteKey]struct{}, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT t.hash, e.second
+		FROM transfer_history_events e
+		JOIN transfer_history_torrents t ON t.id = e.torrent_id
+		WHERE e.instance_id = ? AND e.kind = ? AND e.second >= ?`,
+		instanceID, TransferHistoryEventDelete, fromSecond)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history delete events: %w", err)
+	}
+	defer rows.Close()
+	events := make(map[TransferHistoryDeleteKey]struct{})
+	for rows.Next() {
+		var key TransferHistoryDeleteKey
+		if err := rows.Scan(&key.Hash, &key.Second); err != nil {
+			return nil, fmt.Errorf("scan transfer history delete event: %w", err)
+		}
+		events[key] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history delete events: %w", err)
+	}
+	return events, nil
+}

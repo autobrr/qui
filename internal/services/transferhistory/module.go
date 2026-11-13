@@ -200,7 +200,7 @@ func (m *Module) run() {
 		m.mu.Unlock()
 
 		for _, n := range notes {
-			m.keep(n)
+			m.keep(n, false)
 		}
 		for _, r := range readings {
 			m.process(r)
@@ -223,7 +223,8 @@ func (m *Module) run() {
 
 func (m *Module) process(r Reading) {
 	inst := m.instances[r.InstanceID]
-	if inst == nil {
+	loaded := inst == nil
+	if loaded {
 		var err error
 		if inst, err = m.load(r.InstanceID); err != nil {
 			log.Warn().Err(err).Int("instanceID", r.InstanceID).Msg("transfer history: failed to load the history of the instance; the next reading tries again")
@@ -236,10 +237,12 @@ func (m *Module) process(r Reading) {
 			inst.resumed = false
 			delete(m.reloads, r.InstanceID)
 		}
-		dropSpentNotes(m.deleteNotes[r.InstanceID], inst)
 		m.instances[r.InstanceID] = inst
 	}
 	inst.apply(r, m.mapper, m.parser, m.deleteNotes[r.InstanceID])
+	if loaded {
+		dropKeptNotes(m.deleteNotes[r.InstanceID])
+	}
 	if r.Time.Sub(inst.lastWriteAt) >= writeInterval {
 		_ = m.write(inst)
 		inst.lastWriteAt = r.Time
@@ -256,6 +259,9 @@ func (m *Module) load(instanceID int) (*instance, error) {
 	}
 	row, records, err := m.store.LoadInstance(ctx, instanceID)
 	if err != nil {
+		return nil, err
+	}
+	if err := m.dropStoredCauses(ctx, instanceID); err != nil {
 		return nil, err
 	}
 	return newInstance(instanceID, row, records), nil
