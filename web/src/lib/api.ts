@@ -142,6 +142,7 @@ import type {
   UncheckedInstance,
   User,
   VersionInfo,
+  SystemNotice,
   WarningResponse,
   WebSeed,
   SSHCredentials,
@@ -2452,6 +2453,10 @@ class ApiClient {
       // Return null if no update available (204 status) or any error
       return null
     }
+  }
+
+  async getSystemNotices(): Promise<SystemNotice[]> {
+    return this.request<SystemNotice[]>("/system-notices")
   }
 
   async getTrackerIcons(): Promise<Record<string, string>> {

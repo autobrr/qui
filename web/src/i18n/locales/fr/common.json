@@ -167,6 +167,19 @@
     "versionAvailable": "La version {{version}} est maintenant disponible",
     "dismiss": "Fermer"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "Enregistrement arrêté",
+        "fix": "qui garde les modifications en mémoire et réessaie à la prochaine écriture. Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données."
+      }
+    },
+    "unknown": {
+      "title": "Avis système",
+      "fix": "qui a besoin d'une action de votre part. Le journal de qui contient les détails."
+    },
+    "cause": "Cause : {{cause}}"
+  },
   "pwaUpdate": {
     "reload": "Recharger",
     "waitingDescription": "Rechargez pour appliquer la dernière version de qui.",

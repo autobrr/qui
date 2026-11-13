@@ -167,6 +167,19 @@
     "versionAvailable": "Version {{version}} is now available",
     "dismiss": "Dismiss"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "Recording stopped",
+        "fix": "qui keeps the changes in memory and tries again at the next write. Make sure that the disk has free space and that qui can write its database file."
+      }
+    },
+    "unknown": {
+      "title": "System notice",
+      "fix": "qui needs an action from you. The qui log has the details."
+    },
+    "cause": "Cause: {{cause}}"
+  },
   "pwaUpdate": {
     "reload": "Reload",
     "waitingDescription": "Reload to apply the latest qui release.",

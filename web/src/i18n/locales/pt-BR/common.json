@@ -167,6 +167,19 @@
     "versionAvailable": "A versão {{version}} já está disponível",
     "dismiss": "Dispensar"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "Gravação parada",
+        "fix": "O qui mantém as alterações na memória e tenta novamente na próxima gravação. Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados."
+      }
+    },
+    "unknown": {
+      "title": "Aviso do sistema",
+      "fix": "O qui precisa de uma ação sua. O log do qui tem os detalhes."
+    },
+    "cause": "Causa: {{cause}}"
+  },
   "pwaUpdate": {
     "reload": "Recarregar",
     "waitingDescription": "Recarregue para aplicar a versão mais recente do qui.",

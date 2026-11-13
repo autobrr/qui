@@ -298,7 +298,7 @@
     "loading": "Caricamento delle destinazioni di notifica...",
     "loadFailed": "Impossibile caricare le destinazioni di notifica",
     "empty": "Nessuna destinazione di notifica configurata. Aggiungine una per iniziare a ricevere avvisi.",
-    "allEvents": "Tutti gli eventi",
+    "allEvents": "Tutti gli eventi tranne l'avviso di sistema",
     "showList": "Mostra elenco",
     "hideList": "Nascondi elenco",
     "badges": {

@@ -42,6 +42,13 @@ export interface VersionInfo {
   restart: boolean
 }
 
+export interface SystemNotice {
+  kind: string
+  severity: "error"
+  cause: string
+  openedAt: string
+}
+
 export interface SelfUpdateResult {
   version: string
   rollbackCommand: string

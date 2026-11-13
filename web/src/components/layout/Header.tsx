@@ -16,6 +16,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
+import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -45,6 +46,7 @@ import { useTorrentSelectionContext, useTorrentSelectionSummary } from "@/contex
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
+import { useSystemNotices } from "@/hooks/useSystemNotices"
 import { useDebounce } from "@/hooks/useDebounce"
 import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
@@ -61,6 +63,7 @@ import {
 } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { hasSelection } from "@/lib/torrent-selection"
+import { systemNoticeStyles } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
@@ -288,6 +291,7 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+  const systemNotices = useSystemNotices()
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
   const updateItemLabel = updateInfo && (
     <>
@@ -708,12 +712,16 @@ export function Header({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors relative">
                 <Menu className="h-4 w-4" />
+                {systemNotices.length > 0 && (
+                  <span className={cn("absolute top-1 left-1 h-2 w-2 rounded-full", systemNoticeStyles.error.dot)} />
+                )}
                 {updateInfo && (
                   <span className="absolute top-1 right-1 h-2 w-2 bg-green-500 rounded-full" />
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent align="end" className={cn(systemNotices.length > 0 ? "w-72" : "w-52")}>
+              <SystemNoticeMenuItems notices={systemNotices} />
               {updateInfo && (
                 <>
                   <DropdownMenuItem asChild>

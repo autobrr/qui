@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/trackergroup"
 	"github.com/autobrr/qui/pkg/releases"
 )
@@ -75,6 +77,7 @@ type Module struct {
 	store          *models.TransferHistoryStore
 	customizations *models.TrackerCustomizationStore
 	parser         *releases.Parser
+	notices        *systemnotice.Module
 
 	// settingsMu keeps the order of two SetSettings calls.
 	settingsMu sync.Mutex
@@ -112,24 +115,30 @@ type Module struct {
 	// deleteNotes holds the delete notes of each instance, by hash, in the
 	// order of their time.
 	deleteNotes map[int]map[string][]deleteNote
-	mapper      *trackergroup.Mapper
-	shutdownErr error
+	// failedWrites holds each instance whose last write failed. Recording
+	// stopped stays open until it is empty.
+	failedWrites map[int]struct{}
+	mapper       *trackergroup.Mapper
+	shutdownErr  error
 	// foldedDay is the UTC day of the last fold.
 	foldedDay int64
 }
 
 // New returns a running module that stores the history in db and names
-// Tracker groups from the tracker customizations.
-func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStore) *Module {
+// Tracker groups from the tracker customizations. It opens the System notice
+// Recording stopped while a write fails.
+func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStore, notices *systemnotice.Module) *Module {
 	m := &Module{
 		store:          models.NewTransferHistoryStore(db),
 		customizations: customizations,
 		parser:         releases.NewParser(time.Minute),
+		notices:        notices,
 		wake:           make(chan struct{}, 1),
 		done:           make(chan struct{}),
 		instances:      make(map[int]*instance),
 		reloads:        make(map[int]struct{}),
 		deleteNotes:    make(map[int]map[string][]deleteNote),
+		failedWrites:   make(map[int]struct{}),
 	}
 	m.foldCtx, m.stopFolds = context.WithCancel(context.Background())
 	go m.run()
@@ -355,6 +364,19 @@ func (m *Module) process(r Reading) {
 		_ = m.write(inst)
 		inst.lastWriteAt = r.Time
 	}
+	m.retryFailedWrites(r.Time)
+}
+
+// retryFailedWrites writes each instance whose last write failed, each 5
+// minutes, also when qui no longer reads it, as after the user removed it.
+func (m *Module) retryFailedWrites(now time.Time) {
+	for id := range m.failedWrites {
+		inst, ok := m.instances[id]
+		if ok && now.Sub(inst.lastWriteAt) >= writeInterval {
+			_ = m.write(inst)
+			inst.lastWriteAt = now
+		}
+	}
 }
 
 func (m *Module) load(instanceID int) (*instance, error) {
@@ -437,7 +459,7 @@ func (m *Module) write(inst *instance) error {
 				inst.writeTimeout = min(2*timeout, maxWriteTimeout)
 			}
 			log.Error().Err(err).Int("instanceID", inst.id).Dur("timeLimit", timeout).Msg("transfer history: failed to write; the changes stay in memory for the next write")
-			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
+			return m.writeFailed(inst.id, err)
 		case unknown:
 			// The stored counters decide the next difference, so no byte
 			// counts twice. The bytes of a torrent that is gone at the next
@@ -446,7 +468,7 @@ func (m *Module) write(inst *instance) error {
 			m.keepCauses(inst.id, w.Events)
 			m.reloads[inst.id] = struct{}{}
 			delete(m.instances, inst.id)
-			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
+			return m.writeFailed(inst.id, err)
 		}
 	}
 	for _, rec := range w.Records {
@@ -457,10 +479,32 @@ func (m *Module) write(inst *instance) error {
 	inst.writes = w.Number
 	inst.writeTimeout = 0
 	inst.reset()
+	m.clearFailedWrite(inst.id)
 	log.Debug().Int("instanceID", inst.id).Int("torrents", len(w.Counters)).Dur("elapsed", time.Since(start)).
 		Msg("transfer history: wrote the changes")
 	if err := m.refreshMapper(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Warn().Err(err).Msg("transfer history: failed to read the tracker customizations")
 	}
 	return nil
+}
+
+func (m *Module) writeFailed(instanceID int, err error) error {
+	err = fmt.Errorf("write the transfer history of instance %d: %w", instanceID, err)
+	m.failedWrites[instanceID] = struct{}{}
+	m.notices.Open(systemnotice.RecordingStopped, err.Error())
+	return err
+}
+
+func (m *Module) clearFailedWrite(instanceID int) {
+	delete(m.failedWrites, instanceID)
+	// A write with an unknown outcome dropped the changes of an instance
+	// from memory, so it has nothing to retry. Its next reading loads the
+	// stored history again.
+	maps.DeleteFunc(m.failedWrites, func(id int, _ struct{}) bool {
+		_, inMemory := m.instances[id]
+		return !inMemory
+	})
+	if len(m.failedWrites) == 0 {
+		m.notices.Close(systemnotice.RecordingStopped)
+	}
 }

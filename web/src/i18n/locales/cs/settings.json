@@ -298,7 +298,7 @@
     "loading": "Načítám cíle oznámení...",
     "loadFailed": "Nepodařilo se načíst cíle oznámení",
     "empty": "Žádné cíle oznámení nakonfigurovány. Přidejte jeden, abyste mohli začít.",
-    "allEvents": "Všechny události",
+    "allEvents": "Všechny události kromě systémového upozornění",
     "showList": "Zobrazit seznam",
     "hideList": "Skrýt seznam",
     "badges": {

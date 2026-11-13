@@ -298,7 +298,7 @@
     "loading": "Benachrichtigungsziele werden geladen…",
     "loadFailed": "Benachrichtigungsziele konnten nicht geladen werden",
     "empty": "Keine Benachrichtigungsziele konfiguriert. Füge eines hinzu, um Warnungen zu erhalten.",
-    "allEvents": "Alle Ereignisse",
+    "allEvents": "Alle Ereignisse außer Systemhinweis",
     "showList": "Liste anzeigen",
     "hideList": "Liste ausblenden",
     "badges": {

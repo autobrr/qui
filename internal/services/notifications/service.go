@@ -449,6 +449,9 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 	case EventAutomationsRunFailed:
 		title := "Automations run failed"
 		return formatAutomationsEvent(instanceLabel, title, event.Title, customMessage, humanReadableMetrics)
+	case EventSystemNotice:
+		// A System notice is about qui, not about one instance.
+		return formatCustomEvent("", "System notice", event.Title, customMessage)
 	default:
 		return "", ""
 	}
@@ -473,9 +476,11 @@ func (s *Service) resolveInstanceLabel(ctx context.Context, event Event) string 
 	return instance.Name
 }
 
+// allowsEvent reports whether a target with eventTypes gets eventType. An
+// empty list means each event type, except the ones a target must pick.
 func allowsEvent(eventTypes []string, eventType EventType) bool {
 	if len(eventTypes) == 0 {
-		return true
+		return !optIn(eventType)
 	}
 
 	return slices.Contains(eventTypes, string(eventType))
@@ -923,7 +928,8 @@ func discordEventColor(eventType EventType) int {
 		EventCrossSeedSearchFailed,
 		EventCrossSeedCompletionFailed,
 		EventCrossSeedWebhookFailed,
-		EventAutomationsRunFailed:
+		EventAutomationsRunFailed,
+		EventSystemNotice:
 		return discordColorError
 	case EventTorrentCompleted,
 		EventBackupSucceeded,

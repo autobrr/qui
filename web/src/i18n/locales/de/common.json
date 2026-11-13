@@ -167,6 +167,19 @@
     "versionAvailable": "Version {{version}} ist jetzt verfügbar",
     "dismiss": "Verwerfen"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "Aufzeichnung gestoppt",
+        "fix": "qui behält die Änderungen im Speicher und versucht es beim nächsten Schreiben erneut. Stelle sicher, dass der Datenträger freien Speicher hat und qui die Datenbankdatei schreiben kann."
+      }
+    },
+    "unknown": {
+      "title": "Systemhinweis",
+      "fix": "qui benötigt eine Aktion von dir. Details stehen im qui-Log."
+    },
+    "cause": "Ursache: {{cause}}"
+  },
   "pwaUpdate": {
     "reload": "Neu laden",
     "waitingDescription": "Neu laden, um die neueste qui-Version zu übernehmen.",

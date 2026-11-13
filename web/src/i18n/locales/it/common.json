@@ -167,6 +167,19 @@
     "versionAvailable": "La versione {{version}} è ora disponibile",
     "dismiss": "Ignora"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "Registrazione interrotta",
+        "fix": "qui mantiene le modifiche in memoria e riprova alla prossima scrittura. Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database."
+      }
+    },
+    "unknown": {
+      "title": "Avviso di sistema",
+      "fix": "qui richiede un tuo intervento. Il log di qui contiene i dettagli."
+    },
+    "cause": "Causa: {{cause}}"
+  },
   "pwaUpdate": {
     "reload": "Ricarica",
     "waitingDescription": "Ricarica per applicare l'ultima versione di qui.",

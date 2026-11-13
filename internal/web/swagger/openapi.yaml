@@ -6443,6 +6443,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
 
+  /api/system-notices:
+    get:
+      tags:
+        - System
+      summary: List open System notices
+      description: Returns the open System notices. A System notice is a fault in qui that needs an action from the user, for example "recording_stopped" when qui cannot write the Transfer history. The list is empty when no notice is open.
+      responses:
+        '200':
+          description: Open System notices, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SystemNotice'
+
   /api/system/restart:
     post:
       tags:
@@ -8820,6 +8836,31 @@ components:
           type: object
           additionalProperties: true
           description: Opaque torrent filter selections
+
+    SystemNotice:
+      type: object
+      description: An open System notice
+      required:
+        - kind
+        - severity
+        - cause
+        - openedAt
+      properties:
+        kind:
+          type: string
+          enum: [recording_stopped]
+          description: The kind of the notice. The web UI shows the title and the fix of each kind.
+        severity:
+          type: string
+          enum: [error]
+        cause:
+          type: string
+          description: The error that opened the notice, or the latest error while it is open
+          example: "write the transfer history of instance 1: attempt to write a readonly database"
+        openedAt:
+          type: string
+          format: date-time
+          description: When the notice opened
 
     LatestVersionResponse:
       type: object

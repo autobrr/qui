@@ -16,6 +16,7 @@ import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
@@ -332,6 +333,7 @@ export function Sidebar() {
         </div>
 
         <div className="mt-auto space-y-3 pt-3">
+          <SystemNoticeList />
           <UpdateBanner />
 
           {!isDemo && (
