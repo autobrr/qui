@@ -11,7 +11,6 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import type { ActionTarget } from "@/lib/torrent-selection"
 import {
   ArrowDown,
@@ -35,6 +34,7 @@ import {
 } from "lucide-react"
 import { memo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
+import { TORRENT_ACTIONS } from "./bulk-actions/bulk-action-requests"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 
 interface TorrentManagementBarProps {
