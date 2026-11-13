@@ -1471,8 +1471,8 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			source := base
 			candidate := base
-			source.Collection = "ATV"
-			candidate.Collection = "ATVP"
+			source.Collection = "NF"
+			candidate.Collection = "AMZN"
 			if test.name == "different checksum" {
 				source.Sum = "AAAAAAAA"
 			}
@@ -1548,8 +1548,8 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			source := base
 			candidate := base
-			source.Collection = "ATV"
-			candidate.Collection = "ATVP"
+			source.Collection = "NF"
+			candidate.Collection = "AMZN"
 			source.Year, source.Month, source.Day = test.sourceYear, test.sourceMonth, test.sourceDay
 			candidate.Year, candidate.Month, candidate.Day = test.candidateYear, test.candidateMonth, test.candidateDay
 
