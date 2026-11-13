@@ -53,5 +53,46 @@
     "load": "통계를 불러올 수 없습니다: {{message}}"
   },
   "allTimeNote": "전체 기간에는 기준값이 포함됩니다. 기준값은 qui가 토렌트를 처음 기록할 때 토렌트가 가지고 있던 바이트입니다. 기준값은 날짜가 없으므로 차트에 표시되지 않습니다.",
-  "serverStatisticsNote": "이 숫자는 각 토렌트의 전송량을 합한 것입니다. 대시보드의 서버 통계는 프로토콜 트래픽도 세는 qBittorrent의 카운터를 읽으므로 숫자가 다릅니다."
+  "serverStatisticsNote": "이 숫자는 각 토렌트의 전송량을 합한 것입니다. 대시보드의 서버 통계는 프로토콜 트래픽도 세는 qBittorrent의 카운터를 읽으므로 숫자가 다릅니다.",
+  "table": {
+    "title": "트래커 또는 카테고리별",
+    "descriptionTracker": "트래커별 기간 전송량입니다. 행을 클릭하면 세부 정보가 열립니다.",
+    "descriptionCategory": "카테고리별 기간 전송량입니다. 바이트가 전송될 때 각 토렌트가 속했던 카테고리에 표시됩니다. 행을 클릭하면 세부 정보가 열립니다.",
+    "groupBy": "그룹 기준",
+    "groupings": {
+      "tracker": "트래커",
+      "category": "카테고리"
+    },
+    "columns": {
+      "tracker": "트래커",
+      "category": "카테고리",
+      "uploaded": "업로드됨",
+      "downloaded": "다운로드됨",
+      "ratio": "비율",
+      "buffer": "버퍼",
+      "torrents": "토렌트",
+      "size": "크기",
+      "seeded": "시드됨"
+    },
+    "seededValue": "{{value}}x",
+    "total": "합계",
+    "noCategory": "카테고리 없음",
+    "liveError": "지금 qBittorrent에 있는 토렌트를 불러오지 못했습니다: {{message}}",
+    "liveNote": "토렌트, 크기, 시드됨은 기간이 아니라 지금 qBittorrent에 있는 토렌트를 나타냅니다. 시드됨은 전체 업로드를 크기로 나눈 값입니다.",
+    "categoryNote": "qui는 카테고리 합계를 UTC 날짜별로 저장합니다. UTC 날짜 중간에 시작하거나 끝나는 기간은 그날 전체를 계산하므로 카테고리 합계가 위의 숫자와 다를 수 있습니다.",
+    "baselineNote": "전체 기간에서는 각 행에 해당 토렌트의 기준값이 포함됩니다."
+  },
+  "detail": {
+    "share": "업로드 비중",
+    "shareOf": "{{total}} 중",
+    "crossSeed": "크로스 시드에서",
+    "crossSeedShare": "자체 업로드의 {{percent}}",
+    "bestHour": "최고 시간",
+    "bestDay": "최고 날짜",
+    "averageHour": "시간당 평균",
+    "averageDay": "일별 평균",
+    "chartHour": "시간별 {{group}}",
+    "chartDay": "일별 {{group}}",
+    "chartLegend": "선 위는 업로드, 아래는 다운로드"
+  }
 }

@@ -4,18 +4,24 @@
  */
 
 import { PageHeader } from "@/components/layout/PageHeader"
+import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
-import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
+import { getLinuxCategoryName, getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import {
+  BROWSER_TIME_ZONE,
   buildBars,
   chartRange,
   comparisonEnd,
   customPeriod,
+  formatBuffer,
+  formatRatio,
+  groupTotals,
   presetPeriod,
   previousPeriod,
   recordedFrom,
@@ -26,14 +32,11 @@ import {
   type StatisticsPeriod
 } from "@/lib/statistics"
 import { formatBytes } from "@/lib/utils"
-import type { TransferHistoryBytes, TransferHistoryInstance, TransferHistoryQuery, TransferHistoryRow } from "@/types"
+import type { LiveTrackerGroup, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryRow } from "@/types"
 import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-
-// A browser that cannot find its zone reports Etc/Unknown. The days are then UTC days.
-const BROWSER_TIME_ZONE = ((zone: string) => zone === "Etc/Unknown" ? undefined : zone)(Intl.DateTimeFormat().resolvedOptions().timeZone)
 
 // Names that the backend gives to the Tracker groups without a tracker domain.
 const PUBLIC_GROUP = "Public"
@@ -49,31 +52,20 @@ interface PeriodState {
 // qui writes the history each 5 minutes, so a faster move shows nothing new.
 const MOVE_AFTER = 5 * 60_000
 
-interface InstanceRows {
-  rows?: TransferHistoryRow[][]
+interface LiveGroups {
+  groups?: LiveTrackerGroup[][]
   error?: Error
-  pending: boolean
 }
 
-/** Reads one transfer query for each instance. The rows are undefined while a query is pending or when no query runs. */
-function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHistoryQuery | undefined): InstanceRows {
-  const enabled = query !== undefined
-  const combine = useCallback((results: UseQueryResult<TransferHistoryRow[]>[]): InstanceRows => ({
-    rows: enabled && results.every(result => result.data) ? results.map(result => result.data!) : undefined,
+/** Joins the live numbers of the instances that loaded once no query is pending, so that one failed instance does not hide the others. */
+function combineLiveGroups(results: UseQueryResult<LiveTrackerGroup[]>[]): LiveGroups {
+  return {
+    groups: results.every(result => !result.isPending) ? results.map(result => result.data ?? []) : undefined,
     error: results.find(result => result.error)?.error ?? undefined,
-    pending: enabled && results.some(result => result.isPending),
-  }), [enabled])
-  return useQueries({
-    queries: instances.map(instance => ({
-      queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
-      queryFn: () => api.getTransferHistory(instance.instanceId, query!),
-      enabled,
-    })),
-    combine,
-  })
+  }
 }
 
-/** The rows of the four queries of the page, for one period and one selection. */
+/** The rows of the five queries of the page, for one period and one selection. */
 interface PageRows {
   // The period choice and the selected instances.
   series: string
@@ -82,6 +74,7 @@ interface PageRows {
   allTime?: TransferHistoryRow[][]
   compared?: TransferHistoryRow[][]
   before?: TransferHistoryRow[][]
+  categories?: TransferHistoryRow[][]
 }
 
 function relativeChange(now: number, before: number): number | undefined {
@@ -114,6 +107,7 @@ export function Statistics() {
   }, [choice])
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [metric, setMetric] = useState<Metric>("uploaded")
+  const [grouping, setGrouping] = useState<TransferHistoryGrouping>("tracker")
   const { period } = periodState
 
   // An instance that starts recording while the page is open joins at the next move of the period.
@@ -132,22 +126,39 @@ export function Statistics() {
   const previous = previousPeriod(period)
   const comparable = previous?.from !== undefined && selected.length > 0 && recordedFrom(selected, previous.from)
   const ready = statusQuery.isSuccess
-  const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
-  const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
-  const compared = useInstanceRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
-  const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const chart = useTransferHistoryRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
+  const allTime = useTransferHistoryRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const compared = useTransferHistoryRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
+  const before = useTransferHistoryRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const byCategory = grouping === "category"
+  const categories = useTransferHistoryRows(selected, ready && byCategory ? { from: period.from, to: period.to, bucket: "total", groupBy: "category" } : undefined)
+
+  // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
+  const liveIds = useMemo(() => {
+    const active = new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id))
+    return selected.map(status => status.instanceId).filter(id => active.has(id))
+  }, [instancesQuery.data, selected])
+  const live = useQueries({
+    queries: liveIds.map(instanceId => ({
+      queryKey: ["tracker-groups", instanceId],
+      queryFn: () => api.getTrackerGroups(instanceId),
+      enabled: !byCategory,
+      refetchInterval: MOVE_AFTER,
+    })),
+    combine: combineLiveGroups,
+  })
 
   // A new period gives new query keys, so the queries hold no previous data to show while they load. After a move,
   // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
   // so that the numbers never mix two periods or two selections.
   const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}`
-  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined))
+  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (!byCategory || categories.rows !== undefined)
   const [lastComplete, setLastComplete] = useState<PageRows>()
-  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows)) {
-    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows })
+  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.categories !== categories.rows)) {
+    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, categories: categories.rows })
   }
-  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error) && lastComplete?.series === series
-  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows }
+  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? categories.error) && lastComplete?.series === series
+  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, categories: categories.rows }
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
@@ -163,11 +174,22 @@ export function Statistics() {
     return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
   }, [shown.chart, shown.period, since])
 
+  // The tracker rows of the table add up the rows of the chart, so that they add up to the numbers at the top.
+  const tableRows = useMemo(() => {
+    const rows = byCategory ? shown.categories : shown.period.from ? shown.chart : shown.allTime
+    return rows && groupTotals(rows, !shown.period.from, byCategory ? undefined : live.groups)
+  }, [byCategory, shown.categories, shown.chart, shown.allTime, shown.period.from, live.groups])
+
   const displayName = useCallback((group: string) => {
     if (group === PUBLIC_GROUP) return t("groups.public")
     if (group === NO_TRACKER_GROUP) return t("groups.noTracker")
     return incognitoMode ? getLinuxTrackerDomain(group) : group
   }, [incognitoMode, t])
+  const tableName = useCallback((group: string, by: TransferHistoryGrouping) => {
+    if (by === "tracker") return displayName(group)
+    if (group === "") return t("table.noCategory")
+    return incognitoMode ? getLinuxCategoryName(group) : group
+  }, [displayName, incognitoMode, t])
 
   const formatDay = (date: Date) => date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
   const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatDay(period.from), to: formatDay(new Date(period.to.getTime() - 1)) }) : undefined
@@ -214,8 +236,8 @@ export function Statistics() {
         <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
         <Tile
           label={t("tiles.ratio")}
-          value={totals && (totals.downloaded > 0 ? (totals.uploaded / totals.downloaded).toFixed(2) : totals.uploaded > 0 ? "∞" : undefined)}
-          hint={totals && (totals.uploaded > 0 || totals.downloaded > 0) && t("tiles.buffer", { buffer: `${totals.uploaded >= totals.downloaded ? "+" : "-"}${formatBytes(Math.abs(totals.uploaded - totals.downloaded))}` })}
+          value={totals && formatRatio(totals)}
+          hint={totals && formatBuffer(totals) && t("tiles.buffer", { buffer: formatBuffer(totals) })}
         />
         <Tile
           label={t("tiles.crossSeed")}
@@ -248,6 +270,27 @@ export function Statistics() {
             <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">{t("chart.empty")}</div>
           )}
         </CardContent>
+      </Card>
+
+      <Card className="gap-0 overflow-hidden pb-4">
+        <CardHeader className="pb-4">
+          <CardTitle>{t("table.title")}</CardTitle>
+          <CardDescription>{byCategory ? t("table.descriptionCategory") : t("table.descriptionTracker")}</CardDescription>
+        </CardHeader>
+        <GroupTable
+          grouping={grouping}
+          onGroupingChange={setGrouping}
+          rows={loading ? undefined : tableRows}
+          error={chart.error ?? (period.from ? undefined : allTime.error) ?? (byCategory ? categories.error : undefined)}
+          liveLoaded={liveIds.length > 0 && live.groups !== undefined}
+          liveError={live.error}
+          period={shown.period}
+          since={since}
+          series={shown.series}
+          instances={selected}
+          seriesGroups={groups}
+          displayName={tableName}
+        />
       </Card>
 
       <div className="space-y-1 text-xs text-muted-foreground">

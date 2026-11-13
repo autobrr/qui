@@ -3,7 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TransferHistoryBytes, TransferHistoryInstance, TransferHistoryRow } from "@/types"
+import { formatBytes } from "@/lib/utils"
+import type { LiveTrackerGroup, TransferHistoryBytes, TransferHistoryInstance, TransferHistoryRow } from "@/types"
+
+// A browser that cannot find its zone reports Etc/Unknown. The days are then UTC days.
+export const BROWSER_TIME_ZONE = ((zone: string) => zone === "Etc/Unknown" ? undefined : zone)(Intl.DateTimeFormat().resolvedOptions().timeZone)
 
 export type PeriodPreset = "24h" | "7d" | "30d" | "1y" | "all"
 
@@ -106,7 +110,7 @@ export function recordedFrom(instances: TransferHistoryInstance[], from: Date): 
   return instances.every(instance => Date.parse(instance.firstRecordedAt) <= from.getTime())
 }
 
-export function sumBytes(rows: TransferHistoryRow[], withBaseline: boolean): TransferHistoryBytes {
+export function sumBytes(rows: (TransferHistoryBytes & { baseline?: TransferHistoryBytes })[], withBaseline: boolean): TransferHistoryBytes {
   const total: TransferHistoryBytes = { uploaded: 0, downloaded: 0, statisticsCrossSeedUploaded: 0 }
   for (const row of rows) {
     for (const bytes of withBaseline && row.baseline ? [row, row.baseline] : [row]) {
@@ -119,6 +123,22 @@ export function sumBytes(rows: TransferHistoryRow[], withBaseline: boolean): Tra
 }
 
 export type Metric = "uploaded" | "downloaded"
+
+/** Returns uploaded divided by downloaded, or undefined when nothing moved. */
+export function formatRatio(bytes: TransferHistoryBytes): string | undefined {
+  if (bytes.downloaded > 0) {
+    return (bytes.uploaded / bytes.downloaded).toFixed(2)
+  }
+  return bytes.uploaded > 0 ? "∞" : undefined
+}
+
+/** Returns uploaded minus downloaded with its sign, or undefined when nothing moved. */
+export function formatBuffer(bytes: TransferHistoryBytes): string | undefined {
+  if (bytes.uploaded === 0 && bytes.downloaded === 0) {
+    return undefined
+  }
+  return `${bytes.uploaded >= bytes.downloaded ? "+" : "-"}${formatBytes(Math.abs(bytes.uploaded - bytes.downloaded))}`
+}
 
 /** Returns the Tracker groups with the most bytes of the metric, at most SERIES_COUNT of them. */
 export function topGroups(rows: TransferHistoryRow[], metric: Metric): string[] {
@@ -259,4 +279,69 @@ export function formatGapLength(seconds: number, locale: string): string {
   const shown = parts.filter(([value]) => value > 0)
   const format = (value: number, unit: string) => new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "narrow" }).format(value)
   return shown.length > 0 ? shown.map(([value, unit]) => format(value, unit)).join(" ") : format(seconds, "second")
+}
+
+/** A group of the table: its transfer in the period, and for a Tracker group the torrents that are in qBittorrent now. */
+export interface GroupTotals extends TransferHistoryBytes {
+  group: string
+  live?: Omit<LiveTrackerGroup, "group">
+}
+
+/**
+ * Adds up the rows of each group over the instances, with the Baseline when withBaseline is set, and joins the live
+ * numbers by group. A group with live torrents and no transfer gets a row too. The rows are ordered by upload.
+ */
+export function groupTotals(rowsByInstance: TransferHistoryRow[][], withBaseline: boolean, liveByInstance?: LiveTrackerGroup[][]): GroupTotals[] {
+  const groups = new Map<string, GroupTotals>()
+  const groupAt = (group: string) => {
+    let totals = groups.get(group)
+    if (!totals) {
+      totals = { group, uploaded: 0, downloaded: 0, statisticsCrossSeedUploaded: 0 }
+      groups.set(group, totals)
+    }
+    return totals
+  }
+  for (const row of rowsByInstance.flat()) {
+    const totals = groupAt(row.group)
+    const sum = sumBytes([row], withBaseline)
+    totals.uploaded += sum.uploaded
+    totals.downloaded += sum.downloaded
+    totals.statisticsCrossSeedUploaded += sum.statisticsCrossSeedUploaded
+  }
+  for (const live of liveByInstance?.flat() ?? []) {
+    const totals = groupAt(live.group)
+    totals.live ??= { torrents: 0, size: 0, uploaded: 0 }
+    totals.live.torrents += live.torrents
+    totals.live.size += live.size
+    totals.live.uploaded += live.uploaded
+  }
+  return [...groups.values()].sort((a, b) => b.uploaded - a.uploaded || b.downloaded - a.downloaded || a.group.localeCompare(b.group))
+}
+
+/** Returns the bytes of a bar, over each group. */
+export function barBytes(bar: StatisticsBar): Record<Metric, number> {
+  const total = { uploaded: 0, downloaded: 0 }
+  for (const bytes of bar.bytes.values()) {
+    total.uploaded += bytes.uploaded
+    total.downloaded += bytes.downloaded
+  }
+  return total
+}
+
+/** Returns the number of bars that end after the first recording, so that an average leaves out the bars before it. */
+export function recordedBarCount(bars: StatisticsBar[], since: Date | undefined): number {
+  const first = since?.getTime() ?? -Infinity
+  return bars.filter(bar => bar.start + (bar.width === "hour" ? HOUR : 24 * HOUR) > first).length
+}
+
+/** Returns the bar with the most upload, or undefined when no bar has upload. */
+export function bestBar(bars: StatisticsBar[]): { bar: StatisticsBar; uploaded: number } | undefined {
+  let best: { bar: StatisticsBar; uploaded: number } | undefined
+  for (const bar of bars) {
+    const { uploaded } = barBytes(bar)
+    if (uploaded > (best?.uploaded ?? 0)) {
+      best = { bar, uploaded }
+    }
+  }
+  return best
 }

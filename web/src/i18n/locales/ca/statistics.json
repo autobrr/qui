@@ -55,5 +55,46 @@
     "load": "No s’han pogut carregar les estadístiques: {{message}}"
   },
   "allTimeNote": "Des de l’inici inclou la base inicial: els bytes que tenien els torrents quan qui els va enregistrar per primera vegada. El gràfic no mostra la base inicial, perquè no té data.",
-  "serverStatisticsNote": "Aquests números sumen la transferència de cada torrent. Les estadístiques del servidor al tauler llegeixen els comptadors de qBittorrent, que també compten el trànsit del protocol, per això els números són diferents."
+  "serverStatisticsNote": "Aquests números sumen la transferència de cada torrent. Les estadístiques del servidor al tauler llegeixen els comptadors de qBittorrent, que també compten el trànsit del protocol, per això els números són diferents.",
+  "table": {
+    "title": "Per tracker o categoria",
+    "descriptionTracker": "La transferència del període per a cada tracker. Feu clic en una fila per obrir-ne el detall.",
+    "descriptionCategory": "La transferència del període per a cada categoria, sota la categoria que tenia cada torrent quan es van moure els bytes. Feu clic en una fila per obrir-ne el detall.",
+    "groupBy": "Agrupa per",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Categoria"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "category": "Categoria",
+      "uploaded": "Pujat",
+      "downloaded": "Baixat",
+      "ratio": "Ràtio",
+      "buffer": "Buffer",
+      "torrents": "Torrents",
+      "size": "Mida",
+      "seeded": "Sembrat"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Total",
+    "noCategory": "Cap categoria",
+    "liveError": "No s’han pogut carregar els torrents que ara són a qBittorrent: {{message}}",
+    "liveNote": "Torrents, Mida i Sembrat descriuen els torrents que ara són a qBittorrent, no el període. Sembrat és la seva pujada total dividida per la seva mida.",
+    "categoryNote": "qui desa els totals de les categories per a cada dia UTC. Un període que comença o acaba dins d’un dia UTC compta aquest dia sencer, de manera que el total de les categories pot diferir dels números de dalt.",
+    "baselineNote": "Des de l’inici, cada fila inclou la base inicial dels seus torrents."
+  },
+  "detail": {
+    "share": "Part de la pujada",
+    "shareOf": "de {{total}}",
+    "crossSeed": "De cross-seeds",
+    "crossSeedShare": "{{percent}} de la seva pujada",
+    "bestHour": "Millor hora",
+    "bestDay": "Millor dia",
+    "averageHour": "Mitjana per hora",
+    "averageDay": "Mitjana per dia",
+    "chartHour": "{{group}} per hora",
+    "chartDay": "{{group}} per dia",
+    "chartLegend": "Pujada damunt de la línia, baixada a sota"
+  }
 }
