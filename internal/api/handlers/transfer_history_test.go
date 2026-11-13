@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -43,7 +44,7 @@ func TestDeleteHistoryRefusesAnUnclearRequest(t *testing.T) {
 
 func TestDeleteHistoryAnswersNoContent(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history-delete")
-	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 	for _, query := range []string{"?instanceId=1", "?instanceId=all&before=2026-01-02T00:00:00%2B01:00"} {
