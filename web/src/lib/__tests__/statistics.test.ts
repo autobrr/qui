@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-import { buildBars, byteTicks, categoryRange, customPeriod, formatGapLength, labelledGaps, presetPeriod, previousPeriod, recordedUnits, sumBytes, topGroups } from "@/lib/statistics"
+import { bestBar, buildBars, byteTicks, categoryRange, customPeriod, formatGapLength, labelledGaps, presetPeriod, previousPeriod, recordedUnits, sumBytes, topGroups } from "@/lib/statistics"
 import type { TransferHistoryRow } from "@/types"
 
 const originalTZ = process.env.TZ
@@ -110,6 +110,18 @@ describe("categoryRange", () => {
     const bars = buildBars([[day]], categoryRange(period, undefined)!, "day")
 
     expect(bars[0].bytes.get("tv")?.uploaded).toBe(100)
+  })
+})
+
+describe("bestBar", () => {
+  it("never takes a folded day of an hourly chart as the best hour", () => {
+    const rows: TransferHistoryRow[] = [
+      { group: "a.test", start: "2026-01-10T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 500, downloaded: 0, statisticsCrossSeedUploaded: 0 },
+      hourRow("2026-01-11T00:00:00Z", "a.test", 7),
+    ]
+    const bars = buildBars([rows], { from: new Date("2026-01-10T00:00:00Z"), to: new Date("2026-01-11T01:00:00Z") }, "hour")
+
+    expect(bestBar(bars, "hour")?.uploaded).toBe(7)
   })
 })
 

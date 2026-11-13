@@ -357,10 +357,16 @@ export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, un
   return units
 }
 
-/** Returns the bar with the most upload, or undefined when no bar has upload. */
-export function bestBar(bars: StatisticsBar[]): { bar: StatisticsBar; uploaded: number } | undefined {
+/**
+ * Returns the bar of the chart unit with the most upload, or undefined when no such bar has upload. A folded day of
+ * an hourly chart is not an hour, so it is never the best hour.
+ */
+export function bestBar(bars: StatisticsBar[], unit: ChartUnit): { bar: StatisticsBar; uploaded: number } | undefined {
   let best: { bar: StatisticsBar; uploaded: number } | undefined
   for (const bar of bars) {
+    if (bar.width !== unit) {
+      continue
+    }
     const { uploaded } = barBytes(bar)
     if (uploaded > (best?.uploaded ?? 0)) {
       best = { bar, uploaded }

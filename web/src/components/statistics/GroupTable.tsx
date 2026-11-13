@@ -248,7 +248,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
     const range = shown && (grouping === "category" ? categoryRange(shown.period, since) : chartRange(shown.period, since))
     return shown && range ? buildBars(shown.rows, range, unit) : undefined
   }, [transfer.rows, period, last, key, since, unit, grouping])
-  const best = bars && bestBar(bars)
+  const best = bars && bestBar(bars, unit)
   const uploaded = bars?.reduce((sum, bar) => sum + barBytes(bar).uploaded, 0) ?? 0
   const recordedBars = bars && recordedUnits(bars, since, unit)
 
