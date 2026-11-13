@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -283,6 +284,19 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, deleted("a", at(10*time.Minute), 0, 0, outside)),
 			},
 		},
+		// regression: #4085
+		{
+			name: "a delete note before the switch goes off keeps its cause",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
+				reading(at(5*time.Minute), torrent("a", 0, 0), torrent("b", 0, 0)),
+				note(at(6*time.Minute), byUser, "a"),
+				recordingOff,
+				recordingOn,
+				reading(at(10*time.Minute), torrent("b", 0, 0)),
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1}, deleted("a", at(10*time.Minute), 0, 0, byUser)),
+			},
+		},
 		{
 			name: "a delete note before the stored switch is read after a restart is dropped",
 			steps: []step{
@@ -419,4 +433,60 @@ func foldWhileAway(t *testing.T, q dbinterface.Querier, db *database.DB) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, []transferhistory.TransferRow{row("tracker.example", day10, transferhistory.BucketDay, 150, 0, 0, 0)}, rows)
+}
+
+// blockedFold holds the first fold in the move of the torrent days until
+// release is called.
+type blockedFold struct {
+	*database.DB
+	hold, release func()
+}
+
+func newBlockedFold(db *database.DB) (q *blockedFold, folding <-chan struct{}) {
+	started, held := make(chan struct{}), make(chan struct{})
+	return &blockedFold{
+		DB:      db,
+		hold:    sync.OnceFunc(func() { close(started); <-held }),
+		release: sync.OnceFunc(func() { close(held) }),
+	}, started
+}
+
+func (b *blockedFold) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if strings.Contains(query, "transfer_history_torrent_days d WHERE d.torrent_id") {
+		b.hold()
+	}
+	return b.DB.QueryContext(ctx, query, args...)
+}
+
+// A new Detail retention while a fold moves the days of the torrents starts
+// no fold that keeps the transfer queries waiting for that move.
+// regression: #4085
+func TestATransferQueryDoesNotWaitForTheTorrentDaysOfAnEarlierFold(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	q, folding := newBlockedFold(db)
+	module := transferhistory.New(q, models.NewTrackerCustomizationStore(db))
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+	t.Cleanup(q.release)
+
+	// The first reading after a start folds.
+	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 0, 0)}})
+	<-folding
+	require.NoError(t, module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 90}))
+	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(5 * time.Minute), Torrents: []transferhistory.Torrent{torrent("a", 100, 0)}})
+	_, err := module.Status(t.Context())
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := module.Transfer(t.Context(), period(day10, day11, transferhistory.BucketHour, transferhistory.GroupByTracker))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("the transfer query waits for the torrent days of the earlier fold")
+	}
+	q.release()
+	transferhistory.WaitForFolds(module)
 }

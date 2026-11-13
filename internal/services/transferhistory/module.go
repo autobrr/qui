@@ -274,18 +274,25 @@ func (m *Module) take(settingsErr error) (work, bool) {
 	if !m.settingsLoaded && len(m.queue) > 0 && settingsErr == nil {
 		return work{}, false
 	}
-	w := work{settings: m.settings, notes: m.notes, barriers: m.barriers, stopping: m.stopping, pause: m.pause, refold: m.refold}
-	m.notes, m.barriers, m.pause, m.refold = nil, nil, false, false
+	w := work{settings: m.settings, barriers: m.barriers, stopping: m.stopping, pause: m.pause, refold: m.refold}
+	m.barriers, m.pause, m.refold = nil, false, false
 	switch {
 	case !m.settingsLoaded:
+		// The delete notes wait until the settings tell whether recording
+		// was on when they came.
 		w.dropped = len(m.queue)
 	case m.settings.Recording:
 		w.readings, m.queue = m.queue, nil
+		w.notes, m.notes = m.notes, nil
 	default:
-		// No reading clears the delete notes while recording is off. Notes
-		// can come before the module reads the settings after a start.
-		m.queue, w.notes = nil, nil
-		clear(m.deleteNotes)
+		// The notes before the switch went off keep their cause for the next
+		// reading after the switch goes on. The other notes came while
+		// recording was off, after a start, and no reading clears them.
+		m.queue = nil
+		if w.pause {
+			w.notes = m.notes
+		}
+		m.notes = nil
 	}
 	return w, true
 }

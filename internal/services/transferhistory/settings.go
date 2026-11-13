@@ -118,11 +118,19 @@ func (m *Module) foldIfNewDay(today int64, retentionDays int) {
 		}
 	}
 	m.foldedDay = today
-	// The lock is taken here, so that a query after this reading sees the fold.
-	m.foldMu.Lock()
+	// One fold runs at a time. When no fold runs, the lock is taken here, so
+	// that a query after this reading sees the fold. A fold that still runs
+	// moves its torrent days without the lock, so this fold waits for it
+	// before it takes the lock, and the queries do not wait for that move.
+	idle := m.foldRun.TryLock()
+	if idle {
+		m.foldMu.Lock()
+	}
 	m.folds.Go(func() {
-		// One fold runs at a time.
-		m.foldRun.Lock()
+		if !idle {
+			m.foldRun.Lock()
+			m.foldMu.Lock()
+		}
 		defer m.foldRun.Unlock()
 		ctx, cancel := context.WithTimeout(m.foldCtx, maxWriteTimeout)
 		defer cancel()
