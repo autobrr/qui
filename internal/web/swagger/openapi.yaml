@@ -3792,7 +3792,7 @@ paths:
           schema:
             type: string
             format: date-time
-          description: Delete the history before this time, in RFC 3339. The time must not be in the future.
+          description: Delete the history before this time, in RFC 3339. The time must be after 0001-01-01T00:00:00Z and not in the future.
       responses:
         '204':
           description: The history is deleted

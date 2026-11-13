@@ -219,6 +219,11 @@ func (h *TransferHistoryHandler) DeleteHistory(w http.ResponseWriter, r *http.Re
 			RespondError(w, http.StatusBadRequest, "Invalid before: the time is in the future")
 			return
 		}
+		// The module reads a zero Before as a delete of everything.
+		if before.IsZero() {
+			RespondError(w, http.StatusBadRequest, "Invalid before: give a time after 0001-01-01")
+			return
+		}
 		d.Before = before.UTC()
 	}
 	err := h.module.DeleteHistory(r.Context(), d)

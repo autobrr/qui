@@ -32,7 +32,7 @@ func TestTransferRejectsAnUnknownTimeZone(t *testing.T) {
 // A request that does not name the instances, or names a future time, must
 // not reach the module: without the check, it deletes everything.
 func TestDeleteHistoryRefusesAnUnclearRequest(t *testing.T) {
-	for _, query := range []string{"", "?instanceId=", "?instanceId=0", "?instanceId=all&before=2999-01-01T00:00:00Z", "?instanceId=1&before=yesterday"} {
+	for _, query := range []string{"", "?instanceId=", "?instanceId=0", "?instanceId=all&before=2999-01-01T00:00:00Z", "?instanceId=1&before=yesterday", "?instanceId=all&before=0001-01-01T00:00:00Z"} {
 		t.Run(query, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			NewTransferHistoryHandler(nil).DeleteHistory(rec, httptest.NewRequest(http.MethodDelete, "/api/transfer-history"+query, nil))
