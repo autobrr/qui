@@ -89,8 +89,9 @@ type Module struct {
 	// reloads holds each instance that a write with an unknown outcome
 	// dropped from memory.
 	reloads map[int]struct{}
-	// deleteNotes holds the delete notes of each instance, by hash.
-	deleteNotes map[int]map[string]deleteNote
+	// deleteNotes holds the delete notes of each instance, by hash, in the
+	// order of their time.
+	deleteNotes map[int]map[string][]deleteNote
 	mapper      *trackergroup.Mapper
 	shutdownErr error
 }
@@ -106,7 +107,7 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		done:           make(chan struct{}),
 		instances:      make(map[int]*instance),
 		reloads:        make(map[int]struct{}),
-		deleteNotes:    make(map[int]map[string]deleteNote),
+		deleteNotes:    make(map[int]map[string][]deleteNote),
 	}
 	go m.run()
 	return m

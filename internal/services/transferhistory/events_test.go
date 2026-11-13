@@ -131,6 +131,31 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "a delete with two delete notes has the cause of the first one",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
+				note(at(time.Minute), byRule, "b"),
+				note(at(2*time.Minute), byProxy, "b"),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Automation: 1},
+					deleted("b", at(5*time.Minute), 0, 0, byRule)),
+			},
+		},
+		{
+			name: "a delete note from after a reading stays for the next delete, also behind an earlier note",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
+				note(at(4*time.Minute), byUser, "b"),
+				note(at(7*time.Minute), byProxy, "b"),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(5*time.Minute+30*time.Second))),
+				reading(at(10*time.Minute), torrent("a", 0, 0)),
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1, Other: 1},
+					deleted("b", at(10*time.Minute), 0, 0, byProxy),
+					deleted("b", at(5*time.Minute), 0, 0, byUser)),
+			},
+		},
+		{
 			name: "a delete note names a hash in upper or lower case",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
@@ -319,12 +344,23 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
-			name: "a magnet that changes its hash to the hash of a deleted record adds that record again",
+			name: "a magnet that changes its hash to the hash of a deleted record continues in that record",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("v2", 0, 0)),
-				reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("v1", 0, 0), at(4*time.Minute))),
-				reading(at(10*time.Minute), torrent("a", 0, 0), withV1(addedAt(torrent("v2", 0, 0), at(4*time.Minute)), "v1")),
-				expectEvents(2, 0, 2),
+				reading(at(0), torrent("a", 0, 0), torrent("v2", 1000, 0)),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(10*time.Minute), torrent("a", 0, 0), addedAt(torrent("v1", 100, 0), at(9*time.Minute))),
+				reading(at(15*time.Minute), torrent("a", 0, 0), withV1(addedAt(torrent("v2", 150, 0), at(9*time.Minute)), "v1")),
+				expectEvents(1, 0, 1),
+				expect(hourTotal, total("tracker.example", 150, 0, 0)),
+				restart,
+				reading(at(20*time.Minute), torrent("a", 0, 0)),
+				expectEvents(1, 0, 2),
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 2},
+					transferhistory.DeleteEvent{
+						Time: at(20 * time.Minute).Truncate(time.Second), Hash: "v2", Name: "Some.Show.S01E01.1080p.WEB-DL-GRP",
+						TrackerGroup: "tracker.example", Uploaded: 150, Cause: outside,
+					},
+					deleted("v2", at(5*time.Minute), 1000, 0, outside)),
 			},
 		},
 		{

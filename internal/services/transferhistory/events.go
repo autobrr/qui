@@ -55,8 +55,9 @@ type deleteNote struct {
 // NoteDelete gives the module a delete note. Give it before qBittorrent gets
 // the delete. The note lasts until a reading from its time or later shows
 // that the torrent is gone, or until a reading from 5 minutes or more after
-// the note still holds the torrent. A delete without a note has the cause
-// CauseOutside. A note after Shutdown does nothing.
+// the note still holds the torrent. When a torrent has more than one note, its
+// delete has the cause of the first one. A delete without a note has the
+// cause CauseOutside. A note after Shutdown does nothing.
 func (m *Module) NoteDelete(n DeleteNote) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -68,11 +69,42 @@ func (m *Module) NoteDelete(n DeleteNote) {
 func (m *Module) keep(n DeleteNote) {
 	notes := m.deleteNotes[n.InstanceID]
 	if notes == nil {
-		notes = make(map[string]deleteNote, len(n.Hashes))
+		notes = make(map[string][]deleteNote, len(n.Hashes))
 		m.deleteNotes[n.InstanceID] = notes
 	}
 	for _, hash := range n.Hashes {
-		notes[strings.ToLower(hash)] = deleteNote{cause: n.Cause, time: n.Time}
+		hash = strings.ToLower(hash)
+		notes[hash] = append(notes[hash], deleteNote{cause: n.Cause, time: n.Time})
+	}
+}
+
+// takeNote returns the cause of the delete of hash that the reading at now
+// shows. The first note is the one that deleted the torrent: a later delete
+// of a torrent that is gone does nothing. A note from after the reading is for
+// a later delete, and stays.
+func takeNote(notes map[string][]deleteNote, hash string, now time.Time) DeleteCause {
+	list := notes[hash]
+	later := slices.IndexFunc(list, func(n deleteNote) bool { return now.Before(n.time) })
+	if len(list) == 0 || later == 0 {
+		return DeleteCause{Kind: CauseOutside}
+	}
+	if later < 0 {
+		delete(notes, hash)
+	} else {
+		notes[hash] = list[later:]
+	}
+	return list[0].cause
+}
+
+// dropOldNotes drops each note that a reading at now shows as failed.
+func dropOldNotes(notes map[string][]deleteNote, now time.Time) {
+	for hash, list := range notes {
+		list = slices.DeleteFunc(list, func(n deleteNote) bool { return !now.Before(n.time.Add(noteLife)) })
+		if len(list) == 0 {
+			delete(notes, hash)
+		} else {
+			notes[hash] = list
+		}
 	}
 }
 

@@ -139,7 +139,7 @@ func (p *pass) present(hash string) bool {
 // apply adds the transfer and the events since the last reading to the
 // changes. It takes each note in notes whose torrent is gone, and drops each
 // note that is too old.
-func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *releases.Parser, notes map[string]deleteNote) {
+func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *releases.Parser, notes map[string][]deleteNote) {
 	p := &pass{reading: &r, first: inst.firstRecordedAt.IsZero(), previous: inst.lastReadingAt, mapper: mapper}
 	if p.first {
 		inst.firstRecordedAt = r.Time
@@ -186,11 +186,7 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 			}
 		}
 	}
-	for hash, n := range notes {
-		if !r.Time.Before(n.time.Add(noteLife)) {
-			delete(notes, hash)
-		}
-	}
+	dropOldNotes(notes, r.Time)
 }
 
 // read returns the record of t, whether the reading adds the torrent, and
@@ -201,9 +197,18 @@ func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryReco
 	leftOut := t.AddedAt.Before(p.previous.Add(-clockSkew))
 	rec, known := inst.records[t.Hash]
 	if !known {
-		if rec, added = inst.deleted[t.Hash]; added {
-			inst.addAgain(rec, t, p.reading.Time, leftOut)
-		} else if rec, known = inst.changeHash(t, p); !known {
+		magnet, returned := inst.magnetOf(t, p), inst.deleted[t.Hash]
+		switch {
+		case magnet != nil && returned != nil:
+			inst.continueIn(returned, magnet)
+			rec = returned
+		case magnet != nil:
+			inst.changeHash(magnet, t.Hash)
+			rec = magnet
+		case returned != nil:
+			inst.addAgain(returned, t, p.reading.Time, leftOut)
+			rec, added = returned, true
+		default:
 			return inst.add(t, p, leftOut)
 		}
 	}
@@ -227,20 +232,41 @@ func (inst *instance) add(t *Torrent, p *pass, leftOut bool) (rec *models.Transf
 	return rec, true, up, down
 }
 
-// changeHash gives the live record under the v1 infohash of t the hash of t,
-// when the hash of that record is gone from the reading. qBittorrent changes
-// the hash of a magnet that it added by its v1 hash when the metadata shows a
-// hybrid torrent.
-func (inst *instance) changeHash(t *Torrent, p *pass) (*models.TransferHistoryRecord, bool) {
+// magnetOf returns the live record under the v1 infohash of t, when the hash
+// of that record is gone from the reading. qBittorrent changes the hash of a
+// magnet that it added by its v1 hash when the metadata shows a hybrid
+// torrent.
+func (inst *instance) magnetOf(t *Torrent, p *pass) *models.TransferHistoryRecord {
 	rec, known := inst.records[t.InfohashV1]
 	if !known || p.present(t.InfohashV1) {
-		return nil, false
+		return nil
 	}
-	inst.hashChanges = append(inst.hashChanges, models.TransferHistoryHashChange{From: rec.Hash, To: t.Hash})
+	return rec
+}
+
+func (inst *instance) changeHash(rec *models.TransferHistoryRecord, hash string) {
+	inst.hashChanges = append(inst.hashChanges, models.TransferHistoryHashChange{From: rec.Hash, To: hash})
 	delete(inst.records, rec.Hash)
-	rec.Hash = t.Hash
-	inst.records[t.Hash] = rec
-	return rec, true
+	rec.Hash = hash
+	inst.records[hash] = rec
+}
+
+// continueIn makes returned, the deleted record of a torrent, the record of
+// that torrent again, when its magnet got its hash back. The life of the
+// magnet continues in returned, so the change gives no event and no bytes. The
+// record of the magnet stays, as a deleted record.
+func (inst *instance) continueIn(returned, magnet *models.TransferHistoryRecord) {
+	returned.LastUploaded, returned.LastDownloaded = magnet.LastUploaded, magnet.LastDownloaded
+	returned.Completed, returned.UploadFirst24h = magnet.Completed, magnet.UploadFirst24h
+	returned.Final, magnet.Final = magnet.Final, nil
+	returned.Deleted, magnet.Deleted = false, true
+	delete(inst.deleted, returned.Hash)
+	inst.records[returned.Hash] = returned
+	delete(inst.records, magnet.Hash)
+	inst.deleted[magnet.Hash] = magnet
+	inst.changedCounters[returned] = struct{}{}
+	inst.changedRecords[returned] = struct{}{}
+	inst.changedRecords[magnet] = struct{}{}
 }
 
 // addEvents adds the add event and the completion event that the reading
@@ -281,13 +307,9 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 }
 
 // delete marks rec as deleted and adds its delete event, with the cause of
-// its note in notes. A note from after the reading is for a later delete.
-func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, notes map[string]deleteNote) {
-	cause := DeleteCause{Kind: CauseOutside}
-	if n, noted := notes[rec.Hash]; noted && !now.Before(n.time) {
-		cause = n.cause
-		delete(notes, rec.Hash)
-	}
+// its note in notes.
+func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, notes map[string][]deleteNote) {
+	cause := takeNote(notes, rec.Hash, now)
 	event := &models.TransferHistoryDelete{
 		Uploaded: rec.LastUploaded, Downloaded: rec.LastDownloaded,
 		CauseKind: string(cause.Kind), CauseName: cause.Name,
