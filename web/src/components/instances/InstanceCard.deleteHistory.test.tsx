@@ -97,7 +97,8 @@ describe("the instance removal dialog", () => {
     expect(toast.success).toHaveBeenCalled()
   })
 
-  it("says that the history stays when the card is gone before the history delete fails", async () => {
+  // regression: #4101
+  it("warns about the history when the card is gone before the history delete fails", async () => {
     historyStatus = 500
     let answer = () => {}
     historyAnswer = new Promise(resolve => { answer = resolve })

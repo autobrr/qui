@@ -133,7 +133,7 @@ func TestDeleteHistoryPostgresIntegration(t *testing.T) {
 			}),
 		},
 		{
-			// regression: data review of #4010
+			// regression: #4101
 			name: "a delete before a date while recording is off keeps the Recording gap",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0)),
