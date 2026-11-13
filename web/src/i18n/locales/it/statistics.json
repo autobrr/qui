@@ -55,5 +55,46 @@
     "load": "Impossibile caricare le statistiche: {{message}}"
   },
   "allTimeNote": "Dall’inizio include la base iniziale: i byte che i torrent avevano quando qui li ha registrati per la prima volta. Il grafico non mostra la base iniziale, perché non ha una data.",
-  "serverStatisticsNote": "Questi numeri sommano il trasferimento di ogni torrent. Le statistiche del server nella dashboard leggono i contatori di qBittorrent, che contano anche il traffico di protocollo, quindi i numeri sono diversi."
+  "serverStatisticsNote": "Questi numeri sommano il trasferimento di ogni torrent. Le statistiche del server nella dashboard leggono i contatori di qBittorrent, che contano anche il traffico di protocollo, quindi i numeri sono diversi.",
+  "table": {
+    "title": "Per tracker o categoria",
+    "descriptionTracker": "Il trasferimento del periodo per ogni tracker. Fai clic su una riga per aprire il suo dettaglio.",
+    "descriptionCategory": "Il trasferimento del periodo per ogni categoria, sotto la categoria che ogni torrent aveva quando i byte sono stati trasferiti. Fai clic su una riga per aprire il suo dettaglio.",
+    "groupBy": "Raggruppa per",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Categoria"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "category": "Categoria",
+      "uploaded": "Caricati",
+      "downloaded": "Scaricati",
+      "ratio": "Rapporto",
+      "buffer": "Buffer",
+      "torrents": "Torrent",
+      "size": "Dimensione",
+      "seeded": "Distribuito"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Totale",
+    "noCategory": "Nessuna categoria",
+    "liveError": "Impossibile caricare i torrent che sono ora in qBittorrent: {{message}}",
+    "liveNote": "Torrent, Dimensione e Distribuito descrivono i torrent che sono ora in qBittorrent, non il periodo. Distribuito è il loro caricamento totale diviso per la loro dimensione.",
+    "categoryNote": "qui salva i totali delle categorie per ogni giorno UTC. Un periodo che inizia o finisce dentro un giorno UTC conta quel giorno intero, quindi il totale delle categorie può differire dai numeri in alto.",
+    "baselineNote": "Dall’inizio, ogni riga include la base iniziale dei suoi torrent."
+  },
+  "detail": {
+    "share": "Quota del caricamento",
+    "shareOf": "di {{total}}",
+    "crossSeed": "Dai cross-seed",
+    "crossSeedShare": "{{percent}} del suo caricamento",
+    "bestHour": "Ora migliore",
+    "bestDay": "Giorno migliore",
+    "averageHour": "Media per ora",
+    "averageDay": "Media per giorno",
+    "chartHour": "{{group}} per ora",
+    "chartDay": "{{group}} per giorno",
+    "chartLegend": "Upload sopra la linea, download sotto"
+  }
 }

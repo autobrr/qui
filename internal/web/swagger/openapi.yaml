@@ -3571,6 +3571,13 @@ paths:
           schema:
             type: string
             enum: [tracker, category]
+        - name: group
+          in: query
+          description: >-
+            Limits the answer to the rows of one Tracker group or one category, by the group name of a row. An empty value
+            selects the torrents with no category. Leave it out for each group.
+          schema:
+            type: string
         - name: timeZone
           in: query
           description: >-
@@ -3711,6 +3718,34 @@ paths:
           description: Invalid instance ID or query
         '500':
           description: Failed to read transfer history
+
+  /api/instances/{instanceID}/tracker-groups:
+    get:
+      tags:
+        - Transfer History
+      summary: Get the torrents of an instance by Tracker group
+      description: >-
+        Returns the torrents that are in qBittorrent now, added up by Tracker group. A torrent counts toward one group, also
+        when it has more than one tracker domain. Tracker customizations apply. The numbers do not come from the transfer
+        history, so a deleted torrent is not in them.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: One entry for each Tracker group, ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LiveTrackerGroup'
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to read tracker groups
 
   /api/transfer-history/status:
     get:
@@ -10783,6 +10818,24 @@ components:
           format: int64
         baseline:
           $ref: '#/components/schemas/TransferHistoryBytes'
+
+    LiveTrackerGroup:
+      type: object
+      properties:
+        group:
+          type: string
+          description: The name of the Tracker group, as in the rows of the transfer history.
+        torrents:
+          type: integer
+          description: Number of torrents of the group.
+        size:
+          type: integer
+          format: int64
+          description: Total size of the torrents. Torrents of the group that share one content path count once.
+        uploaded:
+          type: integer
+          format: int64
+          description: Lifetime upload of the torrents.
 
     TransferHistoryLibraryRow:
       type: object

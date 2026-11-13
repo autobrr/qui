@@ -5,7 +5,7 @@
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { byteTicks, formatGapLength, labelledGaps, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
-import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -33,7 +33,7 @@ interface TransferChartProps {
 export function TransferChart({ bars, groups, metric, unit, displayName }: TransferChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const hour12 = usePersistedDateTimePreferences().preferences.timeFormat === "12h"
+  const { formatStart, formatTick } = useBucketFormat(unit)
 
   const config = useMemo<ChartConfig>(() => {
     const entries: ChartConfig = {}
@@ -63,8 +63,6 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const otherGroups = useMemo(() => new Set(bars.flatMap(bar => [...bar.bytes].filter(([group, bytes]) => bytes[metric] > 0 && !groups.includes(group)).map(([group]) => group))).size, [bars, groups, metric])
   const hasOther = otherGroups > 0
   const keys = [...groups.map((_, index) => `s${index}`), ...(hasOther ? [OTHER] : [])]
-  const formatStart = (start: number, width: ChartUnit) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
-  const formatTick = (start: number) => unit === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", hour: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short" })
 
   return (
     <ChartContainer config={config} className="aspect-auto h-[300px] w-full">
