@@ -60,11 +60,12 @@ type deleteNote struct {
 // that the torrent is gone, or until a reading from 5 minutes or more after
 // the note still holds the torrent. When a torrent has more than one note, its
 // delete has the cause of the first one. A delete without a note has the
-// cause CauseOutside. A note after Shutdown does nothing.
+// cause CauseOutside. A note after Shutdown or while recording is off does
+// nothing: no reading clears the notes while recording is off.
 func (m *Module) NoteDelete(n DeleteNote) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !m.stopping {
+	if !m.stopping && (!m.settingsLoaded || m.settings.Recording) {
 		m.notes = append(m.notes, n)
 	}
 }

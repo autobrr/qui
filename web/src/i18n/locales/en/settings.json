@@ -12,6 +12,7 @@
     "externalPrograms": "External Programs",
     "notifications": "Notifications",
     "dateTime": "Time & Language",
+    "statistics": "Statistics",
     "premiumThemes": "Themes",
     "security": "Security",
     "logs": "Logs"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "Date and time preferences saved",
       "error": "Failed to save date and time preferences"
+    }
+  },
+  "statistics": {
+    "cardTitle": "Statistics",
+    "cardDescription": "qui records the upload and download of each torrent in its database. These settings apply to all instances.",
+    "recording": {
+      "label": "Record transfer history",
+      "description": "While this is off, qui records nothing and keeps the stored history. The time while it is off becomes a recording gap."
+    },
+    "retention": {
+      "label": "Keep daily detail for",
+      "description": "After this time, qui folds the hourly totals into days, and the daily bytes of each torrent into one row for each year. The totals stay the same. When you select a shorter time, qui folds the older detail at the next reading, and you cannot get it back.",
+      "days90": "90 days",
+      "days400": "400 days",
+      "forever": "Forever"
+    },
+    "size": {
+      "label": "History size"
+    },
+    "loadFailed": "Failed to load the Statistics settings",
+    "toasts": {
+      "saved": "Statistics settings saved",
+      "saveFailed": "Failed to save the Statistics settings"
     }
   },
   "security": {

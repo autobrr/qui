@@ -12,6 +12,7 @@
     "externalPrograms": "Externí programy",
     "notifications": "Notifikace",
     "dateTime": "Čas a jazyk",
+    "statistics": "Statistiky",
     "premiumThemes": "Motivy",
     "security": "Bezpečnost",
     "logs": "Logy"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "Nastavení data a času uložena",
       "error": "Nepodařilo se uložit nastavení data a času"
+    }
+  },
+  "statistics": {
+    "cardTitle": "Statistiky",
+    "cardDescription": "qui zaznamenává odeslaná a stažená data každého torrentu ve své databázi. Tato nastavení platí pro všechny instance.",
+    "recording": {
+      "label": "Zaznamenávat historii přenosů",
+      "description": "Když je vypnuto, qui nic nezaznamenává a uloženou historii ponechá. Doba, kdy je vypnuto, se stane mezerou v záznamu."
+    },
+    "retention": {
+      "label": "Uchovávat denní podrobnosti po dobu",
+      "description": "Po této době qui sloučí hodinové součty do dnů a denní bajty každého torrentu do jednoho řádku za rok. Součty zůstanou stejné. Když zvolíte kratší dobu, qui starší podrobnosti sloučí při příštím čtení a nelze je obnovit.",
+      "days90": "90 dní",
+      "days400": "400 dní",
+      "forever": "Navždy"
+    },
+    "size": {
+      "label": "Velikost historie"
+    },
+    "loadFailed": "Nastavení statistik se nepodařilo načíst",
+    "toasts": {
+      "saved": "Nastavení statistik uloženo",
+      "saveFailed": "Nastavení statistik se nepodařilo uložit"
     }
   },
   "security": {

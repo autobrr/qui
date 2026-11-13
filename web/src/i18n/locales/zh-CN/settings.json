@@ -12,6 +12,7 @@
     "externalPrograms": "外部程序",
     "notifications": "通知",
     "dateTime": "时间与语言",
+    "statistics": "统计",
     "premiumThemes": "主题",
     "security": "安全",
     "logs": "日志"
@@ -394,6 +395,29 @@
     "toasts": {
       "success": "日期和时间偏好已保存",
       "error": "保存日期和时间偏好失败"
+    }
+  },
+  "statistics": {
+    "cardTitle": "统计",
+    "cardDescription": "qui 会在数据库中记录每个种子的上传和下载。这些设置适用于所有实例。",
+    "recording": {
+      "label": "记录传输历史",
+      "description": "关闭时，qui 不记录任何内容，并保留已存储的历史。关闭期间会成为记录空缺。"
+    },
+    "retention": {
+      "label": "保留每日详情",
+      "description": "超过此时间后，qui 会把每小时的合计合并为天，并把每个种子的每日字节合并为每年一行。合计保持不变。选择更短的时间后，qui 会在下一次读取时合并较早的详情，且无法恢复。",
+      "days90": "90 天",
+      "days400": "400 天",
+      "forever": "永久"
+    },
+    "size": {
+      "label": "历史大小"
+    },
+    "loadFailed": "无法加载统计设置",
+    "toasts": {
+      "saved": "统计设置已保存",
+      "saveFailed": "无法保存统计设置"
     }
   },
   "security": {

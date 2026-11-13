@@ -76,13 +76,33 @@ type Module struct {
 	customizations *models.TrackerCustomizationStore
 	parser         *releases.Parser
 
-	mu       sync.Mutex
-	queue    []Reading
-	notes    []DeleteNote
-	barriers []chan struct{}
-	stopping bool
-	wake     chan struct{}
-	done     chan struct{}
+	// settingsMu keeps the order of two SetSettings calls.
+	settingsMu sync.Mutex
+	// foldMu keeps a transfer query out of a fold of the hours.
+	foldMu    sync.RWMutex
+	foldRun   sync.Mutex
+	folds     sync.WaitGroup
+	foldCtx   context.Context
+	stopFolds context.CancelFunc
+
+	sizeMu sync.Mutex
+	size   int64
+	// sizeAt is when size was measured, or zero when it must be measured again.
+	sizeAt time.Time
+
+	mu             sync.Mutex
+	queue          []Reading
+	notes          []DeleteNote
+	barriers       []chan struct{}
+	stopping       bool
+	settings       Settings
+	settingsLoaded bool
+	// pause is set when recording goes off, and refold when the Detail
+	// retention changes, until the worker takes them.
+	pause  bool
+	refold bool
+	wake   chan struct{}
+	done   chan struct{}
 
 	// The worker owns these until it closes done.
 	instances map[int]*instance
@@ -94,6 +114,8 @@ type Module struct {
 	deleteNotes map[int]map[string][]deleteNote
 	mapper      *trackergroup.Mapper
 	shutdownErr error
+	// foldedDay is the UTC day of the last fold.
+	foldedDay int64
 }
 
 // New returns a running module that stores the history in db and names
@@ -109,16 +131,17 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		reloads:        make(map[int]struct{}),
 		deleteNotes:    make(map[int]map[string][]deleteNote),
 	}
+	m.foldCtx, m.stopFolds = context.WithCancel(context.Background())
 	go m.run()
 	return m
 }
 
 // Record gives the module a reading. It never waits for the database, and
 // the module takes the reading: the caller must not change it after the call.
-// A reading after Shutdown does nothing.
+// A reading after Shutdown or while recording is off does nothing.
 func (m *Module) Record(r Reading) {
 	m.mu.Lock()
-	if m.stopping {
+	if m.stopping || (m.settingsLoaded && !m.settings.Recording) {
 		m.mu.Unlock()
 		return
 	}
@@ -193,32 +216,117 @@ func (m *Module) settle(ctx context.Context) error {
 
 func (m *Module) run() {
 	defer close(m.done)
+	defer func() {
+		m.stopFolds()
+		m.folds.Wait()
+	}()
 	for range m.wake {
-		m.mu.Lock()
-		readings, notes, barriers, stopping := m.queue, m.notes, m.barriers, m.stopping
-		m.queue, m.notes, m.barriers = nil, nil, nil
-		m.mu.Unlock()
-
-		for _, n := range notes {
+		settingsErr := m.settingsForReadings()
+		w, ok := m.take(settingsErr)
+		if !ok {
+			// The readings came after the check: the next wake reads the
+			// settings, and only then do the queries before it get their answer.
+			m.signal()
+			continue
+		}
+		if w.refold {
+			m.foldedDay = 0
+		}
+		if w.pause {
+			m.pauseInstances()
+		}
+		for _, n := range w.notes {
 			m.keep(n, false)
 		}
-		for _, r := range readings {
+		for _, r := range w.readings {
 			m.process(r)
+			m.foldIfNewDay(dayOf(r.Time), w.settings.DetailRetentionDays)
 		}
-		if stopping {
-			errs := make([]error, 0, len(m.instances))
-			for _, inst := range m.instances {
-				errs = append(errs, m.write(inst))
-			}
-			m.shutdownErr = errors.Join(errs...)
+		if w.stopping {
+			m.shutdownErr = m.writeAll(w.dropped, settingsErr)
 		}
-		for _, b := range barriers {
+		for _, b := range w.barriers {
 			close(b)
 		}
-		if stopping {
+		if w.stopping {
 			return
 		}
 	}
+}
+
+// work is what the worker takes at one wake.
+type work struct {
+	settings Settings
+	readings []Reading
+	notes    []DeleteNote
+	barriers []chan struct{}
+	// dropped is the number of readings that wait for settings that the
+	// module could not read.
+	dropped                 int
+	stopping, pause, refold bool
+}
+
+// take takes the work of one wake. It reports false, and takes nothing, when
+// readings wait for settings that the module did not try to read yet.
+func (m *Module) take(settingsErr error) (work, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.settingsLoaded && len(m.queue) > 0 && settingsErr == nil {
+		return work{}, false
+	}
+	w := work{settings: m.settings, barriers: m.barriers, stopping: m.stopping, pause: m.pause, refold: m.refold}
+	m.barriers, m.pause, m.refold = nil, false, false
+	switch {
+	case !m.settingsLoaded:
+		// The delete notes wait until the settings tell whether recording
+		// was on when they came.
+		w.dropped = len(m.queue)
+	case m.settings.Recording:
+		w.readings, m.queue = m.queue, nil
+		w.notes, m.notes = m.notes, nil
+	default:
+		// The notes before the switch went off keep their cause for the next
+		// reading after the switch goes on. The other notes came while
+		// recording was off, after a start, and no reading clears them.
+		m.queue = nil
+		if w.pause {
+			w.notes = m.notes
+		}
+		m.notes = nil
+	}
+	return w, true
+}
+
+// writeAll writes the changes of each instance, at shutdown, and returns the
+// error of each write that failed and of the readings that it drops.
+func (m *Module) writeAll(dropped int, settingsErr error) error {
+	errs := make([]error, 0, len(m.instances)+1)
+	for _, inst := range m.instances {
+		errs = append(errs, m.write(inst))
+	}
+	if dropped > 0 {
+		errs = append(errs, fmt.Errorf("drop %d readings that wait for the settings: %w", dropped, settingsErr))
+	}
+	return errors.Join(errs...)
+}
+
+// settingsForReadings reads the settings when readings wait, and returns the
+// error of that read. Readings wait until the module knows whether recording
+// is on.
+func (m *Module) settingsForReadings() error {
+	m.mu.Lock()
+	waiting, known := len(m.queue) > 0, m.settingsLoaded
+	m.mu.Unlock()
+	if !waiting || known {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+	if _, err := m.currentSettings(ctx); err != nil {
+		log.Warn().Err(err).Msg("transfer history: failed to read the settings; the next reading tries again")
+		return err
+	}
+	return nil
 }
 
 func (m *Module) process(r Reading) {

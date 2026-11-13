@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strconv"
@@ -154,21 +155,41 @@ func (h *TransferHistoryHandler) Deletes(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, answer)
 }
 
-type transferHistoryStatusResponse struct {
-	Instances []transferhistory.InstanceStatus `json:"instances"`
-}
-
-// Status returns the instances that have history, also the removed ones.
+// Status returns the instances that have history, also the removed ones, the
+// size of the history, and the Statistics settings.
 // GET /api/transfer-history/status
 func (h *TransferHistoryHandler) Status(w http.ResponseWriter, r *http.Request) {
-	instances, err := h.module.Status(r.Context())
+	status, err := h.module.Status(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("transfer history: failed to read the status")
 		RespondError(w, http.StatusInternalServerError, "Failed to read transfer history status")
 		return
 	}
-	if instances == nil {
-		instances = []transferhistory.InstanceStatus{}
+	if status.Instances == nil {
+		status.Instances = []transferhistory.InstanceStatus{}
 	}
-	RespondJSON(w, http.StatusOK, transferHistoryStatusResponse{Instances: instances})
+	RespondJSON(w, http.StatusOK, status)
+}
+
+// UpdateSettings stores the recording switch and the Detail retention.
+// PUT /api/transfer-history/settings
+func (h *TransferHistoryHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Recording           *bool `json:"recording"`
+		DetailRetentionDays *int  `json:"detailRetentionDays"`
+	}
+	if err := json.UnmarshalRead(r.Body, &body); err != nil || body.Recording == nil || body.DetailRetentionDays == nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body: give recording and detailRetentionDays")
+		return
+	}
+	settings := transferhistory.Settings{Recording: *body.Recording, DetailRetentionDays: *body.DetailRetentionDays}
+	switch err := h.module.SetSettings(r.Context(), settings); {
+	case errors.Is(err, transferhistory.ErrInvalidSettings):
+		RespondError(w, http.StatusBadRequest, err.Error())
+	case err != nil:
+		log.Error().Err(err).Msg("transfer history: failed to save the settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to save transfer history settings")
+	default:
+		RespondJSON(w, http.StatusOK, settings)
+	}
 }

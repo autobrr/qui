@@ -3541,7 +3541,8 @@ paths:
       description: >-
         Returns the upload and download that qui recorded for each torrent of the instance, added up by Tracker group or by
         category. A row can be wider than the bucket that the query asks for: qui stores the category totals for each UTC day,
-        so a query for categories by hour returns day rows. The width field of each row tells its bucket. Without a start, the
+        so a query for categories by hour returns day rows. After the Detail retention, qui folds the hourly totals into days, so a
+        query for hours in a folded period also returns day rows. The width field of each row tells its bucket. Without a start, the
         period has no start, and each total row also holds the Baseline: the bytes that the torrents had when qui first recorded
         the instance. A removed instance keeps its history.
       parameters:
@@ -3715,11 +3716,11 @@ paths:
     get:
       tags:
         - Transfer History
-      summary: List the instances that have transfer history
-      description: Returns each instance that has transfer history, also a removed one, with its name and the time of its first recording. An API key with an instance limit cannot use this route.
+      summary: Get the status of the transfer history
+      description: Returns each instance that has transfer history, also a removed one, with its name and the time of its first recording. It also returns the space that the history takes in the database and the Statistics settings. An API key with an instance limit cannot use this route.
       responses:
         '200':
-          description: Instances with transfer history
+          description: Instances with transfer history, the size of the history, and the settings
           content:
             application/json:
               schema:
@@ -3729,8 +3730,42 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/TransferHistoryInstance'
+                  historyBytes:
+                    type: integer
+                    format: int64
+                    description: Bytes that the tables of the transfer history and their indexes take in the database. qui measures it at most once an hour and after each fold.
+                  settings:
+                    $ref: '#/components/schemas/TransferHistorySettings'
         '500':
           description: Failed to read transfer history status
+
+  /api/transfer-history/settings:
+    put:
+      tags:
+        - Transfer History
+      summary: Change the Statistics settings
+      description: >-
+        Sets the recording switch and the Detail retention for all instances. While recording is off, qui records nothing and
+        keeps the stored history. When recording goes on again, the bytes of the time off land on the first hour after it, with
+        the length of that time as a Recording gap. After the Detail retention, qui folds the hourly totals into days, and the
+        daily bytes of each torrent into one row for each year. An API key with an instance limit cannot use this route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferHistorySettings'
+      responses:
+        '200':
+          description: The stored settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferHistorySettings'
+        '400':
+          description: A field is missing, or the Detail retention is not 0, 90, or 400 days
+        '500':
+          description: Failed to save transfer history settings
 
   /api/instances/{instanceID}/automations/{ruleID}/apply:
     post:
@@ -10729,7 +10764,7 @@ components:
         start:
           type: string
           format: date-time
-          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups and UTC days for categories, and starts at the first of them. Absent for a total row of a period with no start.
+          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups and UTC days for categories and for the folded hours, and starts at the first of them. Absent for a total row of a period with no start.
         width:
           type: string
           enum: [hour, day, total]
@@ -10815,6 +10850,18 @@ components:
             name:
               type: string
               description: Name of the automation rule or of the Client Proxy API key. Absent for the other kinds.
+
+    TransferHistorySettings:
+      type: object
+      required: [recording, detailRetentionDays]
+      properties:
+        recording:
+          type: boolean
+          description: Whether qui records the transfer history. The default is true.
+        detailRetentionDays:
+          type: integer
+          enum: [0, 90, 400]
+          description: Days that qui keeps the hourly totals and the daily bytes of each torrent. 0 keeps them forever. The default is 400.
 
     TransferHistoryInstance:
       type: object

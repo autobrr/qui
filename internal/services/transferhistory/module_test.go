@@ -69,16 +69,19 @@ func public(t transferhistory.Torrent) transferhistory.Torrent {
 	return t
 }
 
-// step is a reading, a delete note, a check, or a restart or a crash of the
-// module.
+// step is a reading, a delete note, new settings, a check, or a restart or a
+// crash of the module.
 type step struct {
-	reading *transferhistory.Reading
-	note    *transferhistory.DeleteNote
-	check   *check
-	deletes *deletesCheck
-	library *libraryCheck
-	restart bool
-	crash   bool
+	reading  *transferhistory.Reading
+	note     *transferhistory.DeleteNote
+	settings *transferhistory.Settings
+	// foldsDone waits until each fold that the module started ends.
+	foldsDone bool
+	check     *check
+	deletes   *deletesCheck
+	library   *libraryCheck
+	restart   bool
+	crash     bool
 }
 
 type check struct {
@@ -135,6 +138,10 @@ func runSteps(t *testing.T, db *database.DB, steps []step) {
 			require.NoError(t, err, "step %d", i)
 		case s.note != nil:
 			module.NoteDelete(*s.note)
+		case s.settings != nil:
+			require.NoError(t, module.SetSettings(t.Context(), *s.settings), "step %d", i)
+		case s.foldsDone:
+			transferhistory.WaitForFolds(module)
 		case s.deletes != nil:
 			answer, err := module.Deletes(t.Context(), s.deletes.query)
 			require.NoError(t, err, "step %d", i)
@@ -520,7 +527,7 @@ func TestStatusKeepsTheNameOfARemovedInstancePostgresIntegration(t *testing.T) {
 
 		status, err := module.Status(t.Context())
 		require.NoError(t, err)
-		require.Equal(t, []transferhistory.InstanceStatus{{InstanceID: recorded.ID, Name: "Seedbox", FirstRecordedAt: t0}}, status)
+		require.Equal(t, []transferhistory.InstanceStatus{{InstanceID: recorded.ID, Name: "Seedbox", FirstRecordedAt: t0}}, status.Instances)
 	})
 }
 

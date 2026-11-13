@@ -61,9 +61,10 @@ func (a *Adapter) instance(instanceID int) *adapterInstance {
 	return inst
 }
 
-// HandleSyncUpdate runs in the sync loop, so it builds the reading in a goroutine.
+// HandleSyncUpdate runs in the sync loop, so it builds the reading in a
+// goroutine. While recording is off, it builds no reading.
 func (a *Adapter) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
-	if update.Snapshot == nil {
+	if update.Snapshot == nil || !a.module.recording() {
 		return
 	}
 	now := update.Snapshot.Time().UTC()
@@ -87,7 +88,9 @@ func (a *Adapter) takePending(instanceID int) {
 	inst := a.instance(instanceID)
 	inst.timer = nil
 	update := inst.pending
-	if update == nil {
+	// While recording is off, the adapter builds no reading.
+	if update == nil || !a.module.recording() {
+		inst.pending = nil
 		a.mu.Unlock()
 		return
 	}
