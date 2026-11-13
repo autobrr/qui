@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { computePieceBarColumns, type PieceBarColumn } from "@/lib/piece-bar"
+import { computePieceBarColumns, computePieceBarFill } from "@/lib/piece-bar"
 import { memo, useEffect, useRef } from "react"
 
 interface PieceBarProps {
@@ -12,23 +12,9 @@ interface PieceBarProps {
   isComplete?: boolean // When true and no pieceStates, show solid green bar
 }
 
-type Rgb = readonly [number, number, number]
-
-const FINISHED_RGB: Rgb = [34, 197, 94]    // green-500
-const DOWNLOADING_RGB: Rgb = [234, 179, 8] // yellow-500
-const EMPTY_RGB: Rgb = [63, 63, 70]        // zinc-700
-const BACKGROUND_COLOR = "#27272a"         // zinc-800 (slightly lighter than empty for contrast)
-
-function toCssColor([r, g, b]: Rgb): string {
-  return `rgb(${r}, ${g}, ${b})`
-}
-
-function columnColor({ finished, downloading }: PieceBarColumn): string {
-  const empty = Math.max(0, 1 - finished - downloading)
-  const channel = (i: number) =>
-    Math.round(EMPTY_RGB[i] * empty + FINISHED_RGB[i] * finished + DOWNLOADING_RGB[i] * downloading)
-  return toCssColor([channel(0), channel(1), channel(2)])
-}
+const FINISHED_COLOR = "#22c55e"    // green-500
+const DOWNLOADING_COLOR = "#eab308" // yellow-500
+const EMPTY_COLOR = "#3f3f46"       // zinc-700
 
 export const PieceBar = memo(function PieceBar({
   pieceStates,
@@ -64,7 +50,7 @@ export const PieceBar = memo(function PieceBar({
       canvas.style.height = `${barHeight}px`
       const radius = 4 * dpr
 
-      ctx.fillStyle = BACKGROUND_COLOR
+      ctx.fillStyle = EMPTY_COLOR
       ctx.beginPath()
       ctx.roundRect(0, 0, canvas.width, canvas.height, radius)
       ctx.fill()
@@ -75,8 +61,12 @@ export const PieceBar = memo(function PieceBar({
       columns.forEach((column, i) => {
         const left = Math.round(i * columnWidth)
         const right = Math.round((i + 1) * columnWidth)
-        ctx.fillStyle = columnColor(column)
-        ctx.fillRect(left, 0, right - left, canvas.height)
+        const { finishedPixels, downloadingPixels } = computePieceBarFill(column, canvas.height)
+        const finishedTop = canvas.height - finishedPixels
+        ctx.fillStyle = FINISHED_COLOR
+        ctx.fillRect(left, finishedTop, right - left, finishedPixels)
+        ctx.fillStyle = DOWNLOADING_COLOR
+        ctx.fillRect(left, finishedTop - downloadingPixels, right - left, downloadingPixels)
       })
 
       // Apply rounded corners mask
@@ -117,7 +107,7 @@ export const PieceBar = memo(function PieceBar({
     return (
       <div
         className="w-full h-3 rounded"
-        style={{ backgroundColor: toCssColor(FINISHED_RGB) }}
+        style={{ backgroundColor: FINISHED_COLOR }}
       />
     )
   }

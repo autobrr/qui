@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { computePieceBarColumns } from "@/lib/piece-bar"
+import { computePieceBarColumns, computePieceBarFill } from "@/lib/piece-bar"
 
 const MISSING = 0
 const DOWNLOADING = 1
@@ -68,5 +68,36 @@ describe("computePieceBarColumns", () => {
 
     expect(columns).toHaveLength(2000)
     expect(Math.abs(meanFinished - 0.34)).toBeLessThanOrEqual(0.01)
+  })
+})
+
+describe("computePieceBarFill", () => {
+  it("fills the whole height for a finished column and nothing for a missing column", () => {
+    expect(computePieceBarFill({ finished: 1, downloading: 0 }, 12)).toEqual({ finishedPixels: 12, downloadingPixels: 0 })
+    expect(computePieceBarFill({ finished: 0, downloading: 0 }, 12)).toEqual({ finishedPixels: 0, downloadingPixels: 0 })
+  })
+
+  it("fills a third of the height for a column that is one third finished", () => {
+    expect(computePieceBarFill({ finished: 0.33, downloading: 0 }, 12)).toEqual({ finishedPixels: 4, downloadingPixels: 0 })
+  })
+
+  it("keeps one pixel for a finished share too small to round to a pixel", () => {
+    expect(computePieceBarFill({ finished: 0.01, downloading: 0 }, 12)).toEqual({ finishedPixels: 1, downloadingPixels: 0 })
+  })
+
+  it("leaves one pixel empty when a column is almost finished", () => {
+    expect(computePieceBarFill({ finished: 0.99, downloading: 0 }, 12)).toEqual({ finishedPixels: 11, downloadingPixels: 0 })
+  })
+
+  it("stacks the downloading share on the finished share", () => {
+    expect(computePieceBarFill({ finished: 0.5, downloading: 0.17 }, 12)).toEqual({ finishedPixels: 6, downloadingPixels: 2 })
+  })
+
+  it("keeps one pixel for a small downloading share on an almost finished column", () => {
+    expect(computePieceBarFill({ finished: 0.98, downloading: 0.02 }, 12)).toEqual({ finishedPixels: 11, downloadingPixels: 1 })
+  })
+
+  it("stays inside the height when rounded shares add up to more than 1", () => {
+    expect(computePieceBarFill({ finished: 0.01, downloading: 1 }, 12)).toEqual({ finishedPixels: 1, downloadingPixels: 11 })
   })
 })

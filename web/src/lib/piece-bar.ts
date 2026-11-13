@@ -47,3 +47,27 @@ export function computePieceBarColumns(pieceStates: readonly number[], width: nu
 
   return columns
 }
+
+export interface PieceBarFill {
+  finishedPixels: number
+  downloadingPixels: number
+}
+
+const FLOAT_TOLERANCE = 1e-9
+
+/**
+ * Returns the height in pixels of the finished part and of the downloading part of one
+ * column, for a bar of `height` pixels (3 or more). The two parts leave 1 pixel or more
+ * free when the column also holds missing pieces, and each part that the column holds
+ * is 1 pixel or more.
+ */
+export function computePieceBarFill({ finished, downloading }: PieceBarColumn, height: number): PieceBarFill {
+  const toPixels = (share: number) => (share > 0 ? Math.max(1, Math.round(share * height)) : 0)
+  const emptyPixels = finished + downloading < 1 - FLOAT_TOLERANCE ? 1 : 0
+  const finishedMinimum = finished > 0 ? 1 : 0
+
+  const downloadingPixels = Math.min(toPixels(downloading), height - emptyPixels - finishedMinimum)
+  const finishedPixels = Math.min(toPixels(finished), height - emptyPixels - downloadingPixels)
+
+  return { finishedPixels, downloadingPixels }
+}
