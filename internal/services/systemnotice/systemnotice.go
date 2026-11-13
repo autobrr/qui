@@ -40,7 +40,7 @@ var definitions = map[Kind]definition{
 	RecordingStopped: {
 		severity: SeverityError,
 		title:    "Recording stopped",
-		fix:      "qui cannot write the transfer history. It keeps the changes in memory and tries again at the next write. Make sure that the disk of the qui database has free space and that qui can write the database file.",
+		fix:      "qui cannot write the transfer history. It tries again at the next write. Make sure that the disk of the qui database has free space and that qui can write the database file.",
 	},
 }
 

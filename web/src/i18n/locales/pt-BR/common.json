@@ -171,7 +171,7 @@
     "kinds": {
       "recording_stopped": {
         "title": "Gravação parada",
-        "fix": "O qui mantém as alterações na memória e tenta novamente na próxima gravação. Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados."
+        "fix": "O qui tenta novamente na próxima gravação. Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados."
       }
     },
     "unknown": {

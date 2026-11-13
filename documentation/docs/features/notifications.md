@@ -19,7 +19,7 @@ qui sends notifications to the Notifiarr API and to Shoutrrr targets. Configure 
 Notes:
 
 - If a qui update adds new events, existing targets keep their saved event list.
-- A target gets `system_notice` only when you select it. This rule also applies to a target with no saved event list.
+- A target that existed before the update does not get `system_notice`. To get it, select it on the target. A target with no saved event list does not get it either.
 - qui truncates long messages to stay within provider limits.
 - Discord and Notifiarr targets receive rich embeds with fields. Other services receive plain text.
 

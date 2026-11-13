@@ -171,7 +171,7 @@
     "kinds": {
       "recording_stopped": {
         "title": "Enregistrement arrêté",
-        "fix": "qui garde les modifications en mémoire et réessaie à la prochaine écriture. Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données."
+        "fix": "qui réessaie à la prochaine écriture. Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données."
       }
     },
     "unknown": {

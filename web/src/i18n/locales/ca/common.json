@@ -171,7 +171,7 @@
     "kinds": {
       "recording_stopped": {
         "title": "Enregistrament aturat",
-        "fix": "qui desa els canvis a la memòria i ho torna a provar a la propera escriptura. Assegura't que el disc té espai lliure i que qui pot escriure el fitxer de la base de dades."
+        "fix": "qui ho torna a provar a la propera escriptura. Assegura't que el disc té espai lliure i que qui pot escriure el fitxer de la base de dades."
       }
     },
     "unknown": {

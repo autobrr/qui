@@ -171,7 +171,7 @@
     "kinds": {
       "recording_stopped": {
         "title": "Recording stopped",
-        "fix": "qui keeps the changes in memory and tries again at the next write. Make sure that the disk has free space and that qui can write its database file."
+        "fix": "qui tries again at the next write. Make sure that the disk has free space and that qui can write its database file."
       }
     },
     "unknown": {

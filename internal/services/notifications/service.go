@@ -112,6 +112,11 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	s.startOnce.Do(func() {
+		// The store keeps the targets after the first read, so an event that
+		// a database fault causes, such as a System notice, still finds them.
+		if _, err := s.store.ListEnabled(ctx); err != nil {
+			s.logger.Warn().Err(err).Msg("notifications: failed to read the targets at start")
+		}
 		for range defaultWorkers {
 			go s.worker(ctx)
 		}

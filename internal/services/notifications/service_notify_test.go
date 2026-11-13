@@ -83,3 +83,21 @@ func TestOnlyATargetThatPicksSystemNoticeGetsIt(t *testing.T) {
 	svc.Notify(ctx, Event{Type: EventSystemNotice})
 	require.Len(t, svc.queue, 1)
 }
+
+func TestStartReadsTheTargetsSoAnEventAfterADatabaseFaultStillFindsThem(t *testing.T) {
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "notify-start")
+	store := models.NewNotificationTargetStore(db)
+	_, err := store.Create(ctx, &models.NotificationTargetCreate{
+		Name: "system notices", URL: "generic://127.0.0.1/hook", Enabled: true,
+		EventTypes: []string{string(EventSystemNotice)},
+	})
+	require.NoError(t, err)
+
+	NewService(store, nil, zerolog.Nop()).Start(ctx)
+	require.NoError(t, db.Close())
+
+	targets, err := store.ListEnabled(ctx)
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
+}
