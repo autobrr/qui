@@ -265,7 +265,7 @@ Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks
   - **FreeBSD**: not supported
 
 :::note
-Windows reflink mode uses ReFS block cloning and requires a ReFS filesystem. qui does not support NTFS. Before cloning, qui makes the new destination file use the source file’s Integrity Streams setting, even when the destination folder has a different setting. The source file’s setting stays unchanged. If the matched source path is a symlink, qui resolves it before cloning. The resolved source and the reflink base directory must reside on the same ReFS volume. If reflink creation fails, fallback depends on the "Fallback to regular mode" setting.
+Windows reflink mode uses ReFS block cloning and requires a ReFS filesystem. qui does not support NTFS. Before cloning, qui makes the new destination file use the source file's Integrity Streams setting, even when the destination folder has a different setting. The source file's setting stays unchanged. If the matched source path is a symlink, qui resolves it before cloning. The resolved source and the reflink base directory must reside on the same ReFS volume. The "Fallback to regular mode" setting can allow fallback when the support probe fails. Reflink creation errors fail the cross-seed without falling back to regular mode.
 :::
 
 :::tip

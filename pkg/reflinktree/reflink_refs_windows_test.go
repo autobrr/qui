@@ -19,14 +19,6 @@ import (
 	"github.com/autobrr/qui/pkg/sharedextents"
 )
 
-type refsTestIntegrity struct {
-	ChecksumAlgorithm        uint16
-	Reserved                 uint16
-	Flags                    uint32
-	ChecksumChunkSizeInBytes uint32
-	ClusterSizeInBytes       uint32
-}
-
 // regression: #4074
 func TestCloneFile_ReFSIntegrity(t *testing.T) {
 	root := os.Getenv("QUI_REFS_TEST_DIR")
@@ -117,18 +109,18 @@ func TestCloneFile_ReFSIntegrity(t *testing.T) {
 	}
 }
 
-func readRefsTestIntegrity(t testing.TB, path string) refsTestIntegrity {
+func readRefsTestIntegrity(t testing.TB, path string) fileIntegrityInformation {
 	t.Helper()
 	handle := openRefsTestHandle(t, path, windows.GENERIC_READ)
 	defer func() { require.NoError(t, windows.CloseHandle(handle)) }()
-	var info refsTestIntegrity
+	var info fileIntegrityInformation
 	var returned uint32
 	require.NoError(t, windows.DeviceIoControl(handle, windows.FSCTL_GET_INTEGRITY_INFORMATION,
 		nil, 0, (*byte)(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)), &returned, nil))
 	return info
 }
 
-func setRefsTestIntegrity(t testing.TB, path string, algorithm uint16) refsTestIntegrity {
+func setRefsTestIntegrity(t testing.TB, path string, algorithm uint16) fileIntegrityInformation {
 	t.Helper()
 	handle := openRefsTestHandle(t, path, windows.GENERIC_READ|windows.GENERIC_WRITE)
 	defer func() { require.NoError(t, windows.CloseHandle(handle)) }()
