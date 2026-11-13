@@ -4,7 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -12,7 +12,7 @@ import "@/i18n"
 import { Statistics } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
 import type { StatisticsBar } from "@/lib/statistics"
-import type { TransferHistoryInstance, TransferHistoryRow } from "@/types"
+import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryRow } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string, options?: Record<string, unknown>) => {
@@ -40,12 +40,17 @@ vi.mock("@/components/statistics/TransferChart", () => ({
     </ul>
   ),
 }))
+vi.mock("@/components/statistics/GroupChart", () => ({
+  GroupChart: ({ bars }: { bars: StatisticsBar[] }) => <div data-testid="group-chart" data-bars={bars.length} />,
+}))
 
 const DAY = 86_400_000
 
 interface TransferRequest {
   instanceId: number
   bucket: string
+  groupBy: string | null
+  group: string | null
   from: string | null
   to: string | null
   timeZone: string | null
@@ -55,6 +60,7 @@ let statuses: TransferHistoryInstance[]
 let configuredIds: number[]
 let answer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
+let liveGroups: (instanceId: number) => LiveTrackerGroup[]
 // While set, the transfer route waits for it before it answers: for each bucket, or only for holdBucket.
 let hold: Promise<void> | undefined
 let holdBucket: string | undefined
@@ -84,6 +90,23 @@ async function expectTile(label: string, expected: string) {
   })
 }
 
+/** Returns the text of each cell of the table row whose first cell holds name. */
+function cells(table: HTMLElement, name: string): string[] {
+  const nameNode = within(table).getByText(name)
+  return [...(nameNode.closest("tr")?.querySelectorAll("td") ?? [])].map(cell => cell.textContent ?? "")
+}
+
+function expandedRows(table: HTMLElement): string[] {
+  return [...table.querySelectorAll("button[aria-expanded=true]")].map(button => button.textContent ?? "")
+}
+
+async function expectFact(label: string, expected: string) {
+  await vi.waitFor(() => {
+    const value = screen.getByText(label).nextElementSibling
+    expect(`${value?.textContent} | ${value?.nextElementSibling?.textContent ?? ""}`).toBe(expected)
+  })
+}
+
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
@@ -97,17 +120,28 @@ beforeEach(() => {
   configuredIds = [1, 2]
   statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 400)]
   answer = () => []
+  liveGroups = () => []
   server.use(
+    http.get("*/api/instances/:id/tracker-groups", ({ params }) => HttpResponse.json({ groups: liveGroups(Number(params.id)) })),
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/instances", () => HttpResponse.json(configuredIds.map(id => ({ id, name: `instance ${id}`, isActive: true })))),
     http.get("*/api/instances/:id/transfer-history", async ({ params, request }) => {
       const url = new URL(request.url)
-      const transfer = { instanceId: Number(params.id), bucket: url.searchParams.get("bucket") ?? "", from: url.searchParams.get("from"), to: url.searchParams.get("to"), timeZone: url.searchParams.get("timeZone") }
+      const transfer = {
+        instanceId: Number(params.id),
+        bucket: url.searchParams.get("bucket") ?? "",
+        groupBy: url.searchParams.get("groupBy"),
+        group: url.searchParams.get("group"),
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        timeZone: url.searchParams.get("timeZone"),
+      }
       requests.push(transfer)
       if (holdBucket === undefined || transfer.bucket === holdBucket) {
         await hold
       }
-      return HttpResponse.json({ rows: answer(transfer) })
+      const rows = answer(transfer)
+      return HttpResponse.json({ rows: transfer.group === null ? rows : rows.filter(row => row.group === transfer.group) })
     })
   )
 })
@@ -350,14 +384,25 @@ describe("Statistics", () => {
     server.use(http.get("*/api/instances/2/transfer-history", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    expect(await screen.findByText("errors.load message=database is locked")).toBeTruthy()
+    // The chart and the table both read the rows of the chart.
+    expect(await screen.findAllByText("errors.load message=database is locked")).toHaveLength(2)
     expect(screen.queryByText("chart.empty")).toBeNull()
+  })
+
+  // regression: #4099
+  it("shows the error in the table when the status fails", async () => {
+    server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
+    renderPage()
+
+    // The line at the top of the page and the table both show it.
+    expect(await screen.findAllByText("errors.load message=database is locked")).toHaveLength(2)
   })
 
   it("says that a period with no transfer has none", async () => {
     renderPage()
 
-    expect(await screen.findByText("chart.empty")).toBeTruthy()
+    // The chart and the table both say so.
+    expect(await screen.findAllByText("chart.empty")).toHaveLength(2)
     expect(screen.queryByTestId("chart")).toBeNull()
   })
 
@@ -396,5 +441,121 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(chart.children.length).toBe(2))
     expect(chart.textContent).not.toContain("tracker.private.test")
     expect(chart.textContent).toContain("groups.public")
+  })
+  it("adds up the tracker rows of the table to the numbers at the top, with the live numbers of each group", async () => {
+    answer = ({ instanceId, bucket }) => bucket === "day" ? [row("a.test", instanceId * 1024, 0, { width: "day" }), row("b.test", 512, 512, { width: "day" })] : []
+    liveGroups = () => [{ group: "a.test", torrents: 2, size: 2048, uploaded: 4096 }]
+    renderPage()
+
+    await expectTile("tiles.uploaded", "4 KiB | ")
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "a.test")).toEqual(["a.test", "3 KiB", "0 B", "∞", "+3 KiB", "4", "4 KiB", "table.seededValue value=2.00"]))
+    expect(cells(table, "b.test").slice(0, 6)).toEqual(["b.test", "1 KiB", "1 KiB", "1.00", "+0 B", "0"])
+    expect(cells(table, "table.total").slice(0, 2)).toEqual(["table.total", "4 KiB"])
+  })
+
+  // regression: #4099
+  it("keeps the live numbers of the instances that loaded when one instance fails", async () => {
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
+    liveGroups = () => [{ group: "a.test", torrents: 2, size: 2048, uploaded: 4096 }]
+    server.use(http.get("*/api/instances/2/tracker-groups", () => HttpResponse.json({ error: "Instance is disabled" }, { status: 409 })))
+    renderPage()
+
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "a.test")[5]).toBe("2"))
+    expect(await screen.findByText(/^table\.liveError message=/)).toBeTruthy()
+  })
+
+  // regression: #4099
+  it("does not ask a disabled instance for its live numbers", async () => {
+    server.use(http.get("*/api/instances", () => HttpResponse.json([{ id: 1, name: "instance 1", isActive: true }, { id: 2, name: "instance 2", isActive: false }])))
+    const liveRequests: string[] = []
+    server.use(http.get("*/api/instances/:id/tracker-groups", ({ params }) => {
+      liveRequests.push(String(params.id))
+      return HttpResponse.json({ groups: [] })
+    }))
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
+    renderPage()
+
+    await screen.findByRole("table")
+    await vi.waitFor(() => expect(liveRequests).toEqual(["1"]))
+  })
+
+  it("groups the table by category with the period columns only", async () => {
+    answer = ({ bucket, groupBy }) => groupBy === "category" && bucket === "total" ? [row("tv", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("table.groupings.category"), { button: 0 })
+
+    await vi.waitFor(() => expect(requests.some(request => request.groupBy === "category" && request.bucket === "total")).toBe(true))
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "tv")).toEqual(["tv", "2 KiB", "0 B", "∞", "+2 KiB"]))
+    expect(cells(table, "table.noCategory")[1]).toBe("1 KiB")
+    expect(within(table).queryByText("table.columns.torrents")).toBeNull()
+  })
+
+  it("includes the Baseline in a row of all time", async () => {
+    answer = ({ bucket }) => bucket === "total" ? [row("a.test", 1024, 0, { start: undefined, width: "total", baseline: { uploaded: 4096, downloaded: 0, statisticsCrossSeedUploaded: 0 } })] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("periods.all"), { button: 0 })
+
+    await expectTile("tiles.uploaded", "10 KiB | ")
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "a.test")[1]).toBe("10 KiB"))
+  })
+
+  it("opens the detail band of one row at a time, from the rows of that group", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 1024, { start: yesterday.toISOString(), width: "day", statisticsCrossSeedUploaded: 1024 }), row("b.test", 1024, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    fireEvent.click(await within(table).findByText("a.test"))
+
+    await vi.waitFor(() => expect(requests.some(request => request.group === "a.test" && request.bucket === "day" && request.groupBy === "tracker")).toBe(true))
+    await expectFact("detail.share", "75% | detail.shareOf total=8 KiB")
+    await expectFact("detail.crossSeed", "2 KiB | detail.crossSeedShare percent=33.3%")
+    await expectFact("detail.bestDay", `6 KiB | ${yesterday.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" })}`)
+    // Both instances recorded the whole 30 days, so the average divides by each day of the period.
+    await expectFact("detail.averageDay", "204.8 B | ")
+    expect(screen.getByTestId("group-chart")).toBeTruthy()
+
+    fireEvent.click(within(table).getByText("b.test"))
+
+    await vi.waitFor(() => expect(expandedRows(table)).toEqual(["b.test"]))
+    expect(screen.getAllByText("detail.share")).toHaveLength(1)
+    await expectFact("detail.share", "25% | detail.shareOf total=8 KiB")
+  })
+
+  // regression: #4099
+  it("leaves the days before the first recording out of the average of the detail band", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    statuses = [{ instanceId: 1, name: "Seedbox", firstRecordedAt: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 1).toISOString() }]
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
+
+    // The first recording is at 01:00 two days ago, so the average counts that day, yesterday, and today.
+    await expectFact("detail.averageDay", "1 KiB | ")
+  })
+
+  it("masks the tracker names and the category names of the table in incognito mode", async () => {
+    mocks.incognitoMode = [true, () => {}]
+    answer = ({ bucket, groupBy }) => {
+      if (groupBy === "category") {
+        return bucket === "total" ? [row("private-category", 1024, 0, { width: "total" })] : []
+      }
+      return bucket === "day" ? [row("tracker.private.test", 1024, 0, { width: "day" })] : []
+    }
+    renderPage()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(within(table).getAllByRole("row").length).toBeGreaterThan(2))
+    expect(table.textContent).not.toContain("tracker.private.test")
+
+    fireEvent.mouseDown(screen.getByText("table.groupings.category"), { button: 0 })
+
+    await vi.waitFor(() => expect(within(screen.getByRole("table")).queryByText("table.columns.category")).toBeTruthy())
+    await vi.waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("row").length).toBeGreaterThan(2))
+    expect(screen.getByRole("table").textContent).not.toContain("private-category")
   })
 })

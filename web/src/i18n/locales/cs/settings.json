@@ -298,7 +298,7 @@
     "loading": "Načítám cíle oznámení...",
     "loadFailed": "Nepodařilo se načíst cíle oznámení",
     "empty": "Žádné cíle oznámení nakonfigurovány. Přidejte jeden, abyste mohli začít.",
-    "allEvents": "Všechny události",
+    "allEvents": "Všechny události kromě systémového upozornění",
     "showList": "Zobrazit seznam",
     "hideList": "Skrýt seznam",
     "badges": {
@@ -413,6 +413,26 @@
     },
     "size": {
       "label": "Velikost historie"
+    },
+    "deleteHistory": {
+      "label": "Smazat historii",
+      "description": "Smaže historii přenosů jedné instance nebo všech instancí. Nelze ji obnovit.",
+      "instance": "Instance",
+      "allInstances": "Všechny instance",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Vše",
+      "before": "Vše před datem",
+      "date": "Datum",
+      "button": "Smazat historii",
+      "confirmTitle": "Smazat historii?",
+      "confirmEverything": "qui smaže celou historii instance {{name}}. Záznam začne znovu s novým výchozím stavem. Tuto akci nelze vrátit.",
+      "confirmBefore": "qui smaže historii instance {{name}} před {{date}}. Pokud záznam začal před tímto datem, smažou se i bajty z doby před prvním záznamem a „Záznam od“ se posune na toto datum. Tuto akci nelze vrátit.",
+      "sqliteSpace": "Soubor databáze si ponechá svou velikost. SQLite volné místo znovu použije pro novou historii.",
+      "postgresSpace": "Smazání všeho u všech instancí vrátí místo na disk hned. Po jiném smazání Postgres volné místo znovu použije pro novou historii.",
+      "cancel": "Zrušit",
+      "confirm": "Smazat",
+      "deleted": "Historie smazána",
+      "failed": "Historii se nepodařilo smazat"
     },
     "loadFailed": "Nastavení statistik se nepodařilo načíst",
     "toasts": {

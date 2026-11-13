@@ -298,7 +298,7 @@
     "loading": "正在載入通知目標…",
     "loadFailed": "載入通知目標失敗",
     "empty": "尚未配置通知目標。新增一個以開始接收警報。",
-    "allEvents": "全部事件",
+    "allEvents": "除系統通知外的全部事件",
     "showList": "顯示清單",
     "hideList": "隱藏清單",
     "badges": {
@@ -413,6 +413,26 @@
     },
     "size": {
       "label": "歷史大小"
+    },
+    "deleteHistory": {
+      "label": "刪除歷史",
+      "description": "刪除一個實例或所有實例的傳輸歷史。刪除後無法復原。",
+      "instance": "實例",
+      "allInstances": "所有實例",
+      "unnamedInstance": "實例 {{id}}",
+      "everything": "全部",
+      "before": "某日期之前的全部",
+      "date": "日期",
+      "button": "刪除歷史",
+      "confirmTitle": "刪除歷史？",
+      "confirmEverything": "qui 將刪除 {{name}} 的全部歷史。記錄將以新的基準重新開始。此操作無法復原。",
+      "confirmBefore": "qui 將刪除 {{name}} 在 {{date}} 之前的歷史。如果記錄在該日期之前開始，首次記錄之前的位元組也會刪除，「自…起記錄」會改為該日期。此操作無法復原。",
+      "sqliteSpace": "資料庫檔案大小不變。SQLite 會將可用空間重新用於新的歷史。",
+      "postgresSpace": "刪除所有實例的全部歷史會立即將空間歸還給磁碟。其他刪除之後，Postgres 會將可用空間重新用於新的歷史。",
+      "cancel": "取消",
+      "confirm": "刪除",
+      "deleted": "歷史已刪除",
+      "failed": "刪除歷史失敗"
     },
     "loadFailed": "無法載入統計設定",
     "toasts": {

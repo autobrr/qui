@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -1282,6 +1283,344 @@ func (s *TransferHistoryStore) foldTorrentDays(ctx context.Context, ids []int64,
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transfer history fold: %w", err)
+	}
+	return nil
+}
+
+const (
+	// torrentDeleteBatch is the number of torrents whose rows one write of a
+	// delete of history removes, and eventDeleteBatch the number of events.
+	torrentDeleteBatch = 50
+	eventDeleteBatch   = 1000
+	// noEndDay is the day before which a delete of everything deletes. It
+	// keeps hours inside the INTEGER columns of Postgres.
+	noEndDay = math.MaxInt32 / 24
+)
+
+// DeleteInstanceHistory deletes the history of an instance in a series of
+// short writes. The instance row goes last: after an error, LoadInstance reads
+// what is left.
+func (s *TransferHistoryStore) DeleteInstanceHistory(ctx context.Context, instanceID int) error {
+	// Each batch starts after the last one, so that it does not read the
+	// deleted rows of the batches before it, which Postgres keeps until a vacuum.
+	for after := ""; ; {
+		ids, last, err := s.torrentsAfter(ctx, instanceID, after)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			break
+		}
+		// The rows of a torrent go with it.
+		if _, err := s.db.ExecContext(ctx, `
+			DELETE FROM transfer_history_torrents WHERE id IN (`+placeholders(len(ids))+`)`, int64Args(ids)...); err != nil {
+			return fmt.Errorf("delete transfer history torrents: %w", err)
+		}
+		after = last
+	}
+	if err := s.deleteTotalsBefore(ctx, instanceID, noEndDay); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		DELETE FROM transfer_history_instances WHERE instance_id = ?`, instanceID); err != nil {
+		return fmt.Errorf("delete transfer history instance: %w", err)
+	}
+	return nil
+}
+
+// DeleteAllHistory deletes the history of each instance. On Postgres, the
+// tables give their space back at once.
+func (s *TransferHistoryStore) DeleteAllHistory(ctx context.Context) error {
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		return s.truncateHistory(ctx)
+	}
+	instances, err := s.Instances(ctx)
+	if err != nil {
+		return err
+	}
+	for _, inst := range instances {
+		if err := s.DeleteInstanceHistory(ctx, inst.InstanceID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteHistoryBefore deletes the history of an instance on the UTC days
+// before beforeDay, in a series of short writes. It also deletes the Baseline
+// when beforeDay starts after the first recording, and the record of each
+// torrent that was gone before beforeDay. The first recording moves to the
+// start of beforeDay. A yearly row of a torrent goes when its year ends
+// before beforeDay.
+func (s *TransferHistoryStore) DeleteHistoryBefore(ctx context.Context, instanceID int, beforeDay int64) error {
+	inst, err := s.instanceRow(ctx, instanceID)
+	if err != nil || inst == nil {
+		return err
+	}
+	cut := time.Unix(beforeDay*86400, 0).UTC()
+	if err := s.deleteEventsBefore(ctx, instanceID, cut.Unix()); err != nil {
+		return err
+	}
+	dropBaseline := cut.After(inst.FirstRecordedAt)
+	for after := ""; ; {
+		ids, last, err := s.torrentsAfter(ctx, instanceID, after)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			break
+		}
+		if err := s.deleteTorrentDaysBefore(ctx, ids, beforeDay, cut.Year(), dropBaseline); err != nil {
+			return err
+		}
+		after = last
+	}
+	if err := s.deleteTotalsBefore(ctx, instanceID, beforeDay); err != nil {
+		return err
+	}
+	if dropBaseline {
+		if _, err := s.db.ExecContext(ctx, `
+			UPDATE transfer_history_instances SET first_recorded_at = ? WHERE instance_id = ?`, cut, instanceID); err != nil {
+			return fmt.Errorf("move the first transfer history recording: %w", err)
+		}
+	}
+	return nil
+}
+
+// truncateHistory empties each table of the history on Postgres, the
+// settings apart. It finds the tables as Size does.
+func (s *TransferHistoryStore) truncateHistory(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.relname FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE c.relkind = 'r' AND n.nspname = current_schema()
+			AND c.relname LIKE 'transfer_history_%' AND c.relname <> 'transfer_history_settings'`)
+	if err != nil {
+		return fmt.Errorf("read transfer history tables: %w", err)
+	}
+	var tables []string
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan transfer history table: %w", err)
+		}
+		tables = append(tables, table)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read transfer history tables: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `TRUNCATE `+strings.Join(tables, ", ")); err != nil {
+		return fmt.Errorf("truncate transfer history: %w", err)
+	}
+	return nil
+}
+
+func placeholders(n int) string { return "?" + strings.Repeat(", ?", n-1) }
+
+func int64Args(ids []int64) []any {
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	return args
+}
+
+// RemovedInstances returns the ids in ids of instances that qui no longer has.
+func (s *TransferHistoryStore) RemovedInstances(ctx context.Context, ids []int) ([]int, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM instances WHERE id IN (?`+strings.Repeat(", ?", len(ids)-1)+`)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read instances: %w", err)
+	}
+	defer rows.Close()
+	present := make(map[int]struct{}, len(ids))
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan instance: %w", err)
+		}
+		present[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read instances: %w", err)
+	}
+	var removed []int
+	for _, id := range ids {
+		if _, ok := present[id]; !ok {
+			removed = append(removed, id)
+		}
+	}
+	return removed, nil
+}
+
+func (s *TransferHistoryStore) instanceRow(ctx context.Context, instanceID int) (*TransferHistoryInstance, error) {
+	inst := TransferHistoryInstance{InstanceID: instanceID}
+	err := s.db.QueryRowContext(ctx, `
+		SELECT first_recorded_at FROM transfer_history_instances WHERE instance_id = ?`, instanceID).Scan(&inst.FirstRecordedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history instance: %w", err)
+	}
+	return &inst, nil
+}
+
+// deleteEventsBefore deletes the events of an instance before the second
+// before, a few events of one kind in each write. Each batch starts at the
+// last second of the batch before it.
+func (s *TransferHistoryStore) deleteEventsBefore(ctx context.Context, instanceID int, before int64) error {
+	for _, kind := range []TransferHistoryEventKind{TransferHistoryEventAdd, TransferHistoryEventCompletion, TransferHistoryEventDelete} {
+		for from := int64(math.MinInt64); ; {
+			ids, last, err := s.eventsFrom(ctx, instanceID, kind, from, before)
+			if err != nil {
+				return err
+			}
+			if len(ids) == 0 {
+				break
+			}
+			if _, err := s.db.ExecContext(ctx, `
+				DELETE FROM transfer_history_events WHERE id IN (`+placeholders(len(ids))+`)`, int64Args(ids)...); err != nil {
+				return fmt.Errorf("delete transfer history events: %w", err)
+			}
+			from = last
+		}
+	}
+	return nil
+}
+
+// eventsFrom returns the ids of a few events of one kind of an instance in
+// the seconds [from, before), the oldest first, and the last second.
+func (s *TransferHistoryStore) eventsFrom(ctx context.Context, instanceID int, kind TransferHistoryEventKind, from, before int64) (ids []int64, last int64, err error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, second FROM transfer_history_events
+		WHERE instance_id = ? AND kind = ? AND second >= ? AND second < ?
+		ORDER BY second
+		LIMIT ?`, instanceID, kind, from, before, eventDeleteBatch)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read transfer history events: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id, &last); err != nil {
+			return nil, 0, fmt.Errorf("scan transfer history event: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("read transfer history events: %w", err)
+	}
+	return ids, last, nil
+}
+
+// torrentsAfter returns the ids of a few torrents of an instance whose hash
+// sorts after after, and the last hash.
+func (s *TransferHistoryStore) torrentsAfter(ctx context.Context, instanceID int, after string) (ids []int64, last string, err error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, hash FROM transfer_history_torrents
+		WHERE instance_id = ? AND hash > ?
+		ORDER BY hash
+		LIMIT ?`, instanceID, after, torrentDeleteBatch)
+	if err != nil {
+		return nil, "", fmt.Errorf("read transfer history torrents: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id, &last); err != nil {
+			return nil, "", fmt.Errorf("scan transfer history torrent: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", fmt.Errorf("read transfer history torrents: %w", err)
+	}
+	return ids, last, nil
+}
+
+// deleteTorrentDaysBefore deletes, in one write, the days of the torrents
+// before beforeDay and their years before beforeYear. It deletes their
+// Baseline when dropBaseline is set, and the record of each torrent that is
+// gone and has no bytes and no events left.
+func (s *TransferHistoryStore) deleteTorrentDaysBefore(ctx context.Context, ids []int64, beforeDay int64, beforeYear int, dropBaseline bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transfer history delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	in, idArgs := placeholders(len(ids)), int64Args(ids)
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM transfer_history_torrent_days WHERE torrent_id IN (`+in+`) AND day < ?`, append(idArgs, beforeDay)...); err != nil {
+		return fmt.Errorf("delete transfer history torrent days: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM transfer_history_torrent_years WHERE torrent_id IN (`+in+`) AND year < ?`, append(idArgs, beforeYear)...); err != nil {
+		return fmt.Errorf("delete transfer history torrent years: %w", err)
+	}
+	if dropBaseline {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE transfer_history_torrents SET baseline_uploaded = 0, baseline_downloaded = 0
+			WHERE id IN (`+in+`)`, idArgs...); err != nil {
+			return fmt.Errorf("delete transfer history baselines: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM transfer_history_torrents
+		WHERE id IN (`+in+`) AND deleted = TRUE
+			AND baseline_uploaded = 0 AND baseline_downloaded = 0
+			AND NOT EXISTS (SELECT 1 FROM transfer_history_torrent_days d WHERE d.torrent_id = transfer_history_torrents.id)
+			AND NOT EXISTS (SELECT 1 FROM transfer_history_torrent_years y WHERE y.torrent_id = transfer_history_torrents.id)
+			AND NOT EXISTS (SELECT 1 FROM transfer_history_events e WHERE e.torrent_id = transfer_history_torrents.id)`,
+		idArgs...); err != nil {
+		return fmt.Errorf("delete gone transfer history torrents: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transfer history delete: %w", err)
+	}
+	return nil
+}
+
+// deleteTotalsBefore deletes the hourly totals, the daily totals, and the
+// Recording gaps of an instance before beforeDay, a few days in each write.
+func (s *TransferHistoryStore) deleteTotalsBefore(ctx context.Context, instanceID int, beforeDay int64) error {
+	for _, t := range []struct {
+		table, column string
+		perDay        int64
+	}{
+		{"transfer_history_tracker_hours", "hour", 24},
+		{"transfer_history_category_days", "day", 1},
+		{"transfer_history_gaps", "hour", 24},
+		{"transfer_history_library_days", "day", 1},
+		{"transfer_history_instance_hours", "hour", 24},
+		{"transfer_history_state_hours", "hour", 24},
+	} {
+		before := beforeDay * t.perDay
+		for {
+			var first sql.NullInt64
+			if err := s.db.QueryRowContext(ctx, `
+				SELECT MIN(`+t.column+`) FROM `+t.table+` WHERE instance_id = ?`, instanceID).Scan(&first); err != nil {
+				return fmt.Errorf("read %s: %w", t.table, err)
+			}
+			if !first.Valid || first.Int64 >= before {
+				break
+			}
+			if _, err := s.db.ExecContext(ctx, `
+				DELETE FROM `+t.table+` WHERE instance_id = ? AND `+t.column+` < ?`,
+				instanceID, min(first.Int64+foldHourDays*t.perDay, before)); err != nil {
+				return fmt.Errorf("delete %s: %w", t.table, err)
+			}
+		}
 	}
 	return nil
 }

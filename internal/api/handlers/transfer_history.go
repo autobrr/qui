@@ -28,7 +28,7 @@ type transferHistoryResponse struct {
 }
 
 // Transfer returns the transfer of one instance in a period.
-// GET /api/instances/{instanceID}/transfer-history?from=&to=&bucket=&groupBy=&timeZone=
+// GET /api/instances/{instanceID}/transfer-history?from=&to=&bucket=&groupBy=&group=&timeZone=
 func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -39,6 +39,9 @@ func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request
 		InstanceID: instanceID,
 		Bucket:     transferhistory.Bucket(params.Get("bucket")),
 		GroupBy:    transferhistory.Grouping(params.Get("groupBy")),
+	}
+	if params.Has("group") {
+		query.Group = new(params.Get("group"))
 	}
 	if name := params.Get("timeZone"); name != "" {
 		if query.Location, err = time.LoadLocation(name); err != nil {
@@ -191,5 +194,52 @@ func (h *TransferHistoryHandler) UpdateSettings(w http.ResponseWriter, r *http.R
 		RespondError(w, http.StatusInternalServerError, "Failed to save transfer history settings")
 	default:
 		RespondJSON(w, http.StatusOK, settings)
+	}
+}
+
+// DeleteHistory deletes the transfer history of one instance, also a removed
+// one, or of each instance: everything, or the UTC days before the day of before.
+// DELETE /api/transfer-history?instanceId=&before=
+func (h *TransferHistoryHandler) DeleteHistory(w http.ResponseWriter, r *http.Request) {
+	params := r.URL.Query()
+	d := transferhistory.HistoryDelete{AllInstances: params.Get("instanceId") == "all"}
+	if !d.AllInstances {
+		raw := params.Get("instanceId")
+		id, err := strconv.Atoi(raw)
+		if err != nil || id <= 0 {
+			RespondError(w, http.StatusBadRequest, "Invalid instanceId: give an instance ID or all")
+			return
+		}
+		d.InstanceID = id
+	}
+	if raw := params.Get("before"); raw != "" {
+		before, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, "Invalid before: use RFC 3339")
+			return
+		}
+		if before.After(time.Now()) {
+			RespondError(w, http.StatusBadRequest, "Invalid before: the time is in the future")
+			return
+		}
+		// The module reads a zero Before as a delete of everything.
+		if before.IsZero() {
+			RespondError(w, http.StatusBadRequest, "Invalid before: give a time after 0001-01-01")
+			return
+		}
+		d.Before = before.UTC()
+	}
+	err := h.module.DeleteHistory(r.Context(), d)
+	switch {
+	case err != nil && r.Context().Err() != nil:
+		// The worker does not stop the delete when the client leaves.
+		log.Warn().Int("instanceID", d.InstanceID).Bool("allInstances", d.AllInstances).Time("before", d.Before).
+			Msg("transfer history: the client left before the delete of history ended; the delete goes on")
+		return
+	case err != nil:
+		// The module logs the failure.
+		RespondError(w, http.StatusInternalServerError, "Failed to delete transfer history")
+	default:
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -553,7 +554,7 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 
 func TestInvalidEventQueries(t *testing.T) {
 	t.Parallel()
-	module := transferhistory.New(nil, nil)
+	module := transferhistory.New(nil, nil, systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 	to := day10
@@ -575,7 +576,7 @@ func TestInvalidEventQueries(t *testing.T) {
 func TestAdapterGivesTheDeleteActorAsTheCause(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
-	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	adapter := transferhistory.NewAdapter(module, nil)
 
@@ -606,7 +607,7 @@ func TestAFailedCommitAndAFailedCheckKeepTheDeleteCausePostgresIntegration(t *te
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		module.Record(*reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)).reading)
@@ -627,7 +628,7 @@ func TestALostCommitAnswerAndAFailedCheckGiveTheCauseOnceThenOutsidePostgresInte
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		record := settled(t, module)
@@ -653,7 +654,7 @@ func TestALostCommitAnswerDropsTheCauseOfATorrentThatCameBackPostgresIntegration
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		record := settled(t, module)
 
@@ -679,7 +680,7 @@ func TestAFailedCommitDropsTheCauseOfATorrentThatCameBackPostgresIntegration(t *
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		record := settled(t, module)
 

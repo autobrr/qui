@@ -167,6 +167,19 @@
     "versionAvailable": "Verze {{version}} je nyní dostupná",
     "dismiss": "Zavřít"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "Záznam zastaven",
+        "fix": "qui to zkusí znovu při dalším zápisu. Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze."
+      }
+    },
+    "unknown": {
+      "title": "Systémové upozornění",
+      "fix": "qui od vás potřebuje zásah. Podrobnosti najdete v logu qui."
+    },
+    "cause": "Příčina: {{cause}}"
+  },
   "pwaUpdate": {
     "reload": "Znovu načíst",
     "waitingDescription": "Znovu načtěte stránku, aby se použila nejnovější verze qui.",

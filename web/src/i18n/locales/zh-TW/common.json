@@ -167,6 +167,19 @@
     "versionAvailable": "版本 {{version}} 現已可用",
     "dismiss": "關閉"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "記錄已停止",
+        "fix": "qui 會在下次寫入時重試。請確認磁碟有可用空間，且 qui 可以寫入資料庫檔案。"
+      }
+    },
+    "unknown": {
+      "title": "系統通知",
+      "fix": "qui 需要你採取動作。詳情請查看 qui 日誌。"
+    },
+    "cause": "原因：{{cause}}"
+  },
   "pwaUpdate": {
     "reload": "重新載入",
     "waitingDescription": "重新載入以套用最新的 qui 版本。",

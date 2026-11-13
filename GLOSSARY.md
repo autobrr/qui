@@ -48,6 +48,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 - **Sync snapshot**: The torrents of one instance as one sync left them. Every reader of that sync shares it, and no reader changes it. _Avoid_: copy, sync cache, snapshot alone (a backup run is also a snapshot).
 
+## Torrent details
+
+- **Piece bar**: The bar in the General tab of a torrent that is not complete. It shows where the finished and downloading pieces are. When one column holds more than one piece, the column fills from the bottom to the share of finished pieces, with the share of downloading pieces on top. _Avoid_: progress bar (that is the progress column in the torrent list).
+
 ## Statistics
 
 - **Statistics**: The page that shows Transfer history. _Avoid_: stats page, history page.
@@ -79,6 +83,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Client settings
 
 - **Client setting**: A UI preference that qui stores for the user on the server, so it follows the user to every browser and tab, for example the sidebar state, filters, and column layout. _Avoid_: local setting.
+- **System notice**: A message about a fault in qui that needs an action from the user, shown where qui shows the update notice. An available update is not a System notice. _Avoid_: banner, alert.
 - **Feature notice**: A one-time bubble that points at a control and tells the user about a feature. It goes away for good when the user dismisses it or uses the feature. _Avoid_: banner, tip, tour, announcement.
 
 ## Orphan scan

@@ -2138,5 +2138,10 @@
       "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
       "noHardlinkExtension": "Bez hardlinků: server neoznamuje hardlink@openssh.com. Přidání cross-seedu přes hardlink zde selže, nebo se přidá ve standardním režimu, když je zapnuto „Při chybě přepnout na standardní režim“."
     }
+  },
+  "deleteHistory": {
+    "label": "Smazat i historii přenosů",
+    "description": "Bez této volby qui ponechá historii pod názvem instance.",
+    "failed": "Instance je smazaná, ale qui nedokázal smazat celou její historii. Podívejte se do Nastavení > Statistiky a smažte zbytek tam."
   }
 }

@@ -483,6 +483,16 @@ export function getLinuxCategory(hash: string): string {
   return categoryKeys[hashSum % categoryKeys.length]
 }
 
+// Generate a deterministic Linux category for a category name. Unlike getLinuxCategory, it never returns no category.
+export function getLinuxCategoryName(name: string): string {
+  let hashSum = 0
+  for (let i = 0; i < name.length; i++) {
+    hashSum += name.charCodeAt(i) * (i + 1)
+  }
+  const categoryKeys = vocab().categoryKeys
+  return categoryKeys[hashSum % categoryKeys.length]
+}
+
 // Generate deterministic Linux tags based on hash
 export function getLinuxTags(hash: string): string {
   let hashSum = 0

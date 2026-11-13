@@ -52,6 +52,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sqlite3store"
@@ -671,7 +672,15 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
-	transferHistory := transferhistory.New(db, trackerCustomizationStore)
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
+	notificationCtx, notificationCancel := context.WithCancel(context.Background())
+	defer notificationCancel()
+	if notificationService != nil {
+		notificationService.Start(notificationCtx)
+	}
+	systemNotices := systemnotice.New(notificationService)
+	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
 	syncManager.SetDeleteNoter(transferHistoryAdapter)
@@ -730,13 +739,6 @@ func (app *Application) runServer() {
 	// Initialize automation activity store and external programs service
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
-	notificationTargetStore := models.NewNotificationTargetStore(db)
-	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
-	notificationCtx, notificationCancel := context.WithCancel(context.Background())
-	defer notificationCancel()
-	if notificationService != nil {
-		notificationService.Start(notificationCtx)
-	}
 
 	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
 	// backups, automations, indexer activity, etc.) onto the SSE stream so the
@@ -979,6 +981,7 @@ func (app *Application) runServer() {
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
 		TransferHistory:                  transferHistory,
+		SystemNotices:                    systemNotices,
 		BackendPool:                      backendPool,
 		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,

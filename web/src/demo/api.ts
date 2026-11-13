@@ -110,6 +110,7 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/license/licensed", () => json({ licensed: false }))
   on("GET", "/version", () => json({ version: "demo", updateAvailable: false, selfUpdate: false, selfUpdateUnavailableReason: "development", restart: false }))
   on("GET", "/version/latest", () => json(null))
+  on("GET", "/system-notices", () => json([]))
 
   on("GET", "/instances", () => json(store.instanceResponses()))
   on("GET", "/instances/:instanceId/capabilities", () => json(CAPABILITIES))

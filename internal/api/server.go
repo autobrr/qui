@@ -46,6 +46,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sshpool"
@@ -105,6 +106,7 @@ type Server struct {
 	discScanStore                    *models.DiscScanStore
 	discScanService                  *discscan.Service
 	transferHistory                  *transferhistory.Module
+	systemNotices                    *systemnotice.Module
 	backendPool                      *fsops.Pool
 	sshPool                          *sshpool.Pool
 	dirScanService                   *dirscan.Service
@@ -161,6 +163,7 @@ type Dependencies struct {
 	DiscScanStore                    *models.DiscScanStore
 	DiscScanService                  *discscan.Service
 	TransferHistory                  *transferhistory.Module
+	SystemNotices                    *systemnotice.Module
 	BackendPool                      *fsops.Pool
 	SSHPool                          *sshpool.Pool
 	DirScanService                   *dirscan.Service
@@ -241,6 +244,7 @@ func NewServer(deps *Dependencies) *Server {
 		discScanStore:                    deps.DiscScanStore,
 		discScanService:                  deps.DiscScanService,
 		transferHistory:                  deps.TransferHistory,
+		systemNotices:                    deps.SystemNotices,
 		backendPool:                      deps.BackendPool,
 		sshPool:                          deps.SSHPool,
 		dirScanService:                   deps.DirScanService,
@@ -427,6 +431,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	transferHistoryHandler := handlers.NewTransferHistoryHandler(s.transferHistory)
+	systemNoticeHandler := handlers.NewSystemNoticeHandler(s.systemNotices)
+	trackerGroupsHandler := handlers.NewTrackerGroupsHandler(s.syncManager, s.trackerCustomizationStore)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
@@ -633,6 +639,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Version endpoints (current running version + update checks)
 			r.Get("/version", versionHandler.GetVersion)
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
+			r.With(system.Read).Get("/system-notices", systemNoticeHandler.List)
 			r.With(system.Read).Get("/application/info", applicationHandler.GetInfo)
 			r.With(browserOnly).Post("/system/restart", systemHandler.Restart)
 			r.With(browserOnly).Post("/system/update", systemHandler.Update)
@@ -727,6 +734,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(torrents.Read).Get("/transfer-history", transferHistoryHandler.Transfer)
 					r.With(torrents.Read).Get("/transfer-history/library", transferHistoryHandler.Library)
 					r.With(torrents.Read).Get("/transfer-history/deletes", transferHistoryHandler.Deletes)
+					r.With(torrents.Read).Get("/tracker-groups", trackerGroupsHandler.List)
 
 					// Automations
 					r.Route("/automations", func(r chi.Router) {
@@ -834,6 +842,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			r.With(allInstances, torrents.Read).Get("/transfer-history/status", transferHistoryHandler.Status)
 			r.With(allInstances, settings.Write).Put("/transfer-history/settings", transferHistoryHandler.UpdateSettings)
+			r.With(allInstances, settings.Write).Delete("/transfer-history", transferHistoryHandler.DeleteHistory)
 		})
 	})
 

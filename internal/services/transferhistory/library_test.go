@@ -12,6 +12,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -38,10 +39,6 @@ func inState(t transferhistory.Torrent, state string) transferhistory.Torrent {
 func sized(t transferhistory.Torrent, size int64) transferhistory.Torrent {
 	t.Size = size
 	return t
-}
-
-func expectLibrary(want ...transferhistory.LibraryRow) step {
-	return step{library: &libraryCheck{query: twoDays, want: want}}
 }
 
 func libraryRow(day time.Time, torrents, totalSize int64, unique *int64) transferhistory.LibraryRow {
@@ -195,7 +192,7 @@ func TestADroppedReadingKeepsItsPeakSpeeds(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	blocked := &blockingWrites{DB: db, writing: make(chan struct{}, 1), release: make(chan struct{})}
-	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
@@ -237,5 +234,25 @@ func TestAFoldWritesTheHourlyStateInMemoryFirstPostgresIntegration(t *testing.T)
 			restart,
 		})
 		require.Empty(t, storedInstanceHours(t, db, offline))
+	})
+}
+
+func TestDeleteHistoryDeletesTheHourlyStatePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		runSteps(t, db, []step{
+			withServer(reading(at(0), inState(torrent("a", 0, 0), "stalledUP")), 900, 1, 1),
+			withServer(reading(at(25*time.Hour), inState(torrent("a", 0, 0), "uploading")), 800, 2, 2),
+			// The UTC day of Before is day 11.
+			deleteHistory(instanceID, at(24*time.Hour)),
+		})
+		require.Equal(t, []instanceHour{
+			{hour: at(25*time.Hour).Unix() / 3600, freeDisk: 800, maxUp: 2, maxDown: 2, states: map[string]int64{"uploading": 1}},
+		}, storedInstanceHours(t, db, instanceID))
+		var states int
+		require.NoError(t, db.QueryRowContext(t.Context(), `
+			SELECT COUNT(*) FROM transfer_history_state_hours WHERE instance_id = ?`, instanceID).Scan(&states))
+		require.Equal(t, 1, states)
 	})
 }

@@ -142,10 +142,12 @@ import type {
   UncheckedInstance,
   User,
   VersionInfo,
+  SystemNotice,
   WarningResponse,
   WebSeed,
   SSHCredentials,
   SSHTestResponse,
+  LiveTrackerGroup,
   TransferHistoryInstance,
   TransferHistoryQuery,
   TransferHistoryRow
@@ -862,11 +864,19 @@ class ApiClient {
     if (query.from) {
       params.set("from", query.from.toISOString())
     }
+    if (query.group !== undefined) {
+      params.set("group", query.group)
+    }
     if (query.timeZone) {
       params.set("timeZone", query.timeZone)
     }
     const response = await this.request<{ rows: TransferHistoryRow[] }>(`/instances/${instanceId}/transfer-history?${params}`)
     return response.rows
+  }
+
+  async getTrackerGroups(instanceId: number): Promise<LiveTrackerGroup[]> {
+    const response = await this.request<{ groups: LiveTrackerGroup[] }>(`/instances/${instanceId}/tracker-groups`)
+    return response.groups
   }
 
   async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {
@@ -2454,6 +2464,10 @@ class ApiClient {
     }
   }
 
+  async getSystemNotices(): Promise<SystemNotice[]> {
+    return this.request<SystemNotice[]>("/system-notices")
+  }
+
   async getTrackerIcons(): Promise<Record<string, string>> {
     return this.request<Record<string, string>>("/tracker-icons")
   }
@@ -2598,6 +2612,15 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     })
+  }
+
+  /** Deletes the history of one instance or of all instances: everything, or the UTC days before the day of `before`. */
+  async deleteTransferHistory(target: { instanceId: number | "all"; before?: Date }): Promise<void> {
+    const params = new URLSearchParams({ instanceId: String(target.instanceId) })
+    if (target.before) {
+      params.set("before", target.before.toISOString())
+    }
+    return this.request<void>(`/transfer-history?${params}`, { method: "DELETE" })
   }
 
   // Log Exclusions endpoints
