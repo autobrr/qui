@@ -174,12 +174,16 @@ func enqueue(queue []Reading, r Reading) []Reading {
 	queue = append(queue, r)
 	if queued >= maxQueued {
 		dropped := queue[oldest].FailedSince
+		droppedUp, droppedDown := queue[oldest].MaxUploadSpeed, queue[oldest].MaxDownloadSpeed
 		queue = slices.Delete(queue, oldest, oldest+1)
 		// The next reading of the instance ends the time without a read.
 		next := oldest + slices.IndexFunc(queue[oldest:], func(q Reading) bool { return q.InstanceID == r.InstanceID })
 		if !dropped.IsZero() && (queue[next].FailedSince.IsZero() || dropped.Before(queue[next].FailedSince)) {
 			queue[next].FailedSince = dropped
 		}
+		// The speeds of a reading are the highest since the reading before.
+		queue[next].MaxUploadSpeed = max(queue[next].MaxUploadSpeed, droppedUp)
+		queue[next].MaxDownloadSpeed = max(queue[next].MaxDownloadSpeed, droppedDown)
 	}
 	return queue
 }

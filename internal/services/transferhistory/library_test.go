@@ -4,13 +4,16 @@
 package transferhistory_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/transferhistory"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // withUnique returns a reading whose Copy groups build gives the Unique size,
@@ -108,7 +111,7 @@ type instanceHour struct {
 
 // No query of the module returns the instance state, so this test reads the
 // tables.
-func storedInstanceHours(t *testing.T, db *database.DB) []instanceHour {
+func storedInstanceHours(t *testing.T, db *database.DB, instanceID int) []instanceHour {
 	t.Helper()
 	rows, err := db.QueryContext(t.Context(), `
 		SELECT hour, free_disk, max_upload_speed, max_download_speed
@@ -156,7 +159,7 @@ func TestEachHourHoldsTheInstanceStatePostgresIntegration(t *testing.T) {
 		require.Equal(t, []instanceHour{
 			{hour: hour, freeDisk: 700, maxUp: 400, maxDown: 50, states: map[string]int64{"stalledUP": 2}},
 			{hour: hour + 1, freeDisk: 600, maxUp: 5, maxDown: 5, states: map[string]int64{"stalledUP": 1, "uploading": 1}},
-		}, storedInstanceHours(t, db))
+		}, storedInstanceHours(t, db, instanceID))
 	})
 }
 
@@ -179,10 +182,58 @@ func TestTheHourlyStateFollowsTheDetailRetentionPostgresIntegration(t *testing.T
 		require.Equal(t, []instanceHour{
 			{hour: hour + 24, freeDisk: 800, maxUp: 2, maxDown: 2, states: map[string]int64{"stalledUP": 1}},
 			{hour: day101.Unix() / 3600, freeDisk: 700, maxUp: 3, maxDown: 3, states: map[string]int64{"uploading": 1}},
-		}, storedInstanceHours(t, db))
+		}, storedInstanceHours(t, db, instanceID))
 		var orphans int
 		require.NoError(t, db.QueryRowContext(t.Context(), `
 			SELECT COUNT(*) FROM transfer_history_state_hours WHERE instance_id = ? AND hour < ?`, instanceID, hour+24).Scan(&orphans))
 		require.Zero(t, orphans)
+	})
+}
+
+func TestADroppedReadingKeepsItsPeakSpeeds(t *testing.T) {
+	t.Parallel()
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	blocked := &blockingWrites{DB: db, writing: make(chan struct{}, 1), release: make(chan struct{})}
+	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db))
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+	<-blocked.writing
+	// Five readings wait while the worker writes, so the oldest one, which
+	// holds the peak, drops out of the queue.
+	module.Record(*withServer(reading(at(30*time.Minute), torrent("a", 0, 0)), 0, 900, 90).reading)
+	for i := range 4 {
+		module.Record(*withServer(reading(at(time.Duration(31+i)*time.Minute), torrent("a", 0, 0)), 0, 1, 1).reading)
+	}
+	close(blocked.release)
+	_, err := module.Status(t.Context())
+	require.NoError(t, err)
+
+	hours := storedInstanceHours(t, db, instanceID)
+	require.Len(t, hours, 1)
+	require.Equal(t, [2]int64{900, 90}, [2]int64{hours[0].maxUp, hours[0].maxDown})
+}
+
+func TestAFoldWritesTheHourlyStateInMemoryFirstPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	const offline = 2
+	onInstance := func(s step, id int) step {
+		s.reading.InstanceID = id
+		return s
+	}
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		runSteps(t, db, []step{
+			settings(true, 90),
+			onInstance(reading(at(0), torrent("b", 0, 0)), offline),
+			// A reading with no transfer that waits for the next write.
+			onInstance(reading(at(time.Minute), inState(torrent("b", 0, 0), "uploading")), offline),
+			// A reading of the other instance on day 101 deletes the hours of day 10.
+			reading(day10.Add(91*24*time.Hour+10*time.Hour), torrent("a", 0, 0)),
+			{foldsDone: true},
+			// The shutdown writes the changes that are still in memory.
+			restart,
+		})
+		require.Empty(t, storedInstanceHours(t, db, offline))
 	})
 }

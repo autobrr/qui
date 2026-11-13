@@ -465,10 +465,16 @@ func addTo[K comparable](m map[K]*bytesMoved, key K, up, down int64) {
 	b.add(up, down)
 }
 
-// holdsDaysBefore reports whether the changes hold transfer of a UTC day before day.
+// holdsDaysBefore reports whether the changes hold transfer or hourly state
+// of a UTC day before day.
 func (inst *instance) holdsDaysBefore(day int64) bool {
 	for key := range inst.categoryDays {
 		if key.bucket < day {
+			return true
+		}
+	}
+	for hour := range inst.instanceHours {
+		if hour < day*24 {
 			return true
 		}
 	}
