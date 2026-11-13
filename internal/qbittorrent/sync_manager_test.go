@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -3819,4 +3820,113 @@ func TestInvalidateFileCacheNotifiesAfterFilesAreGone(t *testing.T) {
 	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
 
 	require.False(t, cachedAtNotify, "a read that starts after the notify must not find the old file list")
+}
+
+// regression: #2523
+func TestSetRSSRuleMirrorsTorrentParamsOntoLegacyFields(t *testing.T) {
+	tests := []struct {
+		name string
+		rule qbt.RSSAutoDownloadRule
+		want map[string]any
+	}{
+		{
+			name: "new values replace stale legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				TorrentParams: &qbt.RSSRuleTorrentParams{
+					Category:      "tv-new",
+					SavePath:      "/data/new",
+					ContentLayout: "NoSubfolder",
+					Stopped:       new(true),
+				},
+				AssignedCategory:     "tv-old",
+				SavePath:             "/data/old",
+				TorrentContentLayout: "Subfolder",
+				AddPaused:            new(false),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv-new",
+				"savePath":             "/data/new",
+				"torrentContentLayout": "NoSubfolder",
+				"addPaused":            true,
+			},
+		},
+		{
+			name: "cleared values clear stale legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				TorrentParams:        &qbt.RSSRuleTorrentParams{},
+				AssignedCategory:     "tv-old",
+				SavePath:             "/data/old",
+				TorrentContentLayout: "Subfolder",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{},
+		},
+		{
+			name: "unchanged values stay",
+			rule: qbt.RSSAutoDownloadRule{
+				MustContain: "edited",
+				TorrentParams: &qbt.RSSRuleTorrentParams{
+					Category:      "tv",
+					SavePath:      "/data/tv",
+					ContentLayout: "Original",
+					Stopped:       new(true),
+				},
+				AssignedCategory:     "tv",
+				SavePath:             "/data/tv",
+				TorrentContentLayout: "Original",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv",
+				"savePath":             "/data/tv",
+				"torrentContentLayout": "Original",
+				"addPaused":            true,
+			},
+		},
+		{
+			name: "legacy-only rule keeps its legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				AssignedCategory:     "tv",
+				SavePath:             "/data/tv",
+				TorrentContentLayout: "Original",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv",
+				"savePath":             "/data/tv",
+				"torrentContentLayout": "Original",
+				"addPaused":            true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ruleDef string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v2/rss/setRule" {
+					t.Errorf("unexpected request: %s", r.URL)
+					http.NotFound(w, r)
+					return
+				}
+				ruleDef = r.FormValue("ruleDef")
+			}))
+			defer srv.Close()
+
+			client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}), isHealthy: true}
+			sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
+
+			require.NoError(t, sm.SetRSSRule(t.Context(), 1, "rule", tt.rule))
+
+			var sent map[string]any
+			require.NoError(t, jsonv2.Unmarshal([]byte(ruleDef), &sent))
+			got := map[string]any{}
+			for _, key := range []string{"assignedCategory", "savePath", "torrentContentLayout", "addPaused"} {
+				if v, ok := sent[key]; ok {
+					got[key] = v
+				}
+			}
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
