@@ -236,6 +236,7 @@ func (m *Module) process(r Reading) {
 			inst.resumed = false
 			delete(m.reloads, r.InstanceID)
 		}
+		dropSpentNotes(m.deleteNotes[r.InstanceID], inst)
 		m.instances[r.InstanceID] = inst
 	}
 	inst.apply(r, m.mapper, m.parser, m.deleteNotes[r.InstanceID])

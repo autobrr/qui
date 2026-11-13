@@ -558,3 +558,33 @@ func TestAFailedCommitAndAFailedCheckKeepTheDeleteCausePostgresIntegration(t *te
 		require.Equal(t, byRule, answer.Deletes[0].Cause)
 	})
 }
+
+// The write with the delete is stored, but the module cannot tell. The cause
+// that it kept must not name a later delete of the same torrent.
+func TestALostCommitAnswerAndAFailedCheckGiveTheCauseOnceThenOutsidePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+		// At most 4 readings wait for the module, so each one settles.
+		record := func(s step) {
+			module.Record(*s.reading)
+			_, err := module.Status(t.Context())
+			require.NoError(t, err)
+		}
+		record(reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)))
+		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
+		record(reading(at(5*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(5*time.Minute+30*time.Second))))
+		record(reading(at(7*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(12*time.Minute), torrent("a", 0, 0)))
+
+		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, answer.Deletes, 2)
+		require.Equal(t, outside, answer.Deletes[0].Cause, "the delete of the second life")
+		require.Equal(t, byRule, answer.Deletes[1].Cause, "the delete of the first life")
+	})
+}

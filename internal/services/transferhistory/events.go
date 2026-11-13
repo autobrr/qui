@@ -82,7 +82,8 @@ func (m *Module) keep(n DeleteNote) {
 
 // keepCauses makes a delete note again from each delete event of a write
 // that the module cannot tell is stored. If the write is not stored, the next
-// reading shows the delete again, and its note is gone.
+// reading shows the delete again, and its note is gone. If it is stored, the
+// load of the history drops the note.
 func (m *Module) keepCauses(instanceID int, events []models.TransferHistoryEvent) {
 	for _, e := range events {
 		if e.Delete == nil || CauseKind(e.Delete.CauseKind) == CauseOutside {
@@ -115,8 +116,22 @@ func takeNote(notes map[string][]deleteNote, hash string, now time.Time) DeleteC
 
 // dropOldNotes drops each note that a reading at now shows as failed.
 func dropOldNotes(notes map[string][]deleteNote, now time.Time) {
+	dropNotes(notes, func(_ string, n deleteNote) bool { return !now.Before(n.time.Add(noteLife)) })
+}
+
+// dropSpentNotes drops each note whose delete the loaded history of inst
+// holds: the record is deleted, and the last stored reading is from the time
+// of the note or later.
+func dropSpentNotes(notes map[string][]deleteNote, inst *instance) {
+	dropNotes(notes, func(hash string, n deleteNote) bool {
+		_, deleted := inst.deleted[hash]
+		return deleted && !inst.lastReadingAt.Before(n.time)
+	})
+}
+
+func dropNotes(notes map[string][]deleteNote, drop func(hash string, n deleteNote) bool) {
 	for hash, list := range notes {
-		list = slices.DeleteFunc(list, func(n deleteNote) bool { return !now.Before(n.time.Add(noteLife)) })
+		list = slices.DeleteFunc(list, func(n deleteNote) bool { return drop(hash, n) })
 		if len(list) == 0 {
 			delete(notes, hash)
 		} else {
