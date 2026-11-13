@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-import { buildBars, byteTicks, presetPeriod, previousPeriod, sumBytes, topGroups } from "@/lib/statistics"
+import { buildBars, byteTicks, customPeriod, presetPeriod, previousPeriod, sumBytes, topGroups } from "@/lib/statistics"
 import type { TransferHistoryRow } from "@/types"
 
 const originalTZ = process.env.TZ
@@ -114,6 +114,14 @@ describe("previousPeriod", () => {
     } finally {
       process.env.TZ = "America/New_York"
     }
+  })
+})
+
+describe("customPeriod", () => {
+  it("keeps hourly bars for seven dates across a change of the clock", () => {
+    // In New York, October 26 to November 1, 2026 lasts 169 hours.
+    expect(customPeriod(new Date(2026, 9, 26), new Date(2026, 10, 1), new Date(2026, 11, 1)).unit).toBe("hour")
+    expect(customPeriod(new Date(2026, 9, 26), new Date(2026, 10, 2), new Date(2026, 11, 1)).unit).toBe("day")
   })
 })
 

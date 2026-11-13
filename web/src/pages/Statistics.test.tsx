@@ -73,11 +73,12 @@ function renderPage() {
   )
 }
 
-async function tile(label: string): Promise<string> {
+async function expectTile(label: string, expected: string) {
   const labelNode = await screen.findByText(label)
-  const value = labelNode.nextElementSibling
-  await vi.waitFor(() => expect(value?.textContent).not.toBe("–"))
-  return `${value?.textContent} | ${value?.nextElementSibling?.textContent}`
+  await vi.waitFor(() => {
+    const value = labelNode.nextElementSibling
+    expect(`${value?.textContent} | ${value?.nextElementSibling?.textContent}`).toBe(expected)
+  })
 }
 
 beforeEach(() => {
@@ -113,9 +114,9 @@ describe("Statistics", () => {
     answer = ({ instanceId, bucket }) => bucket === "day" ? [row("a.test", instanceId * 1024, 1024, { statisticsCrossSeedUploaded: 512, width: "day" })] : []
     renderPage()
 
-    expect(await tile("tiles.uploaded")).toContain("3 KiB")
-    expect(await tile("tiles.crossSeed")).toBe("1 KiB | tiles.crossSeedShare percent=33")
-    expect(await tile("tiles.ratio")).toBe("1.50 | tiles.buffer buffer=+1 KiB")
+    await expectTile("tiles.uploaded", "3 KiB | ")
+    await expectTile("tiles.crossSeed", "1 KiB | tiles.crossSeedShare percent=33")
+    await expectTile("tiles.ratio", "1.50 | tiles.buffer buffer=+1 KiB")
     expect(requests.find(request => request.bucket === "day")?.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
   })
 
@@ -125,7 +126,7 @@ describe("Statistics", () => {
     fireEvent.mouseDown(await screen.findByText("periods.all"), { button: 0 })
 
     await vi.waitFor(() => expect(requests.some(request => request.bucket === "total" && request.from === null)).toBe(true))
-    expect(await tile("tiles.uploaded")).toContain("10 KiB")
+    await expectTile("tiles.uploaded", "10 KiB | ")
     expect(screen.getByText("allTimeNote")).toBeTruthy()
     expect((await screen.findByTestId("chart")).getAttribute("data-uploaded")).toBe("2048")
   })
@@ -165,15 +166,15 @@ describe("Statistics", () => {
     }
     renderPage()
 
-    expect(await tile("tiles.uploaded")).toBe("8 KiB | tiles.change change=+50%")
-    expect(await tile("tiles.downloaded")).toBe("2 KiB | tiles.change change=-50%")
+    await expectTile("tiles.uploaded", "8 KiB | tiles.change change=+50%")
+    await expectTile("tiles.downloaded", "2 KiB | tiles.change change=-50%")
     cleanup()
 
     requests = []
     statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 40)]
     renderPage()
 
-    expect(await tile("tiles.uploaded")).toBe("8 KiB | ")
+    await expectTile("tiles.uploaded", "8 KiB | ")
     expect(requests.filter(request => request.bucket === "total")).toEqual([])
   })
 

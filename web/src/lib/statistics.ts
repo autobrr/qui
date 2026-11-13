@@ -30,9 +30,9 @@ export const SERIES_COUNT = SERIES_COLORS.light.length
 
 const HOUR = 3_600_000
 
-/** A chart of 7 days or less has a bar for each hour. */
-function unitOf(length: number): ChartUnit {
-  return length <= 7 * 24 * HOUR ? "hour" : "day"
+/** A chart of 7 calendar days or less has a bar for each hour. */
+function unitOf(days: number): ChartUnit {
+  return days <= 7 ? "hour" : "day"
 }
 
 function startOfHour(time: Date): Date {
@@ -54,7 +54,7 @@ export function presetPeriod(preset: PeriodPreset, now: Date): StatisticsPeriod 
     return { to: now, unit: "day" }
   }
   const days = PRESET_DAYS[preset]
-  const unit = unitOf(days * 24 * HOUR)
+  const unit = unitOf(days)
   const from = unit === "hour" ? new Date(startOfHour(now).getTime() - (days * 24 - 1) * HOUR) : addLocalDays(startOfLocalDay(now), 1 - days)
   return { from, to: now, unit }
 }
@@ -64,7 +64,9 @@ export function customPeriod(firstDay: Date, lastDay: Date, now: Date): Statisti
   const from = firstDay
   const end = addLocalDays(lastDay, 1)
   const to = end < now ? end : now
-  return { from, to, unit: unitOf(to.getTime() - from.getTime()) }
+  // Count dates, not hours: a week with a change of the clock has 167 or 169 hours.
+  const days = Math.round((Date.UTC(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate()) - Date.UTC(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate())) / (24 * HOUR)) + 1
+  return { from, to, unit: unitOf(days) }
 }
 
 /**
