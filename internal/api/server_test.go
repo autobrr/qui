@@ -40,6 +40,7 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -190,7 +191,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey)
 	require.NoError(t, err)
 	discScanStore := models.NewDiscScanStore(db)
-	transferHistory := transferhistory.New(db, trackerCustomizationStore)
+	systemNotices := systemnotice.New(nil)
+	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
 	jackettService := jackett.NewService(torznabIndexerStore)
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
@@ -241,6 +243,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		DiscScanStore:             discScanStore,
 		DiscScanService:           discscan.NewService(discScanStore),
 		TransferHistory:           transferHistory,
+		SystemNotices:             systemNotices,
 		DirScanService:            dirScanService,
 		CrossSeedService:          crossSeedService,
 		CrossSeedRoutes:           crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, nil),

@@ -298,7 +298,7 @@
     "loading": "Loading notification targets…",
     "loadFailed": "Failed to load notification targets",
     "empty": "No notification targets configured. Add one to start receiving alerts.",
-    "allEvents": "All events",
+    "allEvents": "All events except System notice",
     "showList": "Show list",
     "hideList": "Hide list",
     "badges": {
@@ -413,6 +413,26 @@
     },
     "size": {
       "label": "History size"
+    },
+    "deleteHistory": {
+      "label": "Delete history",
+      "description": "Delete the transfer history of one instance or of all instances. You cannot get it back.",
+      "instance": "Instance",
+      "allInstances": "All instances",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Everything",
+      "before": "Everything before a date",
+      "date": "Date",
+      "button": "Delete history",
+      "confirmTitle": "Delete history?",
+      "confirmEverything": "qui deletes all the history of {{name}}. Recording starts again with a new baseline. You cannot undo this.",
+      "confirmBefore": "qui deletes the history of {{name}} before {{date}}. If recording started before that date, the bytes from before the first recording go too, and \"Recording since\" moves to that date. You cannot undo this.",
+      "sqliteSpace": "The database file keeps its size. SQLite uses the free space again for new history.",
+      "postgresSpace": "A delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again for new history.",
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "deleted": "History deleted",
+      "failed": "Failed to delete the history"
     },
     "loadFailed": "Failed to load the Statistics settings",
     "toasts": {

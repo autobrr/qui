@@ -298,7 +298,7 @@
     "loading": "Carregando alvos de notificação...",
     "loadFailed": "Falha ao carregar alvos de notificação",
     "empty": "Nenhum alvo de notificação configurado. Adicione um para começar a receber alertas.",
-    "allEvents": "Todos os eventos",
+    "allEvents": "Todos os eventos, exceto aviso do sistema",
     "showList": "Mostrar lista",
     "hideList": "Ocultar lista",
     "badges": {
@@ -413,6 +413,26 @@
     },
     "size": {
       "label": "Tamanho do histórico"
+    },
+    "deleteHistory": {
+      "label": "Excluir histórico",
+      "description": "Exclui o histórico de transferências de uma instância ou de todas as instâncias. Não é possível recuperá-lo.",
+      "instance": "Instância",
+      "allInstances": "Todas as instâncias",
+      "unnamedInstance": "Instância {{id}}",
+      "everything": "Tudo",
+      "before": "Tudo antes de uma data",
+      "date": "Data",
+      "button": "Excluir histórico",
+      "confirmTitle": "Excluir histórico?",
+      "confirmEverything": "O qui exclui todo o histórico de {{name}}. A gravação recomeça com uma nova linha de base. Não é possível desfazer.",
+      "confirmBefore": "O qui exclui o histórico de {{name}} antes de {{date}}. Se a gravação começou antes dessa data, os bytes de antes da primeira gravação também são excluídos, e \"Gravando desde\" passa para essa data. Não é possível desfazer.",
+      "sqliteSpace": "O arquivo do banco de dados mantém o tamanho. O SQLite reutiliza o espaço livre para o novo histórico.",
+      "postgresSpace": "Excluir tudo de todas as instâncias devolve o espaço ao disco na hora. Após outra exclusão, o Postgres reutiliza o espaço livre para o novo histórico.",
+      "cancel": "Cancelar",
+      "confirm": "Excluir",
+      "deleted": "Histórico excluído",
+      "failed": "Falha ao excluir o histórico"
     },
     "loadFailed": "Falha ao carregar as configurações de estatísticas",
     "toasts": {

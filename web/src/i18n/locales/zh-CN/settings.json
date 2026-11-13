@@ -298,7 +298,7 @@
     "loading": "正在加载通知目标…",
     "loadFailed": "加载通知目标失败",
     "empty": "尚未配置通知目标。添加一个以开始接收警报。",
-    "allEvents": "全部事件",
+    "allEvents": "除系统通知外的全部事件",
     "showList": "显示列表",
     "hideList": "隐藏列表",
     "badges": {
@@ -413,6 +413,26 @@
     },
     "size": {
       "label": "历史大小"
+    },
+    "deleteHistory": {
+      "label": "删除历史",
+      "description": "删除一个实例或所有实例的传输历史。删除后无法恢复。",
+      "instance": "实例",
+      "allInstances": "所有实例",
+      "unnamedInstance": "实例 {{id}}",
+      "everything": "全部",
+      "before": "某日期之前的全部",
+      "date": "日期",
+      "button": "删除历史",
+      "confirmTitle": "删除历史？",
+      "confirmEverything": "qui 将删除 {{name}} 的全部历史。记录将以新的基线重新开始。此操作无法撤销。",
+      "confirmBefore": "qui 将删除 {{name}} 在 {{date}} 之前的历史。如果记录在该日期之前开始，首次记录之前的字节也会删除，“自…起记录”会改为该日期。此操作无法撤销。",
+      "sqliteSpace": "数据库文件大小不变。SQLite 会将空闲空间重新用于新的历史。",
+      "postgresSpace": "删除所有实例的全部历史会立即将空间归还给磁盘。其他删除之后，Postgres 会将空闲空间重新用于新的历史。",
+      "cancel": "取消",
+      "confirm": "删除",
+      "deleted": "历史已删除",
+      "failed": "删除历史失败"
     },
     "loadFailed": "无法加载统计设置",
     "toasts": {

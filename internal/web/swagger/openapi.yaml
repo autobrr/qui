@@ -3571,6 +3571,13 @@ paths:
           schema:
             type: string
             enum: [tracker, category]
+        - name: group
+          in: query
+          description: >-
+            Limits the answer to the rows of one Tracker group or one category, by the group name of a row. An empty value
+            selects the torrents with no category. Leave it out for each group.
+          schema:
+            type: string
         - name: timeZone
           in: query
           description: >-
@@ -3712,6 +3719,34 @@ paths:
         '500':
           description: Failed to read transfer history
 
+  /api/instances/{instanceID}/tracker-groups:
+    get:
+      tags:
+        - Transfer History
+      summary: Get the torrents of an instance by Tracker group
+      description: >-
+        Returns the torrents that are in qBittorrent now, added up by Tracker group. A torrent counts toward one group, also
+        when it has more than one tracker domain. Tracker customizations apply. The numbers do not come from the transfer
+        history, so a deleted torrent is not in them.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: One entry for each Tracker group, ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LiveTrackerGroup'
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to read tracker groups
+
   /api/transfer-history/status:
     get:
       tags:
@@ -3766,6 +3801,40 @@ paths:
           description: A field is missing, or the Detail retention is not 0, 90, or 400 days
         '500':
           description: Failed to save transfer history settings
+
+  /api/transfer-history:
+    delete:
+      tags:
+        - Transfer History
+      summary: Delete transfer history
+      description: >-
+        Deletes the transfer history of one instance, also a removed one, or of all instances. Without before, qui deletes
+        everything: the next reading of the instance starts a new Baseline, and a removed instance has no history after that.
+        With before, qui deletes each UTC day before the UTC day of that time, so each row from that time on stays. When that
+        day starts after the first recording, the Baseline goes too, and the first recording moves to that day. qui deletes in a
+        series of short writes. On SQLite, the database file keeps its size, and SQLite uses the free space again. On Postgres,
+        a delete of everything of all instances returns the space at once. An API key with an instance limit cannot use this route.
+      parameters:
+        - in: query
+          name: instanceId
+          required: true
+          schema:
+            type: string
+          description: The instance ID, or `all` for all instances.
+        - in: query
+          name: before
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Delete the history before this time, in RFC 3339. The time must be after 0001-01-01T00:00:00Z and not in the future.
+      responses:
+        '204':
+          description: The history is deleted
+        '400':
+          description: Invalid instanceId or before
+        '500':
+          description: Failed to delete transfer history
 
   /api/instances/{instanceID}/automations/{ruleID}/apply:
     post:
@@ -6443,6 +6512,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
 
+  /api/system-notices:
+    get:
+      tags:
+        - System
+      summary: List open System notices
+      description: Returns the open System notices. A System notice is a fault in qui that needs an action from the user, for example "recording_stopped" when qui cannot write the Transfer history. The list is empty when no notice is open.
+      responses:
+        '200':
+          description: Open System notices, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SystemNotice'
+
   /api/system/restart:
     post:
       tags:
@@ -8821,6 +8906,31 @@ components:
           additionalProperties: true
           description: Opaque torrent filter selections
 
+    SystemNotice:
+      type: object
+      description: An open System notice
+      required:
+        - kind
+        - severity
+        - cause
+        - openedAt
+      properties:
+        kind:
+          type: string
+          enum: [recording_stopped]
+          description: The kind of the notice. The web UI shows the title and the fix of each kind.
+        severity:
+          type: string
+          enum: [error]
+        cause:
+          type: string
+          description: The error that opened the notice, or the latest error while it is open
+          example: "write the transfer history of instance 1: attempt to write a readonly database"
+        openedAt:
+          type: string
+          format: date-time
+          description: When the notice opened
+
     LatestVersionResponse:
       type: object
       description: Information about the latest available version when an update is available
@@ -10783,6 +10893,24 @@ components:
           format: int64
         baseline:
           $ref: '#/components/schemas/TransferHistoryBytes'
+
+    LiveTrackerGroup:
+      type: object
+      properties:
+        group:
+          type: string
+          description: The name of the Tracker group, as in the rows of the transfer history.
+        torrents:
+          type: integer
+          description: Number of torrents of the group.
+        size:
+          type: integer
+          format: int64
+          description: Total size of the torrents. Torrents of the group that share one content path count once.
+        uploaded:
+          type: integer
+          format: int64
+          description: Lifetime upload of the torrents.
 
     TransferHistoryLibraryRow:
       type: object

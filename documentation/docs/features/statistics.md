@@ -2,7 +2,7 @@
 sidebar_position: 15.5
 title: qBittorrent transfer statistics in qui
 sidebar_label: Statistics
-description: "The Statistics page of qui: upload and download for each period, by tracker, from the transfer history that qui records. Turn the recording on or off, and select how long qui keeps the detail."
+description: "The Statistics page of qui: upload and download for each period, by tracker or category, from the transfer history that qui records. Turn the recording on or off, and select how long qui keeps the detail."
 ---
 
 # Statistics
@@ -13,7 +13,7 @@ The Statistics page shows how much you uploaded and downloaded in a period. qui 
 
 qui records the transfer of each torrent from the moment that you upgrade to a version with Statistics. You do not have to turn it on. To stop the recording, see [Statistics settings](#statistics-settings). qui records with no browser open, from the torrent data that it already reads from qBittorrent. It sends no extra requests to qBittorrent.
 
-qui keeps the transfer of a torrent after you delete the torrent. It also keeps the history of an instance after you remove the instance.
+qui keeps the transfer of a torrent after you delete the torrent. It also keeps the history of an instance after you remove the instance, under the name of the instance. To delete the history together with the instance, tick **Also delete its transfer history** in the dialog that removes the instance. The tick box is off by default.
 
 The page shows "Recording since" with the date of the first recording of the selected instances.
 
@@ -56,6 +56,50 @@ If qui recorded the period before in full, Uploaded and Downloaded also show the
 The chart shows the upload or the download of each bar. Use the switch above the chart to select **Upload** or **Download**. The bars stack by tracker. The five trackers with the most bytes in the period each get a color. The other trackers are in the gray series Other.
 
 The page counts each torrent toward one tracker. Thus, the tracker series of the chart add up to the Uploaded or Downloaded number of the period. All time is the exception, because its numbers also hold the Baseline. A torrent that is not private counts toward Public. A torrent with no tracker counts toward No tracker. Tracker customizations apply: a merged tracker is one series under its display name. A rename or a merge also changes the past.
+
+## Table
+
+The table below the chart shows the numbers of the period for each tracker or each category. Use the **Group by** switch above the table to select **Tracker** or **Category**.
+
+### By tracker
+
+The table has one row for each tracker, with these columns:
+
+| Column | Content |
+|--------|---------|
+| Uploaded | The upload of the period |
+| Downloaded | The download of the period |
+| Ratio | Uploaded divided by Downloaded |
+| Buffer | Uploaded minus Downloaded |
+| Torrents | The number of torrents of the tracker that are in qBittorrent now |
+| Size | The size of those torrents. Torrents of the tracker that share one content path count once |
+| Seeded | The lifetime upload of those torrents divided by their size |
+
+Uploaded, Downloaded, Ratio, and Buffer are for the selected period. Torrents, Size, and Seeded are live numbers. They describe the torrents that are in qBittorrent now, whatever the period. A removed or disabled instance has no live numbers.
+
+The table counts each torrent toward one tracker, as the chart does. A torrent with three tracker domains counts one time. Thus, the rows add up to the numbers at the top of the page, and the Total row shows that sum. For a session total, select the period 24 hours.
+
+### By category
+
+The table has one row for each category, with Uploaded, Downloaded, Ratio, and Buffer. A row holds the bytes that moved while the torrent was in that category. If you move a torrent to another category, its older bytes stay under the old category.
+
+qui stores the totals of each category for each UTC day. A period that starts or ends inside a UTC day counts that whole day. Thus, the Total row of the categories can be larger than the numbers at the top of the page, for example for the period 24 hours. For All time, the two totals agree.
+
+### Detail of a row
+
+Click a row to open its detail below that row. Click the row again to close it. One row is open at a time, and the table keeps all its columns. On a phone, the table scrolls sideways, and the detail stays in view at the full width of the screen.
+
+The detail shows:
+
+- **Share of the upload**: the part of the upload of the period that the row holds.
+- **From cross-seeds**: the upload of the row from torrents that completed with less than 1% of their size downloaded, and its part of the upload of the row.
+- **Best hour** or **Best day**: the bar with the most upload, and its time.
+- **Average per hour** or **Average per day**: the upload of the row divided by the number of bars.
+- A chart of the row, with the upload above the zero line and the download below it.
+
+The chart of a tracker has the bars of the main chart: hours for a period of 7 days or less, and days for a longer period. The chart of a category always shows days, because qui stores the category totals for each day.
+
+For All time, the rows, the share, and the upload from cross-seeds include the Baseline. The chart, the best bar, and the average do not, because the Baseline has no date.
 
 ## Baseline
 
@@ -104,10 +148,31 @@ On SQLite, a fold does not make the database file smaller. SQLite uses the free 
 
 An API key needs **Settings: write** to change these settings. A key with an instance limit cannot change them.
 
+### Delete history
+
+**Delete history** deletes the transfer history of one instance or of all instances. The list of instances also holds each removed instance that has history. You cannot get deleted history back.
+
+1. Select the instance, or **All instances**.
+2. Select **Everything**, or select **Everything before a date** and the date.
+3. Click **Delete history**. The dialog names the instance and the range.
+4. Click **Delete**.
+
+After a delete of everything, qui starts to record the instance again. The torrents that are in qBittorrent at that time go into a new Baseline, and "Recording since" shows the new date. A removed instance has no history after the delete.
+
+A delete before a date keeps each hour and each day from that date on. qui stores days as UTC days, so it keeps the whole UTC day that holds the start of your date. If recording started before the date, the Baseline goes too, and "Recording since" moves to the start of that UTC day. In a timezone east of UTC, that is the day before your date. The yearly row of a torrent goes when its year ends before the date.
+
+qui deletes in a series of short writes, so the other features of qui can write to the database between them. The Statistics page waits until the delete ends. qui records the transfer of that time when the delete ends.
+
+On SQLite, the database file keeps its size after a delete. SQLite uses the free space again for new history. On Postgres, a delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again.
+
+An API key needs **Settings: write** to delete history. A key with an instance limit cannot delete history.
+
+The tick box in the dialog that removes an instance sends a second request after the removal. If that request fails, qui removes the instance, and a part or all of its history can stay. You can delete the rest here.
+
 ## Why the numbers differ from Server Statistics
 
 Server Statistics on the [Dashboard](./dashboard.md) reads the all-time counters of qBittorrent. These counters also count protocol traffic. The Statistics page adds up the transfer of each torrent. Thus, the two pages show different numbers.
 
 ## Incognito mode
 
-If [incognito mode](./incognito.md) is on, the page replaces the tracker names with fake names.
+If [incognito mode](./incognito.md) is on, the page replaces the tracker names and the category names with fake names.

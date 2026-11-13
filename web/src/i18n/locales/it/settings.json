@@ -298,7 +298,7 @@
     "loading": "Caricamento delle destinazioni di notifica...",
     "loadFailed": "Impossibile caricare le destinazioni di notifica",
     "empty": "Nessuna destinazione di notifica configurata. Aggiungine una per iniziare a ricevere avvisi.",
-    "allEvents": "Tutti gli eventi",
+    "allEvents": "Tutti gli eventi tranne l'avviso di sistema",
     "showList": "Mostra elenco",
     "hideList": "Nascondi elenco",
     "badges": {
@@ -413,6 +413,26 @@
     },
     "size": {
       "label": "Dimensione dello storico"
+    },
+    "deleteHistory": {
+      "label": "Elimina cronologia",
+      "description": "Elimina la cronologia dei trasferimenti di un'istanza o di tutte le istanze. Non potrai recuperarla.",
+      "instance": "Istanza",
+      "allInstances": "Tutte le istanze",
+      "unnamedInstance": "Istanza {{id}}",
+      "everything": "Tutto",
+      "before": "Tutto prima di una data",
+      "date": "Data",
+      "button": "Elimina cronologia",
+      "confirmTitle": "Eliminare la cronologia?",
+      "confirmEverything": "qui elimina tutta la cronologia di {{name}}. La registrazione riparte con una nuova base. Questa azione non può essere annullata.",
+      "confirmBefore": "qui elimina la cronologia di {{name}} prima del {{date}}. Se la registrazione è iniziata prima di quella data, vengono eliminati anche i byte precedenti alla prima registrazione, e \"Registrazione dal\" passa a quella data. Questa azione non può essere annullata.",
+      "sqliteSpace": "Il file del database mantiene la sua dimensione. SQLite riutilizza lo spazio libero per la nuova cronologia.",
+      "postgresSpace": "Eliminare tutto di tutte le istanze restituisce subito lo spazio al disco. Dopo un'altra eliminazione, Postgres riutilizza lo spazio libero per la nuova cronologia.",
+      "cancel": "Annulla",
+      "confirm": "Elimina",
+      "deleted": "Cronologia eliminata",
+      "failed": "Impossibile eliminare la cronologia"
     },
     "loadFailed": "Impossibile caricare le impostazioni delle statistiche",
     "toasts": {

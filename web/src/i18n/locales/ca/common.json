@@ -167,6 +167,19 @@
     "versionAvailable": "La versió {{version}} ja està disponible",
     "dismiss": "Descarta"
   },
+  "systemNotice": {
+    "kinds": {
+      "recording_stopped": {
+        "title": "Enregistrament aturat",
+        "fix": "qui ho torna a provar a la propera escriptura. Assegura't que el disc té espai lliure i que qui pot escriure el fitxer de la base de dades."
+      }
+    },
+    "unknown": {
+      "title": "Avís del sistema",
+      "fix": "qui necessita una acció teva. El registre de qui té els detalls."
+    },
+    "cause": "Causa: {{cause}}"
+  },
   "pwaUpdate": {
     "reload": "Recarrega",
     "waitingDescription": "Recarrega per aplicar la darrera versió de qui.",

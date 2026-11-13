@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { StatisticsDeleteHistory } from "@/components/settings/StatisticsDeleteHistory"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
@@ -100,6 +101,8 @@ export function StatisticsSettingsCard() {
               <span className="text-sm font-medium">{t("statistics.size.label")}</span>
               <span className="text-sm tabular-nums" data-testid="statistics-history-size">{formatBytes(status.historyBytes)}</span>
             </div>
+
+            <StatisticsDeleteHistory instances={status.instances} />
           </div>
         )}
       </CardContent>

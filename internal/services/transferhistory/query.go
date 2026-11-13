@@ -39,13 +39,16 @@ const (
 // [From, To). A zero From is a period with no start. Times are UTC.
 // Location sets the midnights of the day buckets of Tracker groups, and nil
 // is UTC. An hour counts toward the day of its start. Category totals stay on
-// UTC days, because qui stores them for each UTC day.
+// UTC days, because qui stores them for each UTC day. A non-nil Group limits
+// the answer to the rows of that group; "" is the group of torrents with no
+// category.
 type TransferQuery struct {
 	InstanceID int
 	From       time.Time
 	To         time.Time
 	Bucket     Bucket
 	GroupBy    Grouping
+	Group      *string
 	Location   *time.Location
 }
 
@@ -112,7 +115,11 @@ func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, 
 	if err != nil {
 		return nil, err
 	}
-	return a.sorted(), nil
+	rows := a.sorted()
+	if q.Group != nil {
+		rows = slices.DeleteFunc(rows, func(r TransferRow) bool { return r.Group != *q.Group })
+	}
+	return rows, nil
 }
 
 // ErrInvalidQuery is the error of a query that the module cannot answer.
