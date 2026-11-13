@@ -37,7 +37,7 @@ ALTER TABLE transfer_history_torrents ADD COLUMN completed BOOLEAN NOT NULL DEFA
 
 UPDATE transfer_history_torrents SET completed = TRUE WHERE statistics_cross_seed IS NOT NULL;
 
--- The Statistics cross-seed flag of the Baseline: the flag at the first delete
+-- The Statistics cross-seed flag of the Baseline: the flag of the first life
 -- of the torrent. NULL while the torrent is in its first life, where the
 -- Baseline follows statistics_cross_seed.
 ALTER TABLE transfer_history_torrents ADD COLUMN baseline_statistics_cross_seed BOOLEAN;

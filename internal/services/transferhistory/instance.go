@@ -258,6 +258,7 @@ func (inst *instance) changeHash(rec *models.TransferHistoryRecord, hash string)
 func (inst *instance) continueIn(returned, magnet *models.TransferHistoryRecord) {
 	returned.LastUploaded, returned.LastDownloaded = magnet.LastUploaded, magnet.LastDownloaded
 	returned.Completed, returned.UploadFirst24h = magnet.Completed, magnet.UploadFirst24h
+	keepBaselineFlag(returned)
 	returned.StatisticsCrossSeed = magnet.StatisticsCrossSeed
 	returned.Final, magnet.Final = magnet.Final, nil
 	returned.Deleted, magnet.Deleted = false, true
@@ -287,6 +288,14 @@ func (inst *instance) addEvents(rec *models.TransferHistoryRecord, t *Torrent, a
 	}
 }
 
+// keepBaselineFlag stores the Statistics cross-seed flag of the first life of
+// rec for its Baseline, before a new life decides the flag again.
+func keepBaselineFlag(rec *models.TransferHistoryRecord) {
+	if rec.BaselineStatisticsCrossSeed == nil {
+		rec.BaselineStatisticsCrossSeed = new(rec.StatisticsCrossSeed != nil && *rec.StatisticsCrossSeed)
+	}
+}
+
 // addAgain starts a new life of a deleted record. Its counters start at zero
 // and it gets its Statistics cross-seed flag again, unless qBittorrent left
 // the torrent out of the readings since the delete.
@@ -295,7 +304,6 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 	delete(inst.deleted, rec.Hash)
 	inst.records[rec.Hash] = rec
 	if leftOut {
-		rec.BaselineStatisticsCrossSeed = nil
 		return
 	}
 	rec.LastUploaded, rec.LastDownloaded = 0, 0
@@ -303,6 +311,7 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 	// counters are still zero.
 	inst.changedCounters[rec] = struct{}{}
 	rec.Completed = false
+	keepBaselineFlag(rec)
 	rec.StatisticsCrossSeed = nil
 	rec.UploadFirst24h = nil
 	if now.Before(t.AddedAt.Add(day)) {
@@ -323,10 +332,6 @@ func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, n
 		rec.Final = nil
 	}
 	inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventDelete, Time: now, Delete: event})
-	// A later life decides the flag again, and the Baseline keeps this one.
-	if rec.BaselineStatisticsCrossSeed == nil {
-		rec.BaselineStatisticsCrossSeed = new(rec.StatisticsCrossSeed != nil && *rec.StatisticsCrossSeed)
-	}
 	rec.Deleted = true
 	delete(inst.records, rec.Hash)
 	inst.deleted[rec.Hash] = rec

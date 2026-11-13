@@ -351,6 +351,22 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "the Baseline keeps the flag of the first life when a later life returns with an old added time",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), complete(torrent("b", 400, 0))),
+				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(10*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(9*time.Minute))),
+				reading(at(15*time.Minute), torrent("a", 0, 0)),
+				reading(at(80*time.Minute), torrent("a", 0, 0)),
+				reading(at(85*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(9*time.Minute))),
+				expect(transferhistory.TransferQuery{To: at(2 * time.Hour), Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
+					transferhistory.TransferRow{
+						Group: "tracker.example", Width: transferhistory.BucketTotal,
+						Baseline: &transferhistory.Bytes{Uploaded: 400, StatisticsCrossSeedUploaded: 400},
+					}),
+			},
+		},
+		{
 			name: "the Baseline of a torrent that returns with an old added time follows the flag of the same life",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0), addedAt(torrent("b", 400, 0), at(-30*24*time.Hour))),
