@@ -284,6 +284,24 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 			},
 		},
 		{
+			name: "a delete note before the stored switch is read after a restart is dropped",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
+				reading(at(5*time.Minute), torrent("a", 0, 0), torrent("b", 0, 0)),
+				recordingOff,
+				restart,
+				note(at(11*time.Minute), byUser, "a"),
+				reading(at(12*time.Minute), torrent("b", 0, 0)),
+				recordingOn,
+				reading(at(15*time.Minute), torrent("b", 0, 0)),
+				// No reading held the torrent since the restart.
+				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, transferhistory.DeleteEvent{
+					Time: at(15 * time.Minute).Truncate(time.Second), Hash: "a", Name: "Some.Show.S01E01.1080p.WEB-DL-GRP",
+					TrackerGroup: "tracker.example", Cause: outside,
+				}),
+			},
+		},
+		{
 			name: "the switch stays off after a restart",
 			steps: []step{
 				reading(at(0), torrent("a", 10, 0)),

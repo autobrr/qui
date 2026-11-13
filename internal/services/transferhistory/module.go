@@ -248,6 +248,13 @@ func (m *Module) run() {
 		m.notes, m.barriers, m.pause, m.refold = nil, nil, false, false
 		m.mu.Unlock()
 
+		// No reading clears the delete notes while recording is off. Notes can
+		// come before the module reads the settings after a start.
+		if ready && !settings.Recording {
+			notes = nil
+			clear(m.deleteNotes)
+		}
+
 		if refold {
 			m.foldedDay = 0
 		}
