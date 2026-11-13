@@ -56,33 +56,33 @@ export const PieceBar = memo(function PieceBar({
 
       const barHeight = 12
 
-      // Set canvas size (use device pixel ratio for sharp rendering)
+      // Size the canvas in device pixels, so a column can be as narrow as one device pixel
       const dpr = window.devicePixelRatio || 1
       canvas.width = containerWidth * dpr
       canvas.height = barHeight * dpr
       canvas.style.width = `${containerWidth}px`
       canvas.style.height = `${barHeight}px`
-      ctx.setTransform(1, 0, 0, 1, 0, 0)
-      ctx.scale(dpr, dpr)
+      const radius = 4 * dpr
 
-      // Clear canvas with background
       ctx.fillStyle = BACKGROUND_COLOR
       ctx.beginPath()
-      ctx.roundRect(0, 0, containerWidth, barHeight, 4)
+      ctx.roundRect(0, 0, canvas.width, canvas.height, radius)
       ctx.fill()
 
-      const columns = computePieceBarColumns(pieceStates, containerWidth)
-      const columnWidth = containerWidth / columns.length
+      const columns = computePieceBarColumns(pieceStates, canvas.width)
+      const columnWidth = canvas.width / columns.length
 
       columns.forEach((column, i) => {
+        const left = Math.round(i * columnWidth)
+        const right = Math.round((i + 1) * columnWidth)
         ctx.fillStyle = columnColor(column)
-        ctx.fillRect(i * columnWidth, 0, columnWidth + 0.5, barHeight) // +0.5 to avoid gaps
+        ctx.fillRect(left, 0, right - left, canvas.height)
       })
 
-      // Apply rounded corners mask by redrawing with clip
+      // Apply rounded corners mask
       ctx.globalCompositeOperation = "destination-in"
       ctx.beginPath()
-      ctx.roundRect(0, 0, containerWidth, barHeight, 4)
+      ctx.roundRect(0, 0, canvas.width, canvas.height, radius)
       ctx.fill()
       ctx.globalCompositeOperation = "source-over"
     }
