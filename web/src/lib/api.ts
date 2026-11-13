@@ -860,6 +860,9 @@ class ApiClient {
     if (query.from) {
       params.set("from", query.from.toISOString())
     }
+    if (query.timeZone) {
+      params.set("timeZone", query.timeZone)
+    }
     const response = await this.request<{ rows: TransferHistoryRow[] }>(`/instances/${instanceId}/transfer-history?${params}`)
     return response.rows
   }

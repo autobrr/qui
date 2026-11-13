@@ -48,6 +48,7 @@ interface TransferRequest {
   bucket: string
   from: string | null
   to: string | null
+  timeZone: string | null
 }
 
 let statuses: TransferHistoryInstance[]
@@ -95,7 +96,7 @@ beforeEach(() => {
     http.get("*/api/instances", () => HttpResponse.json(configuredIds.map(id => ({ id, name: `instance ${id}`, isActive: true })))),
     http.get("*/api/instances/:id/transfer-history", ({ params, request }) => {
       const url = new URL(request.url)
-      const transfer = { instanceId: Number(params.id), bucket: url.searchParams.get("bucket") ?? "", from: url.searchParams.get("from"), to: url.searchParams.get("to") }
+      const transfer = { instanceId: Number(params.id), bucket: url.searchParams.get("bucket") ?? "", from: url.searchParams.get("from"), to: url.searchParams.get("to"), timeZone: url.searchParams.get("timeZone") }
       requests.push(transfer)
       return HttpResponse.json({ rows: answer(transfer) })
     })
@@ -109,12 +110,13 @@ afterEach(() => {
 
 describe("Statistics", () => {
   it("adds the instances together and takes the cross-seed upload from the same rows", async () => {
-    answer = ({ instanceId, bucket }) => bucket === "hour" ? [row("a.test", instanceId * 1024, 1024, { statisticsCrossSeedUploaded: 512 })] : []
+    answer = ({ instanceId, bucket }) => bucket === "day" ? [row("a.test", instanceId * 1024, 1024, { statisticsCrossSeedUploaded: 512, width: "day" })] : []
     renderPage()
 
     expect(await tile("tiles.uploaded")).toContain("3 KiB")
     expect(await tile("tiles.crossSeed")).toBe("1 KiB | tiles.crossSeedShare percent=33")
     expect(await tile("tiles.ratio")).toBe("1.50 | tiles.buffer buffer=+1 KiB")
+    expect(requests.find(request => request.bucket === "day")?.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
   })
 
   it("includes the Baseline in the numbers of all time", async () => {
@@ -137,13 +139,19 @@ describe("Statistics", () => {
     fireEvent.click(screen.getByText("customRange.apply"))
 
     await vi.waitFor(() => expect(requests.filter(request => request.bucket === "hour").length).toBe(2))
-    expect(requests[0]).toMatchObject({ from: new Date(2026, 0, 5).toISOString(), to: new Date(2026, 0, 7).toISOString() })
+    expect(requests.find(request => request.bucket === "hour")).toMatchObject({ from: new Date(2026, 0, 5).toISOString(), to: new Date(2026, 0, 7).toISOString(), timeZone: null })
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
   })
 
   it("shows the change against the period before only when qui recorded that period in full", async () => {
     const runningHour = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000).toISOString()
-    answer = ({ bucket }) => bucket === "hour" ? [row("a.test", 3072, 1024), row("a.test", 1024, 0, { start: runningHour })] : [row("a.test", 2048, 2048, { width: "total" })]
+    answer = ({ bucket, to }) => {
+      if (bucket === "day") {
+        return [row("a.test", 4096, 1024, { width: "day" })]
+      }
+      // The period before ends 30 days back, and the period ends with the hour that still runs.
+      return to === runningHour ? [row("a.test", 3072, 1024, { width: "total" })] : [row("a.test", 2048, 2048, { width: "total" })]
+    }
     renderPage()
 
     expect(await tile("tiles.uploaded")).toBe("8 KiB | tiles.change change=+50%")
@@ -190,7 +198,7 @@ describe("Statistics", () => {
     expect((await screen.findByText("Home")).parentElement?.textContent).toContain("instances.removed")
     fireEvent.click(screen.getByText("Home"))
 
-    await vi.waitFor(() => expect(requests.some(request => request.instanceId === 2 && request.bucket === "hour")).toBe(true))
+    await vi.waitFor(() => expect(requests.some(request => request.instanceId === 2 && request.bucket === "day")).toBe(true))
     requests = []
     await act(async () => {
       fireEvent.mouseDown(screen.getByText("periods.24h"), { button: 0 })
@@ -201,7 +209,7 @@ describe("Statistics", () => {
 
   it("masks the tracker names in incognito mode", async () => {
     mocks.incognito = true
-    answer = ({ bucket }) => bucket === "hour" ? [row("tracker.private.test", 1024, 0), row("Public", 512, 0)] : []
+    answer = ({ bucket }) => bucket === "day" ? [row("tracker.private.test", 1024, 0, { width: "day" }), row("Public", 512, 0, { width: "day" })] : []
     renderPage()
 
     const chart = await screen.findByTestId("chart")

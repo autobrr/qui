@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+	// Embeds the zone database, which Windows and minimal container images lack.
+	_ "time/tzdata"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/trackergroup"
@@ -34,12 +36,16 @@ const (
 
 // TransferQuery asks for the transfer of one instance in the period
 // [From, To). A zero From is a period with no start. Times are UTC.
+// Location sets the midnights of the day buckets of Tracker groups, and nil
+// is UTC. An hour counts toward the day of its start. Category totals stay on
+// UTC days, because qui stores them for each UTC day.
 type TransferQuery struct {
 	InstanceID int
 	From       time.Time
 	To         time.Time
 	Bucket     Bucket
 	GroupBy    Grouping
+	Location   *time.Location
 }
 
 // Bytes is an amount of transfer. StatisticsCrossSeedUploaded is the part of Uploaded
@@ -214,7 +220,8 @@ func (a *answer) startOf(width Bucket, bucket int64) time.Time {
 	case width == BucketHour:
 		return time.Unix(bucket*3600, 0).UTC()
 	case width == BucketDay:
-		return time.Unix(bucket*86400, 0).UTC()
+		year, month, day := time.Unix(bucket*86400, 0).UTC().Date()
+		return time.Date(year, month, day, 0, 0, 0, 0, a.dayLocation()).UTC()
 	case a.query.From.IsZero():
 		return time.Time{}
 	case a.query.GroupBy == GroupByCategory:
@@ -224,10 +231,60 @@ func (a *answer) startOf(width Bucket, bucket int64) time.Time {
 	}
 }
 
+// dayLocation returns the time zone of the day buckets of the answer.
+func (a *answer) dayLocation() *time.Location {
+	if a.query.Location == nil || a.query.GroupBy == GroupByCategory {
+		return time.UTC
+	}
+	return a.query.Location
+}
+
+// trackerBuckets returns the buckets of the hours [from, to) of a query by
+// Tracker group.
+func (a *answer) trackerBuckets(ctx context.Context, store *models.TransferHistoryStore, from, to int64) (models.TransferHistoryBuckets, error) {
+	if a.query.Bucket != BucketDay {
+		return models.TransferHistoryBuckets{Width: map[Bucket]int64{BucketHour: 1, BucketTotal: 0}[a.query.Bucket]}, nil
+	}
+	if from == 0 {
+		// A period with no start begins at the first recording, so the offsets
+		// do not reach back to 1970.
+		instances, err := store.Instances(ctx)
+		if err != nil {
+			return models.TransferHistoryBuckets{}, err
+		}
+		from = to
+		for _, instance := range instances {
+			if instance.InstanceID == a.query.InstanceID {
+				from = min(to, hourOf(instance.FirstRecordedAt))
+			}
+		}
+	}
+	return models.TransferHistoryBuckets{Offsets: zoneOffsets(a.dayLocation(), from, to)}, nil
+}
+
+// zoneOffsets returns the offsets from UTC of loc in the hours [fromHour,
+// toHour), with the first hour of each.
+func zoneOffsets(loc *time.Location, fromHour, toHour int64) []models.TransferHistoryOffset {
+	var offsets []models.TransferHistoryOffset
+	for start := time.Unix(fromHour*3600, 0); ; {
+		zone := start.In(loc)
+		_, seconds := zone.Zone()
+		offsets = append(offsets, models.TransferHistoryOffset{FromHour: ceilDiv(start.Unix(), 3600), Minutes: floorDiv(int64(seconds), 60)})
+		_, end := zone.ZoneBounds()
+		if end.IsZero() || end.Unix() >= toHour*3600 {
+			return offsets
+		}
+		start = end
+	}
+}
+
 func (a *answer) byTracker(ctx context.Context, store *models.TransferHistoryStore) error {
-	widthHours := map[Bucket]int64{BucketHour: 1, BucketDay: 24, BucketTotal: 0}[a.query.Bucket]
 	from, to := a.hours()
-	totals, err := store.TrackerTotals(ctx, a.query.InstanceID, from, to, widthHours)
+	buckets, err := a.trackerBuckets(ctx, store, from, to)
+	if err != nil {
+		return err
+	}
+	totals, err := store.TrackerTotals(ctx, a.query.InstanceID, from, to, buckets)
 	if err != nil {
 		return err
 	}
@@ -240,15 +297,15 @@ func (a *answer) byTracker(ctx context.Context, store *models.TransferHistorySto
 	}); err != nil {
 		return err
 	}
-	return a.addGaps(ctx, store, from, to, widthHours)
+	return a.addGaps(ctx, store, from, to, buckets)
 }
 
 // byCategory reads the daily totals, because qui stores the category totals
 // for each day.
 func (a *answer) byCategory(ctx context.Context, store *models.TransferHistoryStore) error {
-	width, widthHours := BucketDay, int64(24)
+	width, buckets := BucketDay, models.TransferHistoryBuckets{Width: 24}
 	if a.query.Bucket == BucketTotal {
-		width, widthHours = BucketTotal, 0
+		width, buckets = BucketTotal, models.TransferHistoryBuckets{}
 	}
 	from, to := daysOf(a.query.From, a.query.To)
 	totals, err := store.CategoryTotals(ctx, a.query.InstanceID, from, to, width == BucketTotal)
@@ -262,11 +319,11 @@ func (a *answer) byCategory(ctx context.Context, store *models.TransferHistorySt
 	if err := a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string { return b.Category }); err != nil {
 		return err
 	}
-	return a.addGaps(ctx, store, from*24, to*24, widthHours)
+	return a.addGaps(ctx, store, from*24, to*24, buckets)
 }
 
-func (a *answer) addGaps(ctx context.Context, store *models.TransferHistoryStore, fromHour, toHour, widthHours int64) error {
-	gaps, err := store.GapSeconds(ctx, a.query.InstanceID, fromHour, toHour, widthHours)
+func (a *answer) addGaps(ctx context.Context, store *models.TransferHistoryStore, fromHour, toHour int64, buckets models.TransferHistoryBuckets) error {
+	gaps, err := store.GapSeconds(ctx, a.query.InstanceID, fromHour, toHour, buckets)
 	if err != nil {
 		return err
 	}

@@ -32,6 +32,8 @@ import { Loader2 } from "lucide-react"
 import { useCallback, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
+const BROWSER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+
 // Names that the backend gives to the Tracker groups without a tracker domain.
 const PUBLIC_GROUP = "Public"
 const NO_TRACKER_GROUP = "No tracker"
@@ -57,7 +59,7 @@ function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHi
   }), [enabled])
   return useQueries({
     queries: instances.map(instance => ({
-      queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.bucket, query?.from?.toISOString(), query?.to.toISOString()],
+      queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
       queryFn: () => api.getTransferHistory(instance.instanceId, query!),
       enabled,
     })),
@@ -93,26 +95,24 @@ export function Statistics() {
   const previous = previousPeriod(period)
   const comparable = previous?.from !== undefined && selected.length > 0 && recordedFrom(selected, previous.from)
   const ready = statusQuery.isSuccess
-  const hourly = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: "hour", groupBy: "tracker" } : undefined)
+  const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
   const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const compared = useInstanceRows(selected, comparable ? { from: period.from, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
   const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
   const totals = useMemo<TransferHistoryBytes | undefined>(
-    () => period.from ? hourly.rows && sumBytes(hourly.rows.flat(), false) : allTime.rows && sumBytes(allTime.rows.flat(), true),
-    [period.from, hourly.rows, allTime.rows]
+    () => period.from ? chart.rows && sumBytes(chart.rows.flat(), false) : allTime.rows && sumBytes(allTime.rows.flat(), true),
+    [period.from, chart.rows, allTime.rows]
   )
   const previousTotals = useMemo(() => before.rows && sumBytes(before.rows.flat(), false), [before.rows])
-  const comparedTotals = useMemo(() => {
-    const end = comparisonEnd(period).getTime()
-    return hourly.rows && sumBytes(hourly.rows.flat().filter(row => row.start && Date.parse(row.start) < end), false)
-  }, [hourly.rows, period])
-  const groups = useMemo(() => topGroups(hourly.rows?.flat() ?? [], metric), [hourly.rows, metric])
+  const comparedTotals = useMemo(() => compared.rows && sumBytes(compared.rows.flat(), false), [compared.rows])
+  const groups = useMemo(() => topGroups(chart.rows?.flat() ?? [], metric), [chart.rows, metric])
   const bars = useMemo(() => {
     const range = chartRange(period, since)
-    return hourly.rows && range ? buildBars(hourly.rows, range, period.unit) : []
-  }, [hourly.rows, period, since])
+    return chart.rows && range ? buildBars(chart.rows, range, period.unit) : []
+  }, [chart.rows, period, since])
 
   const displayName = useCallback((group: string) => {
     if (group === PUBLIC_GROUP) return t("groups.public")
@@ -123,8 +123,8 @@ export function Statistics() {
   const formatDay = (date: Date) => date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
   const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatDay(period.from), to: formatDay(new Date(period.to.getTime() - 1)) }) : undefined
   const formatChange = new Intl.NumberFormat(locale, { style: "percent", signDisplay: "exceptZero", maximumFractionDigits: 0 })
-  const error = statusQuery.error ?? (hourly.error ? undefined : allTime.error ?? before.error)
-  const loading = statusQuery.isPending || hourly.pending || allTime.pending
+  const error = statusQuery.error ?? (chart.error ? undefined : allTime.error ?? compared.error ?? before.error)
+  const loading = statusQuery.isPending || chart.pending || allTime.pending
 
   const change = (key: Metric) => {
     const change = comparedTotals && previousTotals ? relativeChange(comparedTotals[key], previousTotals[key]) : undefined
@@ -185,8 +185,8 @@ export function Statistics() {
           </CardAction>
         </CardHeader>
         <CardContent>
-          {hourly.error ? (
-            <div className="flex h-[300px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: hourly.error.message })}</div>
+          {chart.error ? (
+            <div className="flex h-[300px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: chart.error.message })}</div>
           ) : loading ? (
             <div className="flex h-[300px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           ) : bars.some(bar => bar.bytes.size > 0) ? (

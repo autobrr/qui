@@ -132,9 +132,9 @@ export interface StatisticsBar {
 }
 
 /**
- * Builds the bars of the chart from the hourly rows of each instance. A day bar
- * starts at a local midnight. A row that qui folded into a UTC day stays one
- * bar, on its date. The bars cover the chart range with no hole.
+ * Builds the bars of the chart from the rows of each instance. A day bar starts
+ * at a local midnight. In an hourly chart, a row that qui folded into a day
+ * stays one bar. The bars cover the chart range with no hole.
  */
 export function buildBars(rowsByInstance: TransferHistoryRow[][], range: { from: Date; to: Date }, unit: ChartUnit): StatisticsBar[] {
   const bars = new Map<number, StatisticsBar>()
@@ -165,7 +165,7 @@ export function buildBars(rowsByInstance: TransferHistoryRow[][], range: { from:
       const bucket = row.width + row.start
       let bar = buckets.get(bucket)
       if (!bar) {
-        const key = barKey(new Date(row.start), row.width, unit)
+        const key = barKey(new Date(row.start), unit)
         // In a timezone with a half-hour offset, the first stored hour starts before the first local day.
         bar = barAt(unit === "day" ? Math.max(first, key) : key)
         if (row.width === "day") {
@@ -200,10 +200,7 @@ export function buildBars(rowsByInstance: TransferHistoryRow[][], range: { from:
   return [...bars.values()].sort((a, b) => a.start - b.start)
 }
 
-function barKey(start: Date, width: TransferHistoryRow["width"], unit: ChartUnit): number {
-  if (width === "day") {
-    return unit === "hour" ? start.getTime() : new Date(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()).getTime()
-  }
+function barKey(start: Date, unit: ChartUnit): number {
   return unit === "hour" ? start.getTime() : startOfLocalDay(start).getTime()
 }
 

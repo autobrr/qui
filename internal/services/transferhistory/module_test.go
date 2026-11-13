@@ -813,3 +813,85 @@ func TestAWriteThatPassesItsTimeLimitGetsMoreTimePostgresIntegration(t *testing.
 		require.Equal(t, []int{30, 60, 120, 240, 480, 600, 30}, slow.limits)
 	})
 }
+
+func TestDayBucketsStartAtTheMidnightsOfTheTimeZonePostgresIntegration(t *testing.T) {
+	t.Parallel()
+
+	newYork, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	first := time.Date(2026, 10, 31, 12, 0, 30, 0, time.UTC)
+	a := func(uploaded int64) transferhistory.Torrent { return addedAt(torrent("a", uploaded, 0), first) }
+	// Daylight saving time in New York ends on 2026-11-01 at 06:00 UTC.
+	readings := []transferhistory.Reading{
+		{Time: first, Torrents: []transferhistory.Torrent{a(0)}},
+		{Time: time.Date(2026, 11, 1, 3, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(100)}},  // Oct 31, 23:30 EDT
+		{Time: time.Date(2026, 11, 1, 4, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(300)}},  // Nov 1, 00:30 EDT
+		{Time: time.Date(2026, 11, 2, 4, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(700)}},  // Nov 1, 23:30 EST
+		{Time: time.Date(2026, 11, 2, 5, 30, 30, 0, time.UTC), Torrents: []transferhistory.Torrent{a(1500)}}, // Nov 2, 00:30 EST
+	}
+	to := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+
+	type day struct {
+		start    time.Time
+		uploaded int64
+	}
+	cases := []struct {
+		name     string
+		from     time.Time
+		location *time.Location
+		want     []day
+	}{
+		{
+			name: "without a time zone, the days are UTC days",
+			from: time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC),
+			want: []day{
+				{time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), 300},
+				{time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), 1200},
+			},
+		},
+		{
+			name:     "a day of New York holds its hours on both sides of the change to winter time",
+			from:     time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC),
+			location: newYork,
+			want: []day{
+				{time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC), 100},
+				{time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC), 600},
+				{time.Date(2026, 11, 2, 5, 0, 0, 0, time.UTC), 800},
+			},
+		},
+		{
+			name:     "a period with no start has the same days",
+			location: newYork,
+			want: []day{
+				{time.Date(2026, 10, 31, 4, 0, 0, 0, time.UTC), 100},
+				{time.Date(2026, 11, 1, 4, 0, 0, 0, time.UTC), 600},
+				{time.Date(2026, 11, 2, 5, 0, 0, 0, time.UTC), 800},
+			},
+		},
+	}
+
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+		for _, r := range readings {
+			r.InstanceID = instanceID
+			module.Record(r)
+			_, err := module.Status(t.Context())
+			require.NoError(t, err)
+		}
+
+		for _, tc := range cases {
+			rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
+				InstanceID: instanceID, From: tc.from, To: to, Bucket: transferhistory.BucketDay, GroupBy: transferhistory.GroupByTracker, Location: tc.location,
+			})
+			require.NoError(t, err, tc.name)
+			got := make([]day, 0, len(rows))
+			for _, row := range rows {
+				require.Equal(t, transferhistory.BucketDay, row.Width, tc.name)
+				got = append(got, day{row.Start, row.Uploaded})
+			}
+			require.Equal(t, tc.want, got, tc.name)
+		}
+	})
+}

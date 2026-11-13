@@ -24,6 +24,8 @@ export interface TransferHistoryQuery {
   to: Date
   bucket: TransferHistoryBucket
   groupBy: "tracker" | "category"
+  /** IANA name of the zone whose midnights start the day rows of Tracker groups. The default is UTC. */
+  timeZone?: string
 }
 
 export interface TransferHistoryInstance {
