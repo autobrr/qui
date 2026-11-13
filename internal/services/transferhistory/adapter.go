@@ -28,7 +28,10 @@ type Adapter struct {
 }
 
 type adapterInstance struct {
-	lastReading  time.Time
+	lastReading time.Time
+	// lastBuild is when the last reading was built. A held-back update is
+	// built after its snapshot time.
+	lastBuild    time.Time
 	lastSnapshot uint64
 	// failedSince is the start of the time without a successful read.
 	failedSince time.Time
@@ -68,7 +71,7 @@ func (a *Adapter) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	if !take {
 		inst.pending = &update
 		if inst.timer == nil {
-			inst.timer = time.AfterFunc(time.Until(inst.lastReading.Add(minReadingInterval)), func() { a.takePending(instanceID) })
+			inst.timer = time.AfterFunc(time.Until(inst.lastBuild.Add(minReadingInterval)), func() { a.takePending(instanceID) })
 		}
 		return
 	}
@@ -91,7 +94,7 @@ func (a *Adapter) takePending(instanceID int) {
 		return
 	}
 	now := update.Snapshot.Time().UTC()
-	failedSince := inst.start(now)
+	failedSince := inst.start(now, time.Now().UTC())
 	a.mu.Unlock()
 	a.record(instanceID, *update, now, failedSince)
 }
@@ -106,15 +109,16 @@ func (inst *adapterInstance) take(now time.Time, number uint64) (failedSince tim
 	}
 	inst.lastSnapshot = number
 	// The first successful sync after a failure ends the time without a read.
-	if inst.building || (inst.failedSince.IsZero() && now.Sub(inst.lastReading) < minReadingInterval) {
+	if inst.building || (inst.failedSince.IsZero() && now.Sub(inst.lastBuild) < minReadingInterval) {
 		return time.Time{}, false
 	}
-	return inst.start(now), true
+	return inst.start(now, now), true
 }
 
-// start marks a reading at now and returns the failure time that it ends.
-func (inst *adapterInstance) start(now time.Time) (failedSince time.Time) {
-	inst.lastReading, inst.building, inst.pending = now, true, nil
+// start marks a reading at now, built at builtAt, and returns the failure time
+// that it ends.
+func (inst *adapterInstance) start(now, builtAt time.Time) (failedSince time.Time) {
+	inst.lastReading, inst.lastBuild, inst.building, inst.pending = now, builtAt, true, nil
 	// A held-back update can be older than a failure that is not over yet.
 	if inst.failedSince.After(now) {
 		return time.Time{}

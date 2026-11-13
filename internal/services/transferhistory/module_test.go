@@ -683,3 +683,24 @@ func TestAFailedCommitAndAFailedCheckStoreNoRecordingGapPostgresIntegration(t *t
 		require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 150, 0, 0)}, rows)
 	})
 }
+
+func TestAReloadKeepsTheTransferOfATorrentAddedBeforeItPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+		added := addedAt(torrent("b", 500, 0), at(30*time.Minute))
+		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+		// qui first sees b in this reading, whose write has an unknown outcome.
+		module.Record(*reading(at(2*time.Hour), torrent("a", 0, 0), added).reading)
+		module.Record(*reading(at(2*time.Hour+time.Minute), torrent("a", 0, 0), added).reading)
+
+		rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
+			InstanceID: instanceID, To: at(3 * time.Hour), Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker,
+		})
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{{Group: "tracker.example", Width: transferhistory.BucketTotal, Uploaded: 500}}, rows)
+	})
+}

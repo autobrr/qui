@@ -74,9 +74,9 @@ type Module struct {
 
 	// The worker owns these until it closes done.
 	instances map[int]*instance
-	// reloads holds the last reading of each instance that a write with an
-	// unknown outcome dropped from memory.
-	reloads     map[int]time.Time
+	// reloads holds each instance that a write with an unknown outcome
+	// dropped from memory.
+	reloads     map[int]struct{}
 	mapper      *trackergroup.Mapper
 	shutdownErr error
 }
@@ -91,7 +91,7 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		wake:           make(chan struct{}, 1),
 		done:           make(chan struct{}),
 		instances:      make(map[int]*instance),
-		reloads:        make(map[int]time.Time),
+		reloads:        make(map[int]struct{}),
 	}
 	go m.run()
 	return m
@@ -211,9 +211,10 @@ func (m *Module) process(r Reading) {
 			return
 		}
 		// qui kept reading the instance, so the time since its stored
-		// reading is no Recording gap.
-		if at, ok := m.reloads[r.InstanceID]; ok {
-			inst.lastReadingAt, inst.resumed = at, false
+		// reading is no Recording gap. That reading still decides which
+		// torrents the instance had.
+		if _, ok := m.reloads[r.InstanceID]; ok {
+			inst.resumed = false
 			delete(m.reloads, r.InstanceID)
 		}
 		m.instances[r.InstanceID] = inst
@@ -298,7 +299,7 @@ func (m *Module) write(inst *instance) error {
 			// counts twice. The bytes of a torrent that is gone at the next
 			// reading are lost.
 			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: a write has an unknown outcome; the next reading loads the stored history again")
-			m.reloads[inst.id] = inst.lastReadingAt
+			m.reloads[inst.id] = struct{}{}
 			delete(m.instances, inst.id)
 			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
 		}

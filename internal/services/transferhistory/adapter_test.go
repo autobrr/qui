@@ -77,7 +77,7 @@ func TestAdapterReadings(t *testing.T) {
 				var failedSince time.Time
 				var take bool
 				if s.pending {
-					failedSince, take = inst.start(at(s.at)), true
+					failedSince, take = inst.start(at(s.at), at(s.at)), true
 				} else {
 					failedSince, take = inst.take(at(s.at), s.number)
 				}
@@ -92,11 +92,12 @@ func TestAdapterReadings(t *testing.T) {
 
 // qBittorrent sends no update while nothing changes, so an update that came
 // too soon after the last reading must still become a reading.
-func TestAdapterTakesTheLastUpdateBeforeAQuietTime(t *testing.T) {
+// newAdapterRig returns a stub qBittorrent with one torrent, whose upload the
+// test sets. The client and the pool start goroutines that never end, so a
+// test builds them outside its bubble.
+func newAdapterRig(t *testing.T) (*syncowner.Owner, *qbittorrent.SyncManager, *atomic.Int64) {
 	const hash = "aaaa000000000000000000000000000000000001"
 	var uploaded, rid atomic.Int64
-	// The client and the pool start goroutines that never end, so they are
-	// built outside the bubble.
 	client := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"}).WithHTTPClient(&http.Client{
 		Transport: testutil.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			rec := httptest.NewRecorder()
@@ -109,20 +110,28 @@ func TestAdapterTakesTheLastUpdateBeforeAQuietTime(t *testing.T) {
 			return rec.Result(), nil
 		}),
 	})
-	owner := syncowner.New(client, qbt.DefaultSyncOptions())
 	pool, err := qbittorrent.NewClientPool(nil, nil, time.Minute)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
-	syncManager := qbittorrent.NewSyncManager(pool, nil)
+	return syncowner.New(client, qbt.DefaultSyncOptions()), qbittorrent.NewSyncManager(pool, nil), &uploaded
+}
 
+// syncer returns a function that syncs the stub and gives the update to the
+// adapter, and the module that gets the readings.
+func syncer(t *testing.T, owner *syncowner.Owner, syncManager *qbittorrent.SyncManager) (func(), *Module) {
+	module := &Module{wake: make(chan struct{}, 1)}
+	adapter := NewAdapter(module, syncManager)
+	return func() {
+		require.NoError(t, owner.Sync(t.Context()))
+		adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked()})
+		synctest.Wait()
+	}, module
+}
+
+func TestAdapterTakesTheLastUpdateBeforeAQuietTime(t *testing.T) {
+	owner, syncManager, uploaded := newAdapterRig(t)
 	synctest.Test(t, func(t *testing.T) {
-		module := &Module{wake: make(chan struct{}, 1)}
-		adapter := NewAdapter(module, syncManager)
-		sync := func() {
-			require.NoError(t, owner.Sync(t.Context()))
-			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked()})
-			synctest.Wait()
-		}
+		sync, module := syncer(t, owner, syncManager)
 
 		sync()
 		time.Sleep(20 * time.Second)
@@ -136,5 +145,27 @@ func TestAdapterTakesTheLastUpdateBeforeAQuietTime(t *testing.T) {
 		last := module.queue[1]
 		require.Equal(t, int64(100), last.Torrents[0].Uploaded)
 		require.Equal(t, module.queue[0].Time.Add(20*time.Second), last.Time)
+	})
+}
+
+func TestAdapterBuildsAtMostOneReadingIn50Seconds(t *testing.T) {
+	owner, syncManager, _ := newAdapterRig(t)
+	synctest.Test(t, func(t *testing.T) {
+		sync, module := syncer(t, owner, syncManager)
+
+		sync()
+		time.Sleep(2 * time.Second)
+		sync()
+		// The update of second 2 waits, and the timer builds it at second 50.
+		time.Sleep(48 * time.Second)
+		synctest.Wait()
+		require.Len(t, module.queue, 2)
+
+		time.Sleep(2 * time.Second)
+		sync()
+		require.Len(t, module.queue, 2, "a build 2 seconds after the last one")
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.Len(t, module.queue, 3)
 	})
 }
