@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Domů",
+    "statistics": "Statistiky",
     "search": "Hledat",
     "crossSeed": "Křížové sdílení",
     "automations": "Automatizace",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Domů",
+    "statistics": "Statistiky",
     "clients": "Klienti",
     "settings": "Nastavení",
     "qbittorrentClients": "qBittorrent klienti",

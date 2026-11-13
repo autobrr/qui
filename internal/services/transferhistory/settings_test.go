@@ -96,6 +96,13 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 	// A reading on day 101 starts a new UTC day. A retention of 90 days then
 	// folds day 10, and keeps day 11.
 	day101 := reading(day10.Add(91*24*time.Hour+10*time.Hour), torrent("a", 400, 50), crossSeed(60))
+	newYork, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	inNewYork := func(bucket transferhistory.Bucket) transferhistory.TransferQuery {
+		q := period(day10, day12, bucket, transferhistory.GroupByTracker)
+		q.Location = newYork
+		return q
+	}
 	cases := []struct {
 		name  string
 		steps []step
@@ -118,6 +125,25 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 					),
 				},
 				twoDaysChecks[1:]),
+		},
+		{
+			// 02:00 UTC on day 11 is 21:00 on November 10 in New York.
+			name: "a folded day stays a UTC day beside the local days of the hours",
+			steps: concat(twoDaysOfUpload[:3], []step{
+				reading(at(16*time.Hour), torrent("a", 350, 50), crossSeed(60)),
+				reading(at(25*time.Hour), torrent("a", 400, 50), crossSeed(60)),
+				settings(true, 90),
+				day101,
+				{foldsDone: true},
+				expect(inNewYork(transferhistory.BucketDay),
+					row("tracker.example", day10, transferhistory.BucketDay, 360, 50, 60, 5400),
+					row("tracker.example", day10.Add(5*time.Hour), transferhistory.BucketDay, 50, 0, 0, 0),
+					row("tracker.example", day11.Add(5*time.Hour), transferhistory.BucketDay, 50, 0, 0, 0),
+				),
+				expect(inNewYork(transferhistory.BucketTotal),
+					row("tracker.example", day10, transferhistory.BucketTotal, 460, 50, 60, 5400),
+				),
+			}),
 		},
 		{
 			name:  "the default retention of 400 days does not fold day 10 on day 101",

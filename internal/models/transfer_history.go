@@ -502,10 +502,47 @@ func transferHistoryBucket(column string, width int64) (bucket, groupBy string) 
 	}
 }
 
+// TransferHistoryOffset is the offset of a time zone from UTC, in minutes,
+// from the hour FromHour on.
+type TransferHistoryOffset struct {
+	FromHour int64
+	Minutes  int64
+}
+
+// TransferHistoryBuckets groups the hours of a query: in buckets of Width
+// hours, where Width 0 is one bucket, or by local day when Offsets is set. A
+// local day is the number of days since 1970-01-01 in the time zone of
+// Offsets, and an hour counts toward the local day of its start. Offsets is
+// in hour order, and its first entry covers each hour before the second.
+type TransferHistoryBuckets struct {
+	Width   int64
+	Offsets []TransferHistoryOffset
+}
+
+func (b TransferHistoryBuckets) sql() (bucket, groupBy string) {
+	if len(b.Offsets) == 0 {
+		return transferHistoryBucket("hour", b.Width)
+	}
+	// The newest offset comes first, because most rows are recent. The sum is in
+	// minutes, because the hour column is a 32-bit integer on Postgres.
+	day := func(minutes int64) string { return fmt.Sprintf("(hour * 60 + (%d)) / 1440", minutes) }
+	bucket = day(b.Offsets[0].Minutes)
+	if last := len(b.Offsets) - 1; last > 0 {
+		var sb strings.Builder
+		sb.WriteString("CASE")
+		for i := last; i > 0; i-- {
+			fmt.Fprintf(&sb, " WHEN hour >= %d THEN %s", b.Offsets[i].FromHour, day(b.Offsets[i].Minutes))
+		}
+		sb.WriteString(" ELSE " + bucket + " END")
+		bucket = sb.String()
+	}
+	return bucket, bucket + ", "
+}
+
 // TrackerTotals returns the hourly totals of hours [fromHour, toHour), by
-// tracker domain, in buckets of width hours. Width 0 is one bucket.
-func (s *TransferHistoryStore) TrackerTotals(ctx context.Context, instanceID int, fromHour, toHour, width int64) ([]TransferHistoryTotal, error) {
-	bucket, groupBy := transferHistoryBucket("hour", width)
+// tracker domain, in buckets.
+func (s *TransferHistoryStore) TrackerTotals(ctx context.Context, instanceID int, fromHour, toHour int64, buckets TransferHistoryBuckets) ([]TransferHistoryTotal, error) {
+	bucket, groupBy := buckets.sql()
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+bucket+`, tracker_domain, public, statistics_cross_seed,
 			CAST(SUM(uploaded) AS BIGINT), CAST(SUM(downloaded) AS BIGINT)
@@ -565,12 +602,17 @@ func (s *TransferHistoryStore) CategoryTotals(ctx context.Context, instanceID in
 }
 
 // GapSeconds returns the length of the Recording gaps in hours
-// [fromHour, toHour), by hour.
-func (s *TransferHistoryStore) GapSeconds(ctx context.Context, instanceID int, fromHour, toHour int64) (map[int64]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT hour, seconds
+// [fromHour, toHour), by bucket.
+func (s *TransferHistoryStore) GapSeconds(ctx context.Context, instanceID int, fromHour, toHour int64, buckets TransferHistoryBuckets) (map[int64]int64, error) {
+	bucket, groupBy := buckets.sql()
+	query := `
+		SELECT ` + bucket + `, CAST(COALESCE(SUM(seconds), 0) AS BIGINT)
 		FROM transfer_history_gaps
-		WHERE instance_id = ? AND hour >= ? AND hour < ?`,
+		WHERE instance_id = ? AND hour >= ? AND hour < ?`
+	if groupBy != "" {
+		query += " GROUP BY " + strings.TrimSuffix(groupBy, ", ")
+	}
+	rows, err := s.db.QueryContext(ctx, query,
 		instanceID, fromHour, toHour)
 	if err != nil {
 		return nil, fmt.Errorf("read transfer history gaps: %w", err)

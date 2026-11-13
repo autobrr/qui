@@ -3571,6 +3571,14 @@ paths:
           schema:
             type: string
             enum: [tracker, category]
+        - name: timeZone
+          in: query
+          description: >-
+            IANA time zone name, for example America/New_York. The day rows of Tracker groups start at the midnights of
+            this zone, and an hour counts toward the day of its start. The day rows of categories stay UTC days. The
+            default is UTC.
+          schema:
+            type: string
       responses:
         '200':
           description: Transfer rows, ordered by bucket start and group

@@ -28,7 +28,7 @@ type transferHistoryResponse struct {
 }
 
 // Transfer returns the transfer of one instance in a period.
-// GET /api/instances/{instanceID}/transfer-history?from=&to=&bucket=&groupBy=
+// GET /api/instances/{instanceID}/transfer-history?from=&to=&bucket=&groupBy=&timeZone=
 func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -39,6 +39,12 @@ func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request
 		InstanceID: instanceID,
 		Bucket:     transferhistory.Bucket(params.Get("bucket")),
 		GroupBy:    transferhistory.Grouping(params.Get("groupBy")),
+	}
+	if name := params.Get("timeZone"); name != "" {
+		if query.Location, err = time.LoadLocation(name); err != nil {
+			RespondError(w, http.StatusBadRequest, "Invalid timeZone: use an IANA time zone name")
+			return
+		}
 	}
 	var ok bool
 	if query.From, query.To, ok = parseHistoryPeriod(w, r); !ok {

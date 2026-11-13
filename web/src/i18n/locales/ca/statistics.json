@@ -1,0 +1,59 @@
+{
+  "title": "Estadístiques",
+  "recordingSince": "Enregistrant des del {{date}}",
+  "notRecording": "qui encara no ha enregistrat cap transferència.",
+  "partial": "Període parcial",
+  "periods": {
+    "24h": "24 hores",
+    "7d": "7 dies",
+    "30d": "30 dies",
+    "1y": "Any",
+    "all": "Des de l’inici",
+    "custom": "Personalitzat"
+  },
+  "customRange": {
+    "from": "Primer dia",
+    "to": "Últim dia",
+    "apply": "Aplica",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Totes les instàncies",
+    "count_one": "{{count}} instància",
+    "count_many": "{{count}} instàncies",
+    "count_other": "{{count}} instàncies",
+    "removed": "eliminada"
+  },
+  "tiles": {
+    "uploaded": "Pujat",
+    "downloaded": "Baixat",
+    "ratio": "Ràtio",
+    "buffer": "Marge {{buffer}}",
+    "crossSeed": "De cross-seeds",
+    "crossSeedShare": "{{percent}} % de la pujada",
+    "change": "{{change}} respecte al període anterior"
+  },
+  "chart": {
+    "title": "Transferència al llarg del temps",
+    "descriptionHour": "Per tracker, per hora",
+    "descriptionDay": "Per tracker, per dia",
+    "upload": "Pujada",
+    "download": "Baixada",
+    "other": "Altres",
+    "otherCount": "Altres ({{groups}})",
+    "total": "Total",
+    "gap": "Inclou un buit d’enregistrament de {{duration}}",
+    "gapLabel": "buit {{duration}}",
+    "foldedDay": "(dia sencer, UTC)",
+    "empty": "No hi ha transferència en aquest període."
+  },
+  "groups": {
+    "public": "Públic",
+    "noTracker": "Sense tracker"
+  },
+  "errors": {
+    "load": "No s’han pogut carregar les estadístiques: {{message}}"
+  },
+  "allTimeNote": "Des de l’inici inclou la base inicial: els bytes que tenien els torrents quan qui els va enregistrar per primera vegada. El gràfic no mostra la base inicial, perquè no té data.",
+  "serverStatisticsNote": "Aquests números sumen la transferència de cada torrent. Les estadístiques del servidor al tauler llegeixen els comptadors de qBittorrent, que també compten el trànsit del protocol, per això els números són diferents."
+}

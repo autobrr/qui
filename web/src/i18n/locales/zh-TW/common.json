@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "儀表板",
+    "statistics": "統計",
     "search": "搜尋",
     "crossSeed": "輔種",
     "automations": "自動化",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "儀表板",
+    "statistics": "統計",
     "clients": "用戶端",
     "settings": "設定",
     "qbittorrentClients": "qBittorrent 用戶端",

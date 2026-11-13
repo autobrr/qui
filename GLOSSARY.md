@@ -50,6 +50,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Statistics
 
+- **Statistics**: The page that shows Transfer history. _Avoid_: stats page, history page.
 - **Transfer history**: The upload and download bytes that qui recorded, for each period, torrent, tracker, and category. It keeps the bytes of deleted torrents. _Avoid_: bandwidth (that is a speed), tracker history.
 - **Baseline**: The upload and download bytes that a torrent already had when qui first recorded its instance. It has no date. All-time numbers include it, and charts do not. _Avoid_: backfill, opening balance.
 - **Recording gap**: A time when qui did not observe an instance. The bytes of the gap land on the first hour after it, with a mark. _Avoid_: missing data, downtime.

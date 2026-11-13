@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "대시보드",
+    "statistics": "통계",
     "search": "검색",
     "crossSeed": "Cross-Seed",
     "automations": "자동화",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "대시보드",
+    "statistics": "통계",
     "clients": "클라이언트",
     "settings": "설정",
     "qbittorrentClients": "qBittorrent 클라이언트",
