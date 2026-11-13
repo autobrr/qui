@@ -175,7 +175,15 @@ export function Statistics() {
         }
         actions={
           <>
-            {options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />}
+            {options.length > 1 && <InstanceFilter
+              options={options}
+              selected={selectedIds}
+              onChange={ids => {
+                setSelectedIds(ids)
+                // Kept numbers belong to the old selection.
+                setPeriodState(state => state.moved ? { ...state, moved: false } : state)
+              }}
+            />}
             <PeriodPicker
               value={periodState.choice}
               customLabel={customLabel}

@@ -174,6 +174,28 @@ describe("Statistics", () => {
     }
   })
 
+  it("does not show the numbers of other instances after a moved period", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
+      renderPage()
+      fireEvent.pointerDown(await screen.findByText("instances.all"), { button: 0, pointerType: "mouse" })
+      fireEvent.click(await screen.findByText("Seedbox"))
+      await expectTile("tiles.uploaded", "1 KiB | ")
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+      await expectTile("tiles.uploaded", "1 KiB | ")
+      hold = new Promise(() => {})
+
+      fireEvent.click(await screen.findByText("Home"))
+
+      await expectTile("tiles.uploaded", "– | ")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("finds an instance that starts recording while the page is open", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
