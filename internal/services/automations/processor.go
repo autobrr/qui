@@ -801,20 +801,34 @@ func inSavePath(torrent qbt.Torrent, savePath string) bool {
 	return normalizePath(torrent.SavePath) == normalizePath(savePath)
 }
 
-// renderPathTemplate returns the rendered Move or Export path. The path is executed as a
+// renderPathTemplate returns the rendered Move path. The path is executed as a
 // Go template with data; paths with no template actions are unchanged. sanitize
 // is available in templates for safe path segments (e.g. {{ sanitize .Name }}).
 func renderPathTemplate(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+	return renderPathTemplateData(path, torrent.Hash, torrentPathData(torrent, state, evalCtx))
+}
+
+// renderExportSavePath adds .CurrentSavePath, which Move paths lack: a Move built on it moves again every run.
+func renderExportSavePath(path string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (resolved string, ok bool) {
+	data := torrentPathData(torrent, state, evalCtx)
+	data["CurrentSavePath"] = torrent.SavePath
+	return renderPathTemplateData(path, torrent.Hash, data)
+}
+
+func torrentPathData(torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) map[string]any {
 	tracker := ""
 	if state != nil {
 		tracker = selectTrackerTag(state.trackerDomains, true, evalCtx)
 	}
+	return pathTemplateData(torrent, tracker, evalCtx)
+}
 
-	resolvedPath, err := executePathTemplate(path, pathTemplateData(torrent, tracker, evalCtx))
+func renderPathTemplateData(path, hash string, data map[string]any) (resolved string, ok bool) {
+	resolvedPath, err := executePathTemplate(path, data)
 	if err != nil {
 		// A missing key, such as a deleted category's .CategorySavePath, repeats for every torrent on every run.
 		if _, ok := errors.AsType[template.ExecError](err); ok {
-			log.Trace().Err(err).Str("path", path).Str("hash", torrent.Hash).Msg("failed to render path template")
+			log.Trace().Err(err).Str("path", path).Str("hash", hash).Msg("failed to render path template")
 		} else {
 			log.Error().Err(err).Str("path", path).Msg("failed to render path template")
 		}

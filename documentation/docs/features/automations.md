@@ -823,6 +823,9 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Tracker` | Path segment | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 | `.CategorySavePath` | Absolute path | The torrent's [category save path](#category-save-path) on the source instance. If the target's folders differ, use a literal path. |
 | `.DefaultSavePath` | Absolute path | The source instance's default save path |
+| `.CurrentSavePath` | Absolute path | The torrent's save path on the source instance. Export only: in a Move path it would change after every move. The export waits for a later run while the torrent is moving, or when a Move action in the same run moves it. It does not wait for a category change or for auto management turned on in the same run: under Auto TMM those also move the files, and the export uses the old path. |
+
+In a rule that moves the torrent, do not use Save Path or Content Path in the condition of an export that uses `.CurrentSavePath`. That export waits for the move, and it does not run by itself later. The next run checks the export condition again against the new save path. The condition no longer matches, and qui never exports the torrent.
 
 | Function | Description |
 | --- | --- |
