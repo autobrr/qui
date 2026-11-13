@@ -50,7 +50,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Torrent details
 
-- **Piece bar**: The bar in the General tab of a torrent that is not complete. It shows where the finished and downloading pieces are. When one column holds more than one piece, its color shows the share of each state, so the bar matches the qBittorrent pieces bar. _Avoid_: progress bar (that is the progress column in the torrent list).
+- **Piece bar**: The bar in the General tab of a torrent that is not complete. It shows where the finished and downloading pieces are. When one column holds more than one piece, the column fills from the bottom to the share of finished pieces, with the share of downloading pieces on top. _Avoid_: progress bar (that is the progress column in the torrent list).
 
 ## Statistics
 
