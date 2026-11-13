@@ -85,6 +85,8 @@ While the switch is off, qui does not read the transfer of your instances, and i
 
 This setting tells qui how long to keep the detail of the history. The values are 90 days, 400 days, and forever. The default is 400 days.
 
+The value sets how far back a chart of hours shows one bar for each hour. 400 days covers a full year and one more month. 90 days covers a 30-day period and the 30 days before it, and the history uses less space. With forever, the history grows each day. The charts of days and the totals of each period are the same with each value.
+
 The detail is the upload and download of each tracker for each hour, and of each torrent for each day. After the time that you select, qui folds the old detail into larger rows:
 
 - The hours of a day become one row for that day.
