@@ -8,6 +8,7 @@ package transferhistory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -73,9 +74,10 @@ type Module struct {
 	wake     chan struct{}
 	done     chan struct{}
 
-	// The worker owns these.
-	instances map[int]*instance
-	mapper    *trackergroup.Mapper
+	// The worker owns these until it closes done.
+	instances   map[int]*instance
+	mapper      *trackergroup.Mapper
+	shutdownErr error
 }
 
 // New returns a running module that stores the history in db and names
@@ -117,13 +119,17 @@ func enqueue(queue []Reading, r Reading) []Reading {
 			queued++
 		}
 	}
+	queue = append(queue, r)
 	if queued >= maxQueued {
-		if dropped := queue[oldest].FailedSince; !dropped.IsZero() && (r.FailedSince.IsZero() || dropped.Before(r.FailedSince)) {
-			r.FailedSince = dropped
-		}
+		dropped := queue[oldest].FailedSince
 		queue = slices.Delete(queue, oldest, oldest+1)
+		// The next reading of the instance ends the time without a read.
+		next := oldest + slices.IndexFunc(queue[oldest:], func(q Reading) bool { return q.InstanceID == r.InstanceID })
+		if !dropped.IsZero() && (queue[next].FailedSince.IsZero() || dropped.Before(queue[next].FailedSince)) {
+			queue[next].FailedSince = dropped
+		}
 	}
-	return append(queue, r)
+	return queue
 }
 
 func (m *Module) signal() {
@@ -134,6 +140,8 @@ func (m *Module) signal() {
 }
 
 // Shutdown writes the changes that are still in memory and stops the module.
+// It returns the error of each write that failed: those changes are lost,
+// except the bytes of each torrent that is still in qBittorrent at the next start.
 func (m *Module) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	m.stopping = true
@@ -141,7 +149,7 @@ func (m *Module) Shutdown(ctx context.Context) error {
 	m.signal()
 	select {
 	case <-m.done:
-		return nil
+		return m.shutdownErr
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -177,9 +185,11 @@ func (m *Module) run() {
 			m.process(r)
 		}
 		if stopping {
+			errs := make([]error, 0, len(m.instances))
 			for _, inst := range m.instances {
-				m.write(inst)
+				errs = append(errs, m.write(inst))
 			}
+			m.shutdownErr = errors.Join(errs...)
 		}
 		for _, b := range barriers {
 			close(b)
@@ -202,7 +212,7 @@ func (m *Module) process(r Reading) {
 	}
 	inst.apply(r, m.mapper, m.parser)
 	if r.Time.Sub(inst.lastWriteAt) >= writeInterval {
-		m.write(inst)
+		_ = m.write(inst)
 		inst.lastWriteAt = r.Time
 	}
 }
@@ -240,9 +250,9 @@ func (m *Module) refreshMapper(ctx context.Context) error {
 
 // write stores the changes of inst. After a failure, the changes stay in
 // memory for the next write.
-func (m *Module) write(inst *instance) {
+func (m *Module) write(inst *instance) error {
 	if !inst.hasChanges() {
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
@@ -250,7 +260,7 @@ func (m *Module) write(inst *instance) {
 	ids, err := m.store.Write(ctx, w)
 	if err != nil && !m.committed(ctx, w) {
 		log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: failed to write; the changes stay in memory for the next write")
-		return
+		return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
 	}
 	for _, rec := range w.Records {
 		if rec.ID == 0 {
@@ -261,4 +271,5 @@ func (m *Module) write(inst *instance) {
 	if err := m.refreshMapper(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Warn().Err(err).Msg("transfer history: failed to read the tracker customizations")
 	}
+	return nil
 }

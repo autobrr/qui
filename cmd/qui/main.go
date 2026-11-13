@@ -1070,7 +1070,7 @@ func (app *Application) runServer() {
 		}
 
 		if err := transferHistory.Shutdown(ctx); err != nil {
-			log.Error().Err(err).Msg("timed out writing the transfer history")
+			log.Error().Err(err).Msg("failed to write the transfer history at shutdown")
 		}
 
 		// Deferred so it also runs when Shutdown returns an error. Stop

@@ -101,7 +101,7 @@ var hourTotal = transferhistory.TransferQuery{From: time.Date(2026, 11, 10, 10, 
 func total(group string, uploaded, downloaded, crossSeedUploaded int64) transferhistory.TransferRow {
 	return transferhistory.TransferRow{
 		Group: group, Start: hourTotal.From, Width: transferhistory.BucketTotal,
-		Bytes: transferhistory.Bytes{Uploaded: uploaded, Downloaded: downloaded, StatisticsCrossSeedUploaded: crossSeedUploaded},
+		Uploaded: uploaded, Downloaded: downloaded, StatisticsCrossSeedUploaded: crossSeedUploaded,
 	}
 }
 
@@ -168,7 +168,7 @@ func TestTransferHistoryRecording(t *testing.T) {
 				expect(transferhistory.TransferQuery{To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
 					transferhistory.TransferRow{
 						Group: "tracker.example", Width: transferhistory.BucketTotal,
-						Bytes:    transferhistory.Bytes{Uploaded: 50},
+						Uploaded: 50,
 						Baseline: &transferhistory.Bytes{Uploaded: 100, Downloaded: 200},
 					}),
 			},
@@ -184,6 +184,29 @@ func TestTransferHistoryRecording(t *testing.T) {
 						Group: "tracker.example", Width: transferhistory.BucketTotal,
 						Baseline: &transferhistory.Bytes{Uploaded: 8000, Downloaded: 100},
 					}),
+			},
+		},
+		{
+			name: "an all-time total holds the Recording gap of a period with no transfer",
+			steps: []step{
+				reading(at(0), torrent("a", 100, 0)),
+				restart,
+				reading(at(3*time.Hour), torrent("a", 100, 0)),
+				expect(transferhistory.TransferQuery{To: at(4 * time.Hour), Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
+					transferhistory.TransferRow{
+						Group: "tracker.example", Width: transferhistory.BucketTotal,
+						GapSeconds: int64(3 * time.Hour / time.Second),
+						Baseline:   &transferhistory.Bytes{Uploaded: 100},
+					}),
+			},
+		},
+		{
+			name: "a period that ends a fraction of a second into an hour includes that hour",
+			steps: []step{
+				reading(at(0), torrent("a", 0, 0)),
+				reading(at(5*time.Minute), torrent("a", 100, 0)),
+				expect(transferhistory.TransferQuery{From: hourTotal.From.Add(-time.Hour), To: hourTotal.From.Add(time.Millisecond), Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
+					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From.Add(-time.Hour), Width: transferhistory.BucketTotal, Uploaded: 100}),
 			},
 		},
 		{
@@ -215,8 +238,8 @@ func TestTransferHistoryRecording(t *testing.T) {
 				restart,
 				reading(at(3*time.Hour), torrent("a", 400, 0)),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: at(4 * time.Hour), Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker},
-					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Bytes: transferhistory.Bytes{Uploaded: 120}},
-					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From.Add(3 * time.Hour), Width: transferhistory.BucketHour, Bytes: transferhistory.Bytes{Uploaded: 280}, GapSeconds: int64((3*time.Hour - 7*time.Minute) / time.Second)}),
+					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Uploaded: 120},
+					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From.Add(3 * time.Hour), Width: transferhistory.BucketHour, Uploaded: 280, GapSeconds: int64((3*time.Hour - 7*time.Minute) / time.Second)}),
 			},
 		},
 		{
@@ -226,7 +249,7 @@ func TestTransferHistoryRecording(t *testing.T) {
 				reading(at(5*time.Minute), torrent("a", 100, 0)),
 				readingAfterFailure(at(40*time.Minute), at(10*time.Minute), torrent("a", 400, 0)),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker},
-					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Bytes: transferhistory.Bytes{Uploaded: 400}, GapSeconds: int64(30 * time.Minute / time.Second)}),
+					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Uploaded: 400, GapSeconds: int64(30 * time.Minute / time.Second)}),
 			},
 		},
 		{
@@ -236,8 +259,8 @@ func TestTransferHistoryRecording(t *testing.T) {
 				reading(at(5*time.Minute), torrent("a", 100, 0)),
 				reading(at(10*time.Minute), inCategory(torrent("a", 250, 0), "movies")),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByCategory},
-					transferhistory.TransferRow{Group: "movies", Start: hourTotal.From, Width: transferhistory.BucketTotal, Bytes: transferhistory.Bytes{Uploaded: 150}},
-					transferhistory.TransferRow{Group: "tv", Start: hourTotal.From, Width: transferhistory.BucketTotal, Bytes: transferhistory.Bytes{Uploaded: 100}}),
+					transferhistory.TransferRow{Group: "movies", Start: hourTotal.From, Width: transferhistory.BucketTotal, Uploaded: 150},
+					transferhistory.TransferRow{Group: "tv", Start: hourTotal.From, Width: transferhistory.BucketTotal, Uploaded: 100}),
 			},
 		},
 		{
@@ -246,7 +269,7 @@ func TestTransferHistoryRecording(t *testing.T) {
 				reading(at(0), torrent("a", 0, 0)),
 				reading(at(5*time.Minute), torrent("a", 100, 0)),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByCategory},
-					transferhistory.TransferRow{Group: "tv", Start: time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC), Width: transferhistory.BucketDay, Bytes: transferhistory.Bytes{Uploaded: 100}}),
+					transferhistory.TransferRow{Group: "tv", Start: time.Date(2026, 11, 10, 0, 0, 0, 0, time.UTC), Width: transferhistory.BucketDay, Uploaded: 100}),
 			},
 		},
 		{
@@ -257,7 +280,7 @@ func TestTransferHistoryRecording(t *testing.T) {
 				reading(at(5*time.Minute), torrent("a", 0, 0), complete(torrent("x", 0, 5)), complete(torrent("y", 0, 500))),
 				reading(at(10*time.Minute), torrent("a", 0, 0), complete(torrent("x", 200, 5)), complete(torrent("y", 300, 500))),
 				expect(transferhistory.TransferQuery{From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker},
-					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Bytes: transferhistory.Bytes{Uploaded: 500, Downloaded: 505, StatisticsCrossSeedUploaded: 200}}),
+					transferhistory.TransferRow{Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour, Uploaded: 500, Downloaded: 505, StatisticsCrossSeedUploaded: 200}),
 			},
 		},
 		{
@@ -323,6 +346,31 @@ func (b *blockingWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbin
 	}
 	<-b.release
 	return b.DB.BeginTx(ctx, opts)
+}
+
+func TestADroppedReadingKeepsItsFailure(t *testing.T) {
+	t.Parallel()
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	blocked := &blockingWrites{DB: db, writing: make(chan struct{}, 1), release: make(chan struct{})}
+	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db))
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+	<-blocked.writing
+	// Five readings wait while the worker writes, so the oldest one, which
+	// follows the failed reads, drops out of the queue.
+	module.Record(*readingAfterFailure(at(30*time.Minute), at(time.Minute), torrent("a", 0, 0)).reading)
+	for i := range 4 {
+		module.Record(*reading(at(time.Duration(31+i)*time.Minute), torrent("a", 100, 0)).reading)
+	}
+	close(blocked.release)
+
+	rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{InstanceID: instanceID, From: hourTotal.From, To: hourTotal.To, Bucket: transferhistory.BucketHour, GroupBy: transferhistory.GroupByTracker})
+	require.NoError(t, err)
+	require.Equal(t, []transferhistory.TransferRow{{
+		Group: "tracker.example", Start: hourTotal.From, Width: transferhistory.BucketHour,
+		GapSeconds: int64(30 * time.Minute / time.Second), Uploaded: 100,
+	}}, rows)
 }
 
 func TestRecordDoesNotWaitForTheDatabase(t *testing.T) {
@@ -445,4 +493,19 @@ func TestACommitWithALostAnswerCountsOnce(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 150, 0, 0)}, rows)
 	})
+}
+
+// noWrites refuses each write transaction.
+type noWrites struct{ *database.DB }
+
+func (noWrites) BeginTx(context.Context, *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	return nil, errors.New("disk I/O error")
+}
+
+func TestShutdownReportsAFailedWrite(t *testing.T) {
+	t.Parallel()
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	module := transferhistory.New(noWrites{db}, models.NewTrackerCustomizationStore(db))
+	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+	require.ErrorContains(t, module.Shutdown(context.Background()), "disk I/O error")
 }

@@ -147,14 +147,23 @@ func (a *answer) hours() (from, to int64) {
 	if !a.query.From.IsZero() {
 		from = hourOf(a.query.From)
 	}
-	return from, ceilDiv(a.query.To.Unix(), 3600)
+	return from, ceilDiv(a.endSecond(), 3600)
 }
 
 func (a *answer) days() (from, to int64) {
 	if !a.query.From.IsZero() {
 		from = dayOf(a.query.From)
 	}
-	return from, ceilDiv(a.query.To.Unix(), 86400)
+	return from, ceilDiv(a.endSecond(), 86400)
+}
+
+// endSecond returns the end of the period in whole seconds, rounded up.
+func (a *answer) endSecond() int64 {
+	end := a.query.To.Unix()
+	if a.query.To.Nanosecond() > 0 {
+		end++
+	}
+	return end
 }
 
 func (a *answer) groupOf(domain string, public bool) string {
@@ -210,12 +219,12 @@ func (a *answer) byTracker(ctx context.Context, store *models.TransferHistorySto
 		r := a.row(a.groupOf(t.TrackerDomain, t.Public), t.Bucket, a.query.Bucket, a.startOf(a.query.Bucket, t.Bucket))
 		addBytes(&r.Bytes, t.Uploaded, t.Downloaded, t.StatisticsCrossSeed)
 	}
-	if err := a.addGaps(ctx, store, from, to, widthHours); err != nil {
+	if err := a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string {
+		return a.groupOf(b.TrackerDomain, b.Private != nil && !*b.Private)
+	}); err != nil {
 		return err
 	}
-	return a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string {
-		return a.groupOf(b.TrackerDomain, b.Private != nil && !*b.Private)
-	})
+	return a.addGaps(ctx, store, from, to, widthHours)
 }
 
 // byCategory reads the daily totals, because qui stores the category totals
@@ -234,10 +243,10 @@ func (a *answer) byCategory(ctx context.Context, store *models.TransferHistorySt
 		r := a.row(t.Category, t.Bucket, width, a.startOf(width, t.Bucket))
 		addBytes(&r.Bytes, t.Uploaded, t.Downloaded, t.StatisticsCrossSeed)
 	}
-	if err := a.addGaps(ctx, store, from*24, to*24, widthHours); err != nil {
+	if err := a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string { return b.Category }); err != nil {
 		return err
 	}
-	return a.addBaselines(ctx, store, func(b models.TransferHistoryBaseline) string { return b.Category })
+	return a.addGaps(ctx, store, from*24, to*24, widthHours)
 }
 
 func (a *answer) addGaps(ctx context.Context, store *models.TransferHistoryStore, fromHour, toHour, widthHours int64) error {
