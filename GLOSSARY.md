@@ -48,6 +48,13 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 - **Sync snapshot**: The torrents of one instance as one sync left them. Every reader of that sync shares it, and no reader changes it. _Avoid_: copy, sync cache, snapshot alone (a backup run is also a snapshot).
 
+## Statistics
+
+- **Transfer history**: The upload and download bytes that qui recorded, for each period, torrent, tracker, and category. It keeps the bytes of deleted torrents. _Avoid_: bandwidth (that is a speed), tracker history.
+- **Baseline**: The upload and download bytes that a torrent already had when qui first recorded its instance. It has no date. All-time numbers include it, and charts do not. _Avoid_: backfill, opening balance.
+- **Recording gap**: A time when qui did not observe an instance. The bytes of the gap land on the first hour after it, with a mark. _Avoid_: missing data, downtime.
+- **Statistics cross-seed**: In Statistics, a torrent that completed with less than 1% of its size downloaded. It gets this role when it completes, and it keeps the role after that. A torrent that the user created, or added again with its data on disk, also has this role. _Avoid_: copy (that is a member of a Copy group).
+
 ## Peers
 
 - **Peer client**: The BitTorrent program that a connected peer says it runs, for example Transmission or rTorrent. _Avoid_: client, torrent client.

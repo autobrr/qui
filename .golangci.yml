@@ -133,6 +133,9 @@ linters:
           msg: use crossseed.Adder
         - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
           msg: use crossseed.Aligner
+        - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
+          pkg: ^github\.com/autobrr/qui/internal/models$
+          msg: only the Transfer history module in internal/services/transferhistory calls the history store
         - pattern: ^models\.CrossSeedStore\.\w*PartialPool\w*$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: ask the partial pool coordinator in internal/services/crossseed/partial_pool.go
@@ -312,6 +315,12 @@ linters:
         linters:
           - forbidigo
         text: partial pool coordinator
+
+      # Only the Transfer history module and the store itself call the history store.
+      - path: ^internal/services/transferhistory/|^internal/models/transfer_history\.go$
+        linters:
+          - forbidigo
+        text: Transfer history module
 
       # Only the database module opens SQLite and Postgres connections (ADR 0044).
       - path: ^internal/database/
