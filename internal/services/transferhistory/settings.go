@@ -122,6 +122,7 @@ func (m *Module) foldIfNewDay(today int64, retentionDays int) {
 	// that a query after this reading sees the fold. A fold that still runs
 	// moves its torrent days without the lock, so this fold waits for it
 	// before it takes the lock, and the queries do not wait for that move.
+	// Until then, a query reads the hours that this fold deletes.
 	idle := m.foldRun.TryLock()
 	if idle {
 		m.foldMu.Lock()
@@ -139,7 +140,8 @@ func (m *Module) foldIfNewDay(today int64, retentionDays int) {
 		if err == nil {
 			err = m.store.FoldTorrentDays(ctx, beforeDay)
 		}
-		if err != nil {
+		// At shutdown, the first reading after the next start folds again.
+		if err != nil && m.foldCtx.Err() == nil {
 			log.Error().Err(err).Int64("beforeDay", beforeDay).Msg("transfer history: failed to fold old detail; the next UTC day tries again")
 		}
 		m.dropSize()

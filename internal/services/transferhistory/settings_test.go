@@ -102,7 +102,7 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 	}{
 		{
 			name: "a fold changes no period total of any grouping",
-			steps: concat(twoDaysOfUpload, twoDaysChecks, []step{settings(true, 90), day101},
+			steps: concat(twoDaysOfUpload, twoDaysChecks, []step{settings(true, 90), day101, {foldsDone: true}},
 				[]step{
 					// The hours of day 10 are one day row now.
 					expect(period(day10, day12, transferhistory.BucketHour, transferhistory.GroupByTracker),
@@ -138,6 +138,7 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 				twoDaysChecks[0],
 				settings(true, 90),
 				day101,
+				{foldsDone: true},
 				expect(period(day10, day12, transferhistory.BucketHour, transferhistory.GroupByTracker),
 					row("tracker.example", day10, transferhistory.BucketDay, 360, 50, 60, 5400),
 					row("tracker.example", day11.Add(11*time.Hour), transferhistory.BucketHour, 100, 0, 0, 0),
