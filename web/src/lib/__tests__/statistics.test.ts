@@ -98,7 +98,20 @@ describe("categoryRange", () => {
       const period = { from: new Date(2026, 0, 2, 3), to: new Date(2026, 0, 3, 3), unit: "hour" as const }
       const bars = buildBars([[day("2026-01-01T00:00:00Z", 100), day("2026-01-02T00:00:00Z", 200)]], categoryRange(period, undefined)!, "day")
 
-      expect(bars.map(bar => bar.bytes.get("tv")?.uploaded)).toEqual([100, 200, undefined])
+      expect(bars.map(bar => bar.bytes.get("tv")?.uploaded)).toEqual([100, 200])
+    } finally {
+      process.env.TZ = "America/New_York"
+    }
+  })
+
+  it("counts a UTC day of a category as recorded when the first recording is late in that UTC day east of UTC", () => {
+    process.env.TZ = "Asia/Shanghai"
+    try {
+      const period = { from: new Date(2026, 0, 2, 3), to: new Date(2026, 0, 3, 3), unit: "hour" as const }
+      const bars = buildBars([[]], categoryRange(period, undefined)!, "day")
+
+      // 22:00 UTC on January 1 is 06:00 on January 2 in Shanghai, after the end of the local day of the first bar.
+      expect(recordedUnits(bars, new Date("2026-01-01T22:00:00Z"), "day", true)).toBe(2)
     } finally {
       process.env.TZ = "America/New_York"
     }

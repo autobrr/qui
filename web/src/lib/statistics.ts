@@ -244,17 +244,22 @@ export function chartRange(period: StatisticsPeriod, since: Date | undefined): {
   return from && { from, to: period.to }
 }
 
+function utcDayStart(time: Date): number {
+  return Date.UTC(time.getUTCFullYear(), time.getUTCMonth(), time.getUTCDate())
+}
+
 /**
- * The range of the chart of a category. qui stores the category totals for each UTC day, so the first bar is the
- * local day that holds the middle of the first UTC day. A range of local days could put two UTC days on one bar.
+ * The range of the chart of a category. qui stores the category totals for each UTC day, so the bars are the local
+ * days that hold the middle of each UTC day that the period overlaps. A range of local days could put two UTC days
+ * on one bar, or add a local day that holds no UTC day.
  */
 export function categoryRange(period: StatisticsPeriod, since: Date | undefined): { from: Date; to: Date } | undefined {
   const start = period.from ?? since
   if (!start) {
     return undefined
   }
-  const firstUtcDay = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())
-  return { from: new Date(firstUtcDay + 12 * HOUR), to: period.to }
+  const lastUtcDay = utcDayStart(new Date(period.to.getTime() - 1))
+  return { from: new Date(utcDayStart(start) + 12 * HOUR), to: new Date(lastUtcDay + 12 * HOUR + 1) }
 }
 
 /** Returns about count ticks from 0 past max, on round numbers of the byte unit of max. */
@@ -343,13 +348,17 @@ export function barBytes(bar: StatisticsBar): Record<Metric, number> {
 
 /**
  * Returns the number of units of the chart that its bars cover after the first recording, so that an average leaves
- * out the time before it. A folded day of an hourly chart is a UTC day of 24 hours.
+ * out the time before it. A folded day of an hourly chart is a UTC day of 24 hours. With utcDays, each day bar stands
+ * for the UTC day of its date, as the bars of categoryRange do.
  */
-export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, unit: ChartUnit): number {
+export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, unit: ChartUnit, utcDays = false): number {
   const first = since?.getTime() ?? -Infinity
   let units = 0
   for (const bar of bars) {
-    const end = bar.width === "hour" || unit === "hour" ? bar.start + (bar.width === "hour" ? HOUR : 24 * HOUR) : addLocalDays(new Date(bar.start), 1).getTime()
+    const start = new Date(bar.start)
+    const end = bar.width === "hour" || unit === "hour"
+      ? bar.start + (bar.width === "hour" ? HOUR : 24 * HOUR)
+      : utcDays ? Date.UTC(start.getFullYear(), start.getMonth(), start.getDate() + 1) : addLocalDays(start, 1).getTime()
     if (end > first) {
       units += unit === "hour" ? (end - bar.start) / HOUR : 1
     }

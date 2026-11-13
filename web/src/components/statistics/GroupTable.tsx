@@ -250,7 +250,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   }, [transfer.rows, period, last, key, since, unit, grouping])
   const best = bars && bestBar(bars, unit)
   const uploaded = bars?.reduce((sum, bar) => sum + barBytes(bar).uploaded, 0) ?? 0
-  const recordedBars = bars && recordedUnits(bars, since, unit)
+  const recordedBars = bars && recordedUnits(bars, since, unit, grouping === "category")
 
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 })
   const formatStart = (start: number, width: ChartUnit) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
