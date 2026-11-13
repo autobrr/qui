@@ -232,11 +232,31 @@ func (m *Module) load(instanceID int) (*instance, error) {
 	return newInstance(instanceID, row, records), nil
 }
 
-// committed reports whether a write that returned an error is stored anyway,
-// as when the answer of the commit got lost. Its totals must not count twice.
-func (m *Module) committed(ctx context.Context, w *models.TransferHistoryWrite) bool {
-	stored, err := m.store.LastReadingAt(ctx, w.InstanceID)
-	return err == nil && stored.Equal(w.LastReadingAt)
+type writeOutcome int
+
+const (
+	notStored writeOutcome = iota
+	stored
+	unknown
+)
+
+// outcome tells whether a write that returned err is stored anyway, as when
+// the answer of the commit got lost. Its totals must not count twice.
+func (m *Module) outcome(err error, w *models.TransferHistoryWrite) writeOutcome {
+	if !errors.Is(err, models.ErrTransferHistoryCommitUnknown) {
+		return notStored
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+	last, checkErr := m.store.LastReadingAt(ctx, w.InstanceID)
+	switch {
+	case checkErr != nil:
+		return unknown
+	case last.Equal(w.LastReadingAt):
+		return stored
+	default:
+		return notStored
+	}
 }
 
 func (m *Module) refreshMapper(ctx context.Context) error {
@@ -258,9 +278,19 @@ func (m *Module) write(inst *instance) error {
 	defer cancel()
 	w := inst.changes()
 	ids, err := m.store.Write(ctx, w)
-	if err != nil && !m.committed(ctx, w) {
-		log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: failed to write; the changes stay in memory for the next write")
-		return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
+	if err != nil {
+		switch m.outcome(err, w) {
+		case stored:
+		case notStored:
+			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: failed to write; the changes stay in memory for the next write")
+			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
+		case unknown:
+			// The stored counters decide the next difference, so no byte
+			// counts twice and none is lost.
+			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: a write has an unknown outcome; the next reading loads the stored history again")
+			delete(m.instances, inst.id)
+			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
+		}
 	}
 	for _, rec := range w.Records {
 		if rec.ID == 0 {

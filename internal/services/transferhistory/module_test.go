@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -508,4 +509,39 @@ func TestShutdownReportsAFailedWrite(t *testing.T) {
 	module := transferhistory.New(noWrites{db}, models.NewTrackerCustomizationStore(db))
 	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
 	require.ErrorContains(t, module.Shutdown(context.Background()), "disk I/O error")
+}
+
+// lostCommitAndCheck loses the answer of the second commit, as
+// lostCommitAnswer does, and also fails the read that follows it.
+type lostCommitAndCheck struct {
+	lostCommitAnswer
+	checks int
+}
+
+func (l *lostCommitAndCheck) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if strings.Contains(query, "SELECT last_reading_at") && l.writes == 2 && l.checks == 0 {
+		l.checks++
+		return l.DB.QueryRowContext(ctx, "SELECT no_such_column FROM transfer_history_instances")
+	}
+	return l.DB.QueryRowContext(ctx, query, args...)
+}
+
+func TestACommitWithALostAnswerAndAFailedCheckCountsOnce(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+		module.Record(*reading(at(5*time.Minute), torrent("a", 100, 0)).reading)
+		// Readings come each minute, so the reload stores no Recording gap.
+		module.Record(*reading(at(6*time.Minute), torrent("a", 150, 0)).reading)
+
+		query := hourTotal
+		query.InstanceID = instanceID
+		rows, err := module.Transfer(t.Context(), query)
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 150, 0, 0)}, rows)
+	})
 }

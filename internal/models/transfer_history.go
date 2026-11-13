@@ -110,6 +110,10 @@ type TransferHistoryBaseline struct {
 
 const transferHistoryChunk = 200
 
+// ErrTransferHistoryCommitUnknown is the error of a write whose commit
+// returned an error. The database can hold the write or not.
+var ErrTransferHistoryCommitUnknown = errors.New("transfer history commit outcome unknown")
+
 // LoadInstance returns the instance row, or nil when the instance has no
 // history, and its records.
 func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int) (*TransferHistoryInstance, []*TransferHistoryRecord, error) {
@@ -166,7 +170,7 @@ func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int)
 
 // Write stores w in one transaction and returns the id of each record in
 // Records, by hash. After an error, the stored rows stay as they were, unless
-// the commit itself reported the error.
+// the error is ErrTransferHistoryCommitUnknown.
 func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrite) (map[string]int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -257,7 +261,7 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit transfer history write: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrTransferHistoryCommitUnknown, err)
 	}
 	return ids, nil
 }
