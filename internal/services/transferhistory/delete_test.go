@@ -12,6 +12,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 )
 
@@ -177,7 +178,7 @@ func TestDeleteHistoryOfARemovedInstancePostgresIntegration(t *testing.T) {
 		removed, err := instances.Create(t.Context(), "Seedbox", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 		require.NoError(t, err)
 
-		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		module.Record(transferhistory.Reading{InstanceID: removed.ID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 0, 0)}})
 		require.NoError(t, instances.Delete(t.Context(), removed.ID))
