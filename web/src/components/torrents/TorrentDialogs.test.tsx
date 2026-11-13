@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { RenameTorrentFileDialog, TagEditorDialog } from "@/components/torrents/TorrentDialogs"
+import { RenameTorrentFileDialog, SetCategoryDialog, TagEditorDialog } from "@/components/torrents/TorrentDialogs"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
-import { cleanup, render, waitFor } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const translation = vi.hoisted(() => ({ t: (key: string) => key }))
@@ -107,5 +108,64 @@ describe("TagEditorDialog", () => {
     const { rerender } = render(<TagEditorDialog {...props()} />)
     rerender(<TagEditorDialog {...props([rows[1], rows[0]])} />)
     expect(api.getTorrentField).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("SetCategoryDialog", () => {
+  function renderCategoryDialog(onConfirm = vi.fn(), initialCategory = "") {
+    render(
+      <SetCategoryDialog
+        open
+        onOpenChange={() => {}}
+        availableCategories={{ anime: { name: "anime", savePath: "" }, movies: { name: "movies", savePath: "" } }}
+        hashCount={1}
+        onConfirm={onConfirm}
+        initialCategory={initialCategory}
+      />
+    )
+    return { input: document.getElementById("newCategory") as HTMLInputElement, onConfirm }
+  }
+  const row = (name: string) => screen.getByTitle(name)
+
+  // regression: #2512
+  it("keeps a typed name that extends an existing category", async () => {
+    const { input, onConfirm } = renderCategoryDialog()
+    await userEvent.type(input, "anime")
+    expect(input.value).toBe("anime")
+    expect(row("anime").classList.contains("bg-accent")).toBe(false)
+    await userEvent.type(input, ".x")
+    expect(input.value).toBe("anime.x")
+    await userEvent.click(screen.getByText("dialogs.setCategory.setCategory"))
+    expect(onConfirm).toHaveBeenCalledWith("anime.x")
+  })
+
+  it("confirms the typed name on Enter", async () => {
+    const { input, onConfirm } = renderCategoryDialog()
+    await userEvent.type(input, "anime.x{Enter}")
+    expect(onConfirm).toHaveBeenCalledWith("anime.x")
+  })
+
+  // regression: #2512
+  it("selects a clicked row and empties the typed name", async () => {
+    const { input, onConfirm } = renderCategoryDialog()
+    await userEvent.type(input, "new")
+    await userEvent.click(row("movies"))
+    expect(row("movies").classList.contains("bg-accent")).toBe(true)
+    expect(input.value).toBe("")
+    await userEvent.type(input, "x")
+    expect(row("movies").classList.contains("bg-accent")).toBe(false)
+    await userEvent.type(input, "{Backspace}")
+    await userEvent.click(row("anime"))
+    await userEvent.click(screen.getByText("dialogs.setCategory.setCategory"))
+    expect(onConfirm).toHaveBeenCalledWith("anime")
+  })
+
+  it("prefills a listed category on its row and an unlisted one in the field", () => {
+    const { input } = renderCategoryDialog(vi.fn(), "movies")
+    expect(row("movies").classList.contains("bg-accent")).toBe(true)
+    expect(input.value).toBe("")
+    cleanup()
+    const unlisted = renderCategoryDialog(vi.fn(), "gone")
+    expect(unlisted.input.value).toBe("gone")
   })
 })
