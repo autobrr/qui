@@ -298,7 +298,7 @@
     "loading": "正在加载通知目标…",
     "loadFailed": "加载通知目标失败",
     "empty": "尚未配置通知目标。添加一个以开始接收警报。",
-    "allEvents": "全部事件",
+    "allEvents": "除系统通知外的全部事件",
     "showList": "显示列表",
     "hideList": "隐藏列表",
     "badges": {

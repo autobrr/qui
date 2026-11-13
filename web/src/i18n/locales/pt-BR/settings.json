@@ -298,7 +298,7 @@
     "loading": "Carregando alvos de notificação...",
     "loadFailed": "Falha ao carregar alvos de notificação",
     "empty": "Nenhum alvo de notificação configurado. Adicione um para começar a receber alertas.",
-    "allEvents": "Todos os eventos",
+    "allEvents": "Todos os eventos, exceto aviso do sistema",
     "showList": "Mostrar lista",
     "hideList": "Ocultar lista",
     "badges": {

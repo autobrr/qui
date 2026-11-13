@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -369,7 +370,7 @@ func TestStatusGivesTheSizeAndTheSettingsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		status, err := module.Status(t.Context())
@@ -382,7 +383,7 @@ func TestStatusGivesTheSizeAndTheSettingsPostgresIntegration(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, transferhistory.Settings{Recording: false, DetailRetentionDays: 90}, status.Settings)
 
-		restarted := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+		restarted := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, restarted.Shutdown(context.Background())) })
 		status, err = restarted.Status(t.Context())
 		require.NoError(t, err)
@@ -391,7 +392,7 @@ func TestStatusGivesTheSizeAndTheSettingsPostgresIntegration(t *testing.T) {
 }
 
 func TestSetSettingsRefusesAnotherRetention(t *testing.T) {
-	module := transferhistory.New(nil, nil)
+	module := transferhistory.New(nil, nil, systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	err := module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 30})
 	require.ErrorIs(t, err, transferhistory.ErrInvalidSettings)
@@ -412,7 +413,7 @@ func (u unreadableSettings) QueryRowContext(ctx context.Context, query string, a
 // regression: #4085
 func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
-	module := transferhistory.New(unreadableSettings{db}, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(unreadableSettings{db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 10, 0)}})
 	require.Error(t, module.Shutdown(t.Context()))
 }
@@ -436,7 +437,7 @@ func TestAFoldWritesTheChangesInMemoryFirstPostgresIntegration(t *testing.T) {
 }
 
 func foldWhileAway(t *testing.T, q dbinterface.Querier, db *database.DB) {
-	module := transferhistory.New(q, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(q, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	require.NoError(t, module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 90}))
 	const away = 2
@@ -491,7 +492,7 @@ func (b *blockedFold) QueryContext(ctx context.Context, query string, args ...an
 func TestATransferQueryDoesNotWaitForTheTorrentDaysOfAnEarlierFold(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	q, folding := newBlockedFold(db)
-	module := transferhistory.New(q, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(q, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	t.Cleanup(q.release)
 

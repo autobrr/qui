@@ -10,6 +10,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -134,7 +137,7 @@ func total(group string, uploaded, downloaded, crossSeedUploaded int64) transfer
 func runSteps(t *testing.T, db *database.DB, steps []step) {
 	t.Helper()
 	customizations := models.NewTrackerCustomizationStore(db)
-	module := transferhistory.New(db, customizations)
+	module := transferhistory.New(db, customizations, systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	for i, s := range steps {
 		switch {
@@ -170,12 +173,12 @@ func runSteps(t *testing.T, db *database.DB, steps []step) {
 			require.Equal(t, *s.instances, status.Instances, "step %d", i)
 		case s.restart:
 			require.NoError(t, module.Shutdown(t.Context()))
-			module = transferhistory.New(db, customizations)
+			module = transferhistory.New(db, customizations, systemnotice.New(nil))
 		case s.crash:
 			// A query waits until the module processed each reading.
 			_, err := module.Status(t.Context())
 			require.NoError(t, err)
-			module = transferhistory.New(db, customizations)
+			module = transferhistory.New(db, customizations, systemnotice.New(nil))
 		case s.check != nil:
 			rows, err := module.Transfer(t.Context(), s.check.query)
 			require.NoError(t, err, "step %d", i)
@@ -466,7 +469,7 @@ func TestADroppedReadingKeepsItsFailure(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	blocked := &blockingWrites{DB: db, writing: make(chan struct{}, 1), release: make(chan struct{})}
-	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
@@ -491,7 +494,7 @@ func TestRecordDoesNotWaitForTheDatabase(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	blocked := &blockingWrites{DB: db, writing: make(chan struct{}, 1), release: make(chan struct{})}
-	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(blocked, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
@@ -517,7 +520,7 @@ func TestTrackerRenameChangesThePastPostgresIntegration(t *testing.T) {
 		query := hourTotal
 		query.InstanceID = instanceID
 
-		module := transferhistory.New(db, customizations)
+		module := transferhistory.New(db, customizations, systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
 		module.Record(*reading(at(5*time.Minute), torrent("a", 100, 0)).reading)
@@ -545,7 +548,7 @@ func TestStatusKeepsTheNameOfARemovedInstancePostgresIntegration(t *testing.T) {
 		_, err = instances.Create(t.Context(), "Idle", "http://localhost:8081", "user", "pass", nil, nil, false, nil)
 		require.NoError(t, err)
 
-		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		module.Record(transferhistory.Reading{InstanceID: recorded.ID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 0, 0)}})
 		_, err = module.Status(t.Context())
@@ -594,7 +597,7 @@ func TestACommitWithALostAnswerCountsOncePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&lostCommitAnswer{DB: db}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&lostCommitAnswer{DB: db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
@@ -619,9 +622,135 @@ func (noWrites) BeginTx(context.Context, *sql.TxOptions) (dbinterface.TxQuerier,
 func TestShutdownReportsAFailedWrite(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
-	module := transferhistory.New(noWrites{db}, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(noWrites{db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
 	require.ErrorContains(t, module.Shutdown(context.Background()), "disk I/O error")
+}
+
+// failingWrites refuses each write transaction while fail is set.
+type failingWrites struct {
+	*database.DB
+	fail atomic.Bool
+}
+
+func (f *failingWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	if f.fail.Load() {
+		return nil, errors.New("attempt to write a readonly database")
+	}
+	return f.DB.BeginTx(ctx, opts)
+}
+
+// sentNotices counts the notifications that the System notice module sends.
+type sentNotices struct{ count atomic.Int32 }
+
+func (s *sentNotices) Notify(context.Context, notifications.Event) { s.count.Add(1) }
+
+func TestAFailedWriteOpensRecordingStoppedUntilAWriteSucceeds(t *testing.T) {
+	t.Parallel()
+	db := &failingWrites{DB: testdb.NewMigratedSQLite(t, "transfer-history")}
+	sent := &sentNotices{}
+	notices := systemnotice.New(sent)
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db.DB), notices)
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+	db.fail.Store(true)
+	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+	module.Record(*reading(at(5*time.Minute), torrent("a", 100, 0)).reading)
+	_, err := module.Status(t.Context())
+	require.NoError(t, err)
+
+	open := notices.List()
+	require.Len(t, open, 1)
+	require.Equal(t, systemnotice.RecordingStopped, open[0].Kind)
+	require.Contains(t, open[0].Cause, "attempt to write a readonly database")
+	require.EqualValues(t, 1, sent.count.Load(), "two failed writes send one notification")
+
+	db.fail.Store(false)
+	module.Record(*reading(at(10*time.Minute), torrent("a", 150, 0)).reading)
+	query := hourTotal
+	query.InstanceID = instanceID
+	rows, err := module.Transfer(t.Context(), query)
+	require.NoError(t, err)
+	require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 150, 0, 0)}, rows)
+	require.Empty(t, notices.List())
+}
+
+func TestRecordingStoppedStaysOpenWhileOneInstanceCannotWrite(t *testing.T) {
+	t.Parallel()
+	db := &failingWrites{DB: testdb.NewMigratedSQLite(t, "transfer-history")}
+	notices := systemnotice.New(nil)
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db.DB), notices)
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+	db.fail.Store(true)
+	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+	_, err := module.Status(t.Context())
+	require.NoError(t, err)
+
+	db.fail.Store(false)
+	other := *reading(at(time.Minute), torrent("b", 0, 0)).reading
+	other.InstanceID = instanceID + 1
+	module.Record(other)
+	_, err = module.Status(t.Context())
+	require.NoError(t, err)
+	require.Len(t, notices.List(), 1, "the changes of the first instance are not stored yet")
+
+	module.Record(*reading(at(5*time.Minute), torrent("a", 100, 0)).reading)
+	_, err = module.Status(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, notices.List())
+}
+
+func TestRecordingStoppedClosesWhenAnInstanceThatIsNoLongerReadCanWrite(t *testing.T) {
+	t.Parallel()
+	db := &failingWrites{DB: testdb.NewMigratedSQLite(t, "transfer-history")}
+	notices := systemnotice.New(nil)
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db.DB), notices)
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+	gone := *reading(at(0), torrent("a", 100, 0)).reading
+	gone.InstanceID = instanceID + 1
+	db.fail.Store(true)
+	module.Record(gone)
+	_, err := module.Status(t.Context())
+	require.NoError(t, err)
+	require.Len(t, notices.List(), 1)
+
+	// The failed instance gets no more readings, for example because the
+	// user removed it. The other instance writes 5 minutes later.
+	db.fail.Store(false)
+	module.Record(*reading(at(5*time.Minute), torrent("b", 0, 0)).reading)
+	_, err = module.Status(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, notices.List())
+
+	status, err := module.Status(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status.Instances, 2, "the changes of the failed instance are stored")
+}
+
+func TestRecordingStoppedClosesWhenAnInstanceWithAnUnknownWriteIsNoLongerRead(t *testing.T) {
+	t.Parallel()
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	notices := systemnotice.New(nil)
+	// The second write loses the answer of its commit and of the check
+	// after it, so the module drops the changes of instance 2 from memory.
+	module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), notices)
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
+	gone := *reading(at(time.Minute), torrent("b", 0, 0)).reading
+	gone.InstanceID = instanceID + 1
+	module.Record(gone)
+	_, err := module.Status(t.Context())
+	require.NoError(t, err)
+	require.Len(t, notices.List(), 1)
+
+	// The next write of instance 1 succeeds.
+	module.Record(*reading(at(5*time.Minute), torrent("a", 0, 0)).reading)
+	_, err = module.Status(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, notices.List())
 }
 
 // lostCommitAndCheck loses the answer of the second commit, as
@@ -643,7 +772,7 @@ func TestACommitWithALostAnswerAndAFailedCheckCountsOncePostgresIntegration(t *t
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
@@ -705,11 +834,11 @@ func TestAFailedCommitInTheSecondOfTheLastWriteKeepsItsChangesPostgresIntegratio
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
 		customizations := models.NewTrackerCustomizationStore(db)
-		first := transferhistory.New(db, customizations)
+		first := transferhistory.New(db, customizations, systemnotice.New(nil))
 		first.Record(*reading(at(0), torrent("a", 0, 0)).reading)
 		require.NoError(t, first.Shutdown(t.Context()))
 
-		module := transferhistory.New(&failedCommit{DB: db, fail: 1}, customizations)
+		module := transferhistory.New(&failedCommit{DB: db, fail: 1}, customizations, systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		// The first write after a load is due at once, in the second of the
 		// last stored write.
@@ -728,7 +857,7 @@ func TestAFailedCommitAndAFailedCheckStoreNoRecordingGapPostgresIntegration(t *t
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
@@ -747,7 +876,7 @@ func TestAReloadKeepsTheTransferOfATorrentAddedBeforeItPostgresIntegration(t *te
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		added := addedAt(torrent("b", 500, 0), at(30*time.Minute))
@@ -784,7 +913,7 @@ func TestACommitThatLandsAfterTheCheckCountsOncePostgresIntegration(t *testing.T
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&lateCommit{DB: db}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&lateCommit{DB: db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
@@ -827,7 +956,7 @@ func TestAWriteThatPassesItsTimeLimitGetsMoreTimePostgresIntegration(t *testing.
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
 		slow := &slowWrites{DB: db, need: 590 * time.Second}
-		module := transferhistory.New(slow, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(slow, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		// A write is due with each reading, 5 minutes apart.
@@ -860,7 +989,7 @@ type localDay struct {
 // first reading, and returns the days of the queries.
 func recordDays(t *testing.T, db *database.DB, uploads []transferhistory.Reading, queries []transferhistory.TransferQuery) [][]localDay {
 	t.Helper()
-	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	for _, r := range uploads {
 		r.InstanceID = instanceID

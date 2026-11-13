@@ -298,7 +298,7 @@
     "loading": "Chargement des cibles de notification...",
     "loadFailed": "Échec du chargement des cibles de notification",
     "empty": "Aucune cible de notification configurée. Ajoutez-en une pour recevoir des alertes.",
-    "allEvents": "Tous les événements",
+    "allEvents": "Tous les événements sauf l'avis système",
     "showList": "Afficher la liste",
     "hideList": "Masquer la liste",
     "badges": {

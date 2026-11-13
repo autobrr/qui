@@ -298,7 +298,7 @@
     "loading": "S'estan carregant les destinacions de notificació…",
     "loadFailed": "No s'han pogut carregar les destinacions de notificació",
     "empty": "No hi ha cap destinació de notificació configurada. Afegeix-ne una per començar a rebre avisos.",
-    "allEvents": "Tots els esdeveniments",
+    "allEvents": "Tots els esdeveniments excepte l'avís del sistema",
     "showList": "Mostra la llista",
     "hideList": "Amaga la llista",
     "badges": {

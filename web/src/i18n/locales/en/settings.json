@@ -298,7 +298,7 @@
     "loading": "Loading notification targets…",
     "loadFailed": "Failed to load notification targets",
     "empty": "No notification targets configured. Add one to start receiving alerts.",
-    "allEvents": "All events",
+    "allEvents": "All events except System notice",
     "showList": "Show list",
     "hideList": "Hide list",
     "badges": {
