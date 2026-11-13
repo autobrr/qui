@@ -9,6 +9,8 @@ import (
 	"maps"
 	"slices"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // HistoryDelete selects the history that DeleteHistory deletes: the history
@@ -68,7 +70,14 @@ func (m *Module) DeleteHistory(ctx context.Context, d HistoryDelete) error {
 
 // deleteHistory runs on the worker. No fold runs beside it, and a transfer
 // query waits until the delete ends, so that it does not read a part of it.
-func (m *Module) deleteHistory(d HistoryDelete) error {
+// It logs a failure, because the caller can stop waiting before the end.
+func (m *Module) deleteHistory(d HistoryDelete) (err error) {
+	defer func() {
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", d.InstanceID).Bool("allInstances", d.AllInstances).Time("before", d.Before).
+				Msg("transfer history: failed to delete history; a part of it can be gone")
+		}
+	}()
 	m.foldRun.Lock()
 	defer m.foldRun.Unlock()
 	m.foldMu.Lock()

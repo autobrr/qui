@@ -234,7 +234,7 @@ func (h *TransferHistoryHandler) DeleteHistory(w http.ResponseWriter, r *http.Re
 			Msg("transfer history: the client left before the delete of history ended; the delete goes on")
 		return
 	case err != nil:
-		log.Error().Err(err).Int("instanceID", d.InstanceID).Time("before", d.Before).Msg("transfer history: failed to delete history")
+		// The module logs the failure.
 		RespondError(w, http.StatusInternalServerError, "Failed to delete transfer history")
 	default:
 		w.WriteHeader(http.StatusNoContent)
