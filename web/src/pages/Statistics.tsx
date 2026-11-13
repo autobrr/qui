@@ -56,14 +56,14 @@ interface InstanceRows {
 }
 
 /** Reads one transfer query for each instance. The rows are undefined while a query is pending or when no query runs. */
-function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHistoryQuery | undefined, keepPrevious: boolean): InstanceRows {
+function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHistoryQuery | undefined): InstanceRows {
   const enabled = query !== undefined
   const combine = useCallback((results: UseQueryResult<TransferHistoryRow[]>[]): InstanceRows => ({
     rows: enabled && results.every(result => result.data) ? results.map(result => result.data!) : undefined,
     error: results.find(result => result.error)?.error ?? undefined,
     pending: enabled && results.some(result => result.isPending),
   }), [enabled])
-  const result = useQueries({
+  return useQueries({
     queries: instances.map(instance => ({
       queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
       queryFn: () => api.getTransferHistory(instance.instanceId, query!),
@@ -71,12 +71,17 @@ function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHi
     })),
     combine,
   })
-  // A new period gives new query keys, so the queries hold no previous data to show while they load.
-  const [lastRows, setLastRows] = useState(result.rows)
-  if (result.rows && result.rows !== lastRows) {
-    setLastRows(result.rows)
-  }
-  return keepPrevious && enabled && !result.rows && !result.error && lastRows ? { rows: lastRows, pending: false } : result
+}
+
+/** The rows of the four queries of the page, for one period and one selection. */
+interface PageRows {
+  // The period choice and the selected instances.
+  series: string
+  period: StatisticsPeriod
+  chart?: TransferHistoryRow[][]
+  allTime?: TransferHistoryRow[][]
+  compared?: TransferHistoryRow[][]
+  before?: TransferHistoryRow[][]
 }
 
 function relativeChange(now: number, before: number): number | undefined {
@@ -127,24 +132,36 @@ export function Statistics() {
   const previous = previousPeriod(period)
   const comparable = previous?.from !== undefined && selected.length > 0 && recordedFrom(selected, previous.from)
   const ready = statusQuery.isSuccess
-  const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined, periodState.moved)
-  const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined, periodState.moved)
-  const compared = useInstanceRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined, periodState.moved)
-  const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined, periodState.moved)
+  const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
+  const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const compared = useInstanceRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
+  const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
+
+  // A new period gives new query keys, so the queries hold no previous data to show while they load. After a move,
+  // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
+  // so that the numbers never mix two periods or two selections.
+  const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}`
+  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined))
+  const [lastComplete, setLastComplete] = useState<PageRows>()
+  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows)) {
+    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows })
+  }
+  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error) && lastComplete?.series === series
+  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows }
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
   const totals = useMemo<TransferHistoryBytes | undefined>(
-    () => period.from ? chart.rows && sumBytes(chart.rows.flat(), false) : allTime.rows && sumBytes(allTime.rows.flat(), true),
-    [period.from, chart.rows, allTime.rows]
+    () => shown.period.from ? shown.chart && sumBytes(shown.chart.flat(), false) : shown.allTime && sumBytes(shown.allTime.flat(), true),
+    [shown.period.from, shown.chart, shown.allTime]
   )
-  const previousTotals = useMemo(() => before.rows && sumBytes(before.rows.flat(), false), [before.rows])
-  const comparedTotals = useMemo(() => compared.rows && sumBytes(compared.rows.flat(), false), [compared.rows])
-  const groups = useMemo(() => topGroups(chart.rows?.flat() ?? [], metric), [chart.rows, metric])
+  const previousTotals = useMemo(() => shown.before && sumBytes(shown.before.flat(), false), [shown.before])
+  const comparedTotals = useMemo(() => shown.compared && sumBytes(shown.compared.flat(), false), [shown.compared])
+  const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], metric), [shown.chart, metric])
   const bars = useMemo(() => {
-    const range = chartRange(period, since)
-    return chart.rows && range ? buildBars(chart.rows, range, period.unit) : []
-  }, [chart.rows, period, since])
+    const range = chartRange(shown.period, since)
+    return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
+  }, [shown.chart, shown.period, since])
 
   const displayName = useCallback((group: string) => {
     if (group === PUBLIC_GROUP) return t("groups.public")
@@ -156,7 +173,7 @@ export function Statistics() {
   const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatDay(period.from), to: formatDay(new Date(period.to.getTime() - 1)) }) : undefined
   const formatChange = new Intl.NumberFormat(locale, { style: "percent", signDisplay: "exceptZero", maximumFractionDigits: 0 })
   const error = statusQuery.error ?? (chart.error ? undefined : allTime.error ?? compared.error ?? before.error)
-  const loading = statusQuery.isPending || chart.pending || allTime.pending
+  const loading = statusQuery.isPending || (!keep && (chart.pending || allTime.pending))
 
   const change = (key: Metric) => {
     const change = comparedTotals && previousTotals ? relativeChange(comparedTotals[key], previousTotals[key]) : undefined
@@ -178,11 +195,7 @@ export function Statistics() {
             {options.length > 1 && <InstanceFilter
               options={options}
               selected={selectedIds}
-              onChange={ids => {
-                setSelectedIds(ids)
-                // Kept numbers belong to the old selection.
-                setPeriodState(state => state.moved ? { ...state, moved: false } : state)
-              }}
+              onChange={setSelectedIds}
             />}
             <PeriodPicker
               value={periodState.choice}
@@ -230,7 +243,7 @@ export function Statistics() {
           ) : loading ? (
             <div className="flex h-[300px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           ) : bars.some(bar => bar.bytes.size > 0) ? (
-            <TransferChart bars={bars} groups={groups} metric={metric} unit={period.unit} displayName={displayName} />
+            <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
           ) : (
             <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">{t("chart.empty")}</div>
           )}

@@ -55,8 +55,9 @@ let statuses: TransferHistoryInstance[]
 let configuredIds: number[]
 let answer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
-// While set, the transfer route waits for it before it answers.
+// While set, the transfer route waits for it before it answers: for each bucket, or only for holdBucket.
 let hold: Promise<void> | undefined
+let holdBucket: string | undefined
 
 function row(group: string, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
   return { group, start: new Date(Date.now() - DAY).toISOString(), width: "hour", gapSeconds: 0, uploaded, downloaded, statisticsCrossSeedUploaded: 0, ...extra }
@@ -92,6 +93,7 @@ beforeEach(() => {
   mocks.incognitoMode = [false, () => {}]
   requests = []
   hold = undefined
+  holdBucket = undefined
   configuredIds = [1, 2]
   statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 400)]
   answer = () => []
@@ -102,7 +104,9 @@ beforeEach(() => {
       const url = new URL(request.url)
       const transfer = { instanceId: Number(params.id), bucket: url.searchParams.get("bucket") ?? "", from: url.searchParams.get("from"), to: url.searchParams.get("to"), timeZone: url.searchParams.get("timeZone") }
       requests.push(transfer)
-      await hold
+      if (holdBucket === undefined || transfer.bucket === holdBucket) {
+        await hold
+      }
       return HttpResponse.json({ rows: answer(transfer) })
     })
   )
@@ -218,6 +222,71 @@ describe("Statistics", () => {
       fireEvent.click(await screen.findByText("Seedbox"))
 
       await expectTile("tiles.uploaded", "2 KiB | ")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // regression: #4084
+  it("does not show the numbers of other instances when the period moves while a new selection loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
+      renderPage()
+      fireEvent.pointerDown(await screen.findByText("instances.all"), { button: 0, pointerType: "mouse" })
+      fireEvent.click(await screen.findByText("Seedbox"))
+      await expectTile("tiles.uploaded", "1 KiB | ")
+      // The period moves at the tick of minute 5, and next at the tick of minute 10.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9 * 60_000 + 30_000)
+      })
+      await expectTile("tiles.uploaded", "1 KiB | ")
+      hold = new Promise(() => {})
+      // Home has no rows for the moved period yet.
+      fireEvent.click(await screen.findByText("Home"))
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000)
+      })
+
+      await expectTile("tiles.uploaded", "– | ")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // regression: #4084
+  it("keeps the totals and the change of one period until each query of the moved period loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      // The comparison ends at a whole hour, so only a move into the next hour gives it new queries.
+      const nearTheHour = new Date()
+      nearTheHour.setMinutes(57, 0, 0)
+      vi.setSystemTime(nearTheHour)
+      let moved = false
+      answer = ({ bucket, to }) => {
+        if (bucket === "day") {
+          return [row("a.test", 2048, 0, { width: "day" })]
+        }
+        const compared = Date.parse(to ?? "") > Date.now() - DAY
+        return [row("a.test", compared ? (moved ? 1024 : 3072) : 2048, 0, { width: "total" })]
+      }
+      renderPage()
+      await expectTile("tiles.uploaded", "4 KiB | tiles.change change=+50%")
+      moved = true
+      requests = []
+      holdBucket = "day"
+      hold = new Promise(() => {})
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+      await vi.waitFor(() => expect(requests.filter(request => request.bucket === "total")).toHaveLength(4))
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      })
+
+      await expectTile("tiles.uploaded", "4 KiB | tiles.change change=+50%")
     } finally {
       vi.useRealTimers()
     }
