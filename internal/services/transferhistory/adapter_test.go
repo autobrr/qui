@@ -107,7 +107,7 @@ func newAdapterRig(t *testing.T) (*syncowner.Owner, *qbittorrent.SyncManager, *a
 				rec.WriteHeader(http.StatusNotFound)
 				return rec.Result(), nil
 			}
-			_, _ = fmt.Fprintf(rec, `{"rid":%d,"full_update":true,"torrents":{%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"uploaded":%d}}}`,
+			_, _ = fmt.Fprintf(rec, `{"rid":%d,"full_update":true,"torrents":{%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP","uploaded":%d}}}`,
 				rid.Add(1), hash, uploaded.Load())
 			return rec.Result(), nil
 		}),
@@ -228,5 +228,78 @@ func TestAdapterGivesNoReadingForAFailedSync(t *testing.T) {
 		time.Sleep(2 * time.Minute)
 		synctest.Wait()
 		require.Len(t, queued(module), 1)
+	})
+}
+
+func TestAdapterReadingHoldsTheServerStateAndTheUniqueSize(t *testing.T) {
+	owner, syncManager, _ := newAdapterRig(t)
+	synctest.Test(t, func(t *testing.T) {
+		module := &Module{wake: make(chan struct{}, 1)}
+		adapter := NewAdapter(module, syncManager)
+		sync := func(up, down, freeDisk int64) {
+			require.NoError(t, owner.Sync(t.Context()))
+			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{
+				Snapshot:    owner.SnapshotUnchecked(),
+				ServerState: qbt.ServerState{UpInfoSpeed: up, DlInfoSpeed: down, FreeSpaceOnDisk: freeDisk},
+			})
+			synctest.Wait()
+		}
+
+		sync(600, 30, 900)
+		// A Copy groups build that read the instance ends.
+		syncManager.SetCopyGroups(qbittorrent.NewCopyGroups(map[int]map[string]uint64{}, nil, []int{1}))
+		// Two updates that wait for the next reading.
+		time.Sleep(2 * time.Second)
+		sync(500, 5, 800)
+		time.Sleep(2 * time.Second)
+		sync(50, 20, 700)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+
+		readings := queued(module)
+		require.Len(t, readings, 2)
+		first, second := readings[0], readings[1]
+		require.Equal(t, "stalledUP", first.Torrents[0].State)
+		require.Nil(t, first.UniqueSize, "a reading before the first build")
+		require.Equal(t, [3]int64{900, 600, 30}, [3]int64{first.FreeDisk, first.MaxUploadSpeed, first.MaxDownloadSpeed})
+		require.Equal(t, new(int64(1000)), second.UniqueSize)
+		require.Equal(t, [3]int64{700, 500, 20}, [3]int64{second.FreeDisk, second.MaxUploadSpeed, second.MaxDownloadSpeed},
+			"the free disk space of the last update, and the highest speeds since the reading before")
+	})
+}
+
+// setRecording turns recording on or off, as the settings call does.
+func setRecording(m *Module, on bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settingsLoaded, m.settings.Recording = true, on
+}
+
+// regression: #4096
+func TestAdapterDropsTheSpeedsOfAnUpdateThatWaitsWhenRecordingGoesOff(t *testing.T) {
+	owner, syncManager, _ := newAdapterRig(t)
+	synctest.Test(t, func(t *testing.T) {
+		module := &Module{wake: make(chan struct{}, 1)}
+		adapter := NewAdapter(module, syncManager)
+		sync := func(up int64) {
+			require.NoError(t, owner.Sync(t.Context()))
+			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked(), ServerState: qbt.ServerState{UpInfoSpeed: up}})
+			synctest.Wait()
+		}
+
+		sync(600)
+		time.Sleep(2 * time.Second)
+		// This update waits for the next reading.
+		sync(900)
+		setRecording(module, false)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		setRecording(module, true)
+		time.Sleep(24 * time.Hour)
+		sync(5)
+
+		readings := queued(module)
+		require.Len(t, readings, 2)
+		require.Equal(t, int64(5), readings[1].MaxUploadSpeed)
 	})
 }

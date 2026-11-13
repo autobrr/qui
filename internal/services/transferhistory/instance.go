@@ -77,6 +77,8 @@ type instance struct {
 	gaps            map[int64]int64
 	hashChanges     []models.TransferHistoryHashChange
 	events          []models.TransferHistoryEvent
+	libraryDays     map[int64]*models.TransferHistoryLibraryDay
+	instanceHours   map[int64]*models.TransferHistoryInstanceHour
 	// unwritten is set from the first reading until a write stores the instance.
 	unwritten bool
 }
@@ -112,6 +114,8 @@ func (inst *instance) reset() {
 	inst.categoryDays = make(map[totalKey]*bytesMoved)
 	inst.gaps = make(map[int64]int64)
 	inst.hashChanges, inst.events = nil, nil
+	inst.libraryDays = make(map[int64]*models.TransferHistoryLibraryDay)
+	inst.instanceHours = make(map[int64]*models.TransferHistoryInstanceHour)
 	inst.unwritten = false
 }
 
@@ -151,6 +155,7 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 	inst.unwritten = true
 
 	hour, today := hourOf(r.Time), dayOf(r.Time)
+	inst.addLibrary(&r, hour, today)
 	for i := range r.Torrents {
 		t := &r.Torrents[i]
 		rec, added, up, down := inst.read(t, p)
@@ -187,6 +192,38 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 		}
 	}
 	dropOldNotes(notes, r.Time)
+}
+
+// addLibrary keeps the library and the state of the instance that the
+// reading shows. The last reading of a day or an hour decides its values,
+// except the Unique size of a day, which a reading without one keeps, and the
+// speeds of an hour, which keep the highest.
+func (inst *instance) addLibrary(r *Reading, hour, today int64) {
+	library := inst.libraryDays[today]
+	if library == nil {
+		library = &models.TransferHistoryLibraryDay{Day: today}
+		inst.libraryDays[today] = library
+	}
+	library.Torrents, library.TotalSize = int64(len(r.Torrents)), 0
+	for i := range r.Torrents {
+		library.TotalSize += r.Torrents[i].Size
+	}
+	if r.UniqueSize != nil {
+		library.UniqueSize = new(*r.UniqueSize)
+	}
+
+	state := inst.instanceHours[hour]
+	if state == nil {
+		state = &models.TransferHistoryInstanceHour{Hour: hour}
+		inst.instanceHours[hour] = state
+	}
+	state.States = make(map[string]int64)
+	for i := range r.Torrents {
+		state.States[r.Torrents[i].State]++
+	}
+	state.FreeDisk = r.FreeDisk
+	state.MaxUploadSpeed = max(state.MaxUploadSpeed, r.MaxUploadSpeed)
+	state.MaxDownloadSpeed = max(state.MaxDownloadSpeed, r.MaxDownloadSpeed)
 }
 
 // read returns the record of t, whether the reading adds the torrent, and
@@ -428,10 +465,16 @@ func addTo[K comparable](m map[K]*bytesMoved, key K, up, down int64) {
 	b.add(up, down)
 }
 
-// holdsDaysBefore reports whether the changes hold transfer of a UTC day before day.
+// holdsDaysBefore reports whether the changes hold transfer or hourly state
+// of a UTC day before day.
 func (inst *instance) holdsDaysBefore(day int64) bool {
 	for key := range inst.categoryDays {
 		if key.bucket < day {
+			return true
+		}
+	}
+	for hour := range inst.instanceHours {
+		if hour < day*24 {
 			return true
 		}
 	}
@@ -468,6 +511,12 @@ func (inst *instance) changes() *models.TransferHistoryWrite {
 	w.CategoryDays = totals(inst.categoryDays)
 	for hour, seconds := range inst.gaps {
 		w.Gaps = append(w.Gaps, models.TransferHistoryGap{Hour: hour, Seconds: seconds})
+	}
+	for _, d := range inst.libraryDays {
+		w.LibraryDays = append(w.LibraryDays, *d)
+	}
+	for _, h := range inst.instanceHours {
+		w.InstanceHours = append(w.InstanceHours, *h)
 	}
 	return w
 }

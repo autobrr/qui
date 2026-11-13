@@ -160,6 +160,9 @@ func runSteps(t *testing.T, db *database.DB, steps []step) {
 		case s.library != nil:
 			rows, err := module.Library(t.Context(), s.library.query)
 			require.NoError(t, err, "step %d", i)
+			if s.library.eventsOnly {
+				rows = eventCounts(rows)
+			}
 			if len(s.library.want) == 0 {
 				require.Empty(t, rows, "step %d", i)
 			} else {

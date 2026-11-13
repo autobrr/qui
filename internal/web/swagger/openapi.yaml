@@ -3610,7 +3610,8 @@ paths:
       summary: Get the library of an instance for each day
       description: >-
         Returns one row for each UTC day that overlaps the period and has stored data, with the oldest day first. A row
-        holds the number of torrents that qui saw added, completed, and deleted on that day. qui finds these events when it
+        holds the torrent count, the total size, and the Unique size of the instance at the last reading of the day, and
+        the number of torrents that qui saw added, completed, and deleted on that day. qui finds these events when it
         reads the torrent list, so an event has the time of that read. The torrents that an instance has at its first
         recording get no add event and no completion event. A removed instance keeps its history.
       parameters:
@@ -10922,15 +10923,19 @@ components:
         torrents:
           type: integer
           format: int64
-          description: Number of torrents. Absent when qui stored no value for the day.
+          description: Number of torrents at the last reading of the day. Absent when qui stored no value for the day.
         totalSize:
           type: integer
           format: int64
-          description: Total size in bytes. Absent when qui stored no value for the day.
+          description: >-
+            Size in bytes of the torrents at the last reading of the day, with each torrent counted in full. Absent when qui
+            stored no value for the day.
         uniqueSize:
           type: integer
           format: int64
-          description: Unique size in bytes, with each Copy group counted one time. Absent when qui stored no value for the day.
+          description: >-
+            Unique size in bytes, with each Copy group counted one time. Absent for a day without a completed Copy groups
+            build.
         added:
           type: integer
           format: int64

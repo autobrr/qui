@@ -300,7 +300,9 @@ type LibraryQuery struct {
 
 // LibraryRow is the library of an instance on one UTC day that overlaps the
 // period. Day is the start of the day. Torrents, TotalSize, and UniqueSize
-// are nil when qui stored no value for the day. Added, Completed, and Deleted
+// are those of the last reading of the day, and nil when qui stored no value
+// for the day. UniqueSize is also nil for a day without a completed Copy
+// groups build. TotalSize counts each torrent in full. Added, Completed, and Deleted
 // count the events of the whole day. A day with nothing stored has no row.
 type LibraryRow struct {
 	Day        time.Time `json:"day"`
@@ -323,17 +325,29 @@ func (m *Module) Library(ctx context.Context, q LibraryQuery) ([]LibraryRow, err
 		return nil, err
 	}
 	fromDay, toDay := daysOf(q.From, q.To)
+	library, err := m.store.LibraryDays(ctx, q.InstanceID, fromDay, toDay)
+	if err != nil {
+		return nil, err
+	}
 	counts, err := m.store.EventCounts(ctx, q.InstanceID, fromDay, toDay)
 	if err != nil {
 		return nil, err
 	}
 	days := make(map[int64]*LibraryRow)
-	for _, c := range counts {
-		row := days[c.Day]
+	rowOf := func(day int64) *LibraryRow {
+		row := days[day]
 		if row == nil {
-			row = &LibraryRow{Day: time.Unix(c.Day*86400, 0).UTC()}
-			days[c.Day] = row
+			row = &LibraryRow{Day: time.Unix(day*86400, 0).UTC()}
+			days[day] = row
 		}
+		return row
+	}
+	for _, d := range library {
+		row := rowOf(d.Day)
+		row.Torrents, row.TotalSize, row.UniqueSize = new(d.Torrents), new(d.TotalSize), d.UniqueSize
+	}
+	for _, c := range counts {
+		row := rowOf(c.Day)
 		switch c.Kind {
 		case models.TransferHistoryEventAdd:
 			row.Added = c.Count

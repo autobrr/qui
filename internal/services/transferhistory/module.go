@@ -50,6 +50,15 @@ type Reading struct {
 	// Torrents is the full torrent list of the instance. A torrent that is
 	// absent from it is deleted.
 	Torrents []Torrent
+	// FreeDisk is the free disk space that qBittorrent reports.
+	FreeDisk int64
+	// MaxUploadSpeed and MaxDownloadSpeed are the highest speeds of the
+	// instance that qui saw since the reading before, in bytes per second.
+	MaxUploadSpeed   int64
+	MaxDownloadSpeed int64
+	// UniqueSize is the Unique size of Torrents, or nil when Copy groups has
+	// no completed build of the instance.
+	UniqueSize *int64
 }
 
 // Torrent is one torrent of a Reading.
@@ -71,6 +80,8 @@ type Torrent struct {
 	// Ratio and SeedingSeconds are the values that qBittorrent reports.
 	Ratio          float64
 	SeedingSeconds int64
+	// State is the state that qBittorrent reports, such as "stalledUP".
+	State string
 }
 
 type Module struct {
@@ -177,12 +188,16 @@ func enqueue(queue []Reading, r Reading) []Reading {
 	queue = append(queue, r)
 	if queued >= maxQueued {
 		dropped := queue[oldest].FailedSince
+		droppedUp, droppedDown := queue[oldest].MaxUploadSpeed, queue[oldest].MaxDownloadSpeed
 		queue = slices.Delete(queue, oldest, oldest+1)
 		// The next reading of the instance ends the time without a read.
 		next := oldest + slices.IndexFunc(queue[oldest:], func(q Reading) bool { return q.InstanceID == r.InstanceID })
 		if !dropped.IsZero() && (queue[next].FailedSince.IsZero() || dropped.Before(queue[next].FailedSince)) {
 			queue[next].FailedSince = dropped
 		}
+		// The speeds of a reading are the highest since the reading before.
+		queue[next].MaxUploadSpeed = max(queue[next].MaxUploadSpeed, droppedUp)
+		queue[next].MaxDownloadSpeed = max(queue[next].MaxDownloadSpeed, droppedDown)
 	}
 	return queue
 }

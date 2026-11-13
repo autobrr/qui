@@ -46,6 +46,9 @@ type adapterInstance struct {
 	// sends no update until the next change.
 	pending *qbt.SyncUpdate
 	timer   *time.Timer
+	// maxUp and maxDown are the highest speeds of the syncs since the last
+	// reading started, in bytes per second.
+	maxUp, maxDown int64
 }
 
 func NewAdapter(module *Module, syncManager *qbittorrent.SyncManager) *Adapter {
@@ -71,6 +74,8 @@ func (a *Adapter) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	inst := a.instance(instanceID)
+	inst.maxUp = max(inst.maxUp, update.ServerState.UpInfoSpeed)
+	inst.maxDown = max(inst.maxDown, update.ServerState.DlInfoSpeed)
 	failedSince, take := inst.take(now, update.Snapshot.Number())
 	if !take {
 		inst.pending = &update
@@ -79,7 +84,7 @@ func (a *Adapter) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 		}
 		return
 	}
-	go a.record(instanceID, update, now, failedSince)
+	go a.record(instanceID, update, now, failedSince, inst.takeSpeeds())
 }
 
 // takePending builds a reading from the update that waits, if one does.
@@ -88,9 +93,11 @@ func (a *Adapter) takePending(instanceID int) {
 	inst := a.instance(instanceID)
 	inst.timer = nil
 	update := inst.pending
-	// While recording is off, the adapter builds no reading.
+	// While recording is off, the adapter builds no reading, and the speeds
+	// of the update belong to no reading.
 	if update == nil || !a.module.recording() {
 		inst.pending = nil
+		inst.takeSpeeds()
 		a.mu.Unlock()
 		return
 	}
@@ -102,8 +109,19 @@ func (a *Adapter) takePending(instanceID int) {
 	}
 	now := update.Snapshot.Time().UTC()
 	failedSince := inst.start(now, time.Now().UTC())
+	peaks := inst.takeSpeeds()
 	a.mu.Unlock()
-	a.record(instanceID, *update, now, failedSince)
+	a.record(instanceID, *update, now, failedSince, peaks)
+}
+
+type peakSpeeds struct{ up, down int64 }
+
+// takeSpeeds returns the highest speeds since the last reading started, and
+// starts them again for the next reading.
+func (inst *adapterInstance) takeSpeeds() peakSpeeds {
+	s := peakSpeeds{up: inst.maxUp, down: inst.maxDown}
+	inst.maxUp, inst.maxDown = 0, 0
+	return s
 }
 
 // take reports whether the sync at now with the snapshot number gives a
@@ -134,10 +152,16 @@ func (inst *adapterInstance) start(now, builtAt time.Time) (failedSince time.Tim
 	return failedSince
 }
 
-func (a *Adapter) record(instanceID int, update qbt.SyncUpdate, now, failedSince time.Time) {
+func (a *Adapter) record(instanceID int, update qbt.SyncUpdate, now, failedSince time.Time, peaks peakSpeeds) {
 	torrents := update.Snapshot.Torrents()
 	facts := a.sync.TorrentFactsOf(instanceID, torrents, update.Trackers)
-	reading := Reading{InstanceID: instanceID, Time: now, FailedSince: failedSince, Torrents: make([]Torrent, len(torrents))}
+	reading := Reading{
+		InstanceID: instanceID, Time: now, FailedSince: failedSince, Torrents: make([]Torrent, len(torrents)),
+		FreeDisk: update.ServerState.FreeSpaceOnDisk, MaxUploadSpeed: peaks.up, MaxDownloadSpeed: peaks.down,
+	}
+	if size, ok := a.sync.UniqueSizeOf(instanceID, torrents); ok {
+		reading.UniqueSize = new(size)
+	}
 	for i, t := range torrents {
 		reading.Torrents[i] = Torrent{
 			Hash:           t.Hash,
@@ -153,6 +177,7 @@ func (a *Adapter) record(instanceID int, update qbt.SyncUpdate, now, failedSince
 			AddedAt:        time.Unix(t.AddedOn, 0).UTC(),
 			Ratio:          t.Ratio,
 			SeedingSeconds: t.SeedingTime,
+			State:          string(t.State),
 		}
 	}
 	a.module.Record(reading)

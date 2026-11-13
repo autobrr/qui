@@ -115,7 +115,7 @@ func TestDeleteHistoryPostgresIntegration(t *testing.T) {
 					row("tv", day11, transferhistory.BucketDay, 300, 0, 0, 0)),
 				// The Baseline is from before day 11, so it goes too.
 				expect(allTime, allTimeRow(300, nil)),
-				expectLibrary(transferhistory.LibraryRow{Day: day11, Added: 1, Deleted: 1}),
+				expectLibrary(transferhistory.LibraryRow{Day: day11, Torrents: new(int64(3)), TotalSize: new(int64(3000)), Added: 1, Deleted: 1}),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, deleted("late", at(26*time.Hour), 0, 0, outside)),
 				expectInstances(transferhistory.InstanceStatus{InstanceID: instanceID, FirstRecordedAt: day11}),
 				// The record of "gone" went with its day. When the user adds it
@@ -209,7 +209,8 @@ func TestADeleteOfEverythingStartsANewBaselinePostgresIntegration(t *testing.T) 
 			reading(at(10*time.Minute), torrent("a", 200, 0), addedAt(torrent("b", 40, 0), at(10*time.Minute))),
 			reading(at(15*time.Minute), torrent("a", 260, 0), torrent("b", 40, 0)),
 			expect(allTime, allTimeRow(60, &transferhistory.Bytes{Uploaded: 240})),
-			expectLibrary(),
+			// The new Baseline gives no event, and the library of the day starts again.
+			expectLibrary(libraryRow(day10, 2, 2000, nil)),
 			expectInstances(transferhistory.InstanceStatus{InstanceID: instanceID, Name: "Seedbox", FirstRecordedAt: at(10 * time.Minute)}),
 		})
 	})
