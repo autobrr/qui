@@ -11,6 +11,8 @@ The desktop table or the mobile cards publish one live Action target, with the l
 
 The module sits in the app layout, not in the table, because the header bar is outside the torrent page.
 
+Two lint rules guard the module. `no-restricted-imports` blocks an import of a bulk action dialog outside the module. `no-restricted-properties` blocks a call to the bulk action request outside the module. The details panel and the filter sidebar are exempt, because they do not act on the selection.
+
 ## Considered options
 
 - **One shared dialog component and hook, mounted by each surface.** Rejected: the rules exist once, but the desktop layout keeps two mounted copies with separate state.
