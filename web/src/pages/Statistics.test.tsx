@@ -144,6 +144,25 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
   })
 
+  it("moves a preset period forward while the page stays open", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      renderPage()
+      await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
+      const firstEnd = requests.find(request => request.bucket === "day")?.to
+      requests = []
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
+      expect(Date.parse(requests.find(request => request.bucket === "day")?.to ?? "")).toBeGreaterThan(Date.parse(firstEnd ?? ""))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("does not apply a custom range that starts after today", async () => {
     renderPage()
     fireEvent.click(await screen.findByText("periods.custom"))

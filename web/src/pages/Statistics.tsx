@@ -27,9 +27,9 @@ import {
 } from "@/lib/statistics"
 import { formatBytes } from "@/lib/utils"
 import type { TransferHistoryBytes, TransferHistoryInstance, TransferHistoryQuery, TransferHistoryRow } from "@/types"
-import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
+import { keepPreviousData, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
-import { useCallback, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 // A browser that cannot find its zone reports Etc/Unknown. The days are then UTC days.
@@ -42,7 +42,12 @@ const NO_TRACKER_GROUP = "No tracker"
 interface PeriodState {
   choice: PeriodChoice
   period: StatisticsPeriod
+  // Set when the page moved a preset period forward, so that the old numbers stay until the new ones load.
+  moved: boolean
 }
+
+// qui writes the history each 5 minutes, so a faster move shows nothing new.
+const MOVE_AFTER = 5 * 60_000
 
 interface InstanceRows {
   rows?: TransferHistoryRow[][]
@@ -51,7 +56,7 @@ interface InstanceRows {
 }
 
 /** Reads one transfer query for each instance. The rows are undefined while a query is pending or when no query runs. */
-function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHistoryQuery | undefined): InstanceRows {
+function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHistoryQuery | undefined, keepPrevious: boolean): InstanceRows {
   const enabled = query !== undefined
   const combine = useCallback((results: UseQueryResult<TransferHistoryRow[]>[]): InstanceRows => ({
     rows: enabled && results.every(result => result.data) ? results.map(result => result.data!) : undefined,
@@ -63,6 +68,7 @@ function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHi
       queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
       queryFn: () => api.getTransferHistory(instance.instanceId, query!),
       enabled,
+      placeholderData: keepPrevious ? keepPreviousData : undefined,
     })),
     combine,
   })
@@ -76,7 +82,26 @@ export function Statistics() {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
-  const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: "30d", period: presetPeriod("30d", new Date()) }))
+  const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: "30d", period: presetPeriod("30d", new Date()), moved: false }))
+  const { choice } = periodState
+
+  useEffect(() => {
+    if (choice === "custom") {
+      return
+    }
+    const move = () => {
+      if (document.visibilityState !== "visible") {
+        return
+      }
+      setPeriodState(state => Date.now() - state.period.to.getTime() < MOVE_AFTER ? state : { choice, period: presetPeriod(choice, new Date()), moved: true })
+    }
+    const timer = setInterval(move, 60_000)
+    document.addEventListener("visibilitychange", move)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", move)
+    }
+  }, [choice])
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [metric, setMetric] = useState<Metric>("uploaded")
   const { period } = periodState
@@ -96,10 +121,10 @@ export function Statistics() {
   const previous = previousPeriod(period)
   const comparable = previous?.from !== undefined && selected.length > 0 && recordedFrom(selected, previous.from)
   const ready = statusQuery.isSuccess
-  const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
-  const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
-  const compared = useInstanceRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
-  const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined, periodState.moved)
+  const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined, periodState.moved)
+  const compared = useInstanceRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined, periodState.moved)
+  const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined, periodState.moved)
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
@@ -148,8 +173,8 @@ export function Statistics() {
             <PeriodPicker
               value={periodState.choice}
               customLabel={customLabel}
-              onPreset={preset => setPeriodState({ choice: preset, period: presetPeriod(preset, new Date()) })}
-              onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()) })}
+              onPreset={preset => setPeriodState({ choice: preset, period: presetPeriod(preset, new Date()), moved: false })}
+              onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
             />
           </>
         }
