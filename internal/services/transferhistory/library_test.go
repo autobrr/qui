@@ -190,6 +190,7 @@ func TestTheHourlyStateFollowsTheDetailRetentionPostgresIntegration(t *testing.T
 	})
 }
 
+// regression: #4096
 func TestADroppedReadingKeepsItsPeakSpeeds(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
@@ -214,6 +215,7 @@ func TestADroppedReadingKeepsItsPeakSpeeds(t *testing.T) {
 	require.Equal(t, [2]int64{900, 90}, [2]int64{hours[0].maxUp, hours[0].maxDown})
 }
 
+// regression: #4096
 func TestAFoldWritesTheHourlyStateInMemoryFirstPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	const offline = 2

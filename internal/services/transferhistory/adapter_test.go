@@ -275,6 +275,7 @@ func setRecording(m *Module, on bool) {
 	m.settingsLoaded, m.settings.Recording = true, on
 }
 
+// regression: #4096
 func TestAdapterDropsTheSpeedsOfAnUpdateThatWaitsWhenRecordingGoesOff(t *testing.T) {
 	owner, syncManager, _ := newAdapterRig(t)
 	synctest.Test(t, func(t *testing.T) {
