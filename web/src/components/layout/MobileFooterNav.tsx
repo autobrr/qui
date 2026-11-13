@@ -58,6 +58,7 @@ import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-route
 import { navigateWithSearch } from "@/lib/router-search"
 import {
   Archive,
+  ChartColumn,
   Check,
   Code,
   Copyright,
@@ -268,6 +269,17 @@ export function MobileFooterNav() {
             location.pathname === "/dashboard" && "text-primary"
           )} />
           <span className="truncate">{t("mobileNav.dashboard")}</span>
+        </Link>}
+
+        {!isDemo && <Link
+          to="/statistics"
+          className={cn(
+            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            location.pathname === "/statistics" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <ChartColumn className="h-5 w-5" />
+          <span className="truncate">{t("mobileNav.statistics")}</span>
         </Link>}
 
         {/* Clients access */}

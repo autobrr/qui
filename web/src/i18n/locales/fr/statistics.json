@@ -1,0 +1,59 @@
+{
+  "title": "Statistiques",
+  "recordingSince": "Enregistrement depuis le {{date}}",
+  "notRecording": "qui n’a encore enregistré aucun transfert.",
+  "partial": "Période partielle",
+  "periods": {
+    "24h": "24 heures",
+    "7d": "7 jours",
+    "30d": "30 jours",
+    "1y": "Année",
+    "all": "Depuis le début",
+    "custom": "Personnalisé"
+  },
+  "customRange": {
+    "from": "Premier jour",
+    "to": "Dernier jour",
+    "apply": "Appliquer",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Toutes les instances",
+    "count_one": "{{count}} instance",
+    "count_many": "{{count}} instances",
+    "count_other": "{{count}} instances",
+    "removed": "supprimée"
+  },
+  "tiles": {
+    "uploaded": "Envoyé",
+    "downloaded": "Reçu",
+    "ratio": "Ratio",
+    "buffer": "Marge {{buffer}}",
+    "crossSeed": "Des cross-seeds",
+    "crossSeedShare": "{{percent}} % de l’envoi",
+    "change": "{{change}} par rapport à la période précédente"
+  },
+  "chart": {
+    "title": "Transfert dans le temps",
+    "descriptionHour": "Par tracker, par heure",
+    "descriptionDay": "Par tracker, par jour",
+    "upload": "Envoi",
+    "download": "Réception",
+    "other": "Autres",
+    "otherCount": "Autres ({{groups}})",
+    "total": "Total",
+    "gap": "Inclut une interruption d’enregistrement de {{duration}}",
+    "gapLabel": "interruption {{duration}}",
+    "foldedDay": "(journée entière, UTC)",
+    "empty": "Aucun transfert sur cette période."
+  },
+  "groups": {
+    "public": "Public",
+    "noTracker": "Aucun tracker"
+  },
+  "errors": {
+    "load": "Impossible de charger les statistiques : {{message}}"
+  },
+  "allTimeNote": "Depuis le début inclut la base de départ : les octets que les torrents avaient quand qui les a enregistrés pour la première fois. Le graphique ne montre pas la base de départ, car elle n’a pas de date.",
+  "serverStatisticsNote": "Ces chiffres additionnent le transfert de chaque torrent. Les statistiques du serveur sur le tableau de bord lisent les compteurs de qBittorrent, qui comptent aussi le trafic du protocole : les chiffres diffèrent donc."
+}

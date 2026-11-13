@@ -32,6 +32,7 @@ import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-route
 import { navigateWithSearch } from "@/lib/router-search"
 import {
   Archive,
+  ChartColumn,
   Check,
   Code,
   Copyright,
@@ -67,6 +68,12 @@ const navigation: NavItem[] = [
     titleKey: "nav.dashboard",
     href: "/dashboard",
     icon: Home,
+  },
+  {
+    id: "statistics",
+    titleKey: "nav.statistics",
+    href: "/statistics",
+    icon: ChartColumn,
   },
   {
     id: "search",
