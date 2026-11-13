@@ -233,3 +233,15 @@ test("checks t calls in a file with no useTranslation against its directive name
     "src/example.tsx: torrents.columns.nmae",
   ])
 })
+
+test("checks a namespaced t call in a file with no namespace", () => {
+  const source = `
+    export function toastFor(t) {
+      return [t("torrents:columns.name"), t("torrents:columns.nmae"), t("columns.other")]
+    }
+  `
+
+  assert.deepEqual(collectKeyPropertyErrors(source), [
+    "src/example.tsx: torrents.columns.nmae",
+  ])
+})
