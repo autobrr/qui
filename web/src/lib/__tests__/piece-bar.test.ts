@@ -100,4 +100,46 @@ describe("computePieceBarFill", () => {
   it("stays inside the height when rounded shares add up to more than 1", () => {
     expect(computePieceBarFill({ finished: 0.01, downloading: 1 }, 12)).toEqual({ finishedPixels: 1, downloadingPixels: 11 })
   })
+
+  // regression: #4097
+  it("leaves one pixel empty for one missing piece in a column of 151 pieces", () => {
+    const states = [...Array(75).fill(FINISHED), ...Array(75).fill(DOWNLOADING), MISSING]
+
+    const [column] = computePieceBarColumns(states, 1)
+    const { finishedPixels, downloadingPixels } = computePieceBarFill(column, 12)
+
+    expect(finishedPixels).toBeGreaterThan(0)
+    expect(downloadingPixels).toBeGreaterThan(0)
+    expect(finishedPixels + downloadingPixels).toBeLessThan(12)
+  })
+
+  // regression: #4097
+  it("keeps one pixel for one finished piece in a column of 300 pieces", () => {
+    const states: number[] = Array(300).fill(MISSING)
+    states[150] = FINISHED
+
+    const [column] = computePieceBarColumns(states, 1)
+
+    expect(computePieceBarFill(column, 12)).toEqual({ finishedPixels: 1, downloadingPixels: 0 })
+  })
+
+  it("fills each column of a finished torrent to the whole height when a column holds a part of a piece", () => {
+    const columns = computePieceBarColumns(Array(11592).fill(FINISHED), 1000)
+
+    const notFull = columns.filter((column) => computePieceBarFill(column, 12).finishedPixels !== 12)
+
+    expect(notFull).toEqual([])
+  })
+
+  it("draws a finished piece that ends at a column edge in its own column only", () => {
+    const states: number[] = Array(1400).fill(MISSING)
+    states[1021] = FINISHED
+
+    const filled = computePieceBarColumns(states, 1000)
+      .map((column, index) => ({ index, pixels: computePieceBarFill(column, 12).finishedPixels }))
+      .filter(({ pixels }) => pixels > 0)
+      .map(({ index }) => index)
+
+    expect(filled).toEqual([729])
+  })
 })

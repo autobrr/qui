@@ -11,16 +11,18 @@ export interface PieceBarColumn {
   downloading: number
 }
 
+const FLOAT_TOLERANCE = 1e-9
+
 function toShare(amount: number, ratio: number): number {
-  return Math.min(Math.round((amount / ratio) * 100) / 100, 1)
+  return Math.min(amount / ratio, 1)
 }
 
 /**
  * Splits the pieces over at most `width` columns, as the qBittorrent pieces bar does.
  * Each column covers piece count / column count pieces, and a piece that falls across
  * two columns counts in each by its overlap. Returns, for each column, the share of
- * finished and of downloading pieces, from 0 to 1 in steps of 0.01. With fewer pieces
- * than `width`, it returns one column for each piece.
+ * finished and of downloading pieces, from 0 to 1. With fewer pieces than `width`, it
+ * returns one column for each piece.
  */
 export function computePieceBarColumns(pieceStates: readonly number[], width: number): PieceBarColumn[] {
   const columnCount = Math.min(Math.floor(width), pieceStates.length)
@@ -53,8 +55,6 @@ export interface PieceBarFill {
   downloadingPixels: number
 }
 
-const FLOAT_TOLERANCE = 1e-9
-
 /**
  * Returns the height in pixels of the finished part and of the downloading part of one
  * column, for a bar of `height` pixels (3 or more). The two parts leave 1 pixel or more
@@ -62,9 +62,9 @@ const FLOAT_TOLERANCE = 1e-9
  * is 1 pixel or more.
  */
 export function computePieceBarFill({ finished, downloading }: PieceBarColumn, height: number): PieceBarFill {
-  const toPixels = (share: number) => (share > 0 ? Math.max(1, Math.round(share * height)) : 0)
+  const toPixels = (share: number) => (share > FLOAT_TOLERANCE ? Math.max(1, Math.round(share * height)) : 0)
   const emptyPixels = finished + downloading < 1 - FLOAT_TOLERANCE ? 1 : 0
-  const finishedMinimum = finished > 0 ? 1 : 0
+  const finishedMinimum = finished > FLOAT_TOLERANCE ? 1 : 0
 
   const downloadingPixels = Math.min(toPixels(downloading), height - emptyPixels - finishedMinimum)
   const finishedPixels = Math.min(toPixels(finished), height - emptyPixels - downloadingPixels)
