@@ -389,6 +389,7 @@ describe("Statistics", () => {
     expect(screen.queryByText("chart.empty")).toBeNull()
   })
 
+  // regression: #4099
   it("shows the error in the table when the status fails", async () => {
     server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
@@ -453,6 +454,7 @@ describe("Statistics", () => {
     expect(cells(table, "table.total").slice(0, 2)).toEqual(["table.total", "4 KiB"])
   })
 
+  // regression: #4099
   it("keeps the live numbers of the instances that loaded when one instance fails", async () => {
     answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
     liveGroups = () => [{ group: "a.test", torrents: 2, size: 2048, uploaded: 4096 }]
@@ -464,6 +466,7 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^table\.liveError message=/)).toBeTruthy()
   })
 
+  // regression: #4099
   it("does not ask a disabled instance for its live numbers", async () => {
     server.use(http.get("*/api/instances", () => HttpResponse.json([{ id: 1, name: "instance 1", isActive: true }, { id: 2, name: "instance 2", isActive: false }])))
     const liveRequests: string[] = []
@@ -523,6 +526,7 @@ describe("Statistics", () => {
     await expectFact("detail.share", "25% | detail.shareOf total=8 KiB")
   })
 
+  // regression: #4099
   it("leaves the days before the first recording out of the average of the detail band", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)

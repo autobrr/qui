@@ -90,6 +90,7 @@ describe("buildBars", () => {
 })
 
 describe("categoryRange", () => {
+  // regression: #4099
   it("keeps two UTC days of a category apart when the period starts inside the second one east of UTC", () => {
     process.env.TZ = "Asia/Shanghai"
     try {
@@ -104,6 +105,7 @@ describe("categoryRange", () => {
     }
   })
 
+  // regression: #4099
   it("counts a UTC day of a category as recorded when the first recording is late in that UTC day east of UTC", () => {
     process.env.TZ = "Asia/Shanghai"
     try {
@@ -117,6 +119,7 @@ describe("categoryRange", () => {
     }
   })
 
+  // regression: #4099
   it("adds no empty first day west of UTC", () => {
     const day: TransferHistoryRow = { group: "tv", start: "2026-01-02T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 100, downloaded: 0, statisticsCrossSeedUploaded: 0 }
     const period = { from: new Date("2026-01-02T03:00:00Z"), to: new Date("2026-01-03T03:00:00Z"), unit: "hour" as const }
@@ -127,6 +130,7 @@ describe("categoryRange", () => {
 })
 
 describe("bestBar", () => {
+  // regression: #4099
   it("never takes a folded day of an hourly chart as the best hour", () => {
     const rows: TransferHistoryRow[] = [
       { group: "a.test", start: "2026-01-10T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 500, downloaded: 0, statisticsCrossSeedUploaded: 0 },
@@ -139,6 +143,7 @@ describe("bestBar", () => {
 })
 
 describe("recordedUnits", () => {
+  // regression: #4099
   it("counts a folded day of an hourly chart as 24 hours", () => {
     const rows: TransferHistoryRow[] = [
       { group: "a.test", start: "2026-01-10T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 500, downloaded: 0, statisticsCrossSeedUploaded: 0 },
@@ -149,6 +154,7 @@ describe("recordedUnits", () => {
     expect(recordedUnits(bars, undefined, "hour")).toBe(25)
   })
 
+  // regression: #4099
   it("counts a 25-hour day when the first recording is in its last hour", () => {
     // In New York, November 1, 2026 has 25 hours.
     const bars = buildBars([[]], { from: new Date(2026, 10, 1), to: new Date(2026, 10, 2) }, "day")
