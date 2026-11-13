@@ -41,7 +41,10 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
   const [lastDay, setLastDay] = useState("")
   const first = parseDay(firstDay)
   const last = parseDay(lastDay)
-  const valid = first !== undefined && last !== undefined && first <= last
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+  // A range that starts after today has no past to show.
+  const valid = first !== undefined && last !== undefined && first <= last && firstDay <= today
 
   return (
     <div className="flex max-w-full flex-wrap items-center gap-2">
@@ -72,7 +75,7 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
           >
             <div className="space-y-1.5">
               <Label htmlFor="statistics-first-day">{t("customRange.from")}</Label>
-              <Input id="statistics-first-day" type="date" value={firstDay} onChange={event => setFirstDay(event.target.value)} />
+              <Input id="statistics-first-day" type="date" max={today} value={firstDay} onChange={event => setFirstDay(event.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="statistics-last-day">{t("customRange.to")}</Label>

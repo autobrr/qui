@@ -143,6 +143,17 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
   })
 
+  it("does not apply a custom range that starts after today", async () => {
+    renderPage()
+    fireEvent.click(await screen.findByText("periods.custom"))
+    const tomorrow = new Date(Date.now() + DAY)
+    const day = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`
+    fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: day } })
+    fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: day } })
+
+    expect((screen.getByText("customRange.apply") as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it("shows the change against the period before only when qui recorded that period in full", async () => {
     const runningHour = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000).toISOString()
     answer = ({ bucket, to }) => {

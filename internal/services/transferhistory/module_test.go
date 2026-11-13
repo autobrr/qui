@@ -918,3 +918,25 @@ func TestADayWithoutAMidnightStartsAtTheChangeToSummerTimePostgresIntegration(t 
 		}}, got)
 	})
 }
+
+func TestDayBucketsPastTheZoneDataPostgresIntegration(t *testing.T) {
+	t.Parallel()
+
+	newYork, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	// Past the zone data, Go gives New York a zone period that ends where it starts, on 2040-12-31.
+	readings := uploads(time.Date(2040, 12, 30, 12, 0, 30, 0, time.UTC), map[time.Time]int64{
+		time.Date(2040, 12, 31, 12, 0, 30, 0, time.UTC): 100,
+		time.Date(2041, 1, 1, 12, 0, 30, 0, time.UTC):   300,
+	})
+
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		got := recordDays(t, newDB(t), readings, []transferhistory.TransferQuery{
+			{From: time.Date(2040, 12, 1, 5, 0, 0, 0, time.UTC), To: time.Date(2041, 2, 1, 5, 0, 0, 0, time.UTC), Location: newYork},
+		})
+		require.Equal(t, [][]localDay{{
+			{time.Date(2040, 12, 31, 5, 0, 0, 0, time.UTC), 100},
+			{time.Date(2041, 1, 1, 5, 0, 0, 0, time.UTC), 200},
+		}}, got)
+	})
+}

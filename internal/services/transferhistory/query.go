@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
 	// Embeds the zone database, which Windows and minimal container images lack.
 	_ "time/tzdata"
 
@@ -245,21 +246,42 @@ func (a *answer) trackerBuckets(ctx context.Context, store *models.TransferHisto
 	if a.query.Bucket != BucketDay {
 		return models.TransferHistoryBuckets{Width: map[Bucket]int64{BucketHour: 1, BucketTotal: 0}[a.query.Bucket]}, nil
 	}
-	if from == 0 {
-		// A period with no start begins at the first recording, so the offsets
-		// do not reach back to 1970.
-		instances, err := store.Instances(ctx)
-		if err != nil {
-			return models.TransferHistoryBuckets{}, err
-		}
-		from = to
-		for _, instance := range instances {
-			if instance.InstanceID == a.query.InstanceID {
-				from = min(to, hourOf(instance.FirstRecordedAt))
-			}
+	// Only the recorded hours hold rows, so the offsets cover only them. An hour
+	// before or after them gets the nearest offset.
+	instances, err := store.Instances(ctx)
+	if err != nil {
+		return models.TransferHistoryBuckets{}, err
+	}
+	first, last := to, to
+	for _, instance := range instances {
+		if instance.InstanceID == a.query.InstanceID {
+			first, last = hourOf(instance.FirstRecordedAt), hourOf(instance.LastReadingAt)+1
 		}
 	}
-	return models.TransferHistoryBuckets{Offsets: zoneOffsets(a.dayLocation(), from, to)}, nil
+	return models.TransferHistoryBuckets{Offsets: zoneOffsets(a.dayLocation(), max(from, first), min(to, last))}, nil
+}
+
+// zoneOffsets returns the offsets from UTC of loc in the hours [fromHour,
+// toHour), with the first hour of each.
+func zoneOffsets(loc *time.Location, fromHour, toHour int64) []models.TransferHistoryOffset {
+	var offsets []models.TransferHistoryOffset
+	for start := time.Unix(fromHour*3600, 0); ; {
+		zone := start.In(loc)
+		_, seconds := zone.Zone()
+		if minutes := floorDiv(int64(seconds), 60); len(offsets) == 0 || offsets[len(offsets)-1].Minutes != minutes {
+			offsets = append(offsets, models.TransferHistoryOffset{FromHour: ceilDiv(start.Unix(), 3600), Minutes: minutes})
+		}
+		_, end := zone.ZoneBounds()
+		if end.IsZero() || end.Unix() >= toHour*3600 {
+			return offsets
+		}
+		// Past the zone data, Go can return a zone period that ends where it
+		// starts, for example on 2040-12-31 in America/New_York.
+		if !end.After(start) {
+			end = start.Add(time.Hour)
+		}
+		start = end
+	}
 }
 
 // startOfLocalDay returns the first instant in loc of the date of day. Where
@@ -272,22 +294,6 @@ func startOfLocalDay(day time.Time, loc *time.Location) time.Time {
 		_, start = start.ZoneBounds()
 	}
 	return start.UTC()
-}
-
-// zoneOffsets returns the offsets from UTC of loc in the hours [fromHour,
-// toHour), with the first hour of each.
-func zoneOffsets(loc *time.Location, fromHour, toHour int64) []models.TransferHistoryOffset {
-	var offsets []models.TransferHistoryOffset
-	for start := time.Unix(fromHour*3600, 0); ; {
-		zone := start.In(loc)
-		_, seconds := zone.Zone()
-		offsets = append(offsets, models.TransferHistoryOffset{FromHour: ceilDiv(start.Unix(), 3600), Minutes: floorDiv(int64(seconds), 60)})
-		_, end := zone.ZoneBounds()
-		if end.IsZero() || end.Unix() >= toHour*3600 {
-			return offsets
-		}
-		start = end
-	}
 }
 
 func (a *answer) byTracker(ctx context.Context, store *models.TransferHistoryStore) error {
