@@ -1,0 +1,58 @@
+{
+  "title": "Statistiken",
+  "recordingSince": "Aufzeichnung seit {{date}}",
+  "notRecording": "qui hat noch keinen Transfer aufgezeichnet.",
+  "partial": "Unvollständiger Zeitraum",
+  "periods": {
+    "24h": "24 Stunden",
+    "7d": "7 Tage",
+    "30d": "30 Tage",
+    "1y": "Jahr",
+    "all": "Gesamt",
+    "custom": "Benutzerdefiniert"
+  },
+  "customRange": {
+    "from": "Erster Tag",
+    "to": "Letzter Tag",
+    "apply": "Anwenden",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Alle Instanzen",
+    "count_one": "{{count}} Instanz",
+    "count_other": "{{count}} Instanzen",
+    "removed": "entfernt"
+  },
+  "tiles": {
+    "uploaded": "Hochgeladen",
+    "downloaded": "Heruntergeladen",
+    "ratio": "Verhältnis",
+    "buffer": "Puffer {{buffer}}",
+    "crossSeed": "Von Cross-Seeds",
+    "crossSeedShare": "{{percent}} % des Uploads",
+    "change": "{{change}} gegenüber dem Zeitraum davor"
+  },
+  "chart": {
+    "title": "Transfer im Zeitverlauf",
+    "descriptionHour": "Nach Tracker, pro Stunde",
+    "descriptionDay": "Nach Tracker, pro Tag",
+    "upload": "Upload",
+    "download": "Download",
+    "other": "Andere",
+    "otherCount": "Andere ({{groups}})",
+    "total": "Gesamt",
+    "gap": "Enthält eine Aufzeichnungslücke von {{duration}}",
+    "gapLabel": "Lücke {{duration}}",
+    "foldedDay": "(ganzer Tag, UTC)",
+    "empty": "Kein Transfer in diesem Zeitraum."
+  },
+  "groups": {
+    "public": "Öffentlich",
+    "noTracker": "Kein Tracker"
+  },
+  "errors": {
+    "load": "Die Statistiken konnten nicht geladen werden: {{message}}"
+  },
+  "allTimeNote": "Gesamt enthält die Ausgangsbasis: die Bytes, die die Torrents hatten, als qui sie zuerst aufgezeichnet hat. Das Diagramm zeigt die Ausgangsbasis nicht, da sie kein Datum hat.",
+  "serverStatisticsNote": "Diese Zahlen addieren den Transfer jedes Torrents. Die Serverstatistik im Dashboard liest die Zähler von qBittorrent, die auch Protokollverkehr zählen, daher weichen die Zahlen ab."
+}

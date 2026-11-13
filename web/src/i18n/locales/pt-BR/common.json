@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Painel",
+    "statistics": "Estatísticas",
     "search": "Busca",
     "crossSeed": "Cross-Seed",
     "automations": "Automações",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Painel",
+    "statistics": "Estatísticas",
     "clients": "Clientes",
     "settings": "Configurações",
     "qbittorrentClients": "Clientes qBittorrent",

@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Панель керування",
+    "statistics": "Статистика",
     "search": "Пошук",
     "crossSeed": "Cross-Seed",
     "automations": "Автоматизації",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Панель керування",
+    "statistics": "Статистика",
     "clients": "Клієнти",
     "settings": "Налаштування",
     "qbittorrentClients": "Клієнти qBittorrent",
