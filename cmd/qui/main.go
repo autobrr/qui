@@ -53,6 +53,7 @@ import (
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sqlite3store"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/tray"
@@ -670,6 +671,9 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
+	transferHistory := transferhistory.New(db, trackerCustomizationStore)
+	clientPool.AddSyncEventSink(transferhistory.NewAdapter(transferHistory, syncManager))
+
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
 	syncManager.SetFilesManager(filesManagerService)
@@ -972,6 +976,7 @@ func (app *Application) runServer() {
 		OrphanScanService:                orphanScanService,
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
+		TransferHistory:                  transferHistory,
 		BackendPool:                      backendPool,
 		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,
@@ -1062,6 +1067,10 @@ func (app *Application) runServer() {
 		case <-partialPoolDone:
 		case <-ctx.Done():
 			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+		}
+
+		if err := transferHistory.Shutdown(ctx); err != nil {
+			log.Error().Err(err).Msg("failed to write the transfer history at shutdown")
 		}
 
 		// Deferred so it also runs when Shutdown returns an error. Stop
