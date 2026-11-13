@@ -13,7 +13,7 @@ import (
 	"maps"
 	"net"
 	"net/url"
-	"path/filepath"
+	"path"
 	"runtime"
 	"slices"
 	"strconv"
@@ -4418,12 +4418,11 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search st
 		return torrents
 	}
 
-	// Check if search contains glob patterns
-	if strings.ContainsAny(search, "*?[") {
-		return sm.filterTorrentsByGlob(torrents, search)
-	}
-
 	searchLower := strings.ToLower(search)
+
+	// A bracket alone is literal text, as in a release group tag. The search
+	// box hint in the web app uses the same * and ? rule.
+	isGlob := strings.ContainsAny(search, "*?")
 	searchNormalized := normalizeForSearch(search)
 	searchWords := strings.Fields(searchNormalized)
 	searchIsFolded := isASCIIFolded(searchNormalized)
@@ -4452,6 +4451,13 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search st
 	var matched []int
 	for i := range torrents {
 		torrent := torrents[i]
+
+		// Method 0: Glob match. A miss or a malformed pattern falls through to
+		// the text methods, so a name that holds a * or ? still matches as typed.
+		if isGlob && torrentMatchesGlob(torrent, searchLower) {
+			matched = append(matched, i)
+			continue
+		}
 
 		// Method 1: Exact substring match (highest priority)
 		if stringutils.ContainsFold(torrent.Name, searchLower) ||
@@ -4524,61 +4530,23 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search st
 	return filtered
 }
 
-// filterTorrentsByGlob filters torrents using glob pattern matching
-func (sm *SyncManager) filterTorrentsByGlob(torrents []*qbt.Torrent, pattern string) []*qbt.Torrent {
-	var filtered []*qbt.Torrent
-
-	// Convert to lowercase for case-insensitive matching
-	patternLower := strings.ToLower(pattern)
-
-	for _, torrent := range torrents {
-		nameLower := strings.ToLower(torrent.Name)
-
-		// Try to match the pattern against the torrent name
-		matched, err := filepath.Match(patternLower, nameLower)
-		if err != nil {
-			// Invalid pattern, log and skip
-			log.Trace().
-				Str("pattern", pattern).
-				Err(err).
-				Msg("Invalid glob pattern")
-			continue
-		}
-
-		if matched {
-			filtered = append(filtered, torrent)
-			continue
-		}
-
-		// Also try matching against category and tags
-		if torrent.Category != "" {
-			categoryLower := strings.ToLower(torrent.Category)
-			if matched, _ := filepath.Match(patternLower, categoryLower); matched {
-				filtered = append(filtered, torrent)
-				continue
-			}
-		}
-
-		if torrent.Tags != "" {
-			tagsLower := strings.ToLower(torrent.Tags)
-			// For tags, try matching against individual tags
-			tags := strings.SplitSeq(tagsLower, ", ")
-			for tag := range tags {
-				if matched, _ := filepath.Match(patternLower, strings.TrimSpace(tag)); matched {
-					filtered = append(filtered, torrent)
-					break
-				}
-			}
+// torrentMatchesGlob reports whether a lower-case glob pattern matches the
+// name, the category, or a single tag of the torrent.
+func torrentMatchesGlob(torrent *qbt.Torrent, patternLower string) bool {
+	if matched, _ := path.Match(patternLower, strings.ToLower(torrent.Name)); matched {
+		return true
+	}
+	if torrent.Category != "" {
+		if matched, _ := path.Match(patternLower, strings.ToLower(torrent.Category)); matched {
+			return true
 		}
 	}
-
-	log.Trace().
-		Str("pattern", pattern).
-		Int("totalTorrents", len(torrents)).
-		Int("matchedTorrents", len(filtered)).
-		Msg("Glob pattern search completed")
-
-	return filtered
+	for tag := range strings.SplitSeq(strings.ToLower(torrent.Tags), ", ") {
+		if matched, _ := path.Match(patternLower, strings.TrimSpace(tag)); matched {
+			return true
+		}
+	}
+	return false
 }
 
 func hasNestedCategories(categories map[string]qbt.Category) bool {

@@ -1630,7 +1630,7 @@ export function TorrentCardsMobile({
                   }
                 }}
                 className={`w-full pl-9 ${globalFilter ? "ring-1 ring-primary/50" : ""
-                } ${globalFilter && /[*?[\]]/.test(globalFilter) ? "ring-1 ring-primary" : ""}`}
+                } ${globalFilter && /[*?]/.test(globalFilter) ? "ring-1 ring-primary" : ""}`}
                 autoFocus
               />
               {globalFilter && (
