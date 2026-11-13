@@ -741,3 +741,53 @@ func TestACommitThatLandsAfterTheCheckCountsOncePostgresIntegration(t *testing.T
 		require.Equal(t, []transferhistory.TransferRow{total("tracker.example", 180, 0, 0)}, rows)
 	})
 }
+
+// slowWrites refuses each write transaction whose time limit is under need,
+// as a write that takes need does, until one write is stored. limits holds
+// the time limit of each write, in seconds.
+type slowWrites struct {
+	*database.DB
+	need   time.Duration
+	stored bool
+	limits []int
+}
+
+func (s *slowWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	deadline, _ := ctx.Deadline()
+	limit := time.Until(deadline)
+	s.limits = append(s.limits, int(limit.Round(time.Second)/time.Second))
+	if !s.stored && limit < s.need {
+		return nil, context.DeadlineExceeded
+	}
+	s.stored = true
+	return s.DB.BeginTx(ctx, opts)
+}
+
+func TestAWriteThatPassesItsTimeLimitGetsMoreTimePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		slow := &slowWrites{DB: db, need: 590 * time.Second}
+		module := transferhistory.New(slow, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+		// A write is due with each reading, 5 minutes apart.
+		for k := range 7 {
+			module.Record(*reading(at(time.Duration(k)*5*time.Minute), torrent("a", int64(100+10*k), 0)).reading)
+			// A query waits until the module processed the reading.
+			_, err := module.Status(t.Context())
+			require.NoError(t, err)
+		}
+
+		rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
+			InstanceID: instanceID, To: hourTotal.To, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker,
+		})
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{{
+			Group: "tracker.example", Width: transferhistory.BucketTotal,
+			Uploaded: 60, Baseline: &transferhistory.Bytes{Uploaded: 100},
+		}}, rows)
+		// The limit doubles up to 10 minutes, and a stored write sets it back.
+		require.Equal(t, []int{30, 60, 120, 240, 480, 600, 30}, slow.limits)
+	})
+}

@@ -61,7 +61,9 @@ type instance struct {
 	// resumed is set until the first reading after a load of stored history.
 	resumed     bool
 	lastWriteAt time.Time
-	records     map[string]*models.TransferHistoryRecord
+	// writeTimeout is the time limit of the next write, or zero for dbTimeout.
+	writeTimeout time.Duration
+	records      map[string]*models.TransferHistoryRecord
 
 	// changedRecords changed in more than their last counters.
 	changedRecords  map[string]*models.TransferHistoryRecord

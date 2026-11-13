@@ -6,6 +6,7 @@
 package transferhistory
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -30,6 +31,10 @@ const (
 	// cumulative, so its bytes land with the next reading.
 	maxQueued = 4
 	dbTimeout = 30 * time.Second
+	// maxWriteTimeout is the longest time limit of one write. The limit
+	// doubles after a write that passes it: the next try is as large, so
+	// with the same limit it would fail each time and store nothing.
+	maxWriteTimeout = 10 * time.Minute
 )
 
 // Reading is the state of one instance at one successful read of qBittorrent.
@@ -290,7 +295,8 @@ func (m *Module) write(inst *instance) error {
 		return nil
 	}
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	timeout := cmp.Or(inst.writeTimeout, dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	w := inst.changes()
 	ids, err := m.store.Write(ctx, w)
@@ -298,7 +304,10 @@ func (m *Module) write(inst *instance) error {
 		switch m.outcome(err, w) {
 		case stored:
 		case notStored:
-			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: failed to write; the changes stay in memory for the next write")
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				inst.writeTimeout = min(2*timeout, maxWriteTimeout)
+			}
+			log.Error().Err(err).Int("instanceID", inst.id).Dur("timeLimit", timeout).Msg("transfer history: failed to write; the changes stay in memory for the next write")
 			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)
 		case unknown:
 			// The stored counters decide the next difference, so no byte
@@ -316,6 +325,7 @@ func (m *Module) write(inst *instance) error {
 		}
 	}
 	inst.writes = w.Number
+	inst.writeTimeout = 0
 	inst.reset()
 	log.Debug().Int("instanceID", inst.id).Int("torrents", len(w.Counters)).Dur("elapsed", time.Since(start)).
 		Msg("transfer history: wrote the changes")
