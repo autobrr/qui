@@ -80,6 +80,21 @@ func (m *Module) keep(n DeleteNote) {
 	}
 }
 
+// keepCauses makes a delete note again from each delete event of a write
+// that the module cannot tell is stored. If the write is not stored, the next
+// reading shows the delete again, and its note is gone.
+func (m *Module) keepCauses(instanceID int, events []models.TransferHistoryEvent) {
+	for _, e := range events {
+		if e.Delete == nil || CauseKind(e.Delete.CauseKind) == CauseOutside {
+			continue
+		}
+		m.keep(DeleteNote{
+			InstanceID: instanceID, Time: e.Time, Hashes: []string{e.Record.Hash},
+			Cause: DeleteCause{Kind: CauseKind(e.Delete.CauseKind), Name: e.Delete.CauseName},
+		})
+	}
+}
+
 // takeNote returns the cause of the delete of hash that the reading at now
 // shows. The first note is the one that deleted the torrent: a later delete
 // of a torrent that is gone does nothing. A note from after the reading is for

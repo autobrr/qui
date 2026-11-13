@@ -328,6 +328,7 @@ func (m *Module) write(inst *instance) error {
 			// counts twice. The bytes of a torrent that is gone at the next
 			// reading are lost.
 			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: cannot tell which changes are stored; the next reading loads the stored history again")
+			m.keepCauses(inst.id, w.Events)
 			m.reloads[inst.id] = struct{}{}
 			delete(m.instances, inst.id)
 			return fmt.Errorf("write the transfer history of instance %d: %w", inst.id, err)

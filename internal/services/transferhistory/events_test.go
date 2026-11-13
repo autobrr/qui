@@ -516,3 +516,24 @@ func TestAdapterGivesTheDeleteActorAsTheCause(t *testing.T) {
 	}
 	require.Equal(t, map[string]transferhistory.DeleteCause{"a": byRule, "b": byUser, "c": byRestore, "d": byProxy}, causes)
 }
+
+// The module loads the stored history again after a write that it cannot
+// tell is stored. The delete of that write shows again at the next reading.
+func TestAFailedCommitAndAFailedCheckKeepTheDeleteCausePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+
+		module.Record(*reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)).reading)
+		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
+		module.Record(*reading(at(5*time.Minute), torrent("a", 0, 0)).reading)
+		module.Record(*reading(at(6*time.Minute), torrent("a", 0, 0)).reading)
+
+		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, answer.Deletes, 1)
+		require.Equal(t, byRule, answer.Deletes[0].Cause)
+	})
+}

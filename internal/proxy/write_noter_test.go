@@ -115,4 +115,15 @@ func TestProxyNotesTorrentWrites(t *testing.T) {
 	require.Equal(t, 1, stub.Writes("torrents/delete"), "the proxy forwards the delete")
 	require.Equal(t, []proxiedDelete{{instance.ID, []string{proxyHashA, proxyHashB}, "autobrr", 0}}, deletes.seen,
 		"the delete note names the Client Proxy API key, before qBittorrent gets the delete")
+
+	// qBittorrent also reads a multipart body, and keeps the last value of a field.
+	multipartBody := "--rig\r\nContent-Disposition: form-data; name=\"hashes\"\r\n\r\n" + proxyHashA + "\r\n" +
+		"--rig\r\nContent-Disposition: form-data; name=\"hashes\"\r\n\r\n" + proxyHashB + "\r\n" +
+		"--rig\r\nContent-Disposition: form-data; name=\"deleteFiles\"\r\n\r\nfalse\r\n--rig--\r\n"
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/proxy/"+rawKey+"/api/v2/torrents/delete", strings.NewReader(multipartBody))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=rig")
+	router.ServeHTTP(httptest.NewRecorder(), req)
+	require.Len(t, deletes.seen, 2, "a multipart delete gets a delete note")
+	require.Equal(t, []string{proxyHashB}, deletes.seen[1].hashes)
+	require.Equal(t, "autobrr", deletes.seen[1].keyName)
 }
