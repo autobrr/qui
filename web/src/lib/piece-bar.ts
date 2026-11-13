@@ -58,8 +58,8 @@ export interface PieceBarFill {
 /**
  * Returns the height in pixels of the finished part and of the downloading part of one
  * column, for a bar of `height` pixels (3 or more). The two parts leave 1 pixel or more
- * free when the column also holds missing pieces, and each part that the column holds
- * is 1 pixel or more.
+ * free when the column also holds missing pieces, and they fill the height when it holds
+ * none. Each part that the column holds is 1 pixel or more.
  */
 export function computePieceBarFill({ finished, downloading }: PieceBarColumn, height: number): PieceBarFill {
   const toPixels = (share: number) => (share > FLOAT_TOLERANCE ? Math.max(1, Math.round(share * height)) : 0)
@@ -67,7 +67,8 @@ export function computePieceBarFill({ finished, downloading }: PieceBarColumn, h
   const finishedMinimum = finished > FLOAT_TOLERANCE ? 1 : 0
 
   const downloadingPixels = Math.min(toPixels(downloading), height - emptyPixels - finishedMinimum)
-  const finishedPixels = Math.min(toPixels(finished), height - emptyPixels - downloadingPixels)
+  const finishedPixels =
+    emptyPixels === 0 ? height - downloadingPixels : Math.min(toPixels(finished), height - emptyPixels - downloadingPixels)
 
   return { finishedPixels, downloadingPixels }
 }

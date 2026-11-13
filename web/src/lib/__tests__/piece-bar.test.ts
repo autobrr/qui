@@ -142,4 +142,15 @@ describe("computePieceBarFill", () => {
 
     expect(filled).toEqual([729])
   })
+
+  // regression: #4097
+  it("fills the whole height of each column that holds only finished and downloading pieces", () => {
+    const states = Array.from({ length: 1600 }, (_, piece) => (piece % 3 === 0 ? DOWNLOADING : FINISHED))
+
+    const notFull = computePieceBarColumns(states, 1300)
+      .map((column) => computePieceBarFill(column, 12))
+      .filter(({ finishedPixels, downloadingPixels }) => finishedPixels + downloadingPixels !== 12)
+
+    expect(notFull).toEqual([])
+  })
 })
