@@ -296,7 +296,7 @@ Reflinks use copy-on-write semantics:
    - Single filesystem: `/mnt/data/cross-seed`
    - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`
 5. Choose a **Directory organization** preset (`flat`, `by-tracker`, `by-instance`).
-6. If you want failed reflinks to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode"**.
+6. Enable **"Fallback to regular mode"** if you want regular mode when the filesystem support probe fails. For behavior after creation errors, see [Reflink Requirements](#reflink-requirements).
 
 :::note
 Hardlink and reflink modes are mutually exclusive. You can enable only one per instance.
