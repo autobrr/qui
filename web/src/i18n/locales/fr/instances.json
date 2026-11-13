@@ -1290,9 +1290,18 @@
         "errors": {
           "unsupportedWindows": "Source d'espace basée sur un chemin non supportée sur Windows.",
           "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'.",
-          "filesystemAccessRequired": "La source d'espace libre basée sur un chemin nécessite un accès au système de fichiers local ou via SSH."
+          "filesystemAccessRequired": "La source d'espace libre basée sur un chemin nécessite un accès au système de fichiers local ou via SSH.",
+          "allowanceRequired": "Entrez un espace alloué supérieur à 0.",
+          "allowanceAccessRequired": "La source d'espace alloué nécessite un accès au système de fichiers local, ou un accès SSH avec shell."
         },
-        "pathSourceFilesystemAccessRequired": "Chemin sur le serveur (nécessite un accès local ou SSH)"
+        "pathSourceFilesystemAccessRequired": "Chemin sur le serveur (nécessite un accès local ou SSH)",
+        "allowanceSource": "Espace alloué sur un chemin",
+        "allowanceSourceWindowsUnsupported": "Espace alloué sur un chemin (non supporté sur Windows)",
+        "allowanceSourceAccessRequired": "Espace alloué sur un chemin (nécessite un accès local, ou un accès SSH avec shell)",
+        "allowanceAria": "Espace alloué",
+        "allowanceUnitAria": "Unité de l'espace alloué",
+        "allowanceHelp": "Entrez l'espace que votre offre autorise. qui en soustrait la taille des fichiers sous le chemin. La plupart des fournisseurs comptent par paliers de 1000, et non de 1024 : le chiffre de l'offre est donc environ 9 % plus petit en {{unit}}.",
+        "allowancePathHelp": "Entrez le dossier à mesurer, par exemple votre répertoire personnel"
       },
       "grouping": {
         "title": "Groupes de conditions",

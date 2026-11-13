@@ -180,8 +180,9 @@ This section lists every key of a rule as JSON, the condition fields and their o
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
-| `type` | string | `qbittorrent`, `path` | `qbittorrent` uses the free space that qBittorrent reports. `path` reads the free space at `path`. |
-| `path` | string |  | With type `path`: the path to read. Needs filesystem access on the instance. |
+| `type` | string | `qbittorrent`, `path`, `allowance` | `qbittorrent` uses the free space that qBittorrent reports. `path` reads the free space at `path`. `allowance` is `allowanceBytes` minus the size of the files under `path`. |
+| `path` | string |  | With type `path`: the path to read. With type `allowance`: the folder to measure. Needs filesystem access on the instance. |
+| `allowanceBytes` | integer |  | With type `allowance`: the space that the user may fill, in bytes. |
 
 ### `sortingConfig`
 

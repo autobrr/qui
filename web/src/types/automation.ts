@@ -278,6 +278,7 @@ export interface ActionConditions {
 export type FreeSpaceSource =
   | { type: "qbittorrent" }
   | { type: "path"; path: string }
+  | { type: "allowance"; path: string; allowanceBytes: number }
 
 export type FreeSpaceSourceType = FreeSpaceSource["type"]
 

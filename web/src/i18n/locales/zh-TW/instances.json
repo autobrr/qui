@@ -1267,9 +1267,18 @@
         "errors": {
           "unsupportedWindows": "Windows 不支援基於路徑的可用空間來源。",
           "pathRequired": "使用\"伺服器路徑\"時，路徑為必填項。",
-          "filesystemAccessRequired": "基於路徑的可用空間來源需要本機或 SSH 檔案系統存取權限。"
+          "filesystemAccessRequired": "基於路徑的可用空間來源需要本機或 SSH 檔案系統存取權限。",
+          "allowanceRequired": "請輸入大於 0 的允許空間。",
+          "allowanceAccessRequired": "允許空間來源需要本機檔案系統存取權限，或具有 shell 的 SSH 存取權限。"
         },
-        "pathSourceFilesystemAccessRequired": "伺服器路徑（需要本機或 SSH 存取）"
+        "pathSourceFilesystemAccessRequired": "伺服器路徑（需要本機或 SSH 存取）",
+        "allowanceSource": "路徑上的允許空間",
+        "allowanceSourceWindowsUnsupported": "路徑上的允許空間（Windows 不支援）",
+        "allowanceSourceAccessRequired": "路徑上的允許空間（需要本機存取，或具有 shell 的 SSH 存取）",
+        "allowanceAria": "允許空間",
+        "allowanceUnitAria": "允許空間單位",
+        "allowanceHelp": "輸入方案允許使用的空間。qui 會減去該路徑下檔案的大小。多數供應商以 1000 進位，而不是 1024，因此方案數值換算為 {{unit}} 後約小 9%。",
+        "allowancePathHelp": "輸入要統計的資料夾，例如你的家目錄"
       },
       "grouping": {
         "title": "分組條件組",

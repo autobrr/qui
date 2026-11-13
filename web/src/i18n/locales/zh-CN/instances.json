@@ -1267,9 +1267,18 @@
         "errors": {
           "unsupportedWindows": "Windows 不支持基于路径的可用空间来源。",
           "pathRequired": "使用\"服务器路径\"时，路径为必填项。",
-          "filesystemAccessRequired": "基于路径的可用空间来源需要本地或 SSH 文件系统访问权限。"
+          "filesystemAccessRequired": "基于路径的可用空间来源需要本地或 SSH 文件系统访问权限。",
+          "allowanceRequired": "请输入大于 0 的允许空间。",
+          "allowanceAccessRequired": "允许空间来源需要本地文件系统访问权限，或带 shell 的 SSH 访问权限。"
         },
-        "pathSourceFilesystemAccessRequired": "服务器路径（需要本地或 SSH 访问）"
+        "pathSourceFilesystemAccessRequired": "服务器路径（需要本地或 SSH 访问）",
+        "allowanceSource": "路径上的允许空间",
+        "allowanceSourceWindowsUnsupported": "路径上的允许空间（Windows 不支持）",
+        "allowanceSourceAccessRequired": "路径上的允许空间（需要本地访问，或带 shell 的 SSH 访问）",
+        "allowanceAria": "允许空间",
+        "allowanceUnitAria": "允许空间单位",
+        "allowanceHelp": "输入套餐允许使用的空间。qui 会减去该路径下文件的大小。多数服务商按 1000 进位，而不是 1024，因此套餐数值换算为 {{unit}} 后约小 9%。",
+        "allowancePathHelp": "输入要统计的文件夹，例如你的主目录"
       },
       "grouping": {
         "title": "分组条件组",
