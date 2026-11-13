@@ -163,7 +163,7 @@ export function Statistics() {
         <Tile
           label={t("tiles.ratio")}
           value={totals && (totals.downloaded > 0 ? (totals.uploaded / totals.downloaded).toFixed(2) : totals.uploaded > 0 ? "∞" : undefined)}
-          hint={totals && t("tiles.buffer", { buffer: `${totals.uploaded >= totals.downloaded ? "+" : "-"}${formatBytes(Math.abs(totals.uploaded - totals.downloaded))}` })}
+          hint={totals && (totals.uploaded > 0 || totals.downloaded > 0) && t("tiles.buffer", { buffer: `${totals.uploaded >= totals.downloaded ? "+" : "-"}${formatBytes(Math.abs(totals.uploaded - totals.downloaded))}` })}
         />
         <Tile
           label={t("tiles.crossSeed")}
