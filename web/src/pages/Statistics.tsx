@@ -8,6 +8,7 @@ import { DeletedTorrents } from "@/components/statistics/DeletedTorrents"
 import { EventsChart } from "@/components/statistics/EventsChart"
 import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
+import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
@@ -38,8 +39,9 @@ import {
   type TopTorrent
 } from "@/lib/statistics"
 import { buildEventDays } from "@/lib/statistics-events"
+import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
 import { formatBytes } from "@/lib/utils"
-import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryRow } from "@/types"
+import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
 import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
@@ -84,6 +86,7 @@ interface PageRows {
   // The rows of the table when it does not group by Tracker group.
   grouped?: TransferHistoryRow[][]
   torrents?: TopTorrent[]
+  library?: TransferHistoryLibraryRow[][]
 }
 
 // The number of torrents of the Top torrents card.
@@ -166,13 +169,13 @@ export function Statistics() {
   // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
   // so that the numbers never mix two periods or two selections.
   const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}:${grouping}`
-  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (byTracker || grouped.rows !== undefined) && top.torrents !== undefined
+  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (byTracker || grouped.rows !== undefined) && top.torrents !== undefined && library.rows !== undefined
   const [lastComplete, setLastComplete] = useState<PageRows>()
-  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.grouped !== grouped.rows || lastComplete?.torrents !== top.torrents)) {
-    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents })
+  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.grouped !== grouped.rows || lastComplete?.torrents !== top.torrents || lastComplete?.library !== library.rows)) {
+    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents, library: library.rows })
   }
-  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? grouped.error ?? top.error) && lastComplete?.series === series
-  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents }
+  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? grouped.error ?? top.error ?? library.error) && lastComplete?.series === series
+  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents, library: library.rows }
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
@@ -183,11 +186,16 @@ export function Statistics() {
   const previousTotals = useMemo(() => shown.before && sumBytes(shown.before.flat(), false), [shown.before])
   const comparedTotals = useMemo(() => shown.compared && sumBytes(shown.compared.flat(), false), [shown.compared])
   const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], metric), [shown.chart, metric])
-  const eventDays = useMemo(() => library.rows && buildEventDays(library.rows, period, since), [library.rows, period, since])
   const bars = useMemo(() => {
     const range = chartRange(shown.period, since)
     return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
   }, [shown.chart, shown.period, since])
+
+  const libraryPoints = useMemo(() => shown.library && buildLibraryPoints(shown.library, shown.period), [shown.library, shown.period])
+  const unique = libraryPoints && newestUniqueSize(libraryPoints)
+  const newestCount = [...libraryPoints ?? []].reverse().find(point => point.torrents !== null)?.torrents ?? undefined
+  const growthError = statusQuery.error ?? library.error
+  const eventDays = useMemo(() => shown.library && (buildEventDays(shown.library, shown.period, since) ?? []), [shown.library, shown.period, since])
 
   // The tracker rows of the table add up the rows of the chart, so that they add up to the numbers at the top.
   const tableRows = useMemo(() => {
@@ -254,7 +262,7 @@ export function Statistics() {
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
         <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
         <Tile
@@ -266,6 +274,11 @@ export function Statistics() {
           label={t("tiles.crossSeed")}
           value={totals && formatBytes(totals.statisticsCrossSeedUploaded)}
           hint={totals && totals.uploaded > 0 ? t("tiles.crossSeedShare", { percent: Math.round((totals.statisticsCrossSeedUploaded / totals.uploaded) * 100) }) : undefined}
+        />
+        <Tile
+          label={t("tiles.unique")}
+          value={unique && formatBytes(unique.uniqueSize)}
+          hint={unique ? t("tiles.uniqueTotal", { size: formatBytes(unique.totalSize) }) : libraryPoints && libraryPoints.length > 0 && t("tiles.uniqueNone")}
         />
       </div>
 
@@ -337,14 +350,34 @@ export function Statistics() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
+            <CardTitle>{t("growth.title")}</CardTitle>
+            <CardDescription>{newestCount !== undefined ? t("growth.description", { torrents: newestCount.toLocaleString(locale) }) : t("growth.descriptionEmpty")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {growthError ? (
+              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
+            ) : !libraryPoints ? (
+              <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            ) : libraryPoints.length > 0 ? (
+              <>
+                <LibraryGrowthChart points={libraryPoints} />
+                {libraryPoints.some(point => point.totalSize !== null && point.uniqueSize === null) && <p className="pt-2 text-xs text-muted-foreground">{t("growth.gapNote")}</p>}
+              </>
+            ) : (
+              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("growth.empty")}</div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
             <CardTitle>{t("events.title")}</CardTitle>
             <CardDescription>{t("events.description")}</CardDescription>
           </CardHeader>
           <CardContent>
-            {statusQuery.error ?? library.error ? (
-              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: (statusQuery.error ?? library.error)!.message })}</div>
+            {growthError ? (
+              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
             ) : !eventDays ? (
-              <div className="flex h-[240px] items-center justify-center">{library.pending || !ready ? <Loader2 className="size-6 animate-spin text-muted-foreground" /> : null}</div>
+              <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
             ) : eventDays.some(day => day.added + day.completed + day.deleted > 0) ? (
               <EventsChart days={eventDays} />
             ) : (

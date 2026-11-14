@@ -247,7 +247,7 @@ export function chartRange(period: StatisticsPeriod, since: Date | undefined): {
   return from && { from, to: period.to }
 }
 
-function utcDayStart(time: Date): number {
+export function utcDayStart(time: Date): number {
   return Date.UTC(time.getUTCFullYear(), time.getUTCMonth(), time.getUTCDate())
 }
 
@@ -283,7 +283,7 @@ export function buildCategoryBars(rowsByInstance: TransferHistoryRow[][], period
 }
 
 /** The local midnight of the date of a UTC time, so that a label shows the date of the stored UTC day in each timezone. */
-function localDateOfUtc(time: number): number {
+export function localDateOfUtc(time: number): number {
   const date = new Date(time)
   return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()).getTime()
 }

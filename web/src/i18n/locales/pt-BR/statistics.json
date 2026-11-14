@@ -31,7 +31,10 @@
     "buffer": "Margem {{buffer}}",
     "crossSeed": "De cross-seeds",
     "crossSeedShare": "{{percent}}% do envio",
-    "change": "{{change}} em relação ao período anterior"
+    "change": "{{change}} em relação ao período anterior",
+    "unique": "Tamanho único",
+    "uniqueTotal": "{{size}} com cada cópia por inteiro",
+    "uniqueNone": "Nenhum cálculo dos grupos de cópias neste período"
   },
   "chart": {
     "title": "Transferência ao longo do tempo",
@@ -152,5 +155,16 @@
     "note": "Um torrent excluído mantém seu lugar com seu nome. Um torrent conta para o tracker que tem agora. Primeiras 24 horas é o upload nas 24 horas após a adição. O valor fica vazio quando o qui viu o torrent pela primeira vez depois delas.",
     "utcNote": "Cada barra é um dia UTC.",
     "yearNote": "Cada barra é um dia UTC, exceto a barra de um ano: após a retenção de detalhes, o qui guarda um número para cada torrent e ano."
+  },
+  "growth": {
+    "title": "Crescimento da biblioteca",
+    "description": "Torrents: {{torrents}}. Tamanho total e tamanho único para cada dia UTC.",
+    "descriptionEmpty": "Tamanho total e tamanho único para cada dia UTC.",
+    "totalSize": "Tamanho total",
+    "uniqueSize": "Tamanho único",
+    "torrents": "Torrents",
+    "noValue": "Sem valor",
+    "empty": "O qui não salvou nenhum tamanho da biblioteca neste período.",
+    "gapNote": "Uma lacuna na linha do tamanho único é um dia sem um cálculo concluído dos grupos de cópias."
   }
 }

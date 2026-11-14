@@ -31,7 +31,10 @@
     "buffer": "Margine {{buffer}}",
     "crossSeed": "Dai cross-seed",
     "crossSeedShare": "{{percent}}% del caricamento",
-    "change": "{{change}} rispetto al periodo precedente"
+    "change": "{{change}} rispetto al periodo precedente",
+    "unique": "Dimensione unica",
+    "uniqueTotal": "{{size}} con ogni copia per intero",
+    "uniqueNone": "Nessun calcolo dei gruppi di copie in questo periodo"
   },
   "chart": {
     "title": "Trasferimento nel tempo",
@@ -152,5 +155,16 @@
     "note": "Un torrent eliminato mantiene il suo posto con il suo nome. Un torrent conta per il tracker che ha ora. Prime 24 ore è l'upload delle 24 ore dopo l'aggiunta. Il valore è vuoto quando qui ha visto il torrent per la prima volta dopo di esse.",
     "utcNote": "Ogni barra è un giorno UTC.",
     "yearNote": "Ogni barra è un giorno UTC, tranne la barra di un anno: dopo la conservazione dei dettagli, qui tiene un solo numero per torrent e per anno."
+  },
+  "growth": {
+    "title": "Crescita della libreria",
+    "description": "Torrent: {{torrents}}. Dimensione totale e dimensione unica per ogni giorno UTC.",
+    "descriptionEmpty": "Dimensione totale e dimensione unica per ogni giorno UTC.",
+    "totalSize": "Dimensione totale",
+    "uniqueSize": "Dimensione unica",
+    "torrents": "Torrent",
+    "noValue": "Nessun valore",
+    "empty": "qui non ha salvato alcuna dimensione della libreria in questo periodo.",
+    "gapNote": "Un vuoto nella linea della dimensione unica è un giorno senza un calcolo completo dei gruppi di copie."
   }
 }
