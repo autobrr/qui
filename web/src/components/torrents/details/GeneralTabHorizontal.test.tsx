@@ -71,6 +71,7 @@ function renderGeneralTab(displayComment?: string, displayCreatedBy?: string) {
 
 
 describe("GeneralTabHorizontal comment and creator", () => {
+  // regression: #3916
   it("shows Created By without a comment", () => {
     renderGeneralTab(undefined, "Torrent Creator")
 
