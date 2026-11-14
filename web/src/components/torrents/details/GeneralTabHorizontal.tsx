@@ -203,7 +203,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
 
         {/* Row 4: Comment & Created By */}
-        {(displayComment) && (
+        {(displayComment || displayCreatedBy) && (
           <div className="grid grid-cols-2 gap-6">
             {displayComment && (
               <div className="flex items-start gap-2 min-w-0">
