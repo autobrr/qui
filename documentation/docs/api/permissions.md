@@ -43,7 +43,7 @@ Each area offers only the levels in this table.
 | Indexers | Read indexers and their health, search | Not offered | Add, edit, delete, and test indexers, change the search cache settings |
 | Arr | Read Arr instances, resolve an external ID | Not offered | Add, edit, delete, and test Arr instances |
 | Notifications | Read targets and events | Not offered | Add, edit, delete, and test targets |
-| Settings | Read client settings, tracker customizations, the dashboard, filter views, and the database shrink status | Not offered | Change these items, the theme settings, and the Statistics settings. Dismiss the result of a database shrink and the "Shrink failed" notice |
+| Settings | Read client settings, tracker customizations, the dashboard, filter views, and the database shrink status | Not offered | Change these items, the theme settings, the custom themes, and the Statistics settings. Dismiss the result of a database shrink and the "Shrink failed" notice |
 | Logs | Read log settings, exclusions, files, and the log stream | Not offered | Change log settings and exclusions |
 | System | Application information | Not offered | Not offered |
 

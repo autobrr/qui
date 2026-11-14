@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
+import { themeArea } from "@/lib/theme-areas"
 import {
   Archive,
   ChartColumn,
@@ -194,7 +195,7 @@ export function Sidebar() {
   )
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
+    <div {...themeArea("app-sidebar")} className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
       <div className="p-6">
         <h2 className="flex items-center text-lg font-semibold text-sidebar-foreground">
           {isDemo ? (

@@ -27,6 +27,7 @@ import { matchPeerClient } from "@/lib/peer-client-icons"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { themeArea } from "@/lib/theme-areas"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { formatReannounceIn } from "@/lib/torrent-state-utils"
 import { breakableName, cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
@@ -753,7 +754,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isInitialLoad = !isReady || (loadingProperties && !properties)
   if (isInitialLoad) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div {...themeArea("details-panel")} className="h-full flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     )
@@ -1006,7 +1007,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const empty = (text: string) => <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">{text}</div>
 
     return (
-      <div className="h-full flex flex-col">
+      <div {...themeArea("details-panel")} className="h-full flex flex-col">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
           <MobileDetailsHeader
             name={displayName ?? ""}
@@ -1358,7 +1359,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div {...themeArea("details-panel")} className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b flex items-center">
           <div className="flex-1 overflow-x-auto scroll-smooth">

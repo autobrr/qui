@@ -5,6 +5,7 @@
 
 import type { SpeedUnit } from "@/lib/speedUnits"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { themeArea } from "@/lib/theme-areas"
 import { withSortedField } from "@/lib/copy-groups"
 import { getLinuxIsoName } from "@/lib/incognito"
 import { centersSelectCheckbox, getCopyGroupAccentClass, getRowBackgroundClass, type CopyProblem } from "@/lib/torrent-table/row-display"
@@ -197,6 +198,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   return (
     <TorrentContextMenu {...menu} torrent={torrent} isSelected={isRowSelected}>
       <div
+        {...themeArea("torrent-row")}
         className={cn("flex cursor-pointer hover:bg-accent/40", getRowBackgroundClass(isRowSelected, isSelected, virtualIndex), groupAccent)}
         style={{
           position: "absolute",

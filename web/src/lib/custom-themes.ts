@@ -16,7 +16,9 @@ export interface CustomThemeFile {
 }
 
 export interface CustomThemeParseError {
+  id: string
   filename: string
+  css: string
 }
 
 export interface ParsedCustomThemes {
@@ -37,7 +39,7 @@ export function parseCustomThemes(files: CustomThemeFile[]): ParsedCustomThemes 
   for (const file of files) {
     const result = parseThemeCSS(file.css)
     if (!result) {
-      errors.push({ filename: file.filename })
+      errors.push({ id: file.id, filename: file.filename, css: file.css })
       continue
     }
     themes.push({
@@ -81,7 +83,7 @@ export interface CustomThemeDecisionInput {
   hasData: boolean
   storedThemeId: string | null
   themes: Theme[]
-  /** Raw CSS currently injected for the active custom theme, or null. */
+  /** Raw CSS of the applied custom theme, or null. */
   appliedCustomCss: string | null
 }
 

@@ -97,6 +97,7 @@ import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinu
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { unitLabel } from "@/lib/unit-format"
 import { getCopyGroupAccentClass, getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { themeArea } from "@/lib/theme-areas"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { CopyGroupMenuItems } from "./table/CopyGroupMenuItems"
@@ -389,6 +390,7 @@ function SwipeableCard({
 
   return (
     <div
+      {...themeArea("torrent-card")}
       className={cn(
         "bg-card rounded-lg border cursor-pointer transition-all relative overflow-hidden select-none",
         viewMode === "ultra-compact" ? "px-3 py-1" : viewMode === "compact" ? "p-2" : "p-4",

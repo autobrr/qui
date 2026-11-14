@@ -11,7 +11,14 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { useIsMobile } from "@/hooks/useMediaQuery"
-import { setThemeLocalOnly, storedThemeSelection, useThemeLocalOnly } from "@/hooks/useThemeSettingsSync"
+import {
+  removeMobileThemeSlot,
+  setThemeLocalOnly,
+  storedThemeSelection,
+  useCanWriteThemeSlots,
+  useThemeLocalOnly,
+  writeThemeSlot
+} from "@/hooks/useThemeSettingsSync"
 import { api } from "@/lib/api"
 import { getCurrentTheme, getCurrentThemeMode } from "@/utils/theme"
 
@@ -21,6 +28,7 @@ export function ThemeLayoutSettings() {
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const localOnly = useThemeLocalOnly()
+  const canWriteSlots = useCanWriteThemeSlots()
   const { data } = useQuery({
     queryKey: ["theme-settings"],
     queryFn: () => api.getThemeSettings(),
@@ -35,10 +43,10 @@ export function ThemeLayoutSettings() {
         const appliedId = getCurrentTheme().id
         const current = storedThemeSelection(getCurrentThemeMode(), appliedId, getStoredVariation(appliedId) ?? undefined)
         // Turning the split off later pulls the default slot, so it must exist.
-        if (!data?.default) await api.updateThemeSettings(current, "default")
-        await api.updateThemeSettings(current, "mobile")
+        if (!data?.default) await writeThemeSlot(current, "default")
+        await writeThemeSlot(current, "mobile")
       } else {
-        await api.deleteMobileThemeSettings()
+        await removeMobileThemeSlot()
       }
     } catch {
       toast.error(t("themes.layout.saveError"))
@@ -58,8 +66,7 @@ export function ThemeLayoutSettings() {
           <Label htmlFor="theme-mobile-split" className="cursor-pointer">{t("themes.layout.mobileSplit")}</Label>
           <FieldHelp>{t("themes.layout.mobileSplitHelp")}</FieldHelp>
         </div>
-        {/* Turning the split on writes this browser's theme, which a local-only browser must not send. */}
-        <Switch id="theme-mobile-split" checked={split} disabled={!data || localOnly} onCheckedChange={(on) => void setSplit(on)} />
+        <Switch id="theme-mobile-split" checked={split} disabled={!data || !canWriteSlots} onCheckedChange={(on) => void setSplit(on)} />
       </div>
       {split && <p className="text-xs text-muted-foreground">{t("themes.layout.mobileSplitOffWarning")}</p>}
       <div className="flex items-center justify-between gap-3">
