@@ -17,14 +17,14 @@ A custom theme is a `.css` file in the custom themes directory on the server. It
 
 The theme picker is under **Settings → Themes**. It shows every theme in one grid: free themes, licensed themes, and your custom themes. A free theme has a **Free** badge, and a custom theme has a **Custom** badge. Click a theme card to apply it.
 
-If you do not have an active license, the licensed themes appear as locked cards with a lock icon. A locked card shows only preview colors. You cannot apply a locked theme. To get a license, click **Get a license** in the **Custom Themes** box below the grid.
+If you do not have an active license, the licensed themes appear as locked cards with a lock icon. A locked card shows only preview colors. You cannot apply a locked theme. To get a license, click **Get a license** in the **Custom themes** box below the grid.
 
 ## Create a theme in qui
 
 You do not need access to the server to add a custom theme.
 
 1. Open **Settings → Themes**.
-2. In the **Custom Themes** box, click **New theme**.
+2. In the **Custom themes** box, click **New theme**.
 3. Paste or write the CSS of the theme in the **CSS** field. If the CSS has a `@name` line, qui fills the **Name** field from it.
 4. Look at the page. qui shows the theme in this browser while you edit, before you save. Your other browsers and devices do not change.
 5. Click **Save**. qui writes the theme into the custom themes directory, and the theme becomes your selected theme. Other open browsers load the new theme without a reload.
@@ -35,13 +35,13 @@ To stop without a save, click **Cancel** or press **Esc**. qui then shows the th
 
 If a theme with the same file name exists, qui asks before it replaces that theme.
 
-Each custom theme card has **Edit** and **Remove**. **Edit** also works on a file that you put into the directory yourself. A save of an edited theme does not change your selected theme. **Remove** asks first and then deletes the file. A device that uses the removed theme shows the default theme. If qui cannot parse a file, the **Custom Themes** box lists the file with **Edit** and **Remove**, so you can repair it or delete it.
+Each custom theme card has a **⋮** menu with **Edit** and **Remove**. **Edit** also works on a file that you put into the directory yourself. A save of an edited theme does not change your selected theme. **Remove** asks first and then deletes the file. A device that uses the removed theme shows the default theme. If qui cannot parse a file, the **Custom themes** box lists the file with the same menu, so you can repair it or delete it.
 
 If qui cannot write to the custom themes directory, the save fails, and the message names the directory. In Docker, make sure that the volume for `/config` is not read-only.
 
 ## Ask an AI assistant to write a theme
 
-Click **Copy prompt for your AI** in the **Custom Themes** box. qui copies a text that tells an AI assistant how to write a qui theme. The text lists the design tokens, the [theme areas](#theme-areas), and the rules. The copy also works when you open qui over plain HTTP.
+Click **Copy prompt for your AI** in the **Custom themes** box. qui copies a text that tells an AI assistant how to write a qui theme. The text lists the design tokens, the [theme areas](#theme-areas), and the rules. The copy also works when you open qui over plain HTTP.
 
 1. Paste the text into your AI assistant.
 2. Describe the look that you want.
@@ -197,7 +197,7 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 
 ### Requirements and notes
 
-- **Both blocks are required.** A file must contain a `:root` block **and** a `.dark` block, each with at least one variable, even for a `@lightOnly` theme. If qui cannot parse a file, it skips the file and lists the error in the **Custom Themes** box in the theme picker.
+- **Both blocks are required.** A file must contain a `:root` block **and** a `.dark` block, each with at least one variable, even for a `@lightOnly` theme. If qui cannot parse a file, it skips the file and lists the error in the **Custom themes** box in the theme picker.
 - **`@name`** sets the display name. If you omit `@name`, qui defaults to "Untitled Theme". `@description` and `@lightOnly` are optional.
 - **Fonts.** If you set `--font-sans`, `--font-serif`, or `--font-mono` to a font that qui knows (for example Inter, Montserrat, or JetBrains Mono), qui loads it from Google Fonts. The browser must be able to reach fonts.googleapis.com. To use any other font, embed it with an `@font-face` rule and a `data:` address. A file that you put into the directory yourself can also use `@import`.
 - **Arbitrary CSS works.** qui adds the file to the page as a stylesheet, so you can add rules beyond design tokens. Use the [theme areas](#theme-areas) as selectors, and keep each selector narrow, because a broad selector affects the entire app. qui refuses a theme from the theme editor or the API that [loads a file from another website](#themes-cannot-load-files-from-other-websites). qui does not apply that rule to a file that you put into the directory yourself, so only use theme files that you trust or wrote yourself.
@@ -206,7 +206,7 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 ## Use a theme file from the directory
 
 1. Place your `.css` file into the themes directory.
-2. Open **Settings → Themes**. Your theme appears in the theme grid with a **Custom** badge. The **Custom Themes** box below the grid shows the directory path and the number of discovered themes. Click **Refresh** in that box to load new or edited files without a restart of qui.
+2. Open **Settings → Themes**. Your theme appears in the theme grid with a **Custom** badge. The **Custom themes** box below the grid shows the number of themes and the directory path. Click the refresh button next to the path to load new or edited files without a restart of qui.
 3. Select the theme like any other theme.
 
 If you remove a custom theme file or your license lapses, qui falls back to the default theme. A built-in licensed theme selection returns when you renew. A custom theme selection does not.
