@@ -45,8 +45,8 @@ func TestLinkTreeSeamsAdmitRemoteInstance(t *testing.T) {
 	}
 }
 
-// Partial pool runs host file calls, so a remote stays out even once #2942
-// gives remotes Write.
+// Partial pool runs host file calls, so a remote stays out even when a remote
+// has Write.
 func TestPartialPoolRefusesRemoteInstance(t *testing.T) {
 	remote := &models.Instance{
 		ID: 1, UseHardlinks: true, HardlinkBaseDir: "/links",
