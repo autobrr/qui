@@ -1154,6 +1154,25 @@ describe("useCrossSeedSearch", () => {
       expect(dialogProps(result).gazelleLookups).toEqual(lookups)
     })
 
+    // regression: #4126
+    it("loads the plan again when the user retries after a failed analysis", async () => {
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockRejectedValueOnce(new Error("analyze failed"))
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-plan" }))
+        await Promise.resolve()
+      })
+      expect(dialogProps(result).error).toBe("analyze failed")
+
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-plan", gazellePlan: plan } as never)
+      await act(async () => {
+        ;(dialogProps(result).onRetry as () => void)()
+        await Promise.resolve()
+      })
+
+      await waitFor(() => expect(dialogProps(result).selectableGazelleIds).toEqual([ops.indexerId]))
+    })
+
     it("asks no RED/OPS site when the user picks only Torznab indexers", async () => {
       const options = await searchCustom(await openWithPlan(), [1])
 

@@ -300,32 +300,8 @@ export function useCrossSeedSearch(instanceId: number) {
   // Before the dialog opens there is no plan. With RED/OPS on, the dialog says which site lacks a key.
   const canCrossSeedSearch = sortedEnabledIndexers.length > 0 || Boolean(crossSeedSettings?.gazelleEnabled)
 
-  const handleCrossSeedSearch = useCallback(
-    (torrent: Torrent) => {
-      if (!canCrossSeedSearch) {
-        toast.error(t("hooks.search.noIndexers"))
-        return
-      }
-
-      if (typeof torrent.progress === "number" && torrent.progress < 1) {
-        toast.info(t("hooks.search.completedOnly"))
-        return
-      }
-
-      const opening = ++openingRef.current
-      searchStartedRef.current = false
-      setCrossSeedTorrent(torrent)
-      setCrossSeedDialogOpen(true)
-      setCrossSeedSelectedKeys(new Set())
-      setCrossSeedUseTag(true)
-      setCrossSeedTagName("cross-seed")
-      setCrossSeedIndexerMode("all")
-      setCrossSeedIndexerSelection([])
-      setCrossSeedSearchError(null)
-      setCrossSeedSearchResponse(null)
-      setCrossSeedHasSearched(false)
-      setGazellePlan(undefined)
-
+  const loadAnalysis = useCallback(
+    (torrent: Torrent, opening: number) => {
       void api
         .analyzeTorrentForCrossSeedSearch(instanceId, torrent.hash)
         .then(torrentInfo => {
@@ -352,14 +328,49 @@ export function useCrossSeedSearch(instanceId: number) {
           })
         })
     },
-    [canCrossSeedSearch, instanceId, t]
+    [instanceId, t]
+  )
+
+  const handleCrossSeedSearch = useCallback(
+    (torrent: Torrent) => {
+      if (!canCrossSeedSearch) {
+        toast.error(t("hooks.search.noIndexers"))
+        return
+      }
+
+      if (typeof torrent.progress === "number" && torrent.progress < 1) {
+        toast.info(t("hooks.search.completedOnly"))
+        return
+      }
+
+      const opening = ++openingRef.current
+      searchStartedRef.current = false
+      setCrossSeedTorrent(torrent)
+      setCrossSeedDialogOpen(true)
+      setCrossSeedSelectedKeys(new Set())
+      setCrossSeedUseTag(true)
+      setCrossSeedTagName("cross-seed")
+      setCrossSeedIndexerMode("all")
+      setCrossSeedIndexerSelection([])
+      setCrossSeedSearchError(null)
+      setCrossSeedSearchResponse(null)
+      setCrossSeedHasSearched(false)
+      setGazellePlan(undefined)
+
+      loadAnalysis(torrent, opening)
+    },
+    [canCrossSeedSearch, loadAnalysis, t]
   )
 
   const handleRetryCrossSeedSearch = useCallback(() => {
-    if (crossSeedTorrent) {
-      runCrossSeedSearch(crossSeedTorrent)
+    if (!crossSeedTorrent) {
+      return
     }
-  }, [crossSeedTorrent, runCrossSeedSearch])
+    if (!gazellePlan) {
+      loadAnalysis(crossSeedTorrent, openingRef.current)
+    }
+    runCrossSeedSearch(crossSeedTorrent)
+  }, [crossSeedTorrent, gazellePlan, loadAnalysis, runCrossSeedSearch])
 
   const handleCrossSeedScopeSearch = useCallback(() => {
     if (!crossSeedTorrent) {
