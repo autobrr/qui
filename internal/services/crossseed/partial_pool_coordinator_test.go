@@ -812,6 +812,7 @@ func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {
 		},
 	}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     syncManager,
 		partialPoolWake: make(chan partialPoolWake, 10),
@@ -932,6 +933,7 @@ func TestPartialPoolCoordinatorUsesPersistedAdmissionDeadline(t *testing.T) {
 		},
 	}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     syncManager,
 		partialPoolWake: make(chan partialPoolWake, 10),
@@ -999,6 +1001,7 @@ func TestPartialPoolTargetedWakeDoesNotReconcileDormantPool(t *testing.T) {
 		dormant.TorrentKey: files(dormant),
 	}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     syncManager,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -1092,6 +1095,7 @@ func TestPartialPoolFullScanRetainsDormantFileRefreshFailure(t *testing.T) {
 	}
 	syncManager.filesErr = errors.New("temporary file refresh failure")
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     syncManager,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -1244,6 +1248,7 @@ func TestPartialPoolStatusPersistenceFailureRequestsFullScanRetry(t *testing.T) 
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
 	service := &partialPoolCoordinator{
+		instanceStore:   newOrderedInstanceStore(instances...),
 		automationStore: store,
 		syncManager:     syncManager,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -1372,6 +1377,7 @@ func TestPartialPoolManualPersistenceFailureKeepsActiveRecoverySchedule(t *testi
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
 	service := &partialPoolCoordinator{
+		instanceStore:   newOrderedInstanceStore(instances...),
 		automationStore: store,
 		syncManager:     syncManager,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -1512,6 +1518,7 @@ func TestPartialPoolDisabledCoordinatorWaitsForStoppedDownloader(t *testing.T) {
 		bulkActionErr: errors.New("temporary pause failure"),
 	}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     syncManager,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -1571,6 +1578,7 @@ func TestPartialPoolDisabledCoordinatorWaitsForSettledCompletion(t *testing.T) {
 		}},
 	}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     syncManager,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -1625,6 +1633,7 @@ func TestPartialPoolDisabledCoordinatorReleasesNonTransferTerminalState(t *testi
 				}},
 			}
 			service := &partialPoolCoordinator{
+				instanceStore:   partialPoolLocalInstances(instanceID),
 				automationStore: store,
 				syncManager:     syncManager,
 				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -1675,6 +1684,7 @@ func TestPartialPoolCoordinatorKeepsExternalCheckOnActiveSchedule(t *testing.T) 
 	}
 	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     syncManager,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -2114,7 +2124,7 @@ func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {
 	service := &partialPoolCoordinator{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), pool.Members[0].CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, authoritative: true, byAlias: map[string]*qbt.Torrent{}},
-	})
+	}, partialPoolAllLocal(pool))
 	require.Empty(t, observed)
 
 	_, err = store.GetPartialPool(t.Context(), pool.ID)
@@ -2139,7 +2149,7 @@ func TestObservePartialPoolMembersRemovesPendingAdmissionAfterVisibilityGrace(t 
 	service := &partialPoolCoordinator{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, authoritative: true, byAlias: map[string]*qbt.Torrent{}},
-	})
+	}, partialPoolAllLocal(pool))
 	require.Empty(t, observed)
 
 	_, err = store.GetPartialPool(t.Context(), pool.ID)
@@ -2164,7 +2174,7 @@ func TestObservePartialPoolMembersRetainsPendingAdmissionWithoutAuthoritativeAbs
 	service := &partialPoolCoordinator{automationStore: store, syncManager: &recheckResumeSyncManager{}}
 	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, byAlias: map[string]*qbt.Torrent{}},
-	})
+	}, partialPoolAllLocal(pool))
 	require.Empty(t, observed)
 
 	_, err = store.GetPartialPool(t.Context(), pool.ID)
@@ -2231,7 +2241,7 @@ func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {
 			service := &partialPoolCoordinator{automationStore: store, syncManager: sync}
 			observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt, pool, map[int]partialPoolTorrentInventory{
 				instanceID: {loaded: true, byAlias: map[string]*qbt.Torrent{member.TorrentKey: &torrent}},
-			})
+			}, partialPoolAllLocal(pool))
 			require.Contains(t, observed, member.ID)
 
 			pool, err = store.GetPartialPool(t.Context(), pool.ID)
@@ -2727,7 +2737,7 @@ func TestObservePartialPoolMembersKeepsMemberThatTheFreshSyncHolds(t *testing.T)
 	service := &partialPoolCoordinator{automationStore: store, syncManager: &snapshotPartialPoolSyncManager{owner: owner}}
 	observed := service.observePartialPoolMembers(t.Context(), pool.Members[0].CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, byAlias: map[string]*qbt.Torrent{}},
-	})
+	}, partialPoolAllLocal(pool))
 	require.Contains(t, observed, pool.Members[0].ID, "the fresh sync still holds the torrent")
 
 	_, err = store.GetPartialPool(t.Context(), pool.ID)

@@ -484,6 +484,7 @@ type partialPoolMemberSnapshot struct {
 	fileByIndex        map[int]qbt.TorrentFile
 	stateRetryPending  bool
 	reviewPauseHandled bool
+	noLocalAccess      bool
 }
 
 // RunPartialPoolCoordinator reconciles durable partial completion work until
@@ -666,7 +667,11 @@ func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Cont
 			pool.Status = models.CrossSeedPartialPoolStatusActive
 		}
 		evidenceComplete := partialPoolInventoriesComplete(pool, inventories)
-		observed := s.observePartialPoolMembers(ctx, now, pool, inventories)
+		localAccess, accessComplete := s.partialPoolMemberLocalAccess(ctx, pool)
+		if !accessComplete {
+			keepPoolActive(pool)
+		}
+		observed := s.observePartialPoolMembers(ctx, now, pool, inventories, localAccess)
 		if len(observed) == 0 {
 			if !evidenceComplete {
 				keepPoolActive(pool)
@@ -685,8 +690,12 @@ func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Cont
 		evidenceComplete = partialPoolInventoriesComplete(pool, inventories)
 		snapshots := make(map[int64]*partialPoolMemberSnapshot, len(pool.Members))
 		for _, member := range pool.Members {
+			local, decided := localAccess[member.ID]
+			if !decided {
+				continue
+			}
 			if torrent, ok := partialPoolInventoryTorrent(inventories[member.InstanceID], member); ok {
-				snapshots[member.ID] = &partialPoolMemberSnapshot{torrent: *torrent}
+				snapshots[member.ID] = &partialPoolMemberSnapshot{torrent: *torrent, noLocalAccess: !local}
 			}
 		}
 
@@ -697,7 +706,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Cont
 				log.Warn().Err(disableErr).Int64("poolID", pool.ID).Msg("Failed to stop disabled partial completion pool")
 				retryFullScan = true
 			}
-			if pending || !evidenceComplete {
+			if pending || !evidenceComplete || !accessComplete {
 				keepPoolActive(pool)
 			} else {
 				err := s.automationStore.SetPartialPoolStatus(ctx, pool.ID, models.CrossSeedPartialPoolStatusDormant)
@@ -714,7 +723,7 @@ func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Cont
 		}
 
 		s.reconcilePartialPoolReviewPauses(ctx, pool, snapshots)
-		if !evidenceComplete {
+		if !evidenceComplete || !accessComplete {
 			s.pauseUnownedPartialPoolTransfers(ctx, pool, snapshots)
 			keepPoolActive(pool)
 			pendingObservation = pendingObservation || partialPoolRecheckObservationPending(pool)
@@ -1016,6 +1025,7 @@ func (s *partialPoolCoordinator) observePartialPoolMembers(
 	now time.Time,
 	pool *models.CrossSeedPartialPool,
 	inventories map[int]partialPoolTorrentInventory,
+	localAccess map[int64]bool,
 ) map[int64]*qbt.Torrent {
 	observed := make(map[int64]*qbt.Torrent, len(pool.Members))
 	authoritativeLookupAttempted := make(map[int]bool)
@@ -1047,9 +1057,15 @@ func (s *partialPoolCoordinator) observePartialPoolMembers(
 					continue
 				}
 			}
-			if err := cleanupPartialPoolMemberReflinkStaging(pool, member); err != nil {
-				log.Warn().Err(err).Int64("memberID", member.ID).Msg("Failed to clean partial pool reflink staging before member removal")
+			local, decided := localAccess[member.ID]
+			if !decided {
 				continue
+			}
+			if local {
+				if err := cleanupPartialPoolMemberReflinkStaging(pool, member); err != nil {
+					log.Warn().Err(err).Int64("memberID", member.ID).Msg("Failed to clean partial pool reflink staging before member removal")
+					continue
+				}
 			}
 			for _, file := range member.Files {
 				s.deletePartialPoolCreated(file.ID)
@@ -1444,6 +1460,9 @@ func (s *partialPoolCoordinator) reconcilePartialPool(
 		}
 		snapshot := snapshots[member.ID]
 		if snapshot == nil {
+			continue
+		}
+		if snapshot.noLocalAccess && s.pausePartialPoolMemberWithoutLocalAccess(ctx, member, snapshot) {
 			continue
 		}
 		handled, retry := s.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot)
@@ -2301,6 +2320,9 @@ func (s *partialPoolCoordinator) propagatePartialPoolFiles(ctx context.Context, 
 		return
 	}
 	for _, targetMember := range pool.Members {
+		if snapshot := snapshots[targetMember.ID]; snapshot != nil && snapshot.noLocalAccess {
+			continue
+		}
 		initialVerificationMember := admissionWindowClosed && targetMember.Status == models.CrossSeedPartialPoolMemberStatusVerifying
 		if targetMember.Status != models.CrossSeedPartialPoolMemberStatusWaiting && targetMember.Status != models.CrossSeedPartialPoolMemberStatusBlocked && targetMember.Status != models.CrossSeedPartialPoolMemberStatusRechecking && !initialVerificationMember {
 			continue
@@ -3027,6 +3049,64 @@ func partialPoolMemberFileAdmissionCurrent(
 	return currentMember != nil && currentFile != nil &&
 		currentMember.ID == member.ID && currentMember.CreatedAt.Equal(member.CreatedAt) &&
 		currentFile.CreatedAt.Equal(file.CreatedAt)
+}
+
+// partialPoolMemberLocalAccess leaves out a member whose instance lookup failed and then reports complete false.
+func (s *partialPoolCoordinator) partialPoolMemberLocalAccess(ctx context.Context, pool *models.CrossSeedPartialPool) (access map[int64]bool, complete bool) {
+	access = make(map[int64]bool, len(pool.Members))
+	if s.instanceStore == nil {
+		return access, false
+	}
+	byInstance := make(map[int]bool)
+	failed := make(map[int]bool)
+	complete = true
+	for _, member := range pool.Members {
+		if failed[member.InstanceID] {
+			continue
+		}
+		local, known := byInstance[member.InstanceID]
+		if !known {
+			instance, err := s.instanceStore.Get(ctx, member.InstanceID)
+			if err != nil || instance == nil {
+				if ctx.Err() == nil {
+					log.Debug().Err(err).Int64("poolID", pool.ID).Int("instanceID", member.InstanceID).Msg("Partial pool instance lookup failed")
+				}
+				failed[member.InstanceID] = true
+				complete = false
+				continue
+			}
+			local = models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
+			byInstance[member.InstanceID] = local
+		}
+		access[member.ID] = local
+	}
+	return access, complete
+}
+
+// pausePartialPoolMemberWithoutLocalAccess reports false for a complete, manual, or removed member, whose handlers touch no files.
+func (s *partialPoolCoordinator) pausePartialPoolMemberWithoutLocalAccess(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) bool {
+	switch member.Status {
+	case models.CrossSeedPartialPoolMemberStatusComplete, models.CrossSeedPartialPoolMemberStatusManual, models.CrossSeedPartialPoolMemberStatusRemoved:
+		return false
+	}
+	reason := "link mode or local filesystem access was disabled"
+	if !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, reason) {
+		snapshot.stateRetryPending = true
+	}
+	if member.Status != models.CrossSeedPartialPoolMemberStatusManual {
+		return true
+	}
+	for _, file := range member.Files {
+		if file.Status != models.CrossSeedPartialPoolFileStatusPropagating && file.Status != models.CrossSeedPartialPoolFileStatusVerifying {
+			continue
+		}
+		if !s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason}) {
+			snapshot.stateRetryPending = true
+			continue
+		}
+		s.deletePartialPoolCreated(file.ID)
+	}
+	return true
 }
 
 // partialPoolMemberModeEnabled returns false without an error only when loaded
