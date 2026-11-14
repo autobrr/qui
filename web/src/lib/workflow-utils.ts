@@ -4,6 +4,7 @@
  */
 
 import { api } from "@/lib/api"
+import { BYTES_PER_UNIT } from "@/lib/unit-format"
 import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
 import type { QueryClient } from "@tanstack/react-query"
 
@@ -270,4 +271,39 @@ export function parseImportJSON(jsonString: string): { data: WorkflowImport; err
  */
 export function toExportJSON(data: WorkflowExport): string {
   return JSON.stringify(data, null, 2)
+}
+
+/** The Free space source fields of the workflow dialog. `allowanceUnit` is a byte multiplier. */
+export interface FreeSpaceSourceInput {
+  type: FreeSpaceSource["type"]
+  path: string
+  allowance: string
+  allowanceUnit: number
+}
+
+const ALLOWANCE_DECIMALS = 3
+
+function allowanceBytesOf(allowance: string, unit: number): number {
+  return Math.round((parseFloat(allowance) || 0) * unit)
+}
+
+/** The `freeSpaceSource` of a rule payload. Undefined means the default source, also for a source that is not complete. */
+export function freeSpaceSourceOf(input: FreeSpaceSourceInput): FreeSpaceSource | undefined {
+  const path = input.path.trim()
+  if (input.type === "qbittorrent" || path === "") return undefined
+  if (input.type === "path") return { type: "path", path }
+  const allowanceBytes = allowanceBytesOf(input.allowance, input.allowanceUnit)
+  return allowanceBytes > 0 ? { type: "allowance", path, allowanceBytes } : undefined
+}
+
+/** The largest unit that shows a saved allowance without a change to its bytes, so a save of an untouched rule keeps the figure. */
+export function allowanceInputOf(allowanceBytes: number): Pick<FreeSpaceSourceInput, "allowance" | "allowanceUnit"> {
+  const units = [BYTES_PER_UNIT.TiB, BYTES_PER_UNIT.GiB, BYTES_PER_UNIT.MiB]
+  for (const allowanceUnit of units) {
+    const allowance = String(Number((allowanceBytes / allowanceUnit).toFixed(ALLOWANCE_DECIMALS)))
+    if (allowanceUnit === BYTES_PER_UNIT.MiB || allowanceBytesOf(allowance, allowanceUnit) === allowanceBytes) {
+      return { allowance, allowanceUnit }
+    }
+  }
+  return { allowance: "", allowanceUnit: BYTES_PER_UNIT.GiB }
 }

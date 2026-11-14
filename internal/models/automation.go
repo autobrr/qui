@@ -43,12 +43,17 @@ const (
 	// FreeSpaceSourcePath reads free space at a path through the instance's
 	// filesystem backend, local or SSH.
 	FreeSpaceSourcePath FreeSpaceSourceType = "path"
+	// FreeSpaceSourceAllowance is an allowance that the user sets, minus the
+	// size of the files under a path. It serves a shared host, where the free
+	// space of the disk is not the space that the user may fill.
+	FreeSpaceSourceAllowance FreeSpaceSourceType = "allowance"
 )
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
 type FreeSpaceSource struct {
-	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'."`
-	Path string              `json:"path,omitempty" doc:"With type 'path': the path to read. Needs filesystem access on the instance."`
+	Type           FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'allowance' is 'allowanceBytes' minus the size of the files under 'path'."`
+	Path           string              `json:"path,omitempty" doc:"With type 'path': the path to read. With type 'allowance': the folder to measure. Needs filesystem access on the instance."`
+	AllowanceBytes int64               `json:"allowanceBytes,omitzero" doc:"With type 'allowance': the space that the user may fill, in bytes."`
 }
 
 // ScoreRuleType defines the type of score rule.

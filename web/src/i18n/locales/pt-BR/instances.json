@@ -1296,9 +1296,18 @@
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
           "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD.",
-          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH."
+          "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH.",
+          "allowanceRequired": "Informe um espaço permitido maior que 0.",
+          "allowanceAccessRequired": "A origem de espaço permitido requer acesso ao sistema de arquivos local, ou acesso SSH com shell."
         },
-        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)"
+        "pathSourceFilesystemAccessRequired": "Localização Manual Exata (requer acesso local ou SSH)",
+        "allowanceSource": "Espaço permitido em um caminho",
+        "allowanceSourceWindowsUnsupported": "Espaço permitido em um caminho (não suportado no Windows)",
+        "allowanceSourceAccessRequired": "Espaço permitido em um caminho (requer acesso local, ou acesso SSH com shell)",
+        "allowanceAria": "Espaço permitido",
+        "allowanceUnitAria": "Unidade do espaço permitido",
+        "allowanceHelp": "Informe o espaço que o seu plano permite. O qui subtrai o tamanho dos arquivos sob o caminho. A maioria dos provedores conta em passos de 1000, não de 1024, então o número do plano é cerca de 9% menor em {{unit}}.",
+        "allowancePathHelp": "Informe a pasta a medir, por exemplo o seu diretório pessoal"
       },
       "grouping": {
         "title": "Grupos Personalizados (Para GROUP_SIZE)",

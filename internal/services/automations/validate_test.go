@@ -181,6 +181,41 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 			wantErr:       false,
 		},
 		{
+			name:          "allowance source with shell access is valid",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
+			usesFreeSpace: true,
+			wantErr:       false,
+		},
+		{
+			name:          "allowance source with file transfer only returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierSFTP},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
+			name:          "allowance source without filesystem access returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
+			name:          "allowance source without an allowance returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user"},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
+			name:          "allowance source with relative path returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "home/user", AllowanceBytes: 1500},
+			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
+			usesFreeSpace: true,
+			wantErr:       true,
+		},
+		{
 			name:          "unknown type returns 400",
 			source:        &models.FreeSpaceSource{Type: "unknown"},
 			instance:      &models.Instance{HasLocalFilesystemAccess: true},
@@ -203,20 +238,24 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 // On Windows, path-based free space is not supported and returns an error.
 // On other platforms, it's valid when local filesystem access is enabled.
 func TestValidateFreeSpaceSource_PlatformSpecific(t *testing.T) {
-	source := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
 	instance := &models.Instance{HasLocalFilesystemAccess: true}
 	isWindows := runtime.GOOS == "windows"
 
-	msg, err := validateFreeSpaceSource(source, instance, true)
+	for _, source := range []*models.FreeSpaceSource{
+		{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"},
+		{Type: models.FreeSpaceSourceAllowance, Path: "/mnt/data", AllowanceBytes: 1500},
+	} {
+		msg, err := validateFreeSpaceSource(source, instance, true)
 
-	// Expected outcomes based on platform
-	wantErr := isWindows
+		// Expected outcomes based on platform
+		wantErr := isWindows
 
-	if (err != nil) != wantErr {
-		t.Errorf("validateFreeSpaceSource() error = %v, wantErr %v (isWindows=%v)", err, wantErr, isWindows)
-	}
-	if isWindows && !strings.Contains(msg, "Windows") {
-		t.Errorf("validateFreeSpaceSource() on Windows: message should mention Windows, got: %s", msg)
+		if (err != nil) != wantErr {
+			t.Errorf("validateFreeSpaceSource(%s) error = %v, wantErr %v (isWindows=%v)", source.Type, err, wantErr, isWindows)
+		}
+		if isWindows && !strings.Contains(msg, "Windows") {
+			t.Errorf("validateFreeSpaceSource(%s) on Windows: message should mention Windows, got: %s", source.Type, msg)
+		}
 	}
 }
 

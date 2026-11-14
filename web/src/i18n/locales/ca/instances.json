@@ -959,9 +959,18 @@
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
           "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor».",
-          "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH."
+          "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH.",
+          "allowanceRequired": "Introdueix un espai permès superior a 0.",
+          "allowanceAccessRequired": "L'origen d'espai permès necessita accés al sistema de fitxers local, o accés SSH amb intèrpret d'ordres."
         },
-        "pathSourceFilesystemAccessRequired": "Camí al servidor (necessita accés local o SSH)"
+        "pathSourceFilesystemAccessRequired": "Camí al servidor (necessita accés local o SSH)",
+        "allowanceSource": "Espai permès en un camí",
+        "allowanceSourceWindowsUnsupported": "Espai permès en un camí (no compatible amb Windows)",
+        "allowanceSourceAccessRequired": "Espai permès en un camí (necessita accés local, o accés SSH amb intèrpret d'ordres)",
+        "allowanceAria": "Espai permès",
+        "allowanceUnitAria": "Unitat de l'espai permès",
+        "allowanceHelp": "Introdueix l'espai que permet el teu pla. qui en resta la mida dels fitxers que hi ha sota el camí. La majoria de proveïdors compten en passos de 1000, no de 1024, de manera que la xifra del pla és un 9% més petita en {{unit}}.",
+        "allowancePathHelp": "Introdueix la carpeta que cal mesurar, per exemple el teu directori d'inici"
       },
       "grouping": {
         "title": "Grups de condicions agrupades",

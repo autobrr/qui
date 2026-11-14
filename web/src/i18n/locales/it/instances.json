@@ -1296,9 +1296,18 @@
         "errors": {
           "unsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows.",
           "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\".",
-          "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o via SSH."
+          "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o via SSH.",
+          "allowanceRequired": "Inserisci uno spazio consentito maggiore di 0.",
+          "allowanceAccessRequired": "L'origine dello spazio consentito richiede l'accesso al filesystem locale, o l'accesso SSH con shell."
         },
-        "pathSourceFilesystemAccessRequired": "Percorso sul server (richiede accesso locale o SSH)"
+        "pathSourceFilesystemAccessRequired": "Percorso sul server (richiede accesso locale o SSH)",
+        "allowanceSource": "Spazio consentito su un percorso",
+        "allowanceSourceWindowsUnsupported": "Spazio consentito su un percorso (non supportato su Windows)",
+        "allowanceSourceAccessRequired": "Spazio consentito su un percorso (richiede accesso locale, o accesso SSH con shell)",
+        "allowanceAria": "Spazio consentito",
+        "allowanceUnitAria": "Unità dello spazio consentito",
+        "allowanceHelp": "Inserisci lo spazio consentito dal tuo piano. qui sottrae la dimensione dei file sotto il percorso. La maggior parte dei provider conta a passi di 1000, non di 1024, quindi la cifra del piano è circa il 9% più piccola in {{unit}}.",
+        "allowancePathHelp": "Inserisci la cartella da misurare, ad esempio la tua directory home"
       },
       "grouping": {
         "title": "Gruppi di condizioni raggruppate",

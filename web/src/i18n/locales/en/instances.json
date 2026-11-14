@@ -1296,9 +1296,18 @@
         "errors": {
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
           "pathRequired": "Path is required when using \"Path on server\".",
-          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access."
+          "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access.",
+          "allowanceRequired": "Enter an allowance above 0.",
+          "allowanceAccessRequired": "The allowance source requires local filesystem access, or SSH access with a shell."
         },
-        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)"
+        "pathSourceFilesystemAccessRequired": "Path on server (requires local or SSH access)",
+        "allowanceSource": "Allowance on a path",
+        "allowanceSourceWindowsUnsupported": "Allowance on a path (not supported on Windows)",
+        "allowanceSourceAccessRequired": "Allowance on a path (requires local access, or SSH access with a shell)",
+        "allowanceAria": "Allowance",
+        "allowanceUnitAria": "Allowance unit",
+        "allowanceHelp": "Enter the space that your plan allows. qui subtracts the size of the files under the path. Most providers count in steps of 1000, not 1024, so a plan figure is about 9% smaller in {{unit}}.",
+        "allowancePathHelp": "Enter the folder to measure, for example your home directory"
       },
       "grouping": {
         "title": "Grouped condition groups",

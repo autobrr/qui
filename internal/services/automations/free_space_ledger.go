@@ -56,6 +56,13 @@ func newFreeSpaceLedger(rule *models.Automation, startBytes int64, eligibleView 
 // Action Condition or in its sort, keyed by rule ID. It reads the free space of each
 // source one time. A rule that reads FREE_SPACE needs the instance.
 func (s *Service) freeSpaceLedgers(ctx context.Context, instance *models.Instance, rules []*models.Automation, eligibleView bool) (map[int]*freeSpaceLedger, error) {
+	return s.buildFreeSpaceLedgers(ctx, instance, rules, eligibleView, s.usageUnder)
+}
+
+// buildFreeSpaceLedgers is freeSpaceLedgers with the measurement of an allowance
+// source as an argument: a run measures, and a preview may reuse a measurement.
+func (s *Service) buildFreeSpaceLedgers(ctx context.Context, instance *models.Instance, rules []*models.Automation, eligibleView bool,
+	usageUnder func(context.Context, *models.Instance, string) (int64, error)) (map[int]*freeSpaceLedger, error) {
 	ledgers := make(map[int]*freeSpaceLedger)
 	startBySource := make(map[string]int64)
 	for _, rule := range rules {
@@ -66,15 +73,26 @@ func (s *Service) freeSpaceLedgers(ctx context.Context, instance *models.Instanc
 			return nil, errors.New("failed to get free space: the instance did not load")
 		}
 		sourceKey := GetFreeSpaceSourceKey(rule.FreeSpaceSource)
+		allowance := rule.FreeSpaceSource != nil && rule.FreeSpaceSource.Type == models.FreeSpaceSourceAllowance
+		// For an allowance source the map holds the usage under the path.
 		startBytes, read := startBySource[sourceKey]
 		if !read {
 			var err error
-			startBytes, err = s.freeSpaceBytes(ctx, instance, rule.FreeSpaceSource)
+			if allowance {
+				startBytes, err = usageUnder(ctx, instance, rule.FreeSpaceSource.Path)
+			} else {
+				startBytes, err = s.freeSpaceBytes(ctx, instance, rule.FreeSpaceSource)
+			}
 			if err != nil {
 				log.Error().Err(err).Int("instanceID", instance.ID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
 				return nil, fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
 			}
 			startBySource[sourceKey] = startBytes
+		}
+		if allowance {
+			// Above the allowance the figure is negative, so the rule still
+			// has to free the excess before it reaches its target.
+			startBytes = rule.FreeSpaceSource.AllowanceBytes - startBytes
 		}
 		ledgers[rule.ID] = newFreeSpaceLedger(rule, startBytes, eligibleView)
 	}

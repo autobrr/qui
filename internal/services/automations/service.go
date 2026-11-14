@@ -653,8 +653,12 @@ type Service struct {
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
 	backendPool               *fsops.Pool
-	activityRuns              *activityRunStore
-	releaseParser             *releases.Parser
+	// previewUsage holds the usage that a preview measured for an allowance
+	// source. The mutex also makes one preview measure at a time.
+	previewUsageMu sync.Mutex
+	previewUsage   map[previewUsageKey]previewUsageReading
+	activityRuns   *activityRunStore
+	releaseParser  *releases.Parser
 
 	lastApplied           map[int]map[string]time.Time // the Skip window stamps, instanceID -> hash -> time. rule_scope.go owns them
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
@@ -1186,7 +1190,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, err
 	}
-	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, previewView == "eligible")
+	evalCtx.freeSpaceLedgers, err = s.buildFreeSpaceLedgers(ctx, instance, []*models.Automation{rule}, previewView == "eligible", s.previewUsageUnder)
 	if err != nil {
 		return nil, err
 	}
@@ -1440,7 +1444,7 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	}
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 
-	evalCtx.freeSpaceLedgers, err = s.freeSpaceLedgers(ctx, instance, []*models.Automation{rule}, false)
+	evalCtx.freeSpaceLedgers, err = s.buildFreeSpaceLedgers(ctx, instance, []*models.Automation{rule}, false, s.previewUsageUnder)
 	if err != nil {
 		return nil, err
 	}

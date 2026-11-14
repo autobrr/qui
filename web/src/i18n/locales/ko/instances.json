@@ -1267,9 +1267,18 @@
         "errors": {
           "unsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다.",
           "pathRequired": "\"서버의 경로\"를 사용할 때는 경로가 필요합니다.",
-          "filesystemAccessRequired": "경로 기반 여유 공간 소스에는 로컬 또는 SSH 파일시스템 접근이 필요합니다."
+          "filesystemAccessRequired": "경로 기반 여유 공간 소스에는 로컬 또는 SSH 파일시스템 접근이 필요합니다.",
+          "allowanceRequired": "0보다 큰 허용 용량을 입력하세요.",
+          "allowanceAccessRequired": "허용 용량 소스에는 로컬 파일시스템 접근 또는 셸이 있는 SSH 접근이 필요합니다."
         },
-        "pathSourceFilesystemAccessRequired": "서버의 경로(로컬 또는 SSH 접근 필요)"
+        "pathSourceFilesystemAccessRequired": "서버의 경로(로컬 또는 SSH 접근 필요)",
+        "allowanceSource": "경로의 허용 용량",
+        "allowanceSourceWindowsUnsupported": "경로의 허용 용량(Windows에서 지원되지 않음)",
+        "allowanceSourceAccessRequired": "경로의 허용 용량(로컬 접근 또는 셸이 있는 SSH 접근 필요)",
+        "allowanceAria": "허용 용량",
+        "allowanceUnitAria": "허용 용량 단위",
+        "allowanceHelp": "요금제에서 허용하는 용량을 입력하세요. qui가 경로 아래 파일의 크기를 뺍니다. 대부분의 제공업체는 1024가 아닌 1000 단위로 계산하므로, 요금제 수치는 {{unit}} 기준으로 약 9% 더 작습니다.",
+        "allowancePathHelp": "측정할 폴더를 입력하세요(예: 홈 디렉터리)"
       },
       "grouping": {
         "title": "그룹화된 조건 그룹",
