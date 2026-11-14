@@ -17,9 +17,12 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/testutil"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestAdapterReadings(t *testing.T) {
@@ -311,4 +314,44 @@ func TestAdapterDropsTheSpeedsOfAnUpdateThatWaitsWhenRecordingGoesOff(t *testing
 		require.Len(t, readings, 2)
 		require.Equal(t, int64(5), readings[1].MaxUploadSpeed)
 	})
+}
+
+// regression: #4143
+func TestAdapterShutdownKeepsTheCauseOfADeleteThatTheNextReadingWouldShow(t *testing.T) {
+	const kept, deleted = "aaaa000000000000000000000000000000000001", "aaaa000000000000000000000000000000000002"
+	var gone atomic.Bool
+	var rid atomic.Int64
+	owner, syncManager := newStubSync(t, func() string {
+		torrents := fmt.Sprintf(`%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP"}`, kept)
+		if !gone.Load() {
+			torrents += fmt.Sprintf(`,%q:{"name":"Amber.Coast.2023.2160p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP"}`, deleted)
+		}
+		return fmt.Sprintf(`{"rid":%d,"full_update":true,"torrents":{%s}}`, rid.Add(1), torrents)
+	})
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	start := func() (*Module, *Adapter, func()) {
+		module := New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
+		adapter := NewAdapter(module, syncManager)
+		return module, adapter, func() {
+			require.NoError(t, owner.Sync(t.Context()))
+			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked()})
+		}
+	}
+
+	_, adapter, sync := start()
+	sync()
+	adapter.NoteDelete(1, []string{deleted}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: "Remove old"})
+	gone.Store(true)
+	// qui syncs right after a delete, and the adapter holds that update back for 50 seconds.
+	sync()
+	require.NoError(t, adapter.Shutdown(t.Context()))
+
+	module, adapter, sync := start()
+	sync()
+	require.NoError(t, adapter.Shutdown(t.Context()))
+	answer, err := module.Deletes(t.Context(), DeletesQuery{InstanceID: 1, To: time.Now().Add(time.Hour), Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, answer.Deletes, 1)
+	require.Equal(t, deleted, answer.Deletes[0].Hash)
+	require.Equal(t, DeleteCause{Kind: CauseAutomation, Name: "Remove old"}, answer.Deletes[0].Cause)
 }
