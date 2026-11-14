@@ -168,17 +168,33 @@
     "dismiss": "Dispensar"
   },
   "systemNotice": {
+    "needsAttention": "Requer atenção",
+    "since": "Desde {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Ir para a correção",
     "kinds": {
       "recording_stopped": {
+        "short": "Gravação parada",
         "title": "Gravação parada",
-        "fix": "O qui tenta novamente na próxima gravação. Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados."
+        "effect": "O qui não consegue gravar o histórico de transferências. Ele tenta novamente na próxima gravação.",
+        "fix": "Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados.",
+        "menuFix": "Libere espaço em disco para o banco"
       },
       "shrink_failed": {
+        "short": "Falha ao reduzir",
         "title": "Falha ao reduzir",
-        "fix": "O qui não conseguiu reduzir o arquivo do banco de dados. O banco de dados não mudou e o qui funciona normalmente. O log do qui tem os detalhes.",
-        "fixes": {
-          "disk_full": "O disco tem pouco espaço livre. Uma redução precisa de até duas vezes o tamanho do arquivo do banco de dados. Libere espaço no disco e tente novamente. O banco de dados não mudou.",
-          "locked": "Outro programa estava usando o arquivo do banco de dados. Feche esse programa, por exemplo uma ferramenta de backup ou um visualizador de banco de dados, e tente novamente. O banco de dados não mudou."
+        "effect": "O qui não conseguiu reduzir o arquivo do banco de dados. O banco de dados não mudou e o qui funciona normalmente.",
+        "fix": "O log do qui tem os detalhes.",
+        "menuFix": "Ler o log do qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "O disco tem pouco espaço livre. Uma redução precisa de até duas vezes o tamanho do arquivo do banco de dados. Libere espaço no disco e tente novamente.",
+            "menuFix": "Libere espaço e tente novamente"
+          },
+          "locked": {
+            "fix": "Outro programa estava usando o arquivo do banco de dados. Feche esse programa, por exemplo uma ferramenta de backup ou um visualizador de banco de dados, e tente novamente.",
+            "menuFix": "Feche o outro programa e tente novamente"
+          }
         }
       }
     },
@@ -188,10 +204,12 @@
       "openLog": "Abrir o log"
     },
     "unknown": {
+      "short": "Aviso do sistema",
       "title": "Aviso do sistema",
-      "fix": "O qui precisa de uma ação sua. O log do qui tem os detalhes."
-    },
-    "cause": "Causa: {{cause}}"
+      "effect": "O qui encontrou uma falha que precisa de uma ação sua.",
+      "fix": "O log do qui tem os detalhes.",
+      "menuFix": "Leia o log do qui"
+    }
   },
   "databaseShrink": {
     "done": "Arquivo do banco de dados reduzido de {{before}} para {{after}}",

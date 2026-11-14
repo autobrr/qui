@@ -5,6 +5,7 @@
 
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -43,7 +44,6 @@ import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
-import { systemNoticeDot } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
@@ -55,7 +55,7 @@ import {
   setThemeVariation,
   type ThemeMode
 } from "@/utils/theme"
-import { useSystemNotices } from "@/hooks/useSystemNotices"
+import { useOpenSystemNotice, useSystemNotices } from "@/hooks/useSystemNotices"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -150,6 +150,7 @@ export function MobileFooterNav() {
     refetchOnWindowFocus: false,
   })
   const systemNotices = useSystemNotices()
+  const openSystemNotice = useOpenSystemNotice(systemNotices)
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
   const updateItemLabel = updateInfo && (
     <>
@@ -437,7 +438,7 @@ export function MobileFooterNav() {
                   location.pathname === "/settings" && "text-primary"
                 )} />
                 {systemNotices.length > 0 && (
-                  <span className={cn("absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full", systemNoticeDot(systemNotices))} />
+                  <span className="absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full bg-destructive" />
                 )}
                 {updateInfo && (
                   <Badge
@@ -452,7 +453,7 @@ export function MobileFooterNav() {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className={cn("mb-2", systemNotices.length > 0 ? "w-72" : "w-56")}>
-            <SystemNoticeMenuItems notices={systemNotices} />
+            <SystemNoticeMenuItems notices={systemNotices} onOpen={openSystemNotice.open} />
             {updateInfo && (
               <>
                 <DropdownMenuItem asChild>
@@ -778,6 +779,7 @@ export function MobileFooterNav() {
           </div>
         </DialogContent>
       </Dialog>
+      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </nav>
   )
 }

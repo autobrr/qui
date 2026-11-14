@@ -168,17 +168,33 @@
     "dismiss": "Zavřít"
   },
   "systemNotice": {
+    "needsAttention": "Vyžaduje pozornost",
+    "since": "Od {{time}}, {{age}}",
+    "causeLabel": "Příčina",
+    "actionFallback": "Přejít k opravě",
     "kinds": {
       "recording_stopped": {
+        "short": "Záznam zastaven",
         "title": "Záznam zastaven",
-        "fix": "qui to zkusí znovu při dalším zápisu. Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze."
+        "effect": "qui nemůže zapisovat historii přenosů. Zkusí to znovu při dalším zápisu.",
+        "fix": "Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze.",
+        "menuFix": "Uvolněte místo na disku pro databázi"
       },
       "shrink_failed": {
+        "short": "Zmenšení selhalo",
         "title": "Zmenšení selhalo",
-        "fix": "qui nemohl zmenšit soubor databáze. Databáze se nezměnila a qui běží jako obvykle. Podrobnosti jsou v logu qui.",
-        "fixes": {
-          "disk_full": "Na disku je málo volného místa. Zmenšení potřebuje až dvojnásobek velikosti souboru databáze. Uvolněte místo na disku a zkuste to znovu. Databáze se nezměnila.",
-          "locked": "Soubor databáze držel jiný program. Ukončete tento program, například nástroj pro zálohy nebo prohlížeč databází, a zkuste to znovu. Databáze se nezměnila."
+        "effect": "qui nemohl zmenšit soubor databáze. Databáze se nezměnila a qui běží jako obvykle.",
+        "fix": "Podrobnosti jsou v logu qui.",
+        "menuFix": "Přečíst log qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Na disku je málo volného místa. Zmenšení potřebuje až dvojnásobek velikosti souboru databáze. Uvolněte místo na disku a zkuste to znovu.",
+            "menuFix": "Uvolněte místo a zkuste to znovu"
+          },
+          "locked": {
+            "fix": "Soubor databáze držel jiný program. Ukončete tento program, například nástroj pro zálohy nebo prohlížeč databází, a zkuste to znovu.",
+            "menuFix": "Ukončete jiný program a zkuste to znovu"
+          }
         }
       }
     },
@@ -188,10 +204,12 @@
       "openLog": "Otevřít log"
     },
     "unknown": {
+      "short": "Systémové upozornění",
       "title": "Systémové upozornění",
-      "fix": "qui od vás potřebuje zásah. Podrobnosti najdete v logu qui."
-    },
-    "cause": "Příčina: {{cause}}"
+      "effect": "qui našel chybu, která od vás vyžaduje zásah.",
+      "fix": "Podrobnosti najdete v logu qui.",
+      "menuFix": "Přečtěte si log qui"
+    }
   },
   "databaseShrink": {
     "done": "Soubor databáze zmenšen z {{before}} na {{after}}",

@@ -168,17 +168,33 @@
     "dismiss": "Fermer"
   },
   "systemNotice": {
+    "needsAttention": "Requiert votre attention",
+    "since": "Depuis {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Aller à la correction",
     "kinds": {
       "recording_stopped": {
+        "short": "Enregistrement arrêté",
         "title": "Enregistrement arrêté",
-        "fix": "qui réessaie à la prochaine écriture. Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données."
+        "effect": "qui ne peut pas écrire l'historique des transferts. Il réessaie à la prochaine écriture.",
+        "fix": "Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données.",
+        "menuFix": "Libérez de l'espace disque pour la base"
       },
       "shrink_failed": {
+        "short": "Échec de la réduction",
         "title": "Échec de la réduction",
-        "fix": "qui n’a pas pu réduire le fichier de base de données. La base de données n’a pas changé et qui fonctionne normalement. Le journal de qui contient les détails.",
-        "fixes": {
-          "disk_full": "Le disque n’a pas assez d’espace libre. Une réduction demande jusqu’à deux fois la taille du fichier de base de données. Libérez de l’espace, puis réessayez. La base de données n’a pas changé.",
-          "locked": "Un autre programme utilisait le fichier de base de données. Arrêtez ce programme, par exemple un outil de sauvegarde ou un visualiseur de base de données, puis réessayez. La base de données n’a pas changé."
+        "effect": "qui n’a pas pu réduire le fichier de base de données. La base de données n’a pas changé et qui fonctionne normalement.",
+        "fix": "Le journal de qui contient les détails.",
+        "menuFix": "Lire le journal de qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Le disque n’a pas assez d’espace libre. Une réduction demande jusqu’à deux fois la taille du fichier de base de données. Libérez de l’espace, puis réessayez.",
+            "menuFix": "Libérez de l’espace, puis réessayez"
+          },
+          "locked": {
+            "fix": "Un autre programme utilisait le fichier de base de données. Arrêtez ce programme, par exemple un outil de sauvegarde ou un visualiseur de base de données, puis réessayez.",
+            "menuFix": "Arrêtez l’autre programme, puis réessayez"
+          }
         }
       }
     },
@@ -188,10 +204,12 @@
       "openLog": "Ouvrir le journal"
     },
     "unknown": {
+      "short": "Avis système",
       "title": "Avis système",
-      "fix": "qui a besoin d'une action de votre part. Le journal de qui contient les détails."
-    },
-    "cause": "Cause : {{cause}}"
+      "effect": "qui a trouvé une erreur qui demande une action de votre part.",
+      "fix": "Le journal de qui contient les détails.",
+      "menuFix": "Lisez le journal de qui"
+    }
   },
   "databaseShrink": {
     "done": "Fichier de base de données réduit de {{before}} à {{after}}",

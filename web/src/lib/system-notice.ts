@@ -3,26 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { SystemNotice } from "@/types"
+import type { LinkProps } from "@tanstack/react-router"
 
-export const systemNoticeStyles = {
-  error: {
-    box: "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/50",
-    icon: "text-red-600 dark:text-red-400",
-    strong: "text-red-800 dark:text-red-200",
-    body: "text-red-700 dark:text-red-300",
-    dot: "bg-red-500",
-  },
-  warning: {
-    box: "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/50",
-    icon: "text-yellow-600 dark:text-yellow-400",
-    strong: "text-yellow-800 dark:text-yellow-200",
-    body: "text-yellow-700 dark:text-yellow-300",
-    dot: "bg-yellow-500",
-  },
-} as const
+export type SystemNoticeRoute = Pick<LinkProps, "to" | "search">
 
-/** The dot color for a set of open notices: red when one of them is an error. */
-export function systemNoticeDot(notices: SystemNotice[]): string {
-  return notices.some((notice) => notice.severity === "error") ? systemNoticeStyles.error.dot : systemNoticeStyles.warning.dot
+// The page where the user fixes each kind of System notice. A kind with no
+// entry shows no action button. Its label is systemNotice.kinds.<kind>.action.
+export const systemNoticeRoutes: Partial<Record<string, SystemNoticeRoute>> = {}
+
+const freshMs = 10 * 60 * 1000
+
+export function isFreshSystemNotice(openedAt: string, now: number): boolean {
+  return now - Date.parse(openedAt) < freshMs
 }
