@@ -1410,7 +1410,6 @@
     "searchScope": "Abast de la cerca",
     "noIndexers": "No hi ha cap indexador de Torznab disponible",
     "noIndexersHelp": "Afegeix o activa indexadors de Torznab a Configuració per cercar cross-seed.",
-    "gazelleOnlySearch": "La cerca consulta només els llocs RED/OPS que tenen una clau d'API.",
     "capabilityNote": "Nota sobre les capacitats",
     "capabilityDescription": "Aquests indexadors no tenen les capacitats o categories necessàries per a aquest torrent i el servidor els ometrà:",
     "smartFilteringActive": "Filtratge intel·ligent actiu",

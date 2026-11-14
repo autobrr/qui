@@ -294,7 +294,6 @@ export function useCrossSeedSearch(instanceId: number) {
 
   // Before the dialog opens there is no plan. With RED/OPS on, the dialog says which site lacks a key.
   const canCrossSeedSearch = sortedEnabledIndexers.length > 0 || Boolean(crossSeedSettings?.gazelleEnabled)
-  const gazelleAsks = selectableGazelleIds.length > 0
 
   const handleCrossSeedSearch = useCallback(
     (torrent: Torrent) => {
@@ -564,7 +563,6 @@ export function useCrossSeedSearch(instanceId: number) {
       error={crossSeedSearchError}
       applyResult={crossSeedApplyResult}
       indexerOptions={crossSeedIndexerOptions}
-      gazelleAsks={gazelleAsks}
       indexerMode={crossSeedIndexerMode}
       selectedIndexerIds={crossSeedIndexerSelection}
       indexerNameMap={crossSeedIndexerNameMap}

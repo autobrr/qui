@@ -251,7 +251,7 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
     expect(mockedToast.error).not.toHaveBeenCalled()
-    expect(dialogProps(result).gazelleAsks).toBe(true)
+    expect(dialogProps(result).selectableGazelleIds).toEqual([red.indexerId])
 
     await act(async () => {
       ;(dialogProps(result).onScopeSearch as () => void)()

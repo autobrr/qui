@@ -666,7 +666,6 @@
     "searchScope": "搜索范围",
     "noIndexers": "没有可用的 Torznab 索引器",
     "noIndexersHelp": "在设置中添加或启用 Torznab 索引器以搜索辅种。",
-    "gazelleOnlySearch": "搜索只查询已设置 API 密钥的 RED/OPS 站点。",
     "capabilityNote": "功能说明",
     "capabilityDescription": "这些索引器缺少此种子所需的功能/分类，服务器将跳过它们：",
     "smartFilteringActive": "智能筛选已启用",

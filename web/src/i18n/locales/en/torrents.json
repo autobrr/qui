@@ -724,7 +724,6 @@
     "searchScope": "Search Scope",
     "noIndexers": "No Torznab indexers available",
     "noIndexersHelp": "Add or enable Torznab indexers in Settings to search for cross-seeds.",
-    "gazelleOnlySearch": "The search asks only the RED/OPS sites that have an API key.",
     "capabilityNote": "Capability note",
     "capabilityDescription": "These indexers lack the required capabilities/categories for this torrent and will be skipped by the server:",
     "smartFilteringActive": "Smart Filtering Active",

@@ -27,7 +27,7 @@ afterEach(() => {
 const noop = () => {}
 const baseProps = {
   open: true, onOpenChange: noop, torrent: null, results: [], selectedKeys: new Set<string>(), selectionCount: 0,
-  isLoading: false, isSubmitting: false, error: null, applyResult: null, indexerOptions: [], gazelleAsks: false,
+  isLoading: false, isSubmitting: false, error: null, applyResult: null, indexerOptions: [],
   indexerMode: "all", selectedIndexerIds: [], indexerNameMap: {}, onIndexerModeChange: noop, onToggleIndexer: noop,
   onSelectAllIndexers: noop, onClearIndexerSelection: noop, onScopeSearch: noop, getResultKey: () => "",
   onToggleSelection: noop, onSelectAll: noop, onClearSelection: noop, onRetry: noop, onClose: noop, onApply: noop,
@@ -150,11 +150,11 @@ describe("CrossSeedDialog copy report", () => {
 describe("CrossSeedDialog search scope", () => {
   it("searches RED/OPS when no Torznab indexer is available", () => {
     const onScopeSearch = vi.fn()
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "no_match" }]
     const { getByText, queryByText } = render(
-      <CrossSeedDialog {...baseProps} gazelleAsks onScopeSearch={onScopeSearch} />
+      <CrossSeedDialog {...baseProps} gazelleEntries={plan} selectableGazelleIds={[red.indexerId]} onScopeSearch={onScopeSearch} />
     )
 
-    expect(getByText("crossSeedDialog.gazelleOnlySearch")).toBeTruthy()
     expect(queryByText("crossSeedDialog.noIndexersHelp")).toBeNull()
     fireEvent.click(getByText("crossSeedDialog.scope.search"))
     expect(onScopeSearch).toHaveBeenCalledTimes(1)
@@ -196,6 +196,14 @@ describe("CrossSeedDialog search scope", () => {
     expect(entryRow("Beta Tracker")?.getAttribute("data-status")).toBe("not_asked")
     expect(entryRow("Redacted (API)")?.textContent).toContain("crossSeedDialog.gazelle.willAsk")
     expect(entryRow("Orpheus (API)")?.textContent).toContain("crossSeedDialog.gazelle.notAsked.notSelected")
+  })
+
+  it("offers Select Custom when only RED/OPS sites can be asked", () => {
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "will_ask" }]
+    const { getByText } = render(<CrossSeedDialog {...baseProps} gazelleEntries={plan} selectableGazelleIds={[red.indexerId, ops.indexerId]} />)
+
+    const custom = getByText("crossSeedDialog.scope.selectCustom").closest("button")
+    expect(custom?.disabled).toBe(false)
   })
 
   it("says that a site rejected the key last time", () => {

@@ -724,7 +724,6 @@
     "searchScope": "Escopo da Pesquisa",
     "noIndexers": "Nenhum indexador Torznab disponível",
     "noIndexersHelp": "Adicione ou ative indexadores Torznab nas Configurações.",
-    "gazelleOnlySearch": "A busca consulta apenas os sites RED/OPS que têm uma chave de API.",
     "capabilityNote": "Nota de capacidade",
     "capabilityDescription": "Estes indexadores não possuem as capacidades/categorias necessárias para este torrent e serão ignorados:",
     "smartFilteringActive": "Filtragem Inteligente Ativa",

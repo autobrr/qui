@@ -724,7 +724,6 @@
     "searchScope": "Ambito di ricerca",
     "noIndexers": "Nessun indexer Torznab disponibile",
     "noIndexersHelp": "Aggiungi o abilita indexer Torznab in Impostazioni per cercare cross-seed.",
-    "gazelleOnlySearch": "La ricerca interroga solo i siti RED/OPS che hanno una chiave API.",
     "capabilityNote": "Nota sulle funzionalità",
     "capabilityDescription": "Questi indexer non hanno le funzionalità/categorie richieste per questo torrent e verranno ignorati dal server:",
     "smartFilteringActive": "Filtraggio intelligente attivo",

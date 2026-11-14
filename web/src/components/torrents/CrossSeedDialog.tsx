@@ -74,8 +74,6 @@ export interface CrossSeedDialogProps {
   error: string | null
   applyResult: CrossSeedApplyResponse | null
   indexerOptions: CrossSeedIndexerOption[]
-  /** The search will ask a RED/OPS site, so it runs without Torznab indexers. */
-  gazelleAsks: boolean
   /** The RED/OPS sites with the outcome of the last search, or the plan before it. */
   gazelleEntries: CrossSeedGazelleLookup[]
   /** The pseudo indexer IDs of the RED/OPS entries that the user can pick. */
@@ -133,7 +131,6 @@ const CrossSeedDialogComponent = ({
   error,
   applyResult,
   indexerOptions,
-  gazelleAsks,
   gazelleEntries,
   selectableGazelleIds,
   indexerMode,
@@ -343,7 +340,7 @@ const CrossSeedDialogComponent = ({
         <div className="min-w-0 space-y-2 overflow-y-auto overflow-x-hidden flex-1">
           {/* Search Scope Section */}
           <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5">
-            {indexerOptions.length > 0 ? (
+            {indexerOptions.length > 0 || selectableGazelleIds.length > 0 ? (
               <CrossSeedScopeSelector
                 indexerOptions={indexerOptions}
                 indexerMode={indexerMode}
@@ -362,11 +359,8 @@ const CrossSeedDialogComponent = ({
               <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1.5">
                   <p className="font-medium">{t("crossSeedDialog.noIndexers")}</p>
-                  <p className="text-xs">
-                    {gazelleAsks ? t("crossSeedDialog.gazelleOnlySearch") : t("crossSeedDialog.noIndexersHelp")}
-                  </p>
+                  <p className="text-xs">{t("crossSeedDialog.noIndexersHelp")}</p>
                 </div>
-                {gazelleAsks && <ScopeSearchButton onClick={onScopeSearch} isSearching={isLoading} disabled={isLoading} />}
               </div>
             )}
             <SearchScopeEntries torznab={scopeTorznabEntries} gazelle={scopeGazelleEntries} />
@@ -924,8 +918,9 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
 }: CrossSeedScopeSelectorProps) {
   const { t } = useTranslation("torrents")
   const lookupText = useGazelleLookupText()
-  const total = indexerOptions.length
-  const selectedCount = selectedIndexerIds.length
+  // The RED/OPS entries that the user can pick count as searchable sources too.
+  const total = indexerOptions.length + selectableGazelleIds.length
+  const selectedCount = selectedIndexerIds.filter(id => selectableGazelleIds.includes(id) || indexerOptions.some(option => option.id === id)).length
   const excludedCount = excludedIndexerIds.length
   const disableCustomSelection = total === 0
   const scopeSearchDisabled = isSearching || (indexerMode === "custom" && selectedCount === 0)
