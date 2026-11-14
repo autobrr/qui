@@ -6,6 +6,8 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/autobrr/qui/internal/services/systemnotice"
 )
 
@@ -20,4 +22,14 @@ func NewSystemNoticeHandler(notices *systemnotice.Module) *SystemNoticeHandler {
 // List handles GET /api/system-notices.
 func (h *SystemNoticeHandler) List(w http.ResponseWriter, _ *http.Request) {
 	RespondJSON(w, http.StatusOK, h.notices.List())
+}
+
+// Dismiss closes a notice that the user can dismiss.
+// DELETE /api/system-notices/{kind}
+func (h *SystemNoticeHandler) Dismiss(w http.ResponseWriter, r *http.Request) {
+	if err := h.notices.Dismiss(systemnotice.Kind(chi.URLParam(r, "kind"))); err != nil {
+		RespondError(w, http.StatusConflict, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

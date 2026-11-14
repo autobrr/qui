@@ -18,6 +18,7 @@ import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollCo
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { DatabaseShrinkProvider } from "@/components/database/DatabaseShrinkProvider"
 
 function AppLayoutContent() {
   const { t } = useTranslation("common")
@@ -83,7 +84,9 @@ export function AppLayout() {
       <TorrentSelectionProvider>
         <BulkActionProvider>
           <MobileScrollProvider>
-            <AppLayoutContent />
+            <DatabaseShrinkProvider>
+              <AppLayoutContent />
+            </DatabaseShrinkProvider>
           </MobileScrollProvider>
         </BulkActionProvider>
       </TorrentSelectionProvider>

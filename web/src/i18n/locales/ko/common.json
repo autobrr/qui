@@ -168,17 +168,53 @@
     "dismiss": "닫기"
   },
   "systemNotice": {
+    "needsAttention": "확인 필요",
+    "since": "{{time}}부터, {{age}}",
+    "causeLabel": "원인",
+    "actionFallback": "해결하러 가기",
     "kinds": {
       "recording_stopped": {
+        "short": "기록 중지됨",
         "title": "기록 중지됨",
-        "fix": "qui는 다음 쓰기 때 다시 시도합니다. 디스크에 여유 공간이 있는지, qui가 데이터베이스 파일에 쓸 수 있는지 확인하세요."
+        "effect": "qui가 전송 기록을 쓸 수 없습니다. 다음 쓰기 때 다시 시도합니다.",
+        "fix": "디스크에 여유 공간이 있는지, qui가 데이터베이스 파일에 쓸 수 있는지 확인하세요.",
+        "menuFix": "데이터베이스용 디스크 공간 확보"
+      },
+      "shrink_failed": {
+        "short": "축소 실패",
+        "title": "축소 실패",
+        "effect": "qui가 데이터베이스 파일을 축소하지 못했습니다. 데이터베이스는 변경되지 않았고 qui는 평소처럼 실행됩니다.",
+        "fix": "자세한 내용은 qui 로그에 있습니다.",
+        "menuFix": "qui 로그 읽기",
+        "reasons": {
+          "disk_full": {
+            "fix": "디스크의 여유 공간이 부족합니다. 축소에는 데이터베이스 파일 크기의 최대 두 배가 필요합니다. 디스크 공간을 확보한 후 다시 시도하세요.",
+            "menuFix": "공간을 확보한 후 다시 시도"
+          },
+          "locked": {
+            "fix": "다른 프로그램이 데이터베이스 파일을 사용하고 있었습니다. 백업 도구나 데이터베이스 뷰어 같은 해당 프로그램을 종료한 후 다시 시도하세요.",
+            "menuFix": "다른 프로그램을 종료한 후 다시 시도"
+          }
+        }
       }
     },
-    "unknown": {
-      "title": "시스템 알림",
-      "fix": "qui에 사용자의 조치가 필요합니다. 자세한 내용은 qui 로그를 확인하세요."
+    "actions": {
+      "tryAgain": "다시 시도",
+      "dismiss": "닫기",
+      "openLog": "로그 열기"
     },
-    "cause": "원인: {{cause}}"
+    "unknown": {
+      "short": "시스템 알림",
+      "title": "시스템 알림",
+      "effect": "qui가 사용자의 조치가 필요한 오류를 발견했습니다.",
+      "fix": "자세한 내용은 qui 로그를 확인하세요.",
+      "menuFix": "qui 로그 확인"
+    }
+  },
+  "databaseShrink": {
+    "done": "데이터베이스 파일을 {{before}}에서 {{after}}(으)로 축소했습니다",
+    "nextStart": "축소는 qui가 다음에 시작할 때 실행됩니다",
+    "failed": "축소를 요청하지 못했습니다"
   },
   "pwaUpdate": {
     "reload": "새로고침",

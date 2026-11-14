@@ -9,6 +9,7 @@ package systemnotice
 import (
 	"cmp"
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -24,31 +25,57 @@ type Kind string
 const (
 	// RecordingStopped opens when qui cannot write the Transfer history.
 	RecordingStopped Kind = "recording_stopped"
+	// ShrinkFailed opens when the shrink of the database file at startup fails.
+	ShrinkFailed Kind = "shrink_failed"
 )
 
 type Severity string
 
-const SeverityError Severity = "error"
+const (
+	SeverityError   Severity = "error"
+	SeverityWarning Severity = "warning"
+)
+
+// ErrNotDismissible is the answer of Dismiss for a notice that closes itself.
+var ErrNotDismissible = errors.New("this notice closes itself when the fault is gone")
 
 type definition struct {
-	severity Severity
-	title    string
-	fix      string
+	severity    Severity
+	title       string
+	dismissible bool
+	// fixes holds the fix for each reason. The key "" is the fix for an
+	// unknown reason.
+	fixes map[string]string
 }
 
 var definitions = map[Kind]definition{
 	RecordingStopped: {
 		severity: SeverityError,
 		title:    "Recording stopped",
-		fix:      "qui cannot write the transfer history. It tries again at the next write. Make sure that the disk of the qui database has free space and that qui can write the database file.",
+		fixes: map[string]string{
+			"": "qui cannot write the transfer history. It tries again at the next write. Make sure that the disk of the qui database has free space and that qui can write the database file.",
+		},
+	},
+	ShrinkFailed: {
+		severity:    SeverityWarning,
+		title:       "Shrink failed",
+		dismissible: true,
+		fixes: map[string]string{
+			"":          "qui could not make the database file smaller. The database did not change, and qui runs as usual. The qui log has the details.",
+			"disk_full": "The disk has too little free space for the shrink, which needs up to two times the size of the database file. Free space on the disk, then try again. The database did not change.",
+			"locked":    "Another program held the database file. Stop the other program, for example a backup tool or a database viewer, then try again. The database did not change.",
+		},
 	},
 }
 
 const notifyTimeout = 10 * time.Second
 
 type Notice struct {
-	Kind     Kind      `json:"kind"`
-	Severity Severity  `json:"severity"`
+	Kind     Kind     `json:"kind"`
+	Severity Severity `json:"severity"`
+	// Reason selects the fix that the notice shows. It is empty when the kind
+	// has one fix, or when qui does not know the cause.
+	Reason   string    `json:"reason,omitempty"`
 	Cause    string    `json:"cause"`
 	OpenedAt time.Time `json:"openedAt"`
 }
@@ -69,11 +96,18 @@ func New(notifier notifications.Notifier) *Module {
 // Open opens the notice of kind with its cause. A notice that is already open
 // stays open with the new cause, and sends no second notification.
 func (m *Module) Open(kind Kind, cause string) {
+	m.OpenWithReason(kind, "", cause)
+}
+
+// OpenWithReason opens the notice as Open does, with the reason that selects
+// its fix.
+func (m *Module) OpenWithReason(kind Kind, reason, cause string) {
 	m.mu.Lock()
 	notice, isOpen := m.open[kind]
 	if !isOpen {
 		notice = Notice{Kind: kind, Severity: definitions[kind].severity, OpenedAt: time.Now().UTC()}
 	}
+	notice.Reason = reason
 	notice.Cause = cause
 	m.open[kind] = notice
 	m.mu.Unlock()
@@ -87,6 +121,16 @@ func (m *Module) Close(kind Kind) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.open, kind)
+}
+
+// Dismiss closes the notice of kind for the user. It returns
+// ErrNotDismissible for a kind that closes itself.
+func (m *Module) Dismiss(kind Kind) error {
+	if !definitions[kind].dismissible {
+		return ErrNotDismissible
+	}
+	m.Close(kind)
+	return nil
 }
 
 // List returns the open notices, oldest first.
@@ -113,7 +157,14 @@ func (m *Module) send(notice Notice) {
 	m.notifier.Notify(ctx, notifications.Event{
 		Type:         notifications.EventSystemNotice,
 		Title:        def.title,
-		Message:      def.fix + "\nCause: " + notice.Cause,
+		Message:      def.fix(notice.Reason) + "\nCause: " + notice.Cause,
 		ErrorMessage: notice.Cause,
 	})
+}
+
+func (d definition) fix(reason string) string {
+	if fix, ok := d.fixes[reason]; ok {
+		return fix
+	}
+	return d.fixes[""]
 }

@@ -90,6 +90,7 @@ type DB struct {
 	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
 	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
 	dialect     Dialect
+	sqlitePath  string // empty on Postgres
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -706,6 +707,7 @@ func New(databasePath string) (*DB, error) {
 		writerStmts: newStmtCache(),
 		readerStmts: newStmtCache(),
 		dialect:     DialectSQLite,
+		sqlitePath:  databasePath,
 		writerSem:   make(chan struct{}, 1),
 	}
 

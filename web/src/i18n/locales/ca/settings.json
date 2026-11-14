@@ -13,6 +13,7 @@
     "notifications": "Notificacions",
     "dateTime": "Hora i idioma",
     "statistics": "Estadístiques",
+    "trackers": "Personalització de trackers",
     "premiumThemes": "Temes",
     "security": "Seguretat",
     "logs": "Registres"
@@ -432,7 +433,14 @@
       "cancel": "Cancel·la",
       "confirm": "Elimina",
       "deleted": "Historial eliminat",
-      "failed": "No s'ha pogut eliminar l'historial"
+      "failed": "No s'ha pogut eliminar l'historial",
+      "shrink": {
+        "label": "Redueix també el fitxer de la base de dades",
+        "restart": "qui es reinicia i redueix el fitxer, de manera que recuperes l'espai de disc. qui no està disponible durant una estona curta.",
+        "nextStart": "qui no es pot reiniciar sol en aquesta instal·lació. La reducció s'executa en el proper inici de qui.",
+        "tooLittleSpace": "El disc té {{free}} lliures i una reducció necessita fins a {{need}}. Pots deixar-ho desactivat sense risc: SQLite torna a fer servir l'espai lliure per a l'historial nou.",
+        "manualDocs": "Redueix el fitxer a mà"
+      }
     },
     "loadFailed": "No s'ha pogut carregar la configuració de les estadístiques",
     "toasts": {
@@ -1203,6 +1211,74 @@
       "bind": "Adreça d'escolta",
       "configDir": "Directori de configuració",
       "dataDir": "Directori de dades"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Personalització de trackers",
+    "cardDescription": "Canvia el nom dels trackers i fusiona els dominis d'un mateix tracker en una sola entrada. qui mostra el nom visible a tot arreu on mostra el tracker.",
+    "loading": "S'estan carregant els trackers…",
+    "empty": "Encara no hi ha trackers. Els trackers apareixen aquí quan una instància té torrents.",
+    "importTooltip": "Importa les personalitzacions",
+    "exportTooltip": "Exporta les personalitzacions",
+    "mergedFrom": "Fusionat de: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Fusiona els trackers seleccionats en aquest grup",
+    "mergeIntoGroup": "Fusiona al grup",
+    "addToMerge": "Afegeix a la fusió",
+    "rename": "Reanomena",
+    "edit": "Edita",
+    "delete": "Elimina",
+    "customizeDialog": {
+      "editTitle": "Edita el nom del tracker",
+      "renameTitle": "Reanomena el tracker",
+      "mergeTitle": "Fusiona els trackers",
+      "editDescription": "Actualitza el nom a mostrar d'aquest tracker.",
+      "renameDescription": "Dona a aquest tracker un nom a mostrar personalitzat.",
+      "mergeDescription": "Combina aquests trackers en una sola entrada amb un nom personalitzat.",
+      "displayName": "Nom a mostrar",
+      "displayNamePlaceholder": "p. ex., TorrentLeech",
+      "domains": "Domini(s)",
+      "selectedTrackers": "Tracker(s) seleccionat(s)",
+      "primary": "Principal",
+      "removeDomain": "Elimina {{domain}}",
+      "cancel": "Cancel·la",
+      "saving": "S'està desant...",
+      "save": "Desa",
+      "renameAction": "Reanomena",
+      "mergeAction": "Fusiona"
+    },
+    "importDialog": {
+      "title": "Importa les personalitzacions dels trackers",
+      "description": "Enganxa el JSON per importar les personalitzacions dels trackers (canvis de nom i fusions).",
+      "jsonData": "Dades JSON",
+      "invalidFormat": "Format no vàlid: s'esperava una matriu trackerCustomizations",
+      "missingDisplayName": "Entrada no vàlida: falta displayName",
+      "invalidDomains": "Entrada no vàlida: domains ha de ser una matriu no buida",
+      "invalidJson": "JSON no vàlid",
+      "newCount": "Nous: {{count}}",
+      "unchangedCount": "Sense canvis: {{count}}",
+      "resolveConflicts": "Resol els conflictes",
+      "conflictsWith": "En conflicte amb: {{name}}",
+      "skip": "Omet",
+      "overwrite": "Sobreescriu",
+      "cancel": "Cancel·la",
+      "importing": "S'està important...",
+      "import": "Importa",
+      "conflictCount_one": "{{count}} conflicte",
+      "conflictCount_other": "{{count}} conflictes"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "No hi ha cap personalització per exportar",
+      "copiedToClipboard": "S'ha copiat al porta-retalls",
+      "failedToCopy": "No s'ha pogut copiar al porta-retalls",
+      "createFailed": "No s'ha pogut crear la personalització del tracker",
+      "updateFailed": "No s'ha pogut actualitzar la personalització del tracker",
+      "deleteFailed": "No s'ha pogut eliminar la personalització del tracker",
+      "failedToImport": "No s'han pogut importar: {{names}}",
+      "importedAndSkipped": "Se n'han importat {{imported}} i se n'han omès {{skipped}}",
+      "noCustomizationsImported": "No s'ha importat cap personalització",
+      "importedCount_one": "S'ha importat {{count}} personalització",
+      "importedCount_other": "S'han importat {{count}} personalitzacions"
     }
   }
 }

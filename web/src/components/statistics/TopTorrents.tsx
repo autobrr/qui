@@ -6,46 +6,31 @@
 import { GroupChart } from "@/components/statistics/GroupChart"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { useTopTorrents, useTorrentName } from "@/hooks/useTopTorrents"
+import { useTorrentName } from "@/hooks/useTopTorrents"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { buildTorrentBars, formatRatio, type StatisticsPeriod, type TopTorrent } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
-import type { TransferHistoryInstance } from "@/types"
+import type { TransferHistoryInstance, TransferHistoryRow } from "@/types"
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { Fragment, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-const PAGE_LIMIT = 10
-
 interface TopTorrentsProps {
-  instances: TransferHistoryInstance[]
+  // Undefined while the rows load.
+  torrents?: TopTorrent[]
+  error?: Error
+  // The period of the rows, which an open row draws.
   period: StatisticsPeriod
+  instances: TransferHistoryInstance[]
   since?: Date
-  // The period choice and the instance selection, so that the table keeps its rows only for the same series.
-  series: string
   displayGroup: (group: string) => string
 }
 
-interface ShownTorrents {
-  series: string
-  torrents: TopTorrent[]
-  period: StatisticsPeriod
-}
-
 /** The torrents with the most upload in the period. A click on a row shows the upload of that torrent for each day. */
-export function TopTorrents({ instances, period, since, series, displayGroup }: TopTorrentsProps) {
+export function TopTorrents({ torrents: shown, error, period, instances, since, displayGroup }: TopTorrentsProps) {
   const { t } = useTranslation("statistics")
   const torrentName = useTorrentName()
-  const { torrents, error } = useTopTorrents(instances, period, PAGE_LIMIT)
   const [open, setOpen] = useState<string>()
-
-  // After the period moves, the table keeps its rows until the rows of the new period load.
-  const [last, setLast] = useState<ShownTorrents>()
-  if (torrents && last?.torrents !== torrents) {
-    setLast({ series, torrents, period })
-  }
-  // The open row draws the period of the rows that the table shows.
-  const { torrents: shown, period: shownPeriod } = torrents ? { torrents, period } : last?.series === series ? last : { torrents: undefined, period }
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
 
   if (error) {
@@ -99,7 +84,7 @@ export function TopTorrents({ instances, period, since, series, displayGroup }: 
                 {expanded && (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={6} className="p-0">
-                      <TorrentDays torrent={torrent} name={name} instances={instances} period={shownPeriod} since={since} />
+                      <TorrentDays torrent={torrent} name={name} instances={instances} period={period} since={since} />
                     </TableCell>
                   </TableRow>
                 )}
@@ -135,7 +120,16 @@ function TorrentDays({ torrent, name, instances, period, since }: TorrentDaysPro
   const { t } = useTranslation("statistics")
   const instance = useMemo(() => instances.filter(candidate => candidate.instanceId === torrent.instanceId), [instances, torrent.instanceId])
   const transfer = useTransferHistoryRows(instance, { from: period.from, to: period.to, bucket: "day", groupBy: "torrent", group: torrent.hash })
-  const bars = useMemo(() => transfer.rows && buildTorrentBars(transfer.rows[0] ?? [], period, since), [transfer.rows, period, since])
+
+  // After the period moves, the band keeps its chart until the rows of the new period load.
+  const [last, setLast] = useState<{ rows: TransferHistoryRow[][]; period: StatisticsPeriod }>()
+  if (transfer.rows && last?.rows !== transfer.rows) {
+    setLast({ rows: transfer.rows, period })
+  }
+  const bars = useMemo(() => {
+    const shown = transfer.rows ? { rows: transfer.rows, period } : last
+    return shown && buildTorrentBars(shown.rows[0] ?? [], shown.period, since)
+  }, [transfer.rows, period, last, since])
 
   return (
     <div className="sticky left-0 w-[100cqw] space-y-2 border-l-2 bg-muted/30 px-6 py-5">

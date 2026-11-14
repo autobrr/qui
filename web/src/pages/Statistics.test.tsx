@@ -68,6 +68,8 @@ let liveGroups: (instanceId: number) => LiveTrackerGroup[]
 // While set, the transfer route waits for it before it answers: for each bucket, or only for holdBucket.
 let hold: Promise<void> | undefined
 let holdBucket: string | undefined
+// While set, the route holds only the queries with this groupOf.
+let holdGroupOf: string | undefined
 
 function row(group: string, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
   return { group, start: new Date(Date.now() - DAY).toISOString(), width: "hour", gapSeconds: 0, uploaded, downloaded, statisticsCrossSeedUploaded: 0, ...extra }
@@ -129,6 +131,7 @@ beforeEach(() => {
   requests = []
   hold = undefined
   holdBucket = undefined
+  holdGroupOf = undefined
   configuredIds = [1, 2]
   statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 400)]
   answer = () => []
@@ -152,7 +155,7 @@ beforeEach(() => {
         timeZone: url.searchParams.get("timeZone"),
       }
       requests.push(transfer)
-      if (holdBucket === undefined || transfer.bucket === holdBucket) {
+      if ((holdBucket === undefined || transfer.bucket === holdBucket) && (holdGroupOf === undefined || transfer.groupOf === holdGroupOf)) {
         await hold
       }
       const rows = transfer.groupBy === "torrent" ? torrentAnswer(transfer) : answer(transfer)
@@ -657,6 +660,72 @@ describe("Statistics", () => {
   })
 
   // regression: #4113
+  it("keeps the top torrents on the period of the other numbers while a moved period loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      let moved = false
+      answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
+      torrentAnswer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "total" ? [torrentRow("h1", moved ? "Bravo" : "Alpha", 2048)] : []
+      const torrentTable = () => screen.getAllByRole("table").at(-1)!
+      renderPage()
+      await vi.waitFor(() => expect(within(torrentTable()).queryByText("Alpha")).toBeTruthy())
+      moved = true
+      requests = []
+      let release = () => {}
+      holdBucket = "day"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "total")).toBe(true))
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      })
+      // The chart of the new period still loads, so the card keeps the torrents of the old period.
+      expect(within(torrentTable()).queryByText("Alpha")).toBeTruthy()
+      expect(within(torrentTable()).queryByText("Bravo")).toBeNull()
+      release()
+      await vi.waitFor(() => expect(within(torrentTable()).queryByText("Bravo")).toBeTruthy())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // regression: #4113
+  it("keeps the top torrents of an open row while a moved period loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 0, { width: "day" })] : []
+      torrentAnswer = ({ instanceId, groupOf, group }) => groupOf === "tracker" && group === "a.test" && instanceId === 1 ? [torrentRow("h1", "Alpha", 2048)] : []
+      renderPage()
+      fireEvent.click(await within((await screen.findAllByRole("table"))[0]).findByText("a.test"))
+      const heading = await screen.findByText("detail.topTorrents group=a.test")
+      await vi.waitFor(() => expect(heading.nextElementSibling?.textContent).toBe("Alpha2 KiB"))
+      requests = []
+      let release = () => {}
+      holdGroupOf = "tracker"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      // The page loads the moved period, then the open row asks for the torrents of its group, which wait.
+      await vi.waitFor(() => expect(requests.some(request => request.groupOf === "tracker")).toBe(true))
+      expect(screen.getByText("detail.topTorrents group=a.test").nextElementSibling?.textContent).toBe("Alpha2 KiB")
+      release()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // regression: #4113
   it("keeps the daily chart of an open torrent on the period of the shown rows while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
@@ -685,8 +754,16 @@ describe("Statistics", () => {
       // The table still shows the rows of the old period, so the open chart stays on that period.
       expect(requests.filter(request => request.groupBy === "torrent" && request.bucket === "day")).toEqual([])
       expect(screen.getByTestId("group-chart")).toBeTruthy()
-      release()
+      // The day rows of the new period wait, and the open chart keeps its bars meanwhile.
+      const releaseTotals = release
+      holdBucket = "day"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+      releaseTotals()
       await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "day" && Date.parse(request.to ?? "") > Date.parse(firstEnd ?? ""))).toBe(true))
+      expect(screen.getByTestId("group-chart")).toBeTruthy()
+      release()
     } finally {
       vi.useRealTimers()
     }
