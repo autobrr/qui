@@ -29,7 +29,10 @@
     "buffer": "緩衝 {{buffer}}",
     "crossSeed": "來自輔種",
     "crossSeedShare": "佔上傳的 {{percent}}%",
-    "change": "與上一時段相比 {{change}}"
+    "change": "與上一時段相比 {{change}}",
+    "unique": "唯一大小",
+    "uniqueTotal": "每個副本完整計算時為 {{size}}",
+    "uniqueNone": "此期間沒有完成的副本群組計算"
   },
   "chart": {
     "title": "傳輸趨勢",
@@ -115,5 +118,16 @@
     "note": "已刪除的種子保留其位置和名稱。種子計入其目前的 Tracker。前 24 小時是新增後 24 小時內的上傳量。如果 qui 在此之後才首次看到該種子，則為空。",
     "utcNote": "每個長條代表一個 UTC 日。",
     "yearNote": "每個長條代表一個 UTC 日，年份長條除外：超過詳細資料保留期後，qui 為每個種子每年只保留一個數值。"
+  },
+  "growth": {
+    "title": "資料庫成長",
+    "description": "種子：{{torrents}}。每個 UTC 日的總大小和唯一大小。",
+    "descriptionEmpty": "每個 UTC 日的總大小和唯一大小。",
+    "totalSize": "總大小",
+    "uniqueSize": "唯一大小",
+    "torrents": "種子",
+    "noValue": "無值",
+    "empty": "qui 在此期間沒有儲存資料庫大小。",
+    "gapNote": "唯一大小線上的空缺表示當天沒有完成的副本群組計算。"
   }
 }

@@ -31,7 +31,10 @@
     "buffer": "Rezerva {{buffer}}",
     "crossSeed": "Z cross-seedů",
     "crossSeedShare": "{{percent}} % odeslaných dat",
-    "change": "{{change}} oproti předchozímu období"
+    "change": "{{change}} oproti předchozímu období",
+    "unique": "Jedinečná velikost",
+    "uniqueTotal": "{{size}} s každou kopií celou",
+    "uniqueNone": "V tomto období neproběhl výpočet skupin kopií"
   },
   "chart": {
     "title": "Přenos v čase",
@@ -117,5 +120,16 @@
     "note": "Smazaný torrent si ponechá své místo i se jménem. Torrent se počítá k trackeru, který má nyní. Prvních 24 hodin je odeslání za 24 hodin po přidání. Hodnota je prázdná, když qui torrent poprvé viděl až po nich.",
     "utcNote": "Každý sloupec je jeden den UTC.",
     "yearNote": "Každý sloupec je jeden den UTC, kromě sloupce roku: po uplynutí doby uchování podrobností qui uchovává jedno číslo pro každý torrent a rok."
+  },
+  "growth": {
+    "title": "Růst knihovny",
+    "description": "Torrenty: {{torrents}}. Celková a jedinečná velikost pro každý den UTC.",
+    "descriptionEmpty": "Celková a jedinečná velikost pro každý den UTC.",
+    "totalSize": "Celková velikost",
+    "uniqueSize": "Jedinečná velikost",
+    "torrents": "Torrenty",
+    "noValue": "Bez hodnoty",
+    "empty": "qui v tomto období neuložil žádnou velikost knihovny.",
+    "gapNote": "Mezera v čáře jedinečné velikosti je den bez dokončeného výpočtu skupin kopií."
   }
 }

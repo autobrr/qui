@@ -12,7 +12,8 @@ import "@/i18n"
 import { Statistics } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
 import type { StatisticsBar } from "@/lib/statistics"
-import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
+import type { LibraryPoint } from "@/lib/statistics-library"
+import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryLibraryRow, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string, options?: Record<string, unknown>) => {
@@ -40,6 +41,11 @@ vi.mock("@/components/statistics/TransferChart", () => ({
     </ul>
   ),
 }))
+vi.mock("@/components/statistics/LibraryGrowthChart", () => ({
+  LibraryGrowthChart: ({ points }: { points: LibraryPoint[] }) => (
+    <div data-testid="growth-chart" data-points={JSON.stringify(points.map(point => [point.torrents, point.totalSize, point.uniqueSize]))} />
+  ),
+}))
 vi.mock("@/components/statistics/GroupChart", () => ({
   GroupChart: ({ bars }: { bars: StatisticsBar[] }) => <div data-testid="group-chart" data-bars={bars.length} />,
 }))
@@ -65,6 +71,7 @@ let answer: (request: TransferRequest) => TransferHistoryRow[]
 let torrentAnswer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
 let liveGroups: (instanceId: number) => LiveTrackerGroup[]
+let libraryAnswer: (instanceId: number) => TransferHistoryLibraryRow[]
 // While set, the transfer route waits for it before it answers: for each bucket, or only for holdBucket.
 let hold: Promise<void> | undefined
 let holdBucket: string | undefined
@@ -81,6 +88,16 @@ function torrentRow(hash: string, name: string, uploaded: number, torrent: Parti
     torrent: { name, trackerGroup: "a.test", deleted: false, statisticsCrossSeed: false, uploadFirst24h: null, ...torrent },
     ...extra,
   })
+}
+
+/** A library row of the UTC day that is daysAgo days before today. */
+function libraryRow(daysAgo: number, sizes: Partial<TransferHistoryLibraryRow>): TransferHistoryLibraryRow {
+  const now = new Date()
+  return { day: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - daysAgo * DAY).toISOString(), added: 0, completed: 0, deleted: 0, ...sizes }
+}
+
+async function growthPoints(): Promise<unknown> {
+  return JSON.parse((await screen.findByTestId("growth-chart")).getAttribute("data-points") ?? "")
 }
 
 function recordedDaysAgo(instanceId: number, name: string, days: number): TransferHistoryInstance {
@@ -137,7 +154,9 @@ beforeEach(() => {
   answer = () => []
   torrentAnswer = () => []
   liveGroups = () => []
+  libraryAnswer = () => []
   server.use(
+    http.get("*/api/instances/:id/transfer-history/library", ({ params }) => HttpResponse.json({ rows: libraryAnswer(Number(params.id)) })),
     http.get("*/api/instances/:id/tracker-groups", ({ params }) => HttpResponse.json({ groups: liveGroups(Number(params.id)) })),
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/instances", () => HttpResponse.json(configuredIds.map(id => ({ id, name: `instance ${id}`, isActive: true })))),
@@ -412,8 +431,8 @@ describe("Statistics", () => {
     server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    // The line at the top of the page, the table, and the top torrents show it.
-    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(3))
+    // The line at the top of the page, the table, the top torrents, and the library growth show it.
+    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(4))
   })
 
   it("says that a period with no transfer has none", async () => {
@@ -789,5 +808,39 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(2))
     expect(table.textContent).not.toContain("Private.Release.Name-GRP")
     expect(table.textContent).not.toContain("a.test")
+  })
+  it("adds the library of the instances together for each day, with the newest Unique size as the fifth number", async () => {
+    libraryAnswer = instanceId => [
+      libraryRow(1, { torrents: instanceId, totalSize: instanceId * 4096, uniqueSize: instanceId * 1024 }),
+      libraryRow(0, { torrents: instanceId * 10, totalSize: instanceId * 8192, uniqueSize: instanceId * 2048 }),
+    ]
+    renderPage()
+
+    expect(await growthPoints()).toEqual([[3, 12288, 3072], [30, 24576, 6144]])
+    await expectTile("tiles.unique", "6 KiB | tiles.uniqueTotal size=24 KiB")
+    expect(screen.getByText("growth.description torrents=30")).toBeTruthy()
+    expect(screen.queryByText("growth.gapNote")).toBeNull()
+  })
+
+  it("leaves a gap in the Unique size of a day without a Copy groups build, and takes the fifth number from the day before", async () => {
+    libraryAnswer = instanceId => [
+      libraryRow(3, { torrents: 1, totalSize: 4096, uniqueSize: 1024 }),
+      // Instance 1 has no build on this day, so the sum of the two instances would draw a drop.
+      libraryRow(1, { torrents: 1, totalSize: 4096, uniqueSize: instanceId === 1 ? undefined : 1024 }),
+      libraryRow(0, { torrents: 1, totalSize: 4096 }),
+    ]
+    renderPage()
+
+    // qui stored nothing for the day 2 days ago, so both lines have a gap there.
+    expect(await growthPoints()).toEqual([[2, 8192, 2048], [null, null, null], [2, 8192, null], [2, 8192, null]])
+    await expectTile("tiles.unique", "2 KiB | tiles.uniqueTotal size=8 KiB")
+    expect(screen.getByText("growth.gapNote")).toBeTruthy()
+  })
+
+  it("says that the period has no Unique size before the first Copy groups build", async () => {
+    libraryAnswer = () => [libraryRow(0, { torrents: 1, totalSize: 4096 })]
+    renderPage()
+
+    await expectTile("tiles.unique", "– | tiles.uniqueNone")
   })
 })

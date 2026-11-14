@@ -29,7 +29,10 @@
     "buffer": "버퍼 {{buffer}}",
     "crossSeed": "크로스 시드에서",
     "crossSeedShare": "업로드의 {{percent}}%",
-    "change": "이전 기간 대비 {{change}}"
+    "change": "이전 기간 대비 {{change}}",
+    "unique": "고유 크기",
+    "uniqueTotal": "사본을 모두 포함하면 {{size}}",
+    "uniqueNone": "이 기간에 완료된 사본 그룹 계산이 없습니다"
   },
   "chart": {
     "title": "시간별 전송량",
@@ -115,5 +118,16 @@
     "note": "삭제된 토렌트는 이름과 함께 자리를 유지합니다. 토렌트는 현재 트래커에 포함됩니다. 처음 24시간은 추가 후 24시간 동안의 업로드입니다. qui가 그 이후에 토렌트를 처음 본 경우 비어 있습니다.",
     "utcNote": "각 막대는 UTC 하루입니다.",
     "yearNote": "각 막대는 UTC 하루이며, 연도 막대는 예외입니다. 세부 정보 보존 기간이 지나면 qui는 토렌트와 연도마다 하나의 값만 보관합니다."
+  },
+  "growth": {
+    "title": "라이브러리 증가",
+    "description": "토렌트: {{torrents}}. UTC 기준 날짜별 전체 크기와 고유 크기입니다.",
+    "descriptionEmpty": "UTC 기준 날짜별 전체 크기와 고유 크기입니다.",
+    "totalSize": "전체 크기",
+    "uniqueSize": "고유 크기",
+    "torrents": "토렌트",
+    "noValue": "값 없음",
+    "empty": "qui가 이 기간에 저장한 라이브러리 크기가 없습니다.",
+    "gapNote": "고유 크기 선의 빈 구간은 사본 그룹 계산이 완료되지 않은 날입니다."
   }
 }

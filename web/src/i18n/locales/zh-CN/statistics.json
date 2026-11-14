@@ -29,7 +29,10 @@
     "buffer": "缓冲 {{buffer}}",
     "crossSeed": "来自辅种",
     "crossSeedShare": "占上传的 {{percent}}%",
-    "change": "与上一时段相比 {{change}}"
+    "change": "与上一时段相比 {{change}}",
+    "unique": "唯一大小",
+    "uniqueTotal": "每个副本完整计算时为 {{size}}",
+    "uniqueNone": "此期间没有完成的副本组计算"
   },
   "chart": {
     "title": "传输趋势",
@@ -115,5 +118,16 @@
     "note": "已删除的种子保留其位置和名称。种子计入其当前的 Tracker。前 24 小时是添加后 24 小时内的上传量。如果 qui 在此之后才首次看到该种子，则为空。",
     "utcNote": "每个柱子代表一个 UTC 日。",
     "yearNote": "每个柱子代表一个 UTC 日，年份柱子除外：超过详细数据保留期后，qui 为每个种子每年只保留一个数值。"
+  },
+  "growth": {
+    "title": "资料库增长",
+    "description": "种子：{{torrents}}。每个 UTC 日的总大小和唯一大小。",
+    "descriptionEmpty": "每个 UTC 日的总大小和唯一大小。",
+    "totalSize": "总大小",
+    "uniqueSize": "唯一大小",
+    "torrents": "种子",
+    "noValue": "无值",
+    "empty": "qui 在此期间没有保存资料库大小。",
+    "gapNote": "唯一大小线上的空缺表示当天没有完成的副本组计算。"
   }
 }
