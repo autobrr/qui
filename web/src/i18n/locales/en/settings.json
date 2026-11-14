@@ -565,8 +565,7 @@
       "inUse": "In use",
       "summary": "{{shown}} of {{total}} themes in the menu",
       "reset": "Reset to defaults",
-      "resetDone": "Theme menu reset to the defaults",
-      "undo": "Undo",
+      "undo": "Undo reset",
       "done": "Done"
     },
     "toasts": {

@@ -122,8 +122,8 @@ function ThemeTile({ theme, palette, variations, isSelected, onSelect, customFil
         <span className="relative block">
           <ThemeThumbnail palette={palette} className={cn(theme.locked && "opacity-60")} />
           {variations.length > 1 && (
-            <span className="pointer-events-none absolute right-1.5 bottom-1.5 flex -space-x-1">
-              {variations.slice(0, 4).map((v) => (
+            <span className="pointer-events-none absolute bottom-1.5 left-1.5 flex -space-x-1">
+              {variations.slice(0, 3).map((v) => (
                 <span key={v.id} aria-hidden="true" className="size-2.5 rounded-full ring-2 ring-background/80" style={{ backgroundColor: v.color }} />
               ))}
               <span className="sr-only">{t("themes.selector.variationCount", { count: variations.length })}</span>
@@ -238,7 +238,6 @@ export function ThemeSelector() {
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<ThemeFilter>("all")
-  const [menuOpen, setMenuOpen] = useState(false)
   const [editorTarget, setEditorTarget] = useState<CustomThemeEditorTarget | null>(null)
   // The editor that is already open for this target stays, so its draft and a running save keep their session.
   const openEditor = (next: CustomThemeEditorTarget) =>
@@ -329,14 +328,6 @@ export function ThemeSelector() {
     custom: t("themes.groups.custom"),
   }
 
-  const resetThemeMenu = () => {
-    const previous = visibility
-    replaceThemeVisibility({})
-    toast.success(t("themes.menu.resetDone"), {
-      action: { label: t("themes.menu.undo"), onClick: () => replaceThemeVisibility(previous) },
-    })
-  }
-
   const toggleExpanded = () => {
     setExpanded(!expanded)
     // After a collapse the button moves up, so it stays in view.
@@ -410,10 +401,20 @@ export function ThemeSelector() {
             </CardTitle>
             <CardDescription>{t("themes.selector.description")}</CardDescription>
           </div>
-          <Button variant="outline" size="sm" className="max-sm:min-h-11" onClick={() => setMenuOpen(true)}>
-            <ListChecks />
-            {t("themes.menu.button")}
-          </Button>
+          <ThemeMenuDialog
+            trigger={
+              <Button variant="outline" size="sm" className="max-sm:min-h-11">
+                <ListChecks />
+                {t("themes.menu.button")}
+              </Button>
+            }
+            catalog={themeCatalog}
+            currentThemeId={currentTheme}
+            visibility={visibility}
+            paletteOf={paletteOf}
+            onShownChange={setThemesShown}
+            onReplace={replaceThemeVisibility}
+          />
         </CardHeader>
         <CardContent className="space-y-4 px-4">
           {defaultThemeVisit && (
@@ -649,17 +650,6 @@ export function ThemeSelector() {
           )}
         </CardContent>
       </Card>
-
-      <ThemeMenuDialog
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        catalog={themeCatalog}
-        currentThemeId={currentTheme}
-        visibility={visibility}
-        paletteOf={paletteOf}
-        onShownChange={setThemesShown}
-        onReset={resetThemeMenu}
-      />
 
       {editorTarget && (
         <CustomThemeEditor

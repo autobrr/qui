@@ -4,7 +4,7 @@
  */
 
 import { Lock, Search } from "lucide-react"
-import { useId, useState } from "react"
+import { useId, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
@@ -16,7 +16,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  DialogTrigger
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { Theme } from "@/config/themes"
@@ -25,21 +26,24 @@ import type { ThemeThumbnailPalette } from "@/lib/theme-thumbnail"
 import { cn } from "@/lib/utils"
 
 interface ThemeMenuDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  /** The button that opens the dialog. Focus returns to it when the dialog closes. */
+  trigger: ReactNode
   catalog: readonly Theme[]
   currentThemeId: string
   visibility: ThemeVisibility
   paletteOf: (theme: Theme) => ThemeThumbnailPalette
   onShownChange: (themes: readonly Theme[], shown: boolean) => void
-  onReset: () => void
+  onReplace: (next: ThemeVisibility) => void
 }
 
 /** Chooses the themes that the quick theme pickers list, with a checkbox for each theme and for each group. */
-export function ThemeMenuDialog({ open, onOpenChange, catalog, currentThemeId, visibility, paletteOf, onShownChange, onReset }: ThemeMenuDialogProps) {
+export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, paletteOf, onShownChange, onReplace }: ThemeMenuDialogProps) {
   const { t } = useTranslation("settings")
   const baseId = useId()
+  const [open, setOpenState] = useState(false)
   const [query, setQuery] = useState("")
+  // The choices from before Reset to defaults, until the next change or until the dialog closes.
+  const [beforeReset, setBeforeReset] = useState<ThemeVisibility | null>(null)
   const searching = query.trim() !== ""
   const matches = catalog.filter((theme) => themeMatchesSearch(theme, query))
   // The quick pickers always list the theme in use, whatever its choice is.
@@ -52,12 +56,29 @@ export function ThemeMenuDialog({ open, onOpenChange, catalog, currentThemeId, v
     custom: t("themes.groups.custom"),
   }
   const setOpen = (next: boolean) => {
-    if (!next) setQuery("")
-    onOpenChange(next)
+    if (!next) {
+      setQuery("")
+      setBeforeReset(null)
+    }
+    setOpenState(next)
+  }
+  const setShown = (themes: readonly Theme[], shown: boolean) => {
+    setBeforeReset(null)
+    onShownChange(themes, shown)
+  }
+  const resetOrUndo = () => {
+    if (beforeReset) {
+      onReplace(beforeReset)
+      setBeforeReset(null)
+    } else {
+      setBeforeReset(visibility)
+      onReplace({})
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent
         className="flex max-h-[min(40rem,90dvh)] flex-col gap-4 sm:max-w-lg"
         onOpenAutoFocus={(event) => {
@@ -106,7 +127,7 @@ export function ThemeMenuDialog({ open, onOpenChange, catalog, currentThemeId, v
                     id={`${groupId}-all`}
                     checked={groupState}
                     disabled={searching || toggleable.length === 0}
-                    onCheckedChange={() => onShownChange(toggleable, groupState !== true)}
+                    onCheckedChange={() => setShown(toggleable, groupState !== true)}
                   />
                   <label id={groupId} htmlFor={`${groupId}-all`} className="flex flex-1 cursor-pointer items-baseline justify-between gap-2 text-sm font-medium">
                     {groupLabels[group]}{" "}
@@ -126,7 +147,7 @@ export function ThemeMenuDialog({ open, onOpenChange, catalog, currentThemeId, v
                             id={rowId}
                             checked={inMenu(theme)}
                             disabled={inUse}
-                            onCheckedChange={(checked) => onShownChange([theme], checked === true)}
+                            onCheckedChange={(checked) => setShown([theme], checked === true)}
                           />
                           <ThemeThumbnail palette={paletteOf(theme)} className="w-10 shrink-0 rounded-sm" />
                           <span className="min-w-0 flex-1 truncate text-sm">{theme.name}</span>{" "}
@@ -150,12 +171,12 @@ export function ThemeMenuDialog({ open, onOpenChange, catalog, currentThemeId, v
         </div>
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-muted-foreground tabular-nums">
+          <p role="status" className="text-xs text-muted-foreground tabular-nums">
             {t("themes.menu.summary", { shown: shownCount, total: catalog.length })}
           </p>
           <div className="flex w-full gap-2 sm:w-auto">
-            <Button variant="ghost" className="flex-1 sm:flex-none" disabled={!hasChoices} onClick={onReset}>
-              {t("themes.menu.reset")}
+            <Button variant="ghost" className="flex-1 sm:flex-none" disabled={!beforeReset && !hasChoices} onClick={resetOrUndo}>
+              {beforeReset ? t("themes.menu.undo") : t("themes.menu.reset")}
             </Button>
             <Button className="flex-1 sm:flex-none" onClick={() => setOpen(false)}>
               {t("themes.menu.done")}

@@ -565,8 +565,7 @@
       "inUse": "In uso",
       "summary": "{{shown}} di {{total}} temi nel menu",
       "reset": "Ripristina predefiniti",
-      "resetDone": "Menu dei temi ripristinato ai predefiniti",
-      "undo": "Annulla",
+      "undo": "Annulla il ripristino",
       "done": "Fatto"
     },
     "toasts": {

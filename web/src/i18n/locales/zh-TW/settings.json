@@ -560,8 +560,7 @@
       "inUse": "使用中",
       "summary": "選單中有 {{shown}}/{{total}} 個主題",
       "reset": "恢復預設值",
-      "resetDone": "主題選單已恢復預設值",
-      "undo": "復原",
+      "undo": "復原重設",
       "done": "完成"
     },
     "toasts": {

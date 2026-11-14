@@ -353,8 +353,7 @@ describe("ThemeSelector", () => {
     expect(group.getAttribute("aria-checked")).toBe("true")
   })
 
-  it("undoes a reset from its toast", async () => {
-    const { toast } = await import("sonner")
+  it("turns Reset to defaults into Undo reset until the next change", () => {
     localStorage.setItem("qui-theme-visibility", JSON.stringify({ nord: false }))
     render(<ThemeSelector />)
     const menu = openThemeMenu()
@@ -362,10 +361,24 @@ describe("ThemeSelector", () => {
     fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
     expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("true")
 
-    const [message, options] = vi.mocked(toast.success).mock.calls[0] as unknown as [string, { action: { onClick: () => void } }]
-    expect(message).toBe("themes.menu.resetDone")
-    act(() => options.action.onClick())
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.undo" }))
     expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("false")
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    fireEvent.click(menuCheckbox(menu, "Community theme"))
+    expect(within(menu).queryByRole("button", { name: "themes.menu.undo" })).toBeNull()
+  })
+
+  it("gives the focus back to Choose menu themes when the dialog closes", async () => {
+    render(<ThemeSelector />)
+    const trigger = screen.getByRole("button", { name: "themes.menu.button" })
+    trigger.focus()
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.done" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(document.activeElement).toBe(trigger)
   })
 
   it("locks the group checkboxes during a search, because they stand for the whole group", () => {
@@ -392,7 +405,7 @@ describe("ThemeSelector", () => {
 
     expect(await push).toEqual({ "qui-theme-visibility": "{}" })
     expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("true")
-    expect((within(menu).getByRole("button", { name: "themes.menu.reset" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(menu).getByRole("button", { name: "themes.menu.undo" })).toBeTruthy()
   })
 
   it("marks a locked theme with a lock, not a premium badge", () => {

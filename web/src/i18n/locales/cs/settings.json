@@ -570,8 +570,7 @@
       "inUse": "Používá se",
       "summary": "{{shown}} z {{total}} motivů v nabídce",
       "reset": "Obnovit výchozí",
-      "resetDone": "Nabídka motivů obnovena na výchozí",
-      "undo": "Zpět",
+      "undo": "Vrátit obnovení",
       "done": "Hotovo"
     },
     "toasts": {

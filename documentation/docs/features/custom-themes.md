@@ -32,7 +32,7 @@ To change the list:
 3. To select or clear all themes of a group, use the check box of the group. During a search, qui locks the group check boxes, because they apply to all themes of the group.
 4. Click **Done**.
 
-The theme in use is always in the menu. To restore the default list, click **Reset to defaults**.
+The theme in use is always in the menu. To restore the default list, click **Reset to defaults**. Until you close the dialog or make a change, the button reads **Undo reset** and brings your list back.
 
 ## Create a theme in qui
 

@@ -560,8 +560,7 @@
       "inUse": "使用中",
       "summary": "菜单中有 {{shown}}/{{total}} 个主题",
       "reset": "恢复默认",
-      "resetDone": "主题菜单已恢复默认",
-      "undo": "撤销",
+      "undo": "撤销重置",
       "done": "完成"
     },
     "toasts": {
