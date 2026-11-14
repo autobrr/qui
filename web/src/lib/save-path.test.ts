@@ -20,6 +20,7 @@ describe("resolveDestinationPath", () => {
       category: "movies",
       categories,
       defaultSavePath: "/downloads",
+      parentCategoryPaths: true,
     })).toBe("/mnt/manual")
   })
 
@@ -30,6 +31,7 @@ describe("resolveDestinationPath", () => {
       category: "",
       categories,
       defaultSavePath: "/downloads",
+      parentCategoryPaths: true,
     })).toBe("/downloads")
   })
 
@@ -40,6 +42,7 @@ describe("resolveDestinationPath", () => {
       category: "movies",
       categories,
       defaultSavePath: "/downloads",
+      parentCategoryPaths: true,
     })).toBe("/mnt/movies")
   })
 
@@ -50,6 +53,7 @@ describe("resolveDestinationPath", () => {
       category: "tv",
       categories,
       defaultSavePath: "/downloads/",
+      parentCategoryPaths: true,
     })).toBe("/downloads/tv")
   })
 
@@ -60,6 +64,7 @@ describe("resolveDestinationPath", () => {
       category: "tv",
       categories,
       defaultSavePath: "D:\\downloads",
+      parentCategoryPaths: true,
     })).toBe("D:\\downloads\\tv")
   })
 
@@ -70,6 +75,7 @@ describe("resolveDestinationPath", () => {
       category: "__none__",
       categories,
       defaultSavePath: "/downloads",
+      parentCategoryPaths: true,
     })).toBe("/downloads")
   })
 
@@ -87,7 +93,19 @@ describe("resolveDestinationPath", () => {
       category,
       categories: cats as Record<string, Category>,
       defaultSavePath,
+      parentCategoryPaths: true,
     })).toBe(expected)
+  })
+
+  it("keeps the qBittorrent 4.x rule of <default save path>/<category> for a subcategory", () => {
+    expect(resolveDestinationPath({
+      autoTMM: true,
+      savePath: "",
+      category: "tv/anime",
+      categories: { tv: { name: "tv", savePath: "/media/tv" } },
+      defaultSavePath: "/data",
+      parentCategoryPaths: false,
+    })).toBe("/data/tv/anime")
   })
 
   it("returns nothing when the destination cannot be resolved", () => {
@@ -97,6 +115,7 @@ describe("resolveDestinationPath", () => {
       category: "tv",
       categories,
       defaultSavePath: undefined,
+      parentCategoryPaths: true,
     })).toBe("")
   })
 })

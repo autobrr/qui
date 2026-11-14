@@ -15,16 +15,19 @@ export interface DestinationPathInput {
   category: string
   categories: Record<string, Category> | undefined
   defaultSavePath: string | undefined
+  /** qBittorrent 5.0 and newer save a category without a path under its parent category's folder. */
+  parentCategoryPaths: boolean
 }
 
 /**
  * Resolves the path qBittorrent saves a new torrent to. With automatic torrent
  * management off it is the entered save path. Otherwise it follows qBittorrent's
  * category rule: a category's own path, relative paths counted from the default
- * save path, and a category without a path saved as <parent category path>/<leaf name>.
+ * save path, and a category without a path saved as <parent category path>/<leaf name>
+ * (qBittorrent 5.0+) or <default save path>/<category> (4.x).
  * Returns "" when the destination cannot be resolved.
  */
-export function resolveDestinationPath({ autoTMM, savePath, category, categories, defaultSavePath }: DestinationPathInput): string {
+export function resolveDestinationPath({ autoTMM, savePath, category, categories, defaultSavePath, parentCategoryPaths }: DestinationPathInput): string {
   const fallback = (defaultSavePath ?? "").trim()
 
   if (!autoTMM) {
@@ -32,11 +35,11 @@ export function resolveDestinationPath({ autoTMM, savePath, category, categories
   }
 
   const name = category.trim()
-  return name === NO_CATEGORY ? fallback : categorySavePath(name, categories, fallback)
+  return name === NO_CATEGORY ? fallback : categorySavePath(name, categories, fallback, parentCategoryPaths)
 }
 
 // Mirrors SessionImpl::categorySavePath in qBittorrent.
-function categorySavePath(name: string, categories: Record<string, Category> | undefined, fallback: string): string {
+function categorySavePath(name: string, categories: Record<string, Category> | undefined, fallback: string, parentCategoryPaths: boolean): string {
   if (name === "") {
     return fallback
   }
@@ -46,8 +49,12 @@ function categorySavePath(name: string, categories: Record<string, Category> | u
     return isAbsolutePath(configured) || !fallback ? configured : joinPath(fallback, configured)
   }
 
+  if (!parentCategoryPaths) {
+    return fallback ? joinPath(fallback, name) : ""
+  }
+
   const slash = name.lastIndexOf("/")
-  const parentPath = categorySavePath(slash === -1 ? "" : name.slice(0, slash), categories, fallback)
+  const parentPath = categorySavePath(slash === -1 ? "" : name.slice(0, slash), categories, fallback, parentCategoryPaths)
   return parentPath ? joinPath(parentPath, name.slice(slash + 1)) : ""
 }
 

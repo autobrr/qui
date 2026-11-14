@@ -192,6 +192,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
+  // Web API 2.11.2 is qBittorrent 5.0, the first release that saves a category without a path under its parent.
+  const parentCategoryPaths = capabilities?.supportsTorrentCreation ?? true
 
   if (open !== wasOpen) {
     setWasOpen(open)
@@ -1100,6 +1102,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           category: field.state.value,
                           categories,
                           defaultSavePath: preferenceDefaults.savePath,
+                          parentCategoryPaths,
                         })
                         return autoTMM && target ? (
                           <p className="truncate text-xs text-muted-foreground" title={target}>
@@ -1312,6 +1315,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           category,
                           categories,
                           defaultSavePath: preferenceDefaults.savePath,
+                          parentCategoryPaths,
                         })}
                       />
                     )}
