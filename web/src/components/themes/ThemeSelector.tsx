@@ -238,6 +238,10 @@ function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariation
   )
 }
 
+function editorKey(target: CustomThemeEditorTarget): string {
+  return target.kind === "edit" ? `edit:${target.id}` : "new"
+}
+
 export function ThemeSelector() {
   const { t } = useTranslation("settings")
   const { theme: currentTheme, setTheme, setVariation } = useTheme()
@@ -256,6 +260,9 @@ export function ThemeSelector() {
   const defaultThemeVisit = useDefaultThemeVisit()
   const queryClient = useQueryClient()
   const [editorTarget, setEditorTarget] = useState<CustomThemeEditorTarget | null>(null)
+  // The editor that is already open for this target stays, so its draft and a running save keep their session.
+  const openEditor = (next: CustomThemeEditorTarget) =>
+    setEditorTarget(current => (current && editorKey(current) === editorKey(next) ? current : next))
   const editorRequest = useRef(0)
   const [removeTarget, setRemoveTarget] = useState<CustomThemeFileRef | null>(null)
 
@@ -291,11 +298,11 @@ export function ThemeSelector() {
     const fresh = await refreshCustomThemes(queryClient).catch(() => [])
     // A later New theme or Edit wins over this one.
     if (request !== editorRequest.current) return
-    setEditorTarget({ kind: "edit", id: file.id, css: fresh.find(theme => theme.id === file.id)?.css ?? file.css })
+    openEditor({ kind: "edit", id: file.id, css: fresh.find(theme => theme.id === file.id)?.css ?? file.css })
   }
   const newTheme = () => {
     editorRequest.current++
-    setEditorTarget({ kind: "new" })
+    openEditor({ kind: "new" })
   }
 
   // The server is the authority: a premium theme without a license arrives as
@@ -511,7 +518,7 @@ export function ThemeSelector() {
 
       {editorTarget && (
         <CustomThemeEditor
-          key={editorTarget.kind === "edit" ? `edit:${editorTarget.id}` : "new"}
+          key={editorKey(editorTarget)}
           target={editorTarget}
           onClose={() => setEditorTarget(current => (current === editorTarget ? null : current))}
         />

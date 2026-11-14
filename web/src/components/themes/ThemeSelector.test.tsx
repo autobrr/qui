@@ -457,6 +457,26 @@ describe("ThemeSelector custom theme editor", () => {
   })
 
   // regression: #4124
+  it("finishes a save when New theme is clicked again while it runs", async () => {
+    let finishSave: () => void = () => {}
+    const saved = new Promise<void>(resolve => { finishSave = resolve })
+    server.use(http.post("*/api/themes/custom", async () => {
+      await saved
+      return HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 })
+    }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+    openNewTheme()
+    finishSave()
+
+    await waitFor(() => expect(themeUtils.setTheme).toHaveBeenCalledWith("custom:red-alert"))
+    await waitFor(() => expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull())
+  })
+
+  // regression: #4124
   it("keeps an editor that opened while an earlier save was still running", async () => {
     let finishSave: () => void = () => {}
     const saved = new Promise<void>(resolve => { finishSave = resolve })
