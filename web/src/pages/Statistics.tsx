@@ -37,7 +37,7 @@ import {
   type TopTorrent
 } from "@/lib/statistics"
 import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
-import { formatBytes } from "@/lib/utils"
+import { cn, formatBytes } from "@/lib/utils"
 import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
 import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
@@ -264,7 +264,8 @@ export function Statistics() {
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
+      {/* A phone shows the five numbers as lines of one card. Six tracks give rows of 3 and 2 without an empty cell. */}
+      <div className="grid max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5">
         <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
         <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
         <Tile
@@ -276,11 +277,13 @@ export function Statistics() {
           label={t("tiles.crossSeed")}
           value={totals && formatBytes(totals.statisticsCrossSeedUploaded)}
           hint={totals && totals.uploaded > 0 ? t("tiles.crossSeedShare", { percent: Math.round((totals.statisticsCrossSeedUploaded / totals.uploaded) * 100) }) : undefined}
+          wide
         />
         <Tile
           label={t("tiles.unique")}
           value={unique && formatBytes(unique.uniqueSize)}
           hint={unique ? t("tiles.uniqueTotal", { size: formatBytes(unique.totalSize) }) : libraryPoints && libraryPoints.length > 0 && t("tiles.uniqueNone")}
+          wide
         />
       </div>
 
@@ -380,13 +383,16 @@ export function Statistics() {
   )
 }
 
-function Tile({ label, value, hint }: { label: string; value?: string; hint?: ReactNode }) {
+function Tile({ label, value, hint, wide = false }: { label: string; value?: string; hint?: ReactNode; wide?: boolean }) {
   return (
-    <Card className="gap-2 py-4">
-      <CardContent className="px-4">
+    <Card className={cn(
+      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:first:border-t-0 xl:col-span-1",
+      wide ? "sm:col-span-3" : "sm:col-span-2"
+    )}>
+      <CardContent className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 px-4 sm:block">
         <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="mt-1 whitespace-nowrap text-2xl font-semibold tabular-nums">{value ?? "–"}</div>
-        <div className="mt-1 min-h-4 text-xs text-muted-foreground">{hint}</div>
+        <div className="whitespace-nowrap text-right text-xl font-semibold tabular-nums sm:mt-1 sm:text-left sm:text-2xl">{value ?? "–"}</div>
+        <div className="col-start-2 text-right text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:text-left sm:empty:block">{hint}</div>
       </CardContent>
     </Card>
   )
