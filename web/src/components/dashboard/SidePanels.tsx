@@ -112,12 +112,12 @@ export function Storage({ statsData, className }: { statsData: DashboardInstance
 
 /** The torrents and the sizes of all instances, and the count of connected instances. */
 export function Library({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
-  const { t } = useTranslation("dashboard")
+  const { t, i18n } = useTranslation("dashboard")
   const sizes = resolveDashboardSizes(statsData.map(d => d.stats))
   const torrents = statsData.reduce((sum, d) => sum + (d.torrentCounts?.total ?? 0), 0)
   const connected = statsData.filter(d => d.instance.connected).length
   const values: Array<{ key: string; label: string; value: string; calculating?: boolean }> = [
-    { key: "torrents", label: t("library.torrents"), value: torrents.toLocaleString() },
+    { key: "torrents", label: t("library.torrents"), value: torrents.toLocaleString(i18n.resolvedLanguage ?? i18n.language) },
     { key: "instances", label: t("library.instances"), value: `${connected}/${statsData.length}` },
     { key: "total", label: t("library.totalSize"), value: formatBytes(sizes.totalSize), calculating: sizes.calculating },
     { key: "seeding", label: t("library.seedingSize"), value: formatBytes(sizes.seedingSize), calculating: sizes.calculating },

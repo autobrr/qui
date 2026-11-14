@@ -91,15 +91,23 @@ export function IssueIcon({ issue, className }: { issue: InstanceIssue; classNam
   return <Icon className={cn("shrink-0", iconClass, className)} aria-hidden="true" />
 }
 
+/** Formats a count in the language of the app, as the captions of the chart do. */
+function useCount(): (value: number | undefined) => string {
+  const { i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  return value => (value ?? 0).toLocaleString(locale)
+}
+
 function IssueCounts({ issues, links }: { issues: InstanceIssue[]; links: boolean }) {
   const label = useIssueLabel()
+  const count = useCount()
   return (
     <span className="flex justify-end">
       {issues.map(issue => {
         const content = (
           <>
             <IssueIcon issue={issue} className="size-3" />
-            {issue.count.toLocaleString()}
+            {count(issue.count)}
             <span className="sr-only">{label(issue)}</span>
           </>
         )
@@ -238,6 +246,7 @@ interface InstanceTableProps extends InstanceListProps {
 
 function InstanceTable({ statsData, layerOf, days, dayUploaded, openId, onToggle }: InstanceTableProps) {
   const { t } = useTranslation("dashboard")
+  const count = useCount()
   const [unit] = useSpeedUnits()
   const offlineText = useOfflineText()
   const columns = days ? 6 : 5
@@ -302,7 +311,7 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded, openId, onToggle
                   )}
                   <TableCell className="text-right"><Speed value={d.stats?.totalUploadSpeed ?? 0} unit={unit} direction="up" /></TableCell>
                   <TableCell className="text-right"><Speed value={d.stats?.totalDownloadSpeed ?? 0} unit={unit} direction="down" /></TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(d.torrentCounts?.total ?? 0).toLocaleString()}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{count(d.torrentCounts?.total)}</TableCell>
                   <TableCell className="pr-6 text-right">
                     {issues.length > 0 ? <IssueCounts issues={issues} links /> : <span className="text-muted-foreground/50">{t("instances.noIssues")}</span>}
                   </TableCell>
@@ -422,7 +431,7 @@ function DetailFacts({ d }: { d: DashboardInstanceStats }) {
   const connection = connectionStatusOf(d)
   const addresses = [d.serverState?.last_external_address_v4, d.serverState?.last_external_address_v6].filter(Boolean).join(", ")
   const unknown = t("details.unknown")
-  const count = (value: number | undefined) => (value ?? 0).toLocaleString()
+  const count = useCount()
   const facts: Array<{ key: string; label: string; value: ReactNode; wide?: boolean }> = [
     { key: "host", label: t("details.host"), value: incognito ? MASK : d.instance.host, wide: true },
     { key: "torrents", label: t("details.torrents"), value: count(d.torrentCounts?.total) },
