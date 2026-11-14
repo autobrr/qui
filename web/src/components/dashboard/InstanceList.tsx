@@ -263,7 +263,7 @@ function InstanceTable({ statsData, layerOf, days, dayUploaded, openId, onToggle
           const issues = instanceIssues(d)
           const canOpen = health !== "loading"
           const onKeyDown = (event: KeyboardEvent) => {
-            if (canOpen && (event.key === "Enter" || event.key === " ")) {
+            if (canOpen && event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
               event.preventDefault()
               onToggle(id)
             }

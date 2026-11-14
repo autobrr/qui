@@ -303,6 +303,17 @@ describe("DashboardOverview instances", () => {
     expect(within(table).getAllByRole("columnheader")).toHaveLength(6)
   })
 
+  // regression: #4141
+  it("lets Enter on an issue link in a desktop row open the link, not the detail band", async () => {
+    desktop = true
+    renderOverview([stats(1, { torrentCounts: { status: { unregistered: 4 }, categories: {}, tags: {}, trackers: {}, total: 10 } })])
+    const table = await screen.findByRole("table", { name: "instances.title" })
+    const link = within(table).getByText("issues.unregistered count=4").closest("a")!
+
+    expect(fireEvent.keyDown(link, { key: "Enter" })).toBe(true)
+    expect(within(table).queryAllByTestId("fact-host")).toHaveLength(0)
+  })
+
   it("gives an offline instance its cause and a link to the instance settings on desktop", async () => {
     desktop = true
     renderOverview([stats(1, { stats: null }, { connected: false })])
