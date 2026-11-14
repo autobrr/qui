@@ -525,18 +525,41 @@
   },
   "themes": {
     "selector": {
-      "title": "主题选择",
+      "title": "主题",
       "loadingDescription": "正在加载可用主题...",
-      "description": "从可用主题中选择。部分主题需要有效的许可证。",
+      "description": "点击主题即可使用。",
       "verificationUnavailable": "许可证验证不可用。切换到需要许可证的主题暂时禁用。",
       "notLoaded": "需要许可证的主题未加载",
       "notLoadedDescription": "运行",
-      "free": "免费",
       "locked": "已锁定",
-      "lock": "锁定",
-      "showTheme": "显示",
-      "hideTheme": "隐藏",
-      "defaultThemeVisit": "由于地址中包含 ?theme=default，qui 在本次访问中显示默认主题。选择一个主题即可结束。"
+      "defaultThemeVisit": "由于地址中包含 ?theme=default，qui 在本次访问中显示默认主题。选择一个主题即可结束。",
+      "search": "搜索主题",
+      "filterLabel": "筛选主题",
+      "noMatch": "没有与“{{query}}”匹配的主题。",
+      "needsLicense": "需要许可证",
+      "lockedCount_other": "{{count}} 个主题需要许可证。",
+      "showAll_other": "显示全部 {{count}} 个主题",
+      "showFewer": "显示较少主题"
+    },
+    "current": {
+      "label": "使用中",
+      "colors": "颜色变体"
+    },
+    "groups": {
+      "all": "全部",
+      "free": "免费",
+      "licensed": "需许可证",
+      "custom": "自定义"
+    },
+    "menu": {
+      "button": "选择菜单主题",
+      "title": "选择菜单主题",
+      "description": "选择主题菜单（顶部栏和手机底部栏）中列出的主题。正在使用的主题始终在菜单中。",
+      "groupCount": "{{shown}}/{{total}}",
+      "inUse": "使用中",
+      "summary": "菜单中有 {{shown}}/{{total}} 个主题",
+      "reset": "恢复默认",
+      "done": "完成"
     },
     "toasts": {
       "premiumRequired": "需要许可证",
@@ -678,9 +701,8 @@
       }
     },
     "custom": {
-      "badge": "自定义",
       "title": "自定义主题",
-      "lockedTitle": "自定义主题需要许可证",
+      "description": "在主题编辑器中编写或粘贴主题，或将主题 CSS 文件放入服务器上的主题文件夹。",
       "lockedDescription": "获取许可证即可添加你自己的主题：在主题编辑器中编写或粘贴主题，或将主题 CSS 文件放入服务器上的主题文件夹。",
       "unlockCta": "获取许可证",
       "refresh": "刷新",
@@ -734,6 +756,7 @@
       }
     },
     "layout": {
+      "title": "主题同步",
       "mobileSplit": "为移动布局使用单独的主题",
       "mobileSplitHelp": "移动布局（宽度小于 768 px 的窗口）和桌面布局各自保留自己的主题、模式和变体。此设置适用于所有浏览器。",
       "localOnly": "在此浏览器中本地保留主题",

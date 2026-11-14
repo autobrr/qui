@@ -10,7 +10,6 @@ import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
-import { useIsMobile } from "@/hooks/useMediaQuery"
 import {
   removeMobileThemeSlot,
   setThemeLocalOnly,
@@ -22,11 +21,10 @@ import {
 import { api } from "@/lib/api"
 import { getCurrentTheme, getCurrentThemeMode } from "@/utils/theme"
 
-/** The layout switches under the theme picker, with a hint that names what the picker changes. */
+/** The switches that choose where a theme applies: one theme for each layout, and a theme of this browser only. */
 export function ThemeLayoutSettings() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
-  const isMobile = useIsMobile()
   const localOnly = useThemeLocalOnly()
   const canWriteSlots = useCanWriteThemeSlots()
   const { data } = useQuery({
@@ -54,13 +52,8 @@ export function ThemeLayoutSettings() {
     await queryClient.invalidateQueries({ queryKey: ["theme-settings"] })
   }
 
-  let hint: string | null = null
-  if (localOnly) hint = t("themes.layout.changesLocal")
-  else if (split) hint = isMobile ? t("themes.layout.changesMobile") : t("themes.layout.changesDesktop")
-
   return (
     <div className="space-y-3">
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <Label htmlFor="theme-mobile-split" className="cursor-pointer">{t("themes.layout.mobileSplit")}</Label>

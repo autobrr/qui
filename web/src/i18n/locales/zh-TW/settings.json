@@ -525,18 +525,41 @@
   },
   "themes": {
     "selector": {
-      "title": "主題選擇",
+      "title": "主題",
       "loadingDescription": "正在載入可用主題...",
-      "description": "從可用主題中選擇。部分主題需要有效的授權。",
+      "description": "點擊主題即可使用。",
       "verificationUnavailable": "授權驗證不可用。切換到需要授權的主題暫時停用。",
       "notLoaded": "需要授權的主題未載入",
       "notLoadedDescription": "執行",
-      "free": "免費",
       "locked": "已鎖定",
-      "lock": "鎖定",
-      "showTheme": "顯示",
-      "hideTheme": "隱藏",
-      "defaultThemeVisit": "由於網址中包含 ?theme=default，qui 在本次造訪中顯示預設主題。選擇一個主題即可結束。"
+      "defaultThemeVisit": "由於網址中包含 ?theme=default，qui 在本次造訪中顯示預設主題。選擇一個主題即可結束。",
+      "search": "搜尋主題",
+      "filterLabel": "篩選主題",
+      "noMatch": "沒有符合「{{query}}」的主題。",
+      "needsLicense": "需要授權",
+      "lockedCount_other": "{{count}} 個主題需要授權。",
+      "showAll_other": "顯示全部 {{count}} 個主題",
+      "showFewer": "顯示較少主題"
+    },
+    "current": {
+      "label": "使用中",
+      "colors": "色彩變化"
+    },
+    "groups": {
+      "all": "全部",
+      "free": "免費",
+      "licensed": "需授權",
+      "custom": "自訂"
+    },
+    "menu": {
+      "button": "選擇選單主題",
+      "title": "選擇選單主題",
+      "description": "選擇主題選單（頂端列與手機底部列）中列出的主題。使用中的主題一律在選單中。",
+      "groupCount": "{{shown}}/{{total}}",
+      "inUse": "使用中",
+      "summary": "選單中有 {{shown}}/{{total}} 個主題",
+      "reset": "恢復預設值",
+      "done": "完成"
     },
     "toasts": {
       "premiumRequired": "需要授權",
@@ -678,9 +701,8 @@
       }
     },
     "custom": {
-      "badge": "自訂",
       "title": "自訂主題",
-      "lockedTitle": "自訂主題需要授權",
+      "description": "在主題編輯器中撰寫或貼上主題，或將主題 CSS 檔案放入伺服器上的主題資料夾。",
       "lockedDescription": "取得授權即可新增您自己的主題：在主題編輯器中撰寫或貼上主題，或將主題 CSS 檔案放入伺服器上的主題資料夾。",
       "unlockCta": "取得授權",
       "refresh": "重新整理",
@@ -734,6 +756,7 @@
       }
     },
     "layout": {
+      "title": "主題同步",
       "mobileSplit": "為行動版面配置使用獨立主題",
       "mobileSplitHelp": "行動版面配置（寬度小於 768 px 的視窗）與桌面版面配置各自保留自己的主題、模式與變體。此設定適用於所有瀏覽器。",
       "localOnly": "在此瀏覽器中本機保留主題",

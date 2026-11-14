@@ -527,18 +527,43 @@
   },
   "themes": {
     "selector": {
-      "title": "Selecció de tema",
+      "title": "Temes",
       "loadingDescription": "S'estan carregant els temes disponibles...",
-      "description": "Tria entre els temes disponibles. Alguns temes necessiten una llicència vàlida.",
+      "description": "Fes clic en un tema per fer-lo servir.",
       "verificationUnavailable": "La verificació de llicències no està disponible. El canvi a temes amb llicència està desactivat temporalment.",
       "notLoaded": "Els temes amb llicència no s'han carregat",
       "notLoadedDescription": "Executa",
-      "free": "Gratuït",
       "locked": "Bloquejat",
-      "lock": "Bloqueja",
-      "showTheme": "Mostra",
-      "hideTheme": "Amaga",
-      "defaultThemeVisit": "qui mostra el tema per defecte durant aquesta visita, perquè l'adreça conté ?theme=default. Selecciona un tema per acabar-la."
+      "defaultThemeVisit": "qui mostra el tema per defecte durant aquesta visita, perquè l'adreça conté ?theme=default. Selecciona un tema per acabar-la.",
+      "search": "Cerca temes",
+      "filterLabel": "Filtra els temes",
+      "noMatch": "Cap tema coincideix amb «{{query}}».",
+      "needsLicense": "Cal una llicència",
+      "lockedCount_one": "{{count}} tema necessita una llicència.",
+      "lockedCount_other": "{{count}} temes necessiten una llicència.",
+      "showAll_one": "Mostra {{count}} tema",
+      "showAll_other": "Mostra els {{count}} temes",
+      "showFewer": "Mostra menys temes"
+    },
+    "current": {
+      "label": "En ús",
+      "colors": "Variacions de color"
+    },
+    "groups": {
+      "all": "Tots",
+      "free": "Gratuïts",
+      "licensed": "Amb llicència",
+      "custom": "Personalitzats"
+    },
+    "menu": {
+      "button": "Tria els temes del menú",
+      "title": "Tria els temes del menú",
+      "description": "Tria els temes que mostra el menú de temes, a la barra superior i al peu de pàgina del mòbil. El tema en ús sempre hi és.",
+      "groupCount": "{{shown}} de {{total}}",
+      "inUse": "En ús",
+      "summary": "{{shown}} de {{total}} temes al menú",
+      "reset": "Restableix els valors per defecte",
+      "done": "Fet"
     },
     "toasts": {
       "premiumRequired": "Cal una llicència",
@@ -680,9 +705,8 @@
       }
     },
     "custom": {
-      "badge": "Personalitzat",
       "title": "Temes personalitzats",
-      "lockedTitle": "Els temes personalitzats necessiten una llicència",
+      "description": "Escriu o enganxa un tema a l'editor de temes, o posa fitxers CSS de temes a la carpeta de temes del servidor.",
       "lockedDescription": "Aconsegueix una llicència per afegir els teus propis temes: escriu o enganxa un tema a l'editor de temes, o posa fitxers CSS de tema a la carpeta de temes del servidor.",
       "unlockCta": "Aconsegueix una llicència",
       "refresh": "Actualitza",
@@ -737,6 +761,7 @@
       }
     },
     "layout": {
+      "title": "Sincronització del tema",
       "mobileSplit": "Tema separat per a la disposició mòbil",
       "mobileSplitHelp": "La disposició mòbil (una finestra de menys de 768 px d'amplada) i la disposició d'escriptori mantenen cadascuna el seu tema, mode i variació. Aquesta opció s'aplica a tots els navegadors.",
       "localOnly": "Mantén local el tema d'aquest navegador",

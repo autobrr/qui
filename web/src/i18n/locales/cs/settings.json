@@ -529,18 +529,45 @@
   },
   "themes": {
     "selector": {
-      "title": "Výběr motivu",
+      "title": "Motivy",
       "loadingDescription": "Načítám dostupné motivy...",
-      "description": "Vyberte z dostupných motivů. Některé motivy vyžadují platnou licenci.",
+      "description": "Kliknutím na motiv ho použijete.",
       "verificationUnavailable": "Ověření licence není dostupné. Přepínání licencovaných motivů je dočasně nedostupné.",
       "notLoaded": "Licencované motivy nejsou načteny",
       "notLoadedDescription": "Spusťte",
-      "free": "Zdarma",
       "locked": "Zamčený",
-      "lock": "Zamknout",
-      "showTheme": "Zobrazit",
-      "hideTheme": "Skrýt",
-      "defaultThemeVisit": "qui při této návštěvě zobrazuje výchozí motiv, protože adresa obsahuje ?theme=default. Výběrem motivu to ukončíte."
+      "defaultThemeVisit": "qui při této návštěvě zobrazuje výchozí motiv, protože adresa obsahuje ?theme=default. Výběrem motivu to ukončíte.",
+      "search": "Hledat motivy",
+      "filterLabel": "Filtrovat motivy",
+      "noMatch": "Žádný motiv neodpovídá „{{query}}“.",
+      "needsLicense": "Vyžaduje licenci",
+      "lockedCount_one": "{{count}} motiv vyžaduje licenci.",
+      "lockedCount_few": "{{count}} motivy vyžadují licenci.",
+      "lockedCount_other": "{{count}} motivů vyžaduje licenci.",
+      "showAll_one": "Zobrazit {{count}} motiv",
+      "showAll_few": "Zobrazit všechny {{count}} motivy",
+      "showAll_other": "Zobrazit všech {{count}} motivů",
+      "showFewer": "Zobrazit méně motivů"
+    },
+    "current": {
+      "label": "Používá se",
+      "colors": "Barevné varianty"
+    },
+    "groups": {
+      "all": "Vše",
+      "free": "Zdarma",
+      "licensed": "S licencí",
+      "custom": "Vlastní"
+    },
+    "menu": {
+      "button": "Vybrat motivy nabídky",
+      "title": "Vybrat motivy nabídky",
+      "description": "Vyberte motivy, které nabídka motivů zobrazuje na horní liště a v zápatí na telefonu. Používaný motiv je v nabídce vždy.",
+      "groupCount": "{{shown}} z {{total}}",
+      "inUse": "Používá se",
+      "summary": "{{shown}} z {{total}} motivů v nabídce",
+      "reset": "Obnovit výchozí",
+      "done": "Hotovo"
     },
     "toasts": {
       "premiumRequired": "Vyžaduje se licence",
@@ -682,9 +709,8 @@
       }
     },
     "custom": {
-      "badge": "Vlastní",
       "title": "Vlastní motivy",
-      "lockedTitle": "Vlastní motivy vyžadují licenci",
+      "description": "Napište nebo vložte motiv v editoru motivů, nebo vložte soubory CSS motivů do složky motivů na serveru.",
       "lockedDescription": "Získejte licenci a přidávejte vlastní motivy: napište nebo vložte motiv v editoru motivů, nebo umístěte CSS soubory motivů do složky motivů na serveru.",
       "unlockCta": "Získat licenci",
       "refresh": "Obnovit",
@@ -740,6 +766,7 @@
       }
     },
     "layout": {
+      "title": "Synchronizace motivu",
       "mobileSplit": "Samostatný motiv pro mobilní rozložení",
       "mobileSplitHelp": "Mobilní rozložení (okno užší než 768 px) a desktopové rozložení si každé ponechá vlastní motiv, režim a variantu. Toto nastavení platí pro všechny prohlížeče.",
       "localOnly": "Ponechat motiv tohoto prohlížeče lokálně",

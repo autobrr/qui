@@ -525,18 +525,41 @@
   },
   "themes": {
     "selector": {
-      "title": "테마 선택",
+      "title": "테마",
       "loadingDescription": "사용 가능한 테마 불러오는 중...",
-      "description": "사용 가능한 테마 중에서 선택하세요. 일부 테마에는 유효한 라이선스가 필요합니다.",
+      "description": "테마를 클릭하면 적용됩니다.",
       "verificationUnavailable": "라이선스 확인을 사용할 수 없습니다. 라이선스 테마로의 전환이 일시적으로 비활성화되었습니다.",
       "notLoaded": "라이선스 테마가 로드되지 않음",
       "notLoadedDescription": "실행:",
-      "free": "무료",
       "locked": "잠김",
-      "lock": "잠금",
-      "showTheme": "표시",
-      "hideTheme": "숨기기",
-      "defaultThemeVisit": "주소에 ?theme=default가 있으므로 qui가 이번 방문 동안 기본 테마를 표시합니다. 테마를 선택하면 종료됩니다."
+      "defaultThemeVisit": "주소에 ?theme=default가 있으므로 qui가 이번 방문 동안 기본 테마를 표시합니다. 테마를 선택하면 종료됩니다.",
+      "search": "테마 검색",
+      "filterLabel": "테마 필터",
+      "noMatch": "“{{query}}”와(과) 일치하는 테마가 없습니다.",
+      "needsLicense": "라이선스 필요",
+      "lockedCount_other": "테마 {{count}}개는 라이선스가 필요합니다.",
+      "showAll_other": "테마 {{count}}개 모두 보기",
+      "showFewer": "테마 적게 보기"
+    },
+    "current": {
+      "label": "사용 중",
+      "colors": "색상 변형"
+    },
+    "groups": {
+      "all": "전체",
+      "free": "무료",
+      "licensed": "라이선스",
+      "custom": "사용자 지정"
+    },
+    "menu": {
+      "button": "메뉴 테마 선택",
+      "title": "메뉴 테마 선택",
+      "description": "상단 표시줄과 휴대폰 하단 바의 테마 메뉴에 표시할 테마를 선택하세요. 사용 중인 테마는 항상 메뉴에 표시됩니다.",
+      "groupCount": "{{total}}개 중 {{shown}}개",
+      "inUse": "사용 중",
+      "summary": "메뉴에 테마 {{total}}개 중 {{shown}}개",
+      "reset": "기본값으로 재설정",
+      "done": "완료"
     },
     "toasts": {
       "premiumRequired": "라이선스가 필요합니다",
@@ -678,9 +701,8 @@
       }
     },
     "custom": {
-      "badge": "사용자 지정",
       "title": "사용자 지정 테마",
-      "lockedTitle": "사용자 지정 테마에는 라이선스가 필요합니다",
+      "description": "테마 편집기에서 테마를 작성하거나 붙여 넣거나, 서버의 테마 폴더에 테마 CSS 파일을 넣으세요.",
       "lockedDescription": "라이선스를 받으면 직접 만든 테마를 추가할 수 있습니다. 테마 편집기에서 테마를 작성하거나 붙여넣거나, 서버의 테마 폴더에 테마 CSS 파일을 넣으세요.",
       "unlockCta": "라이선스 받기",
       "refresh": "새로 고침",
@@ -734,6 +756,7 @@
       }
     },
     "layout": {
+      "title": "테마 동기화",
       "mobileSplit": "모바일 레이아웃용 별도 테마",
       "mobileSplitHelp": "모바일 레이아웃(너비 768 px 미만 창)과 데스크톱 레이아웃이 각각 테마, 모드, 변형을 따로 유지합니다. 이 설정은 모든 브라우저에 적용됩니다.",
       "localOnly": "이 브라우저의 테마를 로컬로 유지",

@@ -15,16 +15,31 @@ A custom theme is a `.css` file in the custom themes directory on the server. It
 
 ## The theme picker
 
-The theme picker is under **Settings → Themes**. It shows every theme in one grid: free themes, licensed themes, and your custom themes. A free theme has a **Free** badge, and a custom theme has a **Custom** badge. Click a theme card to apply it.
+The theme picker is under **Settings → Themes**. At the top, it shows the theme in use with a larger picture and its description. If the theme has color variations, click a color dot under its name to change the variation.
 
-If you do not have an active license, the licensed themes appear as locked cards with a lock icon. A locked card shows only preview colors. You cannot apply a locked theme. To get a license, click **Get a license** in the **Custom themes** box below the grid.
+Below that, a grid shows a small picture of each theme: free themes, licensed themes, and your custom themes. Click a theme to apply it. The grid shows two rows. To see all themes, click **Show all** below the grid. To find a theme, type a part of its name or description in the search field. To show only one group, click **Free**, **Licensed**, or **Custom** above the grid.
+
+If you do not have an active license, a lock icon marks each licensed theme, and its picture shows only its preview colors. You cannot apply a locked theme. To get a license, click **Get a license** above the grid.
+
+### Choose the themes in the theme menu
+
+The theme menu in the top bar lists only some of the themes. On a phone, the footer has the same menu. By default, the menu lists the free themes, your custom themes, and some licensed themes. qui stores the list in its database, so the list is the same in each browser.
+
+To change the list:
+
+1. Open **Settings → Themes** and click **Choose menu themes**.
+2. Select or clear the check box of a theme. qui saves each change at once.
+3. To select or clear all themes of a group, use the check box of the group. During a search, qui locks the group check boxes, because they apply to all themes of the group.
+4. Click **Done**.
+
+The theme in use is always in the menu. To restore the default list, click **Reset to defaults**.
 
 ## Create a theme in qui
 
 You do not need access to the server to add a custom theme.
 
 1. Open **Settings → Themes**.
-2. In the **Custom themes** box, click **New theme**.
+2. In the **Custom themes** card, click **New theme**.
 3. Paste or write the CSS of the theme in the **CSS** field. If the CSS has a `@name` line, qui fills the **Name** field from it.
 4. Look at the page. qui shows the theme in this browser while you edit, before you save. Your other browsers and devices do not change.
 5. Click **Save**. qui writes the theme into the custom themes directory, and the theme becomes your selected theme. Other open browsers load the new theme without a reload.
@@ -35,13 +50,13 @@ To stop without a save, click **Cancel** or press **Esc**. qui then shows the th
 
 If a theme with the same file name exists, qui asks before it replaces that theme.
 
-Each custom theme card has a **⋮** menu with **Edit** and **Remove**. **Edit** also works on a file that you put into the directory yourself. A save of an edited theme does not change your selected theme. **Remove** asks first and then deletes the file. A device that uses the removed theme shows the default theme. If qui cannot parse a file, the **Custom themes** box lists the file with the same menu, so you can repair it or delete it.
+Each custom theme in the grid has a **⋮** menu with **Edit** and **Remove**. **Edit** also works on a file that you put into the directory yourself. A save of an edited theme does not change your selected theme. **Remove** asks first and then deletes the file. A device that uses the removed theme shows the default theme. If qui cannot parse a file, the **Custom themes** card lists the file with the same menu, so you can repair it or delete it.
 
 If qui cannot write to the custom themes directory, the save fails, and the message names the directory. In Docker, make sure that the volume for `/config` is not read-only.
 
 ## Ask an AI assistant to write a theme
 
-Click **Copy prompt for your AI** in the **Custom themes** box. qui copies a text that tells an AI assistant how to write a qui theme. The text lists the design tokens, the [theme areas](#theme-areas), and the rules. The copy also works when you open qui over plain HTTP.
+Click **Copy prompt for your AI** in the **Custom themes** card. qui copies a text that tells an AI assistant how to write a qui theme. The text lists the design tokens, the [theme areas](#theme-areas), and the rules. The copy also works when you open qui over plain HTTP.
 
 1. Paste the text into your AI assistant.
 2. Describe the look that you want.
@@ -118,7 +133,7 @@ If your license lapses, qui applies the default theme instead. If you use a buil
 
 qui shows the mobile layout when the window is less than 768 px wide. qui uses the window width, not the device type. A narrow desktop window also shows the mobile layout.
 
-To use a different theme on the mobile layout, turn on **Separate theme for mobile layout** below the theme grid. The mobile layout then starts with your current theme. After that, a theme change on the mobile layout changes only the mobile theme. A theme change on the desktop layout changes only the desktop theme. The theme, the light, dark, or auto mode, and the variation split together. A line under the theme grid tells you which theme the picker changes. qui stores this setting in its database, so it applies to every browser.
+To use a different theme on the mobile layout, turn on **Separate theme for mobile layout** in the **Theme sync** card. The mobile layout then starts with your current theme. After that, a theme change on the mobile layout changes only the mobile theme. A theme change on the desktop layout changes only the desktop theme. The theme, the light, dark, or auto mode, and the variation split together. A line under the theme in use tells you which theme the picker changes. qui stores this setting in its database, so it applies to every browser.
 
 To change the mobile theme, use a phone or a narrow window. When you turn the setting off, qui deletes the mobile theme, and every layout shows the desktop theme.
 
@@ -197,7 +212,7 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 
 ### Requirements and notes
 
-- **Both blocks are required.** A file must contain a `:root` block **and** a `.dark` block, each with at least one variable, even for a `@lightOnly` theme. If qui cannot parse a file, it skips the file and lists the error in the **Custom themes** box in the theme picker.
+- **Both blocks are required.** A file must contain a `:root` block **and** a `.dark` block, each with at least one variable, even for a `@lightOnly` theme. If qui cannot parse a file, it skips the file and lists the error in the **Custom themes** card in **Settings → Themes**.
 - **`@name`** sets the display name. If you omit `@name`, qui defaults to "Untitled Theme". `@description` and `@lightOnly` are optional.
 - **Fonts.** If you set `--font-sans`, `--font-serif`, or `--font-mono` to a font that qui knows (for example Inter, Montserrat, or JetBrains Mono), qui loads it from Google Fonts. The browser must be able to reach fonts.googleapis.com. To use any other font, embed it with an `@font-face` rule and a `data:` address. A file that you put into the directory yourself can also use `@import`.
 - **Arbitrary CSS works.** qui adds the file to the page as a stylesheet, so you can add rules beyond design tokens. Use the [theme areas](#theme-areas) as selectors, and keep each selector narrow, because a broad selector affects the entire app. qui refuses a theme from the theme editor or the API that [loads a file from another website](#themes-cannot-load-files-from-other-websites). qui does not apply that rule to a file that you put into the directory yourself, so only use theme files that you trust or wrote yourself.
@@ -206,7 +221,7 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 ## Use a theme file from the directory
 
 1. Place your `.css` file into the themes directory.
-2. Open **Settings → Themes**. Your theme appears in the theme grid with a **Custom** badge. The **Custom themes** box below the grid shows the number of themes and the directory path. Click **Refresh** next to the path to load new or edited files without a restart of qui.
+2. Open **Settings → Themes**. Your theme appears in the theme grid. To show only your custom themes, click **Custom** above the grid. The **Custom themes** card shows the number of themes and the directory path. Click **Refresh** next to the path to load new or edited files without a restart of qui.
 3. Select the theme like any other theme.
 
 If you remove a custom theme file or your license lapses, qui falls back to the default theme. A built-in licensed theme selection returns when you renew. A custom theme selection does not.
