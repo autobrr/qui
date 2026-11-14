@@ -196,6 +196,14 @@
             "menuFix": "Stop the other program, then try again"
           }
         }
+      },
+      "low_disk": {
+        "short": "Low disk",
+        "title": "Low disk",
+        "effect": "The disk of the qui database has little free space. When the disk is full, each write of qui fails.",
+        "fix": "Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.",
+        "menuFix": "Free disk space for the database",
+        "action": "Open the Statistics settings"
       }
     },
     "actions": {
