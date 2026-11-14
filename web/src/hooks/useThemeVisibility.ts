@@ -21,20 +21,32 @@ function parseThemeVisibility(raw: string): ThemeVisibility {
   return Object.fromEntries(Object.entries(parsed).filter(([, shown]) => typeof shown === "boolean"))
 }
 
-/** The user's Show and Hide choices for the quick theme pickers. */
-export function useThemeVisibility(): [ThemeVisibility, (theme: Theme, shown: boolean) => void] {
+/**
+ * The user's Show and Hide choices for the quick theme pickers, a setter that
+ * shows or hides a list of themes in one write, and a setter that replaces all
+ * choices at once ({} restores the defaults).
+ */
+export function useThemeVisibility(): [
+  ThemeVisibility,
+  (themes: readonly Theme[], shown: boolean) => void,
+  (next: ThemeVisibility) => void
+] {
   const [visibility, setVisibility] = useClientSetting(THEME_VISIBILITY_KEY, {
     defaultValue: noChoices,
     parse: parseThemeVisibility,
   })
 
-  const setThemeShown = useCallback((theme: Theme, shown: boolean) => {
+  const setThemesShown = useCallback((themes: readonly Theme[], shown: boolean) => {
     setVisibility((prev) => {
-      // Keep only the changes: a choice equal to the default drops its entry.
-      const { [theme.id]: _, ...rest } = prev
-      return shown === isThemeShownByDefault(theme) ? rest : { ...rest, [theme.id]: shown }
+      const next = { ...prev }
+      for (const theme of themes) {
+        // Keep only the changes: a choice equal to the default drops its entry.
+        if (shown === isThemeShownByDefault(theme)) delete next[theme.id]
+        else next[theme.id] = shown
+      }
+      return next
     })
   }, [setVisibility])
 
-  return [visibility, setThemeShown]
+  return [visibility, setThemesShown, setVisibility]
 }

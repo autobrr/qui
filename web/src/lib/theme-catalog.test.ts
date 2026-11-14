@@ -4,7 +4,7 @@
  */
 
 import type { Theme } from "@/config/themes"
-import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { buildThemeCatalog, themeMatchesSearch } from "@/lib/theme-catalog"
 import { describe, expect, it } from "vitest"
 
 function makeTheme(
@@ -58,5 +58,16 @@ describe("buildThemeCatalog", () => {
 
     expect(builtInThemes.map((theme) => theme.id)).toEqual(["premium", "free"])
     expect(customThemes.map((theme) => theme.id)).toEqual(["custom"])
+  })
+})
+
+describe("themeMatchesSearch", () => {
+  const harbor: Theme = { ...makeTheme("harbor"), name: "Harbor Dusk", description: "Teal water at sunset" }
+
+  it("matches the name or the description in any case, and an empty search matches every theme", () => {
+    expect(themeMatchesSearch(harbor, "  HARBOR ")).toBe(true)
+    expect(themeMatchesSearch(harbor, "sunset")).toBe(true)
+    expect(themeMatchesSearch(harbor, "")).toBe(true)
+    expect(themeMatchesSearch(harbor, "nord")).toBe(false)
   })
 })

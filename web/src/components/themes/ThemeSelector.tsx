@@ -7,15 +7,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { themes, getThemeById, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { useTheme } from "@/hooks/useTheme"
-import { getThemeColors, getThemeVariation } from "@/utils/theme"
-import { buildThemeCatalog, isThemeShown } from "@/lib/theme-catalog"
+import { getThemeVariation } from "@/utils/theme"
+import { buildThemeCatalog, themeGroup, themeMatchesSearch, type ThemeGroup } from "@/lib/theme-catalog"
+import { themeThumbnailPalette, themeVariationColors, type ThemeThumbnailPalette } from "@/lib/theme-thumbnail"
 import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
+import { useThemeTargetHint } from "@/hooks/useThemeTargetHint"
+import { ThemeMenuDialog } from "@/components/themes/ThemeMenuDialog"
+import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
 import { CustomThemeEditor, type CustomThemeEditorTarget } from "@/components/themes/CustomThemeEditor"
 import {
   AlertDialog,
@@ -39,10 +44,10 @@ import { api } from "@/lib/api"
 import { CUSTOM_THEME_PREFIX, type CustomThemeFile } from "@/lib/custom-themes"
 import { useDefaultThemeVisit } from "@/lib/theme-storage"
 import { buildThemePrompt } from "@/lib/theme-prompt"
-import { copyTextToClipboard } from "@/lib/utils"
+import { cn, copyTextToClipboard } from "@/lib/utils"
 import { refreshCustomThemes } from "@/hooks/useCustomThemes"
-import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff, Plus, Sparkles, Pencil, Trash2, Info, MoreVertical } from "lucide-react"
-import { useId, useRef, useState } from "react"
+import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Plus, Sparkles, Pencil, Trash2, Info, MoreVertical, Search, ListChecks, MonitorSmartphone, ChevronDown, ChevronUp } from "lucide-react"
+import { useId, useLayoutEffect, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -57,9 +62,10 @@ interface CustomThemeActionsProps {
   file: CustomThemeFileRef
   onEdit: (file: CustomThemeFileRef) => void
   onRemove: (file: CustomThemeFileRef) => void
+  className?: string
 }
 
-function CustomThemeActions({ file, onEdit, onRemove }: CustomThemeActionsProps) {
+function CustomThemeActions({ file, onEdit, onRemove, className }: CustomThemeActionsProps) {
   const { t } = useTranslation("settings")
   return (
     <DropdownMenu>
@@ -67,14 +73,13 @@ function CustomThemeActions({ file, onEdit, onRemove }: CustomThemeActionsProps)
         <Button
           variant="ghost"
           size="icon"
-          className="size-6 shrink-0 max-sm:-my-2.5 max-sm:size-11"
+          className={cn("size-6 shrink-0", className)}
           aria-label={t("themes.custom.actionsFor", { theme: file.label })}
-          onClick={(e) => e.stopPropagation()}
         >
           <MoreVertical />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+      <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => onEdit(file)}>
           <Pencil />
           {t("themes.custom.edit")}
@@ -89,165 +94,146 @@ function CustomThemeActions({ file, onEdit, onRemove }: CustomThemeActionsProps)
   )
 }
 
-interface ThemeCardProps {
+interface ThemeTileProps {
   theme: Theme
+  palette: ThemeThumbnailPalette
+  variations: Array<{ id: string; color: string }>
   isSelected: boolean
-  isLocked: boolean
-  isShown: boolean
   onSelect: () => void
-  onVariationSelect: (themeId: string, variationId: string) => void
-  onShownChange: (shown: boolean) => void
   customFile?: CustomThemeFileRef
   onEdit: (file: CustomThemeFileRef) => void
   onRemove: (file: CustomThemeFileRef) => void
 }
 
-function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariationSelect, onShownChange, customFile, onEdit, onRemove }: ThemeCardProps) {
+function ThemeTile({ theme, palette, variations, isSelected, onSelect, customFile, onEdit, onRemove }: ThemeTileProps) {
   const { t } = useTranslation("settings")
-  const titleId = useId()
-  // Get current variation for theme (validated)
-  const variation = getThemeVariation(theme.id)
-
-  // Helper to extract colors from theme
-  const colors = getThemeColors(theme)
-
   return (
-    <div role="listitem" className="h-full">
-      <Card
-        className={`h-full cursor-pointer gap-2 py-3 transition-all duration-200 hover:shadow-md ${
-          isSelected ? "ring-2 ring-primary" : ""
-        } ${isLocked ? "opacity-60" : ""}`}
-        onClick={!isLocked ? onSelect : undefined}
+    <li className="relative">
+      <button
+        type="button"
+        aria-pressed={isSelected}
+        title={theme.description}
+        onClick={onSelect}
+        className={cn(
+          "flex w-full flex-col gap-1.5 rounded-lg border bg-card p-1.5 text-left outline-none transition-colors hover:border-muted-foreground/50 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          isSelected && "border-primary ring-1 ring-primary hover:border-primary"
+        )}
       >
-        <CardHeader className="gap-1 px-3">
-          <div className="flex items-center justify-between">
-            <CardTitle id={titleId} className="flex min-w-0 items-center gap-1 truncate text-sm">
-              {theme.name}
-              {isSelected && (
-                <Check className="h-4 w-4 shrink-0 text-primary" />
-              )}
-            </CardTitle>
-            {isLocked && (
-              <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-          </div>
-          {theme.description && (
-            <CardDescription className="line-clamp-1 text-xs">
-              {theme.description}
-            </CardDescription>
+        <span className="relative block">
+          <ThemeThumbnail palette={palette} className={cn(theme.locked && "opacity-60")} />
+          {variations.length > 1 && (
+            <span className="pointer-events-none absolute bottom-1.5 left-1.5 flex -space-x-1">
+              {variations.slice(0, 3).map((v) => (
+                <span key={v.id} aria-hidden="true" className="size-2.5 rounded-full ring-2 ring-background/80" style={{ backgroundColor: v.color }} />
+              ))}
+              <span className="sr-only">{t("themes.selector.variationCount", { count: variations.length })}</span>
+            </span>
           )}
-        </CardHeader>
-        <CardContent className="space-y-2 px-3">
-          {/* Theme preview colors and variations */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            {/* Preview colors */}
-            <div className="flex gap-1">
-              <div
-                className="h-3 w-3 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-                style={{
-                  backgroundColor: colors.primary,
-                  backgroundImage: "none",
-                  background: colors.primary + " !important",
-                }}
-              />
-              <div
-                className="h-3 w-3 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-                style={{
-                  backgroundColor: colors.secondary,
-                  backgroundImage: "none",
-                  background: colors.secondary + " !important",
-                }}
-              />
-              <div
-                className="h-3 w-3 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-                style={{
-                  backgroundColor: colors.accent,
-                  backgroundImage: "none",
-                  background: colors.accent + " !important",
-                }}
-              />
-            </div>
-
-            {/* Variation colors */}
-            {colors.variations && colors.variations.length > 0 && (
-              <div className="flex gap-1">
-                {colors.variations.map((v) => {
-                  const selected = variation === v.id
-                  return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onVariationSelect(theme.id, v.id)
-                      }}
-                      className={`h-3 w-3 rounded-full transition-all ${
-                        selected ? "ring-2 ring-black dark:ring-white" : "ring-1 ring-black/10 dark:ring-white/10"
-                      }`}
-                      style={{
-                        backgroundColor: v.color,
-                        backgroundImage: "none",
-                        background: v.color + " !important",
-                      }}
-                    />
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Badges */}
-          <div className="flex items-center gap-1 sm:gap-2">
-            {theme.isCustom ? (
-              <Badge variant="secondary" className="px-1.5 text-[10px]">
-                <FolderOpen className="mr-0.5 h-2.5 w-2.5" />
-                {t("themes.custom.badge")}
-              </Badge>
-            ) : theme.isPremium ? null : (
-              <Badge variant="outline" className="px-1.5 text-[10px]">
-                {t("themes.selector.free")}
-              </Badge>
-            )}
-
-            {isLocked && (
-              <Badge variant="destructive" className="px-1.5 text-[10px]">
-                <Lock className="mr-0.5 h-2.5 w-2.5" />
-                <span className="hidden sm:inline">{t("themes.selector.locked")}</span>
-                <span className="sm:hidden">{t("themes.selector.lock")}</span>
-              </Badge>
-            )}
-
-            {/* Whether the quick theme pickers in the header and the phone footer list this theme */}
-            <Button
-              variant="ghost"
-              size="xs"
-              className="ml-auto h-6"
-              aria-describedby={titleId}
-              onClick={(e) => {
-                e.stopPropagation()
-                onShownChange(!isShown)
-              }}
-            >
-              {isShown ? <EyeOff /> : <Eye />}
-              {t(isShown ? "themes.selector.hideTheme" : "themes.selector.showTheme")}
-            </Button>
-            {customFile && (
-              <CustomThemeActions file={customFile} onEdit={onEdit} onRemove={onRemove} />
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        </span>
+        <span className={cn("flex min-w-0 items-center gap-1 px-0.5 text-xs font-medium", customFile && "pr-6")}>
+          <span className="line-clamp-2 break-words">{theme.name}</span>
+          {isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-primary" />}
+          {theme.locked && (
+            <>
+              <Lock aria-hidden="true" className="ml-auto size-3 shrink-0 text-muted-foreground" />
+              <span className="sr-only">{t("themes.selector.needsLicense")}</span>
+            </>
+          )}
+        </span>
+      </button>
+      {customFile && (
+        <CustomThemeActions file={customFile} onEdit={onEdit} onRemove={onRemove} className="absolute right-1 bottom-1 max-sm:size-8 max-sm:-right-0.5 max-sm:-bottom-1" />
+      )}
+    </li>
   )
 }
+
+interface CurrentThemeProps {
+  theme: Theme
+  palette: ThemeThumbnailPalette
+  dark: boolean
+  variation: string | null
+  onVariationSelect: (variationId: string) => void
+}
+
+function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: CurrentThemeProps) {
+  const { t } = useTranslation("settings")
+  const hint = useThemeTargetHint()
+  const variations = themeVariationColors(theme, dark)
+  const titleId = useId()
+
+  return (
+    <section aria-labelledby={titleId} className="flex items-center gap-4">
+      <ThemeThumbnail palette={palette} className="w-48 shrink-0 shadow-sm max-sm:hidden" />
+      <div className="min-w-0 space-y-1.5">
+        <p className="text-xs text-muted-foreground">{t("themes.current.label")}</p>
+        <h3 id={titleId} className="truncate text-lg font-semibold leading-tight">{theme.name}</h3>
+        {theme.description && <p className="text-sm text-muted-foreground sm:line-clamp-2">{theme.description}</p>}
+        {variations.length > 0 && (
+          <div role="group" aria-label={t("themes.current.colors")} className="flex flex-wrap gap-1 pt-1 max-sm:gap-0">
+            {variations.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                aria-pressed={variation === v.id}
+                aria-label={v.id}
+                title={v.id}
+                onClick={() => onVariationSelect(v.id)}
+                className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:size-11"
+              >
+                <span
+                  className={cn(
+                    "size-6 rounded-full ring-offset-2 ring-offset-card max-sm:size-8",
+                    variation === v.id ? "ring-2 ring-foreground" : "ring-1 ring-border"
+                  )}
+                  style={{ backgroundColor: v.color }}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
+    </section>
+  )
+}
+
+/** The number of columns that a CSS grid lays out now, or null before the browser lays it out. */
+function useGridColumns(grid: HTMLElement | null): number | null {
+  const [columns, setColumns] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    if (!grid) return
+    const measure = () => {
+      const tracks = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(track => track.endsWith("px"))
+      setColumns(tracks.length > 0 ? tracks.length : null)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(grid)
+    return () => observer.disconnect()
+  }, [grid])
+  return columns
+}
+
+const COLLAPSED_ROWS = 2
+// Before the first measure, the grid assumes this many columns, so it draws a few tiles too many instead of every theme.
+const UNMEASURED_COLUMNS = 8
 
 function editorKey(target: CustomThemeEditorTarget): string {
   return target.kind === "edit" ? `edit:${target.id}` : "new"
 }
 
-export function ThemeSelector() {
+type ThemeFilter = "all" | ThemeGroup
+
+interface ThemeSelectorProps {
+  /** Opens Choose menu themes once, for a link to the dialog. */
+  openMenu?: boolean
+  onMenuOpened?: () => void
+}
+
+export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorProps) {
   const { t } = useTranslation("settings")
-  const { theme: currentTheme, setTheme, setVariation } = useTheme()
+  const { theme: currentTheme, currentTheme: appliedTheme, dark, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
   const {
     customThemes,
@@ -259,15 +245,22 @@ export function ThemeSelector() {
   } = useCustomThemes()
   // Subscribe so the picker re-renders when the async theme registry lands.
   const builtins = useBuiltinThemes()
-  const [visibility, setThemeShown] = useThemeVisibility()
+  const [visibility, setThemesShown, replaceThemeVisibility] = useThemeVisibility()
   const defaultThemeVisit = useDefaultThemeVisit()
   const queryClient = useQueryClient()
+  const [query, setQuery] = useState("")
+  const [filter, setFilter] = useState<ThemeFilter>("all")
   const [editorTarget, setEditorTarget] = useState<CustomThemeEditorTarget | null>(null)
   // The editor that is already open for this target stays, so its draft and a running save keep their session.
   const openEditor = (next: CustomThemeEditorTarget) =>
     setEditorTarget(current => (current && editorKey(current) === editorKey(next) ? current : next))
   const editorRequest = useRef(0)
   const [removeTarget, setRemoveTarget] = useState<CustomThemeFileRef | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [grid, setGrid] = useState<HTMLUListElement | null>(null)
+  const columns = useGridColumns(grid)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const gridId = useId()
 
   const removeTheme = useMutation({
     mutationFn: (file: CustomThemeFileRef) => api.deleteCustomTheme(file.id),
@@ -324,6 +317,33 @@ export function ThemeSelector() {
 
   const premiumThemes = themes.filter(theme => theme.isPremium)
   const themeCatalog = buildThemeCatalog(themes, customThemes)
+  const lockedCount = themeCatalog.filter(theme => theme.locked).length
+  const paletteOf = (theme: Theme) => themeThumbnailPalette(theme, dark, getThemeVariation(theme.id))
+  // Before the theme lists load, the registry can lack the theme in use. The applied theme then stands in for it.
+  const activeTheme = getThemeById(currentTheme) ?? appliedTheme
+
+  const searching = query.trim() !== ""
+  const matches = themeCatalog.filter(theme => themeMatchesSearch(theme, query))
+  const countOf = (group: ThemeGroup) => matches.filter(theme => themeGroup(theme) === group).length
+  const filters: ThemeFilter[] = customThemes.length > 0 ? ["all", "free", "licensed", "custom"] : ["all", "free", "licensed"]
+  const activeFilter = filters.includes(filter) ? filter : "all"
+  const shownThemes = activeFilter === "all" ? matches : matches.filter(theme => themeGroup(theme) === activeFilter)
+  // Two rows of tiles keep the cards below in reach. A search shows every match.
+  const collapsedCount = (columns ?? UNMEASURED_COLUMNS) * COLLAPSED_ROWS
+  const canCollapse = !searching && shownThemes.length > collapsedCount
+  const visibleThemes = canCollapse && !expanded ? shownThemes.slice(0, collapsedCount) : shownThemes
+  const filterLabels: Record<ThemeFilter, string> = {
+    all: t("themes.groups.all"),
+    free: t("themes.groups.free"),
+    licensed: t("themes.groups.licensed"),
+    custom: t("themes.groups.custom"),
+  }
+
+  const toggleExpanded = () => {
+    setExpanded(!expanded)
+    // After a collapse the button moves up, so it stays in view.
+    if (expanded) requestAnimationFrame(() => toggleRef.current?.scrollIntoView({ block: "nearest" }))
+  }
 
   const showThemeLockedToast = () => {
     toast.error(t("themes.toasts.premiumRequired"), {
@@ -354,21 +374,27 @@ export function ThemeSelector() {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
           <CardTitle className="flex items-center gap-2">
             <Palette className="h-5 w-5" />
             {t("themes.selector.title")}
           </CardTitle>
           <CardDescription>{t("themes.selector.loadingDescription")}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="animate-pulse space-y-3">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-24 bg-muted rounded"></div>
-              ))}
+        <CardContent className="animate-pulse space-y-4 px-4">
+          <div className="flex items-center gap-4">
+            <div className="aspect-[16/10] w-24 shrink-0 rounded-md bg-muted sm:w-48" />
+            <div className="w-full max-w-64 space-y-2">
+              <div className="h-3 w-1/4 rounded bg-muted" />
+              <div className="h-5 w-1/2 rounded bg-muted" />
+              <div className="h-3 w-full rounded bg-muted" />
             </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 border-t pt-4 sm:grid-cols-5 sm:gap-3">
+            {[...Array(10)].map((_, i) => (
+              <div key={i} className="aspect-[16/12] rounded-lg bg-muted max-sm:[&:nth-child(n+7)]:hidden" />
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -376,103 +402,209 @@ export function ThemeSelector() {
   }
 
   return (
-    <Card className="gap-4 py-4">
-      <CardHeader className="px-4">
-        <CardTitle className="flex items-center gap-2">
-          <Palette className="h-5 w-5" />
-          {t("themes.selector.title")}
-        </CardTitle>
-        <CardDescription>
-          {t("themes.selector.description")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4 px-4">
-        {defaultThemeVisit && (
-          <Alert role="status">
-            <Info className="h-4 w-4" />
-            <AlertDescription>{t("themes.selector.defaultThemeVisit")}</AlertDescription>
-          </Alert>
-        )}
-
-        {isError && !hasPremiumAccess && (
-          <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
-            <WifiOff className="h-4 w-4 flex-shrink-0" />
-            <p className="text-sm">
-              {t("themes.selector.verificationUnavailable")}
-            </p>
+    <>
+      <Card className="gap-4 py-4">
+        <CardHeader className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4">
+          <div className="space-y-1.5">
+            <CardTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5" />
+              {t("themes.selector.title")}
+            </CardTitle>
+            <CardDescription>{t("themes.selector.description")}</CardDescription>
           </div>
-        )}
-
-        {builtins.isSuccess && premiumThemes.length === 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3">
-            <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-800 dark:bg-orange-950/20 dark:text-orange-400">
-              <AlertTriangle className="mr-1 h-3 w-3" />
-              {t("themes.selector.notLoaded")}
-            </Badge>
-            <p className="text-xs text-muted-foreground">
-              {t("themes.selector.notLoadedDescription")}{" "}
-              <code className="rounded bg-muted px-1 py-0.5">make build</code>.
-            </p>
-          </div>
-        )}
-
-        <div
-          role="list"
-          aria-label={t("themes.selector.title")}
-          className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3"
-        >
-          {themeCatalog.map((theme) => (
-            <ThemeCard
-              key={theme.id}
-              theme={theme}
-              isSelected={currentTheme === theme.id}
-              isLocked={!isThemeUnlocked(theme.id)}
-              isShown={isThemeShown(theme, visibility)}
-              onSelect={() => handleThemeSelect(theme.id)}
-              onVariationSelect={handleVariationSelect}
-              onShownChange={(shown) => setThemeShown(theme, shown)}
-              customFile={hasPremiumAccess ? customFileOf(theme) : undefined}
-              onEdit={editTheme}
-              onRemove={setRemoveTarget}
-            />
-          ))}
-        </div>
-
-        <ThemeLayoutSettings />
-
-        <div className="@container space-y-2 rounded-md border bg-muted/20 p-3">
-          <div className="flex flex-col gap-2 @lg:flex-row @lg:items-center @lg:justify-between">
-            <h4 className="flex items-center gap-2 whitespace-nowrap text-sm font-medium">
-              <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-              {t("themes.custom.title")}
-            </h4>
-            {!hasPremiumAccess ? (
-              <Button variant="outline" size="sm" className="self-start" onClick={scrollToLicenseManager}>
-                <Lock className="h-3 w-3" />
-                {t("themes.custom.unlockCta")}
+          <ThemeMenuDialog
+            trigger={
+              <Button variant="outline" size="sm" className="max-sm:min-h-11">
+                <ListChecks />
+                {t("themes.menu.button")}
               </Button>
-            ) : (
-              <div className="grid gap-2 @sm:flex">
-                <Button size="sm" className="max-sm:min-h-11" onClick={newTheme}>
+            }
+            catalog={themeCatalog}
+            currentThemeId={currentTheme}
+            visibility={visibility}
+            paletteOf={paletteOf}
+            onShownChange={setThemesShown}
+            onReplace={replaceThemeVisibility}
+            openRequested={openMenu}
+            onOpenRequestHandled={onMenuOpened}
+          />
+        </CardHeader>
+        <CardContent className="space-y-4 px-4">
+          {defaultThemeVisit && (
+            <Alert role="status">
+              <Info className="h-4 w-4" />
+              <AlertDescription>{t("themes.selector.defaultThemeVisit")}</AlertDescription>
+            </Alert>
+          )}
+
+          <CurrentTheme
+            theme={activeTheme}
+            palette={paletteOf(activeTheme)}
+            dark={dark}
+            variation={getThemeVariation(activeTheme.id)}
+            onVariationSelect={(variationId) => handleVariationSelect(activeTheme.id, variationId)}
+          />
+
+          {isError && !hasPremiumAccess && (
+            <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
+              <WifiOff className="h-4 w-4 flex-shrink-0" />
+              <p className="text-sm">
+                {t("themes.selector.verificationUnavailable")}
+              </p>
+            </div>
+          )}
+
+          {builtins.isSuccess && premiumThemes.length === 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3">
+              <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-800 dark:bg-orange-950/20 dark:text-orange-400">
+                <AlertTriangle className="mr-1 h-3 w-3" />
+                {t("themes.selector.notLoaded")}
+              </Badge>
+              <p className="text-xs text-muted-foreground">
+                {t("themes.selector.notLoadedDescription")}{" "}
+                <code className="rounded bg-muted px-1 py-0.5">make build</code>.
+              </p>
+            </div>
+          )}
+
+          <div className="@container space-y-3 border-t pt-4">
+            <div className="flex flex-col gap-2 @3xl:flex-row @3xl:items-center @3xl:justify-between">
+              <div className="relative @3xl:w-60">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value)
+                    setExpanded(false)
+                  }}
+                  placeholder={t("themes.selector.search")}
+                  aria-label={t("themes.selector.search")}
+                  className="pl-8"
+                />
+              </div>
+              <div role="group" aria-label={t("themes.selector.filterLabel")} className="flex flex-wrap gap-1 sm:gap-1.5">
+                {filters.map((value) => {
+                  const active = activeFilter === value
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setFilter(value)
+                        setExpanded(false)
+                      }}
+                      className={cn(
+                        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:h-9 max-sm:gap-1 max-sm:px-2",
+                        active
+                          ? "border-primary/50 bg-primary/10 font-medium text-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      {filterLabels[value]}
+                      <span className="text-muted-foreground tabular-nums">{value === "all" ? matches.length : countOf(value)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {!hasPremiumAccess && lockedCount > 0 && (activeFilter === "all" || activeFilter === "licensed") && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2">
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Lock className="size-4 shrink-0" />
+                  {t("themes.selector.lockedCount", { count: lockedCount })}
+                </p>
+                <Button variant="outline" size="sm" onClick={scrollToLicenseManager}>
+                  {t("themes.custom.unlockCta")}
+                </Button>
+              </div>
+            )}
+
+            <ul
+              ref={setGrid}
+              id={gridId}
+              aria-label={t("themes.selector.title")}
+              className="grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-2 sm:grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] sm:gap-3"
+            >
+              {visibleThemes.map((theme) => (
+                <ThemeTile
+                  key={theme.id}
+                  theme={theme}
+                  palette={paletteOf(theme)}
+                  variations={themeVariationColors(theme, dark)}
+                  isSelected={currentTheme === theme.id}
+                  onSelect={() => handleThemeSelect(theme.id)}
+                  customFile={hasPremiumAccess ? customFileOf(theme) : undefined}
+                  onEdit={editTheme}
+                  onRemove={setRemoveTarget}
+                />
+              ))}
+            </ul>
+            {shownThemes.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted-foreground">{t("themes.selector.noMatch", { query: query.trim() })}</p>
+            )}
+            {canCollapse && (
+              <Button
+                ref={toggleRef}
+                variant="outline"
+                size="sm"
+                className="w-full max-sm:min-h-11"
+                aria-expanded={expanded}
+                aria-controls={gridId}
+                onClick={toggleExpanded}
+              >
+                {expanded ? <ChevronUp /> : <ChevronDown />}
+                {expanded ? t("themes.selector.showFewer") : t("themes.selector.showAll", { count: shownThemes.length })}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="flex items-center gap-2">
+            <MonitorSmartphone className="h-5 w-5" />
+            {t("themes.layout.title")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4">
+          <ThemeLayoutSettings />
+        </CardContent>
+      </Card>
+
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
+          <CardTitle className="flex items-center gap-2">
+            <FolderOpen className="h-5 w-5" />
+            {t("themes.custom.title")}
+          </CardTitle>
+          <CardDescription>
+            {hasPremiumAccess ? t("themes.custom.description") : t("themes.custom.lockedDescription")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 px-4">
+          {!hasPremiumAccess ? (
+            <Button variant="outline" size="sm" onClick={scrollToLicenseManager}>
+              <Lock className="h-3 w-3" />
+              {t("themes.custom.unlockCta")}
+            </Button>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" className="max-sm:min-h-11 max-sm:flex-1" onClick={newTheme}>
                   <Plus className="h-3 w-3" />
                   {t("themes.custom.newTheme")}
                 </Button>
-                <Button variant="outline" size="sm" className="max-sm:min-h-11" onClick={() => void copyPrompt()}>
+                <Button variant="outline" size="sm" className="max-sm:min-h-11 max-sm:flex-1" onClick={() => void copyPrompt()}>
                   <Sparkles className="h-3 w-3" />
                   {t("themes.custom.copyPrompt")}
                 </Button>
               </div>
-            )}
-          </div>
 
-          {!hasPremiumAccess ? (
-            <div className="space-y-1">
-              <p className="text-sm font-medium">{t("themes.custom.lockedTitle")}</p>
-              <p className="text-xs text-muted-foreground">{t("themes.custom.lockedDescription")}</p>
-            </div>
-          ) : (
-            <>
-              <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-1.5 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                 {customThemesError ? (
                   <p className="flex min-w-0 items-center gap-1 font-medium text-destructive">
                     <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -507,7 +639,7 @@ export function ThemeSelector() {
               )}
 
               {customThemeErrors.length > 0 && (
-                <div className="space-y-1 border-t pt-2">
+                <div className="space-y-1">
                   <p className="flex flex-wrap items-center gap-x-1.5 text-xs">
                     <span className="flex items-center gap-1 font-medium text-destructive">
                       <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -521,7 +653,7 @@ export function ThemeSelector() {
                         <span className="min-w-0 truncate font-mono text-foreground" title={error.filename}>
                           {error.filename}
                         </span>
-                        <CustomThemeActions file={{ id: error.id, label: error.filename, css: error.css }} onEdit={editTheme} onRemove={setRemoveTarget} />
+                        <CustomThemeActions file={{ id: error.id, label: error.filename, css: error.css }} onEdit={editTheme} onRemove={setRemoveTarget} className="max-sm:-my-2.5 max-sm:size-11" />
                       </li>
                     ))}
                   </ul>
@@ -529,8 +661,8 @@ export function ThemeSelector() {
               )}
             </>
           )}
-        </div>
-      </CardContent>
+        </CardContent>
+      </Card>
 
       {editorTarget && (
         <CustomThemeEditor
@@ -568,6 +700,6 @@ export function ThemeSelector() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </>
   )
 }

@@ -4,12 +4,15 @@
  */
 
 import { useState, useEffect } from "react"
-import { getCurrentTheme, getCurrentThemeMode, getThemeVariation, setTheme as setThemeUtil, setThemeMode as setThemeModeUtil, setThemeVariation as setThemeVariationUtil } from "@/utils/theme"
+import { getCurrentTheme, getCurrentThemeMode, getThemeVariation, isDarkMode, setTheme as setThemeUtil, setThemeMode as setThemeModeUtil, setThemeVariation as setThemeVariationUtil } from "@/utils/theme"
 
 export function useTheme() {
   const [theme, setThemeState] = useState(() => getCurrentTheme().id)
   const [mode, setModeState] = useState(() => getCurrentThemeMode())
   const [variation, setVariationState] = useState(() => getThemeVariation())
+  // A system switch in auto mode keeps the mode and the theme, so the resolved
+  // light or dark is state of its own, to render again on that switch.
+  const [dark, setDarkState] = useState(() => isDarkMode(getCurrentThemeMode()))
 
   useEffect(() => {
     const handleThemeChange = (event: CustomEvent) => {
@@ -17,6 +20,7 @@ export function useTheme() {
       setThemeState(newTheme.id)
       setModeState(newMode)
       setVariationState(newVariant)
+      setDarkState(isDarkMode(newMode))
     }
 
     // Listen for theme changes
@@ -31,6 +35,8 @@ export function useTheme() {
     theme,
     mode,
     variation,
+    /** True when the mode setting paints themes dark now, with auto resolved by the system. */
+    dark,
     setTheme: setThemeUtil,
     setThemeMode: setThemeModeUtil,
     setVariation: setThemeVariationUtil,

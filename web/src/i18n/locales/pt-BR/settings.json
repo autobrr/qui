@@ -527,18 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Seleção de Tema",
+      "title": "Temas",
       "loadingDescription": "Carregando temas disponíveis...",
-      "description": "Escolha entre os temas disponíveis. Alguns temas requerem uma licença válida.",
+      "description": "Clique em um tema para usá-lo.",
       "verificationUnavailable": "Verificação de licença indisponível. A troca para um tema licenciado está temporariamente desativada.",
       "notLoaded": "Temas licenciados não carregados",
       "notLoadedDescription": "Execute",
-      "free": "Grátis",
-      "locked": "Bloqueado",
-      "lock": "Bloquear",
-      "showTheme": "Mostrar",
-      "hideTheme": "Ocultar",
-      "defaultThemeVisit": "qui mostra o tema padrão nesta visita porque o endereço contém ?theme=default. Selecione um tema para encerrar."
+      "defaultThemeVisit": "qui mostra o tema padrão nesta visita porque o endereço contém ?theme=default. Selecione um tema para encerrar.",
+      "search": "Pesquisar temas",
+      "filterLabel": "Filtrar temas",
+      "noMatch": "Nenhum tema corresponde a “{{query}}”.",
+      "needsLicense": "Requer uma licença",
+      "lockedCount_one": "{{count}} tema requer uma licença.",
+      "lockedCount_other": "{{count}} temas requerem uma licença.",
+      "showAll_one": "Mostrar {{count}} tema",
+      "showAll_other": "Mostrar todos os {{count}} temas",
+      "showFewer": "Mostrar menos temas",
+      "variationCount_one": "{{count}} variação de cor",
+      "variationCount_other": "{{count}} variações de cor"
+    },
+    "current": {
+      "label": "Em uso",
+      "colors": "Variações de cor"
+    },
+    "groups": {
+      "all": "Todos",
+      "free": "Gratuitos",
+      "licensed": "Licenciados",
+      "custom": "Personalizados"
+    },
+    "menu": {
+      "button": "Escolher temas do menu",
+      "title": "Escolher temas do menu",
+      "description": "Escolha os temas que o menu de temas mostra, na barra superior e no rodapé do celular. O tema em uso está sempre no menu.",
+      "groupCount": "{{shown}} de {{total}}",
+      "groupsLocked": "Limpe a pesquisa para usar as caixas de seleção dos grupos.",
+      "inUse": "Em uso",
+      "summary": "{{shown}} de {{total}} temas no menu",
+      "reset": "Restaurar padrões",
+      "undo": "Desfazer restauração",
+      "done": "Concluído"
     },
     "toasts": {
       "premiumRequired": "Licença necessária",
@@ -680,9 +708,8 @@
       }
     },
     "custom": {
-      "badge": "Personalizado",
       "title": "Temas personalizados",
-      "lockedTitle": "Temas personalizados precisam de uma licença",
+      "description": "Escreva ou cole um tema no editor de temas, ou coloque arquivos CSS de temas na pasta de temas do servidor.",
       "lockedDescription": "Obtenha uma licença para adicionar seus próprios temas: escreva ou cole um tema no editor de temas, ou coloque arquivos CSS de tema na pasta de temas do servidor.",
       "unlockCta": "Obter uma licença",
       "refresh": "Atualizar",
@@ -737,13 +764,15 @@
       }
     },
     "layout": {
+      "title": "Sincronização do tema",
       "mobileSplit": "Tema separado para o layout móvel",
       "mobileSplitHelp": "O layout móvel (uma janela com menos de 768 px de largura) e o layout de desktop mantêm cada um seu próprio tema, modo e variação. Esta configuração vale para todos os navegadores.",
       "localOnly": "Manter o tema deste navegador local",
       "localOnlyHelp": "Este navegador não obtém o tema do servidor e não envia suas alterações de tema ao servidor. Esta configuração vale apenas para este navegador.",
       "changesMobile": "Altera o tema móvel",
       "changesDesktop": "Altera o tema de desktop",
-      "changesLocal": "Altera apenas o tema deste navegador. Para alterar a configuração do layout móvel, desative a configuração local.",
+      "changesLocal": "Altera apenas o tema deste navegador.",
+      "splitNeedsSync": "Para alterar a configuração do layout móvel, desative a configuração local.",
       "saveError": "Falha ao salvar a configuração do tema",
       "mobileSplitOffWarning": "Desativar esta opção exclui o tema móvel."
     }

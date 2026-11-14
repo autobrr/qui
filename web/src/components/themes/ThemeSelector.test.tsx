@@ -18,21 +18,25 @@ const fixture = vi.hoisted(() => {
   const makeTheme = (
     id: string,
     name: string,
-    options: Pick<Theme, "isPremium" | "isCustom" | "locked"> = {}
+    options: Partial<Pick<Theme, "isPremium" | "isCustom" | "locked" | "variations" | "cssVars">> = {}
   ): Theme => ({
     id,
     name,
     description: `${name} description`,
-    ...options,
     cssVars: {
       light: {},
       dark: {},
     },
+    ...options,
   })
 
   return {
     builtInThemes: [
-      makeTheme("nord", "Licensed theme", { isPremium: true }),
+      makeTheme("nord", "Licensed theme", {
+        isPremium: true,
+        variations: ["frost", "aurora"],
+        cssVars: { light: {}, dark: { "--variation-frost": "#88c0d0", "--variation-aurora": "#b48ead" } },
+      }),
       makeTheme("locked", "Locked theme", { isPremium: true, locked: true }),
       makeTheme("free", "Free theme"),
       makeTheme("gruvbox", "Community theme", { isPremium: true }),
@@ -55,7 +59,7 @@ const themeUtils = vi.hoisted(() => ({
 const customThemesHook = vi.hoisted(() => ({
   refreshCustomThemes: vi.fn<() => Promise<Array<{ id: string; filename: string; css: string }>>>(() => Promise.resolve([])),
 }))
-const themeHook = vi.hoisted(() => ({ theme: "free", setTheme: vi.fn(), setVariation: vi.fn() }))
+const themeHook = vi.hoisted(() => ({ theme: "free", mode: "dark", dark: true, setTheme: vi.fn(), setVariation: vi.fn() }))
 const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()) }))
 
 vi.mock("@/config/themes", () => ({
@@ -101,11 +105,7 @@ vi.mock("@/hooks/useTheme", () => ({
 }))
 
 vi.mock("@/utils/theme", () => ({
-  getThemeColors: () => ({
-    primary: "blue",
-    secondary: "gray",
-    accent: "green",
-  }),
+  isDarkMode: () => true,
   getThemeVariation: () => null,
   ...themeUtils,
 }))
@@ -113,6 +113,8 @@ vi.mock("@/utils/theme", () => ({
 vi.mock("@/components/themes/ThemeLayoutSettings", () => ({
   ThemeLayoutSettings: () => null,
 }))
+
+vi.mock("@/hooks/useThemeTargetHint", () => ({ useThemeTargetHint: () => null }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -131,11 +133,18 @@ beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
   license.hasPremiumAccess = true
+  themeHook.theme = "free"
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
 })
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function render(ui: ReactElement) {
@@ -151,6 +160,16 @@ function card(name: string): HTMLElement {
   const match = themeCards().find((item) => item.textContent?.includes(name))
   if (!match) throw new Error(`Theme card not found: ${name}`)
   return match
+}
+
+function openThemeMenu(): HTMLElement {
+  fireEvent.click(screen.getByRole("button", { name: "themes.menu.button" }))
+  return screen.getByRole("dialog")
+}
+
+// The theme in use adds themes.menu.inUse to the name of its row.
+function menuCheckbox(menu: HTMLElement, name: string): HTMLElement {
+  return within(menu).getByRole("checkbox", { name: (accessibleName) => accessibleName === name || accessibleName === `${name} themes.menu.inUse` })
 }
 
 async function chooseCardAction(name: string, action: "themes.custom.edit" | "themes.custom.remove") {
@@ -187,35 +206,216 @@ describe("ThemeSelector", () => {
     expect(screen.getByText("themes.custom.title")).toBeTruthy()
   })
 
-  it("offers Hide on a shown theme and Show on a hidden theme", () => {
+  it("narrows the catalog by group and by search", () => {
     render(<ThemeSelector />)
 
-    for (const name of ["Free theme", "Licensed theme", "Custom theme"]) {
-      expect(within(card(name)).getByRole("button", { name: "themes.selector.hideTheme" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.custom/ }))
+    expect(themeCards().map((card) => card.textContent)).toEqual([expect.stringContaining("Custom theme")])
+
+    fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.all/ }))
+    fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "community" } })
+    expect(themeCards().map((card) => card.textContent)).toEqual([expect.stringContaining("Community theme")])
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "nothing like this" } })
+    expect(within(screen.getByRole("list", { name: "themes.selector.title" })).queryAllByRole("listitem")).toEqual([])
+    expect(screen.getByText("themes.selector.noMatch")).toBeTruthy()
+  })
+
+  it("shows two rows of themes until Show all, and every match during a search", () => {
+    // jsdom lays out no grid, so the theme grid reports two columns here.
+    const realGetComputedStyle = window.getComputedStyle.bind(window)
+    const twoColumns = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const style = realGetComputedStyle(element, pseudo)
+      if (element.getAttribute("aria-label") !== "themes.selector.title") return style
+      return new Proxy(style, {
+        get: (target, property) => {
+          if (property === "gridTemplateColumns") return "100px 100px"
+          const value: unknown = Reflect.get(target, property)
+          return typeof value === "function" ? value.bind(target) : value
+        },
+      })
+    })
+    try {
+      render(<ThemeSelector />)
+
+      expect(themeCards()).toHaveLength(4)
+      const toggle = screen.getByRole("button", { name: "themes.selector.showAll" })
+      expect(toggle.getAttribute("aria-expanded")).toBe("false")
+
+      fireEvent.click(toggle)
+      expect(themeCards()).toHaveLength(5)
+      fireEvent.click(screen.getByRole("button", { name: "themes.selector.showFewer" }))
+      expect(themeCards()).toHaveLength(4)
+
+      fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "theme" } })
+      expect(themeCards()).toHaveLength(5)
+      expect(screen.queryByRole("button", { name: "themes.selector.showAll" })).toBeNull()
+
+      // An expanded grid collapses again when the search or the filter changes.
+      fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "" } })
+      fireEvent.click(screen.getByRole("button", { name: "themes.selector.showAll" }))
+      fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.all/ }))
+      expect(themeCards()).toHaveLength(4)
+    } finally {
+      twoColumns.mockRestore()
     }
-    expect(within(card("Community theme")).getByRole("button", { name: "themes.selector.showTheme" })).toBeTruthy()
+  })
+
+  it("marks a theme with color variations on its tile", () => {
+    render(<ThemeSelector />)
+
+    expect(card("Licensed theme").textContent).toContain("themes.selector.variationCount")
+    expect(card("Free theme").textContent).not.toContain("themes.selector.variationCount")
+  })
+
+  it("names the theme in use and sets one of its color variations", () => {
+    themeHook.theme = "nord"
+    render(<ThemeSelector />)
+
+    const current = screen.getByRole("region", { name: "Licensed theme" })
+    fireEvent.click(within(current).getByRole("button", { name: "aurora" }))
+
+    expect(themeHook.setTheme).toHaveBeenCalledWith("nord")
+    expect(themeHook.setVariation).toHaveBeenCalledWith("aurora")
+  })
+
+  it("opens Choose menu themes once when a link asks for it", () => {
+    const opened = vi.fn()
+    render(<ThemeSelector openMenu onMenuOpened={opened} />)
+
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  it("checks the themes that the theme menu lists", () => {
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    for (const name of ["Free theme", "Licensed theme", "Custom theme"]) {
+      expect(menuCheckbox(menu, name).getAttribute("aria-checked")).toBe("true")
+    }
+    expect(menuCheckbox(menu, "Community theme").getAttribute("aria-checked")).toBe("false")
+  })
+
+  it("keeps the theme in use checked and locked, because the menu always lists it", () => {
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ free: false }))
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    const inUse = menuCheckbox(menu, "Free theme")
+    expect(inUse.getAttribute("aria-checked")).toBe("true")
+    expect((inUse as HTMLButtonElement).disabled).toBe(true)
+    expect(within(menu).getByRole("checkbox", { name: "themes.groups.free themes.menu.groupCount" }).getAttribute("aria-checked")).toBe("true")
   })
 
   it("pushes a Hide choice through the client settings", async () => {
     const push = nextSettingsPush()
     render(<ThemeSelector />)
+    const menu = openThemeMenu()
 
-    fireEvent.click(within(card("Free theme")).getByRole("button", { name: "themes.selector.hideTheme" }))
+    fireEvent.click(menuCheckbox(menu, "Licensed theme"))
     window.dispatchEvent(new Event("pagehide"))
 
-    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ free: false }) })
-    expect(within(card("Free theme")).getByRole("button", { name: "themes.selector.showTheme" })).toBeTruthy()
+    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ nord: false }) })
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("false")
   })
 
   it("stores only the changes from the defaults", async () => {
-    localStorage.setItem("qui-theme-visibility", JSON.stringify({ gruvbox: true, free: false }))
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ gruvbox: true, nord: false }))
     const push = nextSettingsPush()
     render(<ThemeSelector />)
+    const menu = openThemeMenu()
 
-    fireEvent.click(within(card("Free theme")).getByRole("button", { name: "themes.selector.showTheme" }))
+    fireEvent.click(menuCheckbox(menu, "Licensed theme"))
     window.dispatchEvent(new Event("pagehide"))
 
     expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ gruvbox: true }) })
+  })
+
+  it("shows every theme of a group with one click, in one write", async () => {
+    const push = nextSettingsPush()
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    const group = within(menu).getByRole("checkbox", { name: "themes.groups.licensed themes.menu.groupCount" })
+    expect(group.getAttribute("aria-checked")).toBe("mixed")
+    fireEvent.click(group)
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ locked: true, gruvbox: true }) })
+    expect(group.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("leaves the locked theme in use out of the state of its group checkbox", async () => {
+    themeHook.theme = "nord"
+    const push = nextSettingsPush()
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+    const group = within(menu).getByRole("checkbox", { name: "themes.groups.licensed themes.menu.groupCount" })
+
+    expect(group.getAttribute("aria-checked")).toBe("false")
+    fireEvent.click(group)
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ locked: true, gruvbox: true }) })
+    expect(group.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("turns Reset to defaults into Undo reset until the next change", () => {
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ nord: false }))
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("true")
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.undo" }))
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("false")
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    fireEvent.click(menuCheckbox(menu, "Community theme"))
+    expect(within(menu).queryByRole("button", { name: "themes.menu.undo" })).toBeNull()
+  })
+
+  it("gives the focus back to Choose menu themes when the dialog closes", async () => {
+    render(<ThemeSelector />)
+    const trigger = screen.getByRole("button", { name: "themes.menu.button" })
+    trigger.focus()
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.done" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it("locks the group checkboxes during a search, because they stand for the whole group", () => {
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+    const group = () => within(menu).getByRole("checkbox", { name: "themes.groups.licensed themes.menu.groupCount" }) as HTMLButtonElement
+
+    fireEvent.change(within(menu).getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "community" } })
+    expect(within(menu).queryByRole("checkbox", { name: "Licensed theme" })).toBeNull()
+    expect(group().disabled).toBe(true)
+    expect(within(menu).getByText("themes.menu.groupsLocked")).toBeTruthy()
+
+    fireEvent.change(within(menu).getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "" } })
+    expect(group().disabled).toBe(false)
+    expect(within(menu).queryByText("themes.menu.groupsLocked")).toBeNull()
+  })
+
+  it("resets the theme menu to the defaults", async () => {
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ gruvbox: true, nord: false }))
+    const push = nextSettingsPush()
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(await push).toEqual({ "qui-theme-visibility": "{}" })
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("true")
+    expect(within(menu).getByRole("button", { name: "themes.menu.undo" })).toBeTruthy()
   })
 
   it("marks a locked theme with a lock, not a premium badge", () => {
@@ -226,7 +426,7 @@ describe("ThemeSelector", () => {
       .getAllByRole("listitem")
       .filter((card) => card.textContent?.includes("Locked theme"))
 
-    expect(lockedCard.textContent).toContain("themes.selector.locked")
+    expect(lockedCard.textContent).toContain("themes.selector.needsLicense")
     for (const card of within(catalog).getAllByRole("listitem")) {
       expect(card.textContent).not.toMatch(/premium/i)
     }

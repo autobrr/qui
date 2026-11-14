@@ -527,18 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Selezione del tema",
+      "title": "Temi",
       "loadingDescription": "Caricamento dei temi disponibili...",
-      "description": "Scegli tra i temi disponibili. Alcuni temi richiedono una licenza valida.",
+      "description": "Fai clic su un tema per usarlo.",
       "verificationUnavailable": "Verifica della licenza non disponibile. Il passaggio a un tema con licenza è temporaneamente disabilitato.",
       "notLoaded": "Temi con licenza non caricati",
       "notLoadedDescription": "Esegui",
-      "free": "Gratuito",
-      "locked": "Bloccato",
-      "lock": "Blocca",
-      "showTheme": "Mostra",
-      "hideTheme": "Nascondi",
-      "defaultThemeVisit": "qui mostra il tema predefinito per questa visita, perché l'indirizzo contiene ?theme=default. Seleziona un tema per terminarla."
+      "defaultThemeVisit": "qui mostra il tema predefinito per questa visita, perché l'indirizzo contiene ?theme=default. Seleziona un tema per terminarla.",
+      "search": "Cerca temi",
+      "filterLabel": "Filtra i temi",
+      "noMatch": "Nessun tema corrisponde a «{{query}}».",
+      "needsLicense": "Richiede una licenza",
+      "lockedCount_one": "{{count}} tema richiede una licenza.",
+      "lockedCount_other": "{{count}} temi richiedono una licenza.",
+      "showAll_one": "Mostra {{count}} tema",
+      "showAll_other": "Mostra tutti i {{count}} temi",
+      "showFewer": "Mostra meno temi",
+      "variationCount_one": "{{count}} variante di colore",
+      "variationCount_other": "{{count}} varianti di colore"
+    },
+    "current": {
+      "label": "In uso",
+      "colors": "Varianti di colore"
+    },
+    "groups": {
+      "all": "Tutti",
+      "free": "Gratuiti",
+      "licensed": "Con licenza",
+      "custom": "Personalizzati"
+    },
+    "menu": {
+      "button": "Scegli i temi del menu",
+      "title": "Scegli i temi del menu",
+      "description": "Scegli i temi che il menu dei temi mostra, nella barra superiore e nel piè di pagina sul telefono. Il tema in uso è sempre nel menu.",
+      "groupCount": "{{shown}} di {{total}}",
+      "groupsLocked": "Cancella la ricerca per usare le caselle dei gruppi.",
+      "inUse": "In uso",
+      "summary": "{{shown}} di {{total}} temi nel menu",
+      "reset": "Ripristina predefiniti",
+      "undo": "Annulla il ripristino",
+      "done": "Fatto"
     },
     "toasts": {
       "premiumRequired": "Licenza richiesta",
@@ -680,9 +708,8 @@
       }
     },
     "custom": {
-      "badge": "Personalizzato",
       "title": "Temi personalizzati",
-      "lockedTitle": "I temi personalizzati richiedono una licenza",
+      "description": "Scrivi o incolla un tema nell'editor dei temi, oppure metti file CSS di temi nella cartella dei temi sul server.",
       "lockedDescription": "Ottieni una licenza per aggiungere i tuoi temi: scrivi o incolla un tema nell'editor dei temi, oppure inserisci file CSS dei temi nella cartella dei temi sul server.",
       "unlockCta": "Ottieni una licenza",
       "refresh": "Aggiorna",
@@ -737,13 +764,15 @@
       }
     },
     "layout": {
+      "title": "Sincronizzazione del tema",
       "mobileSplit": "Tema separato per il layout mobile",
       "mobileSplitHelp": "Il layout mobile (una finestra larga meno di 768 px) e il layout desktop mantengono ciascuno il proprio tema, modalità e variante. Questa impostazione vale per tutti i browser.",
       "localOnly": "Mantieni locale il tema di questo browser",
       "localOnlyHelp": "Questo browser non prende il tema dal server e non invia al server le sue modifiche al tema. Questa impostazione vale solo per questo browser.",
       "changesMobile": "Modifica il tema mobile",
       "changesDesktop": "Modifica il tema desktop",
-      "changesLocal": "Modifica solo il tema di questo browser. Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
+      "changesLocal": "Modifica solo il tema di questo browser.",
+      "splitNeedsSync": "Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
       "saveError": "Impossibile salvare l'impostazione del tema",
       "mobileSplitOffWarning": "Disattivandola, il tema mobile viene eliminato."
     }
