@@ -38,7 +38,26 @@ const (
 	GroupByTracker  Grouping = "tracker"
 	GroupByCategory Grouping = "category"
 	GroupByTorrent  Grouping = "torrent"
+	// The release attributes come from the torrent names.
+	GroupByReleaseGroup Grouping = "releaseGroup"
+	GroupByResolution   Grouping = "resolution"
+	GroupBySource       Grouping = "source"
+	GroupByContentType  Grouping = "contentType"
 )
+
+// groupings are the values of Grouping.
+var groupings = []Grouping{GroupByTracker, GroupByCategory, GroupByTorrent, GroupByReleaseGroup, GroupByResolution, GroupBySource, GroupByContentType}
+
+// readsTorrentRows reports whether a grouping reads the daily bytes of each
+// torrent.
+func (g Grouping) readsTorrentRows() bool {
+	return g != GroupByTracker && g != GroupByCategory
+}
+
+// releaseAttribute reports whether a grouping is a release attribute.
+func (g Grouping) releaseAttribute() bool {
+	return g.readsTorrentRows() && g != GroupByTorrent
+}
 
 // TransferQuery asks for the transfer of one instance in the period
 // [From, To). A zero From is a period with no start. Times are UTC.
@@ -51,10 +70,14 @@ const (
 // keeps the groups with the most upload, the Baseline included, and orders
 // the rows by that upload.
 //
-// The grouping by torrent reads the daily bytes of each torrent, which are on
-// UTC days. A row of a torrent has the hash as its group, and a torrent counts
-// toward its Tracker group and category of now. It counts all its upload as
-// upload from Statistics cross-seeds when it has that flag now.
+// The groupings by torrent and by a release attribute read the daily bytes of
+// each torrent, which are on UTC days. A row of a torrent has the hash as its
+// group, and a torrent counts toward its Tracker group, category, and release
+// attributes of now. A torrent whose name holds no value of a release
+// attribute is in the group "". A torrent counts all its upload as upload
+// from Statistics cross-seeds when it has that flag now. The module keeps the
+// answers by a release attribute until the stored history of the instance
+// changes.
 type TransferQuery struct {
 	InstanceID int
 	From       time.Time
@@ -78,8 +101,9 @@ type Bytes struct {
 // TransferRow is the transfer of one group in one bucket. A row can be
 // coarser than the query asks: Width tells its bucket. Start is the start of
 // the bucket. A total covers each whole stored bucket that overlaps the
-// period, hours for Tracker groups, UTC days for categories and torrents, and
-// the folded years of a torrent, and starts at the first of them. GapSeconds
+// period, hours for Tracker groups, UTC days for categories, torrents, and
+// release attributes, and the folded years of a torrent, and starts at the
+// first of them. GapSeconds
 // is the length of the
 // Recording gaps that ended in the bucket. Baseline is set on the total rows
 // of a period with no start.
@@ -133,13 +157,30 @@ func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, 
 	if err != nil {
 		return nil, fmt.Errorf("read tracker customizations: %w", err)
 	}
+	if !q.GroupBy.releaseAttribute() {
+		return m.read(ctx, q, customizations)
+	}
+	key := keyOf(q)
+	rows, version, ok := m.answers.get(key, customizations)
+	if ok {
+		return rows, nil
+	}
+	if rows, err = m.read(ctx, q, customizations); err != nil {
+		return nil, err
+	}
+	m.answers.put(key, version, customizations, rows)
+	return rows, nil
+}
+
+func (m *Module) read(ctx context.Context, q TransferQuery, customizations []*models.TrackerCustomization) ([]TransferRow, error) {
 	m.foldMu.RLock()
 	defer m.foldMu.RUnlock()
 	a := answer{query: q, mapper: trackergroup.New(customizations), rows: make(map[rowKey]*TransferRow)}
-	switch q.GroupBy {
-	case GroupByCategory:
+	var err error
+	switch {
+	case q.GroupBy == GroupByCategory:
 		err = a.byCategory(ctx, m.store)
-	case GroupByTorrent:
+	case q.GroupBy.readsTorrentRows():
 		err = a.byTorrent(ctx, m.store)
 	default:
 		err = a.byTracker(ctx, m.store)
@@ -149,7 +190,7 @@ func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, 
 	}
 	rows := a.sorted()
 	// The torrent rows hold only the torrents of the group.
-	if q.Group != nil && q.GroupBy != GroupByTorrent {
+	if q.Group != nil && !q.GroupBy.readsTorrentRows() {
 		rows = slices.DeleteFunc(rows, func(r TransferRow) bool { return r.Group != *q.Group })
 	}
 	if q.Limit > 0 {
@@ -202,11 +243,11 @@ func (q TransferQuery) validate() error {
 	switch {
 	case q.Bucket != BucketHour && q.Bucket != BucketDay && q.Bucket != BucketTotal:
 		return fmt.Errorf("%w: unknown bucket %q", ErrInvalidQuery, q.Bucket)
-	case !slices.Contains([]Grouping{GroupByTracker, GroupByCategory, GroupByTorrent}, q.GroupBy):
+	case !slices.Contains(groupings, q.GroupBy):
 		return fmt.Errorf("%w: unknown grouping %q", ErrInvalidQuery, q.GroupBy)
 	case q.GroupOf != "" && q.GroupOf != q.GroupBy && q.GroupBy != GroupByTorrent:
 		return fmt.Errorf("%w: only the grouping by torrent takes the group of another grouping", ErrInvalidQuery)
-	case q.GroupOf != "" && !slices.Contains([]Grouping{GroupByTracker, GroupByCategory, GroupByTorrent}, q.GroupOf):
+	case q.GroupOf != "" && !slices.Contains(groupings, q.GroupOf):
 		return fmt.Errorf("%w: unknown grouping %q of the group", ErrInvalidQuery, q.GroupOf)
 	case q.GroupOf != "" && q.Group == nil:
 		return fmt.Errorf("%w: a grouping of the group needs a group", ErrInvalidQuery)

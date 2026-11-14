@@ -289,9 +289,10 @@ function localDateOfUtc(time: number): number {
 }
 
 /**
- * Builds the bars of the chart of one torrent: one bar for each UTC day that the period overlaps, because qui stores
- * the bytes of a torrent for each UTC day. A year row of a fold is one bar of the width of a year, in place of the
- * empty days of that year before the first day that holds bytes. A period with no start begins at the first recording.
+ * Builds the bars of a chart of torrent rows, of one torrent or of the torrents of one release attribute value: one bar
+ * for each UTC day that the period overlaps, because qui stores the bytes of a torrent for each UTC day. The year rows
+ * of a fold are one bar of the width of a year, in place of the empty days of that year before the first day that holds
+ * bytes. The rows of several instances add up. A period with no start begins at the first recording.
  */
 export function buildTorrentBars(rows: TransferHistoryRow[], period: StatisticsPeriod, since: Date | undefined): StatisticsBar[] | undefined {
   const start = period.from ?? since
@@ -303,25 +304,27 @@ export function buildTorrentBars(rows: TransferHistoryRow[], period: StatisticsP
   for (let day = utcDayStart(start); day <= lastDay; day += 24 * HOUR) {
     days.set(day, { start: localDateOfUtc(day), width: "day", bytes: new Map(), gapSeconds: 0 })
   }
-  const years: StatisticsBar[] = []
+  const years = new Map<number, StatisticsBar>()
   for (const row of rows) {
     if (!row.start) {
       continue
     }
     const time = new Date(row.start).getTime()
-    const bar = row.width === "year"
-      ? { start: localDateOfUtc(time), width: "year" as const, bytes: new Map(), gapSeconds: 0 }
-      : days.get(utcDayStart(new Date(time)))
+    let bar = row.width === "year" ? years.get(time) : days.get(utcDayStart(new Date(time)))
+    if (!bar && row.width === "year") {
+      bar = { start: localDateOfUtc(time), width: "year", bytes: new Map(), gapSeconds: 0 }
+      years.set(time, bar)
+    }
     if (!bar) {
       continue
     }
-    if (row.width === "year") {
-      years.push(bar)
-    }
-    bar.bytes.set(row.group, { uploaded: row.uploaded, downloaded: row.downloaded })
+    const bytes = bar.bytes.get(row.group) ?? { uploaded: 0, downloaded: 0 }
+    bytes.uploaded += row.uploaded
+    bytes.downloaded += row.downloaded
+    bar.bytes.set(row.group, bytes)
     bar.gapSeconds = Math.max(bar.gapSeconds, row.gapSeconds)
   }
-  for (const year of years) {
+  for (const year of years.values()) {
     const first = Date.UTC(new Date(year.start).getFullYear(), 0, 1)
     const next = Date.UTC(new Date(year.start).getFullYear() + 1, 0, 1)
     for (let day = first; day < next; day += 24 * HOUR) {
@@ -331,7 +334,7 @@ export function buildTorrentBars(rows: TransferHistoryRow[], period: StatisticsP
       days.delete(day)
     }
   }
-  return [...years, ...days.values()].sort((a, b) => a.start - b.start)
+  return [...years.values(), ...days.values()].sort((a, b) => a.start - b.start)
 }
 
 /** A torrent of the top torrents of a period, over the instances. */
@@ -457,12 +460,24 @@ export function barBytes(bar: StatisticsBar): Record<Metric, number> {
 /**
  * Returns the number of units of the chart that its bars cover after the first recording, so that an average leaves
  * out the time before it. A folded day of an hourly chart is a UTC day of 24 hours. With utcDays, each day bar stands
- * for the UTC day of its date, as the bars of buildCategoryBars do.
+ * for the UTC day of its date, as the bars of buildCategoryBars do, and a year bar of buildTorrentBars for the days up
+ * to the next bar.
  */
 export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, unit: ChartUnit, utcDays = false): number {
   const first = since?.getTime() ?? -Infinity
+  const utcDayOf = (time: number) => {
+    const date = new Date(time)
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  }
   let units = 0
-  for (const bar of bars) {
+  for (const [index, bar] of bars.entries()) {
+    if (bar.width === "year") {
+      const next = bars[index + 1]
+      const end = next ? utcDayOf(next.start) : Date.UTC(new Date(bar.start).getFullYear() + 1, 0, 1)
+      const from = Math.max(utcDayOf(bar.start), since ? utcDayStart(since) : -Infinity)
+      units += Math.max(0, (end - from) / (24 * HOUR))
+      continue
+    }
     const start = new Date(bar.start)
     const end = bar.width === "hour" || unit === "hour"
       ? bar.start + (bar.width === "hour" ? HOUR : 24 * HOUR)

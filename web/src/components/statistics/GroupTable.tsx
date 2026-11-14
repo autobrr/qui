@@ -18,6 +18,7 @@ import {
   recordedUnits,
   buildBars,
   buildCategoryBars,
+  buildTorrentBars,
   chartRange,
   type BarWidth,
   formatBuffer,
@@ -29,18 +30,20 @@ import {
   type StatisticsPeriod
 } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
-import type { TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryInstance, TransferHistoryRow } from "@/types"
+import type { TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryInstance, TransferHistoryRow } from "@/types"
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { Fragment, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-table"
 
+const GROUPINGS: TableGrouping[] = ["tracker", "category", "releaseGroup", "resolution", "source", "contentType"]
+
 type Live = NonNullable<GroupTotals["live"]>
 
 interface GroupTableProps {
-  grouping: TransferHistoryGrouping
-  onGroupingChange: (grouping: TransferHistoryGrouping) => void
+  grouping: TableGrouping
+  onGroupingChange: (grouping: TableGrouping) => void
   // Undefined while the rows load.
   rows?: GroupTotals[]
   error?: Error
@@ -57,7 +60,7 @@ interface GroupTableProps {
   displayName: (group: string, grouping: TransferHistoryGrouping) => string
 }
 
-/** The table of the period by Tracker group or by category. A click on a row opens its detail band below it. */
+/** The table of the period by Tracker group, category, or release attribute. A click on a row opens its detail band below it. */
 export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded, liveError, period, since, series, instances, seriesGroups, displayName }: GroupTableProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -87,21 +90,28 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
     ]
   }
   const columns = 5 + (tracker ? 3 : 0)
+  const groupingLabel = (value: TableGrouping) => ({
+    tracker: t("table.groupings.tracker"),
+    category: t("table.groupings.category"),
+    releaseGroup: t("table.groupings.releaseGroup"),
+    resolution: t("table.groupings.resolution"),
+    source: t("table.groupings.source"),
+    contentType: t("table.groupings.contentType"),
+  })[value]
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3 px-6">
-        <span className="text-xs text-muted-foreground">{t("table.groupBy")}</span>
+      <div className="flex items-center gap-3 overflow-x-auto px-6">
+        <span className="shrink-0 text-xs text-muted-foreground">{t("table.groupBy")}</span>
         <Tabs
           value={grouping}
           onValueChange={value => {
             setOpen(undefined)
-            onGroupingChange(value as TransferHistoryGrouping)
+            onGroupingChange(value as TableGrouping)
           }}
         >
           <TabsList>
-            <TabsTrigger value="tracker" className="px-3">{t("table.groupings.tracker")}</TabsTrigger>
-            <TabsTrigger value="category" className="px-3">{t("table.groupings.category")}</TabsTrigger>
+            {GROUPINGS.map(value => <TabsTrigger key={value} value={value} className="px-3">{groupingLabel(value)}</TabsTrigger>)}
           </TabsList>
         </Tabs>
       </div>
@@ -117,7 +127,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-6">{tracker ? t("table.columns.tracker") : t("table.columns.category")}</TableHead>
+                <TableHead className="pl-6">{groupingLabel(grouping)}</TableHead>
                 <TableHead className="text-right">{t("table.columns.uploaded")}</TableHead>
                 <TableHead className="text-right">{t("table.columns.downloaded")}</TableHead>
                 <TableHead className="text-right">{t("table.columns.ratio")}</TableHead>
@@ -186,7 +196,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
       )}
       <div className="space-y-1 px-6 text-xs text-muted-foreground">
         {tracker && liveError && <p className="text-destructive">{t("table.liveError", { message: liveError.message })}</p>}
-        {tracker ? <p>{t("table.liveNote")}</p> : <p>{t("table.categoryNote")}</p>}
+        {tracker ? <p>{t("table.liveNote")}</p> : grouping === "category" ? <p>{t("table.categoryNote")}</p> : <p>{t("table.releaseNote")}</p>}
         {withBaseline && <p>{t("table.baselineNote")}</p>}
       </div>
     </div>
@@ -229,8 +239,8 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const hour12 = usePersistedDateTimePreferences().preferences.timeFormat === "12h"
-  // qui stores the category totals for each day, so the chart of a category shows days.
-  const unit: ChartUnit = grouping === "category" ? "day" : period.unit
+  // qui stores the category totals and the bytes of each torrent for each UTC day, so only a Tracker group has hours.
+  const unit: ChartUnit = grouping === "tracker" ? period.unit : "day"
   const transfer = useTransferHistoryRows(instances, {
     from: period.from,
     to: period.to,
@@ -254,12 +264,16 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
     if (grouping === "category") {
       return buildCategoryBars(shown.rows, shown.period, since)
     }
+    if (grouping !== "tracker") {
+      // A release attribute reads the torrent rows, which hold a year row for each year that qui folded.
+      return buildTorrentBars(shown.rows.flat(), shown.period, since)
+    }
     const range = chartRange(shown.period, since)
     return range && buildBars(shown.rows, range, unit)
   }, [transfer.rows, period, last, key, since, unit, grouping])
   const best = bars && bestBar(bars, unit)
   const uploaded = bars?.reduce((sum, bar) => sum + barBytes(bar).uploaded, 0) ?? 0
-  const recordedBars = bars && recordedUnits(bars, since, unit, grouping === "category")
+  const recordedBars = bars && recordedUnits(bars, since, unit, grouping !== "tracker")
 
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 })
   const formatStart = (start: number, width: BarWidth) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })

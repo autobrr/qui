@@ -508,6 +508,37 @@ describe("Statistics", () => {
     expect(within(table).queryByText("table.columns.torrents")).toBeNull()
   })
 
+  it("shows a spinner while the query of a release attribute runs, then its rows with None for no value", async () => {
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" && bucket === "total" ? [row("1080p", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []
+    renderPage()
+    const tab = await screen.findByText("table.groupings.resolution")
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+    fireEvent.mouseDown(tab, { button: 0 })
+
+    await vi.waitFor(() => expect(requests.some(request => request.groupBy === "resolution" && request.bucket === "total")).toBe(true))
+    const tableCard = screen.getByText("table.title").closest("[data-slot=card]")
+    expect(screen.queryByRole("table")).toBeNull()
+    expect(tableCard?.querySelector(".animate-spin")).not.toBeNull()
+
+    release()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "1080p")).toEqual(["1080p", "2 KiB", "0 B", "∞", "+2 KiB"]))
+    expect(cells(table, "table.none")[1]).toBe("1 KiB")
+    expect(within(table).queryByText("table.columns.torrents")).toBeNull()
+  })
+
+  it("opens the detail band of a release attribute row from the days of that value", async () => {
+    answer = ({ bucket, groupBy }) => groupBy === "releaseGroup" && bucket === "total" ? [row("", 1024, 0, { width: "total" })] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("table.groupings.releaseGroup"), { button: 0 })
+    fireEvent.click(await within(await screen.findByRole("table")).findByText("table.none"))
+
+    await vi.waitFor(() => expect(requests.find(request => request.groupBy === "releaseGroup" && request.bucket === "day")).toMatchObject({ group: "", timeZone: null }))
+    expect(await screen.findByTestId("group-chart")).toBeTruthy()
+  })
+
   it("includes the Baseline in a row of all time", async () => {
     answer = ({ bucket }) => bucket === "total" ? [row("a.test", 1024, 0, { start: undefined, width: "total", baseline: { uploaded: 4096, downloaded: 0, statisticsCrossSeedUploaded: 0 } })] : []
     renderPage()
@@ -569,7 +600,7 @@ describe("Statistics", () => {
 
     fireEvent.mouseDown(screen.getByText("table.groupings.category"), { button: 0 })
 
-    await vi.waitFor(() => expect(within(screen.getByRole("table")).queryByText("table.columns.category")).toBeTruthy())
+    await vi.waitFor(() => expect(within(screen.getByRole("table")).queryByText("table.groupings.category")).toBeTruthy())
     await vi.waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("row").length).toBeGreaterThan(2))
     expect(screen.getByRole("table").textContent).not.toContain("private-category")
   })

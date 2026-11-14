@@ -57,17 +57,21 @@
   "allTimeNote": "Celkem zahrnuje výchozí stav: bajty, které torrenty měly, když je qui poprvé zaznamenal. Graf výchozí stav neukazuje, protože nemá datum.",
   "serverStatisticsNote": "Tato čísla sčítají přenos jednotlivých torrentů. Statistiky serveru na nástěnce čtou čítače qBittorrentu, které počítají i provoz protokolu, proto se čísla liší.",
   "table": {
-    "title": "Podle trackeru nebo kategorie",
+    "title": "Podle skupiny",
     "descriptionTracker": "Přenos za období pro každý tracker. Klikněte na řádek, abyste otevřeli jeho detail.",
     "descriptionCategory": "Přenos za období pro každou kategorii, pod kategorií, kterou měl každý torrent, když se bajty přenesly. Klikněte na řádek, abyste otevřeli jeho detail.",
+    "descriptionRelease": "Přenos za období pro každou hodnotu, kterou qui čte z názvů torrentů. Kliknutím na řádek otevřete jeho podrobnosti.",
     "groupBy": "Seskupit podle",
     "groupings": {
       "tracker": "Tracker",
-      "category": "Kategorie"
+      "category": "Kategorie",
+      "releaseGroup": "Release skupina",
+      "resolution": "Rozlišení",
+      "source": "Zdroj",
+      "contentType": "Typ obsahu"
     },
     "columns": {
       "tracker": "Tracker",
-      "category": "Kategorie",
       "uploaded": "Odesláno",
       "downloaded": "Staženo",
       "ratio": "Poměr",
@@ -79,9 +83,11 @@
     "seededValue": "{{value}}×",
     "total": "Celkem",
     "noCategory": "Bez kategorie",
+    "none": "Žádné",
     "liveError": "Torrenty, které jsou nyní v qBittorrentu, se nepodařilo načíst: {{message}}",
     "liveNote": "Torrenty, Velikost a Sdíleno X krát popisují torrenty, které jsou nyní v qBittorrentu, ne období. Sdíleno X krát je jejich celkové odeslání dělené jejich velikostí.",
     "categoryNote": "qui ukládá součty kategorií pro každý den UTC. Období, které začíná nebo končí uvnitř dne UTC, počítá celý tento den, takže součet kategorií se může lišit od čísel nahoře.",
+    "releaseNote": "qui čte tyto hodnoty z názvů torrentů a ukládá bajty každého torrentu pro každý den UTC. Období, které začíná nebo končí uprostřed dne UTC, započítá celý den, takže součet řádků se může lišit od čísel nahoře.",
     "baselineNote": "Pro celé období zahrnuje každý řádek výchozí stav svých torrentů."
   },
   "detail": {

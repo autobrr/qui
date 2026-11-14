@@ -89,6 +89,7 @@ type Module struct {
 	customizations *models.TrackerCustomizationStore
 	parser         *releases.Parser
 	notices        *systemnotice.Module
+	answers        answerCache
 
 	// settingsMu keeps the order of two SetSettings calls.
 	settingsMu sync.Mutex
@@ -478,6 +479,7 @@ func (m *Module) write(inst *instance) error {
 	defer cancel()
 	w := inst.changes()
 	ids, err := m.store.Write(ctx, w)
+	m.answers.changed(inst.id)
 	if err != nil {
 		switch m.outcome(err, w) {
 		case stored:
