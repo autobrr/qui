@@ -51,9 +51,9 @@ type Monitor struct {
 	// stored is the dismiss in the database. It differs from dismissed after
 	// a failed write, and the next check writes it again.
 	stored bool
-	// failureSeen is true when "Recording stopped" was open at the last check
-	// or dismiss, so that only a new failure undoes a dismiss.
-	failureSeen bool
+	// failureSeen is the opening of "Recording stopped" at the last check or
+	// dismiss, so that only a new opening undoes a dismiss.
+	failureSeen uint64
 	lastErr     string
 }
 
@@ -125,8 +125,8 @@ func (m *Monitor) Check(ctx context.Context) error {
 	case d.freeBytes >= limit+limit/10:
 		m.low = false
 	}
-	failure := m.notices.IsOpen(systemnotice.RecordingStopped)
-	if !m.low || (failure && !m.failureSeen) {
+	failure, failed := m.notices.Opening(systemnotice.RecordingStopped)
+	if !m.low || (failed && failure != m.failureSeen) {
 		m.dismissed = false
 	}
 	m.failureSeen = failure
@@ -151,7 +151,8 @@ func (m *Monitor) dismiss(ctx context.Context) error {
 		return err
 	}
 	m.dismissed = true
-	m.failureSeen = m.notices.IsOpen(systemnotice.RecordingStopped)
+	m.failureSeen, _ = m.notices.Opening(systemnotice.RecordingStopped)
+	m.notices.Close(systemnotice.LowDisk)
 	return nil
 }
 

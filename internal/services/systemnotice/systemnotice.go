@@ -89,6 +89,8 @@ type Notice struct {
 	Reason   string    `json:"reason,omitempty"`
 	Cause    string    `json:"cause"`
 	OpenedAt time.Time `json:"openedAt"`
+
+	opening uint64
 }
 
 type Module struct {
@@ -96,6 +98,7 @@ type Module struct {
 
 	mu        sync.Mutex
 	open      map[Kind]Notice
+	openings  uint64
 	onDismiss map[Kind]func(context.Context) error
 }
 
@@ -117,7 +120,8 @@ func (m *Module) OpenWithReason(kind Kind, reason, cause string) {
 	m.mu.Lock()
 	notice, isOpen := m.open[kind]
 	if !isOpen {
-		notice = Notice{Kind: kind, Severity: definitions[kind].severity, OpenedAt: time.Now().UTC()}
+		m.openings++
+		notice = Notice{Kind: kind, Severity: definitions[kind].severity, OpenedAt: time.Now().UTC(), opening: m.openings}
 	}
 	notice.Reason = reason
 	notice.Cause = cause
@@ -135,16 +139,18 @@ func (m *Module) Close(kind Kind) {
 	delete(m.open, kind)
 }
 
-// IsOpen reports whether the notice of kind is open.
-func (m *Module) IsOpen(kind Kind) bool {
+// Opening reports whether the notice of kind is open, with a number that
+// differs for each time it opened.
+func (m *Module) Opening(kind Kind) (opening uint64, isOpen bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, isOpen := m.open[kind]
-	return isOpen
+	notice, isOpen := m.open[kind]
+	return notice.opening, isOpen
 }
 
-// OnDismiss sets fn to run when the user dismisses the notice of kind. When fn
-// returns an error, the notice stays open and Dismiss returns that error.
+// OnDismiss sets fn to run in place of the close when the user dismisses the
+// notice of kind. fn closes the notice. When fn returns an error, Dismiss
+// returns that error.
 func (m *Module) OnDismiss(kind Kind, fn func(context.Context) error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -161,9 +167,7 @@ func (m *Module) Dismiss(ctx context.Context, kind Kind) error {
 	fn := m.onDismiss[kind]
 	m.mu.Unlock()
 	if fn != nil {
-		if err := fn(ctx); err != nil {
-			return err
-		}
+		return fn(ctx)
 	}
 	m.Close(kind)
 	return nil

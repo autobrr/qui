@@ -97,7 +97,8 @@ func newMonitor(t *testing.T, db *database.DB, disk *fakeDisk) (*Monitor, *syste
 
 func requireLowDisk(t *testing.T, notices *systemnotice.Module, wantOpen bool) {
 	t.Helper()
-	require.Equal(t, wantOpen, notices.IsOpen(systemnotice.LowDisk))
+	_, isOpen := notices.Opening(systemnotice.LowDisk)
+	require.Equal(t, wantOpen, isOpen)
 }
 
 func TestTheNoticeOpensBelowTheLimit(t *testing.T) {
@@ -209,6 +210,18 @@ func TestTheDismissRule(t *testing.T) {
 				require.NoError(t, monitor.Check(t.Context()))
 			},
 			wantOpen: false,
+		},
+		{
+			name: "opens again after a failed write that closed and opened again between two checks",
+			after: func(t *testing.T, monitor *Monitor, notices *systemnotice.Module, _ *fakeDisk) {
+				notices.Open(systemnotice.RecordingStopped, "database or disk is full")
+				require.NoError(t, monitor.Check(t.Context()))
+				require.NoError(t, notices.Dismiss(t.Context(), systemnotice.LowDisk))
+				notices.Close(systemnotice.RecordingStopped)
+				notices.Open(systemnotice.RecordingStopped, "database or disk is full")
+				require.NoError(t, monitor.Check(t.Context()))
+			},
+			wantOpen: true,
 		},
 		{
 			name: "opens again after the next failed write",
