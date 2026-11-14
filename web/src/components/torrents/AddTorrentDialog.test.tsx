@@ -270,6 +270,7 @@ it("ignores Return on an empty tag search and matches every word of a category s
   expect(sent.category).toBe("tv/x265")
 })
 
+// regression: #4129
 it("leaves Return alone while an input method composes text", async () => {
   metadataResult.data = { categories: {}, tags: ["autobrr"] }
   const ui = renderColdDialog()
