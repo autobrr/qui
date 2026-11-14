@@ -31,6 +31,7 @@ afterEach(() => {
 const base: DatabaseShrinkStatus = { available: true, fileBytes: 1024, freeBytes: 1 << 30, needBytes: 2048, restartAvailable: true, pending: false }
 
 describe("DatabaseShrinkProvider", () => {
+  // regression: #4109
   it("shows each shrink result one time and dismisses it", async () => {
     let status: DatabaseShrinkStatus = { ...base, result: { beforeBytes: 300, afterBytes: 100 } }
     let dismissals = 0
