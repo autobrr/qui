@@ -62,6 +62,42 @@
   "errors": {
     "load": "Statistiky se nepodařilo načíst: {{message}}"
   },
+  "events": {
+    "title": "Přidané a smazané",
+    "description": "Torrenty, které byly přidány, dokončeny a smazány v každém dni UTC.",
+    "added": "Přidáno",
+    "completed": "Dokončeno",
+    "deleted": "Smazáno",
+    "empty": "V tomto období nebyl žádný torrent přidán, dokončen ani smazán."
+  },
+  "deletes": {
+    "title": "Smazané torrenty",
+    "description": "Kdo smazal každý torrent a s jakými hodnotami skončil. Nejnovější smazání je první.",
+    "filters": {
+      "all": "Vše",
+      "automation": "Automatizace",
+      "user": "Vy",
+      "other": "Ostatní"
+    },
+    "causes": {
+      "automation": "Automatizace",
+      "user": "Vy",
+      "backupRestore": "Obnova zálohy",
+      "clientProxy": "Klíč Client Proxy",
+      "outside": "Mimo qui"
+    },
+    "columns": {
+      "time": "Smazáno",
+      "cause": "Smazal",
+      "uploaded": "Konečný upload",
+      "ratio": "Konečný poměr",
+      "seeded": "Doba seedování"
+    },
+    "empty": "V tomto období nebyl smazán žádný torrent.",
+    "shown": "{{shown}} z {{total}}",
+    "more": "Zobrazit další",
+    "final": "Poměr {{ratio}} · Doba seedování {{seeded}}"
+  },
   "allTimeNote": "Celkem zahrnuje výchozí stav: bajty, které torrenty měly, když je qui poprvé zaznamenal. Graf výchozí stav neukazuje, protože nemá datum.",
   "serverStatisticsNote": "Tato čísla sčítají přenos jednotlivých torrentů. Statistiky serveru na nástěnce čtou čítače qBittorrentu, které počítají i provoz protokolu, proto se čísla liší.",
   "table": {

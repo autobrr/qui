@@ -154,7 +154,9 @@ import type {
   TransferHistoryInstance,
   TransferHistoryLibraryRow,
   TransferHistoryQuery,
-  TransferHistoryRow
+  TransferHistoryRow,
+  TransferHistoryDeletesAnswer,
+  TransferHistoryDeletesQuery
 } from "@/types"
 import type {
   ArrInstance,
@@ -904,6 +906,17 @@ class ApiClient {
   async getTrackerGroups(instanceId: number): Promise<LiveTrackerGroup[]> {
     const response = await this.request<{ groups: LiveTrackerGroup[] }>(`/instances/${instanceId}/tracker-groups`)
     return response.groups
+  }
+
+  async getTransferHistoryDeletes(instanceId: number, query: TransferHistoryDeletesQuery): Promise<TransferHistoryDeletesAnswer> {
+    const params = new URLSearchParams({ to: query.to.toISOString(), limit: String(query.limit), offset: String(query.offset) })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    if (query.cause) {
+      params.set("cause", query.cause)
+    }
+    return this.request<TransferHistoryDeletesAnswer>(`/instances/${instanceId}/transfer-history/deletes?${params}`)
   }
 
   async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {

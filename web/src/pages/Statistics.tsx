@@ -4,6 +4,8 @@
  */
 
 import { PageHeader } from "@/components/layout/PageHeader"
+import { DeletedTorrents } from "@/components/statistics/DeletedTorrents"
+import { EventsChart } from "@/components/statistics/EventsChart"
 import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
@@ -36,6 +38,7 @@ import {
   type StatisticsPeriod,
   type TopTorrent
 } from "@/lib/statistics"
+import { buildEventDays } from "@/lib/statistics-events"
 import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
 import { cn, formatBytes } from "@/lib/utils"
 import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
@@ -197,6 +200,7 @@ export function Statistics() {
   const unique = libraryPoints && newestUniqueSize(libraryPoints)
   const newestCount = [...libraryPoints ?? []].reverse().find(point => point.torrents !== null)?.torrents ?? undefined
   const growthError = statusQuery.error ?? library.error
+  const eventDays = useMemo(() => shown.library && (buildEventDays(shown.library, shown.period, since) ?? []), [shown.library, shown.period, since])
 
   // The tracker rows of the table add up the rows of the chart, so that they add up to the numbers at the top.
   const tableRows = useMemo(() => {
@@ -373,7 +377,43 @@ export function Statistics() {
             )}
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("events.title")}</CardTitle>
+            <CardDescription>{t("events.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {growthError ? (
+              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
+            ) : !eventDays ? (
+              <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            ) : eventDays.some(day => day.added + day.completed + day.deleted > 0) ? (
+              <EventsChart days={eventDays} />
+            ) : (
+              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("events.empty")}</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      <Card className="gap-0 overflow-hidden pb-4">
+        <CardHeader className="pb-4">
+          <CardTitle>{t("deletes.title")}</CardTitle>
+          <CardDescription>{t("deletes.description")}</CardDescription>
+        </CardHeader>
+        {statusQuery.error ? (
+          <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
+        ) : ready ? (
+          <DeletedTorrents
+            scope={`${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`}
+            instances={selected}
+            period={period}
+            displayGroup={displayName}
+          />
+        ) : (
+          <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+        )}
+      </Card>
 
       <div className="space-y-1 text-xs text-muted-foreground">
         {!period.from && <p>{t("allTimeNote")}</p>}

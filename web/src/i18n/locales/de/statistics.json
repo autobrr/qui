@@ -61,6 +61,42 @@
   "errors": {
     "load": "Die Statistiken konnten nicht geladen werden: {{message}}"
   },
+  "events": {
+    "title": "Hinzugefügt und gelöscht",
+    "description": "Die Torrents, die an jedem UTC-Tag hinzugefügt, abgeschlossen und gelöscht wurden.",
+    "added": "Hinzugefügt",
+    "completed": "Abgeschlossen",
+    "deleted": "Gelöscht",
+    "empty": "In diesem Zeitraum wurde kein Torrent hinzugefügt, abgeschlossen oder gelöscht."
+  },
+  "deletes": {
+    "title": "Gelöschte Torrents",
+    "description": "Wer jeden Torrent gelöscht hat und mit welchen Werten er endete. Die neueste Löschung steht oben.",
+    "filters": {
+      "all": "Alle",
+      "automation": "Automatisierungen",
+      "user": "Du",
+      "other": "Andere"
+    },
+    "causes": {
+      "automation": "Automatisierung",
+      "user": "Du",
+      "backupRestore": "Backup-Wiederherstellung",
+      "clientProxy": "Client-Proxy-Schlüssel",
+      "outside": "Außerhalb von qui"
+    },
+    "columns": {
+      "time": "Gelöscht",
+      "cause": "Gelöscht von",
+      "uploaded": "Finaler Upload",
+      "ratio": "Finale Ratio",
+      "seeded": "Seed-Dauer"
+    },
+    "empty": "In diesem Zeitraum wurde kein Torrent gelöscht.",
+    "shown": "{{shown}} von {{total}}",
+    "more": "Mehr anzeigen",
+    "final": "Ratio {{ratio}} · Seed-Dauer {{seeded}}"
+  },
   "allTimeNote": "Gesamt enthält die Ausgangsbasis: die Bytes, die die Torrents hatten, als qui sie zuerst aufgezeichnet hat. Das Diagramm zeigt die Ausgangsbasis nicht, da sie kein Datum hat.",
   "serverStatisticsNote": "Diese Zahlen addieren den Transfer jedes Torrents. Die Serverstatistik im Dashboard liest die Zähler von qBittorrent, die auch Protokollverkehr zählen, daher weichen die Zahlen ab.",
   "table": {

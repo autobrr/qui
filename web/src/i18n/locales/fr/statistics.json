@@ -62,6 +62,42 @@
   "errors": {
     "load": "Impossible de charger les statistiques : {{message}}"
   },
+  "events": {
+    "title": "Ajoutés et supprimés",
+    "description": "Les torrents ajoutés, terminés et supprimés pour chaque jour UTC.",
+    "added": "Ajoutés",
+    "completed": "Terminés",
+    "deleted": "Supprimés",
+    "empty": "Aucun torrent ajouté, terminé ou supprimé sur cette période."
+  },
+  "deletes": {
+    "title": "Torrents supprimés",
+    "description": "Qui a supprimé chaque torrent, et ses valeurs finales. La suppression la plus récente est en premier.",
+    "filters": {
+      "all": "Tous",
+      "automation": "Automatisations",
+      "user": "Vous",
+      "other": "Autres"
+    },
+    "causes": {
+      "automation": "Automatisation",
+      "user": "Vous",
+      "backupRestore": "Restauration de sauvegarde",
+      "clientProxy": "Clé Client Proxy",
+      "outside": "Hors de qui"
+    },
+    "columns": {
+      "time": "Supprimé",
+      "cause": "Supprimé par",
+      "uploaded": "Envoi final",
+      "ratio": "Ratio final",
+      "seeded": "Durée de partage"
+    },
+    "empty": "Aucun torrent supprimé sur cette période.",
+    "shown": "{{shown}} sur {{total}}",
+    "more": "Afficher plus",
+    "final": "Ratio {{ratio}} · Durée de partage {{seeded}}"
+  },
   "allTimeNote": "Depuis le début inclut la base de départ : les octets que les torrents avaient quand qui les a enregistrés pour la première fois. Le graphique ne montre pas la base de départ, car elle n’a pas de date.",
   "serverStatisticsNote": "Ces chiffres additionnent le transfert de chaque torrent. Les statistiques du serveur sur le tableau de bord lisent les compteurs de qBittorrent, qui comptent aussi le trafic du protocole : les chiffres diffèrent donc.",
   "table": {

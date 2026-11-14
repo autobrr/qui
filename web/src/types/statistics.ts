@@ -78,3 +78,41 @@ export interface LiveTrackerGroup {
   size: number
   uploaded: number
 }
+
+export type TransferHistoryCauseKind = "automation" | "user" | "backupRestore" | "clientProxy" | "outside"
+
+/** Who deleted a torrent. name is the name of the automation rule or of the Client Proxy API key. */
+export interface TransferHistoryDeleteCause {
+  kind: TransferHistoryCauseKind
+  name?: string
+}
+
+/** One delete of a torrent. ratio and seedingSeconds are absent when qui did not read the torrent before the delete. */
+export interface TransferHistoryDeleteEvent {
+  time: string
+  hash: string
+  name: string
+  trackerGroup: string
+  uploaded: number
+  downloaded: number
+  ratio?: number
+  seedingSeconds?: number
+  cause: TransferHistoryDeleteCause
+}
+
+/** A filter of the deletes. "" is all causes. "other" is a backup restore, a Client Proxy API key, and outside qui. */
+export type TransferHistoryCauseFilter = "" | "automation" | "user" | "other"
+
+export interface TransferHistoryDeletesQuery {
+  from?: Date
+  to: Date
+  cause: TransferHistoryCauseFilter
+  limit: number
+  offset: number
+}
+
+/** A page of deletes with the newest first. counts covers the whole period. */
+export interface TransferHistoryDeletesAnswer {
+  deletes: TransferHistoryDeleteEvent[]
+  counts: { automation: number; user: number; other: number }
+}

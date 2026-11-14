@@ -60,6 +60,42 @@
   "errors": {
     "load": "통계를 불러올 수 없습니다: {{message}}"
   },
+  "events": {
+    "title": "추가 및 삭제",
+    "description": "UTC 기준 날짜별로 추가, 완료, 삭제된 토렌트입니다.",
+    "added": "추가",
+    "completed": "완료",
+    "deleted": "삭제",
+    "empty": "이 기간에 추가, 완료 또는 삭제된 토렌트가 없습니다."
+  },
+  "deletes": {
+    "title": "삭제된 토렌트",
+    "description": "각 토렌트를 삭제한 주체와 마지막 수치입니다. 가장 최근 삭제가 맨 위에 있습니다.",
+    "filters": {
+      "all": "전체",
+      "automation": "자동화",
+      "user": "사용자",
+      "other": "기타"
+    },
+    "causes": {
+      "automation": "자동화",
+      "user": "사용자",
+      "backupRestore": "백업 복원",
+      "clientProxy": "Client Proxy 키",
+      "outside": "qui 외부"
+    },
+    "columns": {
+      "time": "삭제 시각",
+      "cause": "삭제 주체",
+      "uploaded": "최종 업로드",
+      "ratio": "최종 비율",
+      "seeded": "시딩 시간"
+    },
+    "empty": "이 기간에 삭제된 토렌트가 없습니다.",
+    "shown": "{{total}}개 중 {{shown}}개",
+    "more": "더 보기",
+    "final": "비율 {{ratio}} · 시딩 시간 {{seeded}}"
+  },
   "allTimeNote": "전체 기간에는 기준값이 포함됩니다. 기준값은 qui가 토렌트를 처음 기록할 때 토렌트가 가지고 있던 바이트입니다. 기준값은 날짜가 없으므로 차트에 표시되지 않습니다.",
   "serverStatisticsNote": "이 숫자는 각 토렌트의 전송량을 합한 것입니다. 대시보드의 서버 통계는 프로토콜 트래픽도 세는 qBittorrent의 카운터를 읽으므로 숫자가 다릅니다.",
   "table": {

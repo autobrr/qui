@@ -12,6 +12,7 @@ import "@/i18n"
 import { Statistics } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
 import type { StatisticsBar } from "@/lib/statistics"
+import type { EventDay } from "@/lib/statistics-events"
 import type { LibraryPoint } from "@/lib/statistics-library"
 import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryLibraryRow, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
 
@@ -44,6 +45,11 @@ vi.mock("@/components/statistics/TransferChart", () => ({
 vi.mock("@/components/statistics/LibraryGrowthChart", () => ({
   LibraryGrowthChart: ({ points }: { points: LibraryPoint[] }) => (
     <div data-testid="growth-chart" data-points={JSON.stringify(points.map(point => [point.torrents, point.totalSize, point.uniqueSize]))} />
+  ),
+}))
+vi.mock("@/components/statistics/EventsChart", () => ({
+  EventsChart: ({ days }: { days: EventDay[] }) => (
+    <div data-testid="events-chart" data-events={JSON.stringify(days.map(day => [day.added, day.completed, day.deleted]))} />
   ),
 }))
 vi.mock("@/components/statistics/GroupChart", () => ({
@@ -157,6 +163,7 @@ beforeEach(() => {
   libraryAnswer = () => []
   server.use(
     http.get("*/api/instances/:id/transfer-history/library", ({ params }) => HttpResponse.json({ rows: libraryAnswer(Number(params.id)) })),
+    http.get("*/api/instances/:id/transfer-history/deletes", () => HttpResponse.json({ deletes: [], counts: { automation: 0, user: 0, other: 0 } })),
     http.get("*/api/instances/:id/tracker-groups", ({ params }) => HttpResponse.json({ groups: liveGroups(Number(params.id)) })),
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/instances", () => HttpResponse.json(configuredIds.map(id => ({ id, name: `instance ${id}`, isActive: true })))),
@@ -221,6 +228,41 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(requests.filter(request => request.bucket === "hour").length).toBe(2))
     expect(requests.find(request => request.bucket === "hour")).toMatchObject({ from: new Date(2026, 0, 5).toISOString(), to: new Date(2026, 0, 7).toISOString(), timeZone: null })
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
+  })
+
+  // regression: #4132
+  it("does not keep the deleted torrents of a custom range when only its last day changes", async () => {
+    let releaseSecond = () => {}
+    const second = new Promise<void>(resolve => {
+      releaseSecond = resolve
+    })
+    const firstTo = new Date(2026, 0, 7).toISOString()
+    server.use(http.get("*/api/instances/:id/transfer-history/deletes", async ({ request }) => {
+      const to = new URL(request.url).searchParams.get("to")
+      if (to !== firstTo) {
+        await second
+      }
+      const name = to === firstTo ? "First.Range-GRP" : "Second.Range-GRP"
+      return HttpResponse.json({
+        deletes: [{ time: new Date(2026, 0, 5, 12).toISOString(), hash: name, name, trackerGroup: "a.test", uploaded: 1, downloaded: 1, cause: { kind: "user" } }],
+        counts: { automation: 0, user: 1, other: 0 },
+      })
+    }))
+    const applyRange = (last: string) => {
+      fireEvent.click(screen.getAllByText(/^(periods\.custom|customRange\.range from=)/)[0])
+      fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: "2026-01-05" } })
+      fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: last } })
+      fireEvent.click(screen.getByText("customRange.apply"))
+    }
+    renderPage()
+    await screen.findByText("periods.custom")
+    applyRange("2026-01-06")
+    await screen.findAllByTitle("First.Range-GRP")
+
+    applyRange("2026-01-07")
+    await vi.waitFor(() => expect(screen.queryAllByTitle("First.Range-GRP")).toHaveLength(0))
+    releaseSecond()
+    await screen.findAllByTitle("Second.Range-GRP")
   })
 
   it("moves a preset period forward while the page stays open, and keeps the old numbers until the new ones load", async () => {
@@ -431,8 +473,8 @@ describe("Statistics", () => {
     server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    // The line at the top of the page, the table, the top torrents, and the library growth show it.
-    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(4))
+    // The line at the top of the page, the table, the top torrents, the library growth, the adds and deletes, and the deleted torrents show it.
+    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(6))
   })
 
   it("says that a period with no transfer has none", async () => {
@@ -835,6 +877,15 @@ describe("Statistics", () => {
     expect(await growthPoints()).toEqual([[2, 8192, 2048], [null, null, null], [2, 8192, null], [2, 8192, null]])
     await expectTile("tiles.unique", "2 KiB | tiles.uniqueTotal size=8 KiB")
     expect(screen.getByText("growth.gapNote")).toBeTruthy()
+  })
+
+  it("adds the adds, completions, and deletes of the instances together for each UTC day of the period", async () => {
+    libraryAnswer = instanceId => [libraryRow(2, { added: instanceId, completed: 1, deleted: 0 }), libraryRow(0, { added: 0, completed: 0, deleted: instanceId * 2 })]
+    renderPage()
+
+    const chart = await screen.findByTestId("events-chart")
+    const days: number[][] = JSON.parse(chart.getAttribute("data-events") ?? "[]")
+    expect(days.slice(-3)).toEqual([[3, 2, 0], [0, 0, 0], [0, 0, 6]])
   })
 
   it("leaves a gap on a day on which an instance that qui records has no row, and ends a removed instance at its last row", async () => {
