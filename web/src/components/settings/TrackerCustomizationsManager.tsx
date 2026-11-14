@@ -58,22 +58,25 @@ export function TrackerCustomizationsManager() {
     [domainsKey, customizations]
   )
 
-  const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set())
+  const [selectedDomainState, setSelectedDomains] = useState<Set<string>>(new Set())
+  // A selected domain counts only while it has its own row. A save, an import, or another tab can give it a customization.
+  const selectedDomains = useMemo(() => {
+    const standalone = new Set(rows.filter(row => row.customizationId === undefined).map(row => row.domain))
+    return new Set([...selectedDomainState].filter(domain => standalone.has(domain)))
+  }, [selectedDomainState, rows])
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [editingCustomization, setEditingCustomization] = useState<{ id: number; displayName: string; domains: string[] } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
 
   const toggleSelection = (domain: string) => {
-    setSelectedDomains(prev => {
-      const next = new Set(prev)
-      if (next.has(domain)) {
-        next.delete(domain)
-      } else {
-        next.add(domain)
-      }
-      return next
-    })
+    const next = new Set(selectedDomains)
+    if (next.has(domain)) {
+      next.delete(domain)
+    } else {
+      next.add(domain)
+    }
+    setSelectedDomains(next)
   }
 
   const toggleGroupSelection = (customizationId: number) => {
@@ -157,14 +160,11 @@ export function TrackerCustomizationsManager() {
   // With other domains selected, this adds the domain to the merge.
   const openRenameDialog = (domain: string) => {
     setEditingCustomization(null)
-    setSelectedDomains(prev => {
-      if (prev.size >= 2 || (prev.size === 1 && !prev.has(domain))) {
-        const next = new Set(prev)
-        next.add(domain)
-        return new Set(reorderDomainsForIcons(Array.from(next)))
-      }
-      return new Set([domain])
-    })
+    if (selectedDomains.size >= 2 || (selectedDomains.size === 1 && !selectedDomains.has(domain))) {
+      setSelectedDomains(new Set(reorderDomainsForIcons([...selectedDomains, domain])))
+    } else {
+      setSelectedDomains(new Set([domain]))
+    }
     setCustomizeOpen(true)
   }
 
@@ -315,10 +315,7 @@ export function TrackerCustomizationsManager() {
             customizations={customizations ?? []}
             createCustomization={createCustomization}
             updateCustomization={updateCustomization}
-            onDone={() => {
-              setImportOpen(false)
-              clearSelection()
-            }}
+            onDone={() => setImportOpen(false)}
           />
         )}
       </Dialog>

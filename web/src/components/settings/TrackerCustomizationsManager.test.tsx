@@ -133,7 +133,7 @@ describe("TrackerCustomizationsManager", () => {
   })
 
   // regression: #4108
-  it("clears the domain selection after an import, so a later rename does not take an imported domain", async () => {
+  it("drops a domain from the selection when an import gives it a customization", async () => {
     mocks.instances = [{ id: 1, isActive: true }]
     mocks.activeTrackers = { "a.example.invalid": "https://a.example.invalid/announce", "b.example.invalid": "https://b.example.invalid/announce" }
     mocks.customizations = []
@@ -155,6 +155,37 @@ describe("TrackerCustomizationsManager", () => {
     await screen.findByText("Alpha")
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
     expect(screen.getByRole("button", { name: "trackerCustomizations.rename" })).not.toBeNull()
+  })
+
+  // regression: #4108
+  it("keeps the selection of a rename that opens while a cancelled import still runs", async () => {
+    mocks.instances = [{ id: 1, isActive: true }]
+    mocks.activeTrackers = { "a.example.invalid": "https://a.example.invalid/announce", "b.example.invalid": "https://b.example.invalid/announce" }
+    mocks.customizations = []
+    mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
+    let finishImport = () => {}
+    mocks.createTrackerCustomization
+      .mockImplementationOnce((data: { displayName: string; domains: string[] }) => new Promise(resolve => {
+        finishImport = () => resolve(customization(9, data.displayName, data.domains))
+      }))
+      .mockImplementation((data: { displayName: string; domains: string[] }) => Promise.resolve(customization(10, data.displayName, data.domains)))
+    renderManager()
+    await screen.findByText("b.example.invalid")
+
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+    fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), {
+      target: { value: JSON.stringify({ trackerCustomizations: [{ displayName: "Other", domains: ["x.example.invalid"] }] }) },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.import" }))
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.cancel" }))
+    await waitFor(() => expect(screen.queryByLabelText("trackerCustomizations.importDialog.jsonData")).toBeNull())
+
+    fireEvent.click(screen.getAllByRole("button", { name: "trackerCustomizations.rename" })[1])
+    fireEvent.change(await screen.findByLabelText("trackerCustomizations.customizeDialog.displayName"), { target: { value: "Bravo" } })
+    await act(async () => finishImport())
+
+    fireEvent.click(await screen.findByRole("button", { name: "trackerCustomizations.customizeDialog.renameAction" }))
+    await waitFor(() => expect(mocks.createTrackerCustomization).toHaveBeenLastCalledWith({ displayName: "Bravo", domains: ["b.example.invalid"] }))
   })
 })
 
