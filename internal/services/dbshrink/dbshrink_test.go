@@ -9,7 +9,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -116,7 +118,11 @@ func TestStatusReadsTheFreeSpaceOfTheDiskThatHoldsTheData(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 	linkPath := filepath.Join(linkDir, "qui.db")
-	require.NoError(t, os.Symlink(filepath.Join(dataDir, "qui.db"), linkPath))
+	err = os.Symlink(filepath.Join(dataDir, "qui.db"), linkPath)
+	if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+		t.Skipf("symlink creation needs Developer Mode or SeCreateSymbolicLinkPrivilege: %v", err)
+	}
+	require.NoError(t, err)
 	db, err = database.New(linkPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
