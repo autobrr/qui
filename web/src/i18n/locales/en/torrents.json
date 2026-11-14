@@ -720,12 +720,10 @@
     "partialResults": "Partial results - some indexers did not respond",
     "arrLookupFailed": "Metadata ID lookup failed - searched by title only, results may be incomplete",
     "arrNoIds": "No metadata IDs found for this release - searched by title only",
-    "gazelleTimedOut": "RED/OPS did not answer in time",
     "torznabFailed": "Torznab search failed - showing RED/OPS results only",
     "searchScope": "Search Scope",
     "noIndexers": "No Torznab indexers available",
     "noIndexersHelp": "Add or enable Torznab indexers in Settings to search for cross-seeds.",
-    "gazelleOnlySearch": "The search asks only the RED/OPS sites that have an API key.",
     "capabilityNote": "Capability note",
     "capabilityDescription": "These indexers lack the required capabilities/categories for this torrent and will be skipped by the server:",
     "smartFilteringActive": "Smart Filtering Active",
@@ -813,7 +811,30 @@
       "useRss": "Use the RSS automation feature for ongoing cross-seeding",
       "checkIndexers": "Check the indexers page to see which ones are rate-limited"
     },
-    "routedTo": "Cross-seeds go to the Cross-seed instance {{instance}}."
+    "routedTo": "Cross-seeds go to the Cross-seed instance {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "will ask",
+      "willAskRejected": "will ask: the site rejected the API key last time",
+      "match": "match",
+      "noMatch": "no match",
+      "openSettings": "Open settings",
+      "notAsked": {
+        "disabled": "not asked: off",
+        "noApiKey": "not asked: no API key",
+        "cooldown": "not asked: searched recently",
+        "notSelected": "not asked: not selected",
+        "sourceSite": "not asked: the torrent comes from {{site}}",
+        "alreadySeeded": "not asked: you already seed it there",
+        "notMusic": "not asked: not music",
+        "other": "not asked"
+      },
+      "failed": {
+        "keyRejected": "failed: the site rejected the API key",
+        "timedOut": "failed: timed out",
+        "other": "failed: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "Filter {{column}}",
@@ -1006,7 +1027,7 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} of {{total}} torrents loaded",
     "scrollForMore": "(scroll for more)",
-    "freeSpace": "Free Space",
+    "freeSpace": "Free space (default path)",
     "switchToBits": "Switch to bits per second (bps)",
     "switchToBytes": "Switch to bytes per second (B/s)",
     "altSpeedOn": "Alternative speed limits: On",
@@ -1352,10 +1373,6 @@
     "description": "Add a torrent file or magnet link to start downloading",
     "file": "File",
     "url": "URL",
-    "tabs": {
-      "basic": "Basic",
-      "advanced": "Advanced"
-    },
     "validation": {
       "selectTorrentFile": "Please select at least one torrent file",
       "enterUrl": "Please enter at least one URL or magnet link"
@@ -1367,7 +1384,10 @@
       "existingTorrents": "Existing torrents: {{names}}",
       "highlightedBelow": "Duplicate selections are highlighted below.",
       "remove": "Remove duplicates",
-      "matchesExisting": "Matches existing: {{names}}"
+      "matchesExisting": "Matches existing: {{names}}",
+      "existingTorrent": "Existing torrent",
+      "more_one": "(+{{count}} more)",
+      "more_other": "(+{{count}} more)"
     },
     "fileInput": {
       "label": "Torrent Files",
@@ -1378,10 +1398,9 @@
       "selectedFiles_other": "{{count}} files selected",
       "duplicateFiles_one": "{{count}} duplicate file",
       "duplicateFiles_other": "{{count}} duplicate files",
-      "showFiles": "Show files",
-      "hideFiles": "Hide files",
-      "moreFiles": "... and {{count}} more",
-      "removeFile": "Remove file"
+      "removeFile": "Remove file",
+      "addMore": "Add more files",
+      "choose": "Choose torrent files"
     },
     "urlInput": {
       "label": "URLs / Magnet Links",
@@ -1392,31 +1411,22 @@
       "skipHashCheck": "Skip hash check",
       "category": "Category",
       "searchCategories": "Search categories...",
-      "availableCategories": "Available Categories (click to select)",
-      "availableCategoriesFiltered": "Available Categories (click to select) - filtering: \"{{query}}\"",
       "noCategoriesMatch": "No categories match \"{{query}}\"",
       "tags": "Tags",
       "tagsPlaceholder": "Create new tag or search available tags...",
-      "clearAll": "Clear All",
-      "availableTags": "Available Tags (click to select/deselect)",
-      "availableTagsFiltered": "Available Tags (click to select/deselect) - filtering: \"{{query}}\"",
       "newTag": "(new)",
-      "noTagsMatch": "No tags match \"{{query}}\"",
       "autoTmm": "Automatic Torrent Management",
       "savePath": "Save Path",
+      "freeSpaceAtDestination": "Free space at destination: {{value}}",
       "savePathPlaceholder": "Leave empty for default",
-      "manualSavePath": "Manual save path (TMM disabled)",
       "useTemporaryPath": "Use Temporary Path",
       "useTemporaryPathDescription": "Download to temporary path before moving to save path",
       "tempPath": "Temporary Download Path",
       "tempPathPlaceholder": "Leave empty for default",
-      "tempPathDescription": "Torrents will be downloaded here before moving to save path",
-      "autoTmmSavePathDescription": "Automatic Torrent Management is enabled. Save path will be determined by category settings.",
-      "advancedOptions": "Advanced Options",
       "sequentialDownload": "Sequential download",
-      "sequentialDownloadDescription": "(useful for media files)",
+      "sequentialDownloadDescription": "Useful for media files",
       "firstLastPiecePriority": "First/last piece priority",
-      "firstLastPiecePriorityDescription": "(start playback faster)",
+      "firstLastPiecePriorityDescription": "Start playback faster",
       "downloadLimit": "Download limit (KB/s)",
       "uploadLimit": "Upload limit (KB/s)",
       "unlimitedPlaceholder": "0 = unlimited",
@@ -1432,12 +1442,35 @@
       "renamePlaceholder": "Leave empty to use original name",
       "autoAppliedTitle": "Auto-applied:",
       "autoAddTrackers": "• Auto-add trackers",
-      "fileExclusions": "• File exclusions: {{value}}"
+      "fileExclusions": "• File exclusions: {{value}}",
+      "noCategory": "No category",
+      "removeTag": "Remove tag {{tag}}",
+      "addTags": "Add tags",
+      "createTag": "Create tag \"{{tag}}\"",
+      "noTagsYet": "No tags yet. Type a name to create one.",
+      "done": "Done",
+      "moreOptions": "More options",
+      "moreOptionsHint": "Save path, layout, download order, limits",
+      "saveLocation": "Save location",
+      "downloadBehavior": "Download order",
+      "limits": "Limits",
+      "changedCount_one": "{{count}} changed",
+      "changedCount_other": "{{count}} changed",
+      "clearAll": "Clear All",
+      "tagsWithCount": "Tags ({{n}})",
+      "categorySavePath": "Saves to {{path}}",
+      "autoTmmStatus": "Save path comes from the category",
+      "addTypedTags": "Add tags: {{tags}}",
+      "selectedState": "Selected",
+      "moreTags_one": "+{{count}} more",
+      "moreTags_other": "+{{count}} more"
     },
     "footer": {
       "adding": "Adding...",
       "add": "Add Torrent",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "addCount_one": "Add {{count}} torrent",
+      "addCount_other": "Add {{count}} torrents"
     },
     "toast": {
       "verifyInput": "Please verify the torrent file or URL and try again.",

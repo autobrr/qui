@@ -22,7 +22,7 @@
     "upload": "Pujada",
     "totalSize": "Mida total",
     "totalSizeTooltip": "Mida total de tots els torrents. Les còpies d'una publicació compten una sola vegada.",
-    "freeSpace": "Espai lliure",
+    "freeSpace": "Espai lliure (camí predeterminat)",
     "showMore": "Mostra'n més",
     "showLess": "Mostra'n menys",
     "uptime": "Temps actiu",

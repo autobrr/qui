@@ -38,54 +38,54 @@ func TestDecideSearchScope(t *testing.T) {
 	tests := []struct {
 		name  string
 		facts searchScopeFacts
-		want  searchScope
+		want  scopeWant
 		// wantErr is a part of the error text; a row with it ignores want.
 		wantErr string
 	}{
 		{
 			name:  "content filter keeps some requested indexers",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2, 3}, contentFilter: contentDone(3, 1)},
-			want:  searchScope{torznabIndexerIDs: []int{3, 1}},
+			want:  scopeWant{torznab: []int{3, 1}},
 		},
 		{
 			name:  "content filter removes every requested indexer",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2}, contentFilter: contentDone(7)},
-			want:  searchScope{skipReason: "selected indexers were filtered out"},
+			want:  scopeWant{skipReason: "selected indexers were filtered out"},
 		},
 		{
 			name:  "content filter finds the content seeded on every indexer",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2}, contentFilter: contentFilterFacts{done: true, seededOn: 2}},
-			want:  searchScope{skipReason: "skipped: already seeded from 2 tracker(s)"},
+			want:  scopeWant{skipReason: "skipped: already seeded from 2 tracker(s)"},
 		},
 		{
 			name:  "no indexer supports the required caps",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentFilterFacts{done: true, noCapableIndexers: true}},
-			want:  searchScope{skipReason: "no indexers support required caps"},
+			want:  scopeWant{skipReason: "no indexers support required caps"},
 		},
 		{
 			name:  "content filter removes every indexer without a reason",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone()},
-			want:  searchScope{skipReason: "no eligible indexers after filtering"},
+			want:  scopeWant{skipReason: "no eligible indexers after filtering"},
 		},
 		{
 			name:  "content check timed out and the capability filter removed every requested indexer",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentFilterFacts{indexerIDs: []int{2}}},
-			want:  searchScope{skipReason: "selected indexers do not support required caps"},
+			want:  scopeWant{skipReason: "selected indexers do not support required caps"},
 		},
 		{
 			name:  "content check timed out and the capability filter keeps an indexer",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2}, contentFilter: contentFilterFacts{indexerIDs: []int{2}}},
-			want:  searchScope{torznabIndexerIDs: []int{2}},
+			want:  scopeWant{torznab: []int{2}},
 		},
 		{
 			name:  "picked indexers that the setup removed do not expand to all indexers",
 			facts: searchScopeFacts{picked: true},
-			want:  searchScope{skipReason: "no eligible indexers after filtering"},
+			want:  scopeWant{skipReason: "no eligible indexers after filtering"},
 		},
 		{
 			name:  "no indexer enabled",
 			facts: searchScopeFacts{},
-			want:  searchScope{skipReason: "no eligible indexers"},
+			want:  scopeWant{skipReason: "no eligible indexers"},
 		},
 		{
 			name:    "failed content analysis is an error, not an empty search",
@@ -95,22 +95,22 @@ func TestDecideSearchScope(t *testing.T) {
 		{
 			name:  "cooldown removes some indexers",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2}, contentFilter: contentDone(1, 2), cooldownIndexerIDs: []int{2}},
-			want:  searchScope{torznabIndexerIDs: []int{1}},
+			want:  scopeWant{torznab: []int{1}},
 		},
 		{
 			name:  "cooldown removes every indexer",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2}, contentFilter: contentDone(1, 2), cooldownIndexerIDs: []int{1, 2}},
-			want:  searchScope{skipReason: "all eligible indexers within cooldown"},
+			want:  scopeWant{skipReason: "all eligible indexers within cooldown"},
 		},
 		{
 			name:  "torznab off asks only RED/OPS",
 			facts: searchScopeFacts{torznabOff: true, requestedIndexerIDs: []int{1}, sourceSite: red, gazelleKeys: bothKeys},
-			want:  searchScope{gazelleHosts: []string{ops}, skipReason: "no eligible indexers"},
+			want:  scopeWant{asks: []string{ops}, skipReason: "no eligible indexers"},
 		},
 		{
 			name:  "torznab off without a key for the target site skips and starts no cooldown",
 			facts: searchScopeFacts{torznabOff: true, sourceSite: red, gazelleKeys: []string{red}},
-			want:  searchScope{skipReason: "no RED/OPS API key for the target site"},
+			want:  scopeWant{skipReason: "no RED/OPS API key for the target site"},
 		},
 		{
 			name:    "torznab off without any RED/OPS key is an error",
@@ -120,32 +120,32 @@ func TestDecideSearchScope(t *testing.T) {
 		{
 			name:  "torznab off with RED/OPS in cooldown asks nothing",
 			facts: searchScopeFacts{torznabOff: true, skipGazelle: true, sourceSite: red, gazelleKeys: bothKeys},
-			want:  searchScope{skipReason: "no eligible indexers"},
+			want:  scopeWant{skipReason: "no eligible indexers"},
 		},
 		{
 			name:  "RED source asks OPS and Torznab without the music check",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, gazelleKeys: bothKeys},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{ops}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{ops}},
 		},
 		{
 			name:  "OPS source asks RED",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: ops, gazelleKeys: bothKeys},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{red}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{red}},
 		},
 		{
 			name:  "RED source without an OPS key starts no cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, gazelleKeys: []string{red}},
-			want:  searchScope{torznabIndexerIDs: []int{1}},
+			want:  scopeWant{torznab: []int{1}},
 		},
 		{
 			name:  "music from another site asks both RED and OPS",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: bothKeys, musicCheckPassed: true},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{red, ops}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{red, ops}},
 		},
 		{
 			name:  "music from another site asks only the site with a key",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: []string{ops}, musicCheckPassed: true},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{ops}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{ops}},
 		},
 		{
 			name: "one key removes the Torznab indexer of that site only",
@@ -153,7 +153,7 @@ func TestDecideSearchScope(t *testing.T) {
 				requestedIndexerIDs: []int{1, 2, 3}, gazelleTorznabIndexers: map[int]string{2: red, 3: ops},
 				contentFilter: contentDone(1, 2, 3), sourceSite: ops, gazelleKeys: []string{red},
 			},
-			want: searchScope{torznabIndexerIDs: []int{1, 3}, gazelleHosts: []string{red}},
+			want: scopeWant{torznab: []int{1, 3}, asks: []string{red}},
 		},
 		{
 			name: "two keys remove the Torznab indexers of both sites",
@@ -161,7 +161,7 @@ func TestDecideSearchScope(t *testing.T) {
 				requestedIndexerIDs: []int{1, 2, 3}, gazelleTorznabIndexers: map[int]string{2: red, 3: ops},
 				contentFilter: contentDone(1, 2, 3), sourceSite: red, gazelleKeys: bothKeys,
 			},
-			want: searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{ops}},
+			want: scopeWant{torznab: []int{1}, asks: []string{ops}},
 		},
 		{
 			name: "picked indexers of keyed sites do not expand to all indexers",
@@ -169,12 +169,12 @@ func TestDecideSearchScope(t *testing.T) {
 				requestedIndexerIDs: []int{2}, picked: true, gazelleTorznabIndexers: map[int]string{2: red},
 				sourceSite: ops, gazelleKeys: []string{red},
 			},
-			want: searchScope{gazelleHosts: []string{red}, skipReason: "no eligible indexers after filtering"},
+			want: scopeWant{asks: []string{red}, skipReason: "no eligible indexers after filtering"},
 		},
 		{
 			name:  "failed indexer discovery asks RED/OPS and reports that Torznab failed",
 			facts: searchScopeFacts{contentFilter: discoveryFailed, gazelleKeys: bothKeys, musicCheckPassed: true},
-			want:  searchScope{gazelleHosts: []string{red, ops}, skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
+			want:  scopeWant{asks: []string{red, ops}, skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
 		},
 		{
 			name: "failed discovery of picked indexers is not a content filter that removed them",
@@ -182,17 +182,17 @@ func TestDecideSearchScope(t *testing.T) {
 				requestedIndexerIDs: []int{1}, picked: true,
 				contentFilter: contentFilterFacts{torznabErr: discoveryErr, done: true}, gazelleKeys: bothKeys, musicCheckPassed: true,
 			},
-			want: searchScope{gazelleHosts: []string{red, ops}, skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
+			want: scopeWant{asks: []string{red, ops}, skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
 		},
 		{
 			name:  "failed indexer discovery and a failed music check start the cooldown and report that Torznab failed",
 			facts: searchScopeFacts{contentFilter: discoveryFailed, gazelleKeys: bothKeys},
-			want:  searchScope{skipReason: torznabFailed.Error(), torznabErr: torznabFailed, gazelleCooldownWithoutLookup: true},
+			want:  scopeWant{skipReason: torznabFailed.Error(), torznabErr: torznabFailed, cooldown: true},
 		},
 		{
 			name:  "failed indexer discovery with RED/OPS in cooldown reports that Torznab failed",
 			facts: searchScopeFacts{contentFilter: discoveryFailed, skipGazelle: true, gazelleKeys: bothKeys, musicCheckPassed: true},
-			want:  searchScope{skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
+			want:  scopeWant{skipReason: torznabFailed.Error(), torznabErr: torznabFailed},
 		},
 		{
 			name:    "failed indexer discovery without a RED/OPS key is an error",
@@ -202,42 +202,97 @@ func TestDecideSearchScope(t *testing.T) {
 		{
 			name:  "content filter removes every indexer and music still asks RED/OPS",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1, 2}, contentFilter: contentDone(), gazelleKeys: bothKeys, musicCheckPassed: true},
-			want:  searchScope{gazelleHosts: []string{red, ops}, skipReason: "no eligible indexers after filtering"},
+			want:  scopeWant{asks: []string{red, ops}, skipReason: "no eligible indexers after filtering"},
 		},
 		{
 			name:  "failed music check starts the cooldown without a lookup",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: bothKeys},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleCooldownWithoutLookup: true},
+			want:  scopeWant{torznab: []int{1}, cooldown: true},
 		},
 		{
 			name:  "duplicate group with a RED copy skips the music check and asks only OPS",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), duplicateSourceSites: []string{red}, gazelleKeys: bothKeys},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{ops}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{ops}},
 		},
 		{
 			name:  "duplicate group with a RED copy and no OPS key starts no cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), duplicateSourceSites: []string{red}, gazelleKeys: []string{red}},
-			want:  searchScope{torznabIndexerIDs: []int{1}},
+			want:  scopeWant{torznab: []int{1}},
 		},
 		{
 			name:  "duplicate group that seeds on RED and OPS asks neither and starts the cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, duplicateSourceSites: []string{ops}, gazelleKeys: bothKeys},
-			want:  searchScope{torznabIndexerIDs: []int{1}, gazelleCooldownWithoutLookup: true},
+			want:  scopeWant{torznab: []int{1}, cooldown: true},
 		},
 		{
 			name:  "duplicate group that seeds on RED and OPS without a key starts no cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, duplicateSourceSites: []string{ops}},
-			want:  searchScope{torznabIndexerIDs: []int{1}},
+			want:  scopeWant{torznab: []int{1}},
 		},
 		{
 			name:  "RED/OPS in cooldown asks only Torznab",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), skipGazelle: true, gazelleKeys: bothKeys, musicCheckPassed: true},
-			want:  searchScope{torznabIndexerIDs: []int{1}},
+			want:  scopeWant{torznab: []int{1}},
 		},
 		{
 			name:  "no RED/OPS key starts no cooldown",
 			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red},
-			want:  searchScope{torznabIndexerIDs: []int{1}},
+			want:  scopeWant{torznab: []int{1}},
+		},
+		{
+			name:  "RED/OPS off is disabled for each site, before a missing key",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleOff: true, musicCheckPassed: true},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonDisabled, ops: GazelleReasonDisabled}},
+		},
+		{
+			name:  "a missing API key wins over a failed music check",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: []string{red}},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNotMusic, ops: GazelleReasonNoAPIKey}, cooldown: true},
+		},
+		{
+			name:  "a missing API key wins over the source site",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, gazelleKeys: []string{ops}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{ops}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNoAPIKey}},
+		},
+		{
+			name:  "the cooldown wins over a site that the user left out",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), skipGazelle: true, gazelleKeys: bothKeys, gazelleSelected: []string{}, musicCheckPassed: true},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonCooldown, ops: GazelleReasonCooldown}},
+		},
+		{
+			name:  "a site that the user left out is not selected",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: bothKeys, gazelleSelected: []string{red}, musicCheckPassed: true},
+			want:  scopeWant{torznab: []int{1}, asks: []string{red}, reasons: map[string]GazelleLookupReason{ops: GazelleReasonNotSelected}},
+		},
+		{
+			name:  "not selected wins over the source site",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, gazelleKeys: bothKeys, gazelleSelected: []string{}},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNotSelected, ops: GazelleReasonNotSelected}},
+		},
+		{
+			name:  "the source site wins over a duplicate copy on the same site",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, duplicateSourceSites: []string{red}, gazelleKeys: bothKeys},
+			want:  scopeWant{torznab: []int{1}, asks: []string{ops}, reasons: map[string]GazelleLookupReason{red: GazelleReasonSourceSite}},
+		},
+		{
+			name:  "a failed music check wins over content that the instance holds",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: bothKeys, gazelleLocalSeeded: []string{red}},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNotMusic, ops: GazelleReasonNotMusic}, cooldown: true},
+		},
+		{
+			name:  "content or a target hash in the instance is already seeded",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), gazelleKeys: bothKeys, musicCheckPassed: true, gazelleLocalSeeded: []string{ops}},
+			want:  scopeWant{torznab: []int{1}, asks: []string{red}, reasons: map[string]GazelleLookupReason{ops: GazelleReasonAlreadySeeded}},
+		},
+		{
+			name:  "torznab off with each site seeded in the instance starts the cooldown",
+			facts: searchScopeFacts{torznabOff: true, sourceSite: red, gazelleKeys: bothKeys, gazelleLocalSeeded: []string{ops}},
+			want:  scopeWant{skipReason: "no eligible indexers", reasons: map[string]GazelleLookupReason{red: GazelleReasonSourceSite, ops: GazelleReasonAlreadySeeded}, cooldown: true},
+		},
+		{
+			name:  "a RED source with an OPS copy and only an OPS key starts the cooldown",
+			facts: searchScopeFacts{requestedIndexerIDs: []int{1}, contentFilter: contentDone(1), sourceSite: red, duplicateSourceSites: []string{ops}, gazelleKeys: []string{ops}},
+			want:  scopeWant{torznab: []int{1}, reasons: map[string]GazelleLookupReason{red: GazelleReasonNoAPIKey, ops: GazelleReasonAlreadySeeded}, cooldown: true},
 		},
 	}
 
@@ -249,9 +304,30 @@ func TestDecideSearchScope(t *testing.T) {
 				return
 			}
 			require.NoError(t, got.err)
-			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want.torznab, got.torznabIndexerIDs)
+			require.Equal(t, tt.want.skipReason, got.skipReason)
+			require.Equal(t, tt.want.torznabErr, got.torznabErr)
+			require.Equal(t, tt.want.asks, got.gazelleHosts())
+			for host, reason := range tt.want.reasons {
+				require.Equal(t, reason, gazelleLookupOf(t, got.gazelle, host).Reason, host)
+			}
+			if len(tt.want.asks) == 0 {
+				require.Equal(t, tt.want.cooldown, gazelleCooldownDue(got.gazelle), "RED/OPS cooldown")
+			}
 		})
 	}
+}
+
+// scopeWant is what one row of TestDecideSearchScope expects. reasons checks
+// the not_asked reason of some sites. cooldown is the RED/OPS cooldown verdict
+// of a scope that asks no site.
+type scopeWant struct {
+	torznab    []int
+	skipReason string
+	torznabErr error
+	asks       []string
+	reasons    map[string]GazelleLookupReason
+	cooldown   bool
 }
 
 // A Library Scan that asks RED/OPS nothing for a torrent that fails the music
@@ -323,9 +399,10 @@ func TestSearchRunLoop_GazelleTimeoutStartsNoCooldown(t *testing.T) {
 
 	runSearchLoopToCompletion(t, svc, state)
 
-	require.Len(t, state.run.Results, 1)
-	require.Equal(t, models.CrossSeedSearchResultStatusSkipped, state.run.Results[0].Status)
-	require.Equal(t, "search timed out after 3s", state.run.Results[0].Message)
+	require.Len(t, state.run.Results, 1, "a timeout is one row")
+	require.Equal(t, models.CrossSeedSearchResultStatusFailed, state.run.Results[0].Status)
+	require.Equal(t, "Orpheus (API)", state.run.Results[0].IndexerName)
+	require.Equal(t, "timed out", state.run.Results[0].Message)
 	_, found, err := svc.automationStore.GetSearchHistory(t.Context(), state.opts.InstanceID, torrent.Hash)
 	require.NoError(t, err)
 	require.False(t, found, "a RED/OPS timeout must start no cooldown")
@@ -433,7 +510,7 @@ func TestSearchRunLoop_GazelleTimeoutBesideTorznabMatchIsRecorded(t *testing.T) 
 	for _, result := range state.run.Results {
 		messages = append(messages, result.Message)
 	}
-	require.Contains(t, messages, "search timed out after 3s")
+	require.Contains(t, messages, "timed out")
 }
 
 // A Library Scan whose Torznab search fails at search time keeps the RED/OPS

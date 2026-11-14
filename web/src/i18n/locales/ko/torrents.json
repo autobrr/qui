@@ -662,12 +662,10 @@
     "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
     "arrLookupFailed": "메타데이터 ID 조회 실패 - 제목으로만 검색하여 결과가 불완전할 수 있습니다",
     "arrNoIds": "이 릴리스의 메타데이터 ID를 찾을 수 없음 - 제목으로만 검색했습니다",
-    "gazelleTimedOut": "RED/OPS가 제시간에 응답하지 않았습니다",
     "torznabFailed": "Torznab 검색 실패 - RED/OPS 결과만 표시합니다",
     "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
-    "gazelleOnlySearch": "검색은 API 키가 있는 RED/OPS 사이트에만 요청합니다.",
     "capabilityNote": "기능 참고",
     "capabilityDescription": "이 인덱서에는 이 토렌트에 필요한 기능/카테고리가 없어 서버에서 건너뜁니다:",
     "smartFilteringActive": "스마트 필터링 활성",
@@ -754,7 +752,30 @@
       "useRss": "지속적인 cross-seeding에는 RSS 자동화 기능을 사용하세요",
       "checkIndexers": "인덱서 페이지에서 속도 제한된 항목을 확인하세요"
     },
-    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다."
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "조회 예정",
+      "willAskRejected": "조회 예정: 지난번에 사이트에서 API 키를 거부함",
+      "match": "일치",
+      "noMatch": "일치 없음",
+      "openSettings": "설정 열기",
+      "notAsked": {
+        "disabled": "조회 안 함: 꺼짐",
+        "noApiKey": "조회 안 함: API 키 없음",
+        "cooldown": "조회 안 함: 최근에 검색함",
+        "notSelected": "조회 안 함: 선택되지 않음",
+        "sourceSite": "조회 안 함: 토렌트 출처가 {{site}}",
+        "alreadySeeded": "조회 안 함: 이미 그곳에서 시드 중",
+        "notMusic": "조회 안 함: 음악이 아님",
+        "other": "조회 안 함"
+      },
+      "failed": {
+        "keyRejected": "실패: 사이트에서 API 키를 거부함",
+        "timedOut": "실패: 시간 초과",
+        "other": "실패: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "{{column}} 필터링",
@@ -944,7 +965,7 @@
     "torrentCount_other": "토렌트 {{count}}개",
     "torrentsLoaded": "토렌트 {{total}}개 중 {{loaded}}개 로드됨",
     "scrollForMore": "(더 보려면 스크롤)",
-    "freeSpace": "여유 공간",
+    "freeSpace": "여유 공간 (기본 경로)",
     "switchToBits": "초당 비트(bps)로 전환",
     "switchToBytes": "초당 바이트(B/s)로 전환",
     "altSpeedOn": "대체 속도 제한: 켜짐",
@@ -1279,10 +1300,6 @@
     "description": "다운로드를 시작하려면 토렌트 파일 또는 마그넷 링크를 추가하세요",
     "file": "파일",
     "url": "URL",
-    "tabs": {
-      "basic": "기본",
-      "advanced": "고급"
-    },
     "validation": {
       "selectTorrentFile": "토렌트 파일을 하나 이상 선택해 주세요",
       "enterUrl": "URL 또는 마그넷 링크를 하나 이상 입력해 주세요"
@@ -1293,7 +1310,9 @@
       "existingTorrents": "기존 토렌트: {{names}}",
       "highlightedBelow": "중복 선택 항목이 아래에 강조 표시됩니다.",
       "remove": "중복 제거",
-      "matchesExisting": "기존 항목과 일치: {{names}}"
+      "matchesExisting": "기존 항목과 일치: {{names}}",
+      "existingTorrent": "기존 토렌트",
+      "more_other": "(+{{count}}개 더)"
     },
     "fileInput": {
       "label": "토렌트 파일",
@@ -1302,10 +1321,9 @@
       "browse": "또는 클릭하여 찾아보기",
       "selectedFiles_other": "파일 {{count}}개 선택됨",
       "duplicateFiles_other": "중복 파일 {{count}}개",
-      "showFiles": "파일 표시",
-      "hideFiles": "파일 숨기기",
-      "moreFiles": "... 그리고 {{count}}개 더",
-      "removeFile": "파일 제거"
+      "removeFile": "파일 제거",
+      "addMore": "파일 더 추가",
+      "choose": "토렌트 파일 선택"
     },
     "urlInput": {
       "label": "URL / 마그넷 링크",
@@ -1316,31 +1334,22 @@
       "skipHashCheck": "해시 확인 건너뛰기",
       "category": "카테고리",
       "searchCategories": "카테고리 검색...",
-      "availableCategories": "사용 가능한 카테고리(클릭하여 선택)",
-      "availableCategoriesFiltered": "사용 가능한 카테고리(클릭하여 선택) - 필터링: \"{{query}}\"",
       "noCategoriesMatch": "\"{{query}}\"와 일치하는 카테고리 없음",
       "tags": "태그",
       "tagsPlaceholder": "새 태그를 만들거나 사용 가능한 태그를 검색...",
-      "clearAll": "모두 지우기",
-      "availableTags": "사용 가능한 태그(클릭하여 선택/선택 해제)",
-      "availableTagsFiltered": "사용 가능한 태그(클릭하여 선택/선택 해제) - 필터링: \"{{query}}\"",
       "newTag": "(신규)",
-      "noTagsMatch": "\"{{query}}\"와 일치하는 태그 없음",
       "autoTmm": "자동 토렌트 관리",
       "savePath": "저장 경로",
+      "freeSpaceAtDestination": "대상 경로 여유 공간: {{value}}",
       "savePathPlaceholder": "기본값을 사용하려면 비워 두기",
-      "manualSavePath": "수동 저장 경로(TMM 비활성화)",
       "useTemporaryPath": "임시 경로 사용",
       "useTemporaryPathDescription": "저장 경로로 이동하기 전에 임시 경로로 다운로드",
       "tempPath": "임시 다운로드 경로",
       "tempPathPlaceholder": "기본값을 사용하려면 비워 두기",
-      "tempPathDescription": "토렌트는 저장 경로로 이동하기 전에 여기에 다운로드됩니다",
-      "autoTmmSavePathDescription": "자동 토렌트 관리가 활성화되어 있습니다. 저장 경로는 카테고리 설정에 따라 결정됩니다.",
-      "advancedOptions": "고급 옵션",
       "sequentialDownload": "순차 다운로드",
-      "sequentialDownloadDescription": "(미디어 파일에 유용)",
+      "sequentialDownloadDescription": "미디어 파일에 유용",
       "firstLastPiecePriority": "첫/마지막 조각 우선순위",
-      "firstLastPiecePriorityDescription": "(재생을 더 빨리 시작)",
+      "firstLastPiecePriorityDescription": "재생을 더 빨리 시작",
       "downloadLimit": "다운로드 제한(KB/s)",
       "uploadLimit": "업로드 제한(KB/s)",
       "unlimitedPlaceholder": "0 = 무제한",
@@ -1356,12 +1365,32 @@
       "renamePlaceholder": "원본 이름을 사용하려면 비워 두기",
       "autoAppliedTitle": "자동 적용:",
       "autoAddTrackers": "• 트래커 자동 추가",
-      "fileExclusions": "• 파일 제외: {{value}}"
+      "fileExclusions": "• 파일 제외: {{value}}",
+      "noCategory": "카테고리 없음",
+      "removeTag": "태그 {{tag}} 제거",
+      "addTags": "태그 추가",
+      "createTag": "\"{{tag}}\" 태그 만들기",
+      "noTagsYet": "아직 태그가 없습니다. 이름을 입력해 새로 만드세요.",
+      "done": "완료",
+      "moreOptions": "추가 옵션",
+      "moreOptionsHint": "저장 경로, 레이아웃, 다운로드 순서, 제한",
+      "saveLocation": "저장 위치",
+      "downloadBehavior": "다운로드 순서",
+      "limits": "제한",
+      "changedCount_other": "{{count}}개 변경됨",
+      "clearAll": "모두 지우기",
+      "tagsWithCount": "태그 ({{n}})",
+      "categorySavePath": "저장 위치: {{path}}",
+      "autoTmmStatus": "저장 경로는 카테고리를 따릅니다",
+      "addTypedTags": "태그 추가: {{tags}}",
+      "selectedState": "선택됨",
+      "moreTags_other": "+{{count}}개 더"
     },
     "footer": {
       "adding": "추가 중...",
       "add": "토렌트 추가",
-      "cancel": "취소"
+      "cancel": "취소",
+      "addCount_other": "토렌트 {{count}}개 추가"
     },
     "toast": {
       "verifyInput": "토렌트 파일 또는 URL을 확인하고 다시 시도해 주세요.",

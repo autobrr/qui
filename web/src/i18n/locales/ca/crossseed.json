@@ -196,6 +196,21 @@
     "cancelDialog": {
       "title": "Vols cancel·lar l'exploració de la biblioteca?",
       "description": "Això atura l'exploració actual de la biblioteca. Els cross-seeds ja afegits es mantenen, però no se cerquen més torrents."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: {{asked}} consultats, {{matched}} coincidències, {{failed}} errors",
+      "siteWithNotAsked": "{{counts}}, {{notAsked}} no consultats ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "desactivat",
+        "noApiKey": "sense clau API",
+        "cooldown": "cercat fa poc",
+        "sourceSite": "del lloc",
+        "alreadySeeded": "ja compartit",
+        "notMusic": "no és música",
+        "other": "altres"
+      }
     }
   },
   "rules": {

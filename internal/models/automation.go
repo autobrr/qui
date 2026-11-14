@@ -43,12 +43,15 @@ const (
 	// FreeSpaceSourcePath reads free space at a path through the instance's
 	// filesystem backend, local or SSH.
 	FreeSpaceSourcePath FreeSpaceSourceType = "path"
+	// FreeSpaceSourceQbitPath reads free space at a path on the qBittorrent host.
+	// It needs Web API 2.15.2 and no filesystem access.
+	FreeSpaceSourceQbitPath FreeSpaceSourceType = "qbitPath"
 )
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
 type FreeSpaceSource struct {
-	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'."`
-	Path string              `json:"path,omitempty" doc:"With type 'path': the path to read. Needs filesystem access on the instance."`
+	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'qbitPath' asks qBittorrent for the free space at 'path' on its own host."`
+	Path string              `json:"path,omitempty" doc:"With type 'path' or 'qbitPath': the path to read. Type 'path' needs filesystem access on the instance. Type 'qbitPath' needs qBittorrent with Web API 2.15.2 or later."`
 }
 
 // ScoreRuleType defines the type of score rule.

@@ -778,12 +778,10 @@
     "partialResults": "Částečné výsledky - některé indexery neodpověděly",
     "arrLookupFailed": "Vyhledání ID metadat selhalo - hledáno pouze podle názvu, výsledky mohou být neúplné",
     "arrNoIds": "Pro tuto release nebyla nalezena žádná ID metadat - hledáno pouze podle názvu",
-    "gazelleTimedOut": "RED/OPS neodpověděl včas",
     "torznabFailed": "Hledání přes Torznab selhalo - zobrazeny jsou pouze výsledky z RED/OPS",
     "searchScope": "Hledat rozsah",
     "noIndexers": "Nejsou dostupné žádné Torznab indexery",
     "noIndexersHelp": "Přidejte nebo povolte Torznab indexery v Nastavení pro hledání křížových sdílení.",
-    "gazelleOnlySearch": "Hledání se dotazuje jen stránek RED/OPS, které mají klíč API.",
     "capabilityNote": "Poznámka o schopnostech",
     "capabilityDescription": "Tyto indexery nemají požadované schopnosti/kategorie pro tento torrent a budou přeskočeny serverem:",
     "smartFilteringActive": "Inteligentní filtrování je aktivní",
@@ -872,7 +870,30 @@
       "useRss": "Použijte funkci RSS automatizace pro trvalé křížové sdílení",
       "checkIndexers": "Zkontrolujte help stránky indexerů a zjistěte, které jsou omezené"
     },
-    "routedTo": "Křížová sdílení jdou do instance pro křížové sdílení {{instance}}."
+    "routedTo": "Křížová sdílení jdou do instance pro křížové sdílení {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "bude dotázán",
+      "willAskRejected": "bude dotázán: web minule odmítl klíč API",
+      "match": "shoda",
+      "noMatch": "žádná shoda",
+      "openSettings": "Otevřít nastavení",
+      "notAsked": {
+        "disabled": "nedotázán: vypnuto",
+        "noApiKey": "nedotázán: chybí klíč API",
+        "cooldown": "nedotázán: nedávno prohledán",
+        "notSelected": "nedotázán: nevybrán",
+        "sourceSite": "nedotázán: torrent pochází z {{site}}",
+        "alreadySeeded": "nedotázán: už ho tam seedujete",
+        "notMusic": "nedotázán: není to hudba",
+        "other": "nedotázán"
+      },
+      "failed": {
+        "keyRejected": "selhalo: web odmítl klíč API",
+        "timedOut": "selhalo: vypršel časový limit",
+        "other": "selhalo: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "Filtrovat {{column}}",
@@ -1068,7 +1089,7 @@
     "torrentCount_other": "{{count}} torrenty",
     "torrentsLoaded": "{{loaded}} z {{total}} torrentů načteno",
     "scrollForMore": "(skrolovat pro více)",
-    "freeSpace": "Volné místo",
+    "freeSpace": "Volné místo (výchozí složka)",
     "switchToBits": "Přepnout na bitů za sekundu (bps)",
     "switchToBytes": "Přepnout na bajtů za sekundu (B/s)",
     "altSpeedOn": "Alternativní rychlostní limity: Povoleno",
@@ -1417,10 +1438,6 @@
     "description": "Přidejte torrent soubor nebo magnetovou adresu pro začátek stahování",
     "file": "Soubor",
     "url": "URL",
-    "tabs": {
-      "basic": "Základní",
-      "advanced": "Pokročilé"
-    },
     "validation": {
       "selectTorrentFile": "Vyberte alespoň jeden torrent soubor",
       "enterUrl": "Vyberte alespoň jednu URL nebo magnetovou adresu"
@@ -1433,7 +1450,11 @@
       "existingTorrents": "Existující torrenty: {{names}}",
       "highlightedBelow": "Duplicitní výběry jsou zvýrazněny níže.",
       "remove": "Odebrat duplicity",
-      "matchesExisting": "Shoduje se s existujícími: {{names}}"
+      "matchesExisting": "Shoduje se s existujícími: {{names}}",
+      "existingTorrent": "Existující torrent",
+      "more_one": "(+{{count}} další)",
+      "more_few": "(+{{count}} další)",
+      "more_other": "(+{{count}} dalších)"
     },
     "fileInput": {
       "label": "Torrent soubory",
@@ -1446,10 +1467,9 @@
       "duplicateFiles_one": "{{count}} duplicitní soubor",
       "duplicateFiles_few": "{{count}} duplicitní soubory",
       "duplicateFiles_other": "{{count}} duplicitní soubory",
-      "showFiles": "Zobrazit soubory",
-      "hideFiles": "Skrýt soubory",
-      "moreFiles": "... a {{count}} dalších",
-      "removeFile": "Odebrat soubor"
+      "removeFile": "Odebrat soubor",
+      "addMore": "Přidat další soubory",
+      "choose": "Vybrat torrent soubory"
     },
     "urlInput": {
       "label": "URLs / Magnetové adresy",
@@ -1460,31 +1480,22 @@
       "skipHashCheck": "Přeskočit hashování",
       "category": "Kategorie",
       "searchCategories": "Hledat kategorie...",
-      "availableCategories": "Dostupné kategorie (klikněte pro výběr)",
-      "availableCategoriesFiltered": "Dostupné kategorie (klikněte pro výběr) - filtr: \"{{query}}\"",
       "noCategoriesMatch": "Žádné kategorie neodpovídají \"{{query}}\"",
       "tags": "Tagy",
       "tagsPlaceholder": "Vytvořit nový tag nebo hledat dostupné tagy...",
-      "clearAll": "Všechny vymazat",
-      "availableTags": "Dostupné tagy (klikněte pro výběr/zrušení výběru)",
-      "availableTagsFiltered": "Dostupné tagy (klikněte pro výběr/zrušení výběru) - filtr: \"{{query}}\"",
       "newTag": "(nový)",
-      "noTagsMatch": "Žádné tagy neodpovídají \"{{query}}\"",
       "autoTmm": "Automatická správa torrentů (TMM)",
       "savePath": "Složka pro uložení",
+      "freeSpaceAtDestination": "Volné místo v cíli: {{value}}",
       "savePathPlaceholder": "Ponechte prázdné pro výchozí",
-      "manualSavePath": "Manuální složka pro uložení (TMM vypnuto)",
       "useTemporaryPath": "Použít dočasnou cestu",
       "useTemporaryPathDescription": "Stáhnout do dočasné složky před přesunutím do finální složky",
       "tempPath": "Dočasná cesta stahování",
       "tempPathPlaceholder": "Ponechte prázdné pro výchozí",
-      "tempPathDescription": "Torrenty budou stahovány do této složky před přesunutím do finální složky",
-      "autoTmmSavePathDescription": "Automatická správa torrentů je povolena. Složka pro uložení bude určena nastavením kategorie.",
-      "advancedOptions": "Pokročilé možnosti",
       "sequentialDownload": "Postupné stahování",
-      "sequentialDownloadDescription": "(užitečné pro media soubory)",
+      "sequentialDownloadDescription": "Užitečné pro media soubory",
       "firstLastPiecePriority": "Priorita první/poslední části",
-      "firstLastPiecePriorityDescription": "(zahájit přehrávání rychleji)",
+      "firstLastPiecePriorityDescription": "Zahájit přehrávání rychleji",
       "downloadLimit": "Limit stahování (KB/s)",
       "uploadLimit": "Limit odesílání (KB/s)",
       "unlimitedPlaceholder": "0 = neomezeno",
@@ -1500,12 +1511,38 @@
       "renamePlaceholder": "Ponechte prázdné pro použití původního názvu",
       "autoAppliedTitle": "Automaticky použito:",
       "autoAddTrackers": "• Automaticky přidat trackery",
-      "fileExclusions": "• Vyloučené soubory: {{value}}"
+      "fileExclusions": "• Vyloučené soubory: {{value}}",
+      "noCategory": "Bez kategorie",
+      "removeTag": "Odebrat tag {{tag}}",
+      "addTags": "Přidat tagy",
+      "createTag": "Vytvořit tag „{{tag}}“",
+      "noTagsYet": "Zatím žádné tagy. Zadejte název a vytvořte nový.",
+      "done": "Hotovo",
+      "moreOptions": "Další možnosti",
+      "moreOptionsHint": "Cesta, rozložení, pořadí stahování, limity",
+      "saveLocation": "Umístění",
+      "downloadBehavior": "Pořadí stahování",
+      "limits": "Limity",
+      "changedCount_one": "{{count}} změněna",
+      "changedCount_few": "{{count}} změněny",
+      "changedCount_other": "{{count}} změněno",
+      "clearAll": "Všechny vymazat",
+      "tagsWithCount": "Tagy ({{n}})",
+      "categorySavePath": "Uloží do {{path}}",
+      "autoTmmStatus": "Cestu určuje kategorie",
+      "addTypedTags": "Přidat tagy: {{tags}}",
+      "selectedState": "Vybráno",
+      "moreTags_one": "+{{count}} další",
+      "moreTags_few": "+{{count}} další",
+      "moreTags_other": "+{{count}} dalších"
     },
     "footer": {
       "adding": "Přidávání...",
       "add": "Přidat torrent",
-      "cancel": "Zrušit"
+      "cancel": "Zrušit",
+      "addCount_one": "Přidat {{count}} torrent",
+      "addCount_few": "Přidat {{count}} torrenty",
+      "addCount_other": "Přidat {{count}} torrentů"
     },
     "toast": {
       "verifyInput": "Prosím ověřte torrent soubor nebo URL a zkuste to znovu.",

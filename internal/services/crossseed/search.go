@@ -17,7 +17,6 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -80,10 +79,6 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, settings)
 	if gazelleErr != nil {
 		log.Warn().Err(gazelleErr).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle clients; continuing without Gazelle")
-		gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}
-	}
-	if gazelleClients == nil {
-		gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}}
 	}
 
 	instance, sourceTorrent, err := s.loadSearchSource(ctx, instanceID, hash)
@@ -92,17 +87,23 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 	scope := s.collectSearchScope(ctx, instanceID, sourceTorrent, searchScopeFacts{
 		requestedIndexerIDs: opts.IndexerIDs,
-		picked:              len(uniquePositiveInts(opts.IndexerIDs)) > 0,
+		picked:              len(uniquePositiveInts(opts.IndexerIDs)) > 0 || opts.GazelleSites != nil,
 		torznabOff:          opts.DisableTorznab,
 		skipGazelle:         opts.SkipGazelle,
+		gazelleOff:          gazelleClients.disabled(),
 		gazelleKeys:         gazelleClients.hosts(),
+		gazelleSelected:     opts.GazelleSites,
+		reuseLocalChecks:    true,
 	}, true)
 	if scope.err != nil {
 		return nil, scope.err
 	}
 
-	resp, _, _, err := s.searchSourceMatches(ctx, instance, sourceTorrent, opts, scope, gazelleClients)
-	return resp, err
+	resp, err := s.searchSourceMatches(ctx, instance, sourceTorrent, opts, scope, gazelleClients)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // loadSearchSource loads the instance and the complete torrent that a search
@@ -137,16 +138,19 @@ func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash str
 	return instance, sourceTorrent, nil
 }
 
-func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions, scope searchScope, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, bool, bool, error) {
+func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions, scope searchScope, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, error) {
 	instance, sourceTorrent, err := s.loadSearchSource(ctx, instanceID, hash)
 	if err != nil {
-		return nil, false, false, err
+		return nil, err
 	}
 	return s.searchSourceMatches(ctx, instance, sourceTorrent, opts, scope, gazelleClients)
 }
 
-// searchSourceMatches searches for a source that loadSearchSource loaded.
-func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Instance, sourceTorrent *qbt.Torrent, opts TorrentSearchOptions, scope searchScope, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, bool, bool, error) {
+// searchSourceMatches searches for a source that loadSearchSource loaded. When
+// it returns an error after the RED/OPS lookup ran, the response is not nil: it
+// holds only GazelleLookups and torznabRequested, for the cooldown of the
+// Library Scan.
+func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Instance, sourceTorrent *qbt.Torrent, opts TorrentSearchOptions, scope searchScope, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, error) {
 	instanceID := instance.ID
 	hash := sourceTorrent.Hash
 	normalizedHash := normalizeHash(hash)
@@ -154,11 +158,11 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	// Get files to find the largest file for better content type detection
 	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
 	if err != nil {
-		return nil, false, false, fmt.Errorf("failed to get torrent files: %w", err)
+		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
 	sourceFiles, ok := filesMap[normalizedHash]
 	if !ok {
-		return nil, false, false, fmt.Errorf("torrent files not found for hash %s", hash)
+		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
 
 	searchSource, contentInfo := s.readSearchSource(ctx, sourceTorrent, sourceFiles)
@@ -190,8 +194,12 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		applyContentFilterSnapshot(&sourceInfo, snapshot)
 	}
 
-	waitGazelle := s.startGazelleSearch(ctx, instanceID, sourceTorrent, sourceFiles, scope, gazelleClients)
-	remoteRequestsMade := false
+	waitGazelle := s.startGazelleSearch(ctx, sourceTorrent, sourceFiles, scope, gazelleClients)
+	torznabRequested := false
+	// failed returns err with the lookups that the caller still needs.
+	failed := func(gazelle gazelleSearchOutcome, err error) (*TorrentSearchResponse, error) {
+		return &TorrentSearchResponse{GazelleLookups: gazelle.lookups, torznabRequested: torznabRequested}, err
+	}
 	tolerancePercent := defaultSizeMismatchTolerancePercent
 
 	if len(scope.torznabIndexerIDs) == 0 || s.jackettService == nil {
@@ -201,18 +209,18 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 			Msg("[CROSSSEED-SEARCH] Search scope asks no Torznab indexer")
 		gazelle := waitGazelle()
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, gazelle.lookupCompleted, gazelle.remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+			return failed(gazelle, wrapCrossSeedSearchError(ctxErr))
 		}
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelle.results)
 		return &TorrentSearchResponse{
-			SourceTorrent:   sourceInfo,
-			Results:         gazelle.results,
-			Partial:         false,
-			TorznabFailed:   scope.torznabErr != nil,
-			torznabErr:      scope.torznabErr,
-			JobID:           0,
-			GazelleTimedOut: gazelle.timedOut,
-		}, gazelle.lookupCompleted, gazelle.remoteRequestsMade, nil
+			SourceTorrent:  sourceInfo,
+			Results:        gazelle.results,
+			Partial:        false,
+			TorznabFailed:  scope.torznabErr != nil,
+			torznabErr:     scope.torznabErr,
+			JobID:          0,
+			GazelleLookups: gazelle.lookups,
+		}, nil
 	}
 
 	// ARR-driven ID lookup for enhanced Torznab searching
@@ -291,14 +299,13 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	// tracker must not discard results the other source already returned.
 	// Caller cancellation is not a tracker failure: propagate it so a
 	// canceled candidate is never recorded as a partial success.
-	torznabFailed := func(err error) (*TorrentSearchResponse, bool, bool, error) {
+	torznabFailed := func(err error) (*TorrentSearchResponse, error) {
 		gazelle := waitGazelle()
-		remoteRequestsMade = remoteRequestsMade || gazelle.remoteRequestsMade
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+			return failed(gazelle, wrapCrossSeedSearchError(ctxErr))
 		}
 		if len(gazelle.results) == 0 {
-			return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(err)
+			return failed(gazelle, wrapCrossSeedSearchError(err))
 		}
 		log.Warn().
 			Err(err).
@@ -307,15 +314,16 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 			Msg("[CROSSSEED-SEARCH] Torznab search failed; returning Gazelle matches only")
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelle.results)
 		return &TorrentSearchResponse{
-			SourceTorrent:   sourceInfo,
-			Results:         gazelle.results,
-			Partial:         true,
-			TorznabFailed:   true,
-			torznabErr:      err,
-			JobID:           0,
-			QueryDegraded:   queryDegraded,
-			GazelleTimedOut: gazelle.timedOut,
-		}, gazelle.lookupCompleted, remoteRequestsMade, nil
+			SourceTorrent:    sourceInfo,
+			Results:          gazelle.results,
+			Partial:          true,
+			TorznabFailed:    true,
+			torznabErr:       err,
+			JobID:            0,
+			QueryDegraded:    queryDegraded,
+			GazelleLookups:   gazelle.lookups,
+			torznabRequested: torznabRequested,
+		}, nil
 	}
 
 	// Capture per-indexer failures for the decision trace. The callback is
@@ -335,7 +343,7 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	}
 	usable := s.searchUsablePredicate(searchBase)
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
-	remoteRequestsMade = true
+	torznabRequested = true
 	searchResp, coveredIndexerIDs, torznabAnswered, err := gatherer.gather(ctx, waitCtx, gatherIn)
 	if err != nil {
 		return torznabFailed(err)
@@ -504,7 +512,7 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	if len(scored) == 0 {
 		gazelle := waitGazelle()
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+			return failed(gazelle, wrapCrossSeedSearchError(ctxErr))
 		}
 		combined := mergeTorrentSearchResults(gazelle.results, nil)
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
@@ -517,9 +525,10 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 			CoveredIndexerIDs: coveredIndexerIDs,
 			TorznabAnswered:   torznabAnswered,
 			QueryDegraded:     queryDegraded,
-			GazelleTimedOut:   gazelle.timedOut,
+			GazelleLookups:    gazelle.lookups,
+			torznabRequested:  torznabRequested,
 			DecisionTrace:     buildDecisionTrace(0, 0),
-		}, gazelle.lookupCompleted, remoteRequestsMade, nil
+		}, nil
 	}
 
 	if len(sourceFiles) > 0 {
@@ -530,10 +539,10 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, scored, searchReq.Limit)
 	gazelle := waitGazelle()
 	if err != nil {
-		return nil, gazelle.lookupCompleted, remoteRequestsMade, err
+		return failed(gazelle, err)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, gazelle.lookupCompleted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+		return failed(gazelle, wrapCrossSeedSearchError(ctxErr))
 	}
 	if duplicateFilteredCount > 0 {
 		log.Debug().
@@ -557,9 +566,10 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		CoveredIndexerIDs: coveredIndexerIDs,
 		TorznabAnswered:   torznabAnswered,
 		QueryDegraded:     queryDegraded,
-		GazelleTimedOut:   gazelle.timedOut,
+		GazelleLookups:    gazelle.lookups,
+		torznabRequested:  torznabRequested,
 		DecisionTrace:     buildDecisionTrace(len(results), duplicateFilteredCount),
-	}, gazelle.lookupCompleted, remoteRequestsMade, nil
+	}, nil
 }
 
 func sortScoredTorrentSearchResults(scored []scoredTorrentSearchResult) {

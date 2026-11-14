@@ -1287,21 +1287,28 @@ After qui removes files, it waits about 5 minutes before running Free Space dele
 
 #### Free Space source
 
-By default, Free Space uses qBittorrent's reported free space, based on its default download location. If you want to manage a specific mount point, select "Path on server" and enter the path to that disk.
+By default, Free Space uses qBittorrent's reported free space, based on its default download location. If you want to manage a specific mount point, pick one of the path sources and enter the path to that disk.
 
 | Source | Description |
 | --- | --- |
-| Default (qBittorrent) | Uses qBittorrent's reported free space |
-| Path on server | Reads free space from a specific filesystem path |
+| Default (qBittorrent) | Uses qBittorrent's reported free space for its default download location |
+| Path on server | qui reads free space at a path on the qui host, or on the remote machine through SSH access |
+| Path on the qBittorrent host | qBittorrent measures free space at a path on its own host |
 
 :::note
 Path on server requires filesystem access on the instance: "Local Filesystem Access", or [SSH access](./ssh-access.md) for a remote instance. With SSH access, qui reads the free space on the remote machine, and the server must report free space (see [Read the test result](./ssh-access.md#read-the-test-result)). If qui cannot reach the remote machine, the run fails and sends a notification. qui does not use the value from qBittorrent instead, because that value can come from a different disk.
+
+Path on the qBittorrent host needs no filesystem access. qBittorrent measures the free space, so the disk must exist only on the qBittorrent host. It needs qBittorrent 5.3 (WebAPI 2.15.2) or later. On older instances, the UI disables the option.
 :::
 
-If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
+Enter the path the way the qBittorrent host writes it. A qBittorrent on Windows takes `D:\downloads`, one on Linux takes `/downloads`.
+
+If you want to manage multiple disks, create one workflow per disk and set a different path for each workflow.
+
+If qBittorrent cannot measure the path, qui treats the read as failed. Free Space never falls back to zero, so an unreadable path cannot trigger a delete.
 
 :::note
-When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them.
+When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them. Path on the qBittorrent host works on every qui host.
 :::
 
 ### Batching

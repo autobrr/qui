@@ -193,6 +193,21 @@
     "cancelDialog": {
       "title": "取消做种库扫描？",
       "description": "这会停止当前的做种库扫描。已添加的交叉做种会保留，但不会再搜索更多种子。"
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS：{{sites}}",
+      "site": "{{name}}：已查询 {{asked}}，匹配 {{matched}}，失败 {{failed}}",
+      "siteWithNotAsked": "{{counts}}，未查询 {{notAsked}}（{{reasons}}）",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "已关闭",
+        "noApiKey": "无 API 密钥",
+        "cooldown": "最近已搜索",
+        "sourceSite": "来自该站点",
+        "alreadySeeded": "已在做种",
+        "notMusic": "不是音乐",
+        "other": "其他"
+      }
     }
   },
   "rules": {

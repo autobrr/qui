@@ -22,7 +22,7 @@
     "upload": "Upload",
     "totalSize": "Gesamtgröße",
     "totalSizeTooltip": "Gesamtgröße aller Torrents. Die Kopien eines Releases zählen einmal.",
-    "freeSpace": "Freier Speicher",
+    "freeSpace": "Freier Speicher (Standardpfad)",
     "showMore": "Mehr anzeigen",
     "showLess": "Weniger anzeigen",
     "uptime": "Uptime",

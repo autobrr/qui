@@ -91,7 +91,7 @@
     "internal/services/crossseed/partial_pool.go": 14,
     "internal/services/crossseed/rss.go": 3,
     "internal/services/crossseed/search.go": 2,
-    "internal/services/crossseed/search_analyze.go": 3,
+    "internal/services/crossseed/search_analyze.go": 1,
     "internal/services/crossseed/search_gather.go": 1,
     "internal/services/crossseed/seasonpack.go": 2,
     "internal/services/crossseed/source_release_inference.go": 1,

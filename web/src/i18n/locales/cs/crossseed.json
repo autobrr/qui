@@ -201,6 +201,21 @@
     "cancelDialog": {
       "title": "Zrušit hledání ve sdílených?",
       "description": "Tím se zastaví aktuální hledání ve sdílených. Již přidané cross-seedy zůstanou, ale další torrenty se už hledat nebudou."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: dotázáno {{asked}}, shod {{matched}}, selhalo {{failed}}",
+      "siteWithNotAsked": "{{counts}}, nedotázáno {{notAsked}} ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "vypnuto",
+        "noApiKey": "chybí klíč API",
+        "cooldown": "nedávno prohledán",
+        "sourceSite": "z tohoto webu",
+        "alreadySeeded": "už seedováno",
+        "notMusic": "není hudba",
+        "other": "jiné"
+      }
     }
   },
   "rules": {

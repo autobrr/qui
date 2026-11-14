@@ -13,6 +13,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 )
 
 // A save that changes an OPS or RED key checks the key with the tracker first (#2809).
@@ -29,7 +33,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 		wantStatus   int
 		wantRequests int32
 		wantText     string
-		host         string // stored key to read; "" means orpheus.network
+		keyName      string // stored key to read; "" means orpheus
 		wantStored   string
 	}{
 		{
@@ -58,7 +62,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 			wantStatus:   http.StatusBadRequest,
 			wantRequests: 1,
 			wantText:     "RED rejected the API key or this IP",
-			host:         "redacted.sh",
+			keyName:      models.GazelleKeyRedacted,
 		},
 		{
 			name:         "one rejected key saves neither key",
@@ -140,9 +144,47 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 			}
 			require.Contains(t, body.Error+body.Warning, tt.wantText)
 
-			key, _, err := store.GetDecryptedGazelleAPIKey(t.Context(), cmp.Or(tt.host, "orpheus.network"))
+			keys, err := store.GetDecryptedGazelleAPIKeys(t.Context())
 			require.NoError(t, err)
-			require.Equal(t, tt.wantStored, key)
+			require.Equal(t, tt.wantStored, keys.Keys[cmp.Or(tt.keyName, models.GazelleKeyOrpheus)])
+		})
+	}
+}
+
+// A save closes the key rejected notice of a site whose key passed the check,
+// whose key it cleared, or when it turns RED/OPS off.
+func TestAutomationSettingsSaveClosesKeyRejectedNotice(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantOpen bool
+	}{
+		{name: "new key passes the check", body: `{"gazelleEnabled":true,"orpheusApiKey":"good-key"}`},
+		{name: "key cleared", body: `{"gazelleEnabled":true,"orpheusApiKey":""}`},
+		{name: "RED/OPS off", body: `{"gazelleEnabled":false}`},
+		{name: "unrelated save", body: `{"runIntervalMinutes":240}`, wantOpen: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"success","response":{"username":"user"}}`))
+			}))
+			t.Cleanup(server.Close)
+			store := newTestCrossSeedStore(t)
+			_, err := store.UpsertSettings(t.Context(), &models.CrossSeedAutomationSettings{GazelleEnabled: true, OrpheusAPIKey: "old-key"})
+			require.NoError(t, err)
+			notices := systemnotice.New(nil)
+			notices.Open(systemnotice.OrpheusKeyRejected, "rejected")
+			svc := crossseed.NewService(nil, nil, nil, store, nil, nil, nil, nil, nil, nil, nil, nil, notices, false, nil, nil, nil, nil)
+			handler := &CrossSeedHandler{service: svc, gazelleBaseURL: server.URL}
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/api/cross-seed/settings", strings.NewReader(tt.body))
+			resp := httptest.NewRecorder()
+			handler.PatchAutomationSettings(resp, req)
+
+			require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+			require.Equal(t, tt.wantOpen, len(notices.List()) == 1)
 		})
 	}
 }

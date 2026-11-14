@@ -365,20 +365,34 @@ describe("api.crossseed contract", () => {
       expect(result.torznabFailed).toBe(true)
     })
 
-    it("maps the RED/OPS timeout note", async () => {
+    it("passes the RED/OPS lookups and the plan through", async () => {
+      const lookups = [{ site: "orpheus.network", name: "Orpheus (API)", shortName: "Orpheus", indexerId: -1002, status: "failed", reason: "timed_out" }]
       server.use(
         http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
           HttpResponse.json({
-            source_torrent: null,
+            source_torrent: { name: "x", gazellePlan: [{ ...lookups[0], status: "will_ask" }] },
             results: [],
-            gazelle_timed_out: true,
+            gazelleLookups: lookups,
           })
         )
       )
 
       const result = await api.searchCrossSeedTorrent(1, "abc")
 
-      expect(result.gazelleTimedOut).toBe(true)
+      expect(result.gazelleLookups).toEqual(lookups)
+      expect(result.sourceTorrent.gazellePlan?.[0].status).toBe("will_ask")
+    })
+
+    it("sends the picked RED/OPS sites, also when the list is empty", async () => {
+      const captured = captureNext(
+        "post",
+        "*/api/cross-seed/torrents/:instanceId/:hash/search",
+        () => HttpResponse.json({ source_torrent: null, results: [] })
+      )
+
+      await api.searchCrossSeedTorrent(1, "abc", { gazelleSites: [] })
+
+      expect(JSON.parse(captured.value?.body ?? "")).toEqual({ gazelle_sites: [] })
     })
   })
 

@@ -58,6 +58,8 @@ const (
 	CapPartialCategoryEdit
 	// CapProcessInfo is app/processInfo, which has the launch time.
 	CapProcessInfo
+	// CapFreeSpaceAtPath is app/getFreeSpaceAtPath.
+	CapFreeSpaceAtPath
 	// CapExportOmitsTrackers marks the qBittorrent 4.6.x builds that export a
 	// .torrent file without its trackers. No capture confirms the bug: the
 	// 4.6.0 and 4.6.7 feature probes in go-qbittorrent keep the tracker.
@@ -103,6 +105,7 @@ var capabilityVersions = map[Capability]versionRange{
 	CapListCreatedBy:              since("2.15.1"), // qBittorrent 5.2
 	CapPartialCategoryEdit:        since("2.16.1"), // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
 	CapProcessInfo:                since("2.15.1"),
+	CapFreeSpaceAtPath:            since("2.15.2"), // qBittorrent 5.3
 	CapExportOmitsTrackers:        {lowest: semver.MustParse("2.9.1"), highest: semver.MustParse("2.9.3")},
 }
 
