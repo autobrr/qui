@@ -319,3 +319,50 @@ func TestPartialPoolInstanceLookupFailureKeepsPoolActiveBetweenFullScans(t *test
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedPartialPoolStatusActive, pool.Status, "the next active-recovery pass must retry the instance lookup")
 }
+
+// regression: #3090
+func TestPartialPoolPassFinishesFilesOfMemberInReviewWithoutLocalAccess(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	base := t.TempDir()
+	sourceRoot := filepath.Join(base, "source")
+	targetRoot := filepath.Join(base, "target")
+	pool, source, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
+		instanceID, "source", models.CrossSeedPartialPoolModeHardlink, sourceRoot,
+		models.CrossSeedPartialPoolMemberStatusComplete, models.CrossSeedPartialPoolFileStatusAvailable, nil,
+	))
+	require.NoError(t, err)
+	targetRegistration := partialPoolFilesystemRegistration(
+		instanceID, "target", models.CrossSeedPartialPoolModeHardlink, targetRoot,
+		models.CrossSeedPartialPoolMemberStatusManual, models.CrossSeedPartialPoolFileStatusVerifying, &source.Files[0].ID,
+	)
+	targetRegistration.Member.LastError = "link mode or local filesystem access was disabled"
+	_, target, err := store.RegisterPartialPoolMember(t.Context(), targetRegistration)
+	require.NoError(t, err)
+
+	size := target.Files[0].SizeBytes
+	syncManager := &scopedPartialPoolSyncManager{torrents: []qbt.Torrent{
+		{Hash: source.TorrentKey, SavePath: sourceRoot, State: qbt.TorrentStateStoppedUp},
+		{Hash: target.TorrentKey, SavePath: targetRoot, State: qbt.TorrentStateStoppedDl, AmountLeft: size},
+	}}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{
+		source.TorrentKey: {{Index: 0, Name: target.Files[0].RelativePath, Size: size, Priority: 1, Progress: 1}},
+		target.TorrentKey: {{Index: 0, Name: target.Files[0].RelativePath, Size: size, Priority: 1}},
+	}
+	remote := partialPoolAccessCases()[1].instanceStore(instanceID)
+	service := &partialPoolCoordinator{
+		automationStore: store,
+		instanceStore:   remote,
+		syncManager:     syncManager,
+		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+
+	service.reconcilePartialPoolsScheduled(t.Context(), target.CreatedAt.Add(partialPoolAdmissionHold), partialPoolWake{}, true)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	target = partialPoolMemberByTorrentKey(pool, target.TorrentKey)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, target.Files[0].Status, "a later pass finishes the file update that a restart or a failed write left")
+	require.Equal(t, models.CrossSeedPartialPoolStatusDormant, pool.Status)
+}

@@ -3085,17 +3085,27 @@ func (s *partialPoolCoordinator) partialPoolMemberLocalAccess(ctx context.Contex
 
 // pausePartialPoolMemberWithoutLocalAccess reports false for a complete, manual, or removed member, whose handlers touch no files.
 func (s *partialPoolCoordinator) pausePartialPoolMemberWithoutLocalAccess(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) bool {
+	const reason = "link mode or local filesystem access was disabled"
 	switch member.Status {
-	case models.CrossSeedPartialPoolMemberStatusComplete, models.CrossSeedPartialPoolMemberStatusManual, models.CrossSeedPartialPoolMemberStatusRemoved:
+	case models.CrossSeedPartialPoolMemberStatusComplete, models.CrossSeedPartialPoolMemberStatusRemoved:
+		return false
+	case models.CrossSeedPartialPoolMemberStatusManual:
+		// A restart or a failed write can stop the file updates after the member update.
+		if member.LastError == reason {
+			s.markPartialPoolLinkWorkManual(ctx, member, snapshot, reason)
+		}
 		return false
 	}
-	reason := "link mode or local filesystem access was disabled"
 	if !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, reason) {
 		snapshot.stateRetryPending = true
 	}
-	if member.Status != models.CrossSeedPartialPoolMemberStatusManual {
-		return true
+	if member.Status == models.CrossSeedPartialPoolMemberStatusManual {
+		s.markPartialPoolLinkWorkManual(ctx, member, snapshot, reason)
 	}
+	return true
+}
+
+func (s *partialPoolCoordinator) markPartialPoolLinkWorkManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, reason string) {
 	for _, file := range member.Files {
 		if file.Status != models.CrossSeedPartialPoolFileStatusPropagating && file.Status != models.CrossSeedPartialPoolFileStatusVerifying {
 			continue
@@ -3106,7 +3116,6 @@ func (s *partialPoolCoordinator) pausePartialPoolMemberWithoutLocalAccess(ctx co
 		}
 		s.deletePartialPoolCreated(file.ID)
 	}
-	return true
 }
 
 // partialPoolMemberModeEnabled returns false without an error only when loaded
