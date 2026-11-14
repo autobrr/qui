@@ -533,7 +533,6 @@
       "verificationUnavailable": "Verificação de licença indisponível. A troca para um tema licenciado está temporariamente desativada.",
       "notLoaded": "Temas licenciados não carregados",
       "notLoadedDescription": "Execute",
-      "locked": "Bloqueado",
       "defaultThemeVisit": "qui mostra o tema padrão nesta visita porque o endereço contém ?theme=default. Selecione um tema para encerrar.",
       "search": "Pesquisar temas",
       "filterLabel": "Filtrar temas",

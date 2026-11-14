@@ -533,7 +533,6 @@
       "verificationUnavailable": "La verificació de llicències no està disponible. El canvi a temes amb llicència està desactivat temporalment.",
       "notLoaded": "Els temes amb llicència no s'han carregat",
       "notLoadedDescription": "Executa",
-      "locked": "Bloquejat",
       "defaultThemeVisit": "qui mostra el tema per defecte durant aquesta visita, perquè l'adreça conté ?theme=default. Selecciona un tema per acabar-la.",
       "search": "Cerca temes",
       "filterLabel": "Filtra els temes",

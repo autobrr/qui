@@ -533,7 +533,6 @@
       "verificationUnavailable": "License verification unavailable. Switching to a licensed theme is temporarily disabled.",
       "notLoaded": "Licensed themes not loaded",
       "notLoadedDescription": "Run",
-      "locked": "Locked",
       "defaultThemeVisit": "qui shows the default theme for this visit, because the address has ?theme=default. Select a theme to end it.",
       "search": "Search themes",
       "filterLabel": "Filter themes",

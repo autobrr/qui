@@ -14,7 +14,7 @@ import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { useTheme } from "@/hooks/useTheme"
-import { getSystemTheme, getThemeVariation } from "@/utils/theme"
+import { getThemeVariation, isDarkMode } from "@/utils/theme"
 import { buildThemeCatalog, themeGroup, themeMatchesSearch, type ThemeGroup } from "@/lib/theme-catalog"
 import { themeThumbnailPalette, themeVariationColors, type ThemeThumbnailPalette } from "@/lib/theme-thumbnail"
 import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
@@ -225,7 +225,13 @@ function editorKey(target: CustomThemeEditorTarget): string {
 
 type ThemeFilter = "all" | ThemeGroup
 
-export function ThemeSelector() {
+interface ThemeSelectorProps {
+  /** Opens Choose menu themes once, for a link to the dialog. */
+  openMenu?: boolean
+  onMenuOpened?: () => void
+}
+
+export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorProps) {
   const { t } = useTranslation("settings")
   const { theme: currentTheme, currentTheme: appliedTheme, mode, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
@@ -312,7 +318,7 @@ export function ThemeSelector() {
   const premiumThemes = themes.filter(theme => theme.isPremium)
   const themeCatalog = buildThemeCatalog(themes, customThemes)
   const lockedCount = themeCatalog.filter(theme => theme.locked).length
-  const dark = mode === "dark" || (mode === "auto" && getSystemTheme() === "dark")
+  const dark = isDarkMode(mode)
   const paletteOf = (theme: Theme) => themeThumbnailPalette(theme, dark, getThemeVariation(theme.id))
   // Before the theme lists load, the registry can lack the theme in use. The applied theme then stands in for it.
   const activeTheme = getThemeById(currentTheme) ?? appliedTheme
@@ -420,6 +426,8 @@ export function ThemeSelector() {
             paletteOf={paletteOf}
             onShownChange={setThemesShown}
             onReplace={replaceThemeVisibility}
+            openRequested={openMenu}
+            onOpenRequestHandled={onMenuOpened}
           />
         </CardHeader>
         <CardContent className="space-y-4 px-4">

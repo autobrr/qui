@@ -27,7 +27,7 @@ The theme menu in the top bar lists only some of the themes. On a phone, the foo
 
 To change the list:
 
-1. Open **Settings → Themes** and click **Choose menu themes**.
+1. Open **Settings → Themes** and click **Choose menu themes**. The theme menu also has a **Choose menu themes** link at the bottom that opens the same list.
 2. Select or clear the check box of a theme. qui saves each change at once.
 3. To select or clear all themes of a group, use the check box of the group. During a search, qui locks the group check boxes, because they apply to all themes of the group.
 4. Click **Done**.

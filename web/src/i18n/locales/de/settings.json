@@ -533,7 +533,6 @@
       "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu lizenzierten Designs ist vorübergehend deaktiviert.",
       "notLoaded": "Lizenzierte Designs nicht geladen",
       "notLoadedDescription": "Führe aus:",
-      "locked": "Gesperrt",
       "defaultThemeVisit": "qui zeigt für diesen Besuch das Standard-Theme, weil die Adresse ?theme=default enthält. Wähle ein Theme, um das zu beenden.",
       "search": "Themes suchen",
       "filterLabel": "Themes filtern",

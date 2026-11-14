@@ -531,7 +531,6 @@
       "verificationUnavailable": "授權驗證不可用。切換到需要授權的主題暫時停用。",
       "notLoaded": "需要授權的主題未載入",
       "notLoadedDescription": "執行",
-      "locked": "已鎖定",
       "defaultThemeVisit": "由於網址中包含 ?theme=default，qui 在本次造訪中顯示預設主題。選擇一個主題即可結束。",
       "search": "搜尋主題",
       "filterLabel": "篩選主題",

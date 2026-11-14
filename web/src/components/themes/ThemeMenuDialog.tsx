@@ -4,7 +4,7 @@
  */
 
 import { Lock, Search } from "lucide-react"
-import { useId, useState, type ReactNode } from "react"
+import { useEffect, useId, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
@@ -34,10 +34,13 @@ interface ThemeMenuDialogProps {
   paletteOf: (theme: Theme) => ThemeThumbnailPalette
   onShownChange: (themes: readonly Theme[], shown: boolean) => void
   onReplace: (next: ThemeVisibility) => void
+  /** Opens the dialog once, for a link to it. */
+  openRequested?: boolean
+  onOpenRequestHandled?: () => void
 }
 
 /** Chooses the themes that the quick theme pickers list, with a checkbox for each theme and for each group. */
-export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, paletteOf, onShownChange, onReplace }: ThemeMenuDialogProps) {
+export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, paletteOf, onShownChange, onReplace, openRequested = false, onOpenRequestHandled }: ThemeMenuDialogProps) {
   const { t } = useTranslation("settings")
   const baseId = useId()
   const [open, setOpenState] = useState(false)
@@ -55,6 +58,12 @@ export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, 
     licensed: t("themes.groups.licensed"),
     custom: t("themes.groups.custom"),
   }
+  useEffect(() => {
+    if (!openRequested) return
+    setOpenState(true)
+    onOpenRequestHandled?.()
+  }, [openRequested, onOpenRequestHandled])
+
   const setOpen = (next: boolean) => {
     if (!next) {
       setQuery("")

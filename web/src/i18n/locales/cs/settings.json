@@ -535,7 +535,6 @@
       "verificationUnavailable": "Ověření licence není dostupné. Přepínání licencovaných motivů je dočasně nedostupné.",
       "notLoaded": "Licencované motivy nejsou načteny",
       "notLoadedDescription": "Spusťte",
-      "locked": "Zamčený",
       "defaultThemeVisit": "qui při této návštěvě zobrazuje výchozí motiv, protože adresa obsahuje ?theme=default. Výběrem motivu to ukončíte.",
       "search": "Hledat motivy",
       "filterLabel": "Filtrovat motivy",

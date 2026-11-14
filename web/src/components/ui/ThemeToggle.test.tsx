@@ -75,10 +75,19 @@ vi.mock("@/utils/theme", () => ({
   getCurrentThemeMode: () => "dark",
   getCurrentTheme: () => fixture.selectedTheme,
   getThemeVariation: (id?: string) => id === "other" ? "amber" : "blue",
+  isDarkMode: () => true,
   setTheme: vi.fn(),
   setThemeMode: vi.fn(),
   setThemeVariation: vi.fn(),
 }))
+
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react")
+  return {
+    Link: ({ to, search: _search, children, ...props }: { to: string; search?: unknown; children?: React.ReactNode }) =>
+      createElement("a", { href: to, ...props }, children),
+  }
+})
 
 vi.mock("@/hooks/useLicense.ts", () => ({
   useHasPremiumAccess: () => ({
@@ -136,12 +145,12 @@ function themeItem(name: string): HTMLElement {
   return item
 }
 
-function swatchCount(item: HTMLElement): number {
-  return item.querySelectorAll("[style]").length
+function variationButtons(item: HTMLElement): HTMLElement[] {
+  return [...item.querySelectorAll<HTMLElement>("[data-slot=\"theme-variations\"] button")]
 }
 
 describe("ThemeToggle", () => {
-  it("shows the complete catalog and every variation without repeated badges", async () => {
+  it("shows the complete catalog, with color buttons only for the theme in use", async () => {
     render(<ThemeToggle />)
 
     fireEvent.pointerDown(
@@ -162,13 +171,9 @@ describe("ThemeToggle", () => {
     expect(items.indexOf(premiumItem)).toBeLessThan(items.indexOf(customItem))
     expect(premiumItem.hasAttribute("data-disabled")).toBe(true)
 
-    await waitFor(() => expect(swatchCount(selectedItem)).toBe(3))
-    expect(swatchCount(otherItem)).toBe(2)
+    expect(variationButtons(selectedItem).map((button) => button.title)).toEqual(["blue", "green"])
+    expect(variationButtons(otherItem)).toEqual([])
     expect(otherName.classList.contains("truncate")).toBe(false)
-
-    const variationRow = otherItem.querySelector("[data-slot=\"theme-variations\"]")
-    expect(variationRow).not.toBeNull()
-    expect(variationRow?.querySelectorAll("[style]")).toHaveLength(1)
     expect(screen.queryByText("themeToggle.custom")).toBeNull()
   })
 
@@ -187,11 +192,25 @@ describe("ThemeToggle", () => {
       expect(screen.queryByText("Other theme")).not.toBeNull()
     })
 
-    fireEvent.click(screen.getByTitle("amber"))
+    fireEvent.click(screen.getByTitle("green"))
 
     await waitFor(() => {
       expect(screen.queryByText("Other theme")).not.toBeNull()
     })
+  })
+
+  it("picks the mode from one row and links to Choose menu themes", async () => {
+    const { setThemeMode } = await import("@/utils/theme")
+    render(<ThemeToggle />)
+    openMenu()
+
+    const dark = await screen.findByRole("menuitemradio", { name: "themeToggle.dark" })
+    expect(dark.getAttribute("aria-checked")).toBe("true")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "themeToggle.light" }))
+    await waitFor(() => expect(setThemeMode).toHaveBeenCalledWith("light"))
+
+    const link = screen.getByRole("menuitem", { name: "settings:themes.menu.button" })
+    expect(link.getAttribute("href")).toBe("/settings")
   })
 
   it("shows a hidden theme that the user showed and hides a free theme that the user hid", async () => {

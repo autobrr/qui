@@ -533,7 +533,6 @@
       "verificationUnavailable": "Verifica della licenza non disponibile. Il passaggio a un tema con licenza è temporaneamente disabilitato.",
       "notLoaded": "Temi con licenza non caricati",
       "notLoadedDescription": "Esegui",
-      "locked": "Bloccato",
       "defaultThemeVisit": "qui mostra il tema predefinito per questa visita, perché l'indirizzo contiene ?theme=default. Seleziona un tema per terminarla.",
       "search": "Cerca temi",
       "filterLabel": "Filtra i temi",

@@ -533,7 +533,6 @@
       "verificationUnavailable": "Vérification de licence indisponible. Le passage à un thème sous licence est temporairement désactivé.",
       "notLoaded": "Thèmes sous licence non chargés",
       "notLoadedDescription": "Exécutez",
-      "locked": "Verrouillé",
       "defaultThemeVisit": "qui affiche le thème par défaut pour cette visite, car l'adresse contient ?theme=default. Sélectionnez un thème pour y mettre fin.",
       "search": "Rechercher des thèmes",
       "filterLabel": "Filtrer les thèmes",

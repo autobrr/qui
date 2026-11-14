@@ -531,7 +531,6 @@
       "verificationUnavailable": "许可证验证不可用。切换到需要许可证的主题暂时禁用。",
       "notLoaded": "需要许可证的主题未加载",
       "notLoadedDescription": "运行",
-      "locked": "已锁定",
       "defaultThemeVisit": "由于地址中包含 ?theme=default，qui 在本次访问中显示默认主题。选择一个主题即可结束。",
       "search": "搜索主题",
       "filterLabel": "筛选主题",

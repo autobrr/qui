@@ -105,7 +105,7 @@ vi.mock("@/hooks/useTheme", () => ({
 }))
 
 vi.mock("@/utils/theme", () => ({
-  getSystemTheme: () => "dark",
+  isDarkMode: () => true,
   getThemeVariation: () => null,
   ...themeUtils,
 }))
@@ -277,6 +277,14 @@ describe("ThemeSelector", () => {
 
     expect(themeHook.setTheme).toHaveBeenCalledWith("nord")
     expect(themeHook.setVariation).toHaveBeenCalledWith("aurora")
+  })
+
+  it("opens Choose menu themes once when a link asks for it", () => {
+    const opened = vi.fn()
+    render(<ThemeSelector openMenu onMenuOpened={opened} />)
+
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    expect(opened).toHaveBeenCalledTimes(1)
   })
 
   it("checks the themes that the theme menu lists", () => {

@@ -24,10 +24,19 @@ vi.mock("@/utils/theme", async () => {
     // The stored theme when the registry resolves it, as in utils/theme.
     getCurrentTheme: () => getThemeById(localStorage.getItem("color-theme") ?? "") ?? { id: "minimal" },
     getThemeVariation: () => null,
+    isDarkMode: () => true,
     getAppliedCustomThemeCss: () => applied.customCss,
     setTheme: vi.fn(() => Promise.resolve()),
     setThemeMode: vi.fn(),
     setThemeVariation: vi.fn(),
+  }
+})
+
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react")
+  return {
+    Link: ({ to, search: _search, children, ...props }: { to: string; search?: unknown; children?: React.ReactNode }) =>
+      createElement("a", { href: to, ...props }, children),
   }
 })
 
@@ -90,8 +99,13 @@ async function openMenuNames(): Promise<string[]> {
   await screen.findByText("Local")
   await screen.findByText("Licensed tokyo-night")
   return screen.getAllByRole("menuitem")
-    .map((item) => item.textContent ?? "")
-    .filter((text) => !text.startsWith("themeToggle."))
+    .map((item) => {
+      // The visible name only: a locked row also has screen reader text.
+      const visible = item.cloneNode(true) as HTMLElement
+      visible.querySelectorAll(".sr-only").forEach((element) => element.remove())
+      return visible.textContent ?? ""
+    })
+    .filter((text) => !text.startsWith("themeToggle.") && !text.startsWith("settings:"))
 }
 
 const defaultMenu = [

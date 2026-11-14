@@ -531,7 +531,6 @@
       "verificationUnavailable": "라이선스 확인을 사용할 수 없습니다. 라이선스 테마로의 전환이 일시적으로 비활성화되었습니다.",
       "notLoaded": "라이선스 테마가 로드되지 않음",
       "notLoadedDescription": "실행:",
-      "locked": "잠김",
       "defaultThemeVisit": "주소에 ?theme=default가 있으므로 qui가 이번 방문 동안 기본 테마를 표시합니다. 테마를 선택하면 종료됩니다.",
       "search": "테마 검색",
       "filterLabel": "테마 필터",

@@ -58,7 +58,7 @@ const getSystemTheme = (): typeof THEME_DARK | typeof THEME_LIGHT => {
   return getSystemPreference().matches ? THEME_DARK : THEME_LIGHT;
 };
 
-const isDarkMode = (mode: ThemeMode): boolean => {
+export const isDarkMode = (mode: ThemeMode): boolean => {
   return mode === THEME_DARK || (mode === THEME_AUTO && getSystemPreference().matches);
 };
 
