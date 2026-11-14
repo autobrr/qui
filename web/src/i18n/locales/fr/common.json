@@ -197,6 +197,14 @@
           }
         }
       },
+      "low_disk": {
+        "short": "Disque presque plein",
+        "title": "Disque presque plein",
+        "effect": "Le disque de la base de données de qui a peu d'espace libre. Quand le disque est plein, chaque écriture de qui échoue.",
+        "fix": "Libérez de l'espace sur le disque, réduisez « Conserver le détail quotidien pendant » ou supprimez l'historique ancien dans les paramètres Statistiques.",
+        "menuFix": "Libérez de l'espace disque pour la base",
+        "action": "Ouvrir les paramètres Statistiques"
+      },
       "redacted_key_rejected": {
         "short": "Clé Redacted refusée",
         "title": "Redacted a refusé la clé API",

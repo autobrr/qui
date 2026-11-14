@@ -197,6 +197,14 @@
           }
         }
       },
+      "low_disk": {
+        "short": "磁盘空间不足",
+        "title": "磁盘空间不足",
+        "effect": "qui 数据库所在磁盘的可用空间很少。磁盘写满后，qui 的每次写入都会失败。",
+        "fix": "请释放磁盘空间，或在统计设置中缩短“保留每日详情”，或删除较早的历史。",
+        "menuFix": "为数据库释放磁盘空间",
+        "action": "打开统计设置"
+      },
       "redacted_key_rejected": {
         "short": "Redacted 密钥被拒绝",
         "title": "Redacted 拒绝了 API 密钥",

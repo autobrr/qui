@@ -237,6 +237,27 @@ Do not leave an old `qui.db-wal` file next to the small copy. SQLite applies it 
 
 When qui runs correctly, you can delete the backup and the old file.
 
+## Low disk
+
+On SQLite, qui reads the free space on the disk of the database file each minute. When the free space is below a limit, qui shows the System notice **Low disk** in the sidebar, in the header menu, and in the mobile menu. The limit is the smaller of 1 GB and 5% of the size of the disk. For example, a disk of 10 GB has a limit of 500 MB, and a disk of 20 GB or more has a limit of 1 GB. The notice closes when the free space recovers to the limit plus 10%, for example 550 MB on a disk of 10 GB.
+
+When the disk is full, each write of qui fails. Before that happens, do one of these steps:
+
+- Free space on the disk.
+- Lower [Keep daily detail for](#keep-daily-detail-for).
+- [Delete older history](#delete-history).
+
+qui continues to record while the disk is low. The recording writes a few kilobytes each 5 minutes.
+
+If you keep a small disk on purpose, click **Dismiss**. The notice then stays hidden, also after a restart of qui. The notice opens again in two cases:
+
+- The free space recovers to the limit plus 10%, and then it drops below the limit again.
+- After the dismiss, a write of the transfer history fails, and the System notice **Recording stopped** opens.
+
+Each time the notice opens, qui sends it one time to each [notification target](./notifications.md) that has the event `system_notice`.
+
+On Postgres, qui does not read the disk, and the notice never opens.
+
 ## Why the numbers differ from Server Statistics
 
 Server Statistics on the [Dashboard](./dashboard.md) reads the all-time counters of qBittorrent. These counters also count protocol traffic. The Statistics page adds up the transfer of each torrent. Thus, the two pages show different numbers.

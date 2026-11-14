@@ -6643,7 +6643,7 @@ paths:
       tags:
         - System
       summary: Dismiss a System notice
-      description: Closes a System notice that the user can dismiss, for example "shrink_failed". A notice such as "recording_stopped" closes itself when the fault is gone, and returns 409.
+      description: Closes a System notice that the user can dismiss, for example "shrink_failed". A notice such as "recording_stopped" closes itself when the fault is gone, and returns 409. A dismissed "low_disk" stays hidden, also after a restart, until the free space recovers to the limit plus 10% and drops below the limit again, or until "recording_stopped" opens after the dismiss.
       parameters:
         - in: path
           name: kind
@@ -6656,6 +6656,12 @@ paths:
           description: The notice is closed
         '409':
           description: The notice closes itself and cannot be dismissed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: qui could not store the dismiss
           content:
             application/json:
               schema:
@@ -9050,7 +9056,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [recording_stopped, shrink_failed]
+          enum: [recording_stopped, shrink_failed, low_disk]
           description: The kind of the notice. The web UI shows the title and the fix of each kind.
         severity:
           type: string
@@ -9061,7 +9067,7 @@ components:
           example: disk_full
         cause:
           type: string
-          description: The error that opened the notice, or the latest error while it is open
+          description: The error that opened the notice, or the latest error while it is open. For low_disk, the free space, the size of the disk, and the limit.
           example: "write the transfer history of instance 1: attempt to write a readonly database"
         openedAt:
           type: string

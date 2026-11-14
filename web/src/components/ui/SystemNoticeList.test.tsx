@@ -21,11 +21,14 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-// No kind has a fix page yet, so the test adds one.
-vi.mock("@/lib/system-notice", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/system-notice")>()),
-  systemNoticeRoutes: { key_rejected: { to: "/settings", search: { tab: "indexers" } } },
-}))
+// The test adds a fix page for a kind that qui does not have, to test the link of a kind with no texts.
+vi.mock("@/lib/system-notice", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/system-notice")>()
+  return {
+    ...original,
+    systemNoticeRoutes: { ...original.systemNoticeRoutes, key_rejected: { to: "/settings", search: { tab: "indexers" } } },
+  }
+})
 
 const shrink = vi.hoisted(() => ({ requestShrink: vi.fn(async () => {}), pending: false }))
 vi.mock("@/hooks/useDatabaseShrink", () => ({ useDatabaseShrink: () => shrink }))
@@ -143,6 +146,38 @@ describe("SystemNoticeList", () => {
     expect(shrink.requestShrink).toHaveBeenCalledTimes(1)
     fireEvent.click(within(detail).getByRole("button", { name: "Dismiss" }))
     await waitFor(() => expect(dismissed).toEqual(["shrink_failed"]))
+  })
+
+  it("gives Low disk its fix, a link to the Statistics settings, and a dismiss that hides it", async () => {
+    let open: SystemNotice[] = [{
+      ...notice("low_disk", "400 MB free of 10 GB on the disk of the database file. The limit is 500 MB.", 3),
+      severity: "warning",
+    }]
+    const dismissed: string[] = []
+    server.use(http.delete("*/api/system-notices/:kind", ({ params }) => {
+      dismissed.push(String(params.kind))
+      open = []
+      return new HttpResponse(null, { status: 204 })
+    }))
+    server.use(http.get("*/api/system-notices", () => HttpResponse.json(open)))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SystemNoticeList />
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: /Low disk/ }))
+
+    const detail = await screen.findByRole("dialog", { name: "Low disk" })
+    expect(detail.textContent).toContain("When the disk is full, each write of qui fails.")
+    expect(detail.textContent).toContain("Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.")
+    expect(detail.textContent).toContain("400 MB free of 10 GB")
+    expect(within(detail).getByRole("link", { name: "Open the Statistics settings" }).getAttribute("href")).toBe("/settings?tab=statistics")
+    fireEvent.click(within(detail).getByRole("button", { name: "Dismiss" }))
+
+    await waitFor(() => expect(dismissed).toEqual(["low_disk"]))
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Low disk/ })).toBeNull())
   })
 
   it("links an unknown shrink failure to the log", async () => {

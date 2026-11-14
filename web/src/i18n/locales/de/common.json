@@ -197,6 +197,14 @@
           }
         }
       },
+      "low_disk": {
+        "short": "Wenig Speicherplatz",
+        "title": "Wenig Speicherplatz",
+        "effect": "Der Datenträger der qui-Datenbank hat wenig freien Platz. Ist der Datenträger voll, schlägt jeder Schreibvorgang von qui fehl.",
+        "fix": "Gib Platz auf dem Datenträger frei, verkürze „Tägliche Details behalten für“ oder lösche älteren Verlauf in den Statistik-Einstellungen.",
+        "menuFix": "Speicher für die Datenbank freigeben",
+        "action": "Statistik-Einstellungen öffnen"
+      },
       "redacted_key_rejected": {
         "short": "Redacted-Schlüssel abgelehnt",
         "title": "Redacted hat den API-Schlüssel abgelehnt",

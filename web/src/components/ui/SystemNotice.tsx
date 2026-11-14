@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next"
 import { ShrinkFailedActions } from "@/components/database/ShrinkFailedActions"
 import { Button } from "@/components/ui/button"
 import { CopyButton } from "@/components/ui/copy-button"
+import { SystemNoticeDismissButton } from "@/components/ui/SystemNoticeDismissButton"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useNow } from "@/hooks/useNow"
@@ -54,6 +55,7 @@ export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNa
   const { t } = useTranslation("common")
   const now = useNow()
   const description = useSystemNoticeDescription(notice.kind, notice.reason)
+  const hasDismissButton = notice.kind === "low_disk"
   const { formatClockTime } = useDateTimeFormatters()
   const openedAt = new Date(notice.openedAt)
   // Like the row, the detail counts a notice under one minute old as one minute.
@@ -78,13 +80,16 @@ export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNa
         <code className="min-w-0 flex-1 break-words py-0.5 font-mono text-[11px] leading-relaxed text-muted-foreground">{notice.cause}</code>
         <CopyButton value={notice.cause} label={t("systemNotice.causeLabel")} className="size-6" iconClassName="size-3" />
       </div>
-      {description.action && (
-        <div className="border-t px-4 py-2.5 pl-9">
-          <Button asChild size="sm" className="h-7 px-2.5 text-xs">
-            <Link to={description.action.to} search={description.action.search} onClick={onNavigate}>
-              {description.action.label}
-            </Link>
-          </Button>
+      {(description.action || hasDismissButton) && (
+        <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2.5 pl-9">
+          {description.action && (
+            <Button asChild size="sm" className="h-7 px-2.5 text-xs">
+              <Link to={description.action.to} search={description.action.search} onClick={onNavigate}>
+                {description.action.label}
+              </Link>
+            </Button>
+          )}
+          {hasDismissButton && <SystemNoticeDismissButton kind={notice.kind} />}
         </div>
       )}
       {notice.kind === "shrink_failed" && (

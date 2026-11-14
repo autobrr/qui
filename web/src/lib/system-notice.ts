@@ -14,6 +14,7 @@ export type SystemNoticeRoute = Pick<LinkProps, "to" | "search">
 export const systemNoticeRoutes: Partial<Record<string, SystemNoticeRoute>> = {
   redacted_key_rejected: { to: "/settings", search: { tab: "indexers" } },
   orpheus_key_rejected: { to: "/settings", search: { tab: "indexers" } },
+  low_disk: { to: "/settings", search: { tab: "statistics" } },
 }
 
 const freshMs = 10 * 60 * 1000

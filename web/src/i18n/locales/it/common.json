@@ -197,6 +197,14 @@
           }
         }
       },
+      "low_disk": {
+        "short": "Disco quasi pieno",
+        "title": "Disco quasi pieno",
+        "effect": "Il disco del database di qui ha poco spazio libero. Quando il disco è pieno, ogni scrittura di qui fallisce.",
+        "fix": "Libera spazio sul disco, riduci «Mantieni il dettaglio giornaliero per» o elimina la cronologia più vecchia nelle impostazioni Statistiche.",
+        "menuFix": "Libera spazio su disco per il database",
+        "action": "Apri le impostazioni Statistiche"
+      },
       "redacted_key_rejected": {
         "short": "Chiave Redacted rifiutata",
         "title": "Redacted ha rifiutato la chiave API",

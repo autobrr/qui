@@ -197,6 +197,14 @@
           }
         }
       },
+      "low_disk": {
+        "short": "Pouco espaço em disco",
+        "title": "Pouco espaço em disco",
+        "effect": "O disco do banco de dados do qui tem pouco espaço livre. Quando o disco fica cheio, toda gravação do qui falha.",
+        "fix": "Libere espaço no disco, reduza “Manter detalhes diários por” ou exclua o histórico antigo nas configurações de Estatísticas.",
+        "menuFix": "Libere espaço em disco para o banco",
+        "action": "Abrir as configurações de Estatísticas"
+      },
       "redacted_key_rejected": {
         "short": "Chave do Redacted recusada",
         "title": "O Redacted recusou a chave de API",

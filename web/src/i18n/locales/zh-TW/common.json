@@ -197,6 +197,14 @@
           }
         }
       },
+      "low_disk": {
+        "short": "磁碟空間不足",
+        "title": "磁碟空間不足",
+        "effect": "qui 資料庫所在磁碟的可用空間很少。磁碟寫滿後，qui 的每次寫入都會失敗。",
+        "fix": "請釋放磁碟空間，或在統計設定中縮短「保留每日詳情」，或刪除較早的歷史。",
+        "menuFix": "為資料庫釋放磁碟空間",
+        "action": "開啟統計設定"
+      },
       "redacted_key_rejected": {
         "short": "Redacted 金鑰遭拒",
         "title": "Redacted 拒絕了 API 金鑰",

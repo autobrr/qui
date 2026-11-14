@@ -197,6 +197,14 @@
           }
         }
       },
+      "low_disk": {
+        "short": "Málo místa na disku",
+        "title": "Málo místa na disku",
+        "effect": "Disk s databází qui má málo volného místa. Když je disk plný, každý zápis qui selže.",
+        "fix": "Uvolněte místo na disku, zkraťte „Uchovávat denní podrobnosti po dobu“ nebo smažte starší historii v nastavení Statistik.",
+        "menuFix": "Uvolněte místo na disku pro databázi",
+        "action": "Otevřít nastavení Statistik"
+      },
       "redacted_key_rejected": {
         "short": "Klíč pro Redacted odmítnut",
         "title": "Redacted odmítl klíč API",
