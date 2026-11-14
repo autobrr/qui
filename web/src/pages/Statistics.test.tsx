@@ -643,6 +643,42 @@ describe("Statistics", () => {
     expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
   })
 
+  // regression: #4113
+  it("keeps the daily chart of an open torrent on the period of the shown rows while a moved period loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      torrentAnswer = ({ instanceId, bucket, group }) => {
+        if (instanceId !== 1) {
+          return []
+        }
+        return bucket === "total" ? [torrentRow("h1", "Alpha", 2048)] : group === "h1" ? [torrentRow("h1", "Alpha", 2048, {}, { width: "day", start: new Date(Date.now() - DAY).toISOString() })] : []
+      }
+      renderPage()
+      fireEvent.click(await within(await screen.findByRole("table")).findByText("Alpha"))
+      await vi.waitFor(() => expect(screen.getByTestId("group-chart")).toBeTruthy())
+      const firstEnd = requests.find(request => request.groupBy === "torrent" && request.bucket === "day")?.to
+      requests = []
+      let release = () => {}
+      holdBucket = "total"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "total")).toBe(true))
+      // The table still shows the rows of the old period, so the open chart stays on that period.
+      expect(requests.filter(request => request.groupBy === "torrent" && request.bucket === "day")).toEqual([])
+      expect(screen.getByTestId("group-chart")).toBeTruthy()
+      release()
+      await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "day" && Date.parse(request.to ?? "") > Date.parse(firstEnd ?? ""))).toBe(true))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("shows the top torrents of a group in the detail band of its row", async () => {
     answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 0, { width: "day" })] : []
     torrentAnswer = ({ instanceId, groupOf, group, limit }) => groupOf === "tracker" && group === "a.test" && limit === "5" && instanceId === 1 ? [torrentRow("h1", "Alpha", 2048)] : []

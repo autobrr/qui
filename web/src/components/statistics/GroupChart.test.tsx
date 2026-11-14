@@ -33,6 +33,7 @@ function bar(start: Date, width: StatisticsBar["width"]): StatisticsBar {
 }
 
 describe("GroupChart", () => {
+  // regression: #4113
   it("labels the bar of a folded year with its year", () => {
     const bars = [bar(new Date(2024, 0, 1), "year"), bar(new Date(2025, 0, 1), "year"), bar(new Date(2026, 0, 5), "day")]
     const { container } = render(<GroupChart bars={bars} unit="day" color={undefined} />)

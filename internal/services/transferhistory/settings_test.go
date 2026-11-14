@@ -231,6 +231,7 @@ func TestAFoldMovesTheDaysOfATorrentIntoItsYearPostgresIntegration(t *testing.T)
 
 // An instance that moved no bytes after the fold has no hourly rows, and a
 // recent period of it still gets no folded year.
+// regression: #4113
 func TestARecentPeriodOfAnIdleInstanceGetsNoFoldedYearPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	later := day10.Add(100 * 24 * time.Hour)

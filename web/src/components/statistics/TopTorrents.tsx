@@ -29,6 +29,7 @@ interface TopTorrentsProps {
 interface ShownTorrents {
   series: string
   torrents: TopTorrent[]
+  period: StatisticsPeriod
 }
 
 /** The torrents with the most upload in the period. A click on a row shows the upload of that torrent for each day. */
@@ -41,9 +42,10 @@ export function TopTorrents({ instances, period, since, series, displayGroup }: 
   // After the period moves, the table keeps its rows until the rows of the new period load.
   const [last, setLast] = useState<ShownTorrents>()
   if (torrents && last?.torrents !== torrents) {
-    setLast({ series, torrents })
+    setLast({ series, torrents, period })
   }
-  const shown = torrents ?? (last?.series === series ? last.torrents : undefined)
+  // The open row draws the period of the rows that the table shows.
+  const { torrents: shown, period: shownPeriod } = torrents ? { torrents, period } : last?.series === series ? last : { torrents: undefined, period }
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
 
   if (error) {
@@ -97,7 +99,7 @@ export function TopTorrents({ instances, period, since, series, displayGroup }: 
                 {expanded && (
                   <TableRow className="hover:bg-transparent">
                     <TableCell colSpan={6} className="p-0">
-                      <TorrentDays torrent={torrent} name={name} instances={instances} period={period} since={since} />
+                      <TorrentDays torrent={torrent} name={name} instances={instances} period={shownPeriod} since={since} />
                     </TableCell>
                   </TableRow>
                 )}
