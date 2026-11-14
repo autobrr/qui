@@ -660,9 +660,7 @@ func (s *Service) askGazelleSite(
 		// Only the rejection itself opens the notice. A later search of the
 		// same run skips the site, and a client from before a settings save
 		// has an old key: neither may open a notice that the save closed.
-		if s.systemNotices != nil && clients.keyGen == s.gazelleKeyGen.Load() {
-			s.systemNotices.Open(keyRejectedNotice(gazelleLookupSite(lookup)), matchErr.Error()) //nolint:contextcheck // the notice notification must outlive the search that opened it
-		}
+		s.setKeyRejectedNotice(gazelleLookupSite(lookup), clients.keyGens[host], true, matchErr.Error()) //nolint:contextcheck // the notice notification must outlive the search that opened it
 		return lookup.failed(GazelleReasonKeyRejected, matchErr.Error()), nil
 	}
 	if matchErr != nil {
@@ -744,7 +742,7 @@ func (s *Service) startGazelleSearch(
 				outcome.lookups[i].Reason = GazelleReasonError
 			}
 		}
-		s.closeKeyRejectedNotices(outcome.lookups)
+		s.closeKeyRejectedNotices(outcome.lookups, clients) //nolint:contextcheck // it only closes notices; the shared helper can also open one, which outlives the search
 		done <- outcome
 	}()
 	return sync.OnceValue(func() gazelleSearchOutcome { return <-done })
@@ -881,9 +879,9 @@ func subtitleTitleQuery(release *rls.Release) string {
 type gazelleClientSet struct {
 	// off reports that RED/OPS is turned off in the settings.
 	off bool
-	// keyGen is the gazelleKeyGen of the service when the set was built.
-	keyGen uint64
-	byHost map[string]*gazellemusic.Client
+	// keyGens holds the key generation of each site when the set was built.
+	keyGens map[string]uint64
+	byHost  map[string]*gazellemusic.Client
 	// keyErrs holds, per host, the error of a stored key that qui could not
 	// decrypt.
 	keyErrs map[string]error
@@ -962,7 +960,7 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 	if s == nil {
 		return out, nil
 	}
-	out.keyGen = s.gazelleKeyGen.Load()
+	out.keyGens = s.gazelleKeyGensNow()
 	if settings == nil {
 		loaded, err := s.GetAutomationSettings(ctx)
 		if err != nil {

@@ -200,9 +200,12 @@ type Service struct {
 	arrService               arrLookupService // ARR service for ID lookup
 	notifier                 notifications.Notifier
 	systemNotices            *systemnotice.Module
-	// gazelleKeyGen goes up at each settings save, so a RED/OPS client from
-	// before the save opens no key rejected notice.
-	gazelleKeyGen atomic.Uint64
+	// gazelleNoticeMu guards gazelleKeyGens and each change of a key rejected
+	// notice. The key generation of a site goes up when a settings save changes
+	// its key or the RED/OPS switch, so a client from before the save does not
+	// open or close the notice of the new key.
+	gazelleNoticeMu sync.Mutex
+	gazelleKeyGens  map[string]uint64
 
 	// External program execution
 	externalProgramStore   *models.ExternalProgramStore

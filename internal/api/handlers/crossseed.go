@@ -1156,7 +1156,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 		return
 	}
-	h.service.GazelleKeysSaved(updated, passed)
+	h.service.GazelleKeysSaved(settings, passed)
 
 	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
@@ -1289,7 +1289,7 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 		}
 		return
 	}
-	h.service.GazelleKeysSaved(updated, passed)
+	h.service.GazelleKeysSaved(&merged, passed)
 
 	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }

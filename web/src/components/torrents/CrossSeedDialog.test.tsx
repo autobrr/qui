@@ -206,6 +206,15 @@ describe("CrossSeedDialog search scope", () => {
     expect(custom?.disabled).toBe(false)
   })
 
+  it("offers Retry when the analysis fails before any search", () => {
+    const onRetry = vi.fn()
+    const { getByText } = render(<CrossSeedDialog {...baseProps} error="analyze failed" onRetry={onRetry} />)
+
+    expect(getByText("analyze failed")).toBeTruthy()
+    fireEvent.click(getByText("crossSeedDialog.retry"))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
   it("says that a site rejected the key last time", () => {
     render(<CrossSeedDialog {...baseProps} gazelleEntries={[{ ...ops, status: "will_ask", reason: "key_rejected" }]} />)
 

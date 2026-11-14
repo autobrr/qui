@@ -4,9 +4,11 @@
 package crossseed
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/systemnotice"
@@ -164,15 +166,63 @@ func keyRejectedNotice(site gazellemusic.Site) systemnotice.Kind {
 	return systemnotice.Kind(site.SettingsName + "_key_rejected")
 }
 
-// closeKeyRejectedNotices closes the key rejected notice of each site that
-// answered.
-func (s *Service) closeKeyRejectedNotices(lookups []GazelleLookup) {
+// gazelleKeyGensNow returns the key generation of each site.
+func (s *Service) gazelleKeyGensNow() map[string]uint64 {
+	s.gazelleNoticeMu.Lock()
+	defer s.gazelleNoticeMu.Unlock()
+	return maps.Clone(s.gazelleKeyGens)
+}
+
+// setKeyRejectedNotice opens or closes the key rejected notice of the site,
+// unless a settings save changed the key of the site after generation gen.
+func (s *Service) setKeyRejectedNotice(site gazellemusic.Site, gen uint64, open bool, cause string) {
 	if s.systemNotices == nil {
 		return
 	}
+	s.gazelleNoticeMu.Lock()
+	defer s.gazelleNoticeMu.Unlock()
+	if s.gazelleKeyGens[site.Host] != gen {
+		return
+	}
+	if open {
+		s.systemNotices.Open(keyRejectedNotice(site), cause)
+		return
+	}
+	s.systemNotices.Close(keyRejectedNotice(site))
+}
+
+// closeKeyRejectedNotices closes the key rejected notice of each site that
+// answered.
+func (s *Service) closeKeyRejectedNotices(lookups []GazelleLookup, clients *gazelleClientSet) {
 	for _, l := range lookups {
 		if l.Status == GazelleMatch || l.Status == GazelleNoMatch {
-			s.systemNotices.Close(keyRejectedNotice(gazelleLookupSite(l)))
+			s.setKeyRejectedNotice(gazelleLookupSite(l), clients.keyGens[l.Site], false, "")
+		}
+	}
+}
+
+// GazelleKeysSaved takes the settings that a save stored, as the request sent
+// them (a typed key, the placeholder of a stored key, or "" for no key), and
+// the API hosts whose key the save checked with the site. It closes the key
+// rejected notice of each site that the save fixes: the check passed, the key
+// is cleared, or RED/OPS is off. A site whose key or switch changed gets a new
+// key generation, so a client from before the save leaves its notice alone.
+func (s *Service) GazelleKeysSaved(settings *models.CrossSeedAutomationSettings, checked []string) {
+	if settings == nil {
+		return
+	}
+	s.gazelleNoticeMu.Lock()
+	defer s.gazelleNoticeMu.Unlock()
+	for _, site := range gazellemusic.Sites() {
+		key := strings.TrimSpace(settings.GazelleAPIKey(site.SettingsName))
+		if !settings.GazelleEnabled || key == "" || !domain.IsRedactedString(key) {
+			if s.gazelleKeyGens == nil {
+				s.gazelleKeyGens = map[string]uint64{}
+			}
+			s.gazelleKeyGens[site.Host]++
+		}
+		if s.systemNotices != nil && (!settings.GazelleEnabled || key == "" || slices.Contains(checked, site.Host)) {
+			s.systemNotices.Close(keyRejectedNotice(site))
 		}
 	}
 }
@@ -184,23 +234,4 @@ func (s *Service) keyRejectedOpen(site gazellemusic.Site) bool {
 	}
 	kind := keyRejectedNotice(site)
 	return slices.ContainsFunc(s.systemNotices.List(), func(n systemnotice.Notice) bool { return n.Kind == kind })
-}
-
-// GazelleKeysSaved closes the key rejected notice of each site that the saved
-// settings fix: the save checked its key with the site (checked), cleared its
-// key, or turned RED/OPS off.
-func (s *Service) GazelleKeysSaved(settings *models.CrossSeedAutomationSettings, checked []string) {
-	if settings == nil {
-		return
-	}
-	// A client built before this save has the old keys.
-	s.gazelleKeyGen.Add(1)
-	if s.systemNotices == nil {
-		return
-	}
-	for _, site := range gazellemusic.Sites() {
-		if !settings.GazelleEnabled || strings.TrimSpace(settings.GazelleAPIKey(site.SettingsName)) == "" || slices.Contains(checked, site.Host) {
-			s.systemNotices.Close(keyRejectedNotice(site))
-		}
-	}
 }

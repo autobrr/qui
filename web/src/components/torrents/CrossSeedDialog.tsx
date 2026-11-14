@@ -411,7 +411,7 @@ const CrossSeedDialogComponent = ({
               </div>
             </Collapsible>
           )}
-          {!hasSearched ? null : isLoading ? (
+          {!hasSearched && !error ? null : isLoading ? (
             <div className="flex items-center justify-center gap-2.5 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span>{t("crossSeedDialog.searchingIndexers")}</span>
