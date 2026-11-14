@@ -671,9 +671,6 @@ func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Cont
 		}
 		evidenceComplete := partialPoolInventoriesComplete(pool, inventories)
 		localAccess, accessComplete := s.partialPoolMemberLocalAccess(ctx, pool)
-		if !accessComplete {
-			keepPoolActive(pool)
-		}
 		observed := s.observePartialPoolMembers(ctx, now, pool, inventories, localAccess)
 		if len(observed) == 0 {
 			if !evidenceComplete {
@@ -1465,11 +1462,12 @@ func (s *partialPoolCoordinator) reconcilePartialPool(
 		if snapshot == nil {
 			continue
 		}
+		paused := snapshot.noLocalAccess && s.pausePartialPoolMemberWithoutLocalAccess(ctx, member, snapshot)
+		// Also after a restart or a failed write between the member update and the file updates.
 		if member.Status == models.CrossSeedPartialPoolMemberStatusManual && member.LastError == partialPoolLocalAccessLost {
-			// A restart or a failed write can stop the file updates after the member update.
 			s.markPartialPoolLinkWorkManual(ctx, member, snapshot)
 		}
-		if snapshot.noLocalAccess && s.pausePartialPoolMemberWithoutLocalAccess(ctx, member, snapshot) {
+		if paused {
 			continue
 		}
 		handled, retry := s.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot)
@@ -3098,9 +3096,6 @@ func (s *partialPoolCoordinator) pausePartialPoolMemberWithoutLocalAccess(ctx co
 	}
 	if !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, partialPoolLocalAccessLost) {
 		snapshot.stateRetryPending = true
-	}
-	if member.Status == models.CrossSeedPartialPoolMemberStatusManual {
-		s.markPartialPoolLinkWorkManual(ctx, member, snapshot)
 	}
 	return true
 }
