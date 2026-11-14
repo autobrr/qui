@@ -265,12 +265,6 @@ func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *test
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 	require.Equal(t, 1, counts.Trackers["current.example"])
 	require.NotContains(t, counts.Trackers, "stale.example")
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   20,
-		Downloaded: 30,
-		TotalSize:  100,
-		Count:      1,
-	}, counts.TrackerTransfers["current.example"])
 
 	staleFiltered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
 	require.Empty(t, staleFiltered)
@@ -339,7 +333,6 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
 	require.NotContains(t, counts.Trackers, "stale.example")
-	require.NotContains(t, counts.TrackerTransfers, "stale.example")
 	require.Nil(t, client.getTrackerExclusionsCopy())
 
 	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, nil, false, nil)
@@ -377,7 +370,6 @@ func TestCalculateCountsFromTorrentsWithTrackersPreservesPartiallyLiveValidatedD
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
 	require.Equal(t, 1, counts.Trackers["tracker.example"])
-	require.Equal(t, TrackerTransferStats{Uploaded: 100, Downloaded: 200, TotalSize: 300, Count: 1}, counts.TrackerTransfers["tracker.example"])
 	exclusions := client.getTrackerExclusionsCopy()
 	require.Contains(t, exclusions, "tracker.example")
 	require.Contains(t, exclusions["tracker.example"], "hash-a")
@@ -412,37 +404,7 @@ func TestCalculateCountsFromTorrentsWithTrackersPreservesValidatedCountsWithoutE
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
 	require.Equal(t, 2, counts.Trackers["tracker.example"])
-	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 300, Count: 2}, counts.TrackerTransfers["tracker.example"])
 	require.Nil(t, client.getTrackerExclusionsCopy())
-}
-
-func TestCalculateCountsFromTorrentsWithTrackersDoesNotDeduplicateEmptyContentPath(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
-			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"hash-a": {"tracker.example": {}},
-					"hash-b": {"tracker.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"tracker.example": {"hash-a": {}, "hash-b": {}},
-				},
-				UpdatedAt: time.Now(),
-			},
-		},
-	}
-	client := &Client{instanceID: 7}
-	torrents := []qbt.Torrent{
-		{Hash: "hash-a", Tracker: "https://tracker.example/announce", Uploaded: 10, Downloaded: 20, Size: 30},
-		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300},
-	}
-
-	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
-
-	require.Equal(t, 2, counts.Trackers["tracker.example"])
-	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 330, Count: 2}, counts.TrackerTransfers["tracker.example"])
 }
 
 func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(t *testing.T) {
@@ -467,7 +429,6 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.NotContains(t, counts.Trackers, "stale.example")
-	require.NotContains(t, counts.TrackerTransfers, "stale.example")
 	require.Nil(t, client.getTrackerExclusionsCopy())
 
 	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
@@ -493,14 +454,7 @@ func TestFallbackTrackerCountsOmitPseudoTrackersAndPreserveUnknown(t *testing.T)
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.Equal(t, 1, counts.Trackers[""], "a pseudo tracker with a tracker count of 0 is in No tracker")
-	require.NotContains(t, counts.TrackerTransfers, "")
 	require.Equal(t, 1, counts.Trackers["Unknown"])
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   100,
-		Downloaded: 200,
-		TotalSize:  300,
-		Count:      1,
-	}, counts.TrackerTransfers["Unknown"])
 }
 
 func TestTrackerFiltersDoNotTreatPseudoTrackersAsUnknown(t *testing.T) {
@@ -2780,7 +2734,7 @@ func TestTrackerHealthRefreshLevel(t *testing.T) {
 	require.Equal(t, zerolog.WarnLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow))
 }
 
-// Totals accumulate per domain, so one domain must not bleed into the next.
+// Counts accumulate per domain, so one domain must not bleed into the next.
 func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
 	t.Parallel()
 
@@ -2805,18 +2759,7 @@ func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
 
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   17,
-		Downloaded: 6,
-		TotalSize:  160,
-		Count:      2,
-	}, counts.TrackerTransfers["one.example"])
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   1,
-		Downloaded: 1,
-		TotalSize:  20,
-		Count:      1,
-	}, counts.TrackerTransfers["two.example"])
+	require.Equal(t, map[string]int{"one.example": 2, "two.example": 1}, counts.Trackers)
 }
 
 func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
@@ -2838,11 +2781,6 @@ func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.Equal(t, 1, counts.Trackers["dupe.example"])
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:  9,
-		TotalSize: 50,
-		Count:     1,
-	}, counts.TrackerTransfers["dupe.example"])
 }
 
 // Category and tag counts share one accumulator per key, so this pins the whole
@@ -3216,7 +3154,6 @@ func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.Equal(t, map[string]int{"tracker.example": 1}, counts.Trackers)
-	require.Equal(t, TrackerTransferStats{TotalSize: 10, Count: 1}, counts.TrackerTransfers["tracker.example"])
 }
 
 // TestGetAuthoritativeDomainToHashesMemoizesPerGeneration pins the per-generation

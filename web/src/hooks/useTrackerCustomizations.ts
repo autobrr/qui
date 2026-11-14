@@ -27,7 +27,7 @@ export function useTrackerCustomizations() {
  * Hook for creating a new tracker customization
  */
 export function useCreateTrackerCustomization() {
-  const { t } = useTranslation("dashboard")
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -37,7 +37,7 @@ export function useCreateTrackerCustomization() {
     },
     onError: (error) => {
       console.error("[TrackerCustomization] Create failed:", error)
-      toast.error(t("trackerBreakdown.toasts.createFailed"))
+      toast.error(t("trackerCustomizations.toasts.createFailed"))
     },
   })
 }
@@ -46,7 +46,7 @@ export function useCreateTrackerCustomization() {
  * Hook for updating an existing tracker customization
  */
 export function useUpdateTrackerCustomization() {
-  const { t } = useTranslation("dashboard")
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -57,7 +57,7 @@ export function useUpdateTrackerCustomization() {
     },
     onError: (error) => {
       console.error("[TrackerCustomization] Update failed:", error)
-      toast.error(t("trackerBreakdown.toasts.updateFailed"))
+      toast.error(t("trackerCustomizations.toasts.updateFailed"))
     },
   })
 }
@@ -66,7 +66,7 @@ export function useUpdateTrackerCustomization() {
  * Hook for deleting a tracker customization
  */
 export function useDeleteTrackerCustomization() {
-  const { t } = useTranslation("dashboard")
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -76,7 +76,7 @@ export function useDeleteTrackerCustomization() {
     },
     onError: (error) => {
       console.error("[TrackerCustomization] Delete failed:", error)
-      toast.error(t("trackerBreakdown.toasts.deleteFailed"))
+      toast.error(t("trackerCustomizations.toasts.deleteFailed"))
     },
   })
 }
