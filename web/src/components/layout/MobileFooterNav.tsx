@@ -96,10 +96,14 @@ import { useTranslation } from "react-i18next"
 const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme())
+  // A system switch in auto mode keeps the mode and the theme, so the resolved
+  // light or dark is state of its own, to render again on that switch.
+  const [dark, setDark] = useState(() => isDarkMode(getCurrentThemeMode()))
 
   const checkTheme = useCallback(() => {
     setCurrentMode(getCurrentThemeMode())
     setCurrentTheme(getCurrentTheme())
+    setDark(isDarkMode(getCurrentThemeMode()))
   }, [])
 
   useEffect(() => {
@@ -117,7 +121,7 @@ const useThemeChange = (customThemes: readonly Theme[]) => {
   // useCustomThemes, so that a stored custom theme resolves here.
   useEffect(checkTheme, [checkTheme, customThemes])
 
-  return { currentMode, currentTheme }
+  return { currentMode, currentTheme, dark }
 }
 
 export function MobileFooterNav() {
@@ -132,14 +136,12 @@ export function MobileFooterNav() {
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
   const { customThemes } = useCustomThemes()
-  const { currentMode, currentTheme } = useThemeChange(customThemes)
+  const { currentMode, currentTheme, dark } = useThemeChange(customThemes)
   const [themeVisibility] = useThemeVisibility()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
   const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
-  // The thumbnails follow the mode setting, not the light-only theme that can be in use.
-  const dark = isDarkMode(currentMode)
   const appVersion = getAppVersion()
 
   const { data: instances, isPending: isLoadingInstances } = useQuery({

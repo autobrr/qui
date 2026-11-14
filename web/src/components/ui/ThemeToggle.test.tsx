@@ -31,8 +31,8 @@ const fixture = vi.hoisted(() => {
         "--primary": `${id}-primary`,
         "--secondary": `${id}-secondary`,
         "--accent": `${id}-accent`,
-        "--variation-blue": "blue",
-        "--variation-green": "green",
+        "--variation-blue": "navy",
+        "--variation-green": "darkgreen",
         "--variation-amber": "orange",
       },
     },
@@ -71,11 +71,13 @@ vi.mock("@/config/themes", () => ({
     [...fixture.builtInThemes, ...fixture.customThemes].find((theme) => theme.id === id),
 }))
 
+const appearance = vi.hoisted(() => ({ dark: true }))
+
 vi.mock("@/utils/theme", () => ({
   getCurrentThemeMode: () => "dark",
   getCurrentTheme: () => fixture.selectedTheme,
   getThemeVariation: (id?: string) => id === "other" ? "amber" : "blue",
-  isDarkMode: () => true,
+  isDarkMode: () => appearance.dark,
   setTheme: vi.fn(),
   setThemeMode: vi.fn(),
   setThemeVariation: vi.fn(),
@@ -122,6 +124,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle"
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  appearance.dark = true
 })
 
 afterEach(cleanup)
@@ -145,8 +148,10 @@ function themeItem(name: string): HTMLElement {
   return item
 }
 
-function variationButtons(item: HTMLElement): HTMLElement[] {
-  return [...item.querySelectorAll<HTMLElement>("[data-slot=\"theme-variations\"] button")]
+function variationColor(name: string): string {
+  const swatch = screen.getByRole("menuitemradio", { name }).querySelector("span")
+  if (!swatch) throw new Error(`Variation swatch not found: ${name}`)
+  return swatch.style.backgroundColor
 }
 
 describe("ThemeToggle", () => {
@@ -171,8 +176,11 @@ describe("ThemeToggle", () => {
     expect(items.indexOf(premiumItem)).toBeLessThan(items.indexOf(customItem))
     expect(premiumItem.hasAttribute("data-disabled")).toBe(true)
 
-    expect(variationButtons(selectedItem).map((button) => button.title)).toEqual(["blue", "green"])
-    expect(variationButtons(otherItem)).toEqual([])
+    // Menu items of their own, so the arrow keys reach them.
+    expect(screen.getByRole("menuitemradio", { name: "blue" }).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByRole("menuitemradio", { name: "green" }).getAttribute("aria-checked")).toBe("false")
+    expect(screen.queryByRole("menuitemradio", { name: "amber" })).toBeNull()
+    expect(selectedItem.querySelector("button")).toBeNull()
     expect(otherName.classList.contains("truncate")).toBe(false)
     expect(screen.queryByText("themeToggle.custom")).toBeNull()
   })
@@ -197,6 +205,20 @@ describe("ThemeToggle", () => {
     await waitFor(() => {
       expect(screen.queryByText("Other theme")).not.toBeNull()
     })
+  })
+
+  it("repaints its pictures when the system switches between light and dark", async () => {
+    render(<ThemeToggle />)
+    openMenu()
+    await screen.findByText("Selected theme")
+    expect(variationColor("blue")).toBe("navy")
+
+    appearance.dark = false
+    act(() => {
+      window.dispatchEvent(new Event("themechange"))
+    })
+
+    expect(variationColor("blue")).toBe("blue")
   })
 
   it("picks the mode from one row and links to Choose menu themes", async () => {

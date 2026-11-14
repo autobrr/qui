@@ -14,7 +14,7 @@ import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { useTheme } from "@/hooks/useTheme"
-import { getThemeVariation, isDarkMode } from "@/utils/theme"
+import { getThemeVariation } from "@/utils/theme"
 import { buildThemeCatalog, themeGroup, themeMatchesSearch, type ThemeGroup } from "@/lib/theme-catalog"
 import { themeThumbnailPalette, themeVariationColors, type ThemeThumbnailPalette } from "@/lib/theme-thumbnail"
 import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
@@ -233,7 +233,7 @@ interface ThemeSelectorProps {
 
 export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorProps) {
   const { t } = useTranslation("settings")
-  const { theme: currentTheme, currentTheme: appliedTheme, mode, setTheme, setVariation } = useTheme()
+  const { theme: currentTheme, currentTheme: appliedTheme, dark, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
   const {
     customThemes,
@@ -318,7 +318,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
   const premiumThemes = themes.filter(theme => theme.isPremium)
   const themeCatalog = buildThemeCatalog(themes, customThemes)
   const lockedCount = themeCatalog.filter(theme => theme.locked).length
-  const dark = isDarkMode(mode)
   const paletteOf = (theme: Theme) => themeThumbnailPalette(theme, dark, getThemeVariation(theme.id))
   // Before the theme lists load, the registry can lack the theme in use. The applied theme then stands in for it.
   const activeTheme = getThemeById(currentTheme) ?? appliedTheme

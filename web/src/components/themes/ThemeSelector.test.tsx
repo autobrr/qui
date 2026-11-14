@@ -59,7 +59,7 @@ const themeUtils = vi.hoisted(() => ({
 const customThemesHook = vi.hoisted(() => ({
   refreshCustomThemes: vi.fn<() => Promise<Array<{ id: string; filename: string; css: string }>>>(() => Promise.resolve([])),
 }))
-const themeHook = vi.hoisted(() => ({ theme: "free", mode: "dark", setTheme: vi.fn(), setVariation: vi.fn() }))
+const themeHook = vi.hoisted(() => ({ theme: "free", mode: "dark", dark: true, setTheme: vi.fn(), setVariation: vi.fn() }))
 const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()) }))
 
 vi.mock("@/config/themes", () => ({

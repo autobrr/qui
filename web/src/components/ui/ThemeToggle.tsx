@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import {
   getCurrentThemeMode,
   getCurrentTheme,
@@ -35,7 +35,7 @@ import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
 import { useThemeVisibility } from "@/hooks/useThemeVisibility";
 import { themeThumbnailPalette, themeVariationColors } from "@/lib/theme-thumbnail";
-import { QuickThemeRow, QuickThemeVariations } from "@/components/themes/QuickThemeRow";
+import { QuickThemeRow } from "@/components/themes/QuickThemeRow";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
@@ -44,10 +44,14 @@ const THEME_CHANGE_EVENT = "themechange";
 const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode());
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme());
+  // A system switch in auto mode keeps the mode and the theme, so the resolved
+  // light or dark is state of its own, to render again on that switch.
+  const [dark, setDark] = useState(() => isDarkMode(getCurrentThemeMode()));
 
   const checkTheme = useCallback(() => {
     setCurrentMode(getCurrentThemeMode());
     setCurrentTheme(getCurrentTheme());
+    setDark(isDarkMode(getCurrentThemeMode()));
   }, []);
 
   useEffect(() => {
@@ -65,7 +69,7 @@ const useThemeChange = (customThemes: readonly Theme[]) => {
   // useCustomThemes, so that a stored custom theme resolves here.
   useEffect(checkTheme, [checkTheme, customThemes]);
 
-  return { currentMode, currentTheme };
+  return { currentMode, currentTheme, dark };
 };
 
 const MODES = [
@@ -77,7 +81,7 @@ const MODES = [
 export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
   const { customThemes } = useCustomThemes();
-  const { currentMode, currentTheme } = useThemeChange(customThemes);
+  const { currentMode, currentTheme, dark } = useThemeChange(customThemes);
   const [open, setOpen] = useState(false);
   const [visibility] = useThemeVisibility();
 
@@ -85,9 +89,6 @@ export const ThemeToggle: React.FC = () => {
   // the registry array mutates in place, so it must not be a memo dep.
   useBuiltinThemes();
   const sortedThemes = buildThemeCatalog(themes, customThemes, { visibility, currentThemeId: currentTheme.id });
-
-  // The thumbnails follow the mode setting, not the light-only theme that can be in use.
-  const dark = isDarkMode(currentMode);
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode);
@@ -170,31 +171,49 @@ export const ThemeToggle: React.FC = () => {
             const variations = themeVariationColors(theme, dark);
 
             return (
-              <DropdownMenuItem
-                key={theme.id}
-                aria-current={isCurrentTheme ? "true" : undefined}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void handleThemeSelect(theme.id);
-                }}
-                className="block min-w-0"
-                disabled={isLocked}
-              >
-                <QuickThemeRow
-                  theme={theme}
-                  palette={themeThumbnailPalette(theme, dark, variation)}
-                  variations={variations}
-                  isCurrent={isCurrentTheme}
-                />
-                {isCurrentTheme && variations.length > 0 && (
-                  <QuickThemeVariations
+              <Fragment key={theme.id}>
+                <DropdownMenuItem
+                  aria-current={isCurrentTheme ? "true" : undefined}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void handleThemeSelect(theme.id);
+                  }}
+                  className="block min-w-0"
+                  disabled={isLocked}
+                >
+                  <QuickThemeRow
+                    theme={theme}
+                    palette={themeThumbnailPalette(theme, dark, variation)}
                     variations={variations}
-                    selected={variation}
-                    onSelect={(variationId) => void handleVariationSelect(theme.id, variationId)}
-                    className="mt-1.5 pl-11"
+                    isCurrent={isCurrentTheme}
                   />
+                </DropdownMenuItem>
+                {isCurrentTheme && variations.length > 0 && (
+                  // Menu items of their own, beside the theme row, so the arrow keys reach each color.
+                  <DropdownMenuPrimitive.RadioGroup
+                    aria-label={t("settings:themes.current.colors")}
+                    value={variation ?? undefined}
+                    onValueChange={(variationId) => void handleVariationSelect(theme.id, variationId)}
+                    className="flex flex-wrap items-center gap-1 pb-1 pl-13"
+                  >
+                    {variations.map((v) => (
+                      <DropdownMenuPrimitive.RadioItem
+                        key={v.id}
+                        value={v.id}
+                        aria-label={v.id}
+                        title={v.id}
+                        onSelect={(event) => event.preventDefault()}
+                        className="group grid size-7 cursor-default place-items-center rounded-full outline-hidden focus:bg-accent"
+                      >
+                        <span
+                          className="size-5 rounded-full ring-1 ring-border ring-offset-2 ring-offset-popover group-data-[state=checked]:ring-2 group-data-[state=checked]:ring-foreground"
+                          style={{ backgroundColor: v.color }}
+                        />
+                      </DropdownMenuPrimitive.RadioItem>
+                    ))}
+                  </DropdownMenuPrimitive.RadioGroup>
                 )}
-              </DropdownMenuItem>
+              </Fragment>
             );
           })}
         </div>
