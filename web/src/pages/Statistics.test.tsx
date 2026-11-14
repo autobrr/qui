@@ -585,6 +585,18 @@ describe("Statistics", () => {
     await expectFact("detail.averageDay", "1 KiB | ")
   })
 
+  it("masks the release groups of the table in incognito mode", async () => {
+    mocks.incognitoMode = [true, () => {}]
+    answer = ({ bucket, groupBy }) => groupBy === "releaseGroup" && bucket === "total" ? [row("PRIVATEGRP", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("table.groupings.releaseGroup"), { button: 0 })
+
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(within(table).getAllByRole("row").length).toBe(4))
+    expect(table.textContent).not.toContain("PRIVATEGRP")
+    expect(cells(table, "table.none")[1]).toBe("1 KiB")
+  })
+
   it("masks the tracker names and the category names of the table in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     answer = ({ bucket, groupBy }) => {

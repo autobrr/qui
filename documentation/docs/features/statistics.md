@@ -208,4 +208,4 @@ Server Statistics on the [Dashboard](./dashboard.md) reads the all-time counters
 
 ## Incognito mode
 
-If [incognito mode](./incognito.md) is on, the page replaces the torrent names, the tracker names, and the category names with fake names.
+If [incognito mode](./incognito.md) is on, the page replaces the torrent names, the tracker names, the category names, and the release groups with fake names. Resolution, source, and content type stay visible.

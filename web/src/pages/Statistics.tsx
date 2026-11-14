@@ -13,7 +13,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
-import { getLinuxCategoryName, getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
+import { getLinuxCategoryName, getLinuxReleaseGroup, getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import {
   BROWSER_TIME_ZONE,
   buildBars,
@@ -196,6 +196,7 @@ export function Statistics() {
         return incognitoMode ? getLinuxCategoryName(group) : group
       default:
         if (group === "") return t("table.none")
+        if (by === "releaseGroup" && incognitoMode) return getLinuxReleaseGroup(group)
         return by === "contentType" ? t([`common:contentTypeLabels.${group}`, "common:contentTypeLabels.unknown"]) : group
     }
   }, [displayName, incognitoMode, t])

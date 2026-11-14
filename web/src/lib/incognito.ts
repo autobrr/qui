@@ -493,6 +493,16 @@ export function getLinuxCategoryName(name: string): string {
   return categoryKeys[hashSum % categoryKeys.length]
 }
 
+// Generate a deterministic release team for a release group name.
+export function getLinuxReleaseGroup(name: string): string {
+  let hashSum = 0
+  for (let i = 0; i < name.length; i++) {
+    hashSum += name.charCodeAt(i) * (i + 1)
+  }
+  const releaseTeams = vocab().releaseTeams
+  return releaseTeams[hashSum % releaseTeams.length]
+}
+
 // Generate deterministic Linux tags based on hash
 export function getLinuxTags(hash: string): string {
   let hashSum = 0

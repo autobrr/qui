@@ -32,6 +32,7 @@ qui saves the toggle with your client settings and syncs it to the server. The s
 | Save paths | Linux paths, for example `/home/downloads/distributions` |
 | File and folder names | Linux ISO and distribution names |
 | Torrent metadata | Fake "Created by", comment, and info hash |
+| Release groups on the Statistics page | Linux release teams, for example `Debian CD Images Team` |
 | Peer addresses | `192.168.x.x` with masked ports |
 | Ratios and sidebar filter counts | Deterministic fake numbers |
 
