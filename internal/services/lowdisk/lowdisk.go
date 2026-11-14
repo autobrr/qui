@@ -147,6 +147,10 @@ func (m *Monitor) dismiss(ctx context.Context) error {
 	if err := m.loadLocked(ctx); err != nil {
 		return err
 	}
+	// A page that has not polled since the notice closed can still send a dismiss.
+	if _, isOpen := m.notices.Opening(systemnotice.LowDisk); !isOpen {
+		return nil
+	}
 	if err := m.storeLocked(ctx, true); err != nil {
 		return err
 	}

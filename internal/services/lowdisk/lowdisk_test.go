@@ -224,6 +224,21 @@ func TestTheDismissRule(t *testing.T) {
 			wantOpen: true,
 		},
 		{
+			name: "opens after a dismiss that came after the notice closed",
+			after: func(t *testing.T, monitor *Monitor, notices *systemnotice.Module, disk *fakeDisk) {
+				disk.set(plentyFree)
+				require.NoError(t, monitor.Check(t.Context()))
+				disk.set(lowFree)
+				require.NoError(t, monitor.Check(t.Context()))
+				disk.set(plentyFree)
+				require.NoError(t, monitor.Check(t.Context()))
+				require.NoError(t, notices.Dismiss(t.Context(), systemnotice.LowDisk))
+				disk.set(lowFree)
+				require.NoError(t, monitor.Check(t.Context()))
+			},
+			wantOpen: true,
+		},
+		{
 			name: "opens again after the next failed write",
 			after: func(t *testing.T, monitor *Monitor, notices *systemnotice.Module, _ *fakeDisk) {
 				notices.Open(systemnotice.RecordingStopped, "database or disk is full")
