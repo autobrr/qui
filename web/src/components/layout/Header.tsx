@@ -988,7 +988,7 @@ export function Header({
       })()}
 
       <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
-      <SystemNoticeDialog notice={openSystemNotice.notice} onClose={openSystemNotice.close} />
+      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </header>
   )
 

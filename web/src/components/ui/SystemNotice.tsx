@@ -86,12 +86,28 @@ export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNa
   )
 }
 
+type SystemNoticeDialogProps = {
+  notice?: SystemNotice
+  returnFocusTo?: HTMLElement | null
+  onClose: () => void
+}
+
 // SystemNoticeDialog shows the detail of one notice, for the menus, where no
-// popover fits beside the row. It closes when notice becomes undefined.
-export function SystemNoticeDialog({ notice, onClose }: { notice?: SystemNotice; onClose: () => void }) {
+// popover fits beside the row. It closes when notice becomes undefined, and
+// then gives focus to returnFocusTo, because the dialog has no trigger of its own.
+export function SystemNoticeDialog({ notice, returnFocusTo, onClose }: SystemNoticeDialogProps) {
   return (
     <Dialog open={notice !== undefined} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="gap-0 p-0 sm:max-w-sm" aria-describedby={undefined}>
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto p-0 sm:max-w-sm"
+        aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          if (returnFocusTo?.isConnected) {
+            event.preventDefault()
+            returnFocusTo.focus()
+          }
+        }}
+      >
         {notice && <SystemNoticeDetail notice={notice} titleAs={DialogTitle} onNavigate={onClose} />}
       </DialogContent>
     </Dialog>

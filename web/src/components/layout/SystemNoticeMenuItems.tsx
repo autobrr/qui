@@ -15,7 +15,7 @@ import type { SystemNotice } from "@/types"
 
 type SystemNoticeMenuItemsProps = {
   notices: SystemNotice[]
-  onOpen: (kind: string) => void
+  onOpen: (kind: string, menuButton: HTMLElement | null) => void
 }
 
 // SystemNoticeMenuItems lists the open notices at the top of a menu. The menu
@@ -43,11 +43,11 @@ export function SystemNoticeMenuItems({ notices, onOpen }: SystemNoticeMenuItems
   )
 }
 
-function SystemNoticeMenuRow({ notice, now, onOpen }: { notice: SystemNotice; now: number; onOpen: (kind: string) => void }) {
+function SystemNoticeMenuRow({ notice, now, onOpen }: { notice: SystemNotice; now: number; onOpen: SystemNoticeMenuItemsProps["onOpen"] }) {
   const { short, menuFix } = useSystemNoticeDescription(notice.kind)
 
   return (
-    <DropdownMenuItem className="cursor-pointer items-start" onSelect={() => onOpen(notice.kind)}>
+    <DropdownMenuItem className="cursor-pointer items-start" onSelect={(event) => onOpen(notice.kind, menuButtonOf(event.currentTarget))}>
       <span className="mt-1.5 flex h-2 w-4 items-center justify-center">
         <SystemNoticeDot fresh={isFreshSystemNotice(notice.openedAt, now)} />
       </span>
@@ -60,4 +60,10 @@ function SystemNoticeMenuRow({ notice, now, onOpen }: { notice: SystemNotice; no
       </span>
     </DropdownMenuItem>
   )
+}
+
+// The menu names the button that opens it in aria-labelledby.
+function menuButtonOf(item: EventTarget | null): HTMLElement | null {
+  const menuButtonId = item instanceof Element ? item.closest("[role=menu]")?.getAttribute("aria-labelledby") : null
+  return menuButtonId ? document.getElementById(menuButtonId) : null
 }

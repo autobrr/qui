@@ -24,14 +24,25 @@ export function useSystemNotices(): SystemNotice[] {
   return data ?? noNotices
 }
 
-// useOpenSystemNotice holds the notice whose detail a menu opened. It forgets
-// the notice when the server closes it, so that the same kind opening again
-// later does not open its detail with no click.
+// useOpenSystemNotice holds the notice whose detail a menu opened, and the
+// menu button that opened it. It forgets the notice when the server closes it,
+// so that the same kind opening again later does not open its detail with no click.
+// It keeps the menu button after the close, because the dialog gives focus back
+// to it after the dialog is gone.
 export function useOpenSystemNotice(notices: SystemNotice[]) {
   const [openKind, setOpenKind] = useState<string>()
+  const [menuButton, setMenuButton] = useState<HTMLElement | null>(null)
   const notice = notices.find((candidate) => candidate.kind === openKind)
   if (openKind !== undefined && notice === undefined) {
     setOpenKind(undefined)
   }
-  return { notice, open: setOpenKind, close: () => setOpenKind(undefined) }
+  return {
+    notice,
+    menuButton,
+    open: (kind: string, opener: HTMLElement | null) => {
+      setOpenKind(kind)
+      setMenuButton(opener)
+    },
+    close: () => setOpenKind(undefined),
+  }
 }

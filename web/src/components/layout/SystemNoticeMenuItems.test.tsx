@@ -29,7 +29,7 @@ function Menu({ notices }: { notices: SystemNotice[] }) {
           <SystemNoticeMenuItems notices={notices} onOpen={openNotice.open} />
         </DropdownMenuContent>
       </DropdownMenu>
-      <SystemNoticeDialog notice={openNotice.notice} onClose={openNotice.close} />
+      <SystemNoticeDialog notice={openNotice.notice} returnFocusTo={openNotice.menuButton} onClose={openNotice.close} />
     </>
   )
 }
@@ -83,6 +83,19 @@ describe("SystemNoticeMenuItems", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("gives focus back to the menu button when the dialog closes", async () => {
+    render(<Menu notices={open} />)
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Recording stopped/ }))
+    await screen.findByRole("dialog", { name: "Recording stopped" })
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    // Radix moves the focus of a closed dialog on the next task.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "menu" }))
   })
 
   it("keeps the dialog closed when a notice that closed while open comes back", async () => {

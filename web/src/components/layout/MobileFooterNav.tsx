@@ -779,7 +779,7 @@ export function MobileFooterNav() {
           </div>
         </DialogContent>
       </Dialog>
-      <SystemNoticeDialog notice={openSystemNotice.notice} onClose={openSystemNotice.close} />
+      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </nav>
   )
 }
