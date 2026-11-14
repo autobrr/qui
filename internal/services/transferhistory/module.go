@@ -445,9 +445,11 @@ func (m *Module) load(instanceID int) (*instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	inst.deletedLate = make(map[string]struct{}, len(deletes))
+	inst.deletedLate = make(map[string]time.Time, len(deletes))
 	for key := range deletes {
-		inst.deletedLate[key.Hash] = struct{}{}
+		if at := time.Unix(key.Second, 0); at.After(inst.deletedLate[key.Hash]) {
+			inst.deletedLate[key.Hash] = at
+		}
 	}
 	return inst, nil
 }

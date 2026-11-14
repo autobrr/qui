@@ -406,3 +406,57 @@ func TestAStopBetweenTwoPartsCountsTheBytesOfATorrentLeftOutOfOneReadingOncePost
 		require.Equal(t, []transferhistory.TransferRow{trackerRow("a", 100, 1000, 0), trackerRow("b", 50, 2000, 0)}, answer)
 	})
 }
+
+// refuseWrites refuses the write transactions whose numbers refuse holds.
+type refuseWrites struct {
+	*database.DB
+	refuse map[int]bool
+	mu     sync.Mutex
+	writes int
+}
+
+func (r *refuseWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	r.mu.Lock()
+	r.writes++
+	refused := r.refuse[r.writes]
+	r.mu.Unlock()
+	if refused {
+		return nil, errors.New("disk I/O error")
+	}
+	return r.DB.BeginTx(ctx, opts)
+}
+
+// regression: #4120
+func TestAStopAfterTwoUnfinishedWritesCountsATorrentAddedAgainPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		customizations := models.NewTrackerCustomizationStore(db)
+		// The first write takes transactions 1 to 3. The writes at 1 and 3
+		// hours each store their first parts, and then the part of z or of
+		// c fails.
+		stopped := newSplitModule(t, &refuseWrites{DB: db, refuse: map[int]bool{6: true, 8: true}}, customizations)
+		t.Cleanup(func() { _ = stopped.Shutdown(context.Background()) })
+		c := addedAt(onOwnTracker("c", 1000), at(-30*time.Minute))
+		again := addedAt(onOwnTracker("c", 300), at(90*time.Minute))
+		for _, s := range []step{
+			reading(at(0), onOwnTracker("a", 1000), c, onOwnTracker("z", 1000)),
+			// qBittorrent leaves c out, so a stored part marks it deleted.
+			reading(at(time.Hour), onOwnTracker("a", 1010), onOwnTracker("z", 1010)),
+			// The user adds c again at 1:30.
+			reading(at(3*time.Hour), onOwnTracker("a", 1020), again, onOwnTracker("z", 1020)),
+		} {
+			stopped.Record(*s.reading)
+			waitFor(t, stopped)
+		}
+
+		module := newSplitModule(t, db, customizations)
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+		again.Uploaded = 310
+		module.Record(*reading(at(3*time.Hour+time.Minute), onOwnTracker("a", 1030), again, onOwnTracker("z", 1030)).reading)
+
+		answer, err := module.Transfer(t.Context(), everything)
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{trackerRow("a", 30, 1000, 0), trackerRow("c", 310, 1000, 0), trackerRow("z", 30, 1000, 0)}, answer)
+	})
+}
