@@ -62,7 +62,6 @@ export function useAddTorrentPreferences(instanceId: number | undefined, options
     autoAddTrackers: Boolean(preferences?.add_trackers_enabled && preferences?.add_trackers),
     excludedFileNamesEnabled: preferences?.excluded_file_names_enabled ?? false,
     excludedFileNames: preferences?.excluded_file_names ?? "",
-    useSubcategories: preferences?.use_subcategories ?? false,
   }), [preferences])
 }
 
