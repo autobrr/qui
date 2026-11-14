@@ -41,6 +41,7 @@ import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { useAddTorrentPreferences } from "@/hooks/usePreferenceValues"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
+import { resolveDestinationPath } from "@/lib/save-path"
 import { cn } from "@/lib/utils"
 import type { AddTorrentResponse, Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
@@ -53,6 +54,7 @@ import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
 
 import { CategoryPicker, TagPicker } from "./AddTorrentPickers"
+import { DestinationFreeSpace } from "./DestinationFreeSpace"
 import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
 
 // Extract info hash from magnet link
@@ -1092,8 +1094,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     />
                     <form.Subscribe selector={(state) => state.values.autoTMM}>
                       {(autoTMM) => {
-                        // A category without its own path saves under a folder qBittorrent derives; leave that unnamed.
-                        const target = field.state.value ? categories?.[field.state.value]?.savePath : preferenceDefaults.savePath
+                        const target = resolveDestinationPath({
+                          autoTMM,
+                          savePath: "",
+                          category: field.state.value,
+                          categories,
+                          defaultSavePath: preferenceDefaults.savePath,
+                        })
                         return autoTMM && target ? (
                           <p className="truncate text-xs text-muted-foreground" title={target}>
                             {t("addTorrentDialog.options.categorySavePath", { path: target })}
@@ -1292,6 +1299,21 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           </>
                         )}
                       </>
+                    )}
+                  </form.Subscribe>
+
+                  <form.Subscribe selector={(state) => [state.values.autoTMM, state.values.savePath, state.values.category] as const}>
+                    {([autoTMM, savePath, category]) => (
+                      <DestinationFreeSpace
+                        instanceId={instanceId}
+                        path={resolveDestinationPath({
+                          autoTMM,
+                          savePath,
+                          category,
+                          categories,
+                          defaultSavePath: preferenceDefaults.savePath,
+                        })}
+                      />
                     )}
                   </form.Subscribe>
 

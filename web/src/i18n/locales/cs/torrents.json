@@ -778,12 +778,10 @@
     "partialResults": "Částečné výsledky - některé indexery neodpověděly",
     "arrLookupFailed": "Vyhledání ID metadat selhalo - hledáno pouze podle názvu, výsledky mohou být neúplné",
     "arrNoIds": "Pro tuto release nebyla nalezena žádná ID metadat - hledáno pouze podle názvu",
-    "gazelleTimedOut": "RED/OPS neodpověděl včas",
     "torznabFailed": "Hledání přes Torznab selhalo - zobrazeny jsou pouze výsledky z RED/OPS",
     "searchScope": "Hledat rozsah",
     "noIndexers": "Nejsou dostupné žádné Torznab indexery",
     "noIndexersHelp": "Přidejte nebo povolte Torznab indexery v Nastavení pro hledání křížových sdílení.",
-    "gazelleOnlySearch": "Hledání se dotazuje jen stránek RED/OPS, které mají klíč API.",
     "capabilityNote": "Poznámka o schopnostech",
     "capabilityDescription": "Tyto indexery nemají požadované schopnosti/kategorie pro tento torrent a budou přeskočeny serverem:",
     "smartFilteringActive": "Inteligentní filtrování je aktivní",
@@ -872,7 +870,30 @@
       "useRss": "Použijte funkci RSS automatizace pro trvalé křížové sdílení",
       "checkIndexers": "Zkontrolujte help stránky indexerů a zjistěte, které jsou omezené"
     },
-    "routedTo": "Křížová sdílení jdou do instance pro křížové sdílení {{instance}}."
+    "routedTo": "Křížová sdílení jdou do instance pro křížové sdílení {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "bude dotázán",
+      "willAskRejected": "bude dotázán: web minule odmítl klíč API",
+      "match": "shoda",
+      "noMatch": "žádná shoda",
+      "openSettings": "Otevřít nastavení",
+      "notAsked": {
+        "disabled": "nedotázán: vypnuto",
+        "noApiKey": "nedotázán: chybí klíč API",
+        "cooldown": "nedotázán: nedávno prohledán",
+        "notSelected": "nedotázán: nevybrán",
+        "sourceSite": "nedotázán: torrent pochází z {{site}}",
+        "alreadySeeded": "nedotázán: už ho tam seedujete",
+        "notMusic": "nedotázán: není to hudba",
+        "other": "nedotázán"
+      },
+      "failed": {
+        "keyRejected": "selhalo: web odmítl klíč API",
+        "timedOut": "selhalo: vypršel časový limit",
+        "other": "selhalo: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "Filtrovat {{column}}",
@@ -1068,7 +1089,7 @@
     "torrentCount_other": "{{count}} torrenty",
     "torrentsLoaded": "{{loaded}} z {{total}} torrentů načteno",
     "scrollForMore": "(skrolovat pro více)",
-    "freeSpace": "Volné místo",
+    "freeSpace": "Volné místo (výchozí složka)",
     "switchToBits": "Přepnout na bitů za sekundu (bps)",
     "switchToBytes": "Přepnout na bajtů za sekundu (B/s)",
     "altSpeedOn": "Alternativní rychlostní limity: Povoleno",
@@ -1465,6 +1486,7 @@
       "newTag": "(nový)",
       "autoTmm": "Automatická správa torrentů (TMM)",
       "savePath": "Složka pro uložení",
+      "freeSpaceAtDestination": "Volné místo v cíli: {{value}}",
       "savePathPlaceholder": "Ponechte prázdné pro výchozí",
       "useTemporaryPath": "Použít dočasnou cestu",
       "useTemporaryPathDescription": "Stáhnout do dočasné složky před přesunutím do finální složky",

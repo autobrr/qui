@@ -482,7 +482,7 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 	require.NoError(t, err)
 
 	// The seeded OPS copy is an Apollo-era upload, so it carries the APL flag.
-	hashes, err := gazellemusic.KnownTrackers["orpheus.network"].TargetHashes(torrentBytes)
+	hashes, err := mustGazelleSite(t, "orpheus.network").TargetHashes(torrentBytes)
 	require.NoError(t, err)
 	require.Len(t, hashes, 2)
 	expectedTargetHash := hashes[1]
@@ -1079,6 +1079,7 @@ type gazelleSkipHashSyncManager struct {
 	expectedTargetHash     string
 	cachedInstanceTorrents []internalqb.CrossInstanceTorrentView
 	cachedInstanceCalls    int
+	exportCalls            int
 }
 
 func (g *gazelleSkipHashSyncManager) GetTorrentRefs(_ context.Context, _ int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
@@ -1099,6 +1100,7 @@ func (g *gazelleSkipHashSyncManager) GetTorrentFilesBatch(_ context.Context, _ i
 }
 
 func (g *gazelleSkipHashSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	g.exportCalls++
 	return g.exportedTorrent, "", "", nil
 }
 
@@ -1409,7 +1411,7 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 		},
 	})
 	require.NoError(t, err)
-	hashes, err := gazellemusic.KnownTrackers["orpheus.network"].TargetHashes(torrentBytes)
+	hashes, err := mustGazelleSite(t, "orpheus.network").TargetHashes(torrentBytes)
 	require.NoError(t, err)
 	require.Len(t, hashes, 2)
 	aplHash := hashes[1]
@@ -1438,11 +1440,11 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 		},
 	}
 
-	outcome := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.Empty(t, outcome.results)
-	require.True(t, outcome.lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
-	require.False(t, outcome.remoteRequestsMade)
-	require.Equal(t, 0, callCount, "an APL-flagged OPS copy already seeded must skip the remote lookup")
+	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	require.Equal(t, GazelleReasonAlreadySeeded, gazelleLookupOf(t, lookups, "orpheus.network").Reason, "an APL-flagged OPS copy already seeded must skip the remote lookup")
+	require.True(t, gazelleCooldownDue(lookups), "nothing to look up counts as done, so the cooldown is stamped")
+	require.False(t, gazelleRequestsSent(lookups))
+	require.Equal(t, 0, callCount)
 }
 
 // A lookup that failed made a remote request (so the run still paces) but did
@@ -1472,10 +1474,13 @@ func TestSearchGazelleMatches_FailedLookupDoesNotComplete(t *testing.T) {
 		},
 	}
 
-	outcome := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.Empty(t, outcome.results)
-	require.True(t, outcome.remoteRequestsMade)
-	require.False(t, outcome.lookupCompleted)
+	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	ops := gazelleLookupOf(t, lookups, "orpheus.network")
+	require.Equal(t, GazelleFailed, ops.Status)
+	require.Equal(t, GazelleReasonError, ops.Reason)
+	require.Contains(t, ops.Detail, "rate limit exceeded")
+	require.True(t, gazelleRequestsSent(lookups), "the run still paces after a failed request")
+	require.False(t, gazelleCooldownDue(lookups))
 }
 
 // A non-OPS/RED source with both keys looks up both sites. One site
@@ -1506,15 +1511,22 @@ func TestSearchGazelleMatches_OneFailedTargetIsNotCompleted(t *testing.T) {
 		findGazelleMatch = prevFindMatch
 	})
 
-	svc := &Service{}
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents:    []qbt.Torrent{*sourceTorrent},
+			filesByHash: map[string]qbt.TorrentFiles{strings.ToLower(sourceTorrent.Hash): sourceFiles},
+		},
+	}
 
-	outcome := svc.searchGazelleMatches(t.Context(), 1, sourceTorrent, sourceFiles, []string{"redacted.sh", "orpheus.network"}, clients)
-	require.True(t, outcome.remoteRequestsMade)
-	require.False(t, outcome.lookupCompleted, "the failed site must keep the torrent eligible")
+	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	require.Equal(t, GazelleNoMatch, gazelleLookupOf(t, lookups, "redacted.sh").Status)
+	require.Equal(t, GazelleFailed, gazelleLookupOf(t, lookups, "orpheus.network").Status)
+	require.False(t, gazelleCooldownDue(lookups), "the failed site must keep the torrent eligible")
 }
 
 func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *testing.T) {
-	ctx := context.Background()
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
 	sourceHashNorm := strings.ToLower(sourceHash)
 	sourceTorrent := &qbt.Torrent{
@@ -1583,10 +1595,10 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 		},
 	}
 
-	outcome := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.True(t, outcome.lookupCompleted, "nothing to look up counts as done, so the cooldown is stamped")
-	require.Empty(t, outcome.results, "should skip Gazelle search when target tracker content exists locally")
-	require.Equal(t, 0, callCount, "should skip remote Gazelle lookup for matching local content")
+	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	require.Equal(t, GazelleReasonAlreadySeeded, gazelleLookupOf(t, lookups, "orpheus.network").Reason, "should skip Gazelle search when target tracker content exists locally")
+	require.True(t, gazelleCooldownDue(lookups), "nothing to look up counts as done, so the cooldown is stamped")
+	require.Equal(t, 0, callCount)
 }
 
 func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *testing.T) {
@@ -1666,7 +1678,6 @@ func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *te
 }
 
 func TestSearchGazelleMatches_DoesNotSkipWhenTargetTrackerContentDoesNotMatch(t *testing.T) {
-	ctx := context.Background()
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
 	sourceHashNorm := strings.ToLower(sourceHash)
 	sourceTorrent := &qbt.Torrent{
@@ -1735,10 +1746,10 @@ func TestSearchGazelleMatches_DoesNotSkipWhenTargetTrackerContentDoesNotMatch(t 
 		},
 	}
 
-	outcome := svc.searchGazelleMatches(ctx, 1, sourceTorrent, sourceFiles, []string{"orpheus.network"}, clients)
-	require.True(t, outcome.lookupCompleted)
-	require.Empty(t, outcome.results, "no matches expected with stubbed remote lookup")
-	require.Equal(t, 1, callCount, "should attempt Gazelle lookup when local content is on non-target tracker")
+	lookups := lookupGazelleForTest(t, svc, sourceTorrent, sourceFiles, clients)
+	require.Equal(t, GazelleNoMatch, gazelleLookupOf(t, lookups, "orpheus.network").Status, "should attempt Gazelle lookup when local content is on non-target tracker")
+	require.True(t, gazelleCooldownDue(lookups))
+	require.Equal(t, 1, callCount)
 }
 
 func TestSearchRunLoop_GazelleOnly_DoesNotSleepWhenLookupSkippedByLocalPrefilter(t *testing.T) {
@@ -2281,6 +2292,33 @@ func stubGazelleMatchLookupError(t *testing.T, lookupErr error) {
 	t.Cleanup(func() {
 		findGazelleMatch = prevFindMatch
 	})
+}
+
+// lookupGazelleForTest decides the Search scope of torrent with Torznab off and
+// runs its RED/OPS lookup, the way a trigger does.
+func lookupGazelleForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, files qbt.TorrentFiles, clients *gazelleClientSet) []GazelleLookup {
+	t.Helper()
+	scope := svc.collectSearchScope(t.Context(), 1, torrent, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
+	require.NoError(t, scope.err)
+	return svc.startGazelleSearch(t.Context(), torrent, files, scope, clients)().lookups
+}
+
+func gazelleLookupOf(t *testing.T, lookups []GazelleLookup, site string) GazelleLookup {
+	t.Helper()
+	for _, l := range lookups {
+		if l.Site == site {
+			return l
+		}
+	}
+	t.Fatalf("no RED/OPS lookup for %s in %+v", site, lookups)
+	return GazelleLookup{}
+}
+
+func mustGazelleSite(t *testing.T, host string) gazellemusic.Site {
+	t.Helper()
+	site, ok := gazellemusic.SiteByHost(host)
+	require.True(t, ok)
+	return site
 }
 
 // gazelleClientsForTest returns a client set keyed by the real OPS host, because

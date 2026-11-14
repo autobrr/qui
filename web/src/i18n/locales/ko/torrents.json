@@ -662,12 +662,10 @@
     "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
     "arrLookupFailed": "메타데이터 ID 조회 실패 - 제목으로만 검색하여 결과가 불완전할 수 있습니다",
     "arrNoIds": "이 릴리스의 메타데이터 ID를 찾을 수 없음 - 제목으로만 검색했습니다",
-    "gazelleTimedOut": "RED/OPS가 제시간에 응답하지 않았습니다",
     "torznabFailed": "Torznab 검색 실패 - RED/OPS 결과만 표시합니다",
     "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
-    "gazelleOnlySearch": "검색은 API 키가 있는 RED/OPS 사이트에만 요청합니다.",
     "capabilityNote": "기능 참고",
     "capabilityDescription": "이 인덱서에는 이 토렌트에 필요한 기능/카테고리가 없어 서버에서 건너뜁니다:",
     "smartFilteringActive": "스마트 필터링 활성",
@@ -754,7 +752,30 @@
       "useRss": "지속적인 cross-seeding에는 RSS 자동화 기능을 사용하세요",
       "checkIndexers": "인덱서 페이지에서 속도 제한된 항목을 확인하세요"
     },
-    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다."
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "조회 예정",
+      "willAskRejected": "조회 예정: 지난번에 사이트에서 API 키를 거부함",
+      "match": "일치",
+      "noMatch": "일치 없음",
+      "openSettings": "설정 열기",
+      "notAsked": {
+        "disabled": "조회 안 함: 꺼짐",
+        "noApiKey": "조회 안 함: API 키 없음",
+        "cooldown": "조회 안 함: 최근에 검색함",
+        "notSelected": "조회 안 함: 선택되지 않음",
+        "sourceSite": "조회 안 함: 토렌트 출처가 {{site}}",
+        "alreadySeeded": "조회 안 함: 이미 그곳에서 시드 중",
+        "notMusic": "조회 안 함: 음악이 아님",
+        "other": "조회 안 함"
+      },
+      "failed": {
+        "keyRejected": "실패: 사이트에서 API 키를 거부함",
+        "timedOut": "실패: 시간 초과",
+        "other": "실패: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "{{column}} 필터링",
@@ -944,7 +965,7 @@
     "torrentCount_other": "토렌트 {{count}}개",
     "torrentsLoaded": "토렌트 {{total}}개 중 {{loaded}}개 로드됨",
     "scrollForMore": "(더 보려면 스크롤)",
-    "freeSpace": "여유 공간",
+    "freeSpace": "여유 공간 (기본 경로)",
     "switchToBits": "초당 비트(bps)로 전환",
     "switchToBytes": "초당 바이트(B/s)로 전환",
     "altSpeedOn": "대체 속도 제한: 켜짐",
@@ -1319,6 +1340,7 @@
       "newTag": "(신규)",
       "autoTmm": "자동 토렌트 관리",
       "savePath": "저장 경로",
+      "freeSpaceAtDestination": "대상 경로 여유 공간: {{value}}",
       "savePathPlaceholder": "기본값을 사용하려면 비워 두기",
       "useTemporaryPath": "임시 경로 사용",
       "useTemporaryPathDescription": "저장 경로로 이동하기 전에 임시 경로로 다운로드",

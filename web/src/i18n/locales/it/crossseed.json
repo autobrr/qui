@@ -196,6 +196,21 @@
     "cancelDialog": {
       "title": "Annullare la scansione della libreria?",
       "description": "Questo interrompe la scansione corrente della libreria. I cross-seed già aggiunti restano, ma non vengono cercati altri torrent."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: {{asked}} interrogati, {{matched}} corrispondenze, {{failed}} non riusciti",
+      "siteWithNotAsked": "{{counts}}, {{notAsked}} non interrogati ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "disattivato",
+        "noApiKey": "nessuna chiave API",
+        "cooldown": "cercato di recente",
+        "sourceSite": "dal sito",
+        "alreadySeeded": "già condiviso",
+        "notMusic": "non è musica",
+        "other": "altro"
+      }
     }
   },
   "rules": {

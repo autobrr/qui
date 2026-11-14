@@ -130,6 +130,9 @@ type TorrentInfo struct {
 	FilteredIndexers  []int          `json:"filtered_indexers,omitempty"`  // Indexers available after content filtering
 	ExcludedIndexers  map[int]string `json:"excluded_indexers,omitempty"`  // Indexers excluded by content filtering with reasons
 	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
+	// GazellePlan holds, for the search dialog, what a search asks each
+	// RED/OPS site: will_ask, or not_asked with its reason.
+	GazellePlan []GazelleLookup `json:"gazellePlan,omitempty"`
 	// Disc layout detection
 	DiscLayout bool   `json:"disc_layout,omitempty"` // True if this torrent contains disc-based media (Blu-ray/DVD)
 	DiscMarker string `json:"disc_marker,omitempty"` // The marker directory name (e.g., "BDMV" or "VIDEO_TS") if DiscLayout is true
@@ -239,6 +242,10 @@ type TorrentSearchOptions struct {
 	CacheMode string `json:"cache_mode,omitempty"`
 	// DisableTorznab skips all Torznab search stages while still allowing Gazelle matching.
 	DisableTorznab bool `json:"disable_torznab,omitempty"`
+	// GazelleSites are the API hosts of the RED/OPS sites that the user picked.
+	// An absent list means every site. A list with no IndexerIDs asks no
+	// Torznab indexer.
+	GazelleSites []string `json:"gazelle_sites,omitempty"`
 	// SkipGazelle disables Gazelle pre-search in mixed search mode.
 	// Internal-only (not exposed in API payloads).
 	SkipGazelle bool `json:"-"`
@@ -294,10 +301,9 @@ type TorrentSearchResponse struct {
 	// QueryDegraded is set when the ARR external-ID lookup could not supply IDs
 	// and the Torznab search fell back to a title-only text query.
 	QueryDegraded string `json:"query_degraded,omitempty"`
-	// GazelleTimedOut is set when a RED/OPS lookup did not answer within
-	// gazelleSearchTimeout. The results hold the Torznab matches and the matches
-	// of each RED/OPS site that answered.
-	GazelleTimedOut bool `json:"gazelle_timed_out,omitzero"`
+	// GazelleLookups holds one RED/OPS lookup for each site, in the order of
+	// the site table.
+	GazelleLookups []GazelleLookup `json:"gazelleLookups"`
 	// TorznabFailed is set when the Torznab search failed and the results come
 	// only from RED/OPS.
 	TorznabFailed bool `json:"torznab_failed,omitzero"`
@@ -313,6 +319,8 @@ type TorrentSearchResponse struct {
 	// TorznabAnswered reports that an indexer answered some pass, even when a
 	// failed retry left CoveredIndexerIDs empty.
 	TorznabAnswered bool `json:"-"`
+	// torznabRequested reports that the search sent a Torznab request.
+	torznabRequested bool
 	// DecisionTrace explains why the Torznab passes accepted or rejected
 	// candidates. Ephemeral diagnostics for the manual search dialog; unset
 	// when no Torznab search ran (Gazelle-only or failed searches).

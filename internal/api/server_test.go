@@ -199,7 +199,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	jackettService := jackett.NewService(torznabIndexerStore)
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
 	require.NoError(t, err)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),

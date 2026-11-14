@@ -134,6 +134,7 @@
     "updating": "Aktualizace",
     "error": "Chyba",
     "unknown": "Neznámé",
+    "unavailable": "Nedostupné",
     "trackerError": "Chyba trackeru",
     "unreachable": "Nedostupné"
   },
@@ -204,6 +205,22 @@
         "fix": "Uvolněte místo na disku, zkraťte „Uchovávat denní podrobnosti po dobu“ nebo smažte starší historii v nastavení Statistik.",
         "menuFix": "Uvolněte místo na disku pro databázi",
         "action": "Otevřít nastavení Statistik"
+      },
+      "redacted_key_rejected": {
+        "short": "Klíč pro Redacted odmítnut",
+        "title": "Redacted odmítl klíč API",
+        "effect": "Redacted odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Redacted klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Redacted zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Redacted.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Klíč pro Orpheus odmítnut",
+        "title": "Orpheus odmítl klíč API",
+        "effect": "Orpheus odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Orpheus klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Orpheus zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Orpheus.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
       }
     },
     "actions": {

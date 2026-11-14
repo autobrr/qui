@@ -22,7 +22,7 @@
     "upload": "Envoi",
     "totalSize": "Taille Totale",
     "totalSizeTooltip": "Taille totale de tous les torrents. Les copies d'une release comptent une seule fois.",
-    "freeSpace": "Espace Libre",
+    "freeSpace": "Espace libre (chemin par défaut)",
     "showMore": "Afficher plus",
     "showLess": "Afficher moins",
     "uptime": "Disponibilité",

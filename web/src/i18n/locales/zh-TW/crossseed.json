@@ -193,6 +193,21 @@
     "cancelDialog": {
       "title": "取消做種庫掃描？",
       "description": "這會停止目前的做種庫掃描。已加入的交叉做種會保留，但不會再搜尋更多種子。"
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS：{{sites}}",
+      "site": "{{name}}：已查詢 {{asked}}，相符 {{matched}}，失敗 {{failed}}",
+      "siteWithNotAsked": "{{counts}}，未查詢 {{notAsked}}（{{reasons}}）",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "已關閉",
+        "noApiKey": "無 API 金鑰",
+        "cooldown": "最近已搜尋",
+        "sourceSite": "來自該網站",
+        "alreadySeeded": "已在做種",
+        "notMusic": "不是音樂",
+        "other": "其他"
+      }
     }
   },
   "rules": {

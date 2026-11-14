@@ -22,7 +22,7 @@
     "upload": "업로드",
     "totalSize": "전체 크기",
     "totalSizeTooltip": "모든 토렌트의 전체 크기입니다. 같은 릴리스의 사본은 한 번만 계산됩니다.",
-    "freeSpace": "여유 공간",
+    "freeSpace": "여유 공간 (기본 경로)",
     "showMore": "더 보기",
     "showLess": "간략히 보기",
     "uptime": "가동 시간",

@@ -548,7 +548,7 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} de {{total}} torrents carregats",
     "scrollForMore": "(desplaça't per veure'n més)",
-    "freeSpace": "Espai lliure",
+    "freeSpace": "Espai lliure (camí predeterminat)",
     "switchToBits": "Canvia a bits per segon (bps)",
     "switchToBytes": "Canvia a bytes per segon (B/s)",
     "altSpeedOn": "Límits de velocitat alternatius: activats",
@@ -1406,12 +1406,10 @@
     "partialResults": "Resultats parcials: hi ha indexadors que no han respost",
     "arrLookupFailed": "Ha fallat la cerca d'ID de metadades: s'ha cercat només pel títol i els resultats poden ser incomplets",
     "arrNoIds": "No s'ha trobat cap ID de metadades d'aquesta release: s'ha cercat només pel títol",
-    "gazelleTimedOut": "RED/OPS no ha respost a temps",
     "torznabFailed": "La cerca de Torznab ha fallat: només es mostren resultats de RED/OPS",
     "searchScope": "Abast de la cerca",
     "noIndexers": "No hi ha cap indexador de Torznab disponible",
     "noIndexersHelp": "Afegeix o activa indexadors de Torznab a Configuració per cercar cross-seed.",
-    "gazelleOnlySearch": "La cerca consulta només els llocs RED/OPS que tenen una clau d'API.",
     "capabilityNote": "Nota sobre les capacitats",
     "capabilityDescription": "Aquests indexadors no tenen les capacitats o categories necessàries per a aquest torrent i el servidor els ometrà:",
     "smartFilteringActive": "Filtratge intel·ligent actiu",
@@ -1499,7 +1497,30 @@
       "useRss": "Fes servir l'automatització d'RSS per al cross-seeding continu",
       "checkIndexers": "Mira la pàgina d'indexadors per veure quins tenen límit de freqüència"
     },
-    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}."
+    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "es consultarà",
+      "willAskRejected": "es consultarà: l'última vegada el lloc va rebutjar la clau API",
+      "match": "coincidència",
+      "noMatch": "cap coincidència",
+      "openSettings": "Obre la configuració",
+      "notAsked": {
+        "disabled": "no consultat: desactivat",
+        "noApiKey": "no consultat: sense clau API",
+        "cooldown": "no consultat: cercat fa poc",
+        "notSelected": "no consultat: no seleccionat",
+        "sourceSite": "no consultat: el torrent ve de {{site}}",
+        "alreadySeeded": "no consultat: ja el comparteixes allà",
+        "notMusic": "no consultat: no és música",
+        "other": "no consultat"
+      },
+      "failed": {
+        "keyRejected": "error: el lloc ha rebutjat la clau API",
+        "timedOut": "error: temps esgotat",
+        "other": "error: {{detail}}"
+      }
+    }
   },
   "manualCrossSeed": {
     "title": "Coincidència manual de cross-seed",
@@ -1617,6 +1638,7 @@
       "newTag": "(nova)",
       "autoTmm": "Gestió automàtica dels torrents",
       "savePath": "Camí de desada",
+      "freeSpaceAtDestination": "Espai lliure a la destinació: {{value}}",
       "savePathPlaceholder": "Deixa-ho buit per al predeterminat",
       "useTemporaryPath": "Fes servir un camí temporal",
       "useTemporaryPathDescription": "Baixa a un camí temporal abans de moure el contingut al camí de desada",

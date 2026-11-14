@@ -25,6 +25,8 @@ import (
 var captureSkips = map[Capability]string{
 	CapExportOmitsTrackers: "the 4.6.0 and 4.6.7 probes keep the tracker on export, but they test only " +
 		"linuxserver builds with libtorrent 2.0 and a torrent with one tracker",
+	CapFreeSpaceAtPath: "no feature probe calls app/getFreeSpaceAtPath; the route captures in testdata/webapi " +
+		"list it for 5.3.0 (Web API 2.16.2) and not for 5.2.4 (2.15.1)",
 }
 
 // endpointEntries maps each endpoint of a feature probe to the entry that it shows.

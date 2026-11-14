@@ -134,6 +134,7 @@
     "updating": "Mise à jour en cours",
     "error": "Erreur",
     "unknown": "Inconnu",
+    "unavailable": "Indisponible",
     "trackerError": "Erreur du tracker",
     "unreachable": "Inaccessible"
   },
@@ -204,6 +205,22 @@
         "fix": "Libérez de l'espace sur le disque, réduisez « Conserver le détail quotidien pendant » ou supprimez l'historique ancien dans les paramètres Statistiques.",
         "menuFix": "Libérez de l'espace disque pour la base",
         "action": "Ouvrir les paramètres Statistiques"
+      },
+      "redacted_key_rejected": {
+        "short": "Clé Redacted refusée",
+        "title": "Redacted a refusé la clé API",
+        "effect": "Redacted a refusé la dernière recherche. qui l’interroge de nouveau à la prochaine recherche.",
+        "fix": "Si la clé est incorrecte, créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Redacted, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui. Si Redacted a banni l’IP de qui, une nouvelle clé ne suffit pas : contactez l’équipe de Redacted.",
+        "menuFix": "Coller une nouvelle clé dans les paramètres",
+        "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Clé Orpheus refusée",
+        "title": "Orpheus a refusé la clé API",
+        "effect": "Orpheus a refusé la dernière recherche. qui l’interroge de nouveau à la prochaine recherche.",
+        "fix": "Si la clé est incorrecte, créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Orpheus, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui. Si Orpheus a banni l’IP de qui, une nouvelle clé ne suffit pas : contactez l’équipe de Orpheus.",
+        "menuFix": "Coller une nouvelle clé dans les paramètres",
+        "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
       }
     },
     "actions": {

@@ -49,6 +49,12 @@ Manage tags and categories from the **Tags** and **Categories** sections in the 
 
 qBittorrent stores a subcategory as a name with `/` separators, for example `media/movies`. qui shows the categories as a collapsible tree sorted by name when the instance supports subcategories (qBittorrent WebUI API 2.9.0 or newer). The qBittorrent preference **Enable Subcategories** (Instance Preferences > Files) must also be on. From WebUI API 2.15.0, subcategories are always on. In other cases, qui shows a flat list.
 
+## Free space when you add a torrent
+
+The Add Torrent dialog shows the free space at the destination it resolves for the torrent: the save path you enter, or, with automatic torrent management on, the assigned category's path. qBittorrent measures that path on its own host, so the value needs qBittorrent 5.3 (WebAPI 2.15.2) or later. Older instances show no line here. The value is informational and never blocks the add.
+
+If qBittorrent cannot measure the path, the dialog shows the space as unavailable.
+
 ## Exclude a filter
 
 Click a status, category, tag, or tracker in the filter sidebar to show only the torrents that match it. Ctrl+click the same item (Cmd+click on macOS) to exclude it instead. The list then shows the torrents that do not match. On a touch screen, press and hold the item for the same result. Click it again to clear the exclusion.

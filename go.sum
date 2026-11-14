@@ -23,14 +23,10 @@ github.com/autobrr/go-cache v1.0.0-rc1 h1:xqghz7o+4jvTOlyFq08JflUFps7eF9REdIjGka
 github.com/autobrr/go-cache v1.0.0-rc1/go.mod h1:4dDdnZll98Xuz/ebmGALBeK3DiLXmJd7fwUSEWsw/l0=
 github.com/autobrr/go-mediainfo v0.8.0 h1:XzsjHvBOlGx2BnwYCqwCOIJsmrFy4BJb0jgoB2qKuR0=
 github.com/autobrr/go-mediainfo v0.8.0/go.mod h1:P3LGxIPznO2TLKV/e58YgN0/ozP5pLCAncFzsdxMDcY=
-github.com/autobrr/go-qbittorrent v1.19.1-0.20261112163254-c559a2a43556 h1:o+XVTGcFEw4ir+FwFGo7cjzTztxzIaAXqZNyHWk8vyc=
-github.com/autobrr/go-qbittorrent v1.19.1-0.20261112163254-c559a2a43556/go.mod h1:aye48eKGobQZ4CWipVTwlhZ5AHdIhvIyaHYT80xP/KA=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20261113202921-a9e81f940928 h1:Vj5uVdaBx+8ExfApc8rLyp3X5PKYJWLp9QtFCsAJOQQ=
+github.com/autobrr/go-qbittorrent v1.19.1-0.20261113202921-a9e81f940928/go.mod h1:aye48eKGobQZ4CWipVTwlhZ5AHdIhvIyaHYT80xP/KA=
 github.com/autobrr/go-torrent v1.1.1 h1:Vc5R3QGZlmAEoEyEYqT2B9j/CX7to82GzFlHhXbphCw=
 github.com/autobrr/go-torrent v1.1.1/go.mod h1:MNqAUt4SVvZTVyVSD3iQHXgi+ARVM3Z6dY0aTvXTnvY=
-github.com/autobrr/rls v0.10.1-0.20261113171516-c9ee0a124e72 h1:9Yi1SqOcklzA8dG8IyEGLW5FBhvaCiuY0ng7v32UQ5o=
-github.com/autobrr/rls v0.10.1-0.20261113171516-c9ee0a124e72/go.mod h1:y8kqxXKH+n61TVBw9bg5qgsf0py2R8K+1f77lNUGkTY=
-github.com/autobrr/rls v0.11.0 h1:LlYzVV50F6pugKIneVs7piqwrjN33/ftS6H76DJXlmY=
-github.com/autobrr/rls v0.11.0/go.mod h1:y8kqxXKH+n61TVBw9bg5qgsf0py2R8K+1f77lNUGkTY=
 github.com/autobrr/rls v0.11.1-0.20261113231303-fca00698a352 h1:LuOmOhXZzKj2o85dj2IjajwXMm3fNBQjsCjLKsOdhDE=
 github.com/autobrr/rls v0.11.1-0.20261113231303-fca00698a352/go.mod h1:y8kqxXKH+n61TVBw9bg5qgsf0py2R8K+1f77lNUGkTY=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=

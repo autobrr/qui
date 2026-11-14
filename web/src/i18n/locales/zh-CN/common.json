@@ -134,6 +134,7 @@
     "updating": "更新中",
     "error": "错误",
     "unknown": "未知",
+    "unavailable": "不可用",
     "trackerError": "Tracker 错误",
     "unreachable": "无法连接"
   },
@@ -204,6 +205,22 @@
         "fix": "请释放磁盘空间，或在统计设置中缩短“保留每日详情”，或删除较早的历史。",
         "menuFix": "为数据库释放磁盘空间",
         "action": "打开统计设置"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted 密钥被拒绝",
+        "title": "Redacted 拒绝了 API 密钥",
+        "effect": "Redacted 拒绝了上一次搜索。qui 会在下一次搜索时再次查询。",
+        "fix": "如果密钥有误，请在您的 Redacted 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Redacted 封禁了 qui 的 IP，新密钥也无济于事：请联系 Redacted 的管理团队。",
+        "menuFix": "在设置中粘贴新密钥",
+        "action": "打开 Gazelle (OPS/RED) 设置"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus 密钥被拒绝",
+        "title": "Orpheus 拒绝了 API 密钥",
+        "effect": "Orpheus 拒绝了上一次搜索。qui 会在下一次搜索时再次查询。",
+        "fix": "如果密钥有误，请在您的 Orpheus 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Orpheus 封禁了 qui 的 IP，新密钥也无济于事：请联系 Orpheus 的管理团队。",
+        "menuFix": "在设置中粘贴新密钥",
+        "action": "打开 Gazelle (OPS/RED) 设置"
       }
     },
     "actions": {

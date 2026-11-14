@@ -44,7 +44,12 @@ func (s *gettableIndexerStore) Get(_ context.Context, id int) (*models.TorznabIn
 const torznabGazelleSourceHash = "223759985c562a644428312c8cd3585d04686847"
 
 // torznabGazelleScope asks the Torznab indexer and OPS, the target of the RED source.
-var torznabGazelleScope = searchScope{torznabIndexerIDs: []int{1}, gazelleHosts: []string{"orpheus.network"}}
+var torznabGazelleScope = searchScope{torznabIndexerIDs: []int{1}, gazelle: gazelleAsks("orpheus.network")}
+
+// gazelleAsks returns the Search scope decisions that ask exactly hosts.
+func gazelleAsks(hosts ...string) []GazelleLookup {
+	return decideGazelleSites(searchScopeFacts{gazelleKeys: hosts, musicCheckPassed: true})
+}
 
 // newTorznabGazelleFixture builds a Service with one music-capable Torznab
 // indexer pointing at trackerURL and a RED-sourced music torrent whose Gazelle
@@ -136,7 +141,7 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 
 	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-torznab-fail-gazelle", downedTracker.URL)
 
-	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
+	resp, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
 
 	require.NoError(t, err, "torznab failure must not discard gazelle matches")
 	require.NotNil(t, resp)
@@ -164,11 +169,11 @@ func TestSearchTorrentMatches_CallerDeadlineIsNotPartialSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	t.Cleanup(cancel)
 
-	resp, _, _, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
+	resp, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
 
 	require.Error(t, err, "caller deadline expiry must not be reported as partial success")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.Nil(t, resp)
+	require.Empty(t, resp.Results)
 }
 
 // Regression (PR #2427 review): the Search breakdown explains the Torznab
@@ -183,7 +188,7 @@ func TestSearchTorrentMatches_TraceExcludesGazelleFromFinalMatches(t *testing.T)
 
 	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-trace-gazelle-matches", emptyFeed.URL)
 
-	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
+	resp, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -224,8 +229,8 @@ func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan
 }
 
 // RED/OPS and Torznab run at the same time. When RED/OPS does not answer in
-// time, the search returns the Torznab results with the timeout note and starts
-// no RED/OPS cooldown.
+// time, the search returns the Torznab results with a timed out lookup, which
+// starts no RED/OPS cooldown.
 func TestSearchTorrentMatches_SlowGazelleKeepsTorznabResults(t *testing.T) {
 	var torznabSawGazelleWaiting atomic.Bool
 	var gazelleStarted <-chan struct{}
@@ -245,28 +250,28 @@ func TestSearchTorrentMatches_SlowGazelleKeepsTorznabResults(t *testing.T) {
 	clients, started, active := slowGazelleClients(t)
 	gazelleStarted, gazelleActive = started, active
 
-	resp, gazelleLookupCompleted, _, err := svc.searchTorrentMatches(t.Context(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
+	resp, err := svc.searchTorrentMatches(t.Context(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, torznabGazelleScope, clients)
 
 	require.NoError(t, err)
 	require.True(t, torznabSawGazelleWaiting.Load(), "Torznab must run while RED/OPS waits")
-	require.True(t, resp.GazelleTimedOut)
+	require.Equal(t, GazelleReasonTimedOut, gazelleLookupOf(t, resp.GazelleLookups, "orpheus.network").Reason)
 	require.Len(t, resp.Results, 1)
 	require.Equal(t, "torznab-guid", resp.Results[0].GUID)
-	require.False(t, gazelleLookupCompleted, "a RED/OPS timeout must start no cooldown")
+	require.False(t, gazelleCooldownDue(resp.GazelleLookups), "a RED/OPS timeout must start no cooldown")
 }
 
 // A RED/OPS-only dialog search that runs out of time returns an empty result
-// with the timeout note, not an error.
+// with a timed out lookup, not an error.
 func TestSearchTorrentMatches_SlowGazelleOnlyReturnsEmptyResultWithNote(t *testing.T) {
 	svc, instanceID, _ := newTorznabGazelleFixture(t, "crossseed-slow-gazelle-only", "http://127.0.0.1:1")
 	clients, _, _ := slowGazelleClients(t)
 
-	resp, gazelleLookupCompleted, _, err := svc.searchTorrentMatches(t.Context(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, searchScope{gazelleHosts: []string{"orpheus.network"}}, clients)
+	resp, err := svc.searchTorrentMatches(t.Context(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, searchScope{gazelle: gazelleAsks("orpheus.network")}, clients)
 
 	require.NoError(t, err)
-	require.True(t, resp.GazelleTimedOut)
+	require.Equal(t, GazelleReasonTimedOut, gazelleLookupOf(t, resp.GazelleLookups, "orpheus.network").Reason)
 	require.Empty(t, resp.Results)
-	require.False(t, gazelleLookupCompleted)
+	require.False(t, gazelleCooldownDue(resp.GazelleLookups))
 }
 
 // A caller that cancels while RED/OPS still waits gets the cancellation, not a
@@ -300,7 +305,7 @@ func TestSearchTorrentMatches_CallerCancelDuringGazelleWaitIsAnError(t *testing.
 			gazelleSearchTimeout = time.Minute
 			scope := torznabGazelleScope
 			if tt.gazelleOnly {
-				scope = searchScope{gazelleHosts: []string{"orpheus.network"}}
+				scope = searchScope{gazelle: gazelleAsks("orpheus.network")}
 				answerOnce.Do(func() { close(torznabAnswered) })
 			}
 
@@ -312,10 +317,11 @@ func TestSearchTorrentMatches_CallerCancelDuringGazelleWaitIsAnError(t *testing.
 				cancel()
 			}()
 
-			resp, _, _, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, scope, clients)
+			resp, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{}, scope, clients)
 
 			require.ErrorIs(t, err, context.Canceled)
-			require.Nil(t, resp)
+			require.Empty(t, resp.Results)
+			require.NotEqual(t, GazelleReasonTimedOut, gazelleLookupOf(t, resp.GazelleLookups, "orpheus.network").Reason, "a canceled caller is not a timeout")
 		})
 	}
 }

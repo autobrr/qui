@@ -27,6 +27,10 @@ const (
 	RecordingStopped Kind = "recording_stopped"
 	// ShrinkFailed opens when the shrink of the database file at startup fails.
 	ShrinkFailed Kind = "shrink_failed"
+	// RedactedKeyRejected and OrpheusKeyRejected open when the site rejects the
+	// RED/OPS API key in a cross-seed search.
+	RedactedKeyRejected Kind = "redacted_key_rejected"
+	OrpheusKeyRejected  Kind = "orpheus_key_rejected"
 	// LowDisk opens on SQLite when the disk of the database file has little
 	// free space.
 	LowDisk Kind = "low_disk"
@@ -77,6 +81,18 @@ var definitions = map[Kind]definition{
 			"": "The disk of the qui database has little free space. When the disk is full, each write of qui fails. Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.",
 		},
 	},
+	RedactedKeyRejected: keyRejected("Redacted"),
+	OrpheusKeyRejected:  keyRejected("Orpheus"),
+}
+
+func keyRejected(site string) definition {
+	return definition{
+		severity: SeverityError,
+		title:    site + " rejected the API key",
+		fixes: map[string]string{
+			"": site + " rejected the last search. qui asks it again at the next search. If the key is wrong, make an API key with the Torrents permission in your " + site + " profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If " + site + " banned the IP of qui, a new key does not help: contact the staff of " + site + ".",
+		},
+	}
 }
 
 const notifyTimeout = 10 * time.Second

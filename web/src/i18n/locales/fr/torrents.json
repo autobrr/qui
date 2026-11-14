@@ -720,12 +720,10 @@
     "partialResults": "Résultats partiels - certains indexeurs n'ont pas répondu",
     "arrLookupFailed": "Échec de la recherche d'ID de métadonnées - recherche par titre uniquement, les résultats peuvent être incomplets",
     "arrNoIds": "Aucun ID de métadonnées trouvé pour cette release - recherche par titre uniquement",
-    "gazelleTimedOut": "RED/OPS n'a pas répondu à temps",
     "torznabFailed": "La recherche Torznab a échoué - résultats RED/OPS uniquement",
     "searchScope": "Portée de la recherche",
     "noIndexers": "Aucun indexeur Torznab disponible",
     "noIndexersHelp": "Ajoutez ou activez des indexeurs Torznab dans les paramètres pour chercher des cross-seeds.",
-    "gazelleOnlySearch": "La recherche interroge uniquement les sites RED/OPS qui ont une clé API.",
     "capabilityNote": "Note sur les capacités",
     "capabilityDescription": "Ces indexeurs n'ont pas les capacités/catégories requises pour ce torrent et seront ignorés par le serveur :",
     "smartFilteringActive": "Filtrage intelligent actif",
@@ -813,7 +811,30 @@
       "useRss": "Utilisez l'automatisation RSS pour les cross-seeds réguliers",
       "checkIndexers": "Vérifiez la page des indexeurs pour voir lesquels sont limités"
     },
-    "routedTo": "Les cross-seeds vont à l'instance de cross-seed {{instance}}."
+    "routedTo": "Les cross-seeds vont à l'instance de cross-seed {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "sera interrogé",
+      "willAskRejected": "sera interrogé : le site a refusé la clé API la dernière fois",
+      "match": "correspondance",
+      "noMatch": "aucune correspondance",
+      "openSettings": "Ouvrir les paramètres",
+      "notAsked": {
+        "disabled": "non interrogé : désactivé",
+        "noApiKey": "non interrogé : aucune clé API",
+        "cooldown": "non interrogé : recherché récemment",
+        "notSelected": "non interrogé : non sélectionné",
+        "sourceSite": "non interrogé : le torrent provient de {{site}}",
+        "alreadySeeded": "non interrogé : vous le partagez déjà là-bas",
+        "notMusic": "non interrogé : pas de la musique",
+        "other": "non interrogé"
+      },
+      "failed": {
+        "keyRejected": "échec : le site a refusé la clé API",
+        "timedOut": "échec : délai dépassé",
+        "other": "échec : {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "Filtrer {{column}}",
@@ -1006,7 +1027,7 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} sur {{total}} torrents chargés",
     "scrollForMore": "(défiler pour plus)",
-    "freeSpace": "Espace libre",
+    "freeSpace": "Espace libre (chemin par défaut)",
     "switchToBits": "Basculer en bits par seconde (bps)",
     "switchToBytes": "Basculer en octets par seconde (o/s)",
     "altSpeedOn": "Vitesses alternatives : Activées",
@@ -1396,6 +1417,7 @@
       "newTag": "(nouveau)",
       "autoTmm": "Gestion automatique des torrents",
       "savePath": "Chemin de sauvegarde",
+      "freeSpaceAtDestination": "Espace libre à destination : {{value}}",
       "savePathPlaceholder": "Laissez vide pour le chemin par défaut",
       "useTemporaryPath": "Utiliser un chemin temporaire",
       "useTemporaryPathDescription": "Télécharger vers un chemin temporaire avant de déplacer",

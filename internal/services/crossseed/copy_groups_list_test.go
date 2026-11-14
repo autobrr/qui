@@ -38,7 +38,7 @@ func TestCopyGroupsInTheListResponse(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 	sm := qbittorrent.NewSyncManager(pool, nil)
 
-	svc := NewService(instances, sm, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	svc := NewService(instances, sm, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
 	svc.copyGroups.interval = 10 * time.Millisecond
 	svc.StartCopyGroups(ctx)
 	t.Cleanup(svc.StopCopyGroups)
