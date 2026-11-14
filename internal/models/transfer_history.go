@@ -1287,29 +1287,7 @@ func (s *TransferHistoryStore) TorrentTransfer(ctx context.Context, instanceID i
 }
 
 func (s *TransferHistoryStore) torrentTransfer(ctx context.Context, instanceID int, torrentIDs []int64, fromDay, toDay int64, total bool) ([]TransferHistoryTorrentBytes, error) {
-	day, groupBy := "0", ""
-	if !total {
-		day, groupBy = "r.day", ", r.day"
-	}
-	// The torrent ids come from an IN list, not a join, so that SQLite reads
-	// the rows in the order of the primary key and groups them with no sort.
-	torrents := "IN (SELECT id FROM transfer_history_torrents WHERE instance_id = ?)"
-	ids := []any{instanceID}
-	if torrentIDs != nil {
-		torrents, ids = "IN ("+placeholders(len(torrentIDs))+")", int64Args(torrentIDs)
-	}
-	query := `
-		SELECT 0, r.torrent_id, ` + day + `, CAST(SUM(r.uploaded) AS BIGINT), CAST(SUM(r.downloaded) AS BIGINT)
-		FROM transfer_history_torrent_days r
-		WHERE r.torrent_id ` + torrents + ` AND r.day >= ? AND r.day < ?
-		GROUP BY r.torrent_id` + groupBy + `
-		UNION ALL
-		SELECT 1, r.torrent_id, r.year, r.uploaded, r.downloaded
-		FROM transfer_history_torrent_years r
-		WHERE r.torrent_id ` + torrents + ` AND r.year >= ? AND r.year <= ?`
-	args := append(slices.Clone(ids), fromDay, toDay)
-	args = append(args, ids...)
-	args = append(args, time.Unix(fromDay*86400, 0).UTC().Year(), time.Unix((toDay-1)*86400, 0).UTC().Year())
+	query, args := torrentTransferQuery(dbinterface.DialectOf(s.db), instanceID, torrentIDs, fromDay, toDay, total)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("read transfer history torrent days: %w", err)
@@ -1329,6 +1307,44 @@ func (s *TransferHistoryStore) torrentTransfer(ctx context.Context, instanceID i
 		return nil, fmt.Errorf("read transfer history torrent days: %w", err)
 	}
 	return out, nil
+}
+
+// torrentTransferQuery returns the statement of torrentTransfer for dialect.
+func torrentTransferQuery(dialect string, instanceID int, torrentIDs []int64, fromDay, toDay int64, total bool) (string, []any) {
+	day, groupBy := "0", ""
+	if !total {
+		day, groupBy = "r.day", ", r.day"
+	}
+	// A join, not an IN list, saves SQLite a temporary index of the ids. The
+	// unary plus keeps SQLite off the index of the instance, which sorts the
+	// groups, and a grouping by r.torrent_id makes SQLite skip-scan the days.
+	// Postgres plans the join without the plus as a merge join.
+	instance := "+t.instance_id = ?"
+	if dialect == "postgres" {
+		instance = "t.instance_id = ?"
+	}
+	join, id, where := "transfer_history_torrents t JOIN %s r ON r.torrent_id = t.id", "t.id", instance
+	ids := []any{instanceID}
+	if torrentIDs != nil {
+		join, id, where = "%s r", "r.torrent_id", "r.torrent_id IN ("+placeholders(len(torrentIDs))+")"
+		ids = int64Args(torrentIDs)
+	}
+	// A year row holds only days before the fold day, so the years count only
+	// when a fold reaches past fromDay.
+	query := `
+		SELECT 0, ` + id + `, ` + day + `, CAST(SUM(r.uploaded) AS BIGINT), CAST(SUM(r.downloaded) AS BIGINT)
+		FROM ` + fmt.Sprintf(join, "transfer_history_torrent_days") + `
+		WHERE ` + where + ` AND r.day >= ? AND r.day < ?
+		GROUP BY ` + id + groupBy + `
+		UNION ALL
+		SELECT 1, ` + id + `, r.year, r.uploaded, r.downloaded
+		FROM ` + fmt.Sprintf(join, "transfer_history_torrent_years") + `
+		WHERE ` + where + ` AND r.year >= ? AND r.year <= ?
+			AND EXISTS (SELECT 1 FROM transfer_history_folds f WHERE f.id = 1 AND f.torrent_days_before > ?)`
+	args := append(slices.Clone(ids), fromDay, toDay)
+	args = append(args, ids...)
+	args = append(args, time.Unix(fromDay*86400, 0).UTC().Year(), time.Unix((toDay-1)*86400, 0).UTC().Year(), fromDay)
+	return query, args
 }
 
 // FoldHours deletes the hourly totals and the hourly state of an instance

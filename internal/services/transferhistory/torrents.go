@@ -253,13 +253,7 @@ func (a *answer) topTorrents(ctx context.Context, store *models.TransferHistoryS
 		}
 	}
 
-	ids := slices.SortedFunc(maps.Keys(sums), func(x, y int64) int { return cmp.Compare(sums[y].rank(), sums[x].rank()) })
-	if len(ids) > q.Limit {
-		last := sums[ids[q.Limit-1]].rank()
-		if n := slices.IndexFunc(ids[q.Limit:], func(id int64) bool { return sums[id].rank() < last }); n >= 0 {
-			ids = ids[:q.Limit+n]
-		}
-	}
+	ids := topSums(sums, q.Limit)
 	if len(ids) == 0 {
 		return nil
 	}
@@ -280,6 +274,27 @@ func (a *answer) topTorrents(ctx context.Context, store *models.TransferHistoryS
 		}
 	}
 	return a.addGaps(ctx, store, fromDay*24, toDay*24, models.TransferHistoryBuckets{}, BucketTotal, false)
+}
+
+// topSums returns the ids of the limit torrents with the most upload, and of
+// each torrent that ties with the last of them, in no order.
+func topSums(sums map[int64]*torrentSum, limit int) []int64 {
+	if len(sums) <= limit {
+		return slices.Collect(maps.Keys(sums))
+	}
+	ranks := make([]int64, 0, len(sums))
+	for _, s := range sums {
+		ranks = append(ranks, s.rank())
+	}
+	slices.Sort(ranks)
+	last := ranks[len(ranks)-limit]
+	ids := make([]int64, 0, limit)
+	for id, s := range sums {
+		if s.rank() >= last {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // addTorrentFacts sets the facts of the torrent of each row of the grouping by
