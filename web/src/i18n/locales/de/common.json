@@ -196,6 +196,14 @@
             "menuFix": "Anderes Programm beenden, dann erneut versuchen"
           }
         }
+      },
+      "low_disk": {
+        "short": "Wenig Speicherplatz",
+        "title": "Wenig Speicherplatz",
+        "effect": "Der Datenträger der qui-Datenbank hat wenig freien Platz. Ist der Datenträger voll, schlägt jeder Schreibvorgang von qui fehl.",
+        "fix": "Gib Platz auf dem Datenträger frei, verkürze „Tägliche Details behalten für“ oder lösche älteren Verlauf in den Statistik-Einstellungen.",
+        "menuFix": "Speicher für die Datenbank freigeben",
+        "action": "Statistik-Einstellungen öffnen"
       }
     },
     "actions": {

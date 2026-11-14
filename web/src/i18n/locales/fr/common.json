@@ -196,6 +196,14 @@
             "menuFix": "Arrêtez l’autre programme, puis réessayez"
           }
         }
+      },
+      "low_disk": {
+        "short": "Disque presque plein",
+        "title": "Disque presque plein",
+        "effect": "Le disque de la base de données de qui a peu d'espace libre. Quand le disque est plein, chaque écriture de qui échoue.",
+        "fix": "Libérez de l'espace sur le disque, réduisez « Conserver le détail quotidien pendant » ou supprimez l'historique ancien dans les paramètres Statistiques.",
+        "menuFix": "Libérez de l'espace disque pour la base",
+        "action": "Ouvrir les paramètres Statistiques"
       }
     },
     "actions": {

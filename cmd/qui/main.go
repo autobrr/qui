@@ -49,6 +49,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/lowdisk"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
@@ -682,6 +683,9 @@ func (app *Application) runServer() {
 		notificationService.Start(notificationCtx)
 	}
 	systemNotices := systemnotice.New(notificationService)
+	lowDiskCtx, lowDiskCancel := context.WithCancel(context.Background())
+	defer lowDiskCancel()
+	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
