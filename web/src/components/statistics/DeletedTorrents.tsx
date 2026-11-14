@@ -44,6 +44,8 @@ interface DeletesPages {
   counts?: TransferHistoryDeletesAnswer["counts"]
   error?: Error
   loadingMore: boolean
+  // Loads each page again that failed.
+  retry: () => void
 }
 
 /**
@@ -70,7 +72,8 @@ function useDeletesPages(instances: TransferHistoryInstance[], period: { from?: 
         return { automation: sum.automation + counts.automation, user: sum.user + counts.user, other: sum.other + counts.other }
       }, { automation: 0, user: 0, other: 0 }) : undefined,
       error: results.find(result => result.error)?.error ?? undefined,
-      loadingMore: loaded > 0 && loaded < pages,
+      loadingMore: loaded > 0 && results.some(result => result.isFetching),
+      retry: () => results.filter(result => result.error).forEach(result => void result.refetch()),
     }
   }, [instances, pages])
   return useQueries({
@@ -106,7 +109,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   if (loaded.deletes && kept?.pages !== loaded) {
     setKept({ view, pages: loaded })
   }
-  const { deletes, counts, error, loadingMore } = !loaded.deletes && !loaded.error && kept?.view === view ? kept.pages : loaded
+  const { deletes, counts, error, loadingMore, retry } = !loaded.deletes && !loaded.error && kept?.view === view ? kept.pages : loaded
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
   const formatCount = useMemo(() => new Intl.NumberFormat(locale), [locale])
 
@@ -181,7 +184,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
             <span>{t("deletes.shown", { shown: formatCount.format(deletes.length), total: formatCount.format(total ?? deletes.length) })}</span>
             {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
             {total !== undefined && deletes.length < total && (
-              <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => setPaging({ scope, cause, pages: pages + 1 })}>
+              <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => error ? retry() : setPaging({ scope, cause, pages: pages + 1 })}>
                 {loadingMore && <Loader2 className="size-3.5 animate-spin" />}
                 {t("deletes.more")}
               </Button>

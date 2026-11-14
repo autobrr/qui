@@ -194,6 +194,27 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.1-GRP", "Built.Name.1.0-GRP"]))
   })
 
+  it("lets the user load a page again after it failed", async () => {
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    let failNext = true
+    server.use(http.get("*/api/instances/:id/transfer-history/deletes", ({ request }) => {
+      if (new URL(request.url).searchParams.get("offset") === String(DELETES_PAGE) && failNext) {
+        failNext = false
+        return HttpResponse.json({ error: "database is locked" }, { status: 500 })
+      }
+      return undefined
+    }))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(DELETES_PAGE))
+
+    fireEvent.click(screen.getByText("deletes.more"))
+    await vi.waitFor(() => expect(screen.getByText(/database is locked/)).toBeTruthy())
+    const button = screen.getByText("deletes.more").closest("button")!
+    await vi.waitFor(() => expect(button.disabled).toBe(false))
+    fireEvent.click(button)
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
+  })
+
   it("masks the torrent names in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     deletesOf.set(1, [event(1, 0, 5_000, "user")])

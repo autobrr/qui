@@ -402,7 +402,7 @@ export function Statistics() {
           <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
         ) : ready ? (
           <DeletedTorrents
-            scope={`${periodState.choice === "custom" ? period.from?.getTime() : periodState.choice}:${selectedIds.join(",")}`}
+            scope={`${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`}
             instances={selected}
             period={period}
             displayGroup={displayName}

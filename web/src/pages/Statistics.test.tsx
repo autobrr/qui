@@ -230,6 +230,40 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
   })
 
+  it("does not keep the deleted torrents of a custom range when only its last day changes", async () => {
+    let releaseSecond = () => {}
+    const second = new Promise<void>(resolve => {
+      releaseSecond = resolve
+    })
+    const firstTo = new Date(2026, 0, 7).toISOString()
+    server.use(http.get("*/api/instances/:id/transfer-history/deletes", async ({ request }) => {
+      const to = new URL(request.url).searchParams.get("to")
+      if (to !== firstTo) {
+        await second
+      }
+      const name = to === firstTo ? "First.Range-GRP" : "Second.Range-GRP"
+      return HttpResponse.json({
+        deletes: [{ time: new Date(2026, 0, 5, 12).toISOString(), hash: name, name, trackerGroup: "a.test", uploaded: 1, downloaded: 1, cause: { kind: "user" } }],
+        counts: { automation: 0, user: 1, other: 0 },
+      })
+    }))
+    const applyRange = (last: string) => {
+      fireEvent.click(screen.getAllByText(/^(periods\.custom|customRange\.range from=)/)[0])
+      fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: "2026-01-05" } })
+      fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: last } })
+      fireEvent.click(screen.getByText("customRange.apply"))
+    }
+    renderPage()
+    await screen.findByText("periods.custom")
+    applyRange("2026-01-06")
+    await screen.findAllByTitle("First.Range-GRP")
+
+    applyRange("2026-01-07")
+    await vi.waitFor(() => expect(screen.queryAllByTitle("First.Range-GRP")).toHaveLength(0))
+    releaseSecond()
+    await screen.findAllByTitle("Second.Range-GRP")
+  })
+
   it("moves a preset period forward while the page stays open, and keeps the old numbers until the new ones load", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
