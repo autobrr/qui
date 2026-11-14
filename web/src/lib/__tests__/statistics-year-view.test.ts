@@ -27,21 +27,22 @@ function dayBar(year: number, month: number, date: number, bytes: Record<string,
 }
 
 describe("showsYearView", () => {
-  const now = new Date(2026, 5, 15, 12)
+  // Built in each test, after beforeAll sets the timezone.
+  const now = () => new Date(2026, 5, 15, 12)
 
   it("shows the year view for a range of 121 days and the stacked bars for 120 days", () => {
-    expect(showsYearView(customPeriod(new Date(2026, 0, 1), new Date(2026, 4, 1), now), undefined)).toBe(true)
-    expect(showsYearView(customPeriod(new Date(2026, 0, 1), new Date(2026, 3, 30), now), undefined)).toBe(false)
+    expect(showsYearView(customPeriod(new Date(2026, 0, 1), new Date(2026, 4, 1), now()), undefined)).toBe(true)
+    expect(showsYearView(customPeriod(new Date(2026, 0, 1), new Date(2026, 3, 30), now()), undefined)).toBe(false)
   })
 
   it("counts the days of all time from the first recording", () => {
-    const all = presetPeriod("all", now)
+    const all = presetPeriod("all", now())
 
     // February 15 to June 15 are 121 dates.
     expect(showsYearView(all, new Date(2026, 1, 15, 9))).toBe(true)
     expect(showsYearView(all, new Date(2026, 1, 16, 9))).toBe(false)
-    expect(showsYearView(presetPeriod("1y", now), undefined)).toBe(true)
-    expect(showsYearView(presetPeriod("30d", now), undefined)).toBe(false)
+    expect(showsYearView(presetPeriod("1y", now()), undefined)).toBe(true)
+    expect(showsYearView(presetPeriod("30d", now()), undefined)).toBe(false)
   })
 })
 
