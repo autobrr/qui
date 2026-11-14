@@ -206,7 +206,7 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 ## Use a theme file from the directory
 
 1. Place your `.css` file into the themes directory.
-2. Open **Settings → Themes**. Your theme appears in the theme grid with a **Custom** badge. The **Custom themes** box below the grid shows the number of themes and the directory path. Click the refresh button next to the path to load new or edited files without a restart of qui.
+2. Open **Settings → Themes**. Your theme appears in the theme grid with a **Custom** badge. The **Custom themes** box below the grid shows the number of themes and the directory path. Click **Refresh** next to the path to load new or edited files without a restart of qui.
 3. Select the theme like any other theme.
 
 If you remove a custom theme file or your license lapses, qui falls back to the default theme. A built-in licensed theme selection returns when you renew. A custom theme selection does not.

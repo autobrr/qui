@@ -35,7 +35,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
 import { useDefaultThemeVisit } from "@/lib/default-theme-visit"
@@ -68,7 +67,7 @@ function CustomThemeActions({ file, onEdit, onRemove }: CustomThemeActionsProps)
         <Button
           variant="ghost"
           size="icon"
-          className="size-6 shrink-0"
+          className="size-6 shrink-0 max-sm:size-9"
           aria-label={t("themes.custom.actionsFor", { theme: file.label })}
           onClick={(e) => e.stopPropagation()}
         >
@@ -379,7 +378,7 @@ export function ThemeSelector() {
       </CardHeader>
       <CardContent className="space-y-4 px-4">
         {defaultThemeVisit && (
-          <Alert>
+          <Alert role="status">
             <Info className="h-4 w-4" />
             <AlertDescription>{t("themes.selector.defaultThemeVisit")}</AlertDescription>
           </Alert>
@@ -431,7 +430,6 @@ export function ThemeSelector() {
 
         <ThemeLayoutSettings />
 
-        {/* Custom Themes (sideloaded CSS, premium feature) */}
         <div className="space-y-2 rounded-md border bg-muted/20 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="flex items-center gap-2 whitespace-nowrap text-sm font-medium">
@@ -445,11 +443,11 @@ export function ThemeSelector() {
               </Button>
             ) : (
               <div className="grid w-full gap-2 sm:ml-auto sm:flex sm:w-auto">
-                <Button variant="outline" size="sm" onClick={() => void copyPrompt()}>
+                <Button variant="outline" size="sm" className="max-sm:min-h-11" onClick={() => void copyPrompt()}>
                   <Sparkles className="h-3 w-3" />
                   {t("themes.custom.copyPrompt")}
                 </Button>
-                <Button size="sm" className="max-sm:order-first" onClick={newTheme}>
+                <Button size="sm" className="max-sm:order-first max-sm:min-h-11" onClick={newTheme}>
                   <Plus className="h-3 w-3" />
                   {t("themes.custom.newTheme")}
                 </Button>
@@ -476,27 +474,22 @@ export function ThemeSelector() {
                 {customThemesDirectory && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span className="min-w-0 flex-1 truncate font-mono" title={customThemesDirectory}>
+                    <span className="min-w-0 truncate font-mono" title={customThemesDirectory}>
                       {customThemesDirectory}
                     </span>
-                    <CopyButton value={customThemesDirectory} label={t("themes.custom.folderLabel")} className="size-6" />
+                    <CopyButton value={customThemesDirectory} label={t("themes.custom.folderLabel")} className="size-6 shrink-0 max-sm:size-9" />
                   </>
                 )}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-auto size-6 shrink-0"
-                      aria-label={t("themes.custom.refreshHint")}
-                      onClick={() => refetchCustomThemes()}
-                      disabled={customThemesFetching}
-                    >
-                      <RefreshCw className={`size-3.5 ${customThemesFetching ? "animate-spin" : ""}`} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("themes.custom.refreshHint")}</TooltipContent>
-                </Tooltip>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="ml-auto shrink-0 max-sm:h-9"
+                  onClick={() => refetchCustomThemes()}
+                  disabled={customThemesFetching}
+                >
+                  <RefreshCw className={customThemesFetching ? "animate-spin" : undefined} />
+                  {t("themes.custom.refresh")}
+                </Button>
               </div>
 
               {!customThemesError && !customThemesFetching && customThemes.length === 0 && customThemeErrors.length === 0 && (
@@ -505,9 +498,12 @@ export function ThemeSelector() {
 
               {customThemeErrors.length > 0 && (
                 <div className="space-y-1 border-t pt-2">
-                  <p className="flex items-center gap-1 text-xs font-medium text-destructive">
-                    <AlertTriangle className="h-3 w-3 shrink-0" />
-                    {t("themes.custom.parseErrorsTitle")}
+                  <p className="flex flex-wrap items-center gap-x-1.5 text-xs">
+                    <span className="flex items-center gap-1 font-medium text-destructive">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      {t("themes.custom.parseErrorsTitle")}
+                    </span>
+                    <span className="text-muted-foreground">{t("themes.custom.parseErrorsHint")}</span>
                   </p>
                   <ul className="space-y-0.5 text-xs">
                     {customThemeErrors.map((error) => (
@@ -542,7 +538,7 @@ export function ThemeSelector() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("themes.custom.removeTitle")}</AlertDialogTitle>
+            <AlertDialogTitle>{t("themes.custom.removeTitle", { theme: removeTarget?.label ?? "" })}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("themes.custom.removeDescription", { theme: removeTarget?.label ?? "" })}
             </AlertDialogDescription>

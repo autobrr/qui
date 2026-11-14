@@ -65,11 +65,16 @@ type EditorAction =
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "name":
-      return { ...state, name: action.name }
+      return { ...state, name: action.name, phase: clearedError(state.phase) }
     case "css": {
       // Only a new @name fills the field, so an edit elsewhere in the CSS keeps a name that the user typed.
       const header = readThemeName(action.css)
-      return { ...state, css: action.css, name: header !== null && header !== readThemeName(state.css) ? header : state.name }
+      return {
+        ...state,
+        css: action.css,
+        name: header !== null && header !== readThemeName(state.css) ? header : state.name,
+        phase: clearedError(state.phase),
+      }
     }
     case "save-start":
       return { ...state, phase: { kind: "saving" } }
@@ -80,6 +85,11 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
     case "keep-editing":
       return state.phase.kind === "confirm-replace" ? { ...state, phase: { kind: "editing", error: null } } : state
   }
+}
+
+// An edit makes a refused save stale, so its message gives way to the live status.
+function clearedError(phase: EditorPhase): EditorPhase {
+  return phase.kind === "editing" ? { kind: "editing", error: null } : phase
 }
 
 function initialState(target: CustomThemeEditorTarget): EditorState {
@@ -267,20 +277,26 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>{t(PROBLEM_KEYS[previewProblem.kind], "line" in previewProblem ? { line: previewProblem.line } : undefined)}</span>
                 </p>
-              ) : !previewProblem && !waitsForChange ? (
+              ) : (
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Eye className="h-3.5 w-3.5 shrink-0" />
-                  {t("themes.custom.editor.previewing")}
+                  {t(
+                    previewProblem
+                      ? "themes.custom.editor.emptyStatus"
+                      : waitsForChange
+                        ? "themes.custom.editor.previewWaits"
+                        : "themes.custom.editor.previewing"
+                  )}
                 </p>
-              ) : null}
+              )}
             </div>
           </div>
 
           <SheetFooter className="flex-row justify-end gap-2 pt-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <Button variant="outline" className="flex-1 sm:flex-none" onClick={onClose} disabled={saving}>
+            <Button variant="outline" className="min-h-11 flex-1 sm:flex-none md:min-h-9" onClick={onClose} disabled={saving}>
               {t("common:actions.cancel")}
             </Button>
-            <Button className="flex-1 sm:flex-none" onClick={() => void save(false)} disabled={!canSave}>
+            <Button className="min-h-11 flex-1 sm:flex-none md:min-h-9" onClick={() => void save(false)} disabled={!canSave}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {t("themes.custom.editor.save")}
             </Button>

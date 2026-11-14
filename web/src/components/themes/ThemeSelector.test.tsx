@@ -536,6 +536,22 @@ describe("ThemeSelector custom theme editor", () => {
   })
 
   // regression: #4124
+  it("drops a refused save message when the CSS changes, and shows the live problem", async () => {
+    recordCustomThemeApi(() => HttpResponse.json({ error: "line 3: url() can only use a data: address" }, { status: 400 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+    await screen.findByRole("alert")
+
+    fireEvent.change(cssField(), { target: { value: ":root { --background: blue; }" } })
+
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByText("themes.custom.editor.problems.missingDark")).toBeTruthy()
+  })
+
+  // regression: #4124
   it("edits the current file of a custom theme with replace and keeps the selection", async () => {
     const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "local", filename: "local.css", css: "" }))
     const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")
