@@ -270,6 +270,21 @@ it("ignores Return on an empty tag search and matches every word of a category s
   expect(sent.category).toBe("tv/x265")
 })
 
+it("leaves Return alone while an input method composes text", async () => {
+  metadataResult.data = { categories: {}, tags: ["autobrr"] }
+  const ui = renderColdDialog()
+
+  fireEvent.click(ui.getByRole("button", { name: /addTorrentDialog\.options\.addTags/ }))
+  const search = await waitFor(() => ui.getByPlaceholderText("addTorrentDialog.options.tagsPlaceholder"))
+  fireEvent.change(search, { target: { value: "にほん" } })
+  // This Return confirms the composed text; it must not add the tag yet.
+  fireEvent.keyDown(search, { key: "Enter", isComposing: true })
+
+  fireEvent.click(ui.getByRole("button", { name: "addTorrentDialog.footer.add" }))
+  await waitFor(() => expect(api.addTorrent).toHaveBeenCalled())
+  expect(vi.mocked(api.addTorrent).mock.calls[0][1].tags).toBeUndefined()
+})
+
 it("starts with More options closed on each open", async () => {
   vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })

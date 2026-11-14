@@ -234,7 +234,8 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
             }}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") setNavigated(true)
-              if (e.key !== "Enter") return
+              // Return that confirms input-method text is not a pick; cmdk skips it the same way (Safari reports keyCode 229).
+              if (e.key !== "Enter" || e.nativeEvent.isComposing || e.keyCode === 229) return
               if (!trimmed) {
                 // Until the user moves with the arrow keys, Return on an empty search must not toggle the top row.
                 if (!navigated) e.preventDefault()
