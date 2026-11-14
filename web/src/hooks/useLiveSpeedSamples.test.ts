@@ -28,6 +28,22 @@ afterEach(() => {
 })
 
 describe("useLiveSpeedSamples", () => {
+  // regression: #4141
+  it.each([
+    ["a stream error", { streamError: "instance unreachable" }],
+    ["a failed fallback poll", { error: new Error("fallback failed") }],
+  ])("skips an instance with %s, so its last speed does not repeat", (_name, failure) => {
+    vi.useFakeTimers()
+    setVisibility("visible")
+    const { result } = renderHook(() => useLiveSpeedSamples([instance(1, true), { ...instance(2, true), ...failure }]))
+
+    act(() => {
+      vi.advanceTimersByTime(LIVE_SAMPLE_MS)
+    })
+    expect(result.current.map(sample => [...sample.speeds.keys()])).toEqual([[1]])
+  })
+
+
   it("samples the instances that answer, and starts again while the page is hidden", () => {
     vi.useFakeTimers()
     setVisibility("visible")

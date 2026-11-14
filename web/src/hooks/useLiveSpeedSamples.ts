@@ -12,7 +12,7 @@ export const LIVE_SAMPLE_MS = 2000
 export const LIVE_SAMPLES = 90
 
 /**
- * Takes a sample of the speed of each instance that answers, every 2 seconds while the caller is mounted. It starts
+ * Takes a sample of the speed of each instance that answers with fresh numbers, every 2 seconds while the caller is mounted. It starts
  * empty and keeps the last 3 minutes. While the page is hidden, the stream sends no speeds, so the samples start again.
  */
 export function useLiveSpeedSamples(statsData: DashboardInstanceStats[]): LiveSample[] {
@@ -29,7 +29,7 @@ export function useLiveSpeedSamples(statsData: DashboardInstanceStats[]): LiveSa
         clear()
         return
       }
-      const speeds = new Map(latest.current.filter(d => instanceHealth(d) === "ok").map(d => [d.instance.id, { up: d.stats?.totalUploadSpeed ?? 0, down: d.stats?.totalDownloadSpeed ?? 0 }]))
+      const speeds = new Map(latest.current.filter(d => instanceHealth(d) === "ok" && !d.streamError && !d.error).map(d => [d.instance.id, { up: d.stats?.totalUploadSpeed ?? 0, down: d.stats?.totalDownloadSpeed ?? 0 }]))
       const now = Date.now()
       // A browser can pause the timer of a hidden tab, so a sample from before the pause can be older than the window.
       setSamples(previous => [...previous.filter(old => now - old.time < LIVE_SAMPLES * LIVE_SAMPLE_MS).slice(-(LIVE_SAMPLES - 1)), { time: now, speeds }])
