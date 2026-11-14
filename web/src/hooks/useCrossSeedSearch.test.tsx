@@ -1137,6 +1137,23 @@ describe("useCrossSeedSearch", () => {
       expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
     })
 
+    it("shows the plan again in the scope list when the pick changes after a search", async () => {
+      const lookups: CrossSeedGazelleLookup[] = [{ ...red, status: "not_asked", reason: "source_site" }, { ...ops, status: "not_asked", reason: "not_selected" }]
+      mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ gazelleLookups: lookups }))
+      const result = await openWithPlan()
+      await searchCustom(result, [1])
+
+      expect(dialogProps(result).gazelleEntries).toEqual(lookups)
+      expect(dialogProps(result).gazelleLookups).toEqual(lookups)
+
+      act(() => {
+        ;(dialogProps(result).onToggleIndexer as (id: number) => void)(ops.indexerId)
+      })
+
+      expect(dialogProps(result).gazelleEntries).toEqual(plan)
+      expect(dialogProps(result).gazelleLookups).toEqual(lookups)
+    })
+
     it("asks no RED/OPS site when the user picks only Torznab indexers", async () => {
       const options = await searchCustom(await openWithPlan(), [1])
 

@@ -60,10 +60,8 @@ type GazelleLookup struct {
 	// seededByCopy reports that the torrent or a duplicate copy of it comes
 	// from the site, whatever the reason that the lookup shows.
 	seededByCopy bool
-}
-
-func (l GazelleLookup) asked() bool {
-	return l.Status == GazelleMatch || l.Status == GazelleNoMatch || l.Status == GazelleFailed
+	// sent reports that the lookup sent a request to the site.
+	sent bool
 }
 
 func (l GazelleLookup) notAsked(reason GazelleLookupReason) GazelleLookup {
@@ -99,15 +97,9 @@ func gazelleCooldownDue(lookups []GazelleLookup) bool {
 	return lookedUp || (keyed && !missingKey)
 }
 
-// gazelleRequestsSent reports whether a lookup sent a request to a site. A site
-// that rejected the key earlier in the run gets no request.
+// gazelleRequestsSent reports whether a lookup sent a request to a site.
 func gazelleRequestsSent(lookups []GazelleLookup) bool {
-	for _, l := range lookups {
-		if l.asked() && l.Reason != GazelleReasonKeyRejected {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(lookups, func(l GazelleLookup) bool { return l.sent })
 }
 
 func gazelleLookupSite(l GazelleLookup) gazellemusic.Site {
@@ -198,7 +190,12 @@ func (s *Service) keyRejectedOpen(site gazellemusic.Site) bool {
 // settings fix: the save checked its key with the site (checked), cleared its
 // key, or turned RED/OPS off.
 func (s *Service) GazelleKeysSaved(settings *models.CrossSeedAutomationSettings, checked []string) {
-	if s.systemNotices == nil || settings == nil {
+	if settings == nil {
+		return
+	}
+	// A client built before this save has the old keys.
+	s.gazelleKeyGen.Add(1)
+	if s.systemNotices == nil {
 		return
 	}
 	for _, site := range gazellemusic.Sites() {

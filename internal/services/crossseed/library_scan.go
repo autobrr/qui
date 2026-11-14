@@ -1396,14 +1396,14 @@ func (s *Service) recordGazelleLookups(state *searchRunState, lookups []GazelleL
 			i = len(state.run.GazelleSummary) - 1
 		}
 		summary := &state.run.GazelleSummary[i]
+		if l.sent {
+			summary.Asked++
+		}
 		switch l.Status {
 		case GazelleMatch:
-			summary.Asked++
 			summary.Matched++
 		case GazelleNoMatch:
-			summary.Asked++
 		case GazelleFailed:
-			summary.Asked++
 			summary.Failed++
 		default:
 			if summary.NotAsked == nil {

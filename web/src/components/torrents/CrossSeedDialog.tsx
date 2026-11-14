@@ -74,8 +74,10 @@ export interface CrossSeedDialogProps {
   error: string | null
   applyResult: CrossSeedApplyResponse | null
   indexerOptions: CrossSeedIndexerOption[]
-  /** The RED/OPS sites with the outcome of the last search, or the plan before it. */
+  /** The RED/OPS sites for the scope list: the outcome of the last search while the pick is the same, else the plan. */
   gazelleEntries: CrossSeedGazelleLookup[]
+  /** The outcome of each RED/OPS site in the last search, for the report. */
+  gazelleLookups?: CrossSeedGazelleLookup[]
   /** The pseudo indexer IDs of the RED/OPS entries that the user can pick. */
   selectableGazelleIds: number[]
   indexerMode: "all" | "custom"
@@ -132,6 +134,7 @@ const CrossSeedDialogComponent = ({
   applyResult,
   indexerOptions,
   gazelleEntries,
+  gazelleLookups: lastLookups,
   selectableGazelleIds,
   indexerMode,
   selectedIndexerIds,
@@ -233,10 +236,9 @@ const CrossSeedDialogComponent = ({
     [gazelleEntries, indexerMode, selectedIndexerIds]
   )
 
-  // After a search, gazelleEntries holds the outcome of each RED/OPS site.
   const gazelleLookups = useMemo(
-    () => (hasSearched && !isLoading ? gazelleEntries.filter(entry => entry.status !== "will_ask") : []),
-    [hasSearched, isLoading, gazelleEntries]
+    () => (hasSearched && !isLoading ? lastLookups ?? [] : []),
+    [hasSearched, isLoading, lastLookups]
   )
   const showReport = Boolean(decisionTrace) || gazelleLookups.length > 0
 

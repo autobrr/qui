@@ -80,6 +80,10 @@ type searchScopeFacts struct {
 	// gazelleLocalSeeded are the RED/OPS hosts whose content or target hash the
 	// instance already holds.
 	gazelleLocalSeeded []string
+	// reuseLocalChecks lets the search reuse the local RED/OPS checks of the
+	// dialog open. Only the dialog search sets it: its answer stamps no
+	// cooldown, so a check that is up to a minute old cannot hold back a site.
+	reuseLocalChecks bool
 }
 
 // contentFilterFacts is the result of the content analysis of one torrent.
@@ -263,7 +267,7 @@ func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torren
 	}
 	scope := decideSearchScope(f)
 	if scope.err == nil && scope.asksGazelle() {
-		f.gazelleLocalSeeded, scope.exportedTorrent = s.cachedGazelleLocalFacts(ctx, instanceID, torrent, scope.gazelleHosts())
+		f.gazelleLocalSeeded, scope.exportedTorrent = s.cachedGazelleLocalFacts(ctx, instanceID, torrent, scope.gazelleHosts(), f.reuseLocalChecks)
 		if len(f.gazelleLocalSeeded) > 0 {
 			exported := scope.exportedTorrent
 			scope = decideSearchScope(f)
@@ -293,7 +297,7 @@ func (s *Service) collectGazellePlan(ctx context.Context, instanceID int, torren
 	}
 	plan := decideGazelleSites(f)
 	if hosts := (searchScope{gazelle: plan}).gazelleHosts(); len(hosts) > 0 {
-		if f.gazelleLocalSeeded, _ = s.cachedGazelleLocalFacts(ctx, instanceID, torrent, hosts); len(f.gazelleLocalSeeded) > 0 {
+		if f.gazelleLocalSeeded, _ = s.cachedGazelleLocalFacts(ctx, instanceID, torrent, hosts, false); len(f.gazelleLocalSeeded) > 0 {
 			plan = decideGazelleSites(f)
 		}
 	}
@@ -329,11 +333,12 @@ type gazelleLocalResult struct {
 	exported []byte
 }
 
-// cachedGazelleLocalFacts answers as gazelleLocalFacts does. It reuses a result
-// of the last minute that checked each of hosts.
-func (s *Service) cachedGazelleLocalFacts(ctx context.Context, instanceID int, torrent *qbt.Torrent, hosts []string) ([]string, []byte) {
+// cachedGazelleLocalFacts answers as gazelleLocalFacts does, and keeps the
+// result for a minute. With reuse, it answers from a result of the last minute
+// that checked each of hosts.
+func (s *Service) cachedGazelleLocalFacts(ctx context.Context, instanceID int, torrent *qbt.Torrent, hosts []string, reuse bool) ([]string, []byte) {
 	key := asyncFilteringCacheKey(instanceID, torrent.Hash)
-	if s.gazelleLocalCache != nil {
+	if reuse && s.gazelleLocalCache != nil {
 		if hit, ok := s.gazelleLocalCache.Get(key); ok && !slices.ContainsFunc(hosts, func(host string) bool { return !slices.Contains(hit.checked, host) }) {
 			seeded := slices.DeleteFunc(slices.Clone(hit.seeded), func(host string) bool { return !slices.Contains(hosts, host) })
 			return seeded, hit.exported

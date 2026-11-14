@@ -441,7 +441,7 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 	}
 	clients, err := s.buildGazelleClientSet(ctx, nil)
 	if err != nil {
-		log.Warn().Err(err).Msg("[CROSSSEED-ANALYZE] Failed to load the RED/OPS settings")
+		return nil, fmt.Errorf("load RED/OPS settings: %w", err)
 	}
 	if torrentInfo.GazellePlan, err = s.collectGazellePlan(ctx, instanceID, sourceTorrent, clients); err != nil {
 		return nil, err
@@ -649,6 +649,7 @@ func (s *Service) askGazelleSite(
 		return lookup.failed(GazelleReasonKeyRejected, denied.Error()), nil
 	}
 	clients.markQueried(host)
+	lookup.sent = true
 	match, matchErr := findGazelleMatch(ctx, client, torrentBytes, localMap, sourceTorrent.Size)
 	if errors.Is(matchErr, gazellemusic.ErrAccessDenied) {
 		log.Warn().
@@ -657,9 +658,9 @@ func (s *Service) askGazelleSite(
 			Msg("[CROSSSEED-GAZELLE] Tracker rejects every request; skipping it for the rest of the search")
 		clients.deny(host, matchErr)
 		// Only the rejection itself opens the notice. A later search of the
-		// same run skips the site and must not open a notice that the user
-		// closed by saving a new key.
-		if s.systemNotices != nil {
+		// same run skips the site, and a client from before a settings save
+		// has an old key: neither may open a notice that the save closed.
+		if s.systemNotices != nil && clients.keyGen == s.gazelleKeyGen.Load() {
 			s.systemNotices.Open(keyRejectedNotice(gazelleLookupSite(lookup)), matchErr.Error()) //nolint:contextcheck // the notice notification must outlive the search that opened it
 		}
 		return lookup.failed(GazelleReasonKeyRejected, matchErr.Error()), nil
@@ -879,7 +880,9 @@ func subtitleTitleQuery(release *rls.Release) string {
 
 type gazelleClientSet struct {
 	// off reports that RED/OPS is turned off in the settings.
-	off    bool
+	off bool
+	// keyGen is the gazelleKeyGen of the service when the set was built.
+	keyGen uint64
 	byHost map[string]*gazellemusic.Client
 	// keyErrs holds, per host, the error of a stored key that qui could not
 	// decrypt.
@@ -959,6 +962,7 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 	if s == nil {
 		return out, nil
 	}
+	out.keyGen = s.gazelleKeyGen.Load()
 	if settings == nil {
 		loaded, err := s.GetAutomationSettings(ctx)
 		if err != nil {

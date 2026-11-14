@@ -226,7 +226,7 @@ describe("CrossSeedDialog search scope", () => {
       { ...red, status: "failed", reason: "key_rejected", detail: "rejected the API key or this IP" },
       { ...ops, status: "no_match" },
     ]
-    const { getByText } = render(<CrossSeedDialog {...baseProps} hasSearched gazelleEntries={lookups} />)
+    const { getByText } = render(<CrossSeedDialog {...baseProps} hasSearched gazelleEntries={lookups} gazelleLookups={lookups} />)
 
     expect(entryRow("Redacted (API)")?.textContent).toContain("crossSeedDialog.gazelle.failed.keyRejected")
     expect(entryRow("Orpheus (API)")?.textContent).toContain("crossSeedDialog.gazelle.noMatch")

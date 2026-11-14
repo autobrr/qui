@@ -93,6 +93,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		gazelleOff:          gazelleClients.disabled(),
 		gazelleKeys:         gazelleClients.hosts(),
 		gazelleSelected:     opts.GazelleSites,
+		reuseLocalChecks:    true,
 	}, true)
 	if scope.err != nil {
 		return nil, scope.err

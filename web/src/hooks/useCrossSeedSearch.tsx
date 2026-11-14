@@ -68,6 +68,9 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
   // The plan of the analysis. It stays after a search, so a site that one search left out stays selectable.
   const [gazellePlan, setGazellePlan] = useState<CrossSeedGazelleLookup[] | undefined>(undefined)
+  // The scope pick of the last search. The outcomes describe that pick only.
+  const [searchedPick, setSearchedPick] = useState<string | null>(null)
+  const currentPick = `${crossSeedIndexerMode}:${[...crossSeedIndexerSelection].sort((a, b) => a - b).join(",")}`
   // Each opening and each close of the dialog changes the number. A late answer for an earlier opening is ignored.
   const openingRef = useRef(0)
   // A search answer holds the source torrent too, so a failed analysis no longer matters after a search starts.
@@ -161,6 +164,7 @@ export function useCrossSeedSearch(instanceId: number) {
     setCrossSeedIndexerSelection([])
     setCrossSeedHasSearched(false)
     setGazellePlan(undefined)
+    setSearchedPick(null)
   }, [])
 
   const toggleCrossSeedIndexer = useCallback((indexerId: number) => {
@@ -216,6 +220,7 @@ export function useCrossSeedSearch(instanceId: number) {
       setCrossSeedSearchResponse(null)
       setCrossSeedApplyResult(null)
       setCrossSeedHasSearched(true)
+      setSearchedPick(currentPick)
       searchStartedRef.current = true
 
       const opening = openingRef.current
@@ -588,7 +593,8 @@ export function useCrossSeedSearch(instanceId: number) {
       cacheMetadata={crossSeedSearchResponse?.cache ?? null}
       partial={crossSeedSearchResponse?.partial ?? false}
       queryDegraded={crossSeedSearchResponse?.queryDegraded}
-      gazelleEntries={gazelleLookups ?? gazellePlan ?? []}
+      gazelleEntries={gazelleLookups && searchedPick === currentPick ? gazelleLookups : gazellePlan ?? []}
+      gazelleLookups={gazelleLookups}
       selectableGazelleIds={selectableGazelleIds}
       torznabFailed={crossSeedSearchResponse?.torznabFailed ?? false}
       decisionTrace={crossSeedSearchResponse?.decisionTrace}

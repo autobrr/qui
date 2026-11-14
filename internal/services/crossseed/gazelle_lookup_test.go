@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"testing/synctest"
@@ -337,6 +338,47 @@ func TestSkippedRejectedSiteDoesNotReopenNotice(t *testing.T) {
 	require.Equal(t, GazelleReasonKeyRejected, gazelleLookupOf(t, second, "orpheus.network").Reason, "the run keeps skipping the site")
 	require.Empty(t, svc.systemNotices.List())
 	require.Len(t, notifier.Events(), 1)
+	require.True(t, gazelleRequestsSent(first), "the rejection was a request, so the run paces")
+	require.False(t, gazelleRequestsSent(second), "the skip sent no request")
+}
+
+// A client from before a settings save carries the old key. Its first
+// rejection must not open a notice that the save closed.
+func TestOldClientRejectionAfterSaveOpensNoNotice(t *testing.T) {
+	stubGazelleMatchLookupError(t, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied))
+	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
+	files := qbt.TorrentFiles{{Name: gazelleSeamName + "/01 - Track.flac", Size: 123}}
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager:      &gazelleSkipHashSyncManager{torrents: []qbt.Torrent{*source}, filesByHash: map[string]qbt.TorrentFiles{gazelleSeamHash: files}},
+		systemNotices:    systemnotice.New(nil),
+	}
+	clients, err := gazelleClientsForTest()
+	require.NoError(t, err)
+
+	svc.GazelleKeysSaved(&models.CrossSeedAutomationSettings{GazelleEnabled: true, OrpheusAPIKey: "<redacted>"}, []string{"orpheus.network"})
+	lookups := lookupGazelleForTest(t, svc, source, files, clients)
+
+	require.Equal(t, GazelleReasonKeyRejected, gazelleLookupOf(t, lookups, "orpheus.network").Reason)
+	require.Empty(t, svc.systemNotices.List())
+}
+
+// A key that qui cannot decrypt fails the site without a request.
+func TestUnreadableKeySendsNoRequest(t *testing.T) {
+	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
+	files := qbt.TorrentFiles{{Name: gazelleSeamName + "/01 - Track.flac", Size: 123}}
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager:      &gazelleSkipHashSyncManager{torrents: []qbt.Torrent{*source}, filesByHash: map[string]qbt.TorrentFiles{gazelleSeamHash: files}},
+	}
+	clients := &gazelleClientSet{byHost: map[string]*gazellemusic.Client{}, keyErrs: map[string]error{"orpheus.network": errors.New("cipher: message authentication failed")}}
+
+	lookups := lookupGazelleForTest(t, svc, source, files, clients)
+
+	require.Equal(t, GazelleReasonError, gazelleLookupOf(t, lookups, "orpheus.network").Reason)
+	require.False(t, gazelleRequestsSent(lookups))
 }
 
 // The search after the dialog opens reuses the local RED/OPS checks of the
@@ -356,6 +398,11 @@ func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 1, syncManager.exportCalls)
+
+	// A Library Scan stamps a cooldown from its scope, so it checks again.
+	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
+	require.NoError(t, scope.err)
+	require.Equal(t, 2, syncManager.exportCalls)
 }
 
 // The plan of a site whose key rejected notice is open still asks the site,
