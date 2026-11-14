@@ -31,6 +31,17 @@ func deleteMatchService(torrents ...crossMatchFixture) (*Service, *tierSyncManag
 	return svc, sm
 }
 
+// findDeleteMatches runs the delete check for the selected torrents of
+// instance 1.
+func findDeleteMatches(t *testing.T, svc *Service, hashes ...string) ([]LocalMatch, error) {
+	t.Helper()
+	response, err := svc.FindDeleteMatches(t.Context(), map[int][]string{1: hashes})
+	if err != nil {
+		return nil, err
+	}
+	return response.Matches, nil
+}
+
 func matchedTiers(matches []LocalMatch) map[string]string {
 	tiers := make(map[string]string, len(matches))
 	for _, match := range matches {
@@ -55,7 +66,7 @@ func TestFindDeleteMatchesSharedPath(t *testing.T) {
 		qbt.TorrentFiles{{Name: "Other.Show.S01/Other.Show.S01E01.mkv", Size: 100}})
 
 	svc, _ := deleteMatchService(selected, selectedToo, sharer, copyElsewhere, unrelated)
-	matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"AAAA", "bbbb"})
+	matches, err := findDeleteMatches(t, svc, "AAAA", "bbbb")
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
 	require.Equal(t, "local", matches[0].InstanceName)
@@ -80,7 +91,7 @@ func TestFindDeleteMatchesHardlinkWithPairedSizes(t *testing.T) {
 	linked := crossMatchTorrent(1, "bbbb", name, candidateDir, filepath.Join(candidateDir, name+".mkv"), files)
 
 	svc, _ := deleteMatchService(source, linked)
-	matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa"})
+	matches, err := findDeleteMatches(t, svc, "aaaa")
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"bbbb": matchTypeHardlink}, matchedTiers(matches))
 }
@@ -96,7 +107,7 @@ func TestFindDeleteMatchesFailsWhenFilesCannotBeRead(t *testing.T) {
 
 	svc, sm := deleteMatchService(selected, sharer)
 	sm.failHashes = map[string]bool{"cccc": true}
-	_, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa"})
+	_, err := findDeleteMatches(t, svc, "aaaa")
 	require.ErrorContains(t, err, "read the file list of torrent cccc")
 }
 
@@ -111,7 +122,7 @@ func TestFindDeleteMatchesSelectsHybridByV1Hash(t *testing.T) {
 	sharer := crossMatchTorrent(1, "cccc", "Harbor Watch S01", "/data", "/data/"+name, files)
 
 	svc, _ := deleteMatchService(selected, sharer)
-	matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"1111"})
+	matches, err := findDeleteMatches(t, svc, "1111")
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
 }
@@ -137,7 +148,7 @@ func TestFindDeleteMatchesSharedPathOutranksLink(t *testing.T) {
 	sharer := crossMatchTorrent(1, "cccc", name, linkDir, filepath.Join(linkDir, name+".mkv"), files)
 
 	svc, _ := deleteMatchService(source, linkedSource, sharer)
-	matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa", "bbbb"})
+	matches, err := findDeleteMatches(t, svc, "aaaa", "bbbb")
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"cccc": matchTypeContentPath}, matchedTiers(matches))
 }
@@ -185,9 +196,50 @@ func TestFindDeleteMatchesLinkedCopyInSizeGroup(t *testing.T) {
 				qbt.TorrentFiles{{Name: tt.copied, Size: 4}}))
 
 			svc, _ := deleteMatchService(source, linked)
-			matches, err := svc.FindDeleteMatches(t.Context(), 1, []string{"aaaa"})
+			matches, err := findDeleteMatches(t, svc, "aaaa")
 			require.NoError(t, err)
 			require.Equal(t, map[string]string{"bbbb": matchTypeHardlink}, matchedTiers(matches))
 		})
 	}
+}
+
+// A flat folder that two instances use pairs a selected torrent only with the
+// torrents that share a file path with it, not with every torrent there.
+func TestAddOtherPathPicksPairsOnlySharedPaths(t *testing.T) {
+	t.Parallel()
+
+	const flat = "/data/flat"
+	fixture := func(instanceID int, hash string, names ...string) crossMatchFixture {
+		files := make(qbt.TorrentFiles, 0, len(names))
+		for _, name := range names {
+			files = append(files, qbt.TorrentFile{Name: name, Size: 10})
+		}
+		return crossMatchTorrent(instanceID, hash, "Night.Ferry.2019.1080p.BluRay.x264-GRP", flat, flat, files)
+	}
+	fixtures := []crossMatchFixture{
+		fixture(1, "aaaa", "Night.Ferry.mkv", "Night.Ferry.nfo"),
+		fixture(1, "bbbb", "Quiet.Coast.mkv"),
+		fixture(2, "cccc", "Night.Ferry.mkv"),
+		fixture(2, "dddd", "Silent.Shore.mkv"),
+	}
+
+	instances := []*models.Instance{
+		{ID: 1, Name: "home", IsActive: true, HasLocalFilesystemAccess: true},
+		{ID: 2, Name: "second", IsActive: true, HasLocalFilesystemAccess: true},
+	}
+	files := &batchFiles{instances: instances, byKey: make(map[string]*batchFileData), fetched: make(map[string]qbt.TorrentFiles)}
+	views := make([]qbittorrent.CrossInstanceTorrentView, 0, len(fixtures))
+	for _, f := range fixtures {
+		views = append(views, f.view)
+		files.fetched[cacheKeyForTorrentFiles(f.view.InstanceID, f.view.Hash)] = f.files
+	}
+	torrents, otherViews := views[:2], views[2:]
+
+	groups := crossPathGroups(instances, torrents, otherViews, func(string) bool { return true })
+	picks := make([][]*candidatePick, len(torrents))
+	files.addOtherPathPicks(t.Context(), 1, torrents, groups, picks)
+
+	require.Len(t, picks[0], 1)
+	require.Equal(t, "cccc", picks[0][0].entry.hash)
+	require.Empty(t, picks[1])
 }

@@ -32,11 +32,11 @@ func TestSelectEligibleRootWork_SkipIndividualEpisodesKeepsSeasonPack(t *testing
 		},
 	}
 
-	kept := selectEligibleRootWork(scanResult, nil, NewParser(nil), 0, now, nil, false, nil)
+	kept := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 0, now, nil, false, nil)
 	require.Len(t, kept.roots, 1)
 	require.Len(t, kept.roots[0].items, 3)
 
-	skipped := selectEligibleRootWork(scanResult, nil, NewParser(nil), 0, now, nil, true, nil)
+	skipped := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 0, now, nil, true, nil)
 	require.Len(t, skipped.roots, 1)
 	require.Len(t, skipped.roots[0].items, 1)
 	require.Equal(t, "Show Name S01", skipped.roots[0].items[0].searchee.Name)
@@ -65,10 +65,10 @@ func TestSelectEligibleRootWork_SkipIndividualEpisodesDropsUngroupableEpisode(t 
 		},
 	}
 
-	kept := selectEligibleRootWork(scanResult, nil, NewParser(nil), 0, now, nil, false, nil)
+	kept := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 0, now, nil, false, nil)
 	require.Len(t, kept.roots, 1)
 
-	skipped := selectEligibleRootWork(scanResult, nil, NewParser(nil), 0, now, nil, true, nil)
+	skipped := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 0, now, nil, true, nil)
 	require.Empty(t, skipped.roots)
 	require.Equal(t, 1, skipped.discoveredFiles)
 	require.Equal(t, 0, skipped.eligibleFiles)
@@ -93,7 +93,7 @@ func TestSelectEligibleRootWork_SkipIndividualEpisodesLeavesNonTVAlone(t *testin
 		},
 	}
 
-	skipped := selectEligibleRootWork(scanResult, nil, NewParser(nil), 0, now, nil, true, nil)
+	skipped := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 0, now, nil, true, nil)
 	require.Len(t, skipped.roots, 1)
 	require.Len(t, skipped.roots[0].items, 1)
 	require.Equal(t, "Movie.2024", skipped.roots[0].items[0].searchee.Name)
@@ -123,13 +123,13 @@ func TestSelectEligibleRootWork_SkipKeepsMixedAgePackForFreshEpisode(t *testing.
 	}
 
 	// Skip off: the mixed-age pack goes stale and the fresh episode carries the work.
-	kept := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
+	kept := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
 	require.Len(t, kept.roots, 1)
 	require.Len(t, kept.roots[0].items, 1)
 	require.True(t, kept.roots[0].items[0].isEpisode)
 
 	// Skip on: the pack is the only search the fresh episode has, so it stays eligible.
-	skipped := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil, true, nil)
+	skipped := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 3, now, nil, true, nil)
 	require.Len(t, skipped.roots, 1)
 	require.Len(t, skipped.roots[0].items, 1)
 	require.Equal(t, "Show Name S01", skipped.roots[0].items[0].searchee.Name)
@@ -172,7 +172,7 @@ func TestSelectEligibleRootWork_SkipCountsOnlyPendingEpisodes(t *testing.T) {
 	}
 	enabled := map[int]struct{}{1: {}}
 
-	skipped := selectEligibleRootWork(scanResult, trackedFiles, NewParser(nil), 0, now, enabled, true, nil)
+	skipped := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, NewParser(nil), 0, now, enabled, true, nil)
 	require.Empty(t, skipped.roots)
 	require.Equal(t, 0, skipped.skippedEpisodes)
 }

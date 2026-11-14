@@ -9,6 +9,6 @@ The skills use six triage roles. In this repo, each label name is the same as it
 | `ready-for-agent` | `ready-for-agent` | The report is a full specification that an agent can work on without help. |
 | `ready-for-human` | `ready-for-human` | A human must make a decision or do the implementation. |
 | `wontfix` | `wontfix` | Nobody will do the work. |
-| `needs-grilling` | `needs-grilling` | An idea that the maintainer parked. It waits for `/grill-with-docs` and `/to-spec`. |
+| `needs-grilling` | `needs-grilling` | An idea that the maintainer parked. It waits for `/grill-with-docs` and `/to-spec`. Only the user can start `/grill-with-docs`. An agent runs the `grilling` and `domain-modeling` skills in its place. |
 
 `needs-grilling` is for issues that the maintainer files, not for discussions. Triage does not apply it.

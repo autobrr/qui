@@ -354,7 +354,7 @@ const hardcodedStringChecks = [
     ],
   },
   {
-    file: "src/hooks/useTorrentActions.ts",
+    file: "src/components/torrents/bulk-actions/bulk-action-requests.ts",
     literals: [
       "\"Torrent name cannot be empty\"",
       "\"Both original and new file paths are required\"",

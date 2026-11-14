@@ -25,36 +25,19 @@ import (
 
 const musicQuerySourceHash = "5f2b1c4d3e6a7089bacd1122334455667788990a"
 
-// Regression: two signals the name parse cannot see force the music content type.
-// The file-extension signal corrects a numeric album title that reads as a season
-// or an episode, and a category mapping rule corrects what the extensions cannot,
-// such as a disc image that carries no audio extension. Either way the
-// Torznab request must come out music-shaped: the album title has to survive into
-// the query, and the season or episode the name parse invented must not reach the
-// indexer.
+// A category mapping rule forces music on a name that parses with TV structure,
+// such as a disc image with no audio extension. The request on the wire keeps the
+// album title in the query and sends no season or episode.
+// TestBuildTorznabRequest holds the other query rules.
+// TestDetermineContentTypeWithFiles holds the file signal that forces music.
 func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 	tests := []struct {
-		name                string
-		sourceName          string
-		fileName            string
-		category            string
-		wantFileSignalMusic bool
-		wantInQuery         string
+		name        string
+		sourceName  string
+		fileName    string
+		category    string
+		wantInQuery string
 	}{
-		{
-			name:                "numeric album title parses as an episode",
-			sourceName:          "Sable Wren - 9 (2025) [WEB FLAC]",
-			fileName:            "01. Opening Track.flac",
-			wantFileSignalMusic: true,
-			wantInQuery:         "9",
-		},
-		{
-			name:                "album title parses as a series",
-			sourceName:          "Sable Wren - Season 2 (2024) WEB FLAC",
-			fileName:            "01. Opening Track.flac",
-			wantFileSignalMusic: true,
-			wantInQuery:         "Season 2",
-		},
 		{
 			name:        "category rule forces music the extensions cannot",
 			sourceName:  "Sable Wren - 9 (2025) WEB",
@@ -92,8 +75,6 @@ func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 				{Name: tt.sourceName + "/" + tt.fileName, Size: 100},
 			}
 
-			// A rule with an empty category never matches, so the rows that rely on the
-			// file signal keep the settings a nil loader would have produced.
 			settings := models.DefaultCrossSeedAutomationSettings()
 			settings.CategoryMappingRules = []models.CategoryMappingRule{{Categories: []string{tt.category}, ContentType: "music"}}
 
@@ -136,9 +117,8 @@ func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 			contentDetectionRelease, _ := svc.selectContentDetectionRelease(tt.sourceName, sourceRelease, sourceFiles)
 			require.NotEqual(t, rls.Music, contentDetectionRelease.Type,
 				"fixture only exercises the fix while the detection release is not already music")
-			require.Equal(t, tt.wantFileSignalMusic,
-				DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles).ContentType == "music",
-				"file-extension signal must match the row's intent")
+			require.NotEqual(t, "music", DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles).ContentType,
+				"fixture only exercises the rule while the file signal does not already say music")
 
 			// nil gazelle clients: this source is not a gazelle tracker, and a client set here
 			// would send the fixture out to the real RED/OPS hosts.

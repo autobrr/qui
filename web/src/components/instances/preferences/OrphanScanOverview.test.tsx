@@ -79,6 +79,7 @@ vi.mock("@/hooks/useInstances", () => ({
 vi.mock("@/hooks/useOrphanScan", () => ({
   useOrphanScanSettings: () => settingsQuery,
   useOrphanScanRuns: () => runsQuery,
+  useOrphanScanRunPaths: () => ({ data: undefined, isError: false }),
   useTriggerOrphanScan: () => mutation,
   useUpdateOrphanScanSettings: () => mutation,
   useCancelOrphanScanRun: () => mutation,

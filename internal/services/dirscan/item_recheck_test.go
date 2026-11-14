@@ -12,7 +12,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/jackett"
 )
 
 func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
@@ -38,21 +40,21 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 	l := zerolog.New(io.Discard)
 
 	// The run takes its snapshot while both items are pending.
-	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, scanResult, &seedingIndex{}, &l)
+	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, &seedingIndex{}, &l)
 	require.NoError(t, err)
 	enabled := map[int]struct{}{1: {}}
-	work := selectEligibleRootWork(scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
+	work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
 	require.Len(t, work.roots, 2)
 
 	// Another run then finishes one of them.
-	require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, finished.Files[0], dirScanFileUpdate{
+	require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, finished.Files[0], nil, dirScanFileUpdate{
 		status:             models.DirScanFileStatusMatched,
 		matchedTorrentHash: "0123456789abcdef0123456789abcdef01234567",
 	}))
 
 	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
 	for _, root := range work.roots {
-		svc.processRootSearchee(ctx, dir, root.root, root.items, &seedingIndex{}, trackedFiles,
+		svc.processRootSearchee(ctx, dir, localScanTarget(), root.root, root.items, &seedingIndex{}, trackedFiles,
 			map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
 	}
 
@@ -66,4 +68,39 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 	}
 	require.Equal(t, models.DirScanFileStatusMatched, statuses[finished.Files[0].Path], "the other run's result stays")
 	require.Equal(t, models.DirScanFileStatusNoMatch, statuses[pending.Files[0].Path])
+}
+
+func TestProcessRootSearchee_NoMatchStoresSearchedIndexers(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	_, store, dir := newDirScanTestService(t)
+	root := &Searchee{
+		Name:  "Example.Movie.1080p.WEB-DL",
+		Path:  filepath.Join(dir.Path, "Example.Movie.1080p.WEB-DL"),
+		Files: []*ScannedFile{{Path: filepath.Join(dir.Path, "Example.Movie.1080p.WEB-DL", "movie.mkv"), RelPath: "movie.mkv", Size: 1000, ModTime: time.Now()}},
+	}
+	scanResult := &ScanResult{Searchees: []*Searchee{root}}
+
+	parser := NewParser(nil)
+	searcher := &timedSearcher{responses: []*jackett.SearchResponse{{RequestedIndexerIDs: []int{1, 2}, CoveredIndexerIDs: []int{1, 2}}}}
+	svc := &Service{store: store, parser: parser, searcher: NewSearcher(searcher, parser)}
+	l := zerolog.New(io.Discard)
+
+	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, &seedingIndex{}, &l)
+	require.NoError(t, err)
+	enabled := map[int]struct{}{1: {}, 2: {}}
+	work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
+	require.Len(t, work.roots, 1)
+
+	settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
+	svc.processRootSearchee(ctx, dir, localScanTarget(), root, work.roots[0].items, &seedingIndex{}, trackedFiles,
+		map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
+
+	require.Len(t, searcher.queries, 1)
+	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, models.DirScanFileStatusNoMatch, files[0].Status)
+	require.Equal(t, []int{1, 2}, files[0].SearchedIndexerIDs, "a later scan reopens the file when a new indexer appears")
 }

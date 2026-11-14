@@ -3,21 +3,34 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
-import { EMPTY_SELECTION, selectionReducer, type TorrentSelectionEvent, type TorrentSelectionState } from "@/lib/torrent-selection"
-import type { Torrent, TorrentFilters } from "@/types"
+import { EMPTY_SELECTION, selectionReducer, type ActionTarget, type TorrentSelectionEvent, type TorrentSelectionState } from "@/lib/torrent-selection"
+import type { Category, InstanceCapabilities } from "@/types"
 import type { Dispatch, ReactNode } from "react"
 import { createContext, useContext, useMemo, useReducer, useState } from "react"
 
-// What the desktop table resolves from the selection for the header management bar.
+// The facts of the list that the bulk action dialogs and Export read.
+export interface ListFacts {
+  // The list comes from the cross-instance endpoint, and categories and tags are those of its response.
+  isCrossInstance: boolean
+  categories?: Record<string, Category>
+  tags?: string[]
+  allowSubcategories: boolean
+  capabilities?: InstanceCapabilities
+  sortField: string
+  sortOrder: "asc" | "desc"
+}
+
+// What the desktop table or the mobile cards publish for the header management bar and the bulk action module.
 export interface TorrentSelectionSummary {
-  selectedHashes: string[]
-  selectedTorrents: Torrent[]
-  totalSelectionCount: number
-  selectedTotalSize: number
-  excludeHashes: string[]
-  excludeTargets: TorrentActionTarget[]
-  selectAllFilters?: TorrentFilters
+  actionTarget: ActionTarget
+  // In Select all mode, the total size of the filter and the size of the loaded Exclusions.
+  // totalSize is 0 outside Select all mode, when qui has no total, and when the table filters in the browser.
+  totalSize: number
+  excludedSize: number
+  // The instance of the page, and the instance subset of the Unified view.
+  instanceId: number
+  instanceIds?: number[]
+  listFacts: ListFacts
 }
 
 interface TorrentSelectionContextType {

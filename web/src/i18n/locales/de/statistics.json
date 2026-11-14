@@ -1,0 +1,120 @@
+{
+  "title": "Statistiken",
+  "recordingSince": "Aufzeichnung seit {{date}}",
+  "notRecording": "qui hat noch keinen Transfer aufgezeichnet.",
+  "partial": "Unvollständiger Zeitraum",
+  "periods": {
+    "24h": "24 Stunden",
+    "7d": "7 Tage",
+    "30d": "30 Tage",
+    "1y": "Jahr",
+    "all": "Gesamt",
+    "custom": "Benutzerdefiniert"
+  },
+  "customRange": {
+    "from": "Erster Tag",
+    "to": "Letzter Tag",
+    "apply": "Anwenden",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Alle Instanzen",
+    "count_one": "{{count}} Instanz",
+    "count_other": "{{count}} Instanzen",
+    "removed": "entfernt"
+  },
+  "tiles": {
+    "uploaded": "Hochgeladen",
+    "downloaded": "Heruntergeladen",
+    "ratio": "Verhältnis",
+    "buffer": "Puffer {{buffer}}",
+    "crossSeed": "Von Cross-Seeds",
+    "crossSeedShare": "{{percent}} % des Uploads",
+    "change": "{{change}} gegenüber dem Zeitraum davor"
+  },
+  "chart": {
+    "title": "Transfer im Zeitverlauf",
+    "descriptionHour": "Nach Tracker, pro Stunde",
+    "descriptionDay": "Nach Tracker, pro Tag",
+    "upload": "Upload",
+    "download": "Download",
+    "other": "Andere",
+    "otherCount": "Andere ({{groups}})",
+    "total": "Gesamt",
+    "gap": "Enthält eine Aufzeichnungslücke von {{duration}}",
+    "gapLabel": "Lücke {{duration}}",
+    "foldedDay": "(ganzer Tag, UTC)",
+    "empty": "Kein Transfer in diesem Zeitraum."
+  },
+  "groups": {
+    "public": "Öffentlich",
+    "noTracker": "Kein Tracker"
+  },
+  "errors": {
+    "load": "Die Statistiken konnten nicht geladen werden: {{message}}"
+  },
+  "allTimeNote": "Gesamt enthält die Ausgangsbasis: die Bytes, die die Torrents hatten, als qui sie zuerst aufgezeichnet hat. Das Diagramm zeigt die Ausgangsbasis nicht, da sie kein Datum hat.",
+  "serverStatisticsNote": "Diese Zahlen addieren den Transfer jedes Torrents. Die Serverstatistik im Dashboard liest die Zähler von qBittorrent, die auch Protokollverkehr zählen, daher weichen die Zahlen ab.",
+  "table": {
+    "title": "Nach Gruppe",
+    "descriptionTracker": "Der Transfer des Zeitraums für jeden Tracker. Klicke auf eine Zeile, um ihre Details zu öffnen.",
+    "descriptionCategory": "Der Transfer des Zeitraums für jede Kategorie, unter der Kategorie, die jeder Torrent hatte, als die Bytes übertragen wurden. Klicke auf eine Zeile, um ihre Details zu öffnen.",
+    "descriptionRelease": "Der Transfer des Zeitraums für jeden Wert, den qui aus den Torrent-Namen liest. Klicke auf eine Zeile, um ihre Details zu öffnen.",
+    "groupBy": "Gruppieren nach",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Kategorie",
+      "releaseGroup": "Release-Gruppe",
+      "resolution": "Auflösung",
+      "source": "Quelle",
+      "contentType": "Inhaltstyp"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "uploaded": "Hochgeladen",
+      "downloaded": "Heruntergeladen",
+      "ratio": "Ratio",
+      "buffer": "Buffer",
+      "torrents": "Torrents",
+      "size": "Größe",
+      "seeded": "Geseedet"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Gesamt",
+    "noCategory": "Keine Kategorie",
+    "none": "Keine",
+    "liveError": "Die Torrents, die jetzt in qBittorrent sind, konnten nicht geladen werden: {{message}}",
+    "liveNote": "Torrents, Größe und Geseedet beschreiben die Torrents, die jetzt in qBittorrent sind, nicht den Zeitraum. Geseedet ist ihr gesamter Upload geteilt durch ihre Größe.",
+    "categoryNote": "qui speichert die Summen der Kategorien für jeden UTC-Tag. Ein Zeitraum, der innerhalb eines UTC-Tages beginnt oder endet, zählt den ganzen Tag. Daher kann die Summe der Kategorien von den Zahlen oben abweichen.",
+    "releaseNote": "qui liest diese Werte aus den Torrent-Namen und speichert die Bytes jedes Torrents für jeden UTC-Tag. Ein Zeitraum, der innerhalb eines UTC-Tages beginnt oder endet, zählt den ganzen Tag. Daher kann die Summe der Zeilen von den Zahlen oben abweichen.",
+    "baselineNote": "Für Gesamt enthält jede Zeile die Ausgangsbasis ihrer Torrents."
+  },
+  "detail": {
+    "share": "Anteil am Upload",
+    "shareOf": "von {{total}}",
+    "crossSeed": "Von Cross-Seeds",
+    "crossSeedShare": "{{percent}} des eigenen Uploads",
+    "bestHour": "Beste Stunde",
+    "bestDay": "Bester Tag",
+    "averageHour": "Durchschnitt pro Stunde",
+    "averageDay": "Durchschnitt pro Tag",
+    "chartHour": "{{group}} pro Stunde",
+    "chartDay": "{{group}} pro Tag",
+    "chartLegend": "Upload über der Linie, Download darunter",
+    "topTorrents": "Top-Torrents von {{group}}",
+    "topTorrentsCategoryNote": "Die Top-Torrents einer Kategorie folgen der Kategorie, die jeder Torrent jetzt hat."
+  },
+  "topTorrents": {
+    "title": "Top-Torrents",
+    "description": "Die Torrents mit dem meisten Upload im Zeitraum. Klicke auf eine Zeile, um ihren Upload pro Tag zu sehen.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "Erste 24 Stunden"
+    },
+    "deleted": "Gelöscht",
+    "crossSeed": "Cross-Seed",
+    "note": "Ein gelöschter Torrent behält seinen Platz mit seinem Namen. Ein Torrent zählt zu dem Tracker, den er jetzt hat. Erste 24 Stunden ist der Upload in den 24 Stunden nach dem Hinzufügen. Der Wert ist leer, wenn qui den Torrent erst danach gesehen hat.",
+    "utcNote": "Jeder Balken ist ein UTC-Tag.",
+    "yearNote": "Jeder Balken ist ein UTC-Tag, außer dem Balken eines Jahres: Nach der Detailaufbewahrung behält qui eine Zahl pro Torrent und Jahr."
+  }
+}

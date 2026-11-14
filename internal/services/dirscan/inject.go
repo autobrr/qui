@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -38,13 +37,18 @@ const (
 // nothing rechecks or resumes it automatically.
 var errSettleQueueFull = errors.New("recheck and resume queue full, manual intervention required")
 
+// errLeftLocalMode means a run that walked local paths would read them on another host.
+var errLeftLocalMode = errors.New("instance does not have local filesystem access")
+
+// errRemoteTargetChanged means the remote instance has another mode or server than the one the run walked.
+var errRemoteTargetChanged = errors.New("remote instance changed since the scan read it")
+
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
 	jackettService            JackettDownloader
 	aligner                   *crossseed.Aligner
 	adder                     *crossseed.Adder
 	torrentChecker            TorrentChecker
-	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
 	backendPool               *fsops.Pool
 }
@@ -59,10 +63,6 @@ type TorrentChecker interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 }
 
-type InstanceProvider interface {
-	Get(ctx context.Context, id int) (*models.Instance, error)
-}
-
 type trackerCustomizationProvider interface {
 	List(ctx context.Context) ([]*models.TrackerCustomization, error)
 }
@@ -73,7 +73,6 @@ func NewInjector(
 	aligner *crossseed.Aligner,
 	adder *crossseed.Adder,
 	torrentChecker TorrentChecker,
-	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
 	backendPool *fsops.Pool,
 ) *Injector {
@@ -82,7 +81,6 @@ func NewInjector(
 		aligner:                   aligner,
 		adder:                     adder,
 		torrentChecker:            torrentChecker,
-		instanceStore:             instanceStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		backendPool:               backendPool,
 	}
@@ -106,6 +104,9 @@ func (i *Injector) TorrentExistsAny(ctx context.Context, instanceID int, hashes 
 type InjectRequest struct {
 	// InstanceID is the target qBittorrent instance.
 	InstanceID int
+
+	// ScanInstance is the row the run walked the searchee through.
+	ScanInstance *models.Instance
 
 	// Check is the Pre-add check that cleared the torrent for InstanceID.
 	Check crossseed.PreAddCheck
@@ -152,6 +153,14 @@ type InjectResult struct {
 	// Success is true if the torrent was added successfully.
 	Success bool
 
+	// Class is the Result class of the add. It is failed when Inject stops
+	// before the Adder.
+	Class crossseed.ResultClass
+
+	// SettleQueueFull is set when the added torrent stays paused because the
+	// Settle queue was full. Class is then added.
+	SettleQueueFull bool
+
 	// Mode describes how the torrent was added: hardlink, reflink, or regular.
 	Mode string
 
@@ -164,28 +173,18 @@ type InjectResult struct {
 
 // Inject downloads a torrent and injects it into qBittorrent.
 func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResult, error) {
-	result := &InjectResult{}
+	result := &InjectResult{Class: crossseed.ClassFailed}
 
 	if err := i.validateInjectRequest(req); err != nil {
 		return result, err
-	}
-	if i.instanceStore == nil {
-		return result, errors.New("instance store is nil")
 	}
 	if i.adder == nil {
 		return result, errors.New("torrent adder is nil")
 	}
 
-	instance, err := i.instanceStore.Get(ctx, req.InstanceID)
-	if err != nil {
-		result.ErrorMessage = fmt.Sprintf("failed to load instance: %v", err)
-		return result, fmt.Errorf("get instance: %w", err)
-	}
-
-	// Every read below takes this one backend. A scan admits the instance on
-	// local access minutes before it injects, and a fresh resolve per read
-	// could land on the SSH host if local access was turned off since.
-	backend, err := i.localBackend(ctx, instance.ID)
+	// Every read below takes this one backend, whose row resolveTarget compared
+	// with the run's: the searchee's paths only mean something on that server.
+	backend, instance, err := i.resolveTarget(ctx, req)
 	if err != nil {
 		result.ErrorMessage = err.Error()
 		return result, err
@@ -210,8 +209,16 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	// they can download the missing files, which is incompatible with the pause-rename-recheck
 	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
 	// need this either.
-	alignPlan := buildAlignmentPlan(req, searcheePathIsDir(ctx, backend, req.Searchee.Path))
 	regularFullMatch := addMode == injectModeRegular && !hasUnmatchedFiles
+	var alignPlan alignmentPlan
+	if regularFullMatch {
+		isDir, err := searcheeIsDir(ctx, backend, req.Searchee.Path)
+		if err != nil {
+			result.ErrorMessage = err.Error()
+			return result, err
+		}
+		alignPlan = buildAlignmentPlan(backend.Paths(), req, isDir)
+	}
 	alignmentNeeded := regularFullMatch && alignPlan.needed()
 
 	// Reject partial link tree injections when downloading missing files is disabled.
@@ -259,6 +266,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		Placement: placement,
 		AfterAdd:  afterAdd,
 	})
+	result.Class = added.Class()
 
 	switch {
 	case added.Outcome == crossseed.AddRefused:
@@ -272,6 +280,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		result.ErrorMessage = "alignment failed; torrent added paused for inspection"
 	case added.Settled.QueueFull && added.Paused:
 		// Nothing rechecks or resumes the paused torrent. A running add downloads without Settle.
+		result.SettleQueueFull = true
 		result.ErrorMessage = "torrent added paused: " + errSettleQueueFull.Error()
 	default:
 		result.Success = true
@@ -301,6 +310,9 @@ func (i *Injector) validateInjectRequest(req *InjectRequest) error {
 	if req == nil {
 		return errors.New("inject request is nil")
 	}
+	if req.ScanInstance == nil {
+		return errors.New("inject request missing scan instance")
+	}
 	if req.ParsedTorrent == nil || len(req.TorrentBytes) == 0 {
 		return errors.New("inject request missing torrent bytes or parsed torrent")
 	}
@@ -313,16 +325,30 @@ func (i *Injector) validateInjectRequest(req *InjectRequest) error {
 	return nil
 }
 
-// localBackend is the backend every read and write of one injection uses.
-func (i *Injector) localBackend(ctx context.Context, instanceID int) (fsops.Backend, error) {
+// resolveTarget is the backend every read and write of one injection uses, and
+// its row. An instance that left the mode or server the run walked refuses this
+// add, and the run goes on to its next match.
+func (i *Injector) resolveTarget(ctx context.Context, req *InjectRequest) (fsops.Backend, *models.Instance, error) {
 	if i.backendPool == nil {
-		return nil, errors.New("filesystem backend pool not configured")
+		return nil, nil, errors.New("filesystem backend pool not configured")
 	}
-	backend, err := i.backendPool.LocalBackend(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("get filesystem backend: %w", err)
+	backend, instance, err := i.backendPool.Require(ctx, req.InstanceID, models.CapabilityRead)
+	if err != nil && !errors.Is(err, fsops.ErrNotCapable) {
+		return nil, nil, fmt.Errorf("get filesystem backend: %w", err)
 	}
-	return backend, nil
+	walked := fsops.WalkedEndpoint(req.ScanInstance)
+	if err == nil && fsops.WalkedEndpoint(instance) == walked {
+		return backend, instance, nil
+	}
+	if walked != "" {
+		return nil, nil, fmt.Errorf("get filesystem backend: instance %d: %w", req.InstanceID, errRemoteTargetChanged)
+	}
+	// ErrNotCapable only comes from an instance with no filesystem access.
+	mode := models.FilesystemModeNone
+	if err == nil {
+		mode = models.FilesystemAccessMode(instance)
+	}
+	return nil, nil, fmt.Errorf("get filesystem backend: instance %d is in %s filesystem mode: %w", req.InstanceID, mode, errLeftLocalMode)
 }
 
 func (i *Injector) prepareInjection(
@@ -336,7 +362,8 @@ func (i *Injector) prepareInjection(
 	}
 
 	if !instance.UseReflinks && !instance.UseHardlinks {
-		return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
+		savePath, err = i.calculateSavePath(ctx, backend, req)
+		return savePath, injectModeRegular, nil, err
 	}
 
 	plan, linkMode, created, linkErr := i.materializeLinkTree(ctx, instance, backend, req)
@@ -347,12 +374,15 @@ func (i *Injector) prepareInjection(
 		return plan.RootDir, linkMode, created, nil
 	}
 
-	if !instance.FallbackToRegularMode {
+	// A lost connection says nothing about links on that host, so it isn't a
+	// reason to leave link mode.
+	if !instance.FallbackToRegularMode || errors.Is(linkErr, fsops.ErrConnectionLost) {
 		return "", "", nil, linkErr
 	}
 
 	i.logLinkTreeFallback(instance, linkErr)
-	return i.calculateSavePath(ctx, backend, req), injectModeRegular, nil, nil
+	savePath, err = i.calculateSavePath(ctx, backend, req)
+	return savePath, injectModeRegular, nil, err
 }
 
 func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
@@ -394,44 +424,46 @@ func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCrea
 }
 
 // calculateSavePath determines the save path for the torrent.
-func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend, req *InjectRequest) string {
+func (i *Injector) calculateSavePath(ctx context.Context, backend fsops.Backend, req *InjectRequest) (string, error) {
 	// Start with the provided save path or derive from searchee
 	savePath := req.SavePath
 	if savePath == "" {
 		// Default: use the parent directory of the searchee path.
 		// This avoids double-nesting when the incoming torrent already has a root folder.
-		savePath = filepath.Dir(req.Searchee.Path)
+		savePath = backend.Paths().Dir(req.Searchee.Path)
 
 		// Special case: for directory searchees, if the incoming torrent is rootless (no common root folder),
 		// use the searchee directory directly so single-file/rootless torrents land inside that folder.
-		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(ctx, backend, req.Searchee.Path, req.ParsedTorrent) {
+		useSearchee, err := shouldUseSearcheeDirectory(ctx, backend, req.Searchee.Path, req.ParsedTorrent)
+		if err != nil {
+			return "", err
+		}
+		if useSearchee {
 			savePath = req.Searchee.Path
 		}
 	}
 
 	// Apply path prefix mapping for containers
 	if req.QbitPathPrefix != "" {
-		savePath = applyPathMapping(savePath, filepath.Dir(req.Searchee.Path), req.QbitPathPrefix)
+		savePath = applyPathMapping(savePath, backend.Paths().Dir(req.Searchee.Path), req.QbitPathPrefix)
 	}
 
-	return savePath
+	return savePath, nil
 }
 
-func shouldUseSearcheeDirectory(ctx context.Context, backend fsops.Backend, searcheePath string, parsed *ParsedTorrent) bool {
-	if searcheePath == "" || parsed == nil || backend == nil {
-		return false
-	}
-
-	fi, err := backend.Stat(ctx, searcheePath)
-	if err != nil || !fi.IsDir {
-		return false
+func shouldUseSearcheeDirectory(ctx context.Context, backend fsops.Backend, searcheePath string, parsed *ParsedTorrent) (bool, error) {
+	if searcheePath == "" || parsed == nil {
+		return false, nil
 	}
 
 	candidateFiles := make([]hardlinktree.TorrentFile, 0, len(parsed.Files))
 	for _, f := range parsed.Files {
 		candidateFiles = append(candidateFiles, hardlinktree.TorrentFile{Path: f.Path, Size: f.Size})
 	}
-	return !hardlinktree.HasCommonRootFolder(candidateFiles)
+	if hardlinktree.HasCommonRootFolder(candidateFiles) {
+		return false, nil
+	}
+	return searcheeIsDir(ctx, backend, searcheePath)
 }
 
 // applyPathMapping replaces the original path prefix with the qBittorrent path prefix.
@@ -575,11 +607,8 @@ func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
-	// Dirscan builds its link destinations with host filepath and walks through
-	// Pool.LocalBackend, so a remote instance stays out even with Write (#2942)
-	// until #2919 moves it to the backend path dialect.
-	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
-		return errors.New("instance does not have local filesystem access enabled")
+	if !models.FilesystemCapabilitiesOf(instance).Write {
+		return errors.New("instance does not have filesystem write access")
 	}
 	if instance.HardlinkBaseDir == "" {
 		return errors.New("hardlink base directory is not configured")

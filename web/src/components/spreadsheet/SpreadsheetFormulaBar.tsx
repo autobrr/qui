@@ -20,7 +20,7 @@ export function SpreadsheetFormulaBar() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string;[key: string]: unknown }
   const [value, setValue] = useState(routeSearch?.q ?? "")
-  const totalSelectionCount = useTorrentSelectionSummary()?.totalSelectionCount ?? 0
+  const totalSelectionCount = useTorrentSelectionSummary()?.actionTarget.count ?? 0
 
   useEffect(() => {
     setValue(routeSearch?.q ?? "")

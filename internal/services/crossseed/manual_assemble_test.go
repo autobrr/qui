@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -22,6 +23,28 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
+
+func TestManualAssembleTargetReasonsAreInOpenAPI(t *testing.T) {
+	t.Parallel()
+
+	read := func(path string) string {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		return string(data)
+	}
+	source := read("manual_assemble.go") + read("seasonpack.go")
+	reasons := regexp.MustCompile(`rejected\[.+\] = "(\w+)"|reject\(candidate, "(\w+)"\)|reason == "" \{\s*reason = "(\w+)"`).FindAllStringSubmatch(source, -1)
+	require.NotEmpty(t, reasons)
+
+	enum := regexp.MustCompile(`enum: \[(.*target_not_found.*)\]`).FindStringSubmatch(read("../../web/swagger/openapi.yaml"))
+	require.NotNil(t, enum)
+	documented := strings.Split(enum[1], ", ")
+
+	for _, match := range reasons {
+		reason := match[1] + match[2] + match[3]
+		require.Contains(t, documented, reason, "add the reason to the target reason enum in openapi.yaml")
+	}
+}
 
 func TestManualAssembleCheckAndApply(t *testing.T) {
 	const packName = "Cedar.Harbor.S02.1080p.WEB.x264-PINE"
@@ -221,6 +244,27 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 		actions, _ := script.wait()
 		require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
 	})
+
+	// regression: #3626
+	torrents[2].State = qbt.TorrentStateMoving
+	req.TargetHashes = []string{"e01", "e03"}
+	preview, err = svc.CheckManualAssemble(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, "not_settled", preview.Targets[1].Reason)
+	torrents[2].State = qbt.TorrentStateStalledUp
+
+	// regression: #3707
+	torrents[2].State = qbt.TorrentStateMissingFiles
+	preview, err = svc.CheckManualAssemble(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, "errored", preview.Targets[1].Reason)
+	torrents[2].State = qbt.TorrentStateCheckingUp
+	torrents[2].Progress = 0.4
+	preview, err = svc.CheckManualAssemble(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, "not_settled", preview.Targets[1].Reason)
+	torrents[2].State = qbt.TorrentStateStalledUp
+	torrents[2].Progress = 1
 
 	sm.files["e02"][0].Size++
 	req.TargetHashes = []string{"e01", "e02", "another-instance-hash"}

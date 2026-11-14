@@ -13,7 +13,11 @@ qui downloads a favicon the first time it sees a tracker host and caches it for 
 
 qui downloads icons only from addresses on the public internet. It does not connect to private, loopback, link-local, or carrier-grade NAT addresses (`100.64.0.0/10`, which Tailscale also uses). It also does not connect to the other address ranges that IANA reserves for special use, for example `198.18.0.0/15`. This stops a torrent from making qui send requests into your network. If a tracker runs on your local network, qui cannot download its icon, so [add that icon manually](#add-icons-manually). If you set `HTTP_PROXY` or `HTTPS_PROXY`, qui connects to that proxy even when it is on your local network. The proxy connects to the icon address, so qui looks up that address first and refuses a private one. A DNS server that gives qui and the proxy different answers can get past this check.
 
-If you want to disable these network fetches, set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`).
+If you want to disable these network fetches, set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`). The same setting stops the peer client logo downloads for the Peers tab. qui applies a change at once, with no restart.
+
+## Peer client logos
+
+The Peers tab shows a logo next to the client of each peer. qui does not ship the logo files. The first time a peer of a client shows, the qui server downloads that logo from the upstream repository of the client. It keeps the file in the `peer-client-icons/` directory. Each address points to one fixed commit, and qui discards a file whose SHA-256 hash is not the expected hash. If a download fails, qui tries again after 30 minutes. It doubles the wait after each failure, up to 24 hours. If no logo is available, the row shows the first letter of the client name. A logo shows the client that the peer says it runs, and a peer can send any client name.
 
 ## Add icons manually
 

@@ -40,6 +40,8 @@ import { getLinuxIsoName } from "@/lib/incognito"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
+import type { ActionTarget } from "@/lib/torrent-selection"
+import type { Torrent, TorrentFilters } from "@/types"
 import { toast } from "sonner"
 
 const mockedApi = vi.mocked(api, true)
@@ -80,6 +82,21 @@ afterEach(() => {
 
 afterEach(cleanup)
 
+// The export arguments for a selection written as hashes and torrents, so each case reads as one line.
+function exportArgs({ hashes, torrents, isAllSelected, filters = makeFilters(), search = "", excludeHashes, sortField, sortOrder }: {
+  hashes: string[]
+  torrents: Torrent[]
+  isAllSelected: boolean
+  filters?: TorrentFilters
+  search?: string
+  excludeHashes?: string[]
+  sortField?: string
+  sortOrder?: "asc" | "desc"
+}): [ActionTarget, string?, ("asc" | "desc")?] {
+  const target: ActionTarget = isAllSelected? { kind: "selectAll", selectAll: { filters, search, excludeHashes }, count: 0, previewTorrents: torrents }: { kind: "ticks", hashes, count: hashes.length, previewTorrents: torrents }
+  return [target, sortField, sortOrder]
+}
+
 function setupHook(incognitoMode = false) {
   return renderHook(() =>
     useTorrentExporter({ instanceId: INSTANCE_ID, incognitoMode }))
@@ -100,11 +117,11 @@ describe("useTorrentExporter", () => {
 
       let pending: Promise<void>
       act(() => {
-        pending = result.current.exportTorrents({
+        pending = result.current.exportTorrents(...exportArgs({
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       // In-flight: the awaited export promise has not resolved yet.
@@ -131,11 +148,11 @@ describe("useTorrentExporter", () => {
       const { result } = setupHook()
       let pending: Promise<void>
       act(() => {
-        pending = result.current.exportTorrents({
+        pending = result.current.exportTorrents(...exportArgs({
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-        })
+        }))
       })
 
       await waitFor(() => expect(mockedToast.loading).toHaveBeenCalledWith(
@@ -159,11 +176,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedApi.exportTorrentsArchive).toHaveBeenCalledOnce()
@@ -188,11 +205,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(10)
@@ -206,11 +223,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook(true)
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedApi.exportTorrentsArchive).toHaveBeenCalledWith(torrents.map(torrent => ({
@@ -233,12 +250,12 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           // hash order requested differs from array order -> assert ordering
           hashes: ["aaa", "ccc"],
           torrents,
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(2)
@@ -255,11 +272,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedToast.success).toHaveBeenCalledWith("contextMenu.toast.torrentExported")
@@ -271,11 +288,11 @@ describe("useTorrentExporter", () => {
       const { result } = setupHook()
 
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["", "", ""],
           torrents: [],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(result.current.isExporting).toBe(false)
@@ -289,57 +306,14 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa", "aaa", "aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(1)
-    })
-  })
-
-  describe("excludeHashes", () => {
-    it("skips excluded targets and reflects only non-excluded in the count", async () => {
-      mockedApi.exportTorrent.mockResolvedValue(makeExportResult("x.torrent"))
-
-      const torrents = [
-        makeTorrent({ hash: "aaa", name: "alpha" }),
-        makeTorrent({ hash: "bbb", name: "beta" }),
-      ]
-
-      const { result } = setupHook()
-      await act(async () => {
-        await result.current.exportTorrents({
-          hashes: ["aaa", "bbb"],
-          torrents,
-          isAllSelected: false,
-          excludeHashes: ["bbb"],
-        })
-      })
-
-      expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(1)
-      expect(mockedApi.exportTorrent).toHaveBeenCalledWith(INSTANCE_ID, "aaa")
-      expect(mockedToast.success).toHaveBeenCalledWith("contextMenu.toast.torrentExported")
-    })
-
-    it("emits noTorrentsExported info toast when every target is excluded", async () => {
-      const torrents = [makeTorrent({ hash: "aaa", name: "alpha" })]
-
-      const { result } = setupHook()
-      await act(async () => {
-        await result.current.exportTorrents({
-          hashes: ["aaa"],
-          torrents,
-          isAllSelected: false,
-          excludeHashes: ["aaa"],
-        })
-      })
-
-      expect(mockedApi.exportTorrent).not.toHaveBeenCalled()
-      expect(mockedToast.info).toHaveBeenCalledWith("contextMenu.toast.noTorrentsExported")
-      expect(mockedToast.success).not.toHaveBeenCalled()
     })
   })
 
@@ -349,11 +323,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(clickedDownloads).toEqual(["plainname.torrent"])
@@ -364,11 +338,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(clickedDownloads).toEqual(["Movie.TORRENT"])
@@ -381,14 +355,14 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa", "bbb"],
           torrents: [
             makeTorrent({ hash: "aaa", name: "named-torrent" }),
             makeTorrent({ hash: "bbb", name: "" }),
           ],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(clickedDownloads).toEqual(["named-torrent.torrent", "bbb.torrent"])
@@ -399,11 +373,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook(true)
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "secret" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(getLinuxIsoName).toHaveBeenCalledWith("aaa")
@@ -418,14 +392,14 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa", "bbb"],
           torrents: [
             makeTorrent({ hash: "aaa", name: "alpha" }),
             makeTorrent({ hash: "bbb", name: "beta" }),
           ],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(clickedDownloads).toEqual(["dupe.torrent", "dupe (2).torrent"])
@@ -456,7 +430,7 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: [],
           torrents: [],
           isAllSelected: true,
@@ -464,7 +438,7 @@ describe("useTorrentExporter", () => {
           search: "linux",
           sortField: "name",
           sortOrder: "asc",
-        })
+        }))
       })
 
       expect(mockedApi.getTorrents).toHaveBeenNthCalledWith(1, INSTANCE_ID, {
@@ -503,12 +477,12 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: [],
           torrents: [],
           isAllSelected: true,
           excludeHashes: ["excluded"],
-        })
+        }))
       })
 
       expect(mockedApi.getTorrents).toHaveBeenCalledTimes(2)
@@ -523,11 +497,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: [],
           torrents: [],
           isAllSelected: true,
-        })
+        }))
       })
 
       expect(mockedApi.exportTorrent).not.toHaveBeenCalled()
@@ -545,11 +519,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: torrents.map(torrent => torrent.hash),
           torrents,
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedToast.error).toHaveBeenCalledWith(
@@ -563,11 +537,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedToast.error).toHaveBeenCalledWith("export failed")
@@ -581,11 +555,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: ["aaa"],
           torrents: [makeTorrent({ hash: "aaa", name: "alpha" })],
           isAllSelected: false,
-        })
+        }))
       })
 
       expect(mockedToast.error).toHaveBeenCalledWith("contextMenu.toast.exportFailed")
@@ -597,11 +571,11 @@ describe("useTorrentExporter", () => {
 
       const { result } = setupHook()
       await act(async () => {
-        await result.current.exportTorrents({
+        await result.current.exportTorrents(...exportArgs({
           hashes: [],
           torrents: [],
           isAllSelected: true,
-        })
+        }))
       })
 
       expect(mockedToast.error).toHaveBeenCalledWith("fetch boom")

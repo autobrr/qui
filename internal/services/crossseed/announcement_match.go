@@ -32,8 +32,9 @@ type announcementMatchPolicy struct {
 	// episodeMap is the Sonarr triple for the announced release, resolved with
 	// the alias titles.
 	episodeMap *models.EpisodeMap
-	// sourceReads holds the local torrents of the scan that readLocalTorrents
-	// read from their files. Without it, a local torrent reads by its name.
+	// sourceReads holds the local torrents of the scan that a local read
+	// (requestLocalReads) read from their files. Without it, a local torrent
+	// reads by its name.
 	sourceReads localReads
 }
 
@@ -82,7 +83,14 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	policy announcementMatchPolicy,
 ) announcementCandidateDecision {
 	if candidateSize <= 0 || positiveExactSize(searchSourceSize(source), candidateSize) {
-		return s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
+		result := s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
+		// The webhook decides before any file comparison, so HYBRID stays strict.
+		if result.decision.Class == searchCandidateClassHybridTolerance {
+			result.decision.Accepted = false
+			result.decision.Class = searchCandidateClassRejected
+			result.decision.RejectReason = result.decision.StrictMismatchReason
+		}
+		return result
 	}
 
 	input := s.announcementRawSearchInput(instanceID, source, candidate, candidateSize, policy)

@@ -5,7 +5,7 @@ date: 2026-10-22
 
 # The lint ratchet bot opens pull requests as a GitHub App
 
-Each day, `.github/workflows/ratchet.yml` takes one file off `scripts/ratchet/allowlist.json`. An agent fixes up to 5 lint problems in it, and the workflow opens one pull request with the `ratchet` label. The workflow commits and pushes as the `qui-rabbit` GitHub App. The app can write contents and pull requests in qui and nothing else.
+Each day, `.github/workflows/ratchet.yml` takes one file off `scripts/ratchet/allowlist.json`. An agent fixes up to 5 lint problems in it, and the workflow opens one pull request with the `ratchet` label. The workflow commits and pushes as the `qui-rabbit` GitHub App. The app can write contents and pull requests in qui. It can also write issues and discussions and read organization members, for the rls-review mention in triage. Each workflow asks only for the permissions that it uses.
 
 GitHub starts no workflow for a push or a pull request made with `GITHUB_TOKEN`. A ratchet pull request made with that token gets no CI, so a maintainer cannot see if the fix builds and passes the tests. A push with an app token starts CI as usual. ADR 0017 rejected an app for triage because triage only labels and comments, and needs no CI. The ratchet needs CI on each pull request, so here the app is worth its private key.
 
@@ -24,3 +24,5 @@ The bot opens no pull request while a ratchet pull request is open. A maintainer
 Ratchet runs spend from the same monthly limit as triage. A month with many ratchet runs can leave less for triage. If the limit stops a run, the bot opens a draft pull request that says the agent run failed.
 
 The private key of the app is in the `claude` environment. If someone leaks it, revoke the key on the app settings page and make a new one.
+
+Triage also uses the app for one comment. A team mention from `GITHUB_TOKEN` notifies nobody, so after the triage job ends, a second job mentions the rls-review team as the app. As with the ratchet, the job that runs the agent never gets the key or the token. The second job has no checkout and runs no npm package, so code from the agent run cannot reach the key. ADR 0017 rejected an app for triage because it adds a private key. Here the key already exists for the ratchet, and only the second job reads it.

@@ -18,6 +18,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // TestInitPhaseWritesDirectlyToSocket pins the session writer's two-phase
@@ -53,7 +55,7 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -101,8 +103,8 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 // go-sse calls onSession.
 func sessionContext(t *testing.T, manager *StreamManager, key string) context.Context {
 	t.Helper()
-	conn := manager.openConnection(false)
-	sub, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, key, conn, false)
+	conn := manager.openConnection(false, 0)
+	sub, err := manager.registerSubscription(StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 50}}, key, conn, false)
 	require.NoError(t, err)
 	ctx := context.WithValue(t.Context(), connectionContextKey, conn)
 	return context.WithValue(ctx, subscriptionIDsContextKey, []string{sub.id})
@@ -110,7 +112,7 @@ func sessionContext(t *testing.T, manager *StreamManager, key string) context.Co
 
 func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	ctx := sessionContext(t, manager, "failing-init")
@@ -127,7 +129,7 @@ func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
 
 func TestOnSessionAbortsWhenConnectionWriteFails(t *testing.T) {
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	ctx := sessionContext(t, manager, "failing-connection")
@@ -143,7 +145,7 @@ func TestOnSessionAbortsWhenConnectionWriteFails(t *testing.T) {
 
 func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	logs := captureSSELogs(t)
 
@@ -162,7 +164,7 @@ func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
 
 func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, nil)
+	manager := NewStreamManager(nil, provider, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	logs := captureSSELogs(t)
 
@@ -186,11 +188,11 @@ func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
 }
 
 func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	logs := captureSSELogs(t)
 
-	ctx := context.WithValue(t.Context(), connectionContextKey, manager.openConnection(true))
+	ctx := context.WithValue(t.Context(), connectionContextKey, manager.openConnection(true, 0))
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
 	topics, ok := manager.onSession(&flushErrorResponseWriter{okFlushes: 1}, req)
@@ -203,7 +205,7 @@ func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
 }
 
 func TestWritePayloadToSessionFlushesHTTPFlusher(t *testing.T) {
-	manager := NewStreamManager(nil, nil, nil)
+	manager := NewStreamManager(nil, nil, nil, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 	rec := httptest.NewRecorder()
 
@@ -231,7 +233,7 @@ func TestWritePayloadToSessionFlushFailureLogsExactPayloadType(t *testing.T) {
 
 	for _, payloadType := range payloadTypes {
 		t.Run("type="+payloadType, func(t *testing.T) {
-			manager := NewStreamManager(nil, nil, nil)
+			manager := NewStreamManager(nil, nil, nil, nil)
 			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 			logs := captureSSELogs(t)
 

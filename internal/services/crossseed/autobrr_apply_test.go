@@ -258,6 +258,7 @@ func TestAutobrrApplyNotifiesForLinkModeResults(t *testing.T) {
 		{name: "reflink added", status: "added_reflink", success: true, eventType: notifications.EventCrossSeedWebhookSucceeded, added: 1},
 		{name: "hardlink failed", status: "hardlink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
 		{name: "reflink failed", status: "reflink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
+		{name: "pool registration failed", status: partialPoolRegistrationErrorStatus, eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
 	}
 
 	for _, tt := range tests {
@@ -594,10 +595,10 @@ func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 			require.NotNil(t, captured, "CrossSeedRequest should have been captured")
 
 			// Verify source filters were passed through
-			require.Equal(t, tt.expectCategories, captured.SourceFilterCategories, "SourceFilterCategories mismatch")
-			require.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
-			require.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
-			require.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
+			require.Equal(t, tt.expectCategories, captured.sourceFilter.categories, "categories mismatch")
+			require.Equal(t, tt.expectTags, captured.sourceFilter.tags, "tags mismatch")
+			require.Equal(t, tt.expectExcludeCategories, captured.sourceFilter.excludeCategories, "excludeCategories mismatch")
+			require.Equal(t, tt.expectExcludeTags, captured.sourceFilter.excludeTags, "excludeTags mismatch")
 		})
 	}
 }
@@ -974,4 +975,200 @@ func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, invocations)
+}
+
+// regression: #3626
+func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
+	t.Parallel()
+
+	const (
+		torrentName = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
+		actualSize  = int64(2_000_000)
+	)
+	moving := qbt.Torrent{
+		Hash: "moving", Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateMoving,
+		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + torrentName + ".mkv",
+	}
+	settled := qbt.Torrent{
+		Hash: "settled", Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateStalledUp,
+		SavePath: "/data/movies", ContentPath: "/data/movies/" + torrentName + ".mkv",
+	}
+
+	tests := []struct {
+		name        string
+		torrents    []qbt.Torrent
+		wantSources []string
+	}{
+		{name: "moving and settled copies use the settled copy", torrents: []qbt.Torrent{moving, settled}, wantSources: []string{"settled"}},
+		{name: "only a moving copy adds nothing", torrents: []qbt.Torrent{moving}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			instance := &models.Instance{ID: 44, Name: "primary", IsActive: true}
+			service := &Service{
+				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+				syncManager:      newFakeSyncManager(instance, tt.torrents, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{}, nil
+				},
+			}
+			var sources []string
+			service.crossSeedInvoker = func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+				sources = append(sources, request.SearchDecision.SourceHash)
+				return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
+			}
+
+			response, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{
+				TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, torrentName, torrentName+".mkv", actualSize)),
+				TorrentName: torrentName,
+				InstanceIDs: []int{instance.ID},
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantSources, sources)
+			require.Equal(t, tt.wantSources != nil, response.Success)
+		})
+	}
+}
+
+func TestAutobrrApplySharesTheFailedRouteFoldersOfOneWebhook(t *testing.T) {
+	t.Parallel()
+
+	const (
+		announcedName  = "Aurora.Signal.2025.1080p.WEB-DL.H.264-LUMA"
+		downloadedName = "Aurora.Signal.2025.1080p.WEB-DL.H.265-LUMA"
+		actualSize     = int64(2_000_000)
+	)
+	instance := &models.Instance{ID: 45, Name: "primary", IsActive: true}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
+			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+		}, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+	var runs []any
+	service.crossSeedInvoker = func(ctx context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+		runs = append(runs, ctx.Value(failedRouteDirsKey{}))
+		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Status: crossSeedCannotSeeStatus}}}, nil
+	}
+
+	_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName: announcedName,
+		InstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	// Each try of the webhook sees the same memory of failed route folders, so
+	// a later try under a hidden folder lists once.
+	require.Len(t, runs, 2)
+	require.NotNil(t, runs[0], "the webhook does not start a route run")
+	require.Same(t, runs[0], runs[1])
+}
+
+// TestBoundAnnouncementStopsAfterStrandedAdd catches a source loop that tries
+// the next source after qBittorrent already holds the torrent, so the later
+// "exists" result replaces the failure.
+// regression: #3824
+func TestBoundAnnouncementStopsAfterStrandedAdd(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status    string
+		wantCalls int
+		want      string
+	}{
+		{status: "alignment_failed", wantCalls: 1, want: "alignment_failed"},
+		{status: "pause_failed", wantCalls: 1, want: "pause_failed"},
+		{status: "error", wantCalls: 2, want: "exists"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			service := &Service{
+				crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+					calls++
+					if calls == 1 {
+						return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: 1, Status: tt.status}}}, nil
+					}
+					return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: 1, Status: "exists"}}}, nil
+				},
+			}
+
+			response, err := service.invokeBoundAnnouncementMatches(t.Context(), []boundAnnouncementMatch{
+				{instanceID: 1, instanceName: "synthetic", torrent: &qbt.Torrent{Hash: "source-one"}},
+				{instanceID: 1, instanceName: "synthetic", torrent: &qbt.Torrent{Hash: "source-two"}},
+			}, func(boundAnnouncementMatch) *CrossSeedRequest {
+				return &CrossSeedRequest{}
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.wantCalls, calls)
+			require.False(t, response.Success)
+			require.Len(t, response.Results, 1)
+			require.Equal(t, tt.want, response.Results[0].Status)
+		})
+	}
+}
+
+// TestAutobrrApplyNotifiesStrandedAddBeforeLaterSource catches a stranded add
+// on the first bound source that a later source's "exists" result hides, so
+// the user gets no failure notification.
+// regression: #3824
+func TestAutobrrApplyNotifiesStrandedAddBeforeLaterSource(t *testing.T) {
+	t.Parallel()
+
+	const (
+		announcedName  = "Quiet.Meridian.2025.1080p.WEB-DL.H.264-LUMA"
+		downloadedName = "Quiet.Meridian.2025.1080p.WEB-DL.H.265-LUMA"
+		actualSize     = int64(2_000_000)
+	)
+	instance := &models.Instance{ID: 45, Name: "primary", IsActive: true}
+	notifier := &recordingNotifier{}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
+			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+		}, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		notifier:         notifier,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+
+	calls := 0
+	service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		calls++
+		if calls == 1 {
+			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Status: "alignment_failed"}}}, nil
+		}
+		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Status: "exists"}}}, nil
+	}
+
+	response, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName: announcedName,
+		InstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.NotNil(t, events[0].CrossSeed)
+	require.Equal(t, 1, events[0].CrossSeed.Failed)
+
+	require.False(t, response.Success)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "alignment_failed", response.Results[0].Status)
 }

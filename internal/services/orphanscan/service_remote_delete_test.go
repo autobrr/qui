@@ -596,10 +596,12 @@ func ignoredTorrentDirFixture(t *testing.T, f *modeFixture, savePath func(string
 	return keep
 }
 
-// A hardlink stands in for a bind mount alias here: both are a second path
-// to one file identity, and a test server cannot mount. The alias of a
-// torrent's file at or below an ignore path is kept, in the same root and in
-// another one, and the confirmed delete leaves it.
+// A symlinked folder stands in for a bind mount alias here, since a test
+// server cannot mount. The torrent's file has a second link outside the roots,
+// so only its folder and name tell the alias from a hardlink. The alias of a
+// torrent's file at or below an ignore path in another root is kept, and the
+// confirmed delete leaves it. A hardlink of it in the same root is listed and
+// deleted.
 func TestExecuteScan_RemoteKeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 	t.Parallel()
 
@@ -608,21 +610,22 @@ func TestExecuteScan_RemoteKeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 		otherRoot  bool
 		ignoreFile bool
 	}{
-		{name: "same root"},
+		{name: "hardlink in the same root"},
 		{name: "another root", otherRoot: true},
-		{name: "ignore path is the file", ignoreFile: true},
+		{name: "hardlink in the same root, ignore path is the file", ignoreFile: true},
 		{name: "ignore path is the file, another root", otherRoot: true, ignoreFile: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			f, _ := newSSHFixture(t, "orphanscan-remote-ignored-alias", sshtest.ExecGNU, models.SSHTierExec)
-			aliasDir := filepath.Join(filepath.Dir(f.orphan), "mirror")
+			alias := filepath.Join(filepath.Dir(f.orphan), "mirror", "kept.mkv")
 			var extra []qbt.Torrent
 			if tc.otherRoot {
-				aliasDir = t.TempDir()
-				writeFile(t, filepath.Join(aliasDir, "other.bin"))
-				extra = append(extra, qbt.Torrent{Hash: "other", SavePath: sftpPath(aliasDir), State: qbt.TorrentStatePausedUp})
+				link := filepath.Join(t.TempDir(), "link")
+				symlinkOrSkip(t, filepath.Dir(f.orphan), link)
+				alias = filepath.Join(link, "keep", "kept.mkv")
+				extra = append(extra, qbt.Torrent{Hash: "other", SavePath: sftpPath(filepath.Dir(alias)), State: qbt.TorrentStatePausedUp})
 			}
 			keep := ignoredTorrentDirFixture(t, f, sftpPath, extra...)
 			if tc.ignoreFile {
@@ -632,22 +635,39 @@ func TestExecuteScan_RemoteKeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 				_, err = f.store.UpsertSettings(t.Context(), settings)
 				require.NoError(t, err)
 			}
-			alias := filepath.Join(aliasDir, "kept.mkv")
-			require.NoError(t, os.MkdirAll(aliasDir, 0o750))
-			require.NoError(t, os.Link(filepath.Join(keep, "kept.mkv"), alias))
+			kept := filepath.Join(keep, "kept.mkv")
+			if tc.otherRoot {
+				writeFile(t, filepath.Join(keep, "other.bin"))
+				require.NoError(t, os.Link(kept, filepath.Join(t.TempDir(), "kept.mkv")))
+			} else {
+				require.NoError(t, os.MkdirAll(filepath.Dir(alias), 0o750))
+				require.NoError(t, os.Link(kept, alias))
+			}
 
 			run := f.scan(t, "manual")
 			require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 			require.True(t, run.IdentityComplete)
 			files, err := f.store.GetFilesForDeletion(t.Context(), run.ID)
 			require.NoError(t, err)
-			require.Len(t, files, 1)
-			require.Equal(t, sftpPath(f.orphan), files[0].FilePath)
+			listed := make([]string, 0, len(files))
+			for _, file := range files {
+				listed = append(listed, file.FilePath)
+			}
+			if tc.otherRoot {
+				require.Equal(t, []string{sftpPath(f.orphan)}, listed)
+			} else {
+				require.ElementsMatch(t, []string{sftpPath(f.orphan), sftpPath(alias)}, listed)
+			}
 
 			require.NoError(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID))
 			f.requireCompleted(t)
 			require.NoFileExists(t, f.orphan)
-			require.FileExists(t, alias)
+			require.FileExists(t, kept)
+			if tc.otherRoot {
+				require.FileExists(t, alias)
+			} else {
+				require.NoFileExists(t, alias)
+			}
 		})
 	}
 }

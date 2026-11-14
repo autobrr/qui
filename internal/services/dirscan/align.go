@@ -5,8 +5,11 @@ package dirscan
 
 import (
 	"context"
-	"path/filepath"
+	"errors"
+	"fmt"
+	"io/fs"
 	"strings"
+	"syscall"
 
 	"github.com/rs/zerolog/log"
 
@@ -54,7 +57,7 @@ func detectTorrentRoot(files []TorrentFile) string {
 // on-disk files. It uses the exact torrent->disk file mapping from MatchResult, so no size
 // heuristics are needed. searcheeIsDir reports whether the on-disk searchee is a directory (vs a
 // single loose file), which decides the qBittorrent save-path layout the torrent must line up with.
-func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
+func buildAlignmentPlan(d fsops.PathDialect, req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	var plan alignmentPlan
 	if req == nil || req.ParsedTorrent == nil || req.Searchee == nil || req.MatchResult == nil {
 		return plan
@@ -74,8 +77,8 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	}
 
 	if rooted {
-		targetRoot := filepath.Base(filepath.Clean(req.Searchee.Path))
-		if targetRoot == "" || targetRoot == "." || targetRoot == string(filepath.Separator) {
+		targetRoot := d.Base(d.Clean(req.Searchee.Path))
+		if targetRoot == "" || targetRoot == "." || targetRoot == d.Separator() {
 			return plan
 		}
 		plan.sourceRoot = sourceRoot
@@ -91,7 +94,7 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 		if plan.stripRoot {
 			oldPath = strings.TrimPrefix(oldPath, plan.sourceRoot+"/")
 		}
-		desiredRel := filepath.ToSlash(pair.SearcheeFile.RelPath)
+		desiredRel := d.ToSlash(pair.SearcheeFile.RelPath)
 		if oldPath == "" || desiredRel == "" {
 			continue
 		}
@@ -110,14 +113,18 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	return plan
 }
 
-// searcheePathIsDir reports whether the searchee path is an existing directory. A missing path
-// or unavailable backend is treated as not-a-directory so alignment stays conservative.
-func searcheePathIsDir(ctx context.Context, backend fsops.Backend, path string) bool {
-	if backend == nil {
-		return false
-	}
+// searcheeIsDir reports whether the searchee path is a directory. A missing path is not one. Any
+// other failure is returned: on a remote instance SSH can fail while qBittorrent still answers,
+// and a guessed layout adds the torrent where its files are not.
+func searcheeIsDir(ctx context.Context, backend fsops.Backend, path string) (bool, error) {
 	info, err := backend.Stat(ctx, path)
-	return err == nil && info.IsDir
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read searchee: %w", err)
+	}
+	return info.IsDir, nil
 }
 
 // align renames the just-added torrent to match the on-disk files. It returns the hash that

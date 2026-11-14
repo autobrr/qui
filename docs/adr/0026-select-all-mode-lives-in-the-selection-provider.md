@@ -19,4 +19,4 @@ The desktop table does not use the row selection of TanStack Table. Each checkbo
 
 - A new selection control sends an event to the provider. It does not keep its own selection state.
 - A call to `toggleSelected`, `getIsSelected`, or `toggleAllPageRowsSelected` fails the type check, because `torrentTableFeatures` does not include `rowSelectionFeature`.
-- ADR 0010 does not change: `selectAllFilters` stays in the desktop table.
+- ADR 0034 builds the Action target from this selection for both layouts.

@@ -370,30 +370,10 @@ func windowsNameError(component string) error {
 	if strings.HasSuffix(component, ".") || strings.HasSuffix(component, " ") {
 		return fmt.Errorf("file name %q ends in a dot or space, which Windows cannot store", component)
 	}
-	// Windows ignores an extension and trailing spaces when matching a device name.
-	base, _, _ := strings.Cut(component, ".")
-	if isWindowsDeviceName(strings.TrimRight(base, " ")) {
+	if pathutil.IsWindowsDeviceName(component) {
 		return fmt.Errorf("file name %q is a reserved Windows device name", component)
 	}
 	return nil
-}
-
-// isWindowsDeviceName follows Go's internal/filepathlite rule, where COM and LPT are reserved only with 1-9 or a superscript digit.
-func isWindowsDeviceName(base string) bool {
-	for _, name := range []string{"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} {
-		if strings.EqualFold(base, name) {
-			return true
-		}
-	}
-	if len(base) < 4 || (!strings.EqualFold(base[:3], "COM") && !strings.EqualFold(base[:3], "LPT")) {
-		return false
-	}
-	switch n := base[3:]; n {
-	case "\u00b9", "\u00b2", "\u00b3":
-		return true
-	default:
-		return len(n) == 1 && n[0] >= '1' && n[0] <= '9'
-	}
 }
 
 // validateTargetInsideBase ensures the target path is inside the base directory.

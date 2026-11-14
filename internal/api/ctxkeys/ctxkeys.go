@@ -8,4 +8,6 @@ type Key int
 
 const (
 	Username Key = iota
+	// APIKey holds the *models.APIKey that authenticated the request. A session or auth-disabled request has none.
+	APIKey
 )

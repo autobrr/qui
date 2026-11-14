@@ -3,6 +3,23 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { ApiKeyPermission } from "@/lib/api-key-permissions"
+
+export interface ApiKey {
+  id: number
+  name: string
+  createdAt: string
+  lastUsedAt?: string
+  permissions: ApiKeyPermission[]
+  instanceIds: number[]
+}
+
+export interface ApiKeyRequest {
+  name: string
+  permissions: ApiKeyPermission[]
+  instanceIds: number[]
+}
+
 export interface User {
   id?: number
   username: string

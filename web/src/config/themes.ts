@@ -75,9 +75,4 @@ export function getDefaultTheme(): Theme {
   return themes.find(theme => theme.id === "minimal") || themes[0];
 }
 
-export function isThemePremium(themeId: string): boolean {
-  const theme = getThemeById(themeId);
-  return theme?.isPremium ?? false;
-}
-
 export { themes as default };

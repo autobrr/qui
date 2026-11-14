@@ -144,6 +144,7 @@ type Server struct {
 	commands       [][]string
 	live           map[*ssh.ServerConn]struct{}
 	sessionWaiters []chan struct{}
+	dropOnExec     *execDrop
 
 	// wg tracks every goroutine the server starts, so Cleanup waits for all.
 	wg sync.WaitGroup
@@ -398,6 +399,15 @@ func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, reques
 				continue
 			}
 			_ = req.Reply(true, nil)
+			if drop := s.takeExecDrop(payload.Value); drop != nil {
+				_, _ = io.WriteString(channel, drop.output)
+				if drop.cleanExit {
+					s.sendExitStatus(channel, 0)
+				} else {
+					_ = conn.Close()
+				}
+				return
+			}
 			if s.execMode() == ExecHang {
 				s.markStalled()
 				<-stalled
@@ -565,6 +575,38 @@ func (s *Server) SetExec(mode ExecMode) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.exec = mode
+}
+
+type execDrop struct {
+	match, output string
+	cleanExit     bool
+}
+
+// DropOnExec closes the connection when a command holding match next arrives,
+// after writing output as that command's stdout. It fires once, so a client
+// can redial and run the same command again.
+func (s *Server) DropOnExec(match, output string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dropOnExec = &execDrop{match: match, output: output}
+}
+
+// TruncateOnExec is DropOnExec with a clean exit, so the command ends after output and the connection stays up.
+func (s *Server) TruncateOnExec(match, output string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dropOnExec = &execDrop{match: match, output: output, cleanExit: true}
+}
+
+func (s *Server) takeExecDrop(command string) *execDrop {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	drop := s.dropOnExec
+	if drop == nil || !strings.Contains(command, drop.match) {
+		return nil
+	}
+	s.dropOnExec = nil
+	return drop
 }
 
 func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {

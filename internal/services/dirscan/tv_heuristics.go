@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -23,8 +24,8 @@ type tvGroupKey struct {
 	season          int
 }
 
-func buildSearcheeWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkItem {
-	tvGroups := groupTVEpisodes(searchee, parser)
+func buildSearcheeWorkItems(d fsops.PathDialect, searchee *Searchee, parser *Parser) []searcheeWorkItem {
+	tvGroups := groupTVEpisodes(d, searchee, parser)
 	if len(tvGroups) == 0 {
 		return []searcheeWorkItem{{searchee: searchee}}
 	}
@@ -35,13 +36,13 @@ func buildSearcheeWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkIt
 			continue
 		}
 
-		if seasonSearchee := group.buildSeasonSearchee(searchee); seasonSearchee != nil {
+		if seasonSearchee := group.buildSeasonSearchee(d, searchee); seasonSearchee != nil {
 			k := key
 			items = append(items, searcheeWorkItem{searchee: seasonSearchee, tvGroup: &k})
 		}
 
 		for _, ep := range group.episodeFiles {
-			epSearchee := buildEpisodeSearchee(ep)
+			epSearchee := buildEpisodeSearchee(d, ep)
 			if epSearchee == nil {
 				continue
 			}
@@ -62,7 +63,7 @@ type tvGroup struct {
 	mixedSeasonDir  bool
 }
 
-func (g *tvGroup) buildSeasonSearchee(original *Searchee) *Searchee {
+func (g *tvGroup) buildSeasonSearchee(d fsops.PathDialect, original *Searchee) *Searchee {
 	if g == nil || original == nil {
 		return nil
 	}
@@ -86,7 +87,7 @@ func (g *tvGroup) buildSeasonSearchee(original *Searchee) *Searchee {
 		if f == nil {
 			continue
 		}
-		if g.isInGroupDir(f.Path) {
+		if g.isInGroupDir(d, f.Path) {
 			files = append(files, f)
 		}
 	}
@@ -103,28 +104,28 @@ func (g *tvGroup) buildSeasonSearchee(original *Searchee) *Searchee {
 	}
 }
 
-func (g *tvGroup) isInGroupDir(absPath string) bool {
+func (g *tvGroup) isInGroupDir(d fsops.PathDialect, absPath string) bool {
 	if g == nil {
 		return false
 	}
-	clean := filepath.Clean(absPath)
+	clean := d.Clean(absPath)
 	for _, dir := range g.parentDirs {
-		dirClean := filepath.Clean(dir)
+		dirClean := d.Clean(dir)
 		if clean == dirClean {
 			return true
 		}
-		if strings.HasPrefix(clean, dirClean+string(filepath.Separator)) {
+		if strings.HasPrefix(clean, dirClean+d.Separator()) {
 			return true
 		}
 	}
 	return false
 }
 
-func buildEpisodeSearchee(file *ScannedFile) *Searchee {
+func buildEpisodeSearchee(d fsops.PathDialect, file *ScannedFile) *Searchee {
 	if file == nil {
 		return nil
 	}
-	base := filepath.Base(file.Path)
+	base := d.Base(file.Path)
 	name := strings.TrimSuffix(base, filepath.Ext(base))
 	if name == "" {
 		return nil
@@ -135,13 +136,13 @@ func buildEpisodeSearchee(file *ScannedFile) *Searchee {
 
 	return &Searchee{
 		Name:   name,
-		Path:   filepath.Dir(file.Path),
+		Path:   d.Dir(file.Path),
 		Files:  []*ScannedFile{&sf},
 		IsDisc: false,
 	}
 }
 
-func groupTVEpisodes(searchee *Searchee, parser *Parser) map[tvGroupKey]*tvGroup {
+func groupTVEpisodes(d fsops.PathDialect, searchee *Searchee, parser *Parser) map[tvGroupKey]*tvGroup {
 	if searchee == nil || parser == nil {
 		return nil
 	}
@@ -151,7 +152,7 @@ func groupTVEpisodes(searchee *Searchee, parser *Parser) map[tvGroupKey]*tvGroup
 
 	groups := make(map[tvGroupKey]*tvGroup)
 	for _, f := range searchee.Files {
-		key, group, parentDir, ok := buildTVGroupEntry(f, parser, groups)
+		key, group, parentDir, ok := buildTVGroupEntry(d, f, parser, groups)
 		if !ok {
 			continue
 		}
@@ -166,8 +167,8 @@ func groupTVEpisodes(searchee *Searchee, parser *Parser) map[tvGroupKey]*tvGroup
 	return groups
 }
 
-func buildTVGroupEntry(file *ScannedFile, parser *Parser, groups map[tvGroupKey]*tvGroup) (key tvGroupKey, group *tvGroup, parentDir string, ok bool) {
-	key, displayTitle, parentDir, ok := parseTVEpisodeKey(file, parser)
+func buildTVGroupEntry(d fsops.PathDialect, file *ScannedFile, parser *Parser, groups map[tvGroupKey]*tvGroup) (key tvGroupKey, group *tvGroup, parentDir string, ok bool) {
+	key, displayTitle, parentDir, ok := parseTVEpisodeKey(d, file, parser)
 	if !ok {
 		return tvGroupKey{}, nil, "", false
 	}
@@ -181,12 +182,12 @@ func buildTVGroupEntry(file *ScannedFile, parser *Parser, groups map[tvGroupKey]
 	return key, group, parentDir, true
 }
 
-func parseTVEpisodeKey(file *ScannedFile, parser *Parser) (key tvGroupKey, displayTitle, parentDir string, ok bool) {
+func parseTVEpisodeKey(d fsops.PathDialect, file *ScannedFile, parser *Parser) (key tvGroupKey, displayTitle, parentDir string, ok bool) {
 	if file == nil || parser == nil || !isVideoPath(file.Path) {
 		return tvGroupKey{}, "", "", false
 	}
 
-	base := filepath.Base(file.Path)
+	base := d.Base(file.Path)
 	name := strings.TrimSuffix(base, filepath.Ext(base))
 	if name == "" {
 		return tvGroupKey{}, "", "", false
@@ -204,7 +205,7 @@ func parseTVEpisodeKey(file *ScannedFile, parser *Parser) (key tvGroupKey, displ
 
 	season := *meta.Season
 	key = tvGroupKey{normalizedTitle: stringutils.NormalizeForMatching(displayTitle), season: season}
-	parentDir = filepath.Dir(file.Path)
+	parentDir = d.Dir(file.Path)
 	return key, displayTitle, parentDir, true
 }
 

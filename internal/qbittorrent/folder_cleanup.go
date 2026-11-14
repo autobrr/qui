@@ -78,9 +78,11 @@ type backendRequirer interface {
 // folderView is the sync manager's cached view of an instance, read on every
 // check. Its requests do not grow with the torrent count.
 type folderView interface {
-	liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	// liveTorrents and ownRows return the torrents of the Sync snapshot:
+	// never change one.
+	liveTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error)
 	// ownRows is the cached rows of hashes alone, keyed by canonicalizeHash.
-	ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error)
+	ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, error)
 	// InstanceFolders reads the preferences and the categories with
 	// requests.
 	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (InstanceFolders, error)
@@ -599,7 +601,7 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	d := backend.Paths()
 	judge := make([]*pendingFolder, 0, len(ready))
 	for _, item := range ready {
-		if t, ok := rows[canonicalizeHash(item.snap.Hash)]; ok && item.waitsFor(d, &t) {
+		if t, ok := rows[canonicalizeHash(item.snap.Hash)]; ok && item.waitsFor(d, t) {
 			hint = true
 			retry = append(retry, item)
 			continue

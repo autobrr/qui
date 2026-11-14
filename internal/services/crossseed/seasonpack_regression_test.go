@@ -659,39 +659,47 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 // the range file as its first episode, so qui links it instead of downloading it.
 // Plain rls already read the pack file as E01. The cached parser reads it as a
 // pack, so this test fails if the pack side stops taking the first episode.
+// A range that starts at episode 0 is read as its next episode on both sides.
+// regression: #4068
 func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
-	const (
-		packName  = "Show.S01.1080p.WEB.x264-GRP"
-		rangeName = "Show.S01E01E02.1080p.WEB.x264-GRP"
-	)
-	packRelease := rls.ParseString(packName)
-	packFiles := qbt.TorrentFiles{
-		{Name: packName + "/" + rangeName + ".mkv", Size: 20},
-		{Name: packName + "/Show.S01E03.1080p.WEB.x264-GRP.mkv", Size: 10},
+	const packName = "Show.S01.1080p.WEB.x264-GRP"
+	for _, episodes := range []string{"S01E01E02", "S01E00E01"} {
+		t.Run(episodes, func(t *testing.T) {
+			rangeName := "Show." + episodes + ".1080p.WEB.x264-GRP"
+			packRelease := rls.ParseString(packName)
+			packFiles := qbt.TorrentFiles{
+				{Name: packName + "/" + rangeName + ".mkv", Size: 20},
+				{Name: packName + "/Show.S01E03.1080p.WEB.x264-GRP.mkv", Size: 10},
+			}
+			id := episodeIdentity{series: 1, episode: 1}
+
+			inst := &models.Instance{ID: 1, Name: "Test"}
+			seeded := qbt.Torrent{
+				Hash: "range", Name: rangeName, Progress: 1, State: qbt.TorrentStateUploading,
+				ContentPath: "/media/" + rangeName + ".mkv",
+			}
+			svc := manualMatchTestService(inst, []qbt.Torrent{seeded},
+				map[string]qbt.TorrentFiles{"range": {{Name: rangeName + ".mkv", Size: 20}}})
+			m := svc.matcher()
+			packEpisodes := m.extractPackEpisodes(packFiles, &packRelease)
+			require.Contains(t, packEpisodes, id)
+
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SeasonPackEnabled = true
+			matched := svc.matchEpisodeCandidatesDetailed(buildCrossInstanceViews(inst, []qbt.Torrent{seeded}),
+				packName, &packRelease, packEpisodes, settings, nil)
+			require.Contains(t, matched, id)
+
+			_, localFiles, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, inst.ID,
+				matched, packFiles, &packRelease, packName, settings, nil, nil)
+			require.NoError(t, err)
+
+			build, err := m.buildSeasonPackPlan(fsops.HostPaths, packFiles, packName, t.TempDir(), localFiles)
+			require.NoError(t, err)
+			require.Len(t, build.plan.Files, 1)
+			require.Contains(t, build.plan.Files[0].TargetPath, episodes)
+		})
 	}
-	id := episodeIdentity{series: 1, episode: 1}
-
-	inst := &models.Instance{ID: 1, Name: "Test"}
-	svc := manualMatchTestService(inst,
-		[]qbt.Torrent{{Hash: "range", Name: rangeName, Progress: 1}},
-		map[string]qbt.TorrentFiles{"range": {{Name: rangeName + ".mkv", Size: 20}}})
-	m := svc.matcher()
-	require.Contains(t, m.extractPackEpisodes(packFiles, &packRelease), id)
-
-	_, localFiles, err := svc.resolveSeasonPackLocalFilesForCandidates(t.Context(), fsops.HostPaths, inst.ID,
-		map[episodeIdentity][]episodeMatch{id: {{
-			torrentHash: "range",
-			contentPath: "/media/" + rangeName + ".mkv",
-			name:        rangeName,
-			release:     m.parseReleaseName(rangeName),
-		}}},
-		packFiles, &packRelease, packName, nil, nil, nil)
-	require.NoError(t, err)
-
-	build, err := m.buildSeasonPackPlan(fsops.HostPaths, packFiles, packName, t.TempDir(), localFiles)
-	require.NoError(t, err)
-	require.Len(t, build.plan.Files, 1)
-	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01E02")
 }
 
 // oneReadInstanceStore serves the first instance read and fails every later

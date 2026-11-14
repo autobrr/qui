@@ -1,6 +1,7 @@
 # Test standards
 
 - Go tests live beside the code as `*_test.go`. Prefer table-driven tests and existing fixtures.
+- A test writes files with `os.WriteFile(..., 0o600)` unless it needs a broader mode. `gosec` does not check this, because `.golangci.yml` turns it off for `_test.go` files.
 - A row that shows the bug or the new behavior must fail against the code before the change. A row that expects no output can pass for the wrong reason, so the table also needs a case that does produce output.
 - If a helper returns a value that the caller writes as a durable decision, for example a cooldown stamp or a delete, test the caller expression that writes it. A test of the helper alone does not cover that expression.
 - To test a qBittorrent timeout or cancellation path, put a `&Client{Client: qbt.NewClient(...)}` into `pool.clients` that points at an `httptest` server whose handler waits on `<-r.Context().Done()`. `pool_test.go` has examples. Do not use `NewClientWithTimeout`, because it logs in at once on a detached `context.Background()`. To find a cancellation, use `isContextStopped`, not `errors.Is`. The go-qbittorrent retry wrapper flattens the error, so `errors.Is` does not find `context.Canceled`.
@@ -14,3 +15,6 @@
 - To wait for a goroutine, use a channel. To test code that waits on a timer, run the test in `synctest.Test`. In that test, `time.Sleep` moves a fake clock and takes no real time. Outside `synctest.Test`, do not use `time.Sleep`. A real sleep makes the test slow, and the test fails at random on a slow CI runner.
 - A test that touches a database, also through a store or a service, does not run in `synctest.Test`. On the fake clock, the statement cache closes its statements, and the test fails at random with "statement is closed".
 - If a test comes from a bug fix, put `// regression: #N` on the line above it. N is the number of the fix PR or the issue. Before you remove a test with this tag, show that another test catches the same bug.
+- A test that needs two real paths on one volume, for example a hardlink source and its destination, makes both under one `t.TempDir()`. An invented path such as `/media` can be on another volume than the temporary folder, and the link then fails on the Windows runner.
+- Call `t.TempDir()` before you start a server or a pool that opens files in it. Cleanup runs in reverse order, so the server closes its files before the test removes the folder. Windows does not remove a folder that holds an open file.
+- Skip a test for a missing capability only on the error that names it, for example Windows error 1314 when the user cannot create a symlink. A skip on `runtime.GOOS` alone also skips the test on a host that has the capability.

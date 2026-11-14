@@ -79,12 +79,14 @@ const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent),
 }
 
 // State categories: maps filter value to all qBittorrent states in that category
-// Must match the backend's torrentStateCategories in sync_manager.go
+// Must match namedStatuses in internal/qbittorrent/torrent_list_query.go
 const STATE_CATEGORY_MAP: Record<string, string[]> = {
   // Seeding states (uploading category)
   uploading: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
   // Downloading states
-  downloading: ["downloading", "stalledDL", "metaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  downloading: ["downloading", "stalledDL", "metaDL", "forcedMetaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  // Completed states, also during a recheck
+  completed: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP", "pausedUP", "stoppedUP"],
   // Stalled states
   stalled: ["stalledDL", "stalledUP"],
   stalled_uploading: ["stalledUP"],
@@ -95,7 +97,7 @@ const STATE_CATEGORY_MAP: Record<string, string[]> = {
   errored: ["error", "missingFiles"],
   // Paused/stopped states
   paused: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
-  stopped: ["stoppedDL", "stoppedUP"],
+  stopped: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
   // Active states (downloading or uploading actively)
   active: ["downloading", "uploading", "forcedDL", "forcedUP"],
   // Moving state
@@ -187,15 +189,14 @@ function convertDurationToSeconds(value: number, unit: DurationUnit): number {
  *
  * State filters use category expansion (matching FilterSidebar behavior):
  * - "uploading" (Seeding) expands to: uploading, stalledUP, queuedUP, checkingUP, forcedUP
- * - "downloading" expands to: downloading, stalledDL, metaDL, queuedDL, allocating, checkingDL, forcedDL
- * - "completed" uses progress-based filtering: Progress == 1
+ * - "downloading" expands to: downloading, stalledDL, metaDL, forcedMetaDL, queuedDL, allocating, checkingDL, forcedDL
+ * - "completed" expands to the upload states, paused and stopped ones included
  *
  * Example expansions:
  * - { columnId: "state", operation: "eq", value: "uploading" } =>
  *   "(string(State) == \"uploading\" || string(State) == \"stalledUP\" || ...)"
  * - { columnId: "state", operation: "ne", value: "uploading" } =>
  *   "(string(State) != \"uploading\" && string(State) != \"stalledUP\" && ...)"
- * - { columnId: "state", operation: "eq", value: "completed" } => "Progress == 1"
  */
 export function columnFilterToExpr(filter: ColumnFilter): string | null {
   // Apply column remapping for filtering (use total counts instead of connected)
@@ -346,15 +347,6 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
   // When filtering by a state category (e.g., "uploading" which means "Seeding"),
   // expand it to match all qBittorrent states in that category
   if (filter.columnId === "state" && (filter.operation === "eq" || filter.operation === "ne")) {
-    // Special case: "completed" uses progress-based filtering, not state
-    if (filter.value === "completed") {
-      if (filter.operation === "eq") {
-        return "Progress == 1"
-      } else {
-        return "Progress != 1"
-      }
-    }
-
     const stateCategory = STATE_CATEGORY_MAP[filter.value]
     if (stateCategory && stateCategory.length >= 1) {
       // Generate combined expression for all states in the category

@@ -1,9 +1,11 @@
 ---
-status: accepted
+status: deprecated
 date: 2026-10-22
 ---
 
 # The implementer runs on the maintainer's subscription
+
+The Implementer was removed on 2026-11-06. Agent runs on the maintainer's machine have Docker and give better results than the CI sandbox.
 
 `.github/workflows/implement.yml` builds one `ready-for-agent` issue and opens a pull request for it. Only s0up4200 can start a run, from `workflow_dispatch`, with the issue number as input. The run uses Claude Code with the Claude subscription of s0up4200, through a `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`. Console billing (ADR 0017) costs too much for this work.
 

@@ -16,7 +16,9 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { DatabaseShrinkProvider } from "@/components/database/DatabaseShrinkProvider"
 
 function AppLayoutContent() {
   const { t } = useTranslation("common")
@@ -80,9 +82,13 @@ export function AppLayout() {
   return (
     <LayoutRouteProvider>
       <TorrentSelectionProvider>
-        <MobileScrollProvider>
-          <AppLayoutContent />
-        </MobileScrollProvider>
+        <BulkActionProvider>
+          <MobileScrollProvider>
+            <DatabaseShrinkProvider>
+              <AppLayoutContent />
+            </DatabaseShrinkProvider>
+          </MobileScrollProvider>
+        </BulkActionProvider>
       </TorrentSelectionProvider>
     </LayoutRouteProvider>
   )

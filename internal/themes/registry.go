@@ -39,13 +39,15 @@ type Preview struct {
 
 var (
 	nameRe        = regexp.MustCompile(`@name:\s*(.+?)\s*(?:\n|\*)`)
+	idRe          = regexp.MustCompile(`(?m)^[\s/*]*@id:[ \t]*([^\s*]+)`)
 	descriptionRe = regexp.MustCompile(`@description:\s*(.+?)\s*(?:\n|\*)`)
 	premiumRe     = regexp.MustCompile(`@premium:\s*true`)
 	slugRe        = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
-// GenerateID derives a theme id from its name. The rule is frozen: derived
-// ids are stored in the database and in browsers, so it must never change.
+// GenerateID derives a theme id from its name when the file has no @id
+// line. The rule is frozen: derived ids are stored in the database and in
+// browsers, so it must never change.
 // TestRegistryIDsPinned enforces this for every committed theme.
 func GenerateID(name string) string {
 	return strings.Trim(slugRe.ReplaceAllString(strings.ToLower(name), "-"), "-")
@@ -101,7 +103,11 @@ func parse(css, fallbackID string, fromPremiumDir bool) Theme {
 	if m := descriptionRe.FindStringSubmatch(css); m != nil {
 		t.Description = m[1]
 	}
-	t.ID = cmp.Or(GenerateID(t.Name), fallbackID)
+	// An @id line keeps the stored id of a renamed theme.
+	if m := idRe.FindStringSubmatch(css); m != nil {
+		t.ID = m[1]
+	}
+	t.ID = cmp.Or(t.ID, GenerateID(t.Name), fallbackID)
 
 	t.Preview = Preview{
 		Light: extractPreviewVars(css, ":root"),

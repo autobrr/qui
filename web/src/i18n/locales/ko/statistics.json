@@ -1,0 +1,119 @@
+{
+  "title": "통계",
+  "recordingSince": "{{date}}부터 기록 중",
+  "notRecording": "qui가 아직 전송을 기록하지 않았습니다.",
+  "partial": "일부 기간",
+  "periods": {
+    "24h": "24시간",
+    "7d": "7일",
+    "30d": "30일",
+    "1y": "1년",
+    "all": "전체 기간",
+    "custom": "사용자 지정"
+  },
+  "customRange": {
+    "from": "시작일",
+    "to": "종료일",
+    "apply": "적용",
+    "range": "{{from}} ~ {{to}}"
+  },
+  "instances": {
+    "all": "모든 인스턴스",
+    "count_other": "인스턴스 {{count}}개",
+    "removed": "제거됨"
+  },
+  "tiles": {
+    "uploaded": "업로드",
+    "downloaded": "다운로드",
+    "ratio": "비율",
+    "buffer": "버퍼 {{buffer}}",
+    "crossSeed": "크로스 시드에서",
+    "crossSeedShare": "업로드의 {{percent}}%",
+    "change": "이전 기간 대비 {{change}}"
+  },
+  "chart": {
+    "title": "시간별 전송량",
+    "descriptionHour": "트래커별, 시간 단위",
+    "descriptionDay": "트래커별, 일 단위",
+    "upload": "업로드",
+    "download": "다운로드",
+    "other": "기타",
+    "otherCount": "기타 ({{groups}})",
+    "total": "합계",
+    "gap": "{{duration}}의 기록 공백 포함",
+    "gapLabel": "공백 {{duration}}",
+    "foldedDay": "(하루 전체, UTC)",
+    "empty": "이 기간에는 전송이 없습니다."
+  },
+  "groups": {
+    "public": "공개",
+    "noTracker": "트래커 없음"
+  },
+  "errors": {
+    "load": "통계를 불러올 수 없습니다: {{message}}"
+  },
+  "allTimeNote": "전체 기간에는 기준값이 포함됩니다. 기준값은 qui가 토렌트를 처음 기록할 때 토렌트가 가지고 있던 바이트입니다. 기준값은 날짜가 없으므로 차트에 표시되지 않습니다.",
+  "serverStatisticsNote": "이 숫자는 각 토렌트의 전송량을 합한 것입니다. 대시보드의 서버 통계는 프로토콜 트래픽도 세는 qBittorrent의 카운터를 읽으므로 숫자가 다릅니다.",
+  "table": {
+    "title": "그룹별",
+    "descriptionTracker": "트래커별 기간 전송량입니다. 행을 클릭하면 세부 정보가 열립니다.",
+    "descriptionCategory": "카테고리별 기간 전송량입니다. 바이트가 전송될 때 각 토렌트가 속했던 카테고리에 표시됩니다. 행을 클릭하면 세부 정보가 열립니다.",
+    "descriptionRelease": "qui가 토렌트 이름에서 읽은 각 값에 대한 기간의 전송량입니다. 행을 클릭하면 세부 정보가 열립니다.",
+    "groupBy": "그룹 기준",
+    "groupings": {
+      "tracker": "트래커",
+      "category": "카테고리",
+      "releaseGroup": "릴리스 그룹",
+      "resolution": "해상도",
+      "source": "소스",
+      "contentType": "콘텐츠 유형"
+    },
+    "columns": {
+      "tracker": "트래커",
+      "uploaded": "업로드됨",
+      "downloaded": "다운로드됨",
+      "ratio": "비율",
+      "buffer": "버퍼",
+      "torrents": "토렌트",
+      "size": "크기",
+      "seeded": "시드됨"
+    },
+    "seededValue": "{{value}}x",
+    "total": "합계",
+    "noCategory": "카테고리 없음",
+    "none": "없음",
+    "liveError": "지금 qBittorrent에 있는 토렌트를 불러오지 못했습니다: {{message}}",
+    "liveNote": "토렌트, 크기, 시드됨은 기간이 아니라 지금 qBittorrent에 있는 토렌트를 나타냅니다. 시드됨은 전체 업로드를 크기로 나눈 값입니다.",
+    "categoryNote": "qui는 카테고리 합계를 UTC 날짜별로 저장합니다. UTC 날짜 중간에 시작하거나 끝나는 기간은 그날 전체를 계산하므로 카테고리 합계가 위의 숫자와 다를 수 있습니다.",
+    "releaseNote": "qui는 이 값을 토렌트 이름에서 읽고, 각 토렌트의 바이트를 UTC 일별로 저장합니다. UTC 하루 중간에 시작하거나 끝나는 기간은 그날 전체를 포함하므로, 행의 합계가 상단의 숫자와 다를 수 있습니다.",
+    "baselineNote": "전체 기간에서는 각 행에 해당 토렌트의 기준값이 포함됩니다."
+  },
+  "detail": {
+    "share": "업로드 비중",
+    "shareOf": "{{total}} 중",
+    "crossSeed": "크로스 시드에서",
+    "crossSeedShare": "자체 업로드의 {{percent}}",
+    "bestHour": "최고 시간",
+    "bestDay": "최고 날짜",
+    "averageHour": "시간당 평균",
+    "averageDay": "일별 평균",
+    "chartHour": "시간별 {{group}}",
+    "chartDay": "일별 {{group}}",
+    "chartLegend": "선 위는 업로드, 아래는 다운로드",
+    "topTorrents": "{{group}}의 상위 토렌트",
+    "topTorrentsCategoryNote": "카테고리의 상위 토렌트는 각 토렌트의 현재 카테고리를 따릅니다."
+  },
+  "topTorrents": {
+    "title": "상위 토렌트",
+    "description": "기간 동안 업로드가 가장 많은 토렌트입니다. 행을 클릭하면 일별 업로드를 볼 수 있습니다.",
+    "columns": {
+      "torrent": "토렌트",
+      "first24h": "처음 24시간"
+    },
+    "deleted": "삭제됨",
+    "crossSeed": "크로스시드",
+    "note": "삭제된 토렌트는 이름과 함께 자리를 유지합니다. 토렌트는 현재 트래커에 포함됩니다. 처음 24시간은 추가 후 24시간 동안의 업로드입니다. qui가 그 이후에 토렌트를 처음 본 경우 비어 있습니다.",
+    "utcNote": "각 막대는 UTC 하루입니다.",
+    "yearNote": "각 막대는 UTC 하루이며, 연도 막대는 예외입니다. 세부 정보 보존 기간이 지나면 qui는 토렌트와 연도마다 하나의 값만 보관합니다."
+  }
+}

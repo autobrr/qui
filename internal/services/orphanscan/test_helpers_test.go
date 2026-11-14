@@ -9,6 +9,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 func newTestBackend() fsops.Backend {
@@ -41,4 +42,43 @@ func newTestProtected(t testing.TB, d fsops.PathDialect, ignorePaths []string, t
 		t.Fatalf("newProtectedPaths: %v", err)
 	}
 	return protected
+}
+
+// aliasWalkBackend gives the listed paths of a real tree one shared nlink=1
+// FileID, the way a bind mount presents one file twice.
+type aliasWalkBackend struct {
+	fsops.Backend
+	ids map[string]hardlink.FileID
+}
+
+func (b *aliasWalkBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	in, err := b.Backend.WalkDir(ctx, root, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan fsops.WalkEntry)
+	go func() {
+		defer close(out)
+		for e := range in {
+			if id, ok := b.ids[e.Path]; ok {
+				e.FileID, e.Nlinks = id, 1
+			}
+			select {
+			case out <- e:
+			case <-ctx.Done():
+				for range in { //nolint:revive // drain to release the inner walk
+				}
+				return
+			}
+		}
+	}()
+	return out, nil
+}
+
+func sameFile(paths ...string) map[string]hardlink.FileID {
+	ids := make(map[string]hardlink.FileID, len(paths))
+	for _, p := range paths {
+		ids[p] = hardlink.UnixFileID(1, 1)
+	}
+	return ids
 }

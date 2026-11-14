@@ -6,33 +6,16 @@ package automations
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/fsops"
-	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/testutil/testdb"
 )
-
-// writeStub is a stub qBittorrent that serves fixed torrents and per-hash file lists, and
-// records the hashes of every write by action.
-type writeStub struct {
-	torrents string
-	files    map[string]string
-
-	mu     sync.Mutex
-	hashes map[string][]string
-}
 
 // writeStubActions maps the write endpoints these tests read to the action they belong to.
 var writeStubActions = map[string]string{
@@ -44,43 +27,27 @@ var writeStubActions = map[string]string{
 	"torrents/delete":      "delete",
 }
 
-func (s *writeStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/api/v2/auth/login":
-		_, _ = w.Write([]byte("Ok."))
-	case "/api/v2/app/webapiVersion":
-		_, _ = w.Write([]byte("2.10.0"))
-	case "/api/v2/sync/maindata":
-		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + s.torrents + `}`))
-	case "/api/v2/torrents/files":
-		files, ok := s.files[r.URL.Query().Get("hash")]
-		if !ok {
-			files = `[]`
+// writtenHashes returns the hashes of every write to a writeStubActions endpoint, by action.
+func (s *stubQbt) writtenHashes() map[string][]string {
+	out := make(map[string][]string)
+	for _, write := range s.recordedWrites() {
+		if action, ok := writeStubActions[write.path]; ok {
+			out[action] = append(out[action], strings.Split(write.form.Get("hashes"), "|")...)
 		}
-		_, _ = w.Write([]byte(files))
-	default:
-		if r.Method != http.MethodPost {
-			http.NotFound(w, r)
-			return
-		}
-		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			_ = r.ParseForm()
-		}
-		if action, ok := writeStubActions[strings.TrimPrefix(r.URL.Path, "/api/v2/")]; ok {
-			s.mu.Lock()
-			s.hashes[action] = append(s.hashes[action], strings.Split(r.Form.Get("hashes"), "|")...)
-			s.mu.Unlock()
-		}
-		_, _ = w.Write([]byte("Ok."))
 	}
+	for action := range out {
+		slices.Sort(out[action])
+	}
+	return out
 }
 
-func (s *writeStub) writes() map[string][]string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make(map[string][]string, len(s.hashes))
-	for action, hashes := range s.hashes {
-		out[action] = slices.Sorted(slices.Values(hashes))
+// filesDeleted returns the hashes of each delete that also removed the files.
+func (s *stubQbt) filesDeleted() []string {
+	var out []string
+	for _, write := range s.recordedWrites() {
+		if write.path == "torrents/delete" && write.form.Get("deleteFiles") == "true" {
+			out = append(out, strings.Split(write.form.Get("hashes"), "|")...)
+		}
 	}
 	return out
 }
@@ -91,7 +58,15 @@ type stubTorrent struct {
 
 // newWriteStubService serves the torrents from one save path, each with its own single file.
 // Torrents that share a name share a content path and a file list, so they are cross-seeds.
-func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *writeStub) {
+func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *stubQbt) {
+	t.Helper()
+	stub, sharing := newWriteStub(t, torrents)
+	svc, _, instanceIDs := newStubService(t, sharedFilesMatcher{sharing: sharing}, stub)
+	return svc, instanceIDs[0], stub
+}
+
+// newWriteStub returns the stub of newWriteStubService and the torrents that share files.
+func newWriteStub(t *testing.T, torrents []stubTorrent) (*stubQbt, map[string][]string) {
 	t.Helper()
 
 	entries := make([]string, 0, len(torrents))
@@ -101,7 +76,10 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 			tor.hash, tor.name, tor.name, tor.tags, tor.tracker))
 		files[tor.hash] = fmt.Sprintf(`[{"index":0,"name":"%s.mkv","size":1000,"progress":1,"priority":1}]`, tor.name)
 	}
-	stub := &writeStub{torrents: "{" + strings.Join(entries, ",") + "}", files: files, hashes: make(map[string][]string)}
+	stub := newStubQbt(t, "{"+strings.Join(entries, ",")+"}")
+	stub.mu.Lock()
+	stub.files = files
+	stub.mu.Unlock()
 
 	// Cross-seed expansion pairs torrents through the cross matcher; here a shared name means shared files.
 	sharing := make(map[string][]string)
@@ -112,29 +90,28 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 			}
 		}
 	}
-	server := httptest.NewServer(stub)
-	t.Cleanup(server.Close)
-
-	db := testdb.NewMigratedSQLite(t, t.Name())
-	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
-	require.NoError(t, err)
-	instance, err := instanceStore.Create(t.Context(), "stub", server.URL, "", "", nil, nil, false, new(false))
-	require.NoError(t, err)
-
-	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = clientPool.Close() })
-	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
-
-	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, sharedFilesMatcher{sharing}, fsops.NewPool(instanceStore, localbackend.NewBackend()))
-	return svc, instance.ID, stub
+	return stub, sharing
 }
 
 // sharedFilesMatcher reports which stub torrents share files, as the cross-seed service does.
-type sharedFilesMatcher struct{ sharing map[string][]string }
+// otherShared, otherUnknown, and offline are the result of the check on other instances.
+type sharedFilesMatcher struct {
+	sharing                   map[string][]string
+	otherShared, otherUnknown map[string]struct{}
+	offline                   []string
+}
 
 func (m sharedFilesMatcher) BuildCrossMatchSets(context.Context, int, CrossMatchNeeds) *CrossMatchResult {
-	return &CrossMatchResult{SameInstanceContentByHash: m.sharing}
+	return &CrossMatchResult{
+		SameInstanceContentByHash:  m.sharing,
+		OtherInstanceShared:        m.otherShared,
+		OtherInstanceSharedUnknown: m.otherUnknown,
+		OfflineLocalInstances:      m.offline,
+	}
+}
+
+func (m sharedFilesMatcher) OpenCrossMatchSession(ctx context.Context, instanceID int, needs CrossMatchNeeds) (CrossMatchSession, error) {
+	return cannedSession{m.BuildCrossMatchSets(ctx, instanceID, needs)}, nil
 }
 
 // dryRunActivityHashes returns the torrents each dry-run activity row lists, keyed like writeStubActions.
@@ -223,6 +200,11 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Mode: "add", Condition: tagsContain("del")}}},
 	}
 
+	tagCrossSeedsRule := &models.Automation{
+		ID: 2, Name: "tag", TrackerPattern: "*", Enabled: true, SortOrder: 2,
+		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Mode: "add", IncludeCrossSeeds: true, Condition: tagsContain("del")}}},
+	}
+
 	tests := []struct {
 		name     string
 		torrents []stubTorrent
@@ -261,6 +243,12 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 			want:     map[string][]string{"category": {y}, "delete": {x}},
 		},
 		{
+			name:     "a deleted torrent does not pass its tag to its cross-seed",
+			torrents: crossSeeds("del"),
+			rules:    []*models.Automation{deleteRule(DeleteModeKeepFiles, tagsContain("del")), tagCrossSeedsRule},
+			want:     map[string][]string{"delete": {x}},
+		},
+		{
 			name:     "a cross-seed pulled into the delete gets none of its own actions",
 			torrents: append(crossSeeds("del"), stubTorrent{v, "Example.Show.S01E02.1080p.WEB-DL-GRP", "mv", ""}),
 			rules:    []*models.Automation{deleteRule(DeleteModeWithFilesIncludeCrossSeeds, tagsContain("del")), moveTagAndCategory},
@@ -289,7 +277,7 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 			svc, instanceID, stub := newWriteStubService(t, tt.torrents)
 			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, tt.rules, false)
 			require.NoError(t, err)
-			require.Equal(t, tt.want, stub.writes())
+			require.Equal(t, tt.want, stub.writtenHashes())
 		})
 		if tt.liveOnly {
 			continue
@@ -305,7 +293,7 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 			activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, rules, true)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, dryRunActivityHashes(t, svc, instanceID, activities))
-			require.Empty(t, stub.writes())
+			require.Empty(t, stub.writtenHashes())
 		})
 	}
 }

@@ -4,8 +4,10 @@
  */
 
 import type { Theme } from "@/config/themes"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+import { _resetClientSettingsForTests, applyServerSettings } from "@/lib/client-settings"
 
 const fixture = vi.hoisted(() => {
   const makeTheme = (
@@ -43,7 +45,12 @@ const fixture = vi.hoisted(() => {
     variations: ["amber"],
   })
   // Unlicensed install: the server ships premium themes as locked stubs.
-  const premiumTheme = makeTheme("premium", "Premium theme", {
+  const premiumTheme = makeTheme("nord", "Premium theme", {
+    isPremium: true,
+    locked: true,
+  })
+  // A community theme that is new to the build starts hidden.
+  const communityTheme = makeTheme("gruvbox", "Community theme", {
     isPremium: true,
     locked: true,
   })
@@ -52,7 +59,7 @@ const fixture = vi.hoisted(() => {
   })
 
   return {
-    builtInThemes: [selectedTheme, premiumTheme, otherTheme],
+    builtInThemes: [selectedTheme, premiumTheme, otherTheme, communityTheme],
     customThemes: [customTheme],
     selectedTheme,
   }
@@ -62,8 +69,6 @@ vi.mock("@/config/themes", () => ({
   themes: fixture.builtInThemes,
   getThemeById: (id: string) =>
     [...fixture.builtInThemes, ...fixture.customThemes].find((theme) => theme.id === id),
-  isThemePremium: (id: string) =>
-    fixture.builtInThemes.find((theme) => theme.id === id)?.isPremium ?? false,
 }))
 
 vi.mock("@/utils/theme", () => ({
@@ -105,7 +110,23 @@ vi.mock("sonner", () => ({
 
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 
+beforeEach(() => {
+  localStorage.clear()
+  _resetClientSettingsForTests()
+})
+
 afterEach(cleanup)
+
+function openMenu(): void {
+  fireEvent.pointerDown(
+    screen.getByRole("button", { name: "themeToggle.changeTheme" }),
+    { button: 0, ctrlKey: false }
+  )
+}
+
+function saveVisibility(visibility: Record<string, boolean>): void {
+  localStorage.setItem("qui-theme-visibility", JSON.stringify(visibility))
+}
 
 function themeItem(name: string): HTMLElement {
   const item = screen.getByText(name).closest("[role=menuitem]")
@@ -148,7 +169,6 @@ describe("ThemeToggle", () => {
     const variationRow = otherItem.querySelector("[data-slot=\"theme-variations\"]")
     expect(variationRow).not.toBeNull()
     expect(variationRow?.querySelectorAll("[style]")).toHaveLength(1)
-    expect(screen.queryByText("themeToggle.premium")).toBeNull()
     expect(screen.queryByText("themeToggle.custom")).toBeNull()
   })
 
@@ -172,5 +192,34 @@ describe("ThemeToggle", () => {
     await waitFor(() => {
       expect(screen.queryByText("Other theme")).not.toBeNull()
     })
+  })
+
+  it("shows a hidden theme that the user showed and hides a free theme that the user hid", async () => {
+    saveVisibility({ gruvbox: true, other: false })
+    render(<ThemeToggle />)
+    openMenu()
+
+    await screen.findByText("Community theme")
+    expect(screen.queryByText("Other theme")).toBeNull()
+  })
+
+  it("keeps the theme in use in the menu when it is hidden", async () => {
+    saveVisibility({ selected: false })
+    render(<ThemeToggle />)
+    openMenu()
+
+    await screen.findByText("Selected theme")
+  })
+
+  it("follows a choice that arrives from the server", async () => {
+    render(<ThemeToggle />)
+    openMenu()
+    await screen.findByText("Other theme")
+
+    act(() => {
+      applyServerSettings({ "qui-theme-visibility": JSON.stringify({ other: false }) })
+    })
+
+    await waitFor(() => expect(screen.queryByText("Other theme")).toBeNull())
   })
 })

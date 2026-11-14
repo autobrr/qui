@@ -31,6 +31,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
+import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type {
@@ -102,6 +103,8 @@ export interface CrossSeedDialogProps {
   canForceRefresh?: boolean
   refreshCooldownLabel?: string
   onForceRefresh?: () => void
+  /** The Cross-seed instance that receives the adds, when the instance of the torrent routes its cross-seeds. */
+  crossSeedInstanceName?: string
 }
 
 // Backend TorrentSearchResponse.query_degraded values; unknown values render nothing.
@@ -155,6 +158,7 @@ const CrossSeedDialogComponent = ({
   canForceRefresh,
   refreshCooldownLabel,
   onForceRefresh,
+  crossSeedInstanceName,
 }: CrossSeedDialogProps) => {
   const { t } = useTranslation(["torrents", "settings", "crossseed"])
   const { formatISOTimestamp } = useDateTimeFormatters()
@@ -310,6 +314,9 @@ const CrossSeedDialogComponent = ({
           {queryDegraded && queryDegradedMessageKeys[queryDegraded] && <HeaderWarning>{t(queryDegradedMessageKeys[queryDegraded])}</HeaderWarning>}
           {gazelleTimedOut && <HeaderWarning>{t("crossSeedDialog.gazelleTimedOut")}</HeaderWarning>}
           {torznabFailed && <HeaderWarning>{t("crossSeedDialog.torznabFailed")}</HeaderWarning>}
+          {crossSeedInstanceName && (
+            <p className="mt-2 text-xs text-muted-foreground">{t("crossSeedDialog.routedTo", { instance: crossSeedInstanceName })}</p>
+          )}
         </DialogHeader>
         <div className="min-w-0 space-y-2 overflow-y-auto overflow-x-hidden flex-1">
           {/* Search Scope Section */}
@@ -621,13 +628,20 @@ const CrossSeedDialogComponent = ({
                               <ul className="mt-1.5 space-y-1 text-xs">
                                 {result.instanceResults.map(instance => {
                                   const infoHash = result.infoHash
-                                  const pendingKey = infoHash ? getBlocklistPendingKey(instance.instanceId, infoHash) : null
+                                  // Only the Cross-seed instance's blocklist applies to a routed add.
+                                  const blockInstanceId = instance.crossSeedInstanceId ?? instance.instanceId
+                                  const blockInstanceName = instance.crossSeedInstanceName ?? instance.instanceName
+                                  const pendingKey = infoHash ? getBlocklistPendingKey(blockInstanceId, infoHash) : null
                                   const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
                                   const statusDisplay = getInstanceStatusDisplay(t, instance.status, instance.success)
                                   return (
                                     <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
                                       <div className="flex items-center gap-1.5">
-                                        <span className="font-medium">{instance.instanceName}</span>
+                                        <span className="font-medium">
+                                          {instance.crossSeedInstanceName
+                                            ? crossSeedRouteText(t, instance.instanceName, instance.crossSeedInstanceName, instance.success)
+                                            : instance.instanceName}
+                                        </span>
                                         <Badge
                                           variant={statusDisplay.variant === "success" ? "outline" : statusDisplay.variant === "warning" ? "secondary" : "destructive"}
                                           className="text-[10px] h-4 px-1"
@@ -638,9 +652,9 @@ const CrossSeedDialogComponent = ({
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() => handleBlockInfoHash(instance.instanceId, infoHash!)}
+                                            onClick={() => handleBlockInfoHash(blockInstanceId, infoHash!)}
                                             disabled={isBlocking}
-                                            aria-label={`${t("crossSeedDialog.blockFor")} ${instance.instanceName}`}
+                                            aria-label={`${t("crossSeedDialog.blockFor")} ${blockInstanceName}`}
                                             title={`${t("crossSeedDialog.block")} ${infoHash}`}
                                             className="h-5 px-2 text-[10px]"
                                           >
@@ -757,6 +771,10 @@ function getInstanceStatusDisplay(
   status: string,
   success: boolean
 ): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
+  const routeStatusKey = crossSeedRouteStatusKeys[status]
+  if (routeStatusKey) {
+    return { text: t(routeStatusKey), variant: "destructive" }
+  }
   switch (status) {
     case "added":
       return { text: t("crossSeedDialog.status.added"), variant: "success" }

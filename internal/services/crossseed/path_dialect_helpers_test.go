@@ -66,7 +66,7 @@ func TestPathDialect_DestDirHelpers(t *testing.T) {
 				require.Equal(t, wantCategory, s.buildCategorySavePath(t.Context(), d, instance, conv(tt.baseDir), "", candidate, req))
 
 				// A season pack's own root folder isolates it, so its dest dir is the category path unnormalized.
-				require.Equal(t, conv(tt.wantCategory), s.seasonPackDestDir(t.Context(), d, instance, conv(tt.baseDir), nil, "Tracker"))
+				require.Equal(t, conv(tt.wantCategory), s.seasonPackDestDir(t.Context(), d, instance, instance.Name, conv(tt.baseDir), nil, "Tracker"))
 			})
 		})
 	}

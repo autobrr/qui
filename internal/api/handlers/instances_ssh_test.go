@@ -24,8 +24,11 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
@@ -66,6 +69,8 @@ func newSSHFixture(t *testing.T, name string) *sshFixture {
 	sshPool := sshpool.NewPool(sshpool.NewDialer(store))
 	t.Cleanup(sshPool.Close)
 	handler := NewInstancesHandler(store, nil, nil, clientPool, nil, nil, sshpool.NewDialer(store), sshPool)
+	// With no saved route, the route check changes no answer of these tests.
+	handler.SetCrossSeedRoutes(crossseedroute.NewService(models.NewCrossSeedRouteStore(db), store, clientPool, fsops.NewPool(store, local.NewBackend())))
 
 	router := chi.NewRouter()
 	router.Get("/api/instances", handler.ListInstances)
@@ -448,6 +453,8 @@ func TestDeleteCredentialsKeepsThePin(t *testing.T) {
 	listed := f.listInstance()
 	assert.True(t, listed.SSHHostKeyPinned, "the pin belongs to the host, not to the credentials")
 	assert.Empty(t, listed.SSHUsername)
+	assert.Empty(t, listed.SSHTier, "no credentials, no tier")
+	assert.Nil(t, listed.SSHHardlink, "no credentials, no probe answer")
 	// Without a key there is no usable remote, whatever the pin says.
 	assert.Equal(t, string(models.FilesystemModeNone), listed.FilesystemMode)
 }
@@ -521,6 +528,9 @@ func TestInstanceResponseCarriesSSHFieldsWithoutKeyMaterial(t *testing.T) {
 	assert.Equal(t, "qui", listed.SSHUsername)
 	assert.True(t, listed.SSHHostKeyPinned)
 	assert.Equal(t, string(models.FilesystemModeRemote), listed.FilesystemMode)
+	assert.Equal(t, string(models.SSHTierExec), listed.SSHTier, "the pin's probe wrote the tier")
+	require.NotNil(t, listed.SSHHardlink, "the pin's probe wrote the hardlink flag")
+	assert.True(t, *listed.SSHHardlink)
 
 	raw := f.listBody()
 	assert.NotContains(t, raw, "BEGIN OPENSSH PRIVATE KEY", "no response may carry the private key")
@@ -557,9 +567,16 @@ func TestSSHRoutesWriteTheTier(t *testing.T) {
 		return stored.SSHTier
 	}
 	require.Equal(t, models.SSHTierSFTP, tier(), "a new instance starts on sftp")
+	stored, err := f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	require.Nil(t, stored.SSHHardlink, "the hardlink flag is unknown before a probe")
 
 	f.sshTest()
 	assert.Equal(t, models.SSHTierExec, tier(), "test, up")
+	stored, err = f.store.Get(t.Context(), f.instance.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.SSHHardlink, "the test writes the hardlink flag beside the tier")
+	assert.True(t, *stored.SSHHardlink)
 
 	f.server.SetExec(sshtest.ExecSFTPOnly)
 	f.sshTest()

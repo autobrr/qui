@@ -53,6 +53,9 @@ type Instance struct {
 	SSHHostKeyEncrypted string `json:"-"`
 	// SSHTier is written by every probe of the host, so it follows the key.
 	SSHTier SSHTier `json:"-"`
+	// SSHHardlink is whether the server advertises hardlink@openssh.com, as
+	// the last probe found; nil until a probe answers.
+	SSHHardlink *bool `json:"-"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -424,7 +427,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 }
 
 // instanceViewColumns is the column list for instances_view queries.
-const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted, ssh_tier`
+const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted, ssh_tier, ssh_hardlink`
 
 // scanInstance scans a row from instances_view into an Instance.
 func scanInstance(scan func(dest ...any) error) (*Instance, error) {
@@ -438,6 +441,7 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 	var sshHost, sshUsername string
 	var sshPort int
 	var sshKeyEncrypted, sshHostKeyEncrypted, sshTier string
+	var sshHardlink sql.NullBool
 
 	err := scan(
 		&instanceID, &name, &host, &username,
@@ -448,7 +452,7 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 		&useHardlinks, &hardlinkBaseDir, &hardlinkDirPreset,
 		&useReflinks, &fallbackToRegularMode,
 		&sshHost, &sshPort, &sshUsername,
-		&sshKeyEncrypted, &sshHostKeyEncrypted, &sshTier,
+		&sshKeyEncrypted, &sshHostKeyEncrypted, &sshTier, &sshHardlink,
 	)
 	if err != nil {
 		return nil, err
@@ -476,6 +480,9 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 		SSHKeyEncrypted:          sshKeyEncrypted,
 		SSHHostKeyEncrypted:      sshHostKeyEncrypted,
 		SSHTier:                  SSHTier(sshTier),
+	}
+	if sshHardlink.Valid {
+		instance.SSHHardlink = &sshHardlink.Bool
 	}
 
 	if basicUsername.Valid {

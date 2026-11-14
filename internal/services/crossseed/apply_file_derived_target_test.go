@@ -400,7 +400,7 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
-		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
+		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matched}},
 		[]byte("torrent"), incomingHash, "", episodeName,
 		&CrossSeedRequest{
 			StartPaused: &startPaused,
@@ -408,7 +408,7 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 				Class: searchCandidateClassStrict, SourceInstanceID: instanceID, SourceHash: matchedHash,
 			},
 		},
-		service.releaseCache.Parse(episodeName), episodeFiles, nil,
+		service.releaseCache.Parse(episodeName), episodeFiles, nil, nil,
 	)
 	require.True(t, result.Success, result.Message)
 	require.Equal(t, "added", result.Status)
@@ -489,7 +489,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		context.Background(),
-		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matched}},
+		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matched}},
 		[]byte("torrent"), incomingHash, "", rawEpisode,
 		&CrossSeedRequest{
 			StartPaused: &startPaused,
@@ -497,7 +497,7 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 				Class: searchCandidateClassStrict, SourceInstanceID: instanceID, SourceHash: matchedHash,
 			},
 		},
-		incomingView.release, incomingFiles, nil,
+		incomingView.release, incomingFiles, nil, nil,
 	)
 	require.True(t, result.Success, result.Message)
 	require.Equal(t, "added", result.Status)

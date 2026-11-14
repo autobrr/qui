@@ -90,7 +90,7 @@ func seasonPackStatus(r *rls.Release, packs map[string]struct{}) string {
 }
 
 // buildSeasonPackSet indexes the season packs among torrents.
-func buildSeasonPackSet(parser *releases.Parser, torrents []qbt.Torrent) map[string]struct{} {
+func buildSeasonPackSet(parser *releases.Parser, torrents []*qbt.Torrent) map[string]struct{} {
 	packs := make(map[string]struct{})
 	for i := range torrents {
 		addSeasonPack(packs, parser.Parse(torrents[i].Name))

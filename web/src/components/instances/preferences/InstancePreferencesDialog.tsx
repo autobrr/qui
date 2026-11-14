@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DeleteHistoryCheckbox } from "@/components/instances/DeleteHistoryCheckbox"
+import { CrossSeedDeleteNotice, useCrossSeedDeleteCheck } from "@/components/cross-seed/RouteProtectionConfirm"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,13 +29,14 @@ import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { cn } from "@/lib/utils"
 import type { Instance, PreferenceField } from "@/types"
-import { Cog, Download, Gauge, Globe, MoreVertical, Power, Radar, RefreshCw, Rss, Server, Settings, SlidersHorizontal, Trash2, Wifi, type LucideIcon } from "lucide-react"
+import { Cog, Download, Gauge, Globe, KeyRound, MoreVertical, Power, Radar, RefreshCw, Rss, Server, Settings, SlidersHorizontal, Trash2, Wifi, type LucideIcon } from "lucide-react"
 import { lazy, Suspense, useState } from "react"
 
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { InstanceSettingsPanel } from "./InstanceSettingsPanel"
+import { InstanceSSHPanel } from "./InstanceSSHPanel"
 import { preferenceTabLabels } from "./labels"
 import { preferenceTabsOf, usePreferenceView } from "./preferenceView"
 
@@ -74,6 +77,10 @@ function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: numb
           <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
             <Server className="h-4 w-4" />
             <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.instance")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="ssh" className="flex items-center gap-1.5 shrink-0">
+            <KeyRound className="h-4 w-4" />
+            <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.ssh")}</span>
           </TabsTrigger>
           <div className="h-6 w-px bg-muted-foreground/50 mx-1 sm:mx-2 self-center shrink-0" />
           {tabs.map(tab => {
@@ -117,6 +124,22 @@ function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: numb
         </div>
       </TabsContent>
 
+      <TabsContent value="ssh" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="space-y-1 mb-6 shrink-0">
+          <h3 className="text-lg font-medium">{t("preferences.dialog.sections.ssh.title")}</h3>
+          <p className="text-sm text-muted-foreground">{t("preferences.dialog.sections.ssh.description")}</p>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {instance ? (
+            <InstanceSSHPanel key={instance.id} instance={instance} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              {t("preferences.dialog.instanceNotAvailable")}
+            </p>
+          )}
+        </div>
+      </TabsContent>
+
       {fields && (
         <Suspense>
           <PreferencesForm key={instanceId} instanceId={instanceId} fields={fields} />
@@ -146,6 +169,8 @@ export function InstancePreferencesDialog({
   const currentInstance = instances?.find(i => i.id === instanceId) ?? instance
   const displayInstanceName = currentInstance?.name ?? instanceName
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteHistory, setDeleteHistory] = useState(false)
+  const deleteCheck = useCrossSeedDeleteCheck(instanceId, showDeleteDialog)
   const handleDeleted = () => {
     // Close dialog when instance is deleted
     onOpenChange(false)
@@ -170,7 +195,7 @@ export function InstancePreferencesDialog({
 
   const handleDelete = () => {
     if (!currentInstance) return
-    deleteInstance({ id: currentInstance.id, name: currentInstance.name }, {
+    deleteInstance({ id: currentInstance.id, name: currentInstance.name, deleteHistory }, {
       onSuccess: () => {
         toast.success(t("card.toast.instanceDeletedTitle"), {
           description: t("card.toast.instanceDeletedDescription", { name: currentInstance.name }),
@@ -219,7 +244,10 @@ export function InstancePreferencesDialog({
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onClick={() => setShowDeleteDialog(true)}
+                      onClick={() => {
+                        setDeleteHistory(false)
+                        setShowDeleteDialog(true)
+                      }}
                       disabled={isDeleting}
                       className="text-destructive"
                     >
@@ -247,12 +275,14 @@ export function InstancePreferencesDialog({
               {t("preferences.dialog.deleteDialog.description", { name: displayInstanceName })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <CrossSeedDeleteNotice check={deleteCheck} />
+          <DeleteHistoryCheckbox checked={deleteHistory} onCheckedChange={setDeleteHistory} disabled={isDeleting} />
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.dialog.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={isDeleting}
+              disabled={isDeleting || deleteCheck.pending}
             >
               {t("preferences.dialog.deleteDialog.confirm")}
             </AlertDialogAction>

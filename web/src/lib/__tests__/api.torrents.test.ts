@@ -146,6 +146,49 @@ describe("api.getTorrents", () => {
     })
   })
 
+  describe("groupCopies", () => {
+    it("sends groupCopies=true only when the caller asks for groups", async () => {
+      server.use(captureTorrents(), captureCrossInstance())
+
+      await api.getTorrents(1, { groupCopies: true })
+      expect(capturedUrl().searchParams.get("groupCopies")).toBe("true")
+      await api.getCrossInstanceTorrents({ groupCopies: true })
+      expect(capturedUrl().searchParams.get("groupCopies")).toBe("true")
+
+      await api.getTorrents(1, { groupCopies: false })
+      expect(capturedUrl().searchParams.has("groupCopies")).toBe(false)
+      await api.getCrossInstanceTorrents({})
+      expect(capturedUrl().searchParams.has("groupCopies")).toBe(false)
+    })
+
+    it("puts groupCopies in a stream subscription only when it is true", () => {
+      const streamsOf = (groupCopies?: boolean) => JSON.parse(new URL(api.getTorrentsStreamBatchUrl([
+        { key: "k", instanceId: 1, page: 0, limit: 50, sort: "name", order: "asc", groupCopies },
+      ]), "http://localhost").searchParams.get("streams") as string)
+
+      expect(streamsOf(true)[0].groupCopies).toBe(true)
+      expect("groupCopies" in streamsOf(false)[0]).toBe(false)
+      expect("groupCopies" in streamsOf()[0]).toBe(false)
+    })
+
+    it("puts groupCopies in the body of a subscription change", async () => {
+      let body: unknown
+      server.use(http.post("*/api/stream/subscriptions", async ({ request }) => {
+        body = await request.json()
+        return new HttpResponse(null, { status: 204 })
+      }))
+
+      await api.changeStreamSubscriptions("c", [
+        { key: "grouped", instanceId: 1, page: 0, limit: 50, sort: "name", order: "asc", groupCopies: true },
+        { key: "flat", instanceId: 1, page: 0, limit: 50, sort: "name", order: "asc" },
+      ], [])
+
+      const [grouped, flat] = (body as { add: Record<string, unknown>[] }).add
+      expect(grouped.groupCopies).toBe(true)
+      expect("groupCopies" in flat).toBe(false)
+    })
+  })
+
   describe("response parsing", () => {
     it("returns response.json() verbatim with caller-visible total and hasMore", async () => {
       const body = okTorrentResponse({

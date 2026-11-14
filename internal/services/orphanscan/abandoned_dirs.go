@@ -159,3 +159,85 @@ func isCategoryDestinationNormalized(d fsops.PathDialect, normPath string, normC
 	}
 	return false
 }
+
+// torrentDirs returns every folder above the torrent files, and each of
+// saveRoots and the folders above it, up to the filesystem root, once each.
+// A torrent can reach a folder under another spelling before it writes
+// anything, and an unwritten subfolder is reached only by its file's path, so
+// each level counts. saveRoots are the save paths of torrents with no file
+// list yet, which say where they will write. A file whose folder is in
+// fileDirs is on disk, so that folder and those above it hold it and can never
+// be emptied: they need no identity read.
+func torrentDirs(d fsops.PathDialect, files []string, fileDirs map[string]struct{}, saveRoots ...string) []string {
+	seen := make(map[string]struct{})
+	var dirs []string
+	for _, file := range files {
+		dir := d.Dir(file)
+		if _, onDisk := fileDirs[dir]; onDisk {
+			continue
+		}
+		dirs = addUpToRoot(d, dir, seen, dirs)
+	}
+	for _, root := range saveRoots {
+		dirs = addUpToRoot(d, root, seen, dirs)
+	}
+	return dirs
+}
+
+// reachedDirs is torrentDirs for a file map result.
+func reachedDirs(d fsops.PathDialect, result *buildFileMapResult, fileDirs map[string]struct{}) []string {
+	return torrentDirs(d, result.torrentPaths, fileDirs, slices.Concat(result.metadataRoots, result.skippedRoots)...)
+}
+
+// addUpToRoot stops at the first folder already seen, so a shared prefix costs once.
+func addUpToRoot(d fsops.PathDialect, dir string, seen map[string]struct{}, added []string) []string {
+	for {
+		if _, ok := seen[dir]; ok {
+			return added
+		}
+		seen[dir] = struct{}{}
+		added = append(added, dir)
+		parent := d.Dir(dir)
+		if parent == dir {
+			return added
+		}
+		dir = parent
+	}
+}
+
+// dropDirsTorrentsReach removes each listed folder a torrent reaches under
+// another spelling, such as a symlink, a bind mount or a junction, along with
+// the listed folders that hold it, which can no longer be emptied. A folder
+// whose identity cannot be read could be one of them, so it goes too.
+func dropDirsTorrentsReach(ctx context.Context, dirs []OrphanFile, reached *inUseIDs, backend fsops.Backend) []OrphanFile {
+	paths := make([]string, len(dirs))
+	for i := range dirs {
+		paths[i] = dirs[i].Path
+	}
+	infos, errs := fsops.LstatAll(ctx, backend, paths)
+
+	d := backend.Paths()
+	kept := make(map[string]struct{})
+	for i, p := range paths {
+		err := errs[i]
+		if err == nil {
+			var ok bool
+			if ok, err = reached.reaches(infos[i]); err == nil && !ok {
+				continue
+			}
+		}
+		log.Debug().Err(err).Str("dir", p).Msg("orphanscan: a torrent may use this directory under another path, not treating it as abandoned")
+		addUpToRoot(d, p, kept, nil)
+	}
+	if len(kept) == 0 {
+		return dirs
+	}
+
+	out := make([]OrphanFile, 0, len(dirs))
+	for _, dir := range dirs {
+		if _, ok := kept[dir.Path]; !ok {
+			out = append(out, dir)
+		}
+	}
+	return out
+}

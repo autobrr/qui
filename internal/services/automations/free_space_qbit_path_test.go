@@ -86,6 +86,18 @@ func newQbitPathInstance(t *testing.T, name, host string) (*qbittorrent.SyncMana
 	return qbittorrent.NewSyncManager(clientPool, nil), instance
 }
 
+// qbitPathRule is a delete rule that reads FREE_SPACE at path on the qBittorrent host.
+func qbitPathRule(id int, path string) *models.Automation {
+	return &models.Automation{
+		ID:              id,
+		FreeSpaceSource: &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: path},
+		Conditions: &models.ActionConditions{Delete: &models.DeleteAction{
+			Enabled: true, Mode: DeleteModeWithFiles,
+			Condition: &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1"},
+		}},
+	}
+}
+
 func TestFreeSpaceBytesQbitPathSource(t *testing.T) {
 	// A Windows-style path proves qui forwards the qBittorrent host's own semantics.
 	const path = `D:\downloads\complete`
@@ -111,19 +123,16 @@ func TestFreeSpaceBytesQbitPathSource(t *testing.T) {
 
 			// No backend pool: the read happens on the qBittorrent host.
 			service := &Service{syncManager: syncManager}
-			got, err := service.freeSpaceBytes(
-				t.Context(),
-				instance,
-				&models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: path},
-			)
+			rule := qbitPathRule(1, path)
+			ledgers, err := service.freeSpaceLedgers(t.Context(), instance, []*models.Automation{rule}, false)
 
 			if tt.wantErr {
 				require.Error(t, err)
-				require.Zero(t, got)
+				require.Nil(t, ledgers)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want, ledgers[rule.ID].startFreeSpace())
 
 			select {
 			case forwarded := <-paths:
@@ -146,7 +155,7 @@ func TestGetFreeSpaceSourceKeySeparatesQbitPath(t *testing.T) {
 }
 
 // TestFreeSpaceBytesQbitPathReadsEachPath pins that two rules on one instance read
-// their own path. Preview and execution share freeSpaceBytes, so both see these values.
+// their own path. Preview and execution share freeSpaceLedgers, so both see these values.
 func TestFreeSpaceBytesQbitPathReadsEachPath(t *testing.T) {
 	const (
 		archive = "/mnt/archive"
@@ -159,13 +168,11 @@ func TestFreeSpaceBytesQbitPathReadsEachPath(t *testing.T) {
 	})
 
 	service := &Service{syncManager: syncManager}
-	for path, want := range map[string]int64{archive: 1099511627776, staging: 536870912000} {
-		source := &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: path}
-
-		got, err := service.freeSpaceBytes(t.Context(), instance, source)
-		require.NoError(t, err)
-		require.Equal(t, want, got, "free space for %s", path)
-	}
+	archiveRule, stagingRule := qbitPathRule(1, archive), qbitPathRule(2, staging)
+	ledgers, err := service.freeSpaceLedgers(t.Context(), instance, []*models.Automation{archiveRule, stagingRule}, false)
+	require.NoError(t, err)
+	require.Equal(t, int64(1099511627776), ledgers[archiveRule.ID].startFreeSpace(), "free space for %s", archive)
+	require.Equal(t, int64(536870912000), ledgers[stagingRule.ID].startFreeSpace(), "free space for %s", staging)
 
 	require.NotEqual(t,
 		GetFreeSpaceSourceKey(&models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: archive}),

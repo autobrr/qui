@@ -349,6 +349,10 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 		// Nothing has been sent yet, so the sftp walk takes the whole tree.
 		log.Debug().Int("instanceID", b.inst.ID).Str("root", root).Err(err).Msg("remote: find output over its limit, walking over sftp")
 		return false
+	case errors.Is(err, sshpool.ErrConnect):
+		// An sftp walk on a new connection reads no identity, and a caller takes the files for ones no torrent holds.
+		send(ctx, ch, fsops.WalkEntry{Path: root, IsDir: true, RelPath: ".", Err: pathError("find", root, lost(err))})
+		return true
 	case err != nil:
 		log.Debug().Int("instanceID", b.inst.ID).Str("root", root).Err(err).Msg("remote: find failed, walking over sftp")
 		return false
@@ -400,8 +404,8 @@ type findEntry struct {
 }
 
 // find runs cmd, streams its output and parses it record by record, at most
-// limit records. When the command exits non-zero after clean output, the
-// entries it printed come back with the error.
+// limit records. When the command exits non-zero, the records it finished
+// printing come back with the error.
 func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, maxEntries, maxBytes int) ([]findEntry, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -432,7 +436,10 @@ func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, maxEntri
 		case errors.Is(err, io.EOF) && len(record) == 0:
 			return entries, <-done
 		case errors.Is(err, io.EOF):
-			return stop(fmt.Errorf("find output ends inside a record: %q", record))
+			if streamErr := <-done; streamErr != nil {
+				return entries, streamErr
+			}
+			return nil, fmt.Errorf("find output ends inside a record: %q", record)
 		case errors.Is(err, bufio.ErrBufferFull):
 			return stop(fmt.Errorf("find record exceeds %d bytes", findRecordLimit))
 		case err != nil:

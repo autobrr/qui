@@ -18,8 +18,9 @@ func TestGeneratedFilesAreCurrent(t *testing.T) {
 	require.NoError(t, err)
 
 	for path, want := range map[string][]byte{
-		referencePath: reference,
-		fieldsPath:    generateFields(),
+		referencePath:       reference,
+		fieldsPath:          generateFields(),
+		permissionAreasPath: generatePermissionAreas(),
 	} {
 		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
 		require.NoError(t, err)

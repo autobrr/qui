@@ -13,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,10 +44,9 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { getBaseUrl } from "@/lib/base-url"
 import { useIncognitoMode } from "@/lib/incognito"
-import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Copy, Eye, EyeOff, Plus, Server, Trash2 } from "lucide-react"
+import { Eye, EyeOff, Plus, Server, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -243,22 +243,7 @@ export function ClientApiKeysManager() {
                             >
                               {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                             </Button>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-7 w-7"
-                              onClick={async () => {
-                                try {
-                                  await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
-                                  toast.success(t("clientApiKeys.toasts.proxyCopied"))
-                                } catch {
-                                  toast.error(t("clientApiKeys.toasts.copyFailed"))
-                                }
-                              }}
-                              title={t("clientApiKeys.newKey.copyProxyUrl")}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
+                            <CopyButton value={getFullProxyUrl(newKey.proxyUrl)} label={t("clientApiKeys.newKey.proxyUrl")} className="h-7 w-7" />
                           </div>
                         </div>
                       </CardContent>

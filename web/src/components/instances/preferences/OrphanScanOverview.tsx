@@ -6,6 +6,7 @@
 import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
 import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
 import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,15 +17,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useInstances } from "@/hooks/useInstances"
 import {
   useCancelOrphanScanRun,
+  useOrphanScanRunPaths,
   useOrphanScanRuns,
   useOrphanScanSettings,
   useTriggerOrphanScan,
   useUpdateOrphanScanSettings
 } from "@/hooks/useOrphanScan"
-import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { cn, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { Instance, OrphanScanRun } from "@/types"
-import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
+import { AlertTriangle, ChevronDown as ChevronDownIcon, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -71,7 +73,15 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
   const { t } = useTranslation("instances")
   const statusBadge = getStatusBadge(run, t)
   const hasError = !!run.errorMessage
-  const hasDetails = hasError || run.scanPaths.length > 0
+  const hasScanPaths = run.scanPathCount > 0
+  const hasDetails = hasError || hasScanPaths
+  const [opened, setOpened] = useState(false)
+  const pathsQuery = useOrphanScanRunPaths(run.instanceId, run.id, opened && hasScanPaths)
+  const pathsBox = pathsQuery.data
+    ? { className: "font-mono", text: pathsQuery.data.join("\n") }
+    : pathsQuery.isError
+      ? { className: "text-destructive", text: t("preferences.orphanScanOverview.scanPathsLoadFailed") }
+      : { className: "text-muted-foreground", text: t("preferences.orphanScanOverview.scanPathsLoading") }
 
   // Show warning indicator for completed runs with errors (partial failures)
   const hasWarning = run.status === "completed" && hasError && !run.partial
@@ -128,7 +138,7 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
   }
 
   return (
-    <Collapsible className="group">
+    <Collapsible className="group" onOpenChange={(open) => open && setOpened(true)}>
       <CollapsibleTrigger className="w-full text-left cursor-pointer hover:bg-muted/50 transition-colors">
         {rowContent}
       </CollapsibleTrigger>
@@ -139,41 +149,23 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
               "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
               run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
             )}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100"
-                onClick={() => {
-                  copyTextToClipboard(run.errorMessage ?? "")
-                  toast.success(t("preferences.orphanScanOverview.copiedToClipboard"))
-                }}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
+              <CopyButton value={run.errorMessage ?? ""} label={t("preferences.orphanScanOverview.errorMessage")} className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100" />
               {run.errorMessage}
             </div>
           )}
-          {run.scanPaths.length > 0 && (
+          {hasScanPaths && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium text-muted-foreground">
-                  {t("preferences.orphanScanOverview.scannedPaths", { total: run.scanPaths.length })}
+                  {t("preferences.orphanScanOverview.scannedPaths", { total: run.scanPathCount })}
                 </p>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 opacity-60 hover:opacity-100"
-                  onClick={() => {
-                    copyTextToClipboard(run.scanPaths.join("\n"))
-                    toast.success(t("preferences.orphanScanOverview.copiedToClipboard"))
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
+                {pathsQuery.data && (
+                  <CopyButton value={pathsBox.text} label={t("preferences.orphanScanOverview.scanPaths")} className="h-7 w-7 opacity-60 hover:opacity-100" />
+                )}
               </div>
               {/* Roots are one per distinct save path, so a cross-seed link dir can produce hundreds. */}
-              <div className="p-3 rounded-md border bg-muted/40 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
-                {run.scanPaths.join("\n")}
+              <div className={cn("p-3 rounded-md border bg-muted/40 text-xs whitespace-pre-wrap break-all max-h-48 overflow-y-auto", pathsBox.className)}>
+                {pathsBox.text}
               </div>
             </div>
           )}
@@ -263,14 +255,14 @@ function InstanceOrphanScanItem({
         <div className="px-6 py-4 flex items-center justify-between opacity-60">
           <div className="flex items-center gap-3">
             <span className="font-medium">{instance.name}</span>
-            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noLocalAccess")}</Badge>
+            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
               <AlertTriangle className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[250px]">
-              <p>{t("preferences.orphanScanOverview.noLocalAccessTooltip")}</p>
+              <p>{t("preferences.orphanScanOverview.noFilesystemAccessTooltip")}</p>
             </TooltipContent>
           </Tooltip>
         </div>

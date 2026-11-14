@@ -16,8 +16,8 @@ qui integrates with autobrr through webhook endpoints. When autobrr announces a 
 3. qui checks your qBittorrent instances without downloading a torrent file
 4. qui responds with:
    - `200 OK`: a matching torrent is complete and ready to cross-seed
-   - `202 Accepted`: a matching torrent exists but is not complete yet. Retry later.
-   - `404 Not Found`: no matching torrent exists
+   - `202 Accepted`: a matching torrent exists, but it is not complete yet, or qBittorrent is moving or checking it. Retry later.
+   - `404 Not Found`: no matching torrent exists. If `crossSeedRecoverErroredTorrents` is off (the default), a matching torrent in an error state or a missing-files state also counts as no match.
 5. On `200 OK`, autobrr sends the torrent file and original announcement name to `/api/cross-seed/apply`
 6. qui reads the actual size from the torrent file and repeats the match against the current local torrents
 
@@ -28,6 +28,7 @@ qui integrates with autobrr through webhook endpoints. When autobrr announces a 
 - Go to **Settings → API Keys**
 - Click **Create API Key**
 - Name it (for example "autobrr webhook")
+- Under **Permissions**, pick **Cross-seed: run**. Pick no instance under **Instance limit**, because the cross-seed routes refuse a key with an Instance limit. See [API key permissions](../../api/permissions.md).
 - Copy the generated key
 
 ### 2. Configure autobrr External Filter
@@ -125,7 +126,8 @@ qui sends the same `404` when it has no active qBittorrent instance to scan. qui
 
 Other problems give a different result:
 
-- `401` or `403`: qui did not get a valid API key. Make sure that the `X-API-Key` header has a key from **Settings → API Keys**.
+- `401`, or `403` with the body `Unauthorized`: qui did not get a valid API key. Make sure that the `X-API-Key` header has a key from **Settings → API Keys**.
+- `403` with another body: the key cannot use this route, and the body names the reason. For `API key needs Cross-seed: run`, add this Permission to the key in **Settings → API Keys**. See [API key permissions](../../api/permissions.md).
 - `400` with an `error` body: the request is not valid, and the `error` text gives the cause. Make sure that **Data (JSON)** is the same as the template above.
 - A connection error or a timeout: autobrr cannot connect to qui. Make sure that the host and port in **Endpoint** are correct. If you use Docker Compose, read the Docker Compose tip above.
 

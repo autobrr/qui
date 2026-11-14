@@ -400,13 +400,13 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		return warnings, nil
 	}
 
-	if err := s.torrentWriter.BulkAction(ctx, instanceID, deleteTargets, "delete"); err != nil {
+	if err := s.torrentWriter.DeleteTorrents(ctx, instanceID, deleteTargets, false, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorBackupRestore}); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Strs("hashes", deleteTargets).Msg("Restore: bulk torrent delete failed, retry individually")
 		for _, hash := range deleteTargets {
 			if err := ctx.Err(); err != nil {
 				return warnings, err
 			}
-			if err := s.torrentWriter.BulkAction(ctx, instanceID, []string{hash}, "delete"); err != nil {
+			if err := s.torrentWriter.DeleteTorrents(ctx, instanceID, []string{hash}, false, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorBackupRestore}); err != nil {
 				appendRestoreError(errs, "delete_torrent", hash, err)
 				continue
 			}

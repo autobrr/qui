@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
-import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
-import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type { ListFacts, TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import type { ActionTarget } from "@/lib/torrent-selection"
+import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useEffect, useRef } from "react"
 
 type FilteredDataUpdate = (
@@ -35,13 +35,12 @@ export interface UseTorrentTableNotificationsParams {
   supportsTrackerHealth: boolean
   // onSelectionChange effect inputs. The table publishes null when it unmounts.
   onSelectionChange?: (summary: TorrentSelectionSummary | null) => void
-  selectedHashes: string[]
-  selectedTorrents: Torrent[]
-  effectiveSelectionCount: number
-  selectAllExcludeHashes?: string[]
-  selectAllExcludedTargets: TorrentActionTarget[]
-  selectedTotalSize: number
-  selectAllFilters?: TorrentFilters
+  actionTarget: ActionTarget
+  totalSize: number
+  excludedSize: number
+  // The instance subset of the Unified view, published with the instance.
+  instanceIds?: number[]
+  listFacts: ListFacts
 }
 
 /**
@@ -69,13 +68,11 @@ export function useTorrentTableNotifications({
   allowSubcategories,
   supportsTrackerHealth,
   onSelectionChange,
-  selectedHashes,
-  selectedTorrents,
-  effectiveSelectionCount,
-  selectAllExcludeHashes,
-  selectAllExcludedTargets,
-  selectedTotalSize,
-  selectAllFilters,
+  actionTarget,
+  totalSize,
+  excludedSize,
+  instanceIds,
+  listFacts,
 }: UseTorrentTableNotificationsParams): void {
   const lastMetadataRef = useRef<{
     instanceId?: number
@@ -158,16 +155,8 @@ export function useTorrentTableNotifications({
 
   // Call the callback when selection state changes
   useEffect(() => {
-    onSelectionChange?.({
-      selectedHashes,
-      selectedTorrents,
-      totalSelectionCount: effectiveSelectionCount,
-      selectedTotalSize,
-      excludeHashes: selectAllExcludeHashes ?? [],
-      excludeTargets: selectAllExcludedTargets,
-      selectAllFilters,
-    })
-  }, [onSelectionChange, selectedHashes, selectedTorrents, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters])
+    onSelectionChange?.({ actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts })
+  }, [onSelectionChange, actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts])
 
   useEffect(() => () => onSelectionChange?.(null), [onSelectionChange])
 }

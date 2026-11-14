@@ -121,41 +121,7 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, uncha
 		if !ok {
 			return wrongType("an object")
 		}
-		fields := jsonFields(t)
-		for _, key := range slices.Sorted(maps.Keys(obj)) {
-			keyPath := key
-			if path != "" {
-				keyPath = path + "." + key
-			}
-			field, ok := fields[key]
-			switch {
-			case ok:
-				problems = checkJSONShape(problems, keyPath, obj[key], field.Type, unchanged)
-			case !slices.Contains(ignoredRuleKeys[t], key):
-				problems = append(problems, keyPath+": unknown key")
-			}
-		}
-		if top, _, _ := strings.Cut(path, "."); slices.Contains(unchanged, top) {
-			break
-		}
-		switch t {
-		case reflect.TypeFor[models.RuleCondition]():
-			problems = checkCondition(problems, path, obj)
-		case reflect.TypeFor[models.ExportToInstanceAction]():
-			problems = checkEnumKey(problems, path, obj, "contentLayout", automations.ContentLayouts)
-		case reflect.TypeFor[models.TagAction]():
-			problems = checkEnumKey(problems, path, obj, "mode", automations.TagModes)
-		case reflect.TypeFor[models.DeleteAction]():
-			problems = checkEnumKey(problems, path, obj, "mode", automations.DeleteModes)
-		case reflect.TypeFor[models.ShareLimitsAction]():
-			// 'Default' in any case uses the global setting, the same as an empty value.
-			if value, _ := obj["shareLimitAction"].(string); !strings.EqualFold(value, "Default") {
-				problems = checkEnumKey(problems, path, obj, "shareLimitAction", automations.ShareLimitActions)
-			}
-			if value, _ := obj["shareLimitsMode"].(string); !strings.EqualFold(value, "Default") {
-				problems = checkEnumKey(problems, path, obj, "shareLimitsMode", automations.ShareLimitsModes)
-			}
-		}
+		problems = checkJSONObject(problems, path, obj, t, unchanged)
 	case reflect.Slice:
 		arr, ok := v.([]any)
 		if !ok {
@@ -186,6 +152,52 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, uncha
 		}
 	default:
 		// No rule struct has a field of another kind. json.Unmarshal still checks it.
+	}
+	return problems
+}
+
+// checkJSONObject checks each key of obj against the struct type t, then runs the rule checks for t
+// unless the top-level key of path is in unchanged.
+func checkJSONObject(problems []string, path string, obj map[string]any, t reflect.Type, unchanged []string) []string {
+	fields := jsonFields(t)
+	for _, key := range slices.Sorted(maps.Keys(obj)) {
+		keyPath := key
+		if path != "" {
+			keyPath = path + "." + key
+		}
+		field, ok := fields[key]
+		switch {
+		case ok:
+			problems = checkJSONShape(problems, keyPath, obj[key], field.Type, unchanged)
+		case !slices.Contains(ignoredRuleKeys[t], key):
+			problems = append(problems, keyPath+": unknown key")
+		}
+	}
+	if top, _, _ := strings.Cut(path, "."); slices.Contains(unchanged, top) {
+		return problems
+	}
+	return checkRuleValues(problems, path, obj, t)
+}
+
+// checkRuleValues runs checkCondition on a condition and checks the enums of an action.
+func checkRuleValues(problems []string, path string, obj map[string]any, t reflect.Type) []string {
+	switch t {
+	case reflect.TypeFor[models.RuleCondition]():
+		problems = checkCondition(problems, path, obj)
+	case reflect.TypeFor[models.ExportToInstanceAction]():
+		problems = checkEnumKey(problems, path, obj, "contentLayout", automations.ContentLayouts)
+	case reflect.TypeFor[models.TagAction]():
+		problems = checkEnumKey(problems, path, obj, "mode", automations.TagModes)
+	case reflect.TypeFor[models.DeleteAction]():
+		problems = checkEnumKey(problems, path, obj, "mode", automations.DeleteModes)
+	case reflect.TypeFor[models.ShareLimitsAction]():
+		// 'Default' in any case uses the global setting, the same as an empty value.
+		if value, _ := obj["shareLimitAction"].(string); !strings.EqualFold(value, "Default") {
+			problems = checkEnumKey(problems, path, obj, "shareLimitAction", automations.ShareLimitActions)
+		}
+		if value, _ := obj["shareLimitsMode"].(string); !strings.EqualFold(value, "Default") {
+			problems = checkEnumKey(problems, path, obj, "shareLimitsMode", automations.ShareLimitsModes)
+		}
 	}
 	return problems
 }

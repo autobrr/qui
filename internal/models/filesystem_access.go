@@ -81,8 +81,7 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 //
 // Some callers narrow Write by reading the mode themselves, because no
 // capability names what they need: reflink mode needs a cloning filesystem
-// (UpdateInstance, and reflinkAllowed in the settings panel), dirscan's link
-// trees still apply host filepath to backend paths (#2919), and the orphan-scan
+// (UpdateInstance, and reflinkAllowed in the settings panel), and the orphan-scan
 // confirm also needs a remote run's walk to have read every file's identity.
 func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	switch FilesystemAccessMode(inst) {

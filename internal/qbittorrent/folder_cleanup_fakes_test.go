@@ -70,13 +70,17 @@ type fakeView struct {
 
 const fakeSyncDelay = 200 * time.Millisecond
 
-func (v *fakeView) liveTorrents(context.Context, int) ([]qbt.Torrent, error) {
+func (v *fakeView) liveTorrents(context.Context, int) ([]*qbt.Torrent, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return append([]qbt.Torrent(nil), v.torrents...), v.liveErr
+	refs := make([]*qbt.Torrent, len(v.torrents))
+	for i, t := range v.torrents {
+		refs[i] = &t
+	}
+	return refs, v.liveErr
 }
 
-func (v *fakeView) ownRows(_ context.Context, _ int, hashes []string) (map[string]qbt.Torrent, error) {
+func (v *fakeView) ownRows(_ context.Context, _ int, hashes []string) (map[string]*qbt.Torrent, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.liveErr != nil {
@@ -86,10 +90,10 @@ func (v *fakeView) ownRows(_ context.Context, _ int, hashes []string) (map[strin
 	for _, hash := range hashes {
 		want[canonicalizeHash(hash)] = struct{}{}
 	}
-	rows := make(map[string]qbt.Torrent)
+	rows := make(map[string]*qbt.Torrent)
 	for _, t := range v.torrents {
 		if _, ok := want[canonicalizeHash(t.Hash)]; ok {
-			rows[canonicalizeHash(t.Hash)] = t
+			rows[canonicalizeHash(t.Hash)] = &t
 		}
 	}
 	return rows, nil

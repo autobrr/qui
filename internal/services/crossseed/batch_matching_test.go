@@ -69,6 +69,17 @@ func newTestService() *Service {
 	}
 }
 
+// BuildCrossMatchSets asks one CrossMatchSession for the whole library. A
+// snapshot that cannot be read is in Err. Only tests ask for the whole
+// library, so it is not in the production code.
+func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult {
+	session, err := s.OpenCrossMatchSession(ctx, currentInstanceID, needs)
+	if err != nil {
+		return &CrossMatchResult{Err: err}
+	}
+	return session.Resolve(ctx, ResolveRequest{All: true, Groups: true, OtherShared: needs.OtherShared})
+}
+
 func makeView(hash, name, contentPath, savePath string, progress float64, state qbt.TorrentState) qbittorrent.CrossInstanceTorrentView {
 	return qbittorrent.CrossInstanceTorrentView{
 		TorrentView: &qbittorrent.TorrentView{

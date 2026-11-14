@@ -1,0 +1,121 @@
+{
+  "title": "Statistiques",
+  "recordingSince": "Enregistrement depuis le {{date}}",
+  "notRecording": "qui n’a encore enregistré aucun transfert.",
+  "partial": "Période partielle",
+  "periods": {
+    "24h": "24 heures",
+    "7d": "7 jours",
+    "30d": "30 jours",
+    "1y": "Année",
+    "all": "Depuis le début",
+    "custom": "Personnalisé"
+  },
+  "customRange": {
+    "from": "Premier jour",
+    "to": "Dernier jour",
+    "apply": "Appliquer",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Toutes les instances",
+    "count_one": "{{count}} instance",
+    "count_many": "{{count}} instances",
+    "count_other": "{{count}} instances",
+    "removed": "supprimée"
+  },
+  "tiles": {
+    "uploaded": "Envoyé",
+    "downloaded": "Reçu",
+    "ratio": "Ratio",
+    "buffer": "Marge {{buffer}}",
+    "crossSeed": "Des cross-seeds",
+    "crossSeedShare": "{{percent}} % de l’envoi",
+    "change": "{{change}} par rapport à la période précédente"
+  },
+  "chart": {
+    "title": "Transfert dans le temps",
+    "descriptionHour": "Par tracker, par heure",
+    "descriptionDay": "Par tracker, par jour",
+    "upload": "Envoi",
+    "download": "Réception",
+    "other": "Autres",
+    "otherCount": "Autres ({{groups}})",
+    "total": "Total",
+    "gap": "Inclut une interruption d’enregistrement de {{duration}}",
+    "gapLabel": "interruption {{duration}}",
+    "foldedDay": "(journée entière, UTC)",
+    "empty": "Aucun transfert sur cette période."
+  },
+  "groups": {
+    "public": "Public",
+    "noTracker": "Aucun tracker"
+  },
+  "errors": {
+    "load": "Impossible de charger les statistiques : {{message}}"
+  },
+  "allTimeNote": "Depuis le début inclut la base de départ : les octets que les torrents avaient quand qui les a enregistrés pour la première fois. Le graphique ne montre pas la base de départ, car elle n’a pas de date.",
+  "serverStatisticsNote": "Ces chiffres additionnent le transfert de chaque torrent. Les statistiques du serveur sur le tableau de bord lisent les compteurs de qBittorrent, qui comptent aussi le trafic du protocole : les chiffres diffèrent donc.",
+  "table": {
+    "title": "Par groupe",
+    "descriptionTracker": "Le transfert de la période pour chaque tracker. Cliquez sur une ligne pour ouvrir son détail.",
+    "descriptionCategory": "Le transfert de la période pour chaque catégorie, sous la catégorie que chaque torrent avait quand les octets ont été transférés. Cliquez sur une ligne pour ouvrir son détail.",
+    "descriptionRelease": "Le transfert de la période pour chaque valeur que qui lit dans les noms des torrents. Cliquez sur une ligne pour ouvrir son détail.",
+    "groupBy": "Grouper par",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Catégorie",
+      "releaseGroup": "Groupe de release",
+      "resolution": "Résolution",
+      "source": "Source",
+      "contentType": "Type de contenu"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "uploaded": "Envoyé",
+      "downloaded": "Reçu",
+      "ratio": "Ratio",
+      "buffer": "Tampon",
+      "torrents": "Torrents",
+      "size": "Taille",
+      "seeded": "Partagé"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Total",
+    "noCategory": "Aucune catégorie",
+    "none": "Aucun",
+    "liveError": "Impossible de charger les torrents qui sont dans qBittorrent maintenant : {{message}}",
+    "liveNote": "Torrents, Taille et Partagé décrivent les torrents qui sont dans qBittorrent maintenant, pas la période. Partagé est leur envoi total divisé par leur taille.",
+    "categoryNote": "qui enregistre les totaux des catégories pour chaque jour UTC. Une période qui commence ou finit pendant un jour UTC compte ce jour entier, donc le total des catégories peut différer des nombres en haut.",
+    "releaseNote": "qui lit ces valeurs dans les noms des torrents et enregistre les octets de chaque torrent pour chaque jour UTC. Une période qui commence ou finit pendant un jour UTC compte ce jour entier, donc le total des lignes peut différer des nombres en haut.",
+    "baselineNote": "Depuis le début, chaque ligne inclut la base de départ de ses torrents."
+  },
+  "detail": {
+    "share": "Part de l’envoi",
+    "shareOf": "de {{total}}",
+    "crossSeed": "Des cross-seeds",
+    "crossSeedShare": "{{percent}} de son envoi",
+    "bestHour": "Meilleure heure",
+    "bestDay": "Meilleur jour",
+    "averageHour": "Moyenne par heure",
+    "averageDay": "Moyenne par jour",
+    "chartHour": "{{group}} par heure",
+    "chartDay": "{{group}} par jour",
+    "chartLegend": "Envoi au-dessus de la ligne, réception en dessous",
+    "topTorrents": "Meilleurs torrents de {{group}}",
+    "topTorrentsCategoryNote": "Les meilleurs torrents d'une catégorie suivent la catégorie actuelle de chaque torrent."
+  },
+  "topTorrents": {
+    "title": "Meilleurs torrents",
+    "description": "Les torrents avec le plus d'envoi sur la période. Cliquez sur une ligne pour voir son envoi par jour.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "Premières 24 heures"
+    },
+    "deleted": "Supprimé",
+    "crossSeed": "Cross-seed",
+    "note": "Un torrent supprimé garde sa place avec son nom. Un torrent compte pour le tracker qu'il a maintenant. Premières 24 heures est l'envoi des 24 heures après l'ajout. La valeur est vide quand qui a vu le torrent pour la première fois après celles-ci.",
+    "utcNote": "Chaque barre est un jour UTC.",
+    "yearNote": "Chaque barre est un jour UTC, sauf la barre d'une année : après la rétention des détails, qui garde un seul nombre par torrent et par année."
+  }
+}

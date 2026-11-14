@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // settlePoll is what qBittorrent shows on one poll of the settle worker.
@@ -44,7 +45,7 @@ type settleFake struct {
 	runs            []*models.SeasonPackRun
 }
 
-func (f *settleFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *settleFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	// The worker reads once by hash and again unfiltered only when a hash is missing.
@@ -62,7 +63,7 @@ func (f *settleFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFil
 	if f.current == nil {
 		return nil, nil
 	}
-	return []qbt.Torrent{*f.current}, nil
+	return testTorrentRefs([]qbt.Torrent{*f.current}), nil
 }
 
 func (f *settleFake) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
@@ -201,6 +202,13 @@ func TestSettle(t *testing.T) {
 		{Name: "Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
 		{Name: "Movie.2024.Sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 		{Name: "Movie_sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
+	}
+	// A bonus folder marks its videos, also in the plural. Each video alone
+	// exceeds the 50 MiB budget, so a mutant dropping either form fails this row.
+	bonusFolderMissing := qbt.TorrentFiles{
+		{Name: "Show.S01/Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
+		{Name: "Show.S01/Extras/Behind the Scenes.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
+		{Name: "Show.S01/Featurettes/Making Of.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
 	}
 	// "Resample" merely ends in "sample": separator-less suffix matching would
 	// forgive this real video.
@@ -355,6 +363,16 @@ func TestSettle(t *testing.T) {
 			fake: &settleFake{
 				polls: budgetDecision(120<<20, 0.9),
 				files: map[string]qbt.TorrentFiles{"hash1": dottedSampleMissing},
+			},
+			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantReads:   1,
+		},
+		{
+			name:  "videos in a bonus folder are forgiven",
+			added: budget(50 << 20),
+			fake: &settleFake{
+				polls: budgetDecision(120<<20, 0.9),
+				files: map[string]qbt.TorrentFiles{"hash1": bonusFolderMissing},
 			},
 			wantActions: []string{"recheck:hash1", "resume:hash1"},
 			wantReads:   1,
@@ -1036,7 +1054,7 @@ func startSettleScript(t *testing.T, service *Service, torrents ...*qbt.Torrent)
 	return script
 }
 
-func (s *settleScript) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (s *settleScript) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(filter.Hashes) > 0 {
@@ -1054,7 +1072,7 @@ func (s *settleScript) GetTorrents(_ context.Context, _ int, filter qbt.TorrentF
 		// A scripted torrent with no hash answers to the hash the worker watches.
 		torrent.Hash = filter.Hashes[0]
 	}
-	return []qbt.Torrent{torrent}, nil
+	return testTorrentRefs([]qbt.Torrent{torrent}), nil
 }
 
 func (s *settleScript) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
@@ -1138,11 +1156,11 @@ type lookupFake struct {
 	allErr error
 }
 
-func (f *lookupFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *lookupFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 && f.allErr != nil {
 		return nil, f.allErr
 	}
-	return f.listed, nil
+	return testTorrentRefs(f.listed), nil
 }
 
 func TestPollInstanceTwoHashesOfOneTorrent(t *testing.T) {

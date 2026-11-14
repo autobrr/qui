@@ -475,6 +475,7 @@ describe("api.crossseed contract", () => {
                     instance_name: "Box3",
                     success: true,
                     status: "added",
+                    class: "added",
                     message: "ok",
                     matched_torrent: {
                       hash: "MH",
@@ -517,6 +518,7 @@ describe("api.crossseed contract", () => {
                 instanceName: "Box3",
                 success: true,
                 status: "added",
+                class: "added",
                 message: "ok",
                 matchedTorrent: {
                   hash: "MH",

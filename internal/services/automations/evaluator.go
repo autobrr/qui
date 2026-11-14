@@ -4,7 +4,6 @@
 package automations
 
 import (
-	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -33,34 +32,21 @@ type CategoryEntry struct {
 	NormalizedName string // normalizeName(Name) result, used for CONTAINS_IN matching
 }
 
-// FreeSpaceSourceState tracks free space projection state for a single source.
-// Each source (qBittorrent or path) has its own state to correctly handle
-// workflows that target different disks.
-type FreeSpaceSourceState struct {
-	// FreeSpace is the base free space in bytes from this source.
-	FreeSpace int64
-	// SpaceToClear is the cumulative disk space that will be freed by deletions.
-	SpaceToClear int64
-	// FilesToClear is non-nil while the rule projects freed space.
-	FilesToClear map[string]int64
-	// FileBytesToClear counts selected files by resolved path for ordinary file deletes.
-	FileBytesToClear map[string]int64
-	// CrossSeedHashesToClear tracks verified cross-seed members already counted.
-	CrossSeedHashesToClear map[string]struct{}
-}
-
 // EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
 	// The deletion projection uses the same snapshot and hardlink index as execution.
-	torrentsByHash map[string]qbt.Torrent
+	torrentsByHash map[string]*qbt.Torrent
 	hardlinkIndex  *HardlinkIndex
+	// crossSeeds holds the groups of the run session, when the rules need one.
+	crossSeeds *crossSeedGroups
+	// moveChecks holds what askActionGroups found during one processTorrents call.
+	moveChecks map[moveCheckKey]checkedMove
 
-	// UnregisteredSet contains hashes of unregistered torrents (from SyncManager health counts)
-	UnregisteredSet map[string]struct{}
-	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
-	TrackerDownSet map[string]struct{}
-	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
-	TrackerErrorSet map[string]struct{}
+	// trackers holds the tracker list of each torrent, when the rules read trackers.
+	trackers qbittorrent.TrackerLookup
+	// TrackerHealth is the tracker health snapshot of the instance. It is nil
+	// when the instance has no tracker health yet.
+	TrackerHealth *qbittorrent.TrackerHealthSnapshot
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent, both)
 	HardlinkScopeByHash map[string]string
 	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
@@ -77,27 +63,15 @@ type EvalContext struct {
 	// remote instance, whose identity only its host asserts, never reads them
 	// as known.
 	InstanceHasTrustedIdentity bool
-	// FreeSpace is the free space on the instance's filesystem (current active source)
-	FreeSpace int64
-	// SpaceToClear is the amount of disk space that will be cleared by the "free space" condition (current active source)
-	SpaceToClear int64
-	// FilesToClear is non-nil while the active rule projects freed space for the "free space" condition.
-	FilesToClear map[string]int64
-	// FileBytesToClear holds the active rule's selected file sizes by resolved path.
-	FileBytesToClear map[string]int64
+	// freeSpaceLedgers holds the free space ledger of each rule that reads FREE_SPACE, by rule ID.
+	freeSpaceLedgers map[int]*freeSpaceLedger
+	// activeFreeSpace is the ledger of the rule that enterRule entered, or nil.
+	activeFreeSpace *freeSpaceLedger
 	// CrossSeedFilesByHash contains cycle-local file lists used to verify cross-seed groups.
 	CrossSeedFilesByHash map[string]qbt.TorrentFiles
-	// CrossSeedHashesToClear tracks verified cross-seed members already counted (current active source).
-	CrossSeedHashesToClear map[string]struct{}
 	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
 	// Used for hardlink_signature grouping and grouped-condition evaluation.
 	HardlinkSignatureByHash map[string]string
-	// FreeSpaceStates maps rule keys to their projection state.
-	// Rule keys are "sourceKey|rule:<id>" where sourceKey is "qbt" or "path:/some/path".
-	// Each rule gets its own state to prevent interference between rules with different thresholds.
-	FreeSpaceStates map[string]*FreeSpaceSourceState
-	// ActiveFreeSpaceSource is the rule key currently loaded into the top-level fields.
-	ActiveFreeSpaceSource string
 
 	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
@@ -129,8 +103,7 @@ type EvalContext struct {
 	SameInstanceCrossSeedTagsByHash map[string][]string
 	// SameInstanceContentByHash maps a torrent hash to the torrents on the same
 	// instance that share at least one file on disk with it (self excluded).
-	// Built when a delete, move, or category action groups cross-seeds;
-	// buildCrossSeedGroups reads it.
+	// Only tests fill it, for a context without a run session; buildCrossSeedGroups reads it.
 	SameInstanceContentByHash map[string][]string
 	// SameInstanceCrossSeedUnknown and CrossInstanceUnknown hold the torrents
 	// whose cross-seed checks on that side are incomplete for this run.
@@ -138,6 +111,14 @@ type EvalContext struct {
 	// rule that tests for "no cross-seed" cannot act on a read error.
 	SameInstanceCrossSeedUnknown map[string]struct{}
 	CrossInstanceUnknown         map[string]struct{}
+	// CrossInstanceSharedHashSet holds the torrents that share a file with a
+	// torrent on another instance, and CrossInstanceSharedUnknown the torrents
+	// that qui could not check. OfflineLocalInstances names the offline
+	// instances with local file access. Built for the delete modes that
+	// preserve or include cross-seeds; otherInstanceKeepsFiles reads them.
+	CrossInstanceSharedHashSet map[string]struct{}
+	CrossInstanceSharedUnknown map[string]struct{}
+	OfflineLocalInstances      []string
 
 	// SeasonPackSet holds one seasonPackKey per single-season pack on this
 	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:
@@ -151,6 +132,11 @@ type EvalContext struct {
 	// Read by the TRACKER and TRACKERS conditions, and by UseTrackerAsTag with the
 	// UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
+
+	// CategorySavePaths maps category name to its resolved save path ("" is the
+	// default save path). Built only when a move or export path uses
+	// .CategorySavePath or .DefaultSavePath.
+	CategorySavePaths map[string]string
 
 	// ReleaseParser caches parsed release metadata for RLS-derived fields.
 	ReleaseParser *releases.Parser
@@ -185,7 +171,7 @@ func normalizeName(s string) string {
 
 // BuildCategoryIndex builds the category lookup structures from a list of torrents.
 // Returns both the CategoryIndex (for O(1) EXISTS_IN) and CategoryNames (for CONTAINS_IN iteration).
-func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
+func BuildCategoryIndex(torrents []*qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
 	categoryIndex := make(map[string]map[string]map[string]struct{})
 	categoryNames := make(map[string][]CategoryEntry)
 
@@ -382,7 +368,7 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
-		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) {
+		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) || fieldHasNoValue(cond.Field, &torrent) {
 			return false, false
 		}
 		result = evaluateLeaf(cond, torrent, ctx)
@@ -465,9 +451,9 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldTracker, FieldTrackers:
 		return compareTrackers(torrent, cond, ctx)
 	case FieldTrackerStatus:
-		return compareTrackerStatuses(torrent, cond)
+		return compareTrackerStatuses(torrent, cond, ctx)
 	case FieldTrackerMessage:
-		return compareTrackerMessages(torrent, cond)
+		return compareTrackerMessages(torrent, cond, ctx)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -489,10 +475,10 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAmountLeft:
 		return compareInt64(torrent.AmountLeft, cond)
 	case FieldFreeSpace:
-		if ctx == nil {
+		if ctx == nil || ctx.activeFreeSpace == nil {
 			return false
 		}
-		return compareInt64(ctx.FreeSpace+ctx.SpaceToClear, cond)
+		return compareInt64(ctx.activeFreeSpace.projectedFreeSpace(), cond)
 
 	// Time fields from qBittorrent:
 	// - Unix timestamps are evaluated as age durations (seconds since event).
@@ -611,11 +597,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldSuperSeeding:
 		return compareBool(torrent.SuperSeeding, cond)
 	case FieldIsUnregistered:
-		isUnregistered := false
-		if ctx != nil && ctx.UnregisteredSet != nil {
-			_, isUnregistered = ctx.UnregisteredSet[torrent.Hash]
-		}
-		return compareBool(isUnregistered, cond)
+		return compareBool(ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered, cond)
 
 	case FieldHardlinkScope:
 		return compareHardlinkScope(ctx.HardlinkScopeByHash[torrent.Hash], cond)
@@ -688,10 +670,8 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSet), cond)
 	case FieldSeasonPackStatusAnyInstance:
 		return compareString(seasonPackStatus(parsedTorrentRelease(torrent, ctx), ctx.SeasonPackSetAnyInstance), cond)
-
-	default:
-		return false
 	}
+	return false
 }
 
 func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
@@ -711,8 +691,7 @@ func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bo
 	}
 }
 
-// matchesStateValue matches against the torrent "status" buckets used by the sidebar filters
-// (e.g. "errored", "stalled_uploading") with a fallback to exact torrent.State string matching.
+// matchesStateValue reads "completed" as 100% progress, but sidebar Completed reads the state (#3870).
 func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {
@@ -720,7 +699,6 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 	}
 
 	switch strings.ToLower(normalized) {
-	// Sidebar status buckets
 	case "completed":
 		return torrent.Progress >= 1.0
 	case "downloading":
@@ -728,6 +706,7 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 			qbt.TorrentStateDownloading,
 			qbt.TorrentStateStalledDl,
 			qbt.TorrentStateMetaDl,
+			qbt.TorrentStateForcedMetaDl,
 			qbt.TorrentStateQueuedDl,
 			qbt.TorrentStateAllocating,
 			qbt.TorrentStateCheckingDl,
@@ -790,24 +769,8 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 		return torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles
 	case "missingfiles":
 		return torrent.State == qbt.TorrentStateMissingFiles
-	case "unregistered":
-		if ctx == nil || ctx.UnregisteredSet == nil {
-			return false
-		}
-		_, ok := ctx.UnregisteredSet[torrent.Hash]
-		return ok
-	case "tracker_down":
-		if ctx == nil || ctx.TrackerDownSet == nil {
-			return false
-		}
-		_, ok := ctx.TrackerDownSet[torrent.Hash]
-		return ok
-	case "tracker_error":
-		if ctx == nil || ctx.TrackerErrorSet == nil {
-			return false
-		}
-		_, ok := ctx.TrackerErrorSet[torrent.Hash]
-		return ok
+	case "unregistered", "tracker_down", "tracker_error":
+		return ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealth(strings.ToLower(normalized))
 	}
 
 	// Fallback to raw torrent state (qBittorrent Web API value, e.g. "stalledUP").
@@ -851,19 +814,17 @@ func compareString(value string, cond *RuleCondition) bool {
 // so it can name a tracker that is down now. When no tracker answered yet, the field
 // is empty before qBittorrent 5.1 and holds the first tracker in the list from 5.1.
 func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
-	candidates := make([]string, 0, len(torrent.Trackers)*3+3)
+	trackers := ctx.trackersOf(torrent.Hash)
+	candidates := make([]string, 0, len(trackers)*3+3)
 	candidates = append(candidates, trackerCandidates(torrent.Tracker, ctx)...)
-	for _, tracker := range torrent.Trackers {
+	for _, tracker := range trackers {
 		candidates = append(candidates, trackerCandidates(tracker.Url, ctx)...)
 	}
 	return compareStringCandidates(candidates, cond)
 }
 
-func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition) bool {
-	if len(torrent.Trackers) == 0 {
-		return false
-	}
-	for _, tracker := range torrent.Trackers {
+func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
+	for _, tracker := range ctx.trackersOf(torrent.Hash) {
 		// Skip DHT/PeX/LSD pseudo-trackers: they are always reported as Disabled with
 		// no message and would otherwise spuriously satisfy "disabled"/NOT_EQUAL queries.
 		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
@@ -920,11 +881,8 @@ func matchesTrackerStatusValue(status int, value string) bool {
 	return false
 }
 
-func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition) bool {
-	if len(torrent.Trackers) == 0 {
-		return false
-	}
-	for _, tracker := range torrent.Trackers {
+func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
+	for _, tracker := range ctx.trackersOf(torrent.Hash) {
 		// Skip DHT/PeX/LSD pseudo-trackers: they carry no message and would otherwise
 		// make "message is nil" match nearly every torrent.
 		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
@@ -1286,61 +1244,9 @@ func splitTags(raw string) []string {
 	return result
 }
 
-// LoadFreeSpaceSourceState loads the projection state for the given source key into evalCtx.
-// If the source key differs from the currently active source, the current state is persisted
-// to FreeSpaceStates before loading the new source.
-// Does nothing if sourceKey is empty or FreeSpaceStates is nil.
-func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
-	if ctx == nil || sourceKey == "" || ctx.FreeSpaceStates == nil {
-		return
+func (ctx *EvalContext) trackersOf(hash string) []qbt.TorrentTracker {
+	if ctx == nil {
+		return nil
 	}
-
-	// Already loaded
-	if ctx.ActiveFreeSpaceSource == sourceKey {
-		return
-	}
-
-	// Persist current state before switching
-	if ctx.ActiveFreeSpaceSource != "" {
-		ctx.PersistFreeSpaceSourceState()
-	}
-
-	// Load new source state
-	state, ok := ctx.FreeSpaceStates[sourceKey]
-	if !ok || state == nil {
-		// Source not found - set FreeSpace to MaxInt64 so FREE_SPACE conditions won't match.
-		// Using 0 would cause "< threshold" comparisons to always trigger, which is dangerous.
-		ctx.FreeSpace = math.MaxInt64
-		ctx.SpaceToClear = 0
-		ctx.FilesToClear = nil
-		ctx.FileBytesToClear = nil
-		ctx.CrossSeedHashesToClear = nil
-		ctx.ActiveFreeSpaceSource = ""
-		return
-	}
-
-	ctx.FreeSpace = state.FreeSpace
-	ctx.SpaceToClear = state.SpaceToClear
-	ctx.FilesToClear = state.FilesToClear
-	ctx.FileBytesToClear = state.FileBytesToClear
-	ctx.CrossSeedHashesToClear = state.CrossSeedHashesToClear
-	ctx.ActiveFreeSpaceSource = sourceKey
-}
-
-// PersistFreeSpaceSourceState persists the current projection state back to FreeSpaceStates.
-// Does nothing if no source is currently active.
-func (ctx *EvalContext) PersistFreeSpaceSourceState() {
-	if ctx == nil || ctx.ActiveFreeSpaceSource == "" || ctx.FreeSpaceStates == nil {
-		return
-	}
-
-	state := ctx.FreeSpaceStates[ctx.ActiveFreeSpaceSource]
-	if state == nil {
-		return
-	}
-
-	state.SpaceToClear = ctx.SpaceToClear
-	state.FilesToClear = ctx.FilesToClear
-	state.FileBytesToClear = ctx.FileBytesToClear
-	state.CrossSeedHashesToClear = ctx.CrossSeedHashesToClear
+	return ctx.trackers.Trackers(hash)
 }

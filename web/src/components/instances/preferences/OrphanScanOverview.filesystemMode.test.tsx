@@ -80,7 +80,7 @@ it("offers orphan scan to a remote instance and blocks each one without Read", (
   const { container } = renderOverview()
 
   const text = container.textContent ?? ""
-  expect(text.split("preferences.orphanScanOverview.noLocalAccess").length - 1).toBe(2)
+  expect(text.split("preferences.orphanScanOverview.noFilesystemAccess").length - 1).toBe(2)
   expect(text).toContain("instance-2-remote")
   expect(useOrphanScanSettings).toHaveBeenCalledWith(2, { enabled: true })
   expect(useOrphanScanSettings).toHaveBeenCalledWith(3, { enabled: false })

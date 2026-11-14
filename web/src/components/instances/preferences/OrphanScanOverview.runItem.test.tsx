@@ -4,9 +4,19 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { cleanup, fireEvent, render } from "@testing-library/react"
+import { cleanup, fireEvent, render as rtlRender, waitFor } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ReactElement } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { OrphanScanRun } from "@/types"
+
+const { getOrphanScanRun } = vi.hoisted(() => ({ getOrphanScanRun: vi.fn() }))
+vi.mock("@/lib/api", () => ({ api: { getOrphanScanRun } }))
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return { client, ...rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>) }
+}
 
 // OrphanScanRunItem only needs a translator; keep the module's other exports
 // (initReactI18next is pulled in through the import graph).
@@ -32,7 +42,7 @@ function makeRun(overrides: Partial<OrphanScanRun> = {}): OrphanScanRun {
     instanceId: 1,
     status: "completed",
     triggeredBy: "manual",
-    scanPaths: [],
+    scanPathCount: 0,
     filesFound: 0,
     filesDeleted: 0,
     foldersDeleted: 0,
@@ -46,18 +56,52 @@ function makeRun(overrides: Partial<OrphanScanRun> = {}): OrphanScanRun {
   }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  getOrphanScanRun.mockReset()
+  vi.useRealTimers()
+})
 
 describe("OrphanScanRunItem", () => {
   const paths = ["/data/torrents/movies", "/data/torrents/cross-seed/MTV"]
 
-  it("expands a run that only has scan paths, listing them with a count", () => {
-    const { container } = render(<OrphanScanRunItem run={makeRun({ scanPaths: paths })} />)
+  const copyButton = (container: HTMLElement) => container.querySelector("[aria-label='actions.copyValue']")
+
+  it("expands a run that only has scan paths, loading them once after it opens", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    getOrphanScanRun.mockResolvedValue({ ...makeRun({ status: "scanning", scanPathCount: 2 }), scanPaths: paths, files: [] })
+    const { client, container } = render(<OrphanScanRunItem run={makeRun({ status: "scanning", scanPathCount: 2 })} />)
+    expect(getOrphanScanRun).not.toHaveBeenCalled()
 
     fireEvent.click(container.querySelector("button")!)
 
     expect(container.textContent).toContain("preferences.orphanScanOverview.scannedPaths:2")
-    expect(container.textContent).toContain(paths.join("\n"))
+    expect(container.textContent).toContain("preferences.orphanScanOverview.scanPathsLoading")
+    expect(copyButton(container)).toBeNull()
+    await waitFor(() => expect(container.textContent).toContain(paths.join("\n")))
+    expect(container.textContent).not.toContain("preferences.orphanScanOverview.scanPathsLoading")
+    expect(copyButton(container)).not.toBeNull()
+
+    fireEvent.click(container.querySelector("button")!)
+    fireEvent.click(container.querySelector("button")!)
+    // A run status event and a stream reconnect invalidate these prefixes.
+    await client.invalidateQueries({ queryKey: ["orphan-scan", 1] })
+    await client.invalidateQueries({ queryKey: ["orphan-scan"] })
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(getOrphanScanRun).toHaveBeenCalledTimes(1)
+    expect(getOrphanScanRun).toHaveBeenCalledWith(1, 1, { limit: 1 })
+  })
+
+  it("shows an error line when the scan paths fail to load", async () => {
+    getOrphanScanRun.mockRejectedValue(new Error("boom"))
+    const { container } = render(<OrphanScanRunItem run={makeRun({ scanPathCount: 2 })} />)
+
+    fireEvent.click(container.querySelector("button")!)
+
+    await waitFor(() => expect(container.textContent).toContain("preferences.orphanScanOverview.scanPathsLoadFailed"))
+    expect(container.textContent).toContain("preferences.orphanScanOverview.scannedPaths:2")
+    expect(container.textContent).not.toContain("preferences.orphanScanOverview.scanPathsLoading")
+    expect(copyButton(container)).toBeNull()
   })
 
   it("keeps the reclaimed size's number and unit together", () => {

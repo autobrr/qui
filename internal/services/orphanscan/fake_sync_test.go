@@ -48,11 +48,16 @@ func stubSync(svc *Service) *fakeSync {
 	return f
 }
 
-func (f *fakeSync) GetTorrentsFresh(ctx context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *fakeSync) GetTorrentRefsFresh(ctx context.Context, instanceID int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if f.getAllTorrents == nil {
 		return nil, errNotStubbed
 	}
-	return f.getAllTorrents(ctx, instanceID)
+	torrents, err := f.getAllTorrents(ctx, instanceID)
+	refs := make([]*qbt.Torrent, len(torrents))
+	for i := range torrents {
+		refs[i] = &torrents[i]
+	}
+	return refs, err
 }
 
 func (f *fakeSync) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {

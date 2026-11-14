@@ -90,6 +90,9 @@ func (f *fakePreferencesQbit) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			addresses = []string{}
 		}
 		_ = json.NewEncoder(w).Encode(addresses)
+	case "sync/maindata":
+		// qBittorrent always answers a sync for rid 0 with a full update.
+		_, _ = io.WriteString(w, `{"rid":1,"full_update":true}`)
 	default:
 		_, _ = io.WriteString(w, "{}")
 	}

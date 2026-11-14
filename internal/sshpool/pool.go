@@ -208,7 +208,8 @@ func (p *Pool) take(ctx context.Context, inst *models.Instance) (live, *entry, e
 
 	entry.client = client
 	entry.sftp = sftpClient
-	entry.tier = p.probeTier(ctx, row, client)
+	_, hardlink := sftpClient.HasExtension(HardlinkExtension)
+	entry.tier = p.probeTier(ctx, row, client, hardlink)
 	entry.err = nil
 	entry.touch()
 	done := make(chan struct{})

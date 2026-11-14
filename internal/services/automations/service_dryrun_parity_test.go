@@ -6,16 +6,22 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -52,55 +58,165 @@ func (m parityCrossMatcher) BuildCrossMatchSets(context.Context, int, CrossMatch
 	return &CrossMatchResult{SameInstanceContentByHash: m.sameContent}
 }
 
+func (m parityCrossMatcher) OpenCrossMatchSession(ctx context.Context, instanceID int, needs CrossMatchNeeds) (CrossMatchSession, error) {
+	return cannedSession{m.BuildCrossMatchSets(ctx, instanceID, needs)}, nil
+}
+
 // newDryRunParityService boots a Service against a stub qBittorrent that serves the fixture.
 func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int) {
 	t.Helper()
 
-	maindata, err := json.Marshal(map[string]any{
-		"rid": 1, "full_update": true, "server_state": map[string]any{"free_space_on_disk": 1000}, "torrents": fixture.torrents,
-	})
+	torrents, err := json.Marshal(fixture.torrents)
 	require.NoError(t, err)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v2/auth/login":
-			_, _ = w.Write([]byte("Ok."))
-		case "/api/v2/app/webapiVersion":
-			_, _ = w.Write([]byte("2.10.0"))
-		case "/api/v2/sync/maindata":
-			_, _ = w.Write(maindata)
-		case "/api/v2/torrents/files":
-			files := fixture.files[r.URL.Query().Get("hash")]
-			if files == nil {
-				files = qbt.TorrentFiles{}
-			}
-			_ = json.NewEncoder(w).Encode(files)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+	stub := newStubQbt(t, string(torrents))
+	stub.files = make(map[string]string, len(fixture.files))
+	for hash, files := range fixture.files {
+		encoded, err := json.Marshal(files)
+		require.NoError(t, err)
+		stub.files[hash] = string(encoded)
+	}
+	stub.localFS = fixture.localFS
+	svc, _, instanceIDs := newStubService(t, parityCrossMatcher{sameContent: fixture.sameContent}, stub)
+	return svc, instanceIDs[0]
+}
+
+// stubWrite is one write request a stubQbt received.
+type stubWrite struct {
+	path string
+	form url.Values
+}
+
+// stubQbt is a stub qBittorrent that serves a fixed torrent list and records every write in arrival order.
+type stubQbt struct {
+	url string
+
+	mu       sync.Mutex
+	torrents string            // JSON object keyed by hash, as in sync/maindata
+	files    map[string]string // torrents/files answer by hash; other hashes get no files
+	writes   []stubWrite
+	localFS  bool // the instance has local filesystem access
+	// torrentsAfterAdd replaces torrents on torrents/add, so an export's verification finds the torrent.
+	torrentsAfterAdd string
+	// refuse makes the stub answer a write with 409 Conflict, as qBittorrent does when it refuses a request.
+	refuse func(path string, form url.Values) bool
+	// webAPIVersion replaces the default Web API version 2.10.0.
+	webAPIVersion string
+	fileReads     int // torrents/files requests
+	// trackers is the sync/maindata trackers map, as JSON.
+	trackers string
+	// trackerInfo is the torrents/info answer, as JSON.
+	trackerInfo string
+}
+
+func newStubQbt(t *testing.T, torrents string) *stubQbt {
+	t.Helper()
+
+	stub := &stubQbt{torrents: torrents}
+	server := httptest.NewServer(http.HandlerFunc(stub.serveHTTP))
 	t.Cleanup(server.Close)
+	stub.url = server.URL
+	return stub
+}
+
+func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/api/v2/auth/login":
+		_, _ = w.Write([]byte("Ok."))
+	case "/api/v2/app/webapiVersion":
+		s.mu.Lock()
+		version := s.webAPIVersion
+		s.mu.Unlock()
+		if version == "" {
+			version = "2.10.0"
+		}
+		_, _ = w.Write([]byte(version))
+	case "/api/v2/sync/maindata":
+		s.mu.Lock()
+		torrents, trackers := s.torrents, s.trackers
+		s.mu.Unlock()
+		if trackers != "" {
+			trackers = `,"trackers":` + trackers
+		}
+		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"server_state":{"free_space_on_disk":1000},"torrents":` + torrents + trackers + `}`))
+	case "/api/v2/torrents/info":
+		s.mu.Lock()
+		info := s.trackerInfo
+		s.mu.Unlock()
+		if info == "" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(info))
+	case "/api/v2/torrents/files":
+		s.mu.Lock()
+		files, ok := s.files[r.URL.Query().Get("hash")]
+		s.fileReads++
+		s.mu.Unlock()
+		if !ok {
+			files = `[]`
+		}
+		_, _ = w.Write([]byte(files))
+	case "/api/v2/torrents/export":
+		_, _ = w.Write([]byte("d4:infod4:name6:paritye"))
+	default:
+		if r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			_ = r.ParseForm()
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/api/v2/")
+		s.mu.Lock()
+		if s.refuse != nil && s.refuse(path, r.Form) {
+			s.mu.Unlock()
+			http.Error(w, "refused", http.StatusConflict)
+			return
+		}
+		s.writes = append(s.writes, stubWrite{path: path, form: r.Form})
+		if path == "torrents/add" && s.torrentsAfterAdd != "" {
+			s.torrents = s.torrentsAfterAdd
+		}
+		s.mu.Unlock()
+		_, _ = w.Write([]byte("Ok."))
+	}
+}
+
+// recordedWrites returns the writes received so far, in arrival order.
+func (s *stubQbt) recordedWrites() []stubWrite {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.writes)
+}
+
+// newStubService boots a Service with one instance per stub, in order, and returns the activity database.
+func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int) {
+	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, t.Name())
 	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(t.Context(), "parity", server.URL, "", "", nil, nil, false, new(fixture.localFS))
-	require.NoError(t, err)
-	clearHardlinkIndex := func() {
-		globalHardlinkIndexCache.mu.Lock()
-		delete(globalHardlinkIndexCache.indices, instance.ID)
-		globalHardlinkIndexCache.mu.Unlock()
+	instanceIDs := make([]int, 0, len(stubs))
+	for i, stub := range stubs {
+		instance, err := instanceStore.Create(t.Context(), fmt.Sprintf("stub-%d", i), stub.url, "", "", nil, nil, false, new(stub.localFS))
+		require.NoError(t, err)
+		instanceIDs = append(instanceIDs, instance.ID)
+		clearHardlinkIndex := func() {
+			globalHardlinkIndexCache.mu.Lock()
+			delete(globalHardlinkIndexCache.indices, instance.ID)
+			globalHardlinkIndexCache.mu.Unlock()
+		}
+		clearHardlinkIndex()
+		t.Cleanup(clearHardlinkIndex)
 	}
-	clearHardlinkIndex()
-	t.Cleanup(clearHardlinkIndex)
 
 	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
-	svc := NewService(Config{}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil,
-		parityCrossMatcher{sameContent: fixture.sameContent}, fsops.NewPool(instanceStore, localbackend.NewBackend()))
-	return svc, instance.ID
+	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, models.NewAutomationStore(db), models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	return svc, db, instanceIDs
 }
 
 func parityDeleteRule(mode string, cond *models.RuleCondition) *models.Automation {
@@ -120,22 +236,47 @@ func parityDeleteRule(mode string, cond *models.RuleCondition) *models.Automatio
 
 var parityDeleteTag = &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "delete"}
 
+func parityCategoryRule(action models.CategoryAction) *models.Automation {
+	action.Enabled = true
+	action.Category = "archive"
+	action.Condition = &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "archive"}
+	return &models.Automation{
+		Name:           "parity",
+		TrackerPattern: "*",
+		Enabled:        true,
+		Conditions:     &models.ActionConditions{Category: &action},
+	}
+}
+
+func parityTagRule(action models.TagAction) *models.Automation {
+	action.Enabled = true
+	action.Tags = []string{"managed"}
+	action.Condition = &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "archive"}
+	return &models.Automation{
+		Name:           "parity",
+		TrackerPattern: "*",
+		Enabled:        true,
+		Conditions:     &models.ActionConditions{Tags: []*models.TagAction{&action}},
+	}
+}
+
 // A manual dry run must report the same torrents the live impact preview shows.
 // Both take the same payload; only service-side state can split them.
 func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 	tests := []struct {
-		name    string
-		fixture func(t *testing.T) parityFixture
-		rule    *models.Automation
-		state   func(svc *Service, instanceID int)
-		want    []string
+		name           string
+		fixture        func(t *testing.T) parityFixture
+		rule           *models.Automation
+		state          func(svc *Service, instanceID int)
+		want           []string
+		wantCrossSeeds int
 	}{
 		{
 			name: "torrent touched by a live rule within SkipWithin",
 			rule: parityDeleteRule(DeleteModeWithFilesIncludeCrossSeeds,
 				&models.RuleCondition{Field: models.FieldRatio, Operator: models.OperatorGreaterThanOrEqual, Value: "1"}),
 			state: func(svc *Service, instanceID int) {
-				svc.lastApplied[instanceID] = map[string]time.Time{parityHash: time.Now()}
+				svc.startSkipWindow(instanceID, []string{parityHash}, time.Now())
 			},
 			want: []string{parityHash},
 		},
@@ -227,6 +368,142 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			rule: parityDeleteRule(DeleteModeWithFilesPreserveCrossSeeds, parityDeleteTag),
 			want: []string{"a"},
 		},
+		{
+			name: "category with include cross-seeds",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+						"done":    {"name": "done", "category": "archive", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "category": "tv", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b", "done"}, "b": {"a", "done"}, "done": {"a", "b"}},
+				}
+			},
+			rule:           parityCategoryRule(models.CategoryAction{IncludeCrossSeeds: true}),
+			want:           []string{"a", "b"},
+			wantCrossSeeds: 1,
+		},
+		{
+			name: "category of a rule that is turned off",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a": {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+				}}
+			},
+			rule: func() *models.Automation {
+				rule := parityCategoryRule(models.CategoryAction{})
+				rule.Enabled = false
+				return rule
+			}(),
+			want: []string{"a"},
+		},
+		{
+			name: "category for a group that every member matches",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a":       {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+					"b":       {"name": "b", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+					"outside": {"name": "outside", "category": "tv", "save_path": "/data", "content_path": "/data/other"},
+				}}
+			},
+			rule: parityCategoryRule(models.CategoryAction{GroupID: GroupCrossSeedContentPath}),
+			want: []string{"a", "b"},
+		},
+		{
+			name: "category for a group that one member blocks",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a": {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+					"b": {"name": "b", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+				}}
+			},
+			rule: parityCategoryRule(models.CategoryAction{GroupID: GroupCrossSeedContentPath}),
+			want: []string{},
+		},
+		{
+			name: "category that a cross-seed in a protected category blocks",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":    {"name": "a", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/show"},
+						"kept": {"name": "kept", "category": "keep", "save_path": "/data", "content_path": "/data/show"},
+						"solo": {"name": "solo", "tags": "archive", "category": "tv", "save_path": "/data", "content_path": "/data/solo"},
+					},
+					sameContent: map[string][]string{"a": {"kept"}, "kept": {"a"}},
+				}
+			},
+			rule: parityCategoryRule(models.CategoryAction{BlockIfCrossSeedInCategories: []string{"keep"}}),
+			want: []string{"solo"},
+		},
+		{
+			name: "tag with include cross-seeds",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "save_path": "/data", "content_path": "/data/show"},
+						"done":    {"name": "done", "tags": "managed", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b", "done"}, "b": {"a", "done"}, "done": {"a", "b"}},
+				}
+			},
+			rule:           parityTagRule(models.TagAction{Mode: models.TagModeAdd, IncludeCrossSeeds: true}),
+			want:           []string{"a", "b"},
+			wantCrossSeeds: 1,
+		},
+		{
+			name: "tag with a managed reset re-add",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive, managed", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "tags": "managed", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "tags": "managed", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b"}, "b": {"a"}},
+				}
+			},
+			rule:           parityTagRule(models.TagAction{Mode: models.TagModeAdd, IncludeCrossSeeds: true, DeleteFromClient: true}),
+			want:           []string{"a", "b"},
+			wantCrossSeeds: 1,
+		},
+		{
+			name: "tag where a cross-seed cancels the own removal of a torrent",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{
+					torrents: map[string]map[string]any{
+						"a":       {"name": "a", "tags": "archive", "save_path": "/data", "content_path": "/data/show"},
+						"b":       {"name": "b", "tags": "managed", "save_path": "/data", "content_path": "/data/show"},
+						"outside": {"name": "outside", "tags": "managed", "save_path": "/data", "content_path": "/data/other"},
+					},
+					sameContent: map[string][]string{"a": {"b"}, "b": {"a"}},
+				}
+			},
+			rule: parityTagRule(models.TagAction{Mode: models.TagModeFull, IncludeCrossSeeds: true}),
+			want: []string{"a", "outside"},
+		},
+		{
+			name: "tag that one rule adds and then removes",
+			fixture: func(*testing.T) parityFixture {
+				return parityFixture{torrents: map[string]map[string]any{
+					"a": {"name": "a", "tags": "archive", "save_path": "/data", "content_path": "/data/show"},
+				}}
+			},
+			rule: func() *models.Automation {
+				rule := parityTagRule(models.TagAction{Mode: models.TagModeAdd})
+				rule.Conditions.Tags = append(rule.Conditions.Tags, &models.TagAction{
+					Enabled:   true,
+					Tags:      []string{"managed"},
+					Mode:      models.TagModeRemove,
+					Condition: &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "archive"},
+				})
+				return rule
+			}(),
+			want: []string{"a"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -236,14 +513,26 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			}
 			svc, instanceID := newDryRunParityService(t, fixture)
 
-			preview, err := svc.PreviewDeleteRule(t.Context(), instanceID, tt.rule, 100, 0, "needed")
+			wantAction := models.ActivityActionDeletedCondition
+			var preview *PreviewResult
+			var err error
+			switch {
+			case tt.rule.Conditions.Category != nil:
+				wantAction = models.ActivityActionCategoryChanged
+				preview, err = svc.PreviewCategoryRule(t.Context(), instanceID, tt.rule, 100, 0)
+			case len(tt.rule.Conditions.TagActions()) > 0:
+				wantAction = models.ActivityActionTagsChanged
+				preview, err = svc.PreviewTagRule(t.Context(), instanceID, tt.rule, 100, 0)
+			default:
+				preview, err = svc.PreviewDeleteRule(t.Context(), instanceID, tt.rule, 100, 0, "needed")
+			}
 			require.NoError(t, err)
 			previewHashes := make([]string, 0, len(preview.Examples))
 			for _, example := range preview.Examples {
 				previewHashes = append(previewHashes, example.Hash)
 			}
 			require.ElementsMatch(t, tt.want, previewHashes)
-			require.Zero(t, preview.CrossSeedCount, "only an include-cross-seeds expansion counts cross-seeds")
+			require.Equal(t, tt.wantCrossSeeds, preview.CrossSeedCount)
 
 			if tt.state != nil {
 				tt.state(svc, instanceID)
@@ -252,12 +541,16 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 			activities, err := svc.ApplyRuleDryRun(t.Context(), instanceID, tt.rule)
 			require.NoError(t, err)
 			require.Len(t, activities, 1)
-			require.Equal(t, models.ActivityActionDeletedCondition, activities[0].Action)
-			run, err := svc.GetActivityRun(instanceID, activities[0].ID, 100, 0)
-			require.NoError(t, err)
-			dryRunHashes := make([]string, 0, len(run.Items))
-			for _, item := range run.Items {
-				dryRunHashes = append(dryRunHashes, item.Hash)
+			dryRunHashes := make([]string, 0)
+			if len(tt.want) == 0 {
+				require.Equal(t, models.ActivityActionDryRunNoMatch, activities[0].Action)
+			} else {
+				require.Equal(t, wantAction, activities[0].Action)
+				run, err := svc.GetActivityRun(instanceID, activities[0].ID, 100, 0)
+				require.NoError(t, err)
+				for _, item := range run.Items {
+					dryRunHashes = append(dryRunHashes, item.Hash)
+				}
 			}
 			require.ElementsMatch(t, previewHashes, dryRunHashes, "the dry run must select the torrents that the preview shows")
 		})

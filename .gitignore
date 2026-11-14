@@ -55,8 +55,8 @@ cpu.pprof
 internal/themes/assets/premium/*
 # Legacy fetch target for premium themes; keeps old checkouts from staging them.
 web/src/themes/premium/
-# Premium theme fetch scratch dir; its .git config embeds the repo token.
 .themes-temp/
+/THIRD_PARTY_NOTICES
 
 # Preserve files
 !.gitkeep

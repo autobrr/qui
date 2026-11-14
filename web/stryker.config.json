@@ -1,0 +1,6 @@
+{
+  "testRunner": "vitest",
+  "plugins": ["./node_modules/@stryker-mutator/vitest-runner/dist/src/index.js"],
+  "inPlace": true,
+  "reporters": ["clear-text", "progress"]
+}

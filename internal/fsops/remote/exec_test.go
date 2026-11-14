@@ -27,9 +27,11 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// SetSSHTier leaves the row alone: each test picks the tier its backend
+// SetSSHProbe leaves the row alone: each test picks the tier its backend
 // reads, and the pool tests cover the write.
-func (fakeCreds) SetSSHTier(context.Context, int, models.SSHTier) error { return nil }
+func (fakeCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, bool) error {
+	return nil
+}
 
 // newExecBackend is newBackend on the exec tier. The fake server runs each
 // command through the local sh, against the files the sftp subsystem serves.
@@ -254,6 +256,68 @@ func TestExecWalkFallsBackToSFTPOnAnUnreadableDirectory(t *testing.T) {
 	assert.Equal(t, []string{locked}, errs)
 	require.Len(t, files, 1)
 	assert.ErrorIs(t, files[0].FileIDErr, errNoIdentity, "the sftp walk carries no identity")
+}
+
+// A record cut short by a clean exit is a truncated tree, not a complete walk.
+func TestExecWalkFallsBackToSFTPOnATornRecord(t *testing.T) {
+	t.Parallel()
+
+	backend, server := newExecBackend(t)
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file"), nil, 0o600))
+	server.TruncateOnExec("-mindepth", "f 1 2 1 0")
+
+	ch, err := backend.WalkDir(t.Context(), root, fsops.WalkOptions{WantFileID: true})
+	require.NoError(t, err)
+	var files []fsops.WalkEntry
+	for e := range ch {
+		require.NoError(t, e.Err)
+		if e.Mode.IsRegular() {
+			files = append(files, e)
+		}
+	}
+	require.Len(t, files, 1)
+	assert.ErrorIs(t, files[0].FileIDErr, errNoIdentity, "the sftp walk carries no identity")
+}
+
+// The walk ends with nothing but the root sent, because an sftp walk on the redialled connection reads no identity.
+// regression: #3838
+func TestExecWalkEndsWhenFindLosesTheConnection(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		output string
+	}{
+		{name: "before any output"},
+		{name: "inside a record", output: "f 1 2 1 0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend, server := newExecBackend(t)
+			root := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(root, "file"), nil, 0o600))
+			server.DropOnExec("-mindepth", tt.output)
+
+			ch, err := backend.WalkDir(t.Context(), root, fsops.WalkOptions{WantFileID: true})
+			require.NoError(t, err)
+			var entries []fsops.WalkEntry
+			for e := range ch {
+				entries = append(entries, e)
+			}
+
+			require.Len(t, entries, 2, "the root and the cut, with no file from an sftp walk")
+			cut := entries[1]
+			require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
+			require.Equal(t, root, cut.Path)
+			// The pool hands out the dropped client until its watcher clears the entry.
+			require.Eventually(t, func() bool {
+				_, err := backend.Lstat(t.Context(), root)
+				return err == nil
+			}, 5*time.Second, 5*time.Millisecond, "sftp can redial, so only the cut ends this walk")
+		})
+	}
 }
 
 // The key loses its shell: the reconnect writes the tier down, and a backend

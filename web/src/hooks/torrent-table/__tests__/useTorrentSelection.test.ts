@@ -5,6 +5,7 @@
 
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { type SelectionRow, type UseTorrentSelectionParams, useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
+import { COLLAPSED_COPY_GROUPS } from "@/lib/copy-groups"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { Torrent } from "@/types"
 import { act, renderHook } from "@testing-library/react"
@@ -22,7 +23,9 @@ const DEFAULT_TORRENTS = [
 
 function props(torrents: Torrent[], overrides: Partial<UseTorrentSelectionParams> = {}): UseTorrentSelectionParams {
   return {
-    sortedTorrents: torrents,
+    visibleTorrents: torrents,
+    groupExpansion: COLLAPSED_COPY_GROUPS,
+    groupedRows: false,
     isReadOnly: false,
     isCrossInstanceEndpoint: false,
     instanceId: 1,
@@ -70,6 +73,18 @@ describe("useTorrentSelection — shift-click anchor", () => {
     act(() => result.current.handleCheckboxChange(DEFAULT_TORRENTS[0], "0", true))
     expect(result.current.lastSelectedIndexRef.current).toBe(0)
     act(() => result.current.clearSelection())
+    expect(result.current.lastSelectedIndexRef.current).toBeNull()
+  })
+
+  // regression: #3930
+  it.each([
+    ["Group copies turns off", true, false],
+    ["grouped rows arrive after Grouping…", false, true],
+  ])("drops the anchor when %s", (_, before, after) => {
+    const { result, rerender } = render({ groupedRows: before })
+    act(() => result.current.handleCheckboxChange(DEFAULT_TORRENTS[1], "1", true))
+    expect(result.current.lastSelectedIndexRef.current).toBe(1)
+    rerender(props(DEFAULT_TORRENTS, { groupedRows: after }))
     expect(result.current.lastSelectedIndexRef.current).toBeNull()
   })
 })

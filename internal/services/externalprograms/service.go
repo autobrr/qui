@@ -553,7 +553,7 @@ func (s *Service) IsPathAllowed(programPath string) bool {
 		return true
 	}
 
-	allowList := s.config.ExternalProgramAllowList
+	allowList := s.config.Live().ExternalProgramAllowList
 	if len(allowList) == 0 {
 		return true
 	}

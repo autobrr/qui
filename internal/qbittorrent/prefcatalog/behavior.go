@@ -18,6 +18,7 @@ var behaviorEntries = slices.Concat(
 	},
 	// The search keys keep the search tabs of the qBittorrent WebUI and desktop app, which qui does not use.
 	notShown(TabBehavior, reasonWebUIOnly,
-		"locale", "confirm_torrent_deletion", "status_bar_external_ip", "performance_warning",
+		"locale", "confirm_torrent_deletion", "confirm_remove_all_tags", "confirm_remove_tracker_from_all_torrents",
+		"status_bar_external_ip", "performance_warning",
 		"store_search_jobs", "store_search_job_results"),
 )

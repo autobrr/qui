@@ -259,3 +259,38 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.Contains(t, conflict.Body.String(), fmt.Sprintf("runId=%d status=preview_ready", oldLocal))
 	require.Equal(t, "preview_ready", status(oldLocal))
 }
+
+func TestOrphanScan_RunsListCountsScanPathsAndOneRunListsThem(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "orphan-scan-path-count")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+	router := newOrphanScanRouter(NewOrphanScanHandler(store, instances, nil))
+	instance := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)
+
+	runID, err := store.CreateRunIfNoActive(t.Context(), instance.ID, "manual")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunScanPaths(t.Context(), runID, []string{"/data/tv", "/data/movies"}))
+
+	get := func(path string) map[string]any {
+		resp := httptest.NewRecorder()
+		url := fmt.Sprintf("/api/instances/%d/orphan-scan%s", instance.ID, path)
+		router.ServeHTTP(resp, httptest.NewRequestWithContext(t.Context(), http.MethodGet, url, nil))
+		require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+		var body any
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+		if list, ok := body.([]any); ok {
+			require.Len(t, list, 1)
+			body = list[0]
+		}
+		return body.(map[string]any)
+	}
+
+	listed := get("/runs")
+	require.InDelta(t, 2, listed["scanPathCount"], 0)
+	require.NotContains(t, listed, "scanPaths")
+
+	one := get(fmt.Sprintf("/runs/%d?limit=1", runID))
+	require.InDelta(t, 2, one["scanPathCount"], 0)
+	require.Equal(t, []any{"/data/tv", "/data/movies"}, one["scanPaths"])
+}

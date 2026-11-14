@@ -277,20 +277,3 @@ func TestDefaultInstanceCrossSeedCompletionSettings(t *testing.T) {
 	assert.Empty(t, defaults.ExcludeCategories)
 	assert.Empty(t, defaults.ExcludeTags)
 }
-
-func TestInstanceCrossSeedCompletionSettings_ImplementsCompletionFilterProvider(t *testing.T) {
-	settings := &models.InstanceCrossSeedCompletionSettings{
-		Categories:        []string{"cat1", "cat2"},
-		Tags:              []string{"tag1"},
-		ExcludeCategories: []string{"excat"},
-		ExcludeTags:       []string{"extag1", "extag2"},
-	}
-
-	// Verify it implements the interface
-	var provider models.CompletionFilterProvider = settings
-
-	assert.ElementsMatch(t, []string{"cat1", "cat2"}, provider.GetCategories())
-	assert.ElementsMatch(t, []string{"tag1"}, provider.GetTags())
-	assert.ElementsMatch(t, []string{"excat"}, provider.GetExcludeCategories())
-	assert.ElementsMatch(t, []string{"extag1", "extag2"}, provider.GetExcludeTags())
-}

@@ -121,6 +121,23 @@ describe("useTorrentTableArrowNavigation", () => {
     expect(event.defaultPrevented).toBe(false)
   })
 
+  // regression: #3922
+  it("leaves Enter on a focused button to that button", () => {
+    const props = baseProps({ selectedKeys: new Set(["hash2"]) })
+    renderHook(() => useTorrentTableArrowNavigation(props))
+
+    const button = document.createElement("button")
+    document.body.appendChild(button)
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+    act(() => {
+      button.dispatchEvent(event)
+    })
+    button.remove()
+
+    expect(props.onTorrentSelect).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
   it("drives only the panel in read-only mode", () => {
     const props = baseProps({ isReadOnly: true, selectedTorrent: { hash: "hash1" } as Torrent })
     renderHook(() => useTorrentTableArrowNavigation(props))

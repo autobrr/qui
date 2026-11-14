@@ -12,6 +12,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -30,6 +31,7 @@ type scanWorkSelection struct {
 }
 
 func selectEligibleRootWork(
+	d fsops.PathDialect,
 	scanResult *ScanResult,
 	trackedFiles *trackedFilesIndex,
 	parser *Parser,
@@ -63,7 +65,7 @@ func selectEligibleRootWork(
 			discoveredPaths[f.Path] = struct{}{}
 		}
 
-		items := buildSearcheeWorkItems(root, parser)
+		items := buildSearcheeWorkItems(d, root, parser)
 		pendingItems := make([]searcheeWorkItem, 0, len(items))
 		droppedItems := make([]workItemDropDecision, 0, len(items))
 		for _, item := range items {
@@ -80,7 +82,7 @@ func selectEligibleRootWork(
 			}
 			// Checked after stale and all_final so the count reads as searches
 			// the option avoided this scan, not as a running total of episodes.
-			// Same rule as SkipIndividualEpisodes in crossseed/service.go: an episode
+			// Same rule as SkipIndividualEpisodes in crossseed/library_scan.go: an episode
 			// that cannot join a season pack search is dropped, never searched alone.
 			// Change both together.
 			if skipIndividualEpisodes && item.isEpisode {

@@ -172,6 +172,8 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 			_, err := pool.SFTP(t.Context(), inst)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, inst.SSHTier)
+			require.NotNil(t, inst.SSHHardlink, "every connect answers the hardlink flag")
+			assert.True(t, *inst.SSHHardlink, "the test server advertises hardlink@openssh.com")
 
 			_, err = pool.Exec(t.Context(), inst)
 			if tt.want == models.SSHTierExec {
@@ -248,6 +250,8 @@ func TestPoolKeepsTheTierWhenTheProbeHangs(t *testing.T) {
 	_, err := pool.SFTP(t.Context(), inst)
 	require.NoError(t, err, "a hung exec channel must not fail the sftp connection")
 	assert.Equal(t, models.SSHTierExec, inst.SSHTier)
+	require.NotNil(t, inst.SSHHardlink, "the sftp client answered the hardlink question before the exec probe hung")
+	assert.True(t, *inst.SSHHardlink)
 	_, err = pool.Exec(t.Context(), inst)
 	require.ErrorIs(t, err, ErrNoExec)
 }

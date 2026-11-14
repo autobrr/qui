@@ -6,6 +6,17 @@
   /* These are the only custom animations we need - tw-animate-css handles the rest */
   --animate-accordion-down: accordion-down 0.1s ease-out;
   --animate-accordion-up: accordion-up 0.1s ease-out;
+  --animate-feature-notice-pulse: feature-notice-pulse 1.6s ease-out infinite;
+
+  @keyframes feature-notice-pulse {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 30%, transparent);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 8px 6px transparent;
+    }
+  }
 }
 
 /* Hide scrollbars on mobile devices */

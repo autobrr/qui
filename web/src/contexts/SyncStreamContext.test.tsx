@@ -351,6 +351,25 @@ describe("SyncStreamContext", () => {
       expect(streams[0].summary).toBe(true)
     })
 
+    it("gives a grouped subscription its own key and sends groupCopies only on it", () => {
+      const grouped = { ...BASE_PARAMS, groupCopies: true }
+      expect(createStreamKey(grouped)).not.toBe(createStreamKey(BASE_PARAMS))
+      expect(createStreamKey({ ...BASE_PARAMS, groupCopies: false })).toBe(createStreamKey(BASE_PARAMS))
+      expect(createStreamKey(BASE_PARAMS)).not.toContain("groupCopies")
+
+      // Each subscriber has its own provider, so each opens its own stream.
+      renderSubscriber(BASE_PARAMS)
+      renderSubscriber(grouped)
+      flushConnectionQueue()
+
+      const [flat, groupedStream] = MockEventSource.instances.map(source =>
+        JSON.parse(new URL(source.url, "http://localhost").searchParams.get("streams") ?? "[]")[0])
+      expect(flat.key).toBe(createStreamKey(BASE_PARAMS))
+      expect("groupCopies" in flat).toBe(false)
+      expect(groupedStream.key).toBe(createStreamKey(grouped))
+      expect(groupedStream.groupCopies).toBe(true)
+    })
+
     it("marks the entry connected once an update payload arrives", () => {
       const { controls } = renderSubscriber(BASE_PARAMS)
       flushConnectionQueue()

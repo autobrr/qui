@@ -43,7 +43,7 @@ func TestWebhookTriggerScan_WindowsDirectoryIdentity(t *testing.T) {
 			require.NoError(t, err)
 			instance, err := instances.Create(ctx, "synthetic", "http://localhost:8080", "", "", nil, nil, false, new(true))
 			require.NoError(t, err)
-			service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil, instances,
+			service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil,
 				nil, nil, nil, nil, nil, fsops.NewPool(instances, localbackend.NewBackend()), nil)
 			hub, events := newActivityHub(t)
 			service.SetActivityPublisher(hub)

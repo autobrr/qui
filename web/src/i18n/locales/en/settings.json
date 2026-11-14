@@ -12,7 +12,9 @@
     "externalPrograms": "External Programs",
     "notifications": "Notifications",
     "dateTime": "Time & Language",
-    "premiumThemes": "Premium Themes",
+    "statistics": "Statistics",
+    "trackers": "Tracker Customizations",
+    "premiumThemes": "Themes",
     "security": "Security",
     "logs": "Logs"
   },
@@ -102,7 +104,6 @@
       "proxyUrl": "Proxy URL",
       "showProxyUrl": "Show proxy URL",
       "hideProxyUrl": "Hide proxy URL",
-      "copyProxyUrl": "Copy proxy URL",
       "done": "Done"
     },
     "deleteDialog": {
@@ -118,9 +119,7 @@
       "deleted": "Client API key deleted successfully",
       "deleteFailed": "Failed to delete client API key: {{error}}",
       "clientNameRequired": "Client name is required",
-      "selectInstance": "Please select a qBittorrent instance",
-      "proxyCopied": "Proxy URL copied to clipboard",
-      "copyFailed": "Failed to copy to clipboard"
+      "selectInstance": "Please select a qBittorrent instance"
     }
   },
   "apiKeys": {
@@ -132,21 +131,77 @@
     "apiDocs": "API Docs",
     "description": "API keys allow external applications to access your qBittorrent instances.",
     "createButton": "Create API Key",
+    "editButton": "Edit {{name}}",
+    "deleteButton": "Delete {{name}}",
     "loading": "Loading API keys...",
     "empty": "No API keys created yet",
     "createDialog": {
       "title": "Create API Key",
-      "description": "Give your API key a descriptive name to remember its purpose.",
+      "description": "Give the key a name, and pick only the access that it needs.",
       "nameLabel": "Name",
       "namePlaceholder": "e.g., Automation Script",
       "nameRequired": "Name is required",
       "submit": "Create API Key",
       "creating": "Creating..."
     },
+    "editDialog": {
+      "title": "Edit API Key",
+      "description": "Changes apply on the next request of this key. qui never shows the key itself again.",
+      "submit": "Save changes",
+      "saving": "Saving..."
+    },
+    "permissions": {
+      "title": "Permissions",
+      "help": "Write includes read and run. Run does not include read, because settings hold credentials.",
+      "required": "Pick at least one permission.",
+      "access": "Access",
+      "allAreas": "All areas",
+      "allAreasExcept": "All areas except {{areas}}",
+      "refusedByLimit": "Cross-seed and Dir Scan refuse a key with an instance limit, so qui does not save those permissions.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Show access by area for {{name}}",
+      "partialArea": "{{area}} ({{levels}} only)",
+      "legend": {
+        "title": "One block per permission area:",
+        "none": "no access"
+      },
+      "levels": {
+        "read": "read",
+        "run": "run",
+        "write": "write"
+      },
+      "areas": {
+        "instances": "Instances",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-seed",
+        "dirScan": "Dir Scan",
+        "automations": "Automations",
+        "rss": "RSS",
+        "backups": "Backups",
+        "orphanScan": "Orphan scan",
+        "externalPrograms": "External programs",
+        "indexers": "Indexers",
+        "arr": "Arr",
+        "notifications": "Notifications",
+        "settings": "Settings",
+        "logs": "Logs",
+        "system": "System"
+      }
+    },
+    "instanceLimit": {
+      "title": "Instance limit",
+      "help": "Pick the instances that this key can reach. No pick means all instances, also the ones that you add later.",
+      "reaches": "Reaches",
+      "all": "All instances",
+      "only": "Only {{instances}}",
+      "none": "No instances. The limit holds only deleted instances.",
+      "deleted": "Deleted instance {{id}}"
+    },
     "newKey": {
       "label": "Your new API key",
       "warning": "Save this key now. You won't be able to see it again.",
-      "done": "Done"
+      "done": "Done",
+      "apiKey": "API key"
     },
     "deleteDialog": {
       "title": "Delete API Key?",
@@ -159,8 +214,8 @@
       "createFailed": "Failed to create API key",
       "deleted": "API key deleted successfully",
       "deleteFailed": "Failed to delete API key",
-      "copied": "API key copied to clipboard",
-      "copyFailed": "Failed to copy to clipboard"
+      "updated": "API key updated successfully",
+      "updateFailed": "Failed to update API key"
     }
   },
   "externalPrograms": {
@@ -244,7 +299,7 @@
     "loading": "Loading notification targets…",
     "loadFailed": "Failed to load notification targets",
     "empty": "No notification targets configured. Add one to start receiving alerts.",
-    "allEvents": "All events",
+    "allEvents": "All events except System notice",
     "showList": "Show list",
     "hideList": "Hide list",
     "badges": {
@@ -343,6 +398,56 @@
       "error": "Failed to save date and time preferences"
     }
   },
+  "statistics": {
+    "cardTitle": "Statistics",
+    "cardDescription": "qui records the upload and download of each torrent in its database. These settings apply to all instances.",
+    "recording": {
+      "label": "Record transfer history",
+      "description": "While this is off, qui records nothing and keeps the stored history. The time while it is off becomes a recording gap."
+    },
+    "retention": {
+      "label": "Keep daily detail for",
+      "description": "After this time, qui folds the hourly totals into days, and the daily bytes of each torrent into one row for each year. The totals stay the same. When you select a shorter time, qui folds the older detail at the next reading, and you cannot get it back.",
+      "days90": "90 days",
+      "days400": "400 days",
+      "forever": "Forever"
+    },
+    "size": {
+      "label": "History size"
+    },
+    "deleteHistory": {
+      "label": "Delete history",
+      "description": "Delete the transfer history of one instance or of all instances. You cannot get it back.",
+      "instance": "Instance",
+      "allInstances": "All instances",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Everything",
+      "before": "Everything before a date",
+      "date": "Date",
+      "button": "Delete history",
+      "confirmTitle": "Delete history?",
+      "confirmEverything": "qui deletes all the history of {{name}}. Recording starts again with a new baseline. You cannot undo this.",
+      "confirmBefore": "qui deletes the history of {{name}} before {{date}}. If recording started before that date, the bytes from before the first recording go too, and \"Recording since\" moves to that date. You cannot undo this.",
+      "sqliteSpace": "The database file keeps its size. SQLite uses the free space again for new history.",
+      "postgresSpace": "A delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again for new history.",
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "deleted": "History deleted",
+      "failed": "Failed to delete the history",
+      "shrink": {
+        "label": "Also shrink the database file",
+        "restart": "qui restarts and makes the file smaller, so you get the disk space back. qui is unavailable for a short time.",
+        "nextStart": "qui cannot restart itself on this install. The shrink runs at the next start of qui.",
+        "tooLittleSpace": "The disk has {{free}} free, and a shrink needs up to {{need}}. It is safe to leave this off: SQLite uses the free space again for new history.",
+        "manualDocs": "Shrink the file by hand"
+      }
+    },
+    "loadFailed": "Failed to load the Statistics settings",
+    "toasts": {
+      "saved": "Statistics settings saved",
+      "saveFailed": "Failed to save the Statistics settings"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "Change Password",
@@ -424,38 +529,37 @@
     "selector": {
       "title": "Theme Selection",
       "loadingDescription": "Loading available themes...",
-      "description": "Choose from available themes. Premium themes require a valid license.",
-      "verificationUnavailable": "License verification unavailable. Premium theme switching is temporarily disabled.",
-      "notLoaded": "Premium themes not loaded",
-      "notLoadedDescription": "Configure",
-      "notLoadedAnd": "and run",
-      "premium": "Premium",
-      "pro": "Pro",
+      "description": "Choose from available themes. Some themes need a valid license.",
+      "verificationUnavailable": "License verification unavailable. Switching to a licensed theme is temporarily disabled.",
+      "notLoaded": "Licensed themes not loaded",
+      "notLoadedDescription": "Run",
       "free": "Free",
       "locked": "Locked",
-      "lock": "Lock"
+      "lock": "Lock",
+      "showTheme": "Show",
+      "hideTheme": "Hide"
     },
     "toasts": {
-      "premiumRequired": "Premium license required",
-      "premiumRequiredDescription": "Unlock premium themes by adding a valid premium license."
+      "premiumRequired": "License required",
+      "premiumRequiredDescription": "Add a valid license to unlock all themes."
     },
     "license": {
       "loadingTitle": "License Management",
       "loadingDescription": "Loading theme licenses...",
       "managementTitle": "License Management",
-      "managementDescription": "Manage your theme license and premium access",
+      "managementDescription": "Manage your theme license",
       "providers": {
         "licensePortal": "license portal"
       },
       "status": {
-        "unlockTitle": "Unlock Premium Themes",
+        "unlockTitle": "Unlock all themes",
         "unlockDescription": "Pay what you want (min $9.99) • Lifetime license • All themes",
-        "activeTitle": "Premium Access Active",
-        "activeDescription": "You have access to all current and future premium themes",
+        "activeTitle": "License Active",
+        "activeDescription": "You have access to all current and future themes",
         "activationRequiredTitle": "License Activation Required",
         "activationRequiredDescription": "Your license needs to be activated on this machine",
         "offlineTitle": "License Service Unreachable",
-        "offlineDescription": "qui could not reach the license service for 7 days, so premium themes are locked. qui checks at startup and one time each day. The themes unlock when the service answers. You do not have to re-activate the license."
+        "offlineDescription": "qui could not reach the license service for 7 days, so the licensed themes are locked. qui checks at startup and one time each day. The themes unlock when the service answers. You do not have to re-activate the license."
       },
       "portalHelp": {
         "prefix": "Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the",
@@ -507,7 +611,7 @@
         "addLicense": "Add License",
         "remove": "Remove",
         "removing": "Removing...",
-        "getPremium": "Get Premium",
+        "getPremium": "Get a license",
         "reactivate": "Re-activate License",
         "activating": "Activating...",
         "copyLicenseKey": "Copy License Key",
@@ -523,17 +627,17 @@
         "recoverPrefix": "If needed, you can recover it later from your"
       },
       "addDialog": {
-        "title": "Add Premium License",
-        "description": "Enter your premium theme license key to unlock all premium themes.",
+        "title": "Add License",
+        "description": "Enter your license key to unlock all themes.",
         "label": "License Key",
-        "placeholder": "Enter your premium theme license key",
+        "placeholder": "Enter your license key",
         "recoverKey": "Recover key?",
         "validation": {
           "required": "License key is required"
         }
       },
       "paymentDialog": {
-        "title": "Get Premium License",
+        "title": "Get a License",
         "description": "Pay what you want (min $9.99) • Lifetime license • All themes",
         "steps": {
           "choosePaymentMethod": {
@@ -565,10 +669,10 @@
       "copiedVerify": "Verification command copied",
       "failedCopyVerify": "Failed to copy verification command",
       "toasts": {
-        "activationSuccessPremium": "Premium access activated! Thank you!",
-        "paymentCompleted": "Payment completed. Add your premium license key to finish setup.",
+        "activationSuccessPremium": "License activated! Thank you!",
+        "paymentCompleted": "Payment completed. Add your license key to finish setup.",
         "paymentNotCompleted": "Payment did not complete successfully.",
-        "returnedFromCheckout": "Returned from checkout. Add your premium license key when ready.",
+        "returnedFromCheckout": "Returned from checkout. Add your license key when ready.",
         "keyCopied": "License key copied to clipboard",
         "copyFailed": "Failed to copy license key",
         "removedFromMachine": "License removed from this machine"
@@ -577,9 +681,9 @@
     "custom": {
       "badge": "Custom",
       "title": "Custom Themes",
-      "lockedTitle": "Custom themes are a premium feature",
-      "lockedDescription": "Unlock premium to sideload your own theme CSS files from a directory on disk.",
-      "unlockCta": "Unlock premium",
+      "lockedTitle": "Custom themes need a license",
+      "lockedDescription": "Get a license to sideload your own theme CSS files from a directory on disk.",
+      "unlockCta": "Get a license",
       "refresh": "Refresh",
       "detectedCount": "Themes found: {{total}}",
       "parseErrorsTitle": "Could not parse these files:",
@@ -1107,11 +1211,74 @@
       "bind": "Bind Address",
       "configDir": "Config Directory",
       "dataDir": "Data Directory"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker Customizations",
+    "cardDescription": "Rename trackers and merge the domains of one tracker into one entry. qui shows the display name everywhere it shows the tracker.",
+    "loading": "Loading trackers…",
+    "empty": "No trackers yet. Trackers show here when an instance has torrents.",
+    "importTooltip": "Import customizations",
+    "exportTooltip": "Export customizations",
+    "mergedFrom": "Merged from: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Merge selected trackers into this group",
+    "mergeIntoGroup": "Merge into group",
+    "addToMerge": "Add to merge",
+    "rename": "Rename",
+    "edit": "Edit",
+    "delete": "Delete",
+    "customizeDialog": {
+      "editTitle": "Edit Tracker Name",
+      "renameTitle": "Rename Tracker",
+      "mergeTitle": "Merge Trackers",
+      "editDescription": "Update the display name for this tracker.",
+      "renameDescription": "Give this tracker a custom display name.",
+      "mergeDescription": "Combine these trackers into a single entry with a custom name.",
+      "displayName": "Display Name",
+      "displayNamePlaceholder": "e.g., TorrentLeech",
+      "domains": "Domain(s)",
+      "selectedTrackers": "Selected Tracker(s)",
+      "primary": "Primary",
+      "removeDomain": "Remove {{domain}}",
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "save": "Save",
+      "renameAction": "Rename",
+      "mergeAction": "Merge"
     },
-    "copyTitle": "Copy {{label}}",
+    "importDialog": {
+      "title": "Import Tracker Customizations",
+      "description": "Paste JSON to import tracker customizations (renames and merges).",
+      "jsonData": "JSON Data",
+      "invalidFormat": "Invalid format: expected trackerCustomizations array",
+      "missingDisplayName": "Invalid entry: missing displayName",
+      "invalidDomains": "Invalid entry: domains must be a non-empty array",
+      "invalidJson": "Invalid JSON",
+      "newCount": "{{count}} new",
+      "conflictCount_one": "{{count}} conflict",
+      "conflictCount_other": "{{count}} conflicts",
+      "unchangedCount": "{{count}} unchanged",
+      "resolveConflicts": "Resolve conflicts",
+      "conflictsWith": "Conflicts with: {{name}}",
+      "skip": "Skip",
+      "overwrite": "Overwrite",
+      "cancel": "Cancel",
+      "importing": "Importing...",
+      "import": "Import"
+    },
     "toasts": {
-      "copied": "{{label}} copied to clipboard",
-      "copyFailed": "Failed to copy {{label}}"
+      "noCustomizationsToExport": "No customizations to export",
+      "copiedToClipboard": "Copied to clipboard",
+      "failedToCopy": "Failed to copy to clipboard",
+      "createFailed": "Failed to create tracker customization",
+      "updateFailed": "Failed to update tracker customization",
+      "deleteFailed": "Failed to delete tracker customization",
+      "failedToImport": "Failed to import: {{names}}",
+      "importedAndSkipped": "Imported {{imported}}, skipped {{skipped}}",
+      "importedCount_one": "Imported {{count}} customization",
+      "importedCount_other": "Imported {{count}} customizations",
+      "noCustomizationsImported": "No customizations imported"
     }
   }
 }

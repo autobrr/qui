@@ -202,13 +202,18 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 
 func dsnWithSearchPath(t *testing.T, dsn string, schema string) string {
 	t.Helper()
+	return dsnWithParam(t, dsn, "search_path", schema)
+}
+
+func dsnWithParam(t *testing.T, dsn string, key string, value string) string {
+	t.Helper()
 
 	parsed, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatalf("parse postgres dsn: %v", err)
 	}
 	query := parsed.Query()
-	query.Set("search_path", schema)
+	query.Set(key, value)
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
 }

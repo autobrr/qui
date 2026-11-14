@@ -9,7 +9,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -30,10 +29,10 @@ func TestBuildGroupKey_AcceptsEachGroupKey(t *testing.T) {
 	}
 
 	for _, key := range GroupKeys {
-		_, ok := buildGroupKey([]string{key}, torrent, &qbittorrent.SyncManager{}, evalCtx)
+		_, ok := buildGroupKey([]string{key}, torrent, noSkipWindow(), evalCtx)
 		require.True(t, ok, key)
 	}
 
-	_, ok := buildGroupKey([]string{"unknown"}, torrent, &qbittorrent.SyncManager{}, evalCtx)
+	_, ok := buildGroupKey([]string{"unknown"}, torrent, noSkipWindow(), evalCtx)
 	require.False(t, ok)
 }

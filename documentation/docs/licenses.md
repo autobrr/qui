@@ -1,19 +1,19 @@
 ---
 sidebar_position: 99
-title: Premium theme licenses
+title: Theme licenses
 sidebar_label: License Management
-description: Manage premium theme license activations, deactivate old servers, and recover lost keys.
+description: Manage theme license activations, deactivate old servers, and recover lost keys.
 ---
 
 # License Management
 
-Premium themes require a license key. Each key has a limited number of activation slots, one for each server that runs qui. The same license also unlocks [custom themes](./features/custom-themes.md), which you sideload as CSS. The [supporter subscription](./support.md) is separate: a recurring donation that issues no key.
+Some built-in themes need a license key. Each key has a limited number of activation slots, one for each server that runs qui. The same license also unlocks [custom themes](./features/custom-themes.md), which you sideload as CSS. The [supporter subscription](./support.md) is separate: a recurring donation that issues no key.
 
 ## Activate a license
 
-1. Open **Settings → Premium Themes** in your qui instance.
+1. Open **Settings → Themes** in your qui instance.
 2. Click **Add License** and enter your license key.
-3. Premium themes unlock after activation.
+3. The licensed themes unlock after activation.
 
 ## Move a license to a new server
 
@@ -22,7 +22,7 @@ If you replace a server or reinstall, first free the activation slot that the ol
 ### If the old server is still accessible
 
 1. Open qui on the **old** server.
-2. Go to **Settings → Premium Themes** and click **Remove** next to the license.
+2. Go to **Settings → Themes** and click **Remove** next to the license.
 3. qui deactivates the license on that machine and frees the slot.
 4. Activate the same key on the new server.
 
@@ -33,29 +33,29 @@ If the old server no longer exists, for example after a hardware failure or a de
 1. Go to [licenses.getqui.com](https://licenses.getqui.com/).
 2. Register or log in with **the same email address you used to purchase the license**.
 3. Find your license and deactivate the old activation.
-4. Activate the key on your new server from **Settings → Premium Themes**.
+4. Activate the key on your new server from **Settings → Themes**.
 
 ## Recover a lost license key
 
-Sign up or sign in at [licenses.getqui.com](https://licenses.getqui.com/) with the email address that you used to buy the license. The portal lists your license keys. **Settings → Premium Themes** also links to the portal.
+Sign up or sign in at [licenses.getqui.com](https://licenses.getqui.com/) with the email address that you used to buy the license. The portal lists your license keys. **Settings → Themes** also links to the portal.
 
 ## Offline use
 
 qui checks the license with the license server when it starts and one time each day after that. If the license server does not answer, the license stays active for 7 days after the last successful check. qui shows no warning during these 7 days.
 
-After 7 days without a successful check, the next check marks the license `offline`. Premium themes and custom themes then lock, and qui applies the default theme. When the license server answers again, the next check makes the license active again. You do not have to enter the key again. To run the check at once, restart qui.
+After 7 days without a successful check, the next check marks the license `offline`. The licensed themes and custom themes then lock, and qui applies the default theme. When the license server answers again, the next check makes the license active again. You do not have to enter the key again. To run the check at once, restart qui.
 
-If your network blocks all outgoing traffic from qui, qui cannot reach the license server. The premium features then stop 7 days after the last successful check.
+If your network blocks all outgoing traffic from qui, qui cannot reach the license server. The licensed themes and custom themes then lock 7 days after the last successful check.
 
 ## Troubleshooting
 
 ### "License activation limit has been reached"
 
-All activation slots for your key are in use. Go to [licenses.getqui.com](https://licenses.getqui.com/). Sign up or sign in with the email address that you used to buy the license. Open **Machine Instances** and deactivate a machine that you no longer use. Then activate the key again. If you can still open qui on the old machine, you can also remove the license there (**Settings → Premium Themes → Remove**).
+All activation slots for your key are in use. Go to [licenses.getqui.com](https://licenses.getqui.com/). Sign up or sign in with the email address that you used to buy the license. Open **Machine Instances** and deactivate a machine that you no longer use. Then activate the key again. If you can still open qui on the old machine, you can also remove the license there (**Settings → Themes → Remove**).
 
 ### "This license was activated on a different machine"
 
-This error appears when you copy the qui database from another server. The stored activation does not match this machine's identity. Click **Re-activate License**, or remove the license (**Settings → Premium Themes → Remove**) and enter the key again.
+This error appears when you copy the qui database from another server. The stored activation does not match this machine's identity. Click **Re-activate License**, or remove the license (**Settings → Themes → Remove**) and enter the key again.
 
 ### "Unable to reach the license service"
 

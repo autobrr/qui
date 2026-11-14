@@ -6,6 +6,7 @@ package models_test
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -445,4 +446,98 @@ func runHasDeletingRun(t *testing.T, newDB func(testing.TB, string) *database.DB
 	deleting, err = store.HasDeletingRun(ctx, other.ID)
 	require.NoError(t, err)
 	require.False(t, deleting, "another instance's deletion")
+}
+
+func TestOrphanScanStore_ListRunsCountsScanPaths(t *testing.T) {
+	t.Parallel()
+	runListRunsScanPathCount(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_ListRunsCountsScanPathsPostgresIntegration(t *testing.T) {
+	runListRunsScanPathCount(t, testdb.NewMigratedPostgres)
+}
+
+func runListRunsScanPathCount(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-scan-path-count")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "test", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	newRun := func(paths []string, write bool) int64 {
+		id, err := store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+		require.NoError(t, err)
+		if write {
+			require.NoError(t, store.UpdateRunScanPaths(ctx, id, paths))
+		}
+		require.NoError(t, store.UpdateRunCompleted(ctx, id, 0, 0, 0, ""))
+		return id
+	}
+	want := map[int64]int{
+		newRun([]string{"/data/tv", "/data/movies", "/srv/music"}, true): 3,
+		newRun([]string{}, true): 0,
+		newRun(nil, true):        0,
+		newRun(nil, false):       0,
+	}
+
+	runs, err := store.ListRuns(ctx, instance.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, len(want))
+	for _, run := range runs {
+		require.Equal(t, want[run.ID], run.ScanPathCount, "run %d", run.ID)
+		require.Nil(t, run.ScanPaths, "run %d: the list must not read the paths", run.ID)
+	}
+
+	for id, count := range want {
+		run, err := store.GetRun(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, count, run.ScanPathCount, "run %d", id)
+		require.Len(t, run.ScanPaths, count, "run %d", id)
+	}
+}
+
+func TestOrphanScanStore_MarkStuckRunsFailedKeepsRunsInsideTheThreshold(t *testing.T) {
+	t.Parallel()
+	runMarkStuckRunsFailed(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_MarkStuckRunsFailedKeepsRunsInsideTheThresholdPostgresIntegration(t *testing.T) {
+	runMarkStuckRunsFailed(t, testdb.NewMigratedPostgres)
+}
+
+func runMarkStuckRunsFailed(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-stuck-runs")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	const threshold = time.Hour
+	now := time.Now().UTC()
+	runIDs := map[string]int64{}
+	// The store writes started_at with the database clock, which has this form.
+	for name, startedAt := range map[string]time.Time{
+		"stuck":  now.Add(-threshold - time.Minute),
+		"recent": now.Add(-threshold + time.Minute),
+	} {
+		instance, err := instances.Create(ctx, name, "http://example.invalid", "user", "pass", nil, nil, false, nil)
+		require.NoError(t, err)
+		runIDs[name], err = store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `UPDATE orphan_scan_runs SET started_at = ? WHERE id = ?`, startedAt.Format(time.DateTime), runIDs[name])
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, store.MarkStuckRunsFailed(ctx, threshold, []string{"pending", "scanning"}))
+
+	stuck, err := store.GetRun(ctx, runIDs["stuck"])
+	require.NoError(t, err)
+	require.Equal(t, "failed", stuck.Status)
+	recent, err := store.GetRun(ctx, runIDs["recent"])
+	require.NoError(t, err)
+	require.Equal(t, "pending", recent.Status)
 }

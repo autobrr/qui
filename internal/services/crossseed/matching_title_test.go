@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"testing"
 
 	"github.com/autobrr/rls"
@@ -394,7 +395,7 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 			candidate: rls.Release{
 				Type:   rls.Series,
 				Title:  "Black Gear, Maze Patrol",
-				Alt:    "Kuro Gear no Meiro Tansaku",
+				Alt:    []string{"Kuro Gear no Meiro Tansaku"},
 				Series: 2,
 				Source: "WEB-DL",
 			},
@@ -427,7 +428,7 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 			candidate: rls.Release{
 				Type:   rls.Series,
 				Title:  "Kuro Gear Outer Ring",
-				Alt:    "Kuro Gear Outer Ring",
+				Alt:    []string{"Kuro Gear Outer Ring"},
 				Series: 1,
 			},
 			expectedMatch:  false,
@@ -467,6 +468,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 		sourceName string
 		candidate  string
 		wantMatch  bool
+		wantReason string
 	}{
 		{
 			name:       "forward slash in candidate title",
@@ -485,6 +487,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 			sourceName: "Whitesnake-Back.In.Black-1980-FLAC",
 			candidate:  "AC/DC - Back In Black 1980 FLAC",
 			wantMatch:  false,
+			wantReason: "artist mismatch",
 		},
 		{
 			name:       "slash does not join unrelated shows",
@@ -508,7 +511,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 				return
 			}
 			require.False(t, match)
-			require.Equal(t, "title mismatch", reason)
+			require.Equal(t, cmp.Or(tt.wantReason, "title mismatch"), reason)
 		})
 	}
 }
@@ -685,7 +688,7 @@ func TestRawAKATitleParts(t *testing.T) {
 // A matcher built without a release cache must read the same titles as one
 // built with a cache. Before the fallback, a bare matcher parsed every name to
 // an empty release and lost the slash title (ADR 0008).
-func TestNormalizedReleaseTitles_NoReleaseCacheReadsLikeCache(t *testing.T) {
+func TestAppendNormalizedReleaseTitles_NoReleaseCacheReadsLikeCache(t *testing.T) {
 	for _, name := range []string{
 		"Fate/strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
 		"Kaiju Squad 100 AKA Kaiju Squad 100 III S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
@@ -695,9 +698,9 @@ func TestNormalizedReleaseTitles_NoReleaseCacheReadsLikeCache(t *testing.T) {
 			bare := matcher{}
 			cached := matcher{releaseCache: NewReleaseCache()}
 
-			want := cached.normalizedReleaseTitles(&release, name)
+			want := cached.appendNormalizedReleaseTitles(nil, &release, name)
 			require.Greater(t, len(want), 1, "the name must yield more than its main title")
-			require.Equal(t, want, bare.normalizedReleaseTitles(&release, name))
+			require.Equal(t, want, bare.appendNormalizedReleaseTitles(nil, &release, name))
 		})
 	}
 }

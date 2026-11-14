@@ -16,34 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSupportsProcessInfo(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		webAPIVersion string
-		expected      bool
-	}{
-		{name: "supported web api", webAPIVersion: "2.15.1", expected: true},
-		{name: "newer web api", webAPIVersion: "2.16.0", expected: true},
-		{name: "older web api", webAPIVersion: "2.11.4", expected: false},
-		{name: "empty version", webAPIVersion: "", expected: false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.expected, supportsProcessInfo(tc.webAPIVersion))
-		})
-	}
-}
-
 func TestBuildProcessInfo(t *testing.T) {
 	processInfoErr := errors.New("process info unavailable")
 
 	tests := []struct {
 		name            string
-		webAPIVersion   string
+		supported       bool
 		processInfo     qbt.ProcessInfo
 		processInfoErr  error
 		wantFetchCalled bool
@@ -52,7 +30,7 @@ func TestBuildProcessInfo(t *testing.T) {
 	}{
 		{
 			name:            "includes process info for supported web api",
-			webAPIVersion:   "2.15.1",
+			supported:       true,
 			processInfo:     qbt.ProcessInfo{LaunchTime: 1769331513},
 			wantFetchCalled: true,
 			wantLaunchTime:  1769331513,
@@ -60,14 +38,13 @@ func TestBuildProcessInfo(t *testing.T) {
 		},
 		{
 			name:            "skips process info for older web api",
-			webAPIVersion:   "2.11.4",
 			processInfo:     qbt.ProcessInfo{LaunchTime: 1769331513},
 			wantFetchCalled: false,
 			wantProcessInfo: false,
 		},
 		{
 			name:            "omits process info when supported call fails",
-			webAPIVersion:   "2.15.1",
+			supported:       true,
 			processInfoErr:  processInfoErr,
 			wantFetchCalled: true,
 			wantProcessInfo: false,
@@ -77,7 +54,7 @@ func TestBuildProcessInfo(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			fetchCalled := false
-			info := buildProcessInfo(tc.webAPIVersion, func() (qbt.ProcessInfo, error) {
+			info := buildProcessInfo(tc.supported, func() (qbt.ProcessInfo, error) {
 				fetchCalled = true
 				return tc.processInfo, tc.processInfoErr
 			})

@@ -39,7 +39,12 @@ export function Login() {
   })
 
   // Query to check if OIDC is enabled
-  const { data: oidcConfig } = useQuery({
+  const {
+    data: oidcConfig,
+    isError: oidcConfigFailed,
+    refetch: refetchOIDCConfig,
+    isFetching: isFetchingOIDCConfig,
+  } = useQuery({
     queryKey: ["oidc-config"],
     queryFn: () => api.getOIDCConfig(),
     staleTime: Infinity,
@@ -95,9 +100,17 @@ export function Login() {
     },
   })
 
-  const handleOIDCLogin = () => {
-    if (oidcConfig?.enabled && oidcConfig.authorizationUrl) {
-      window.location.href = oidcConfig.authorizationUrl
+  // A failed first load leaves no config. A failed refetch keeps the last config.
+  const oidcUnavailable = oidcConfig?.providerUnavailable === true || (oidcConfig === undefined && oidcConfigFailed)
+
+  const handleOIDCLogin = async () => {
+    let config = oidcConfig
+    // The refetch asks the server to retry provider discovery.
+    if (oidcUnavailable) {
+      config = (await refetchOIDCConfig()).data
+    }
+    if (config?.enabled && config.authorizationUrl) {
+      window.location.href = config.authorizationUrl
     }
   }
 
@@ -112,7 +125,7 @@ export function Login() {
 
   // Don't show built-in login form if OIDC is enabled and built-in login is disabled
   const showBuiltInLogin = !oidcConfig?.enabled || !oidcConfig?.disableBuiltInLogin
-  const showOIDC = oidcConfig?.enabled
+  const showOIDC = oidcConfig?.enabled || oidcUnavailable
 
   return (
     <div className="flex h-screen items-center justify-center bg-background px-4 sm:px-6">
@@ -254,10 +267,17 @@ export function Login() {
                 className="w-full"
                 size="lg"
                 onClick={handleOIDCLogin}
+                disabled={isFetchingOIDCConfig}
               >
                 <Fingerprint className="mr-2 h-5 w-5" />
                 {t("login.openIdConnect")}
               </Button>
+            )}
+
+            {oidcUnavailable && !isFetchingOIDCConfig && (
+              <p className="mt-3 text-center text-sm text-muted-foreground">
+                {t("login.oidcProviderUnavailable")}
+              </p>
             )}
 
             <Footer />

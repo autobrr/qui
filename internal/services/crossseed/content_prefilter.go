@@ -64,9 +64,9 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 		return nil, nil, nil, nil
 	}
 
-	candidateTorrents := make([]qbt.Torrent, 0, len(candidates))
+	candidateTorrents := make([]*qbt.Torrent, 0, len(candidates))
 	for _, candidate := range candidates {
-		candidateTorrents = append(candidateTorrents, *candidate.view.Torrent)
+		candidateTorrents = append(candidateTorrents, candidate.view.Torrent)
 	}
 	filesByHash := s.batchLoadCandidateFiles(ctx, instanceID, candidateTorrents)
 

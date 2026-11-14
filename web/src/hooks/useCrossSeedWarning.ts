@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
 import { toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
-import type { Torrent, TorrentFilters } from "@/types"
+import type { Torrent, TorrentFilters, UncheckedInstance } from "@/types"
 
 /** The select-all scope of a delete, as the bulk action sends it. */
 export interface CrossSeedSelectAllScope {
@@ -31,6 +31,8 @@ export type CrossSeedSearchState = "idle" | "searching" | "complete" | "error"
 export interface CrossSeedWarningResult {
   /** Cross-seed torrents that share files with torrents being deleted */
   affectedTorrents: CrossSeedTorrent[]
+  /** Instances that the check could not read, so the list can miss torrents on them */
+  uncheckedInstances: UncheckedInstance[]
   /** Current search state */
   searchState: CrossSeedSearchState
   /** Whether there are cross-seeds that would be affected */
@@ -55,6 +57,7 @@ export function useCrossSeedWarning({
 }: UseCrossSeedWarningOptions): CrossSeedWarningResult {
   const [searchState, setSearchState] = useState<CrossSeedSearchState>("idle")
   const [affectedTorrents, setAffectedTorrents] = useState<CrossSeedTorrent[]>([])
+  const [uncheckedInstances, setUncheckedInstances] = useState<UncheckedInstance[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => () => abortRef.current?.abort(), [])
@@ -68,13 +71,15 @@ export function useCrossSeedWarning({
 
     setSearchState("searching")
     setAffectedTorrents([])
+    setUncheckedInstances([])
 
     try {
       const selection = selectAll ? { selectAll: true, ...selectAll } : { targets: buildTorrentActionTargets(torrents, instanceId) }
-      const matches = await api.getDeleteCrossSeeds(instanceId, selection, controller.signal)
+      const result = await api.getDeleteCrossSeeds(instanceId, selection, controller.signal)
       // The body can finish reading after the abort.
       if (controller.signal.aborted) return
-      setAffectedTorrents(matches.map(toCompatibleMatch))
+      setAffectedTorrents(result.matches.map(toCompatibleMatch))
+      setUncheckedInstances(result.uncheckedInstances)
       setSearchState("complete")
     } catch (error) {
       if (controller.signal.aborted) return
@@ -88,10 +93,12 @@ export function useCrossSeedWarning({
     abortRef.current = null
     setSearchState("idle")
     setAffectedTorrents([])
+    setUncheckedInstances([])
   }, [])
 
   return {
     affectedTorrents,
+    uncheckedInstances,
     searchState,
     hasWarning: affectedTorrents.length > 0,
     search,

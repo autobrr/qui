@@ -127,7 +127,7 @@ This command replaces the qui binary in place. It keeps the previous binary as `
 
 ## Migrate From Other Torrent Clients
 
-Import torrents with their state from Deluge, rTorrent, or Transmission into qBittorrent's `BT_backup` directory. See [Client Migration](../features/client-migration.md) for per-client details and what qui preserves.
+Import torrents with their state from Deluge, rTorrent, Transmission, or uTorrent into qBittorrent's `BT_backup` directory. See [Client Migration](../features/client-migration.md) for per-client details and what qui preserves.
 
 ```bash
 # Preview what the import would do, without writing anything
@@ -146,6 +146,17 @@ Import torrents with their state from Deluge, rTorrent, or Transmission into qBi
   --source-dir ~/.sessions \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup
 
+# uTorrent or BitTorrent: point at the dir that contains resume.dat (Windows)
+.\qui.exe migrate utorrent `
+  --source-dir "$env:APPDATA\uTorrent" `
+  --qbit-dir "$env:LOCALAPPDATA\qBittorrent\BT_backup"
+
+# Map save paths when qBittorrent sees the data elsewhere
+./qui migrate utorrent \
+  --source-dir /mnt/old-pc/uTorrent \
+  --qbit-dir /config/qBittorrent/BT_backup \
+  --replace-path 'D:\Downloads=/data/downloads'
+
 # Skip the automatic tar.gz backup of both directories
 ./qui migrate transmission --source-dir ... --qbit-dir ... --skip-backup
 ```
@@ -154,10 +165,11 @@ Notes:
 
 - Stop the source client and qBittorrent before you migrate. Start qBittorrent afterwards, and it picks up the imported torrents.
 - qui imports only fully downloaded torrents. It skips partial torrents with a warning, so no incorrect piece state reaches qBittorrent.
-- qui preserves these fields per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state (Deluge 2.x only; Deluge 1.3.x imports start resumed), Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
-- qui supports these source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x through 0.16.x.
+- qui preserves these fields per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state (Deluge 2.x only; Deluge 1.3.x imports start resumed), Transmission labels (as qBittorrent tags), Deluge, ruTorrent, and uTorrent labels (as the qBittorrent category).
+- qui supports these source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x through 0.16.x, uTorrent and BitTorrent 2.x and 3.x.
 - If you do not set `--skip-backup`, qui first archives both directories to `qbt_backup/` in the current working directory. If the qBittorrent directory already exists, qui archives it. A fresh destination produces only the source archive.
 - If a torrent already exists in the target `BT_backup`, qui skips it. You can run the command again.
+- `--replace-path from=to` rewrites the start of each save path. You can repeat it. See [Save paths](../features/client-migration.md#save-paths).
 
 ## Database migration (db migrate)
 

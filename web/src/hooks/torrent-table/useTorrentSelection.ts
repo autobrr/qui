@@ -12,6 +12,7 @@ import {
   selectAllCheckboxFlags,
   type TorrentSelectionEvent
 } from "@/lib/torrent-selection"
+import type { CopyGroupExpansion } from "@/lib/copy-groups"
 import type { Torrent } from "@/types"
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react"
 
@@ -22,7 +23,12 @@ export interface SelectionRow {
 }
 
 export interface UseTorrentSelectionParams {
-  sortedTorrents: Torrent[]
+  /** The rows that the table shows. The header checkbox reads them. */
+  visibleTorrents: Torrent[]
+  /** The open Copy groups. A change moves the rows, so it clears the Shift-select anchor. */
+  groupExpansion: CopyGroupExpansion
+  /** True when the rows are grouped. The switch and the end of Grouping… change it, and the rows move, so it clears the Shift-select anchor. */
+  groupedRows: boolean
   isReadOnly: boolean
   isCrossInstanceEndpoint?: boolean
   instanceId: number
@@ -60,7 +66,9 @@ export interface TorrentSelection {
  * the shift-click anchor, which depends on row order.
  */
 export function useTorrentSelection({
-  sortedTorrents,
+  visibleTorrents,
+  groupExpansion,
+  groupedRows,
   isReadOnly,
   isCrossInstanceEndpoint,
   instanceId,
@@ -83,6 +91,10 @@ export function useTorrentSelection({
       lastSelectedIndexRef.current = null
     }
   }, [hasSelection])
+
+  useEffect(() => {
+    lastSelectedIndexRef.current = null
+  }, [groupExpansion, groupedRows])
 
   const send = useCallback((event: TorrentSelectionEvent) => {
     if (!isReadOnly) {
@@ -119,7 +131,7 @@ export function useTorrentSelection({
     send({ type: "tick", keys: rows.map(row => getSelectionIdentity(row.original)), checked })
   }, [send, getSelectionIdentity])
 
-  const rowKeys = useMemo(() => sortedTorrents.map(getSelectionIdentity), [sortedTorrents, getSelectionIdentity])
+  const rowKeys = useMemo(() => visibleTorrents.map(getSelectionIdentity), [visibleTorrents, getSelectionIdentity])
   const { checked: isSelectAllChecked, indeterminate: isSelectAllIndeterminate } = selectAllCheckboxFlags(selection, rowKeys)
 
   const handleCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {

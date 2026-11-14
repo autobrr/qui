@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// regression: #4073
 func TestSanitizePathSegment(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -73,6 +74,61 @@ func TestSanitizePathSegment(t *testing.T) {
 			name:     "case insensitive reserved name",
 			input:    "con",
 			expected: "_con",
+		},
+		{
+			name:     "Windows console input device",
+			input:    "CONIN$",
+			expected: "_CONIN$",
+		},
+		{
+			name:     "Windows console output device case insensitive",
+			input:    "conout$",
+			expected: "_conout$",
+		},
+		{
+			name:     "Windows COM superscript device",
+			input:    "COM¹",
+			expected: "_COM¹",
+		},
+		{
+			name:     "Windows LPT superscript device",
+			input:    "LPT³",
+			expected: "_LPT³",
+		},
+		{
+			name:     "reserved name with space before extension",
+			input:    "CON .txt",
+			expected: "_CON .txt",
+		},
+		{
+			name:     "reserved name with spaces before extension case insensitive",
+			input:    "nul  .mkv",
+			expected: "_nul  .mkv",
+		},
+		{
+			name:     "non-device CON prefix",
+			input:    "CONSOLE",
+			expected: "CONSOLE",
+		},
+		{
+			name:     "non-device COM number",
+			input:    "COM10",
+			expected: "COM10",
+		},
+		{
+			name:     "non-device LPT prefix",
+			input:    "LPT",
+			expected: "LPT",
+		},
+		{
+			name:     "COM zero is not reserved",
+			input:    "COM0",
+			expected: "COM0",
+		},
+		{
+			name:     "LPT zero is not reserved",
+			input:    "LPT0",
+			expected: "LPT0",
 		},
 		{
 			name:     "reserved name not at start",

@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -248,7 +249,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			return ""
 		}
 
-		if qbtSyncManager, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID); err == nil && qbtSyncManager != nil {
+		if qbtSyncManager, err := s.syncManager.GetSyncOwner(ctx, instanceID); err == nil && qbtSyncManager != nil {
 			if err := qbtSyncManager.Sync(ctx); err != nil {
 				log.Debug().
 					Err(err).
@@ -257,7 +258,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
+		torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 		if err == nil && len(torrents) > 0 {
 			for _, torrent := range torrents {
 				active := strings.TrimSpace(torrent.Hash)
@@ -418,23 +419,7 @@ func matchSourceFilesToCandidatesWithPolicy(
 }
 
 func allowMaterializedSizeOnlyMatch(sourcePath, candidatePath string) bool {
-	return !isIgnoredMaterializedSizeOnlyFile(sourcePath) && !isIgnoredMaterializedSizeOnlyFile(candidatePath)
-}
-
-func isIgnoredMaterializedSizeOnlyFile(name string) bool {
-	lower := strings.ToLower(name)
-	ext := strings.ToLower(path.Ext(fileBaseName(name)))
-	if slices.Contains(DefaultIgnoredExtensions, ext) {
-		return true
-	}
-
-	for _, keyword := range DefaultIgnoredPathKeywords {
-		if strings.Contains(lower, keyword) {
-			return true
-		}
-	}
-
-	return false
+	return !shouldIgnoreFile(sourcePath, stringutils.DefaultNormalizer) && !shouldIgnoreFile(candidatePath, stringutils.DefaultNormalizer)
 }
 
 func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRenameInstruction, []string) {

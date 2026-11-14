@@ -8,13 +8,37 @@ import (
 )
 
 // SyncEventSink receives notifications from qBittorrent sync managers whenever
-// new MainData snapshots arrive, tracker health cache changes, or a sync error
+// a sync changed the data, tracker health cache changes, or a sync error
 // occurs. Implementations are expected to return quickly; heavy processing should
 // be offloaded to other goroutines to avoid blocking the sync loop.
 type SyncEventSink interface {
-	HandleMainData(instanceID int, data *qbt.MainData)
+	// HandleSyncUpdate gets the Sync snapshot of a sync and what the sync
+	// changed. It must not change a torrent of the snapshot (ADR 0051).
+	HandleSyncUpdate(instanceID int, update qbt.SyncUpdate)
 	HandleTrackerHealthUpdated(instanceID int)
 	HandleSyncError(instanceID int, err error)
+}
+
+// syncEventSinks passes each notification to every sink, in registration order.
+// The pool never changes a slice that it gave out; it builds a new one.
+type syncEventSinks []SyncEventSink
+
+func (s syncEventSinks) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
+	for _, sink := range s {
+		sink.HandleSyncUpdate(instanceID, update)
+	}
+}
+
+func (s syncEventSinks) HandleTrackerHealthUpdated(instanceID int) {
+	for _, sink := range s {
+		sink.HandleTrackerHealthUpdated(instanceID)
+	}
+}
+
+func (s syncEventSinks) HandleSyncError(instanceID int, err error) {
+	for _, sink := range s {
+		sink.HandleSyncError(instanceID, err)
+	}
 }
 
 // ServerStateOnly reports whether a sync changed the server state and nothing

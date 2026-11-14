@@ -4,15 +4,17 @@
 package themes
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-// TestRegistryIDsPinned pins the derived id of every committed free theme.
-// These ids are stored in browsers and in the theme_settings table, so a
-// change here breaks every user's saved selection: the id rule is frozen.
+// TestRegistryIDsPinned pins the id of every committed free theme, and of the
+// licensed themes that users had before the community themes, when the build
+// fetched the licensed folder. These ids are stored in browsers and in the
+// theme_settings table, so a change here breaks every user's saved selection.
 func TestRegistryIDsPinned(t *testing.T) {
 	want := map[string]struct{}{
 		"minimal":         {},
@@ -34,6 +36,20 @@ func TestRegistryIDsPinned(t *testing.T) {
 		delete(want, theme.ID)
 	}
 	require.Empty(t, want, "missing free themes")
+
+	t.Run("licensed", func(t *testing.T) {
+		if paths, _ := fs.Glob(assetsFS, "assets/premium/*.css"); len(paths) == 0 {
+			t.Skip("licensed folder is empty: run make themes-fetch to pin the licensed ids")
+		}
+		// A subset: a new licensed theme needs no entry here, but these ids must stay.
+		for _, id := range []string{
+			"amber-minimal", "amethyst-haze", "bubblegum", "catppuccin", "claude",
+			"cyberpunk", "kitsune", "the-matrix", "nord", "perpetuity", "spreadsheet",
+			"spreadsheet-classic", "synthwave", "tangerine", "tokyo-night",
+		} {
+			require.True(t, Exists(id), "missing licensed theme id %q", id)
+		}
+	})
 }
 
 // TestRegistryOrder pins the catalog order: the default first, then display
@@ -57,6 +73,21 @@ func TestParsePremiumFromDir(t *testing.T) {
 	require.True(t, parse(noHeader, "mystery", true).Premium, "premium dir must classify premium without a header")
 	require.False(t, parse(noHeader, "mystery", false).Premium)
 	require.True(t, parse("/* @premium: true */\n"+noHeader, "mystery", false).Premium, "header alone still classifies premium")
+}
+
+// TestParseIDHeader pins the id rule: an @id line wins, so a renamed theme
+// keeps the id that users have stored. Without @id, the id is the name slug.
+func TestParseIDHeader(t *testing.T) {
+	renamed := parse("/* @name: Terracotta\n * @id: claude\n */\n", "terracotta", true)
+	require.Equal(t, "claude", renamed.ID)
+	require.Equal(t, "Terracotta", renamed.Name)
+
+	require.Equal(t, "tokyo-night", parse("/* @name: Tokyo Night\n */\n", "tokyo_night", true).ID)
+	require.Equal(t, "nord", parse("/* @id: nord */\n", "x", true).ID)
+
+	// An empty @id line, or "@id:" inside another header value, keeps the name slug.
+	require.Equal(t, "nord", parse("/* @name: Nord\n * @id:\n * @description: Cold\n */\n", "x", true).ID)
+	require.Equal(t, "nord", parse("/* @name: Nord\n * @description: Use @id: other\n */\n", "x", true).ID)
 }
 
 func TestGenerateID(t *testing.T) {

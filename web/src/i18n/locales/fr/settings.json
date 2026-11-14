@@ -12,7 +12,9 @@
     "externalPrograms": "Programmes Externes",
     "notifications": "Notifications",
     "dateTime": "Heure et Langue",
-    "premiumThemes": "Thèmes Premium",
+    "statistics": "Statistiques",
+    "trackers": "Personnalisation des trackers",
+    "premiumThemes": "Thèmes",
     "security": "Sécurité",
     "logs": "Logs"
   },
@@ -102,7 +104,6 @@
       "proxyUrl": "URL du Proxy",
       "showProxyUrl": "Afficher l'URL du proxy",
       "hideProxyUrl": "Masquer l'URL du proxy",
-      "copyProxyUrl": "Copier l'URL du proxy",
       "done": "Terminé"
     },
     "deleteDialog": {
@@ -118,9 +119,7 @@
       "deleted": "Clé API client supprimée avec succès",
       "deleteFailed": "Échec de la suppression de la clé API client : {{error}}",
       "clientNameRequired": "Le nom du client est requis",
-      "selectInstance": "Veuillez sélectionner une instance qBittorrent",
-      "proxyCopied": "URL du proxy copiée dans le presse-papiers",
-      "copyFailed": "Échec de la copie dans le presse-papiers"
+      "selectInstance": "Veuillez sélectionner une instance qBittorrent"
     }
   },
   "apiKeys": {
@@ -132,21 +131,77 @@
     "apiDocs": "Docs API",
     "description": "Les clés API permettent aux applications externes d'accéder à vos instances qBittorrent.",
     "createButton": "Créer une clé API",
+    "editButton": "Modifier {{name}}",
+    "deleteButton": "Supprimer {{name}}",
     "loading": "Chargement des clés API...",
     "empty": "Aucune clé API créée pour le moment",
     "createDialog": {
       "title": "Créer une clé API",
-      "description": "Donnez à votre clé API un nom descriptif pour mémoriser son utilité.",
+      "description": "Donnez un nom à la clé et choisissez uniquement l'accès dont elle a besoin.",
       "nameLabel": "Nom",
       "namePlaceholder": "ex: Script d'automatisation",
       "nameRequired": "Le nom est requis",
       "submit": "Créer une clé API",
       "creating": "Création..."
     },
+    "editDialog": {
+      "title": "Modifier la clé API",
+      "description": "Les modifications s'appliquent à la prochaine requête de cette clé. qui n'affiche plus jamais la clé elle-même.",
+      "submit": "Enregistrer les modifications",
+      "saving": "Enregistrement..."
+    },
+    "permissions": {
+      "title": "Permissions",
+      "help": "L'écriture inclut la lecture et l'exécution. L'exécution n'inclut pas la lecture, car les paramètres contiennent des identifiants.",
+      "required": "Choisissez au moins une permission.",
+      "access": "Accès",
+      "allAreas": "Tous les domaines",
+      "allAreasExcept": "Tous les domaines sauf {{areas}}",
+      "refusedByLimit": "Cross-Seed et l'analyse de répertoires refusent une clé avec une limite d'instances : qui n'enregistre donc pas ces permissions.",
+      "entry": "{{area}} : {{level}}",
+      "showByArea": "Afficher l'accès par domaine pour {{name}}",
+      "partialArea": "{{area}} ({{levels}} uniquement)",
+      "legend": {
+        "title": "Un bloc par domaine de permissions :",
+        "none": "aucun accès"
+      },
+      "levels": {
+        "read": "lecture",
+        "run": "exécution",
+        "write": "écriture"
+      },
+      "areas": {
+        "instances": "Instances",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Analyse de répertoires",
+        "automations": "Automatisations",
+        "rss": "RSS",
+        "backups": "Sauvegardes",
+        "orphanScan": "Analyse d'orphelins",
+        "externalPrograms": "Programmes externes",
+        "indexers": "Indexeurs",
+        "arr": "Arr",
+        "notifications": "Notifications",
+        "settings": "Paramètres",
+        "logs": "Logs",
+        "system": "Système"
+      }
+    },
+    "instanceLimit": {
+      "title": "Limite d'instances",
+      "help": "Choisissez les instances que cette clé peut atteindre. Sans choix, la clé atteint toutes les instances, y compris celles ajoutées plus tard.",
+      "reaches": "Portée",
+      "all": "Toutes les instances",
+      "only": "Uniquement {{instances}}",
+      "none": "Aucune instance. La limite ne contient que des instances supprimées.",
+      "deleted": "Instance supprimée {{id}}"
+    },
     "newKey": {
       "label": "Votre nouvelle clé API",
       "warning": "Sauvegardez cette clé maintenant. Vous ne pourrez plus la voir par la suite.",
-      "done": "Terminé"
+      "done": "Terminé",
+      "apiKey": "Clé API"
     },
     "deleteDialog": {
       "title": "Supprimer la clé API ?",
@@ -159,8 +214,8 @@
       "createFailed": "Échec de la création de la clé API",
       "deleted": "Clé API supprimée avec succès",
       "deleteFailed": "Échec de la suppression de la clé API",
-      "copied": "Clé API copiée dans le presse-papiers",
-      "copyFailed": "Échec de la copie dans le presse-papiers"
+      "updated": "Clé API mise à jour avec succès",
+      "updateFailed": "Échec de la mise à jour de la clé API"
     }
   },
   "externalPrograms": {
@@ -244,7 +299,7 @@
     "loading": "Chargement des cibles de notification...",
     "loadFailed": "Échec du chargement des cibles de notification",
     "empty": "Aucune cible de notification configurée. Ajoutez-en une pour recevoir des alertes.",
-    "allEvents": "Tous les événements",
+    "allEvents": "Tous les événements sauf l'avis système",
     "showList": "Afficher la liste",
     "hideList": "Masquer la liste",
     "badges": {
@@ -343,6 +398,56 @@
       "error": "Échec de la sauvegarde des préférences"
     }
   },
+  "statistics": {
+    "cardTitle": "Statistiques",
+    "cardDescription": "qui enregistre l'envoi et la réception de chaque torrent dans sa base de données. Ces paramètres s'appliquent à toutes les instances.",
+    "recording": {
+      "label": "Enregistrer l'historique des transferts",
+      "description": "Tant que cette option est désactivée, qui n'enregistre rien et conserve l'historique stocké. Cette période devient une interruption d'enregistrement."
+    },
+    "retention": {
+      "label": "Conserver le détail quotidien pendant",
+      "description": "Après cette durée, qui regroupe les totaux horaires par jour, et les octets quotidiens de chaque torrent en une ligne par année. Les totaux restent les mêmes. Si vous choisissez une durée plus courte, qui regroupe le détail plus ancien à la lecture suivante, et vous ne pouvez pas le récupérer.",
+      "days90": "90 jours",
+      "days400": "400 jours",
+      "forever": "Toujours"
+    },
+    "size": {
+      "label": "Taille de l'historique"
+    },
+    "deleteHistory": {
+      "label": "Supprimer l'historique",
+      "description": "Supprime l'historique de transfert d'une instance ou de toutes les instances. Vous ne pourrez pas le récupérer.",
+      "instance": "Instance",
+      "allInstances": "Toutes les instances",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Tout",
+      "before": "Tout avant une date",
+      "date": "Date",
+      "button": "Supprimer l'historique",
+      "confirmTitle": "Supprimer l'historique ?",
+      "confirmEverything": "qui supprime tout l'historique de {{name}}. L'enregistrement reprend avec une nouvelle base de référence. Cette action est irréversible.",
+      "confirmBefore": "qui supprime l'historique de {{name}} avant le {{date}}. Si l'enregistrement a commencé avant cette date, les octets d'avant le premier enregistrement sont aussi supprimés, et « Enregistrement depuis » passe à cette date. Cette action est irréversible.",
+      "sqliteSpace": "Le fichier de base de données garde sa taille. SQLite réutilise l'espace libre pour le nouvel historique.",
+      "postgresSpace": "Une suppression de tout pour toutes les instances rend l'espace au disque immédiatement. Après une autre suppression, Postgres réutilise l'espace libre pour le nouvel historique.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer",
+      "deleted": "Historique supprimé",
+      "failed": "Échec de la suppression de l'historique",
+      "shrink": {
+        "label": "Réduire aussi le fichier de base de données",
+        "restart": "qui redémarre et réduit le fichier, pour vous rendre l’espace disque. qui est indisponible pendant un court moment.",
+        "nextStart": "qui ne peut pas redémarrer seul sur cette installation. La réduction aura lieu au prochain démarrage de qui.",
+        "tooLittleSpace": "Le disque a {{free}} libres, et une réduction demande jusqu’à {{need}}. Vous pouvez laisser cette option désactivée sans risque : SQLite réutilise l’espace libre pour le nouvel historique.",
+        "manualDocs": "Réduire le fichier à la main"
+      }
+    },
+    "loadFailed": "Impossible de charger les paramètres des statistiques",
+    "toasts": {
+      "saved": "Paramètres des statistiques enregistrés",
+      "saveFailed": "Impossible d'enregistrer les paramètres des statistiques"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "Changer le mot de passe",
@@ -424,38 +529,37 @@
     "selector": {
       "title": "Sélection de thème",
       "loadingDescription": "Chargement des thèmes disponibles...",
-      "description": "Choisissez parmi les thèmes. Les thèmes premium nécessitent une licence valide.",
-      "verificationUnavailable": "Vérification de licence indisponible. Le changement de thème premium est désactivé.",
-      "notLoaded": "Thèmes premium non chargés",
-      "notLoadedDescription": "Configurer",
-      "notLoadedAnd": "et exécutez",
-      "premium": "Premium",
-      "pro": "Pro",
+      "description": "Choisissez parmi les thèmes. Certains thèmes nécessitent une licence valide.",
+      "verificationUnavailable": "Vérification de licence indisponible. Le passage à un thème sous licence est temporairement désactivé.",
+      "notLoaded": "Thèmes sous licence non chargés",
+      "notLoadedDescription": "Exécutez",
       "free": "Gratuit",
       "locked": "Verrouillé",
-      "lock": "Verrouillé"
+      "lock": "Verrouillé",
+      "showTheme": "Afficher",
+      "hideTheme": "Masquer"
     },
     "toasts": {
-      "premiumRequired": "Licence Premium requise",
-      "premiumRequiredDescription": "Débloquez les thèmes premium en ajoutant une licence valide."
+      "premiumRequired": "Licence requise",
+      "premiumRequiredDescription": "Ajoutez une licence valide pour débloquer tous les thèmes."
     },
     "license": {
       "loadingTitle": "Gestion de Licence",
       "loadingDescription": "Chargement des licences...",
       "managementTitle": "Gestion de Licence",
-      "managementDescription": "Gérez votre licence et l'accès premium",
+      "managementDescription": "Gérez votre licence de thèmes",
       "providers": {
         "licensePortal": "portail des licences"
       },
       "status": {
-        "unlockTitle": "Débloquer les Thèmes Premium",
+        "unlockTitle": "Débloquer tous les thèmes",
         "unlockDescription": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
-        "activeTitle": "Accès Premium Actif",
-        "activeDescription": "Vous avez accès à tous les thèmes premium actuels et futurs",
+        "activeTitle": "Licence active",
+        "activeDescription": "Vous avez accès à tous les thèmes actuels et futurs",
         "activationRequiredTitle": "Activation de licence requise",
         "activationRequiredDescription": "Votre licence doit être activée sur cette machine",
         "offlineTitle": "Service de licences injoignable",
-        "offlineDescription": "qui n'a pas pu joindre le service de licences pendant 7 jours, les thèmes premium sont donc verrouillés. qui vérifie au démarrage puis une fois par jour. Les thèmes se débloquent dès que le service répond. Vous n'avez pas besoin de réactiver la licence."
+        "offlineDescription": "qui n'a pas pu joindre le service de licences pendant 7 jours, les thèmes sous licence sont donc verrouillés. qui vérifie au démarrage puis une fois par jour. Les thèmes se débloquent dès que le service répond. Vous n'avez pas besoin de réactiver la licence."
       },
       "portalHelp": {
         "prefix": "Achetez sur DodoPayments, puis saisissez votre clé ici. Si vous la perdez, récupérez-la via",
@@ -507,7 +611,7 @@
         "addLicense": "Ajouter la licence",
         "remove": "Retirer",
         "removing": "Suppression...",
-        "getPremium": "Obtenir Premium",
+        "getPremium": "Obtenir une licence",
         "reactivate": "Ré-activer la licence",
         "activating": "Activation...",
         "copyLicenseKey": "Copier la clé de licence",
@@ -523,17 +627,17 @@
         "recoverPrefix": "Si besoin, vous pourrez la récupérer plus tard depuis votre"
       },
       "addDialog": {
-        "title": "Ajouter une Licence Premium",
-        "description": "Saisissez votre clé de licence premium pour débloquer tous les thèmes.",
+        "title": "Ajouter une licence",
+        "description": "Saisissez votre clé de licence pour débloquer tous les thèmes.",
         "label": "Clé de Licence",
-        "placeholder": "Saisissez votre clé premium",
+        "placeholder": "Saisissez votre clé de licence",
         "recoverKey": "Clé perdue ?",
         "validation": {
           "required": "La clé de licence est requise"
         }
       },
       "paymentDialog": {
-        "title": "Obtenir une Licence Premium",
+        "title": "Obtenir une licence",
         "description": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
         "steps": {
           "choosePaymentMethod": {
@@ -565,8 +669,8 @@
       "copiedVerify": "Commande de vérification copiée",
       "failedCopyVerify": "Échec de la copie",
       "toasts": {
-        "activationSuccessPremium": "Accès Premium activé ! Merci !",
-        "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence premium pour terminer.",
+        "activationSuccessPremium": "Licence activée ! Merci !",
+        "paymentCompleted": "Paiement validé. Ajoutez votre clé de licence pour terminer.",
         "paymentNotCompleted": "Le paiement n'a pas abouti.",
         "returnedFromCheckout": "Retour du paiement. Ajoutez votre clé de licence dès que vous êtes prêt.",
         "keyCopied": "Clé copiée dans le presse-papiers",
@@ -577,9 +681,9 @@
     "custom": {
       "badge": "Personnalisé",
       "title": "Thèmes personnalisés",
-      "lockedTitle": "Les thèmes personnalisés sont une fonctionnalité premium",
-      "lockedDescription": "Débloquez le premium pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
-      "unlockCta": "Débloquer le premium",
+      "lockedTitle": "Les thèmes personnalisés nécessitent une licence",
+      "lockedDescription": "Obtenez une licence pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
+      "unlockCta": "Obtenir une licence",
       "refresh": "Actualiser",
       "detectedCount": "Thèmes trouvés : {{total}}",
       "parseErrorsTitle": "Impossible d'analyser ces fichiers :",
@@ -1107,11 +1211,74 @@
       "bind": "Adresse de liaison",
       "configDir": "Répertoire de configuration",
       "dataDir": "Répertoire de données"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Personnalisation des trackers",
+    "cardDescription": "Renommez les trackers et fusionnez les domaines d'un même tracker en une seule entrée. qui affiche le nom d'affichage partout où il affiche le tracker.",
+    "loading": "Chargement des trackers…",
+    "empty": "Aucun tracker pour l'instant. Les trackers apparaissent ici lorsqu'une instance a des torrents.",
+    "importTooltip": "Importer les personnalisations",
+    "exportTooltip": "Exporter les personnalisations",
+    "mergedFrom": "Fusionné de : {{domains}}",
+    "original": "Original : {{domain}}",
+    "mergeTooltip": "Fusionner les trackers sélectionnés dans ce groupe",
+    "mergeIntoGroup": "Fusionner dans le groupe",
+    "addToMerge": "Ajouter à la fusion",
+    "rename": "Renommer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "customizeDialog": {
+      "editTitle": "Modifier le nom du Tracker",
+      "renameTitle": "Renommer le Tracker",
+      "mergeTitle": "Fusionner les Trackers",
+      "editDescription": "Mettre à jour le nom d'affichage pour ce tracker.",
+      "renameDescription": "Donner à ce tracker un nom d'affichage personnalisé.",
+      "mergeDescription": "Combiner ces trackers en une seule entrée avec un nom personnalisé.",
+      "displayName": "Nom d'affichage",
+      "displayNamePlaceholder": "ex: TorrentLeech",
+      "domains": "Domaine(s)",
+      "selectedTrackers": "Tracker(s) Sélectionné(s)",
+      "primary": "Principal",
+      "removeDomain": "Retirer {{domain}}",
+      "cancel": "Annuler",
+      "saving": "Sauvegarde...",
+      "save": "Sauvegarder",
+      "renameAction": "Renommer",
+      "mergeAction": "Fusionner"
     },
-    "copyTitle": "Copier {{label}}",
+    "importDialog": {
+      "title": "Importer des personnalisations de trackers",
+      "description": "Collez du JSON pour importer des personnalisations de trackers (renommages et fusions).",
+      "jsonData": "Données JSON",
+      "invalidFormat": "Format invalide : expected trackerCustomizations array",
+      "missingDisplayName": "Entrée invalide : displayName manquant",
+      "invalidDomains": "Entrée invalide : domains doit être un tableau non vide",
+      "invalidJson": "JSON Invalide",
+      "newCount": "{{count}} nouveau(x)",
+      "conflictCount_one": "{{count}} conflit",
+      "conflictCount_other": "{{count}} conflits",
+      "unchangedCount": "{{count}} inchangé(s)",
+      "resolveConflicts": "Résoudre les conflits",
+      "conflictsWith": "En conflit avec : {{name}}",
+      "skip": "Ignorer",
+      "overwrite": "Écraser",
+      "cancel": "Annuler",
+      "importing": "Importation...",
+      "import": "Importer"
+    },
     "toasts": {
-      "copied": "{{label}} copié dans le presse-papiers",
-      "copyFailed": "Échec de la copie de {{label}}"
+      "noCustomizationsToExport": "Aucune personnalisation à exporter",
+      "copiedToClipboard": "Copié dans le presse-papiers",
+      "failedToCopy": "Échec de la copie dans le presse-papiers",
+      "createFailed": "Échec de la création de la personnalisation du tracker",
+      "updateFailed": "Échec de la mise à jour de la personnalisation du tracker",
+      "deleteFailed": "Échec de la suppression de la personnalisation du tracker",
+      "failedToImport": "Échec de l'importation : {{names}}",
+      "importedAndSkipped": "Importés {{imported}}, ignorés {{skipped}}",
+      "importedCount_one": "{{count}} personnalisation importée",
+      "importedCount_other": "{{count}} personnalisations importées",
+      "noCustomizationsImported": "Aucune personnalisation importée"
     }
   }
 }

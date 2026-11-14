@@ -34,7 +34,7 @@ const (
 
 // settleSync is what the settle module reads from and sends to qBittorrent.
 type settleSync interface {
-	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
@@ -941,7 +941,7 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 			// The step for another hash of the same torrent already took this entry.
 			continue
 		}
-		torrent, found := torrentByHash[normalizeHash(hash)]
+		ref, found := torrentByHash[normalizeHash(hash)]
 		if !found && req.recheckPending {
 			// A stalled qBittorrent can hide a fresh add from the cache;
 			// dropping it here would leave it stopped for good.
@@ -956,6 +956,7 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 			continue
 		}
 
+		torrent := *ref
 		canonicalHash, canonicalKey := rekeyPendingRecheckResume(pending, instanceID, hash, req, torrent)
 
 		if !s.processPendingRecheckResume(ctx, instanceID, canonicalHash, req, torrent) {
@@ -968,9 +969,9 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 // torrentLookup gets the torrents for hashes, keyed by each of their hashes. When
 // a hash is missing, it falls back to the full torrent list of the instance. It
 // returns false when a call fails, so that no entry is dropped as gone.
-func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, bool) {
+func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, bool) {
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
-	torrents, err := s.sync.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
+	torrents, err := s.sync.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 	cancel()
 	if err != nil {
 		log.Debug().
@@ -986,7 +987,7 @@ func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []st
 		return torrentByHash, true
 	}
 	allCtx, allCancel := context.WithTimeout(ctx, recheckAPITimeout)
-	allTorrents, allErr := s.sync.GetTorrents(allCtx, instanceID, qbt.TorrentFilterOptions{})
+	allTorrents, allErr := s.sync.GetTorrentRefs(allCtx, instanceID, qbittorrent.TorrentRefFilter{})
 	allCancel()
 	if allErr != nil {
 		log.Debug().
@@ -1024,8 +1025,8 @@ func canonicalRecheckResumeHash(queuedHash string, torrent qbt.Torrent) string {
 	return normalizeHash(queuedHash)
 }
 
-func buildTorrentVariantLookup(torrents []qbt.Torrent) map[string]qbt.Torrent {
-	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+func buildTorrentVariantLookup(torrents []*qbt.Torrent) map[string]*qbt.Torrent {
+	torrentByHash := make(map[string]*qbt.Torrent, len(torrents))
 	for _, torrent := range torrents {
 		for _, hash := range []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
 			normalized := normalizeHash(hash)
@@ -1038,7 +1039,7 @@ func buildTorrentVariantLookup(torrents []qbt.Torrent) map[string]qbt.Torrent {
 	return torrentByHash
 }
 
-func missingVariantLookupHash(torrentByHash map[string]qbt.Torrent, hashes []string) bool {
+func missingVariantLookupHash(torrentByHash map[string]*qbt.Torrent, hashes []string) bool {
 	for _, hash := range hashes {
 		if _, found := torrentByHash[normalizeHash(hash)]; !found {
 			return true

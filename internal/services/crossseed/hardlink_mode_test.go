@@ -1278,7 +1278,7 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 	require.True(t, result.Used, "hardlink mode should be attempted when enabled")
 	assert.False(t, result.Success, "hardlink mode should fail when instance lacks local access")
 	assert.Equal(t, "hardlink_error", result.Result.Status)
-	assert.Contains(t, result.Result.Message, "local filesystem access")
+	assert.Contains(t, result.Result.Message, "filesystem write access")
 }
 
 func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {

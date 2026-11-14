@@ -115,7 +115,9 @@ func TestRateLimitError_ErrorsAs(t *testing.T) {
 func TestDownloadRateLimitUsesGrabScopeAndRetryAfter(t *testing.T) {
 	t.Parallel()
 
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
 		w.Header().Set("Retry-After", "42")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
@@ -131,10 +133,11 @@ func TestDownloadRateLimitUsesGrabScopeAndRetryAfter(t *testing.T) {
 	require.ErrorAs(t, err, &rateLimitErr)
 	assert.Equal(t, rateLimitScopeGrab, rateLimitErr.Scope)
 	assert.WithinRange(t, rateLimitErr.RetryAt, before, time.Now().Add(43*time.Second))
-	queryLimited, _ := service.rateLimiter.IsInCooldown(indexer.ID, rateLimitScopeQuery)
-	grabLimited, _ := service.rateLimiter.IsInCooldown(indexer.ID, rateLimitScopeGrab)
-	assert.False(t, queryLimited)
-	assert.True(t, grabLimited)
+	assert.Equal(t, int32(1), requests.Load(), "a 429 must end the download with no retry")
+	_, _, searchErr := service.slots.tryAcquire(indexer, requestSearch)
+	_, _, downloadErr := service.slots.tryAcquire(indexer, requestDownload)
+	require.NoError(t, searchErr)
+	assert.ErrorAs(t, downloadErr, &rateLimitErr)
 }
 
 func TestDownloadTorrentDoesNotCacheRejectedPayload(t *testing.T) {

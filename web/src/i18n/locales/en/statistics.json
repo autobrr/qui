@@ -1,0 +1,120 @@
+{
+  "title": "Statistics",
+  "recordingSince": "Recording since {{date}}",
+  "notRecording": "qui has not recorded any transfer yet.",
+  "partial": "Partial period",
+  "periods": {
+    "24h": "24 hours",
+    "7d": "7 days",
+    "30d": "30 days",
+    "1y": "Year",
+    "all": "All time",
+    "custom": "Custom"
+  },
+  "customRange": {
+    "from": "First day",
+    "to": "Last day",
+    "apply": "Apply",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "All instances",
+    "count_one": "{{count}} instance",
+    "count_other": "{{count}} instances",
+    "removed": "removed"
+  },
+  "tiles": {
+    "uploaded": "Uploaded",
+    "downloaded": "Downloaded",
+    "ratio": "Ratio",
+    "buffer": "Buffer {{buffer}}",
+    "crossSeed": "From cross-seeds",
+    "crossSeedShare": "{{percent}}% of the upload",
+    "change": "{{change}} against the period before"
+  },
+  "chart": {
+    "title": "Transfer over time",
+    "descriptionHour": "By tracker, per hour",
+    "descriptionDay": "By tracker, per day",
+    "upload": "Upload",
+    "download": "Download",
+    "other": "Other",
+    "otherCount": "Other ({{groups}})",
+    "total": "Total",
+    "gap": "Includes a recording gap of {{duration}}",
+    "gapLabel": "gap {{duration}}",
+    "foldedDay": "(whole day, UTC)",
+    "empty": "No transfer in this period."
+  },
+  "groups": {
+    "public": "Public",
+    "noTracker": "No tracker"
+  },
+  "errors": {
+    "load": "Could not load the statistics: {{message}}"
+  },
+  "allTimeNote": "All time includes the Baseline: the bytes that the torrents had when qui first recorded them. The chart does not show the Baseline, because it has no date.",
+  "serverStatisticsNote": "These numbers add up the transfer of each torrent. Server Statistics on the Dashboard reads the counters of qBittorrent, which also count protocol traffic, so the numbers differ.",
+  "table": {
+    "title": "By group",
+    "descriptionTracker": "The transfer of the period for each tracker. Click a row to open its detail.",
+    "descriptionCategory": "The transfer of the period for each category, under the category that each torrent had when the bytes moved. Click a row to open its detail.",
+    "descriptionRelease": "The transfer of the period for each value that qui reads from the torrent names. Click a row to open its detail.",
+    "groupBy": "Group by",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Category",
+      "releaseGroup": "Release group",
+      "resolution": "Resolution",
+      "source": "Source",
+      "contentType": "Content type"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "uploaded": "Uploaded",
+      "downloaded": "Downloaded",
+      "ratio": "Ratio",
+      "buffer": "Buffer",
+      "torrents": "Torrents",
+      "size": "Size",
+      "seeded": "Seeded"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Total",
+    "noCategory": "No category",
+    "none": "None",
+    "liveError": "Could not load the torrents that are in qBittorrent now: {{message}}",
+    "liveNote": "Torrents, Size, and Seeded describe the torrents that are in qBittorrent now, not the period. Seeded is their lifetime upload divided by their size.",
+    "categoryNote": "qui stores the category totals for each UTC day. A period that starts or ends inside a UTC day counts that whole day, so the total of the categories can differ from the numbers at the top.",
+    "releaseNote": "qui reads these values from the torrent names, and stores the bytes of each torrent for each UTC day. A period that starts or ends inside a UTC day counts that whole day, so the total of the rows can differ from the numbers at the top.",
+    "baselineNote": "For all time, each row includes the Baseline of its torrents."
+  },
+  "detail": {
+    "share": "Share of the upload",
+    "shareOf": "of {{total}}",
+    "crossSeed": "From cross-seeds",
+    "crossSeedShare": "{{percent}} of its upload",
+    "bestHour": "Best hour",
+    "bestDay": "Best day",
+    "averageHour": "Average per hour",
+    "averageDay": "Average per day",
+    "chartHour": "{{group}} per hour",
+    "chartDay": "{{group}} per day",
+    "chartLegend": "Upload above the line, download below it",
+    "topTorrents": "Top torrents of {{group}}",
+    "topTorrentsCategoryNote": "The top torrents of a category follow the category that each torrent has now."
+  },
+  "topTorrents": {
+    "title": "Top torrents",
+    "description": "The torrents with the most upload in the period. Click a row to see its upload for each day.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "First 24 hours"
+    },
+    "deleted": "Deleted",
+    "crossSeed": "Cross-seed",
+    "note": "A deleted torrent keeps its place with its name. A torrent counts toward the tracker that it has now. First 24 hours is the upload in the 24 hours after the add. It is empty when qui first saw the torrent after them.",
+    "utcNote": "Each bar is a UTC day.",
+    "yearNote": "Each bar is a UTC day, apart from the bar of a year: after the Detail retention, qui keeps one number for each torrent and year."
+  }
+}

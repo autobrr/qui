@@ -13,6 +13,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
@@ -38,7 +39,7 @@ type settleFake struct {
 	actions       []string
 }
 
-func (f *settleFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *settleFake) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(filter.Hashes) > 0 {
@@ -51,7 +52,7 @@ func (f *settleFake) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFil
 	if f.current == nil {
 		return nil, nil
 	}
-	return []qbt.Torrent{*f.current}, nil
+	return []*qbt.Torrent{new(*f.current)}, nil
 }
 
 func (f *settleFake) BulkAction(ctx context.Context, _ int, hashes []string, action string) error {

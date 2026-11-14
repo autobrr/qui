@@ -54,6 +54,9 @@ func runBackupItemRangeTests(t *testing.T, open func(t *testing.T) *database.DB)
 	t.Run("concurrent commits take distinct snapshot sequences", func(t *testing.T) {
 		checkConcurrentCommits(t, open(t))
 	})
+	t.Run("blob paths of runs list each path once", func(t *testing.T) {
+		checkTorrentBlobPathsForRuns(t, open(t))
+	})
 }
 
 // waitForLockWaiters blocks until want writers are queued on one instance's
@@ -391,6 +394,38 @@ func checkEveryItemFieldIsVersioned(t *testing.T, db *database.DB) {
 			}
 		})
 	}
+}
+
+// Three runs share most torrents, so most rows cover several of the runs. The
+// fourth run is outside the set and its blob must not appear. Padding ids
+// that match no run put the first run in another chunk than the others.
+func checkTorrentBlobPathsForRuns(t *testing.T, db *database.DB) {
+	f := newBackupFixture(t, db)
+	inst := f.instance("blob-paths")
+	item := func(hash string, blob *string) models.BackupItem {
+		return models.BackupItem{TorrentHash: hash, Name: hash, SizeBytes: 1, TorrentBlobPath: blob}
+	}
+	commit := func(items ...models.BackupItem) int64 {
+		id := f.run(inst)
+		require.NoError(t, f.store.InsertItems(f.ctx, id, items))
+		return id
+	}
+
+	runA := commit(item("a", new("blob-a")), item("b", new("blob-b")), item("c", new("blob-c")))
+	runB := commit(item("a", new("blob-a")), item("b", new("blob-b")), item("d", new("blob-d")))
+	runC := commit(item("a", new("blob-a")), item("b", new("blob-b2")), item("d", new("blob-d")), item("e", nil))
+	commit(item("a", new("blob-a")), item("f", new("blob-f")))
+
+	runIDs := make([]int64, 0, 1003)
+	runIDs = append(runIDs, runA)
+	for i := range int64(1000) {
+		runIDs = append(runIDs, -1-i)
+	}
+	runIDs = append(runIDs, runB, runC)
+
+	got, err := f.store.ListTorrentBlobPathsForRuns(f.ctx, runIDs)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"blob-a", "blob-b", "blob-b2", "blob-c", "blob-d"}, got)
 }
 
 func checkUnchangedSnapshotWritesNothing(t *testing.T, db *database.DB) {

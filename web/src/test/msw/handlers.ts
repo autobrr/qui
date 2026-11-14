@@ -96,6 +96,6 @@ export const handlers = [
   ),
 
   http.post("*/api/instances/:instanceId/torrents/delete-cross-seeds", () =>
-    HttpResponse.json({ matches: [] })
+    HttpResponse.json({ matches: [], unchecked_instances: [] })
   ),
 ]

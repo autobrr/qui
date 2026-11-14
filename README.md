@@ -58,11 +58,11 @@ Join our community on [Discord](https://discord.autobrr.com/qui)!
 
 qui is developed and maintained by volunteers. Your support helps us continue improving the project.
 
-### Premium Themes
+### Theme License
 
-Purchase premium themes from **Settings → Premium Themes** in your qui instance. The checkout page shows your license key.
-If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
-A license also unlocks custom themes, which you can write yourself or take from [qui-community-themes](https://github.com/autobrr/qui-community-themes).
+Buy a theme license from **Settings → Themes** in your qui instance. The checkout page shows your license key.
+If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for the theme license.
+A license also unlocks the themes from [qui-community-themes](https://github.com/autobrr/qui-community-themes), which qui ships built in, and custom themes that you write yourself.
 
 ### Donations
 
@@ -79,7 +79,7 @@ If you'd like to support development beyond theme purchases, donations are alway
 
 #### Cryptocurrency
 
-Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
+Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for the theme license.
 
 #### Bitcoin (BTC)
 - soup: `bc1qfe093kmhvsa436v4ksz0udfcggg3vtnm2tjgem`
