@@ -22,6 +22,11 @@
     "count_other": "인스턴스 {{count}}개",
     "removed": "제거됨"
   },
+  "seriesColors": {
+    "label": "시리즈 색상",
+    "distinct": "구분 색상",
+    "theme": "테마 색상"
+  },
   "tiles": {
     "uploaded": "업로드",
     "downloaded": "다운로드",

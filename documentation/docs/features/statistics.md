@@ -265,3 +265,9 @@ Server Statistics on the [Dashboard](./dashboard.md) reads the all-time counters
 ## Incognito mode
 
 If [incognito mode](./incognito.md) is on, the page replaces the torrent names, the tracker names, the category names, and the release groups with fake names. Resolution, source, and content type stay visible.
+
+## Series colors
+
+The selector at the top of the page sets the colors of the series in the charts. **Distinct colors** is the default. It gives each series a color that is easy to tell apart from the others. **Theme colors** uses the five chart colors of the active theme. When you change the theme, the colors change too.
+
+The [chart](#chart) explains which trackers get a color. qui stores the setting on the server, so each browser shows the same colors.

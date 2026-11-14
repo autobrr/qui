@@ -23,6 +23,11 @@
     "count_other": "{{count}} Instanzen",
     "removed": "entfernt"
   },
+  "seriesColors": {
+    "label": "Serienfarben",
+    "distinct": "Unterscheidbare Farben",
+    "theme": "Designfarben"
+  },
   "tiles": {
     "uploaded": "Hochgeladen",
     "downloaded": "Heruntergeladen",

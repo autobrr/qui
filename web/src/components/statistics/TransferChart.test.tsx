@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TransferChart } from "@/components/statistics/TransferChart"
 import "@/i18n"
+import { _resetClientSettingsForTests, writeRaw } from "@/lib/client-settings"
 import type { StatisticsBar } from "@/lib/statistics"
 
 const i18n = vi.hoisted(() => ({
@@ -26,7 +27,11 @@ vi.mock("recharts", async (importOriginal) => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => isValidElement(children) ? cloneElement(children, { width: 800, height: 300 } as object) : null,
 }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+  _resetClientSettingsForTests()
+})
 
 function bar(start: string, gapSeconds: number): StatisticsBar {
   return { start: Date.parse(start), width: "hour", gapSeconds, bytes: new Map([["a.test", { uploaded: 100, downloaded: 0 }]]) }
@@ -49,5 +54,21 @@ describe("TransferChart", () => {
     const { container } = render(<TransferChart bars={bars} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />)
 
     expect(container.textContent).toContain("chart.otherCount groups=2")
+  })
+
+  it("colors the series from the selected set", () => {
+    const bars = [bar("2026-01-10T10:00:00Z", 0)]
+    const chart = <TransferChart bars={bars} groups={["a.test"]} metric="uploaded" unit="hour" displayName={group => group} />
+    const style = (container: HTMLElement) => container.querySelector("style")?.textContent ?? ""
+
+    const distinct = render(chart)
+    expect(style(distinct.container)).toContain("--color-s0: #2a78d6;")
+    expect(style(distinct.container)).toContain("--color-s0: #3987e5;")
+    cleanup()
+
+    writeRaw("qui-statistics-series-colors", JSON.stringify("theme"))
+    const theme = render(chart)
+    expect(style(theme.container)).toContain("--color-s0: var(--chart-1);")
+    expect(style(theme.container)).not.toContain("#2a78d6")
   })
 })
