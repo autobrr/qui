@@ -75,6 +75,7 @@ describe("buildBars", () => {
     }
   })
 
+  // regression: #4133
   it("keeps a folded UTC day on its own date at UTC+13", () => {
     process.env.TZ = "Pacific/Auckland"
     try {
