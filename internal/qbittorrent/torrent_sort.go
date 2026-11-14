@@ -33,20 +33,16 @@ var torrentSortFields = func() map[string]int {
 	return fields
 }()
 
-// sortTorrents sorts the rows of one instance in place. cachedHealth fills in
-// the tracker health of rows whose trackers were not fetched.
-func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts) {
-	rows := make([]*qbt.Torrent, len(torrents))
-	for i := range torrents {
-		rows[i] = &torrents[i]
-	}
+// sortTorrents sorts the rows of one instance in place. The state sort reads
+// the tracker health from cachedHealth.
+func (sm *SyncManager) sortTorrents(torrents []*qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthSnapshot) {
 	health := func(i int) TrackerHealth {
 		if !trackerHealthSupported {
 			return ""
 		}
-		return sm.resolveTrackerHealth(rows[i], cachedHealth)
+		return cachedHealth.Health(torrents[i].Hash)
 	}
-	sortByIndex(torrents, sm.torrentOrder(rows, health, column, desc, func(a, b int) int { return a - b }))
+	sortByIndex(torrents, sm.torrentOrder(torrents, health, column, desc, func(a, b int) int { return a - b }))
 }
 
 // sortCrossInstanceTorrents sorts Unified rows in place. Rows that compare
@@ -56,18 +52,18 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 	for i := range torrents {
 		rows[i] = torrents[i].Torrent
 	}
-	var cachedByInstance map[int]*TrackerHealthCounts
+	var cachedByInstance map[int]*TrackerHealthSnapshot
 	health := func(i int) TrackerHealth {
 		id := torrents[i].InstanceID
 		cached, ok := cachedByInstance[id]
 		if !ok {
 			if cachedByInstance == nil {
-				cachedByInstance = make(map[int]*TrackerHealthCounts)
+				cachedByInstance = make(map[int]*TrackerHealthSnapshot)
 			}
-			cached = sm.GetTrackerHealthCounts(id)
+			cached = sm.GetTrackerHealthSnapshot(id)
 			cachedByInstance[id] = cached
 		}
-		return sm.resolveTrackerHealth(rows[i], cached)
+		return cached.Health(rows[i].Hash)
 	}
 	compareInstance := func(a, b int) int {
 		return cmp.Or(
@@ -408,9 +404,8 @@ func timestampOrder(rows []*qbt.Torrent, desc bool, tie func(a, b int) int, time
 
 // sortByIndex sorts items in place by comparing indices instead of the items
 // themselves, so sort keys can be resolved once per item up front instead of on
-// every comparison. It also keeps large elements (qbt.Torrent is ~600 bytes)
-// still while the sort runs. compare must be a total order over indices (add
-// the index itself as the last tiebreak to keep a stable result).
+// every comparison. compare must be a total order over indices (add the index
+// itself as the last tiebreak to keep a stable result).
 func sortByIndex[T any](torrents []T, compare func(aIdx, bIdx int) int) {
 	indices := make([]int, len(torrents))
 	for idx := range indices {

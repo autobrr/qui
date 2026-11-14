@@ -6,6 +6,7 @@ package crossseed
 import (
 	"cmp"
 	"fmt"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -236,8 +237,9 @@ func (m matcher) compareTitles(comparison *releaseComparison, source, candidate 
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
-	sourceTitles := m.normalizedReleaseTitles(source, sourceName)
-	candidateTitles := m.normalizedReleaseTitles(candidate, candidateName)
+	var srcBuf, candBuf [16]string
+	sourceTitles := m.appendNormalizedReleaseTitles(srcBuf[:0], source, sourceName)
+	candidateTitles := m.appendNormalizedReleaseTitles(candBuf[:0], candidate, candidateName)
 	switch {
 	case len(sourceTitles) == 0 || len(candidateTitles) == 0:
 		comparison.add(differenceEmptyTitle)
@@ -249,7 +251,7 @@ func (m matcher) compareTitles(comparison *releaseComparison, source, candidate 
 
 // titleSetsMatch reports whether two sets of normalized release titles name the
 // same work. The extra titles are ARR aliases of the other side.
-func titleSetsMatch(sourceTitles, candidateTitles map[string]struct{}, sourceExtraTitles, candidateExtraTitles []string) bool {
+func titleSetsMatch(sourceTitles, candidateTitles, sourceExtraTitles, candidateExtraTitles []string) bool {
 	// Accept any overlap between normalized title sets. Each set contains complete
 	// normalized title entries from Title, Alt, and parsed AKA parts, so legitimate
 	// alternate titles can match without requiring strict equality of one parsed title.
@@ -261,7 +263,7 @@ func titleSetsMatch(sourceTitles, candidateTitles map[string]struct{}, sourceExt
 	// Extra titles (ARR aliases) are loop-invariant across a scan while this
 	// function runs once per scanned torrent, and Sonarr alias lists are uncapped.
 	// Probe them against the other side's set instead of inserting them, so the
-	// per-pair maps stay small and never regrow per torrent.
+	// per-pair sets stay small and never regrow per torrent.
 	return normalizedTitleSetsOverlap(sourceTitles, candidateTitles) ||
 		normalizedTitleSetContainsAny(sourceTitles, candidateExtraTitles) ||
 		normalizedTitleSetContainsAny(candidateTitles, sourceExtraTitles)
@@ -308,53 +310,43 @@ func (m matcher) compareArtistAndDates(comparison *releaseComparison, source, ca
 // reject. The Match verdict pairs this with an exact-size gate, because
 // with the title ignored a sparsely parsed name can leave nothing else to
 // reject on. A path that adds data gets the paused-add full recheck as the
-// final authority; Local matches only reports existing pairings, so its false
-// positives stay confined to display.
+// final authority; the batch matcher only reports existing pairings and pairs
+// their file sizes or links.
 func (m matcher) releasesMatchExceptTitleWithReason(sourceSide, candidateSide namedRelease, findIndividualEpisodes bool) (bool, string) {
 	comparison := m.compareExceptTitle(releaseComparison{}, sourceSide, candidateSide, findIndividualEpisodes, true, true)
 	return comparison.matched(), comparison.reason()
 }
 
-func (m matcher) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
-	titles := make(map[string]struct{})
+func (m matcher) appendNormalizedReleaseTitles(dst []string, release *rls.Release, rawName string) []string {
 	var buf [8]string
 	for _, title := range m.appendReleaseTitles(buf[:0], release, rawName) {
-		addNormalizedTitle(titles, title)
+		dst = addNormalizedTitle(dst, title)
 	}
-	addNormalizedTitle(titles, titleWithoutSeasonNumeral(release))
-	return titles
+	return addNormalizedTitle(dst, titleWithoutSeasonNumeral(release))
 }
 
 // appendReleaseTitles appends the titles that the matcher reads from a name:
-// the main title first, then the alternate title, each AKA part, and each side
-// of a slash title. An entry can be "". The title without the Season numeral
-// is not one of them, because it depends on the season of the other side.
+// the main title first, then each other name of an AKA title, each AKA part,
+// and each side of a slash title. An entry can be "". The title without the
+// Season numeral is not one of them, because it depends on the season of the
+// other side.
 func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawName string) []string {
-	titles = append(titles, releaseTitle(release), releaseAlt(release))
+	titles = appendTitleAndAlts(titles, release)
 
 	// Cached parse: this runs once per library torrent per search.
 	for _, rawTitle := range m.rawAKATitleParts(rawName) {
-		parsed := m.parseReleaseName(rawTitle)
-		titles = append(titles, parsed.Title, parsed.Alt)
+		titles = appendTitleAndAlts(titles, m.parseReleaseName(rawTitle))
 	}
 
-	// rls ends the title at a slash, so an indexer listing like
-	// "Fate/strange Fake S01 ..." parses as "Fate" while the dot-separated source
-	// name parses as "Fate strange Fake". Read the slash as a separator too and
-	// keep both spellings.
-	//
-	// Keep only the reading that extends the truncated title: dropping the slash
-	// also re-splits artist from title ("AC/DC - Back In Black" -> title "Back In
-	// Black"), which would reach a different artist's album.
-	//
-	// TODO: drop this block at the next rls bump if
-	// TestReleasesMatch_SlashInTitleReadsAsSeparator still passes without it. rls
-	// merely keeping "/" inside Title is not enough: NormalizeForMatching passes
-	// "/" through, so "fate/strange fake" still will not equal "fate strange fake".
-	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
+	// rls keeps a slash in the title ("Fate/strange Fake") and ends the title at a
+	// backslash ("Fate"), while the dot-separated name parses as "Fate strange
+	// Fake". NormalizeForMatching keeps "/", so also read the slash as a
+	// separator. Keep only the reading that extends the title: dropping the slash
+	// also re-splits artist from title ("AC/DC - Back In Black").
+	if unslashed := slashAsSeparator.Replace(rawName); unslashed != rawName {
 		parsed := m.parseReleaseName(unslashed)
-		if strings.HasPrefix(parsed.Title, releaseTitle(release)) {
-			titles = append(titles, parsed.Title, parsed.Alt)
+		if strings.HasPrefix(parsed.Title, slashAsSeparator.Replace(releaseTitle(release))) {
+			titles = appendTitleAndAlts(titles, parsed)
 		}
 	}
 
@@ -362,14 +354,28 @@ func (m matcher) appendReleaseTitles(titles []string, release *rls.Release, rawN
 }
 
 // normalizedTitleSetContainsAny reports whether any extra title normalizes to
-// an entry of the set. It never mutates the set.
-func normalizedTitleSetContainsAny(titles map[string]struct{}, extraTitles []string) bool {
+// an entry of the set.
+func normalizedTitleSetContainsAny(titles, extraTitles []string) bool {
 	for _, title := range extraTitles {
-		if _, exists := titles[stringutils.NormalizeForMatching(title)]; exists {
+		if slices.Contains(titles, stringutils.NormalizeForMatching(title)) {
 			return true
 		}
 	}
 	return false
+}
+
+var slashAsSeparator = strings.NewReplacer("/", " ", `\`, " ")
+
+// sameServiceCollection folds the two codes rls reads for one streaming
+// service: Apple TV+ was renamed Apple TV, and Max was renamed HBO Max.
+func sameServiceCollection(collection string) string {
+	switch collection {
+	case "atv":
+		return "atvp"
+	case "max":
+		return "hmax"
+	}
+	return collection
 }
 
 func releaseTitle(release *rls.Release) string {
@@ -435,11 +441,11 @@ func appendRomanNumeral(dst []byte, n int) []byte {
 	return dst
 }
 
-func releaseAlt(release *rls.Release) string {
+func appendTitleAndAlts(titles []string, release *rls.Release) []string {
 	if release == nil {
-		return ""
+		return append(titles, "")
 	}
-	return release.Alt
+	return append(append(titles, release.Title), release.Alt...)
 }
 
 func (m matcher) rawAKATitleParts(rawName string) []string {
@@ -467,20 +473,21 @@ func (m matcher) rawAKATitleParts(rawName string) []string {
 	return titles
 }
 
-func addNormalizedTitle(titles map[string]struct{}, title string) {
+func addNormalizedTitle(titles []string, title string) []string {
 	// NormalizeForMatching does a cache lookup even for "", and most releases have no Alt.
 	if title == "" {
-		return
+		return titles
 	}
 	normalized := stringutils.NormalizeForMatching(title)
-	if normalized != "" {
-		titles[normalized] = struct{}{}
+	if normalized == "" || slices.Contains(titles, normalized) {
+		return titles
 	}
+	return append(titles, normalized)
 }
 
-func normalizedTitleSetsOverlap(sourceTitles, candidateTitles map[string]struct{}) bool {
-	for title := range sourceTitles {
-		if _, exists := candidateTitles[title]; exists {
+func normalizedTitleSetsOverlap(sourceTitles, candidateTitles []string) bool {
+	for _, title := range sourceTitles {
+		if slices.Contains(candidateTitles, title) {
 			return true
 		}
 	}
@@ -541,8 +548,11 @@ func (m matcher) compareGroupSiteAndChecksum(comparison *releaseComparison, sour
 		sourceGroup = candidateSite
 	}
 
-	// Only enforce group matching if the source has a group tag
-	if sourceGroup != "" && !spaceJoined {
+	// Only enforce group matching if the source has a group tag. rls repeats a
+	// bracket tag such as [SubsPlease] into Group when the name has no other
+	// group, and the Site rule below judges that tag.
+	bracketGroup := sourceGroup != "" && sourceGroup == sourceSite && !releaseHasExplicitGroupTag(source)
+	if sourceGroup != "" && !bracketGroup && !spaceJoined {
 		candidateGroupIdentity := candidateGroup
 		if candidateGroupIdentity == "" {
 			candidateGroupIdentity = candidateSite
@@ -557,10 +567,9 @@ func (m matcher) compareGroupSiteAndChecksum(comparison *releaseComparison, sour
 	// If source has no group, we don't care about candidate's group
 
 	// Site field is used by anime releases where group is in brackets like [SubsPlease].
-	// rls parses these as Site rather than Group. Different fansub groups can never
-	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
-	// non-empty site tags as incompatible, but don't reject candidates that simply
-	// lack this metadata.
+	// Different fansub groups can never cross-seed, but many indexer titles omit the
+	// site tag entirely. Treat mismatched non-empty site tags as incompatible, but
+	// don't reject candidates that simply lack this metadata.
 	if sourceSite != "" && !spaceJoined {
 		candidateSiteIdentity := candidateSite
 		if candidateSiteIdentity == "" {
@@ -644,8 +653,8 @@ func (m matcher) compareFormatAndCodec(comparison *releaseComparison, source, ca
 	// the service tag from otherwise identical names, so a tag on only one
 	// side is not evidence of a different master; the per-file size comparison
 	// downstream catches real mismatches before anything is injected.
-	sourceCollection := normalizer.Normalize(source.Collection)
-	candidateCollection := normalizer.Normalize(candidate.Collection)
+	sourceCollection := sameServiceCollection(normalizer.Normalize(source.Collection))
+	candidateCollection := sameServiceCollection(normalizer.Normalize(candidate.Collection))
 	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
 		comparison.add(differenceCollection)
 	}
@@ -821,8 +830,10 @@ var sourceAliases = map[string]string{
 
 // normalizeSource converts a source string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
+// A UHD source prefix is dropped, so UHD.WEB-DL compares as WEB-DL and
+// UHD.BluRay as BluRay; the resolution check still tells 2160p from 1080p.
 func normalizeSource(source string) string {
-	upper := normalizeVariant(source)
+	upper := strings.TrimPrefix(normalizeVariant(source), "UHD.")
 	if canonical, ok := sourceAliases[upper]; ok {
 		return canonical
 	}
@@ -1326,8 +1337,10 @@ func (m matcher) streamingLargestFileMatch(sourceFiles, candidateFiles []Torrent
 func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Release) *rls.Release {
 	enriched := *fileRelease
 
-	// Fill in missing group from torrent.
-	if enriched.Group == "" && torrentRelease.Group != "" {
+	// Fill in missing group from torrent. A group that repeats the Site with no
+	// group tag is the bracket tag of the file, not a group of its own.
+	bracketGroup := enriched.Group != "" && enriched.Group == enriched.Site && !releaseHasExplicitGroupTag(fileRelease)
+	if (enriched.Group == "" || bracketGroup) && torrentRelease.Group != "" {
 		enriched.Group = torrentRelease.Group
 	}
 
@@ -1374,26 +1387,31 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	return &enriched
 }
 
-// shouldIgnoreFile checks if a file should be ignored during matching.
-// Uses hardcoded lists of extensions and path keywords to filter out scene
-// metadata files, subtitles, samples, and other non-content files.
+// shouldIgnoreFile reports whether a file is a sidecar, a sample, or a bonus
+// video. Real titles begin with keywords ("Trailer.Park.Boys.S01E01"), so a
+// keyword at the start of a release name is a title word.
 func shouldIgnoreFile(filename string, normalizer *stringutils.Normalizer[string, string]) bool {
 	lower := normalizer.Normalize(filename)
+	if slices.Contains(DefaultIgnoredExtensions, path.Ext(lower)) {
+		return true
+	}
 
-	// Check extension matches
-	for _, ext := range DefaultIgnoredExtensions {
-		if strings.HasSuffix(lower, ext) {
+	dir, base := path.Split(lower)
+	for segment := range strings.SplitSeq(dir, "/") {
+		if slices.Contains(DefaultIgnoredPathKeywords, segment) || slices.Contains(DefaultIgnoredPathKeywords, strings.TrimSuffix(segment, "s")) ||
+			slices.Contains(DefaultIgnoredPathKeywords, strings.TrimSuffix(segment, "es")) {
 			return true
 		}
 	}
-
-	// Check path keyword matches (e.g., "sample", "proof", "extras")
+	stem := strings.TrimSuffix(base, path.Ext(base))
 	for _, keyword := range DefaultIgnoredPathKeywords {
-		if strings.Contains(lower, keyword) {
+		if after, ok := strings.CutPrefix(stem, keyword); ok && (strings.TrimLeft(after, "0123456789") == "" || after[0] == '-') {
+			return true
+		}
+		if before, ok := strings.CutSuffix(stem, keyword); ok && strings.IndexByte("-._ ", before[len(before)-1]) >= 0 {
 			return true
 		}
 	}
-
 	return false
 }
 

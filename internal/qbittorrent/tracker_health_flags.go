@@ -31,6 +31,17 @@ func announceFlagsOf(t *qbt.Torrent) announceFlags {
 	}
 }
 
+// TrackerLookup holds the tracker entries of torrents by hash. The torrents of
+// a Sync snapshot are shared, so tracker details live here and not on the
+// torrents. A reader must not change the slices.
+type TrackerLookup map[string][]qbt.TorrentTracker
+
+// Trackers returns the tracker entries of the torrent with the given hash, or
+// nil when the lookup has none.
+func (l TrackerLookup) Trackers(hash string) []qbt.TorrentTracker {
+	return l[hash]
+}
+
 type trackerDetail struct {
 	flags     announceFlags
 	trackers  []qbt.TorrentTracker
@@ -59,13 +70,13 @@ func (sm *SyncManager) trackerDetailsFor(caches map[int]*trackerDetails, instanc
 	return cache
 }
 
-// hydrateTrackerDetails sets Trackers on the torrents from cache. It fetches
-// details only for a torrent whose flags changed since the last hydration, or
-// whose details are older than trackerHealthDetailMaxAge. With flaggedOnly, a
-// torrent without an announce flag gets no Trackers, so its tracker health is
-// healthy. When the fetch fails, it keeps and sets the details that it fetched
-// before the error.
-func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client, cache *trackerDetails, torrents []qbt.Torrent, flaggedOnly bool) error {
+// hydrateTrackerDetails returns the tracker details of the torrents from cache.
+// It fetches details only for a torrent whose flags changed since the last
+// hydration, or whose details are older than trackerHealthDetailMaxAge. With
+// flaggedOnly, a torrent without an announce flag gets no entry, so its tracker
+// health is healthy. When the fetch fails, it keeps and returns the details
+// that it fetched before the error.
+func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client, cache *trackerDetails, torrents []*qbt.Torrent, flaggedOnly bool) (TrackerLookup, error) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	sm.trackerHealthMu.Lock()
@@ -76,12 +87,12 @@ func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client
 	now := time.Now()
 	next := make(map[string]trackerDetail, len(cache.byHash))
 	var stale []string
-	for i := range torrents {
-		flags := announceFlagsOf(&torrents[i])
+	for _, torrent := range torrents {
+		flags := announceFlagsOf(torrent)
 		if flaggedOnly && flags == (announceFlags{}) {
 			continue
 		}
-		hash := torrents[i].Hash
+		hash := torrent.Hash
 		prev, ok := cache.byHash[hash]
 		_, wasEdited := edited[hash]
 		if ok && !wasEdited && prev.flags == flags && now.Sub(prev.fetchedAt) < sm.trackerHealthDetailMaxAge {
@@ -110,12 +121,11 @@ func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client
 	// that times out continues where it stopped.
 	cache.byHash = next
 
-	for i := range torrents {
-		if entry, ok := next[torrents[i].Hash]; ok {
-			torrents[i].Trackers = entry.trackers
-		}
+	lookup := make(TrackerLookup, len(next))
+	for hash, entry := range next {
+		lookup[hash] = entry.trackers
 	}
-	return fetchErr
+	return lookup, fetchErr
 }
 
 // fetchTrackerDetails fetches the trackers of the given torrents in requests of

@@ -8,8 +8,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
+
+func testAddedCandidate() candidateReport {
+	return candidateReport{event: candidateAddRan, class: crossseed.ClassAdded}
+}
 
 func TestTryMatchResultsPerIndexer_SkipsAfterMatchPerIndexer(t *testing.T) {
 	results := []jackett.SearchResult{
@@ -23,7 +28,7 @@ func TestTryMatchResultsPerIndexer_SkipsAfterMatchPerIndexer(t *testing.T) {
 	callCounts := map[int]int{}
 	attemptedTitles := []string{}
 
-	matches, stats := tryMatchResultsPerIndexer(
+	candidates, stats := tryMatchResultsPerIndexer(
 		results,
 		0,
 		0,
@@ -31,26 +36,26 @@ func TestTryMatchResultsPerIndexer_SkipsAfterMatchPerIndexer(t *testing.T) {
 			// Simulate "already exists" skipping for indexer 3.
 			return result.IndexerID == 3
 		},
-		func(result *jackett.SearchResult) *searcheeMatch {
+		func(result *jackett.SearchResult) candidateReport {
 			callCounts[result.IndexerID]++
 			attemptedTitles = append(attemptedTitles, result.Title)
 
 			switch result.IndexerID {
 			case 1:
-				return &searcheeMatch{searchResult: result}
+				return testAddedCandidate()
 			case 2:
 				// First result from indexer 2 fails, second matches.
 				if callCounts[result.IndexerID] == 1 {
-					return nil
+					return candidateReport{event: candidateRejected}
 				}
-				return &searcheeMatch{searchResult: result}
+				return testAddedCandidate()
 			default:
-				return nil
+				return candidateReport{event: candidateRejected}
 			}
 		},
 	)
 
-	require.Len(t, matches, 2)
+	require.Len(t, candidates, 3)
 	require.Equal(t, 3, stats.attemptedMatches, "should only attempt A, C, D")
 	require.Equal(t, 1, stats.skippedIndexerSatisfied, "should skip B after A matched for indexer 1")
 	require.Equal(t, 1, stats.skippedExists, "should skip E due to existence check")
@@ -67,18 +72,18 @@ func TestTryMatchResultsPerIndexer_SizeFiltering(t *testing.T) {
 	}
 
 	attemptedTitles := []string{}
-	matches, stats := tryMatchResultsPerIndexer(
+	candidates, stats := tryMatchResultsPerIndexer(
 		results,
 		125,
 		0,
 		nil,
-		func(result *jackett.SearchResult) *searcheeMatch {
+		func(result *jackett.SearchResult) candidateReport {
 			attemptedTitles = append(attemptedTitles, result.Title)
-			return &searcheeMatch{searchResult: result}
+			return testAddedCandidate()
 		},
 	)
 
-	require.Len(t, matches, 1)
+	require.Len(t, candidates, 1)
 	require.Equal(t, []string{"D"}, attemptedTitles)
 	require.Equal(t, 3, stats.skippedTooSmall)
 	require.Equal(t, 1, stats.attemptedMatches)
@@ -93,23 +98,23 @@ func TestTryMatchResultsPerIndexer_DoesNotSatisfyOnInjectionFailure(t *testing.T
 	attemptedTitles := []string{}
 	callCount := 0
 
-	matches, stats := tryMatchResultsPerIndexer(
+	candidates, stats := tryMatchResultsPerIndexer(
 		results,
 		0,
 		0,
 		nil,
-		func(result *jackett.SearchResult) *searcheeMatch {
+		func(result *jackett.SearchResult) candidateReport {
 			attemptedTitles = append(attemptedTitles, result.Title)
 			callCount++
 
 			if callCount == 1 {
-				return &searcheeMatch{searchResult: result, injectionFailed: true}
+				return candidateReport{event: candidateAddRan, class: crossseed.ClassStranded}
 			}
-			return &searcheeMatch{searchResult: result}
+			return testAddedCandidate()
 		},
 	)
 
-	require.Len(t, matches, 2)
+	require.Len(t, candidates, 2)
 	require.Equal(t, 2, stats.attemptedMatches)
 	require.Equal(t, 0, stats.skippedIndexerSatisfied)
 	require.Equal(t, []string{"A", "B"}, attemptedTitles)

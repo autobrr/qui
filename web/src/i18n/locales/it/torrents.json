@@ -134,6 +134,8 @@
     "error": "Verifica dei cross-seed non riuscita",
     "retry": "Riprova",
     "noCrossSeeds": "Nessun cross-seed trovato",
+    "uncheckedOffline": "Impossibile controllare {{instance}}: qui non riesce a raggiungerla.",
+    "uncheckedDisabled": "{{instance}} non è stata controllata: è disattivata in qui.",
     "deleteCrossSeeds": "Anche questi cross-seed verranno eliminati",
     "deletingFilesBreaks": "L'eliminazione dei file comprometterà questi cross-seed",
     "dataPreserved": "Cross-seed rilevati: i dati verranno preservati",
@@ -177,14 +179,6 @@
     "renameTorrentSuccess": "Torrent rinominato in \"{{name}}\"",
     "renameTorrentFailed": "Rinomina del torrent non riuscita: {{error}}",
     "renameTorrentEmpty": "Il nome del torrent non può essere vuoto",
-    "renameFileSuccess": "File rinominato in \"{{name}}\"",
-    "renameFileFailed": "Rinomina del file non riuscita: {{error}}",
-    "renameFilePathsRequired": "Sono richiesti sia il percorso file originale sia quello nuovo",
-    "renameFileUnchanged": "Nome del file invariato",
-    "renameFolderSuccess": "Cartella rinominata in \"{{name}}\"",
-    "renameFolderFailed": "Rinomina della cartella non riuscita: {{error}}",
-    "renameFolderPathsRequired": "Sono richiesti sia il percorso cartella originale sia quello nuovo",
-    "renameFolderUnchanged": "Nome della cartella invariato",
     "partialTags": {
       "title_one": "Tag aggiornati parzialmente per {{count}} torrent",
       "title_other": "Tag aggiornati parzialmente per {{count}} torrent",
@@ -618,10 +612,7 @@
     "bottomPriorityBatch": "Priorità minima ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Rinomina",
-    "renameTorrent": "Rinomina torrent",
-    "renameFile": "Rinomina file",
-    "renameFolder": "Rinomina cartella"
+    "renameTorrent": "Rinomina torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -821,7 +812,8 @@
       "fewerIndexers": "Prova a cercare con meno indexer selezionati",
       "useRss": "Usa la funzione di automazione RSS per il cross-seeding continuo",
       "checkIndexers": "Controlla la pagina degli indexer per vedere quali sono soggetti a rate limit"
-    }
+    },
+    "routedTo": "I cross-seed vanno all'istanza di cross-seed {{instance}}."
   },
   "columnFilter": {
     "filterColumn": "Filtra {{column}}",
@@ -1014,7 +1006,6 @@
     "torrentCount_other": "{{count}} torrent",
     "torrentsLoaded": "{{loaded}} di {{total}} torrent caricati",
     "scrollForMore": "(scorri per altri)",
-    "loading": "Caricamento...",
     "freeSpace": "Spazio libero",
     "switchToBits": "Passa a bit al secondo (bps)",
     "switchToBytes": "Passa a byte al secondo (B/s)",
@@ -1080,7 +1071,6 @@
     "closePanel": "Chiudi il pannello dei dettagli",
     "unknownError": "Errore sconosciuto",
     "toast": {
-      "copied": "{{type}} copiato negli appunti",
       "copyFailed": "Impossibile copiare negli appunti",
       "peersAdded": "Peer aggiunti con successo",
       "peersFailed": "Impossibile aggiungere i peer: {{error}}",
@@ -1132,20 +1122,14 @@
       "loadedSummary_other": "{{count}} torrent corrispondenti trovati in tutte le istanze",
       "deleteMatches": "Elimina corrispondenze ({{count}})",
       "deleteThisTorrent": "Elimina questo torrent",
-      "checkingMoreInstances": "Verifica di altre istanze in corso...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "Torrent esattamente identico (stesso info hash)",
-      "savePathMatch": "Percorso di salvataggio",
-      "savePathDescription": "Stessa directory di salvataggio e nome file",
-      "selectTorrent": "Seleziona {{name}}"
+      "selectTorrent": "Seleziona {{name}}",
+      "openTorrent": "Apri {{name}}"
     },
     "sections": {
       "generalInformation": "Informazioni generali",
       "transferStatistics": "Statistiche di trasferimento",
-      "speed": "Velocità",
       "queueManagement": "Gestione coda",
       "timeInformation": "Informazioni temporali",
-      "timestamps": "Marche temporali",
       "activeTrackers": "Tracker attivi",
       "connectedPeers": "Peer connessi",
       "fileContents": "Contenuto dei file"
@@ -1172,18 +1156,13 @@
       "added": "Aggiunto",
       "completed": "Completato",
       "created": "Creato",
-      "leechers": "Leecher",
-      "peerProgress": "Avanzamento peer",
-      "connection": "Connessione:",
-      "flags": "Flag:"
+      "leechers": "Leecher"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
       "trackers_other": "{{count}} tracker",
       "connectedPeers_one": "{{count}} peer connesso",
       "connectedPeers_other": "{{count}} peer connessi",
-      "httpSources_one": "{{count}} sorgente",
-      "httpSources_other": "{{count}} sorgenti",
       "selectedFiles": "{{selected}} di {{total}} selezionati",
       "files_one": "{{count}} file",
       "files_other": "{{count}} file"
@@ -1191,7 +1170,6 @@
     "values": {
       "normal": "Normale",
       "queued": "In coda {{state}}",
-      "seeder": "Seeder",
       "unknownClient": "Client sconosciuto"
     },
     "actions": {
@@ -1200,14 +1178,12 @@
       "selectAll": "Tutti",
       "selectNone": "Nessuno"
     },
-    "peer": {
-      "flagLabel": "Flag {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Nessun file trovato"
     },
     "selectAll": "Seleziona tutto",
-    "deselectAll": "Deseleziona tutto"
+    "deselectAll": "Deseleziona tutto",
+    "trackerMessageHidden": "Messaggio del tracker nascosto in modalità incognito"
   },
   "generalTab": {
     "name": "Nome:",
@@ -1252,6 +1228,7 @@
     "status": "Stato",
     "tracker": "Tracker",
     "seeds": "Seed",
+    "peers": "Peer",
     "leeches": "Leech",
     "downloaded": "DL",
     "message": "Messaggio",
@@ -1367,11 +1344,7 @@
       }
     },
     "noMatches": "Nessun torrent corrispondente trovato su altre istanze",
-    "loadFailed": "Impossibile verificare le corrispondenze cross-seed. Ricarica per riprovare.",
-    "toast": {
-      "savePathCopied": "Percorso di salvataggio copiato",
-      "copyFailed": "Copia non riuscita"
-    }
+    "loadFailed": "Impossibile verificare le corrispondenze cross-seed. Ricarica per riprovare."
   },
   "addTorrentDialog": {
     "title": "Aggiungi nuovo torrent",
@@ -1519,7 +1492,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Ricerca automatica durante la digitazione"
     },
-    "ratio": "Rapporto:"
+    "ratio": "Rapporto:",
+    "added": "Aggiunto {{time}}"
   },
   "tableView": {
     "ascending": "crescente",
@@ -1652,6 +1626,7 @@
     "tags": "Tag",
     "newTagPlaceholder": "Aggiungi un tag e premi Invio",
     "savePath": "Percorso di salvataggio (destinazione effettiva)",
+    "routedTo": "Il cross-seed va all'istanza di cross-seed {{instance}}.",
     "cancel": "Annulla",
     "apply": "Aggiungi cross-seed",
     "applying": "Aggiunta...",
@@ -1673,12 +1648,14 @@
       "dropped": "Pacchetto aggiunto. Destinazioni escluse: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Questa istanza richiede accesso al file system locale per assemblare un pacchetto.",
+        "no_filesystem_access": "Questa istanza richiede l'accesso in scrittura al filesystem per assemblare un pacchetto. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza.",
         "no_link_mode": "Abilita hardlink o reflink su questa istanza per selezionare più destinazioni.",
         "no_base_directory": "Configura una directory di base per i collegamenti di questa istanza.",
         "no_episode_files": "Nessun file episodio riproducibile trovato nel pacchetto.",
         "target_not_found": "Destinazione non trovata in questa istanza.",
         "incomplete": "Il download della destinazione è incompleto.",
+        "not_settled": "Questo torrent è ancora in fase di spostamento o di verifica. Riprova al termine.",
+        "errored": "Questo torrent presenta un errore o file mancanti. Risolvi il problema, poi riprova.",
         "no_episode_identity": "Impossibile riconoscere il numero dell’episodio.",
         "file_list_unavailable": "L’elenco dei file della destinazione non è disponibile.",
         "episode_file_invalid": "La destinazione deve contenere un solo file riproducibile con l’identità dell’episodio selezionato.",
@@ -1692,6 +1669,34 @@
         "link_failed": "Impossibile creare i collegamenti.",
         "add_failed": "Impossibile aggiungere il torrent."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} altra copia di {{name}}",
+    "copies_other": "{{count}} altre copie di {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A una copia nascosta mancano dei file",
+      "error": "Una copia nascosta ha un errore",
+      "unregistered": "Una copia nascosta non è registrata",
+      "trackerError": "Una copia nascosta ha un errore del tracker",
+      "trackerDown": "Il tracker di una copia nascosta non è raggiungibile"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} selezionata",
+    "badgeTicked_other": "+{{hidden}} · {{count}} selezionate",
+    "hiddenTicked_one": "{{count}} copia nascosta è selezionata",
+    "hiddenTicked_other": "{{count}} copie nascoste sono selezionate",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Raggruppa le copie",
+    "ungroupCopies": "Separa le copie",
+    "grouping": "Raggruppamento…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Raggruppa i tuoi cross-seed",
+      "description": "Mostra le copie di un torrent in un'unica riga.",
+      "action": "Prova"
     }
   }
 }

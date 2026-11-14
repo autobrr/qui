@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 )
 
@@ -28,7 +29,7 @@ func TestCloneFile_UsesDuplicateExtentsAndCopiesTail(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
@@ -73,7 +74,7 @@ func TestCloneFile_RemovesPartialDestinationOnFailure(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
@@ -100,7 +101,7 @@ func TestCloneFile_RemovesPartialDestinationOnFailure(t *testing.T) {
 func TestSupportsReflink_ReportsWindowsProbeSuccess(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4096, nil }
@@ -142,7 +143,7 @@ func TestCloneFile_RejectsDifferentVolumes(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(path string) (string, error) {
 		switch filepath.Clean(path) {
 		case filepath.Clean(srcPath):
@@ -193,7 +194,7 @@ func TestCloneFile_AllowsDifferentRootAliasesForSameVolume(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(path string) (string, error) {
 		switch filepath.Clean(path) {
 		case filepath.Clean(srcPath):
@@ -242,7 +243,7 @@ func TestCloneFile_RejectsNonReFSFilesystem(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "NTFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) {
@@ -267,7 +268,7 @@ func TestCloneFile_RejectsInvalidClusterSize(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 0, nil }
@@ -286,7 +287,7 @@ func TestResolveSourcePath_EvaluatesExistingPath(t *testing.T) {
 	srcPath := filepath.Join(tmpDir, "src.bin")
 	resolvedPath := filepath.Join(tmpDir, "resolved.bin")
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	lstatPathFn = func(path string) (os.FileInfo, error) {
 		if filepath.Clean(path) != filepath.Clean(srcPath) {
 			t.Fatalf("unexpected path passed to lstatPathFn: %s", path)
@@ -313,7 +314,7 @@ func TestResolveSourcePath_FailsBeforeEvalWhenLstatFails(t *testing.T) {
 	tmpDir := t.TempDir()
 	srcPath := filepath.Join(tmpDir, "src.bin")
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	lstatPathFn = func(path string) (os.FileInfo, error) {
 		if filepath.Clean(path) != filepath.Clean(srcPath) {
 			t.Fatalf("unexpected path passed to lstatPathFn: %s", path)
@@ -339,7 +340,7 @@ func TestCloneFile_MarksDestinationSparseBeforeResize(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
@@ -397,7 +398,7 @@ func TestCloneFile_UsesResolvedSparseSourceMetadata(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	resolveSourcePathFn = func(src string) (string, error) {
 		if filepath.Clean(src) != filepath.Clean(symlinkSrcPath) {
 			t.Fatalf("unexpected source path passed to resolver: %s", src)
@@ -467,7 +468,7 @@ func TestCloneFile_UsesResolvedDestinationParentForVolumeChecks(t *testing.T) {
 		t.Fatalf("failed to create destination parent: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	resolveSourcePathFn = func(src string) (string, error) {
 		if filepath.Clean(src) != filepath.Clean(srcPath) {
 			t.Fatalf("unexpected source path passed to resolver: %s", src)
@@ -521,7 +522,7 @@ func TestCloneFile_FailsWhenMarkSparseFails(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
@@ -563,7 +564,7 @@ func TestCloneFile_ResolvesSourceSymlinkBeforeClone(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	resolveSourcePathFn = func(src string) (string, error) {
 		if filepath.Clean(src) != filepath.Clean(symlinkSrcPath) {
 			t.Fatalf("unexpected source path passed to resolver: %s", src)
@@ -622,7 +623,7 @@ func TestCloneFile_FailsWhenSourceSymlinkResolutionFails(t *testing.T) {
 	symlinkSrcPath := filepath.Join(tmpDir, "src-link.bin")
 	dstPath := filepath.Join(tmpDir, "dst.bin")
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	resolveSourcePathFn = func(src string) (string, error) {
 		if filepath.Clean(src) != filepath.Clean(symlinkSrcPath) {
 			t.Fatalf("unexpected source path passed to resolver: %s", src)
@@ -665,7 +666,7 @@ func TestCloneFile_WrapsDuplicateExtentError(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
@@ -697,7 +698,7 @@ func TestCloneFile_MapsUnsupportedDuplicateExtentToReflinkUnsupported(t *testing
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
@@ -724,7 +725,7 @@ func TestCloneFile_MapsUnsupportedDuplicateExtentToReflinkUnsupported(t *testing
 func TestSupportsReflink_ReportsProbeFailureReason(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	restoreWindowsHelpers(t)
+	stubWindowsHelpers(t)
 	volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
 	filesystemNameForVolFn = func(string) (string, error) { return "NTFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) {
@@ -741,13 +742,100 @@ func TestSupportsReflink_ReportsProbeFailureReason(t *testing.T) {
 	}
 }
 
-func restoreWindowsHelpers(t *testing.T) {
+// regression: #4074
+func TestCloneFile_AlignsIntegrityBeforeClone(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		source      uint16
+		destination uint16
+		sourceFlags uint32
+		setErr      error
+	}{
+		{name: "on_off", source: 2},
+		{name: "on_on", source: 2, destination: 2},
+		{name: "checksum_enforcement_off", source: 2, destination: 2, sourceFlags: 1},
+		{name: "cannot_align", source: 2, setErr: windows.ERROR_ACCESS_DENIED},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "source.bin")
+			dst := filepath.Join(dir, "clone.bin")
+			require.NoError(t, os.WriteFile(src, []byte("01234567"), 0o600))
+			sourceFile, err := os.Open(src)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, sourceFile.Close()) })
+			var sourceInfo windows.ByHandleFileInformation
+			require.NoError(t, windows.GetFileInformationByHandle(windows.Handle(sourceFile.Fd()), &sourceInfo))
+			stubWindowsHelpers(t)
+			volumeRootForPathFn = func(string) (string, error) { return `R:\`, nil }
+			filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
+			clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
+			var sourceHandle, destinationHandle windows.Handle
+			destination := fileIntegrityInformation{ChecksumAlgorithm: tt.destination}
+			getFileIntegrityFn = func(handle windows.Handle) (fileIntegrityInformation, error) {
+				var info windows.ByHandleFileInformation
+				require.NoError(t, windows.GetFileInformationByHandle(handle, &info))
+				if info.VolumeSerialNumber == sourceInfo.VolumeSerialNumber &&
+					info.FileIndexHigh == sourceInfo.FileIndexHigh && info.FileIndexLow == sourceInfo.FileIndexLow {
+					sourceHandle = handle
+					return fileIntegrityInformation{ChecksumAlgorithm: tt.source, Flags: tt.sourceFlags}, nil
+				}
+				destinationHandle = handle
+				return destination, nil
+			}
+			setCalls := 0
+			setFileIntegrityFn = func(handle windows.Handle, info fileIntegrityInformation) error {
+				require.NotEqual(t, sourceHandle, handle, "source must never be changed")
+				require.Equal(t, destinationHandle, handle)
+				setCalls++
+				if tt.setErr != nil {
+					return tt.setErr
+				}
+				destination = info
+				return nil
+			}
+			setFileEndFn = func(windows.Handle, string, int64) error {
+				require.NoError(t, tt.setErr, "resize ran after integrity failure")
+				require.Equal(t, tt.source, destination.ChecksumAlgorithm)
+				require.Equal(t, tt.sourceFlags, destination.Flags)
+				return nil
+			}
+			duplicateExtentFn = func(windows.Handle, windows.Handle, int64, int64, int64) error {
+				require.Equal(t, tt.source, destination.ChecksumAlgorithm)
+				require.Equal(t, tt.sourceFlags, destination.Flags)
+				return nil
+			}
+
+			err = cloneFile(src, dst)
+			if tt.setErr != nil {
+				require.ErrorIs(t, err, tt.setErr)
+				require.ErrorContains(t, err, "Integrity Streams settings differ")
+				_, statErr := os.Stat(dst)
+				require.ErrorIs(t, statErr, os.ErrNotExist)
+			} else {
+				require.NoError(t, err)
+			}
+			if tt.source == tt.destination && tt.sourceFlags == 0 {
+				require.Zero(t, setCalls)
+			} else {
+				require.Equal(t, 1, setCalls)
+			}
+		})
+	}
+}
+
+func stubWindowsHelpers(t *testing.T) {
 	originalResolveSourcePath := resolveSourcePathFn
 	originalLstatPath := lstatPathFn
 	originalEvalSymlinks := evalSymlinksFn
 	originalIsSparseFile := isSparseFileFn
 	originalMarkFileSparse := markFileSparseFn
 	originalSetFileEnd := setFileEndFn
+	originalGetFileIntegrity := getFileIntegrityFn
+	originalSetFileIntegrity := setFileIntegrityFn
+	getFileIntegrityFn = func(windows.Handle) (fileIntegrityInformation, error) {
+		return fileIntegrityInformation{}, nil
+	}
 	originalVolumeRoot := volumeRootForPathFn
 	originalSameFilesystem := sameFilesystemFn
 	originalFilesystemName := filesystemNameForVolFn
@@ -761,6 +849,8 @@ func restoreWindowsHelpers(t *testing.T) {
 		isSparseFileFn = originalIsSparseFile
 		markFileSparseFn = originalMarkFileSparse
 		setFileEndFn = originalSetFileEnd
+		getFileIntegrityFn = originalGetFileIntegrity
+		setFileIntegrityFn = originalSetFileIntegrity
 		volumeRootForPathFn = originalVolumeRoot
 		sameFilesystemFn = originalSameFilesystem
 		filesystemNameForVolFn = originalFilesystemName

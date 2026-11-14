@@ -18,8 +18,10 @@ If you are not a collaborator:
 - To suggest a feature, post in [Feature Requests, Ideas](https://github.com/autobrr/qui/discussions/new?category=feature-requests-ideas).
 - To propose a code change, describe it in a Discussion. We do not accept code from people outside the team at this time.
 
+We do not accept pull requests that a Gemini model wrote, because of its hallucination rate.
+
 If you are a collaborator and use an AI agent, add this line to your personal agent instructions, for example `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`.
-The agent then skips the collaborator check in [`AGENTS.md`](../AGENTS.md).
+The agent then skips the collaborator check in [`docs/agents/collaborator-check.md`](../docs/agents/collaborator-check.md).
 
 ```text
 I am a collaborator on autobrr/qui with write access. Skip the collaborator check in the qui AGENTS.md.

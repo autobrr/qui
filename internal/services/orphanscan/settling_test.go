@@ -151,9 +151,9 @@ func TestBuildFileMapFromTorrents_FailsWhenStableTorrentMissingFiles(t *testing.
 
 	root := t.TempDir()
 
-	_, err := buildFileMapFromTorrents(fsops.HostPaths, []qbt.Torrent{
+	_, err := buildFileMapFromTorrents(fsops.HostPaths, []*qbt.Torrent{
 		{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
-	}, map[string]qbt.TorrentFiles{})
+	}, map[string]qbt.TorrentFiles{}, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "stable torrents returned no files")
 }
@@ -165,13 +165,14 @@ func TestBuildFileMapFromTorrents_IgnoresTorrentWithoutMetadataAtSharedRoot(t *t
 	hasMetadata := false
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
-		[]qbt.Torrent{
+		[]*qbt.Torrent{
 			{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
 			{Hash: "metadata-less", SavePath: root, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
 		},
 		map[string]qbt.TorrentFiles{
 			"stable": {{Name: "movie.mkv", Size: 1}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Clean(root)}, result.scanRoots)
@@ -186,13 +187,14 @@ func TestBuildFileMapFromTorrents_SkipsTransientMissingRoots(t *testing.T) {
 	transientRoot := filepath.Join(t.TempDir(), "transient")
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
-		[]qbt.Torrent{
+		[]*qbt.Torrent{
 			{Hash: "stable", SavePath: stableRoot, State: qbt.TorrentStatePausedUp},
 			{Hash: "checking", SavePath: transientRoot, State: qbt.TorrentStateCheckingResumeData},
 		},
 		map[string]qbt.TorrentFiles{
 			"stable": {{Name: "movie.mkv", Size: 1}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []string{filepath.Clean(stableRoot)}, result.scanRoots)
@@ -206,13 +208,14 @@ func TestBuildFileMapFromTorrents_SkipsSharedRootWhenTransientTorrentHasNoFiles(
 	root := t.TempDir()
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
-		[]qbt.Torrent{
+		[]*qbt.Torrent{
 			{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
 			{Hash: "allocating", SavePath: root, State: qbt.TorrentStateAllocating},
 		},
 		map[string]qbt.TorrentFiles{
 			"stable": {{Name: "movie.mkv", Size: 1}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 	assert.Empty(t, result.scanRoots)
@@ -359,23 +362,27 @@ func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) 
 	categoryRoot := filepath.Join(t.TempDir(), "cross-seed")
 	trackerDir := filepath.Join(categoryRoot, "tracker-name")
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
-		[]qbt.Torrent{
+		[]*qbt.Torrent{
 			{
 				Hash:        "abc123",
 				SavePath:    categoryRoot,
 				ContentPath: filepath.Join(trackerDir, "My.Torrent", "file1.mkv"),
 				State:       qbt.TorrentStatePausedUp,
 			},
+			{Hash: "plain", SavePath: categoryRoot, State: qbt.TorrentStatePausedUp},
 		},
 		map[string]qbt.TorrentFiles{
 			"abc123": {
 				{Name: "My.Torrent/file1.mkv", Size: 1000},
 				{Name: "My.Torrent/file2.srt", Size: 100},
 			},
+			"plain": {{Name: "plain.mkv", Size: 1}},
 		},
+		true,
 	)
 	require.NoError(t, err)
 
+	assert.Len(t, result.torrentPaths, 5)
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(categoryRoot, "My.Torrent", "file1.mkv")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(categoryRoot, "My.Torrent", "file2.srt")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(trackerDir, "My.Torrent", "file1.mkv")))
@@ -389,7 +396,7 @@ func TestBuildFileMapFromTorrents_FlatMultiFileContentPathStaysWithinSavePath(t 
 
 	saveRoot := filepath.Join(t.TempDir(), "downloads")
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
-		[]qbt.Torrent{
+		[]*qbt.Torrent{
 			{
 				Hash:        "flat123",
 				SavePath:    saveRoot,
@@ -403,6 +410,7 @@ func TestBuildFileMapFromTorrents_FlatMultiFileContentPathStaysWithinSavePath(t 
 				{Name: "subs/file.srt", Size: 100},
 			},
 		},
+		false,
 	)
 	require.NoError(t, err)
 
@@ -418,7 +426,7 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 	categoryRoot := filepath.Join(t.TempDir(), "cross-seed")
 	contentRoot := filepath.Join(categoryRoot, "tracker-name")
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
-		[]qbt.Torrent{
+		[]*qbt.Torrent{
 			{
 				Hash:        "flat-divergent",
 				SavePath:    categoryRoot,
@@ -432,6 +440,7 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 				{Name: "movie.mkv", Size: 1000},
 			},
 		},
+		false,
 	)
 	require.NoError(t, err)
 
@@ -455,7 +464,7 @@ func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 	lower := filepath.Join(categoryRoot, "trackername")
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
-		[]qbt.Torrent{
+		[]*qbt.Torrent{
 			{Hash: "upper", SavePath: upper, ContentPath: filepath.Join(upper, "Show.S01"), State: qbt.TorrentStatePausedUp},
 			{Hash: "lower", SavePath: lower, ContentPath: filepath.Join(lower, "Movie.2024"), State: qbt.TorrentStatePausedUp},
 		},
@@ -463,6 +472,7 @@ func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 			"upper": {{Name: "Show.S01/Show.S01E01.mkv", Size: 1000}},
 			"lower": {{Name: "Movie.2024/Movie.2024.mkv", Size: 2000}},
 		},
+		false,
 	)
 	require.NoError(t, err)
 

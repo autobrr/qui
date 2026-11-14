@@ -32,6 +32,7 @@ func TestApplicationHandler_GetInfo(t *testing.T) {
 	appCfg.Config.OIDCEnabled = true
 	appCfg.Config.OIDCDisableBuiltInLogin = true
 	appCfg.Config.OIDCIssuer = "https://id.example.com/realms/main"
+	appCfg.PublishConfig()
 
 	origVersion := buildinfo.Version
 	origCommit := buildinfo.Commit

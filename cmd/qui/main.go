@@ -41,16 +41,22 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/dbshrink"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/lowdisk"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sqlite3store"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/tray"
@@ -434,40 +440,55 @@ Flags:
 
 func RunMigrateCommand() *cobra.Command {
 	var command = &cobra.Command{
-		Use:   "migrate {deluge | rtorrent | transmission} --source-dir dir --qbit-dir dir2 [--skip-backup] [--dry-run]",
-		Short: "Migrate from deluge,rtorrent or transmission to qBittorrent",
-		Long:  `Migrate torrents with state from other clients [deluge,rtorrent,transmission]`,
+		Use:   "migrate {deluge | rtorrent | transmission | utorrent} --source-dir dir --qbit-dir dir2 [--replace-path from=to] [--skip-backup] [--dry-run]",
+		Short: "Migrate from deluge, rtorrent, transmission or utorrent to qBittorrent",
+		Long:  `Migrate torrents with state from other clients [deluge,rtorrent,transmission,utorrent]`,
 		Example: `  qui migrate deluge --source-dir ~/.config/deluge/state/ --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
   qui migrate rtorrent --source-dir ~/.sessions --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
   qui migrate transmission --source-dir ~/data --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+  qui migrate utorrent --source-dir %APPDATA%\uTorrent --qbit-dir %LOCALAPPDATA%\qBittorrent\BT_backup --dry-run
+  qui migrate utorrent --source-dir /mnt/uTorrent --qbit-dir /config/qBittorrent/BT_backup --replace-path 'D:\Downloads=/data' --dry-run
 `,
 		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeTransmission)},
+		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeTransmission), string(clientmigrate.ClientTypeUTorrent)},
 	}
 
 	var (
-		sourceDir  string
-		qbitDir    string
-		dryRun     bool
-		skipBackup bool
+		sourceDir    string
+		qbitDir      string
+		dryRun       bool
+		skipBackup   bool
+		replacePaths []string
 	)
 
 	command.Flags().BoolVar(&dryRun, "dry-run", false, "Run without importing anything")
 	command.Flags().StringVar(&sourceDir, "source-dir", "", "source client state dir (required)")
 	command.Flags().StringVar(&qbitDir, "qbit-dir", "", "qBittorrent BT_backup dir. Commonly ~/.local/share/qBittorrent/BT_backup (required)")
 	command.Flags().BoolVar(&skipBackup, "skip-backup", false, "Skip backup before import")
+	command.Flags().StringArrayVar(&replacePaths, "replace-path", nil, "Rewrite a save path prefix as from=to, e.g. 'D:\\Downloads=/data'. Repeatable, the first match wins")
 
 	_ = command.MarkFlagRequired("source-dir")
 	_ = command.MarkFlagRequired("qbit-dir")
 
 	command.RunE = func(cmd *cobra.Command, args []string) error {
 		source := args[0]
+
+		pathReplaces := make([]clientmigrate.PathReplace, 0, len(replacePaths))
+		for _, rule := range replacePaths {
+			r, err := clientmigrate.ParsePathReplace(rule)
+			if err != nil {
+				return err
+			}
+			pathReplaces = append(pathReplaces, r)
+		}
+
 		opts := clientmigrate.Options{
-			Source:     clientmigrate.ClientType(source),
-			SourceDir:  sourceDir,
-			QbitDir:    qbitDir,
-			DryRun:     dryRun,
-			SkipBackup: skipBackup,
+			Source:       clientmigrate.ClientType(source),
+			SourceDir:    sourceDir,
+			QbitDir:      qbitDir,
+			DryRun:       dryRun,
+			SkipBackup:   skipBackup,
+			PathReplaces: pathReplaces,
 		}
 
 		mig := clientmigrate.New(opts)
@@ -549,6 +570,10 @@ func (app *Application) runServer() {
 	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
 		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")
 	}
+	if err := cfg.Config.ValidateOIDCAllowedUser(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid OIDC allowed user configuration")
+	}
+	config.WarnIfOIDCAllowedUserUnset(cfg.Config)
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
@@ -561,6 +586,12 @@ func (app *Application) runServer() {
 	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
 
+	peerClientIconService, err := peerclienticons.NewService(cfg.GetDataDir(), buildinfo.UserAgent, peerclienticons.Icons)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to prepare peer client icon cache")
+	}
+	peerClientIconService.SetFetchEnabled(cfg.Config.TrackerIconsFetchEnabled)
+
 	// Ensure the custom themes directory exists so users have a place to drop
 	// sideloaded *.css files. Non-fatal: the themes handler also ensures lazily.
 	if themesDir, err := cfg.EnsureCustomThemesDir(); err != nil {
@@ -568,6 +599,7 @@ func (app *Application) runServer() {
 	}
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
+		peerClientIconService.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
 	})
 
@@ -590,6 +622,7 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 	}
 	defer db.Close()
+	startupShrink, shrinkRan := db.RunPendingShrink(context.Background())
 
 	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
@@ -641,6 +674,22 @@ func (app *Application) runServer() {
 
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
+
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
+	notificationCtx, notificationCancel := context.WithCancel(context.Background())
+	defer notificationCancel()
+	if notificationService != nil {
+		notificationService.Start(notificationCtx)
+	}
+	systemNotices := systemnotice.New(notificationService)
+	lowDiskCtx, lowDiskCancel := context.WithCancel(context.Background())
+	defer lowDiskCancel()
+	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
+	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
+	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
+	clientPool.AddSyncEventSink(transferHistoryAdapter)
+	syncManager.SetDeleteNoter(transferHistoryAdapter)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
@@ -696,13 +745,6 @@ func (app *Application) runServer() {
 	// Initialize automation activity store and external programs service
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
-	notificationTargetStore := models.NewNotificationTargetStore(db)
-	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
-	notificationCtx, notificationCancel := context.WithCancel(context.Background())
-	defer notificationCancel()
-	if notificationService != nil {
-		notificationService.Start(notificationCtx)
-	}
 
 	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
 	// backups, automations, indexer activity, etc.) onto the SSE stream so the
@@ -766,13 +808,18 @@ func (app *Application) runServer() {
 		return remotebackend.New(sshPool, inst)
 	})
 	crossSeedService.SetBackendPool(backendPool)
+	crossSeedRoutes := crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, backendPool)
+	crossSeedService.SetCrossSeedRoutes(crossSeedRoutes)
+	crossSeedService.Adder().SetCrossSeedRoutes(crossSeedRoutes)
 
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
+	automationService.SetCrossSeedRoutes(crossSeedRoutes)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
+	orphanScanService.SetCrossSeedRoutes(crossSeedRoutes)
 
 	folderCleanup := qbittorrent.NewFolderCleanup(backendPool, syncManager, orphanScanService)
 	syncManager.SetFolderCleanup(folderCleanup)
@@ -783,14 +830,15 @@ func (app *Application) runServer() {
 	discScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool, crossSeedService.Adder())
 	dirScanService.SetActivityPublisher(activityHub)
+	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	}, crossSeedService.HandleTorrentCompletion)
 
-	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []qbt.Torrent) {
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
 		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
@@ -798,6 +846,7 @@ func (app *Application) runServer() {
 	defer func() {
 		automationCancel()
 		crossSeedService.StopAutomation()
+		crossSeedService.StopCopyGroups()
 	}()
 	partialPoolCtx, partialPoolCancel := context.WithCancel(context.Background())
 	partialPoolDone := make(chan struct{})
@@ -886,6 +935,15 @@ func (app *Application) runServer() {
 
 	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
 	restarter := update.NewRestarter(updateInputs.BinaryPath)
+	updateAvailability := update.Decide(updateInputs)
+	var shrinkRestarter dbshrink.Restarter
+	if updateAvailability.Restart {
+		shrinkRestarter = restarter
+	}
+	databaseShrink := dbshrink.New(db, systemNotices, shrinkRestarter)
+	if shrinkRan {
+		databaseShrink.Report(startupShrink)
+	}
 	selfUpdater := update.NewUpdater(update.Config{
 		Repository: "autobrr/qui",
 		Version:    buildinfo.Version,
@@ -909,10 +967,11 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
-		UpdateAvailability:               update.Decide(updateInputs),
+		UpdateAvailability:               updateAvailability,
 		Restarter:                        restarter,
 		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
+		PeerClientIconService:            peerClientIconService,
 		BackupService:                    backupService,
 		FilesManager:                     filesManagerService,
 		CrossSeedService:                 crossSeedService,
@@ -931,10 +990,14 @@ func (app *Application) runServer() {
 		NotificationService:              notificationService,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		SeasonPackRunStore:               seasonPackRunStore,
+		CrossSeedRoutes:                  crossSeedRoutes,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
+		TransferHistory:                  transferHistory,
+		SystemNotices:                    systemNotices,
+		DatabaseShrink:                   databaseShrink,
 		BackendPool:                      backendPool,
 		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,
@@ -960,6 +1023,8 @@ func (app *Application) runServer() {
 	select {
 	case <-serverReady:
 		crossSeedService.StartAutomation(automationCtx)
+		clientPool.AddSyncEventSink(crossSeedService.CopyGroupsSyncSink())
+		crossSeedService.StartCopyGroups(automationCtx)
 		go func() {
 			defer close(partialPoolDone)
 			crossSeedService.RunPartialPoolCoordinator(partialPoolCtx)
@@ -972,7 +1037,7 @@ func (app *Application) runServer() {
 	}
 
 	if cfg.Config.MetricsEnabled {
-		metricsManager := metrics.NewMetricsManager(syncManager, clientPool, trackerCustomizationStore)
+		metricsManager := metrics.NewMetricsManager(syncManager, clientPool, trackerCustomizationStore, crossSeedService.MetricsCollectors()...)
 
 		// Start metrics server on separate port
 		go func() {
@@ -1023,6 +1088,10 @@ func (app *Application) runServer() {
 		case <-partialPoolDone:
 		case <-ctx.Done():
 			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+		}
+
+		if err := transferHistory.Shutdown(ctx); err != nil {
+			log.Error().Err(err).Msg("failed to write the transfer history at shutdown")
 		}
 
 		// Deferred so it also runs when Shutdown returns an error. Stop
@@ -1085,13 +1154,13 @@ type torrentHashAdapter struct {
 }
 
 func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
-	torrents, err := a.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := a.syncManager.GetAllTorrentRefs(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("get torrents: %w", err)
 	}
 	hashes := make([]string, len(torrents))
-	for i := range torrents {
-		hashes[i] = torrents[i].Hash
+	for i, torrent := range torrents {
+		hashes[i] = torrent.Hash
 	}
 	return hashes, nil
 }

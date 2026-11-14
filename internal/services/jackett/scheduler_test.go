@@ -117,7 +117,7 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 
 func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		rl := NewRateLimiter(1 * time.Millisecond)
+		rl := newRequestSlots(1*time.Millisecond, nil, nil)
 		s := newSearchScheduler(rl, 1) // Single worker to force sequential execution
 		defer s.Stop()
 
@@ -182,7 +182,7 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 
 func TestSearchScheduler_WorkerPoolLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		rl := NewRateLimiter(1 * time.Millisecond)
+		rl := newRequestSlots(1*time.Millisecond, nil, nil)
 		s := newSearchScheduler(rl, 2) // Only 2 workers
 		defer s.Stop()
 
@@ -376,7 +376,7 @@ func TestSearchScheduler_TaskTimeoutCompletesHungExecution(t *testing.T) {
 
 func TestSearchScheduler_ExecutionTimeoutStartsAfterNativePacing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(40 * time.Millisecond)
+		limiter := newRequestSlots(40*time.Millisecond, nil, nil)
 		s := newSearchScheduler(limiter, 1)
 		defer s.Stop()
 
@@ -433,43 +433,88 @@ func TestSearchScheduler_ExecutionTimeoutStartsAfterNativePacing(t *testing.T) {
 	})
 }
 
+// A search during a Rate-limit cooldown fails at dispatch. It does not wait for
+// the Request gap and takes no slot.
 func TestSearchScheduler_QueryCooldownSkipsBeforeNativePacing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(200 * time.Millisecond)
-		indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
-		limiter.RecordRequestComplete(indexer.ID, time.Now())
-		limiter.SetCooldown(indexer.ID, rateLimitScopeQuery, time.Now().Add(time.Second))
-
-		limiter.mu.Lock()
-		lastCompleted := limiter.states[indexer.ID].lastCompleted
-		limiter.mu.Unlock()
-
-		s := newSearchScheduler(limiter, 1)
+		s := newSearchScheduler(newRequestSlots(200*time.Millisecond, nil, nil), 1)
 		defer s.Stop()
+		indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
 
-		var executed atomic.Bool
-		complete := make(chan error, 1)
-		start := time.Now()
-		_, err := s.Submit(context.Background(), SubmitRequest{
+		var executed atomic.Int32
+		submit := func(answer error) (time.Duration, error) {
+			t.Helper()
+			complete := make(chan error, 1)
+			start := time.Now()
+			_, err := s.Submit(context.Background(), SubmitRequest{
+				Indexers: []*models.TorznabIndexer{indexer},
+				ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+					executed.Add(1)
+					return nil, []int{indexer.ID}, answer
+				},
+				Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+					complete <- err
+				}},
+			})
+			require.NoError(t, err)
+			err = recvWithin(t, complete)
+			took := time.Since(start)
+			synctest.Wait() // drain the wake-ups of this task before the next Submit
+			return took, err
+		}
+
+		_, err := submit(&responseError{StatusCode: 429, RetryAfter: "1"})
+		var rateLimitErr *RateLimitError
+		require.ErrorAs(t, err, &rateLimitErr)
+
+		took, err := submit(nil)
+		require.ErrorAs(t, err, &rateLimitErr)
+		assert.Equal(t, dispatchCoalesceDelay, took, "known query cooldown waited for the Request gap")
+		assert.Equal(t, int32(1), executed.Load())
+
+		time.Sleep(time.Second)
+		took, err = submit(nil)
+		require.NoError(t, err)
+		assert.Equal(t, dispatchCoalesceDelay, took, "a refused search must not take the Request slot")
+	})
+}
+
+// A search to an indexer in a Rate-limit cooldown fails at once, also while
+// another search to that indexer is open.
+func TestSearchScheduler_CooldownRefusalDoesNotWaitForOpenSearch(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		slots := newRequestSlots(time.Millisecond, nil, nil)
+		s := newSearchScheduler(slots, 1)
+		defer s.Stop()
+		indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
+		started := make(chan struct{})
+		release := make(chan struct{})
+		defer close(release)
+		_, err := s.Submit(t.Context(), SubmitRequest{
 			Indexers: []*models.TorznabIndexer{indexer},
 			ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
-				executed.Store(true)
-				return nil, []int{indexer.ID}, nil
+				close(started)
+				<-release
+				return nil, nil, nil
 			},
-			Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
-				complete <- err
-			}},
 		})
 		require.NoError(t, err)
+		<-started
+		answer429(t, slots, indexer, requestCaps, "60")
 
+		refused := make(chan error, 1)
+		start := time.Now()
+		_, err = s.Submit(t.Context(), SubmitRequest{
+			Indexers: []*models.TorznabIndexer{indexer},
+			ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+				return nil, nil, nil
+			},
+			Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) { refused <- err }},
+		})
+		require.NoError(t, err)
 		var rateLimitErr *RateLimitError
-		require.ErrorAs(t, <-complete, &rateLimitErr)
-		assert.Equal(t, dispatchCoalesceDelay, time.Since(start), "known query cooldown waited for native pacing")
-		assert.False(t, executed.Load())
-
-		limiter.mu.Lock()
-		defer limiter.mu.Unlock()
-		assert.Equal(t, lastCompleted, limiter.states[indexer.ID].lastCompleted, "local cooldown rejection must not reserve a pacing slot")
+		require.ErrorAs(t, recvWithin(t, refused), &rateLimitErr)
+		assert.Equal(t, dispatchCoalesceDelay, time.Since(start))
 	})
 }
 
@@ -508,7 +553,7 @@ func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
 
 func TestSearchScheduler_DoesNotRunQueuedTaskAfterDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		s := newSearchScheduler(NewRateLimiter(time.Millisecond), 1)
+		s := newSearchScheduler(newRequestSlots(time.Millisecond, nil, nil), 1)
 		defer s.Stop()
 
 		blockerStarted := make(chan struct{})
@@ -554,7 +599,7 @@ func TestSearchScheduler_DoesNotRunQueuedTaskAfterDeadline(t *testing.T) {
 
 func TestSearchScheduler_RSSDeduplication(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		rl := NewRateLimiter(1 * time.Millisecond)
+		rl := newRequestSlots(1*time.Millisecond, nil, nil)
 		s := newSearchScheduler(rl, 1) // Single worker
 		defer s.Stop()
 
@@ -606,7 +651,7 @@ func TestSearchScheduler_RSSDeduplication(t *testing.T) {
 
 func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		rl := NewRateLimiter(1 * time.Millisecond)
+		rl := newRequestSlots(1*time.Millisecond, nil, nil)
 		s := newSearchScheduler(rl, 1) // Single worker
 		defer s.Stop()
 
@@ -785,7 +830,7 @@ func TestSearchScheduler_ConcurrentSubmissions(t *testing.T) {
 
 func TestSearchScheduler_MultipleIndexersPerSubmission(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		rl := NewRateLimiter(1 * time.Millisecond)
+		rl := newRequestSlots(1*time.Millisecond, nil, nil)
 		s := newSearchScheduler(rl, 10)
 		defer s.Stop()
 
@@ -938,7 +983,7 @@ func TestSearchScheduler_ErrorPropagation(t *testing.T) {
 
 func TestSearchScheduler_RateLimitIntervalStartsAfterCompletion(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		rl := NewRateLimiter(80 * time.Millisecond)
+		rl := newRequestSlots(80*time.Millisecond, nil, nil)
 		s := newSearchScheduler(rl, 10)
 		defer s.Stop()
 
@@ -973,6 +1018,37 @@ func TestSearchScheduler_RateLimitIntervalStartsAfterCompletion(t *testing.T) {
 		require.NoError(t, err)
 		<-done2
 		assert.Equal(t, 80*time.Millisecond, time.Since(start2))
+	})
+}
+
+// A short search starts one Request gap at its answer, not one at the ask and
+// one at the answer.
+func TestSearchScheduler_ShortSearchUsesOneGap(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newSearchScheduler(newRequestSlots(80*time.Millisecond, nil, nil), 10)
+		defer s.Stop()
+		indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
+
+		var started []time.Time
+		var answeredAt time.Time
+		for range 2 {
+			done := make(chan struct{})
+			_, err := s.Submit(context.Background(), SubmitRequest{
+				Indexers: []*models.TorznabIndexer{indexer},
+				ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+					started = append(started, time.Now())
+					time.Sleep(10 * time.Millisecond)
+					answeredAt = time.Now()
+					return nil, []int{indexer.ID}, nil
+				},
+				Callbacks: JobCallbacks{OnJobDone: func(uint64) { close(done) }},
+			})
+			require.NoError(t, err)
+			<-done
+		}
+		require.Len(t, started, 2)
+		assert.Equal(t, 80*time.Millisecond, started[1].Sub(started[0].Add(10*time.Millisecond)))
+		assert.Equal(t, 10*time.Millisecond, answeredAt.Sub(started[1]))
 	})
 }
 
@@ -1029,159 +1105,6 @@ func TestSearchScheduler_ExecPanicStillEmitsActivity(t *testing.T) {
 		assert.Positive(t, counts[activity.KindIndexerActivity], "panic-recovery path must emit an indexer-activity signal")
 		assert.Positive(t, counts[activity.KindSearchHistory], "panic-recovery path must emit a search-history signal")
 	})
-}
-
-// Rate limiter tests
-
-func TestRateLimiter_NextWaitIgnoresCooldown(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(5 * time.Millisecond)
-		indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
-
-		cooldown := 40 * time.Millisecond
-		limiter.SetCooldown(indexer.ID, rateLimitScopeQuery, time.Now().Add(cooldown))
-
-		wait := limiter.NextWait(indexer)
-		if wait != 0 {
-			t.Fatalf("expected cooldown to be handled as an immediate skip, got wait %v", wait)
-		}
-	})
-}
-
-func TestRateLimiter_NextWaitOnlyPacesNativeTorznab(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(time.Hour)
-		prowlarr := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendProwlarr}
-		native := &models.TorznabIndexer{ID: 2, Backend: models.TorznabBackendNative}
-
-		limiter.RecordRequestComplete(prowlarr.ID, time.Now())
-		limiter.RecordRequestComplete(native.ID, time.Now())
-
-		assert.Zero(t, limiter.NextWait(prowlarr), "aggregator owns its request pacing")
-		assert.Greater(t, limiter.NextWait(native), time.Duration(0), "native Torznab retains local pacing")
-	})
-}
-
-func TestRateLimiter_GetCooldownIndexers(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(time.Millisecond)
-
-		limiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(100*time.Millisecond))
-		limiter.SetCooldown(2, rateLimitScopeQuery, time.Now().Add(20*time.Millisecond))
-
-		time.Sleep(40 * time.Millisecond)
-
-		cooldowns := limiter.GetCooldownIndexers(rateLimitScopeQuery)
-
-		if _, ok := cooldowns[1]; !ok {
-			t.Fatalf("expected indexer 1 to still be in cooldown")
-		}
-		if _, ok := cooldowns[2]; ok {
-			t.Fatalf("expected indexer 2 cooldown to expire")
-		}
-	})
-}
-
-func TestRateLimiter_IsInCooldown(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(time.Millisecond)
-
-		limiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(20*time.Millisecond))
-
-		inCooldown, resumeAt := limiter.IsInCooldown(1, rateLimitScopeQuery)
-		if !inCooldown {
-			t.Fatalf("expected indexer to be in cooldown immediately after SetCooldown")
-		}
-		if resumeAt.Before(time.Now()) {
-			t.Fatalf("expected resumeAt to be in the future")
-		}
-
-		time.Sleep(30 * time.Millisecond)
-
-		inCooldown, _ = limiter.IsInCooldown(1, rateLimitScopeQuery)
-		if inCooldown {
-			t.Fatalf("expected cooldown to expire")
-		}
-	})
-}
-
-func TestRateLimiter_RecordRequestComplete(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(50 * time.Millisecond)
-		indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
-
-		// Should be ready before recording
-		wait := limiter.NextWait(indexer)
-		if wait > 0 {
-			t.Fatalf("expected zero wait before recording request")
-		}
-
-		limiter.RecordRequestComplete(indexer.ID, time.Time{})
-
-		// Should need to wait now
-		wait = limiter.NextWait(indexer)
-		if wait != 50*time.Millisecond {
-			t.Fatalf("expected wait after recording request, got %v", wait)
-		}
-	})
-}
-
-func TestRateLimiter_WaitForMinInterval_ReservesSlot(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(50 * time.Millisecond)
-		indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
-
-		limiter.RecordRequestComplete(indexer.ID, time.Time{})
-
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-
-		start := time.Now()
-		if err := limiter.WaitForMinInterval(ctx, indexer); err != nil {
-			t.Fatalf("WaitForMinInterval returned error: %v", err)
-		}
-		if waited := time.Since(start); waited != 50*time.Millisecond {
-			t.Fatalf("expected to wait out the 50ms interval, waited %v", waited)
-		}
-
-		// We just reserved a slot, so the next request waits a full interval.
-		wait := limiter.NextWait(indexer)
-		if wait != 50*time.Millisecond {
-			t.Fatalf("expected a full interval after reserving slot, got %v", wait)
-		}
-	})
-}
-
-func TestRateLimiter_WaitForMinInterval_IgnoresCooldown(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limiter := NewRateLimiter(50 * time.Millisecond)
-		indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
-
-		limiter.SetCooldown(indexer.ID, rateLimitScopeGrab, time.Now().Add(1*time.Hour))
-
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-
-		start := time.Now()
-		if err := limiter.WaitForMinInterval(ctx, indexer); err != nil {
-			t.Fatalf("WaitForMinInterval returned error: %v", err)
-		}
-		if waited := time.Since(start); waited != 0 {
-			t.Fatalf("WaitForMinInterval waited %v (cooldown should be ignored)", waited)
-		}
-	})
-}
-
-func TestWithMinRequestInterval(t *testing.T) {
-	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
-
-	paced := NewService(nil)
-	paced.rateLimiter.RecordRequestComplete(indexer.ID, time.Now())
-	require.Greater(t, paced.rateLimiter.NextWait(indexer), time.Second, "default pacing should make the next request wait")
-
-	fast := NewService(nil, WithMinRequestInterval(time.Millisecond))
-	fast.rateLimiter.RecordRequestComplete(indexer.ID, time.Now())
-	require.LessOrEqual(t, fast.rateLimiter.NextWait(indexer), time.Millisecond)
 }
 
 func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
@@ -1450,23 +1373,44 @@ func TestSearchScheduler_TimedOutTaskEndsJobAndHoldsOnlyItsIndexer(t *testing.T)
 	})
 }
 
-// The pacing interval of an indexer starts when a timed-out exec really
-// returns, not at the timeout.
-func TestSearchScheduler_PacingStartsWhenTimedOutExecReturns(t *testing.T) {
+// A search that runs past its timeout frees the Request slot at the timeout,
+// so a Dir Scan download goes one Request gap later while the exec still hangs.
+// A 429 that arrives after the timeout still starts the Rate-limit cooldown.
+func TestSearchScheduler_TimedOutSearchFreesSlotAtTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		s := newSearchScheduler(NewRateLimiter(150*time.Millisecond), 2)
+		slots := newRequestSlots(150*time.Millisecond, nil, nil)
+		s := newSearchScheduler(slots, 2)
 		defer s.Stop()
 		stuck := &models.TorznabIndexer{ID: 1, Name: "stuck", Backend: models.TorznabBackendNative}
 		release := make(chan struct{})
-		submitStuck(t, s, stuck, release, make(chan struct{}, 1))
-		time.Sleep(200 * time.Millisecond) // longer than the interval, counted from the timeout
+		timedOut := make(chan error, 1)
+		_, err := s.Submit(t.Context(), SubmitRequest{
+			Indexers:         []*models.TorznabIndexer{stuck},
+			ExecutionTimeout: 20 * time.Millisecond,
+			ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+				<-release
+				return nil, nil, &responseError{StatusCode: 429, RetryAfter: "60"}
+			},
+			Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) { timedOut <- err }},
+		})
+		require.NoError(t, err)
+		require.ErrorIs(t, recvWithin(t, timedOut), context.DeadlineExceeded)
+		timedOutAt := time.Now()
 
-		started := make(chan int, 1)
-		submitStart(t, s, stuck, started, make(chan error, 1))
-		releasedAt := time.Now()
+		waitCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
+		ticket, err := slots.acquire(waitCtx, stuck, requestDirScanDownload)
+		require.NoError(t, err)
+		require.Equal(t, 150*time.Millisecond, time.Since(timedOutAt), "the Request gap must count from the timeout")
+		require.NoError(t, ticket.done(t.Context(), nil))
+
 		close(release)
-		recvWithin(t, started)
-		require.Equal(t, 150*time.Millisecond, time.Since(releasedAt), "interval must start when the late exec returns")
+		synctest.Wait()
+		_, _, err = slots.tryAcquire(stuck, requestSearch)
+		var rateLimitErr *RateLimitError
+		require.ErrorAs(t, err, &rateLimitErr, "a late 429 must start the search cooldown")
+		_, _, err = slots.tryAcquire(stuck, requestDownload)
+		require.NoError(t, err)
 	})
 }
 

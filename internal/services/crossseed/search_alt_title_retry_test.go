@@ -48,13 +48,11 @@ func TestAlternateTitleQuery(t *testing.T) {
 			wantOK:       true,
 		},
 		{
-			// rls leaves a multi-AKA chain unsplit (Title carries the whole
-			// chain, Alt stays empty), so the name-segment fallback is the
-			// only source of an alternate title here.
-			name:         "multi-AKA chain unsplit by the release parser falls back to name segments",
-			primaryQuery: "Der Film AKA The Movie AKA La Pelicula",
-			releaseName:  "Der Film AKA The Movie AKA La Pelicula 2020 1080p WEB h264-GRP",
-			wantTitle:    "Der Film",
+			// regression: #3823
+			name:         "title with three AKA names retries with the second name",
+			primaryQuery: "Der Film",
+			releaseName:  "Der.Film.AKA.The.Movie.AKA.La.Pelicula.2020.1080p.WEB.h264-GRP",
+			wantTitle:    "The Movie",
 			wantOK:       true,
 		},
 		{

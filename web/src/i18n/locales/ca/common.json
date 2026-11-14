@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Tauler",
+    "statistics": "Estadístiques",
     "search": "Cerca",
     "crossSeed": "Cross-Seed",
     "automations": "Automatitzacions",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Tauler",
+    "statistics": "Estadístiques",
     "clients": "Clients",
     "settings": "Configuració",
     "qbittorrentClients": "Clients de qBittorrent",
@@ -101,17 +103,22 @@
     "cancel": "Cancel·la",
     "close": "Tanca",
     "create": "Crea",
-    "copyPath": "Copia el camí",
     "scrollToTop": "Vés a dalt de tot",
     "search": "Cerca",
-    "select": "Selecciona"
+    "select": "Selecciona",
+    "copyValue": "Copia {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Entesos"
   },
   "placeholders": {
     "search": "Cerca...",
     "selectItems": "Selecciona elements..."
   },
   "feedback": {
-    "noResultsFound": "No s'ha trobat cap resultat."
+    "noResultsFound": "No s'ha trobat cap resultat.",
+    "copied": "S'ha copiat {{label}} al porta-retalls",
+    "copyFailed": "No s'ha pogut copiar al porta-retalls"
   },
   "errors": {
     "unknown": "Error desconegut",
@@ -150,16 +157,72 @@
     "dark": "Fosc",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "S'ha canviat al mode {{mode}}",
     "switchedToTheme": "S'ha canviat al tema {{theme}}",
     "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència."
+    "premiumThemeError": "Aquest tema necessita una llicència. Obre Configuració → Temes per activar-ne una."
   },
   "updateBanner": {
     "updateAvailable": "Actualització disponible",
     "versionAvailable": "La versió {{version}} ja està disponible",
     "dismiss": "Descarta"
+  },
+  "systemNotice": {
+    "needsAttention": "Requereix atenció",
+    "since": "Des de {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Ves a la solució",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Enregistrament aturat",
+        "title": "Enregistrament aturat",
+        "effect": "qui no pot escriure l'historial de transferències. Ho torna a provar a la propera escriptura.",
+        "fix": "Assegura't que el disc té espai lliure i que qui pot escriure el fitxer de la base de dades.",
+        "menuFix": "Allibera espai de disc per a la base de dades"
+      },
+      "shrink_failed": {
+        "short": "La reducció ha fallat",
+        "title": "La reducció ha fallat",
+        "effect": "qui no ha pogut reduir el fitxer de la base de dades. La base de dades no ha canviat i qui funciona com sempre.",
+        "fix": "El registre de qui té els detalls.",
+        "menuFix": "Llegeix el registre de qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "El disc té massa poc espai lliure. Una reducció necessita fins a dues vegades la mida del fitxer de la base de dades. Allibera espai al disc i torna-ho a provar.",
+            "menuFix": "Allibera espai i torna-ho a provar"
+          },
+          "locked": {
+            "fix": "Un altre programa tenia obert el fitxer de la base de dades. Atura aquest programa, per exemple una eina de còpia de seguretat o un visor de bases de dades, i torna-ho a provar.",
+            "menuFix": "Atura l'altre programa i torna-ho a provar"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Poc espai al disc",
+        "title": "Poc espai al disc",
+        "effect": "El disc de la base de dades de qui té poc espai lliure. Quan el disc és ple, totes les escriptures de qui fallen.",
+        "fix": "Allibera espai al disc, redueix «Conserva el detall diari durant» o elimina l'historial antic a la configuració d'Estadístiques.",
+        "menuFix": "Allibera espai de disc per a la base de dades",
+        "action": "Obre la configuració d'Estadístiques"
+      }
+    },
+    "actions": {
+      "tryAgain": "Torna-ho a provar",
+      "dismiss": "Descarta",
+      "openLog": "Obre el registre"
+    },
+    "unknown": {
+      "short": "Avís del sistema",
+      "title": "Avís del sistema",
+      "effect": "qui ha trobat un error que necessita una acció teva.",
+      "fix": "El registre de qui té els detalls.",
+      "menuFix": "Llegeix el registre de qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Fitxer de la base de dades reduït de {{before}} a {{after}}",
+    "nextStart": "La reducció s'executa en el proper inici de qui",
+    "failed": "No s'ha pogut demanar la reducció"
   },
   "pwaUpdate": {
     "reload": "Recarrega",
@@ -244,6 +307,9 @@
     "perkSuffix": "a Discord i el nostre agraïment etern.",
     "yearly": "{{price}} / any",
     "monthly": "{{price}} / mes",
-    "notLicense": "Els temes premium són una compra única a part."
+    "notLicense": "La llicència dels temes és una compra única a part."
+  },
+  "labels": {
+    "path": "Camí"
   }
 }

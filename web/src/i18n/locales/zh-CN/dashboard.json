@@ -8,27 +8,8 @@
     "sections": "板块",
     "sectionLabels": {
       "server-stats": "服务器统计",
-      "tracker-breakdown": "Tracker 明细",
       "global-stats": "全局统计卡片",
       "instances": "实例卡片"
-    },
-    "trackerDefaults": "Tracker 明细默认值",
-    "defaultSort": "默认排序",
-    "direction": "方向",
-    "descending": "降序",
-    "ascending": "升序",
-    "itemsPerPage": "每页条目数",
-    "sortColumnLabels": {
-      "tracker": "Tracker 名称",
-      "uploaded": "已上传",
-      "downloaded": "已下载",
-      "downloadedSession": "已下载（本次）",
-      "uploadedSession": "已上传（本次）",
-      "ratio": "分享率",
-      "buffer": "缓冲",
-      "count": "种子数",
-      "size": "大小",
-      "performance": "做种量"
     }
   },
   "instanceCard": {
@@ -40,7 +21,7 @@
     "download": "下载",
     "upload": "上传",
     "totalSize": "总大小",
-    "totalSizeTooltip": "所有种子的总大小，包括辅种",
+    "totalSizeTooltip": "所有种子的总大小。同一发布的副本只计算一次。",
     "freeSpace": "可用空间",
     "showMore": "展开更多",
     "showLess": "收起",
@@ -58,7 +39,6 @@
     "errors": "错误",
     "reannounceTooltip": "已启用自动 Tracker 重新汇报",
     "altSpeedLimits": "备用速度限制：{{status}}",
-    "localFileAccess": "已启用本地文件访问",
     "connectable": "可连接",
     "portInfo": "。端口：{{port}}",
     "connectionStatus": "qBittorrent 连接状态：{{status}}",
@@ -76,6 +56,10 @@
       "disable": "禁用",
       "cancel": "取消"
     }
+  },
+  "uniqueSize": {
+    "calculating": "计算中",
+    "calculatingTooltip": "qui 正在读取文件列表以查找每个发布的副本。在完成之前，此大小会完整计算每个链接的辅种。"
   },
   "mobileOverview": {
     "instances": "实例",
@@ -107,100 +91,6 @@
       "uploaded": "已上传",
       "ratio": "分享率",
       "peers": "节点"
-    }
-  },
-  "trackerBreakdown": {
-    "title": "Tracker 明细",
-    "trackersCount": "{{count}} 个 Tracker",
-    "importTooltip": "导入自定义配置",
-    "exportTooltip": "导出自定义配置",
-    "sort": "排序：{{column}}",
-    "sortOptions": {
-      "tracker": "Tracker",
-      "uploaded": "已上传",
-      "downloaded": "已下载",
-      "downloadedSession": "已下载（本次）",
-      "uploadedSession": "已上传（本次）",
-      "ratio": "分享率",
-      "torrents": "种子数",
-      "size": "大小",
-      "seeded": "做种量"
-    },
-    "tableHeaders": {
-      "tracker": "Tracker",
-      "uploaded": "已上传",
-      "downloaded": "已下载",
-      "downloadedSession": "已下载（本次）",
-      "uploadedSession": "已上传（本次）",
-      "ratio": "分享率",
-      "buffer": "缓冲",
-      "torrents": "种子数",
-      "size": "大小",
-      "seeded": "做种量"
-    },
-    "seededTooltip": "已上传 / 内容大小 -- 表示您的内容被做种了多少次",
-    "mergedFrom": "合并自：{{domains}}",
-    "original": "原始：{{domain}}",
-    "mergeTooltip": "将选中的 Tracker 合并到此分组",
-    "mergeIntoGroup": "合并到分组",
-    "addToMerge": "添加到合并",
-    "rename": "重命名",
-    "edit": "编辑",
-    "delete": "删除",
-    "pagination": {
-      "range": "第 {{start}}-{{end}} 项，共 {{total}} 个 Tracker",
-      "previous": "上一页",
-      "next": "下一页"
-    },
-    "customizeDialog": {
-      "editTitle": "编辑 Tracker 名称",
-      "renameTitle": "重命名 Tracker",
-      "mergeTitle": "合并 Tracker",
-      "editDescription": "更新此 Tracker 的显示名称。",
-      "renameDescription": "为此 Tracker 指定自定义显示名称。",
-      "mergeDescription": "将这些 Tracker 合并为一个条目并设置自定义名称。",
-      "displayName": "显示名称",
-      "displayNamePlaceholder": "例如 TorrentLeech",
-      "domains": "域名",
-      "selectedTrackers": "已选 Tracker",
-      "uncheckDuplicate": "取消勾选重复的 Tracker URL，避免重复统计同一种子。",
-      "primary": "主要",
-      "cancel": "取消",
-      "saving": "保存中……",
-      "save": "保存",
-      "renameAction": "重命名",
-      "mergeAction": "合并"
-    },
-    "importDialog": {
-      "title": "导入 Tracker 自定义配置",
-      "description": "粘贴 JSON 以导入 Tracker 自定义配置（重命名与合并）。",
-      "jsonData": "JSON 数据",
-      "invalidFormat": "格式无效：需要 trackerCustomizations 数组",
-      "missingDisplayName": "条目无效：缺少 displayName",
-      "invalidDomains": "条目无效：domains 必须是非空数组",
-      "invalidJson": "JSON 格式无效",
-      "newCount": "{{count}} 个新增",
-      "conflictCount_other": "{{count}} 个冲突",
-      "unchangedCount": "{{count}} 个未变更",
-      "resolveConflicts": "解决冲突",
-      "conflictsWith": "与以下条目冲突：{{name}}",
-      "skip": "跳过",
-      "overwrite": "覆盖",
-      "cancel": "取消",
-      "importing": "导入中……",
-      "import": "导入"
-    },
-    "toasts": {
-      "noCustomizationsToExport": "没有可导出的自定义配置",
-      "copiedToClipboard": "已复制到剪贴板",
-      "failedToCopy": "复制到剪贴板失败",
-      "createFailed": "创建 Tracker 自定义配置失败",
-      "updateFailed": "更新 Tracker 自定义配置失败",
-      "deleteFailed": "删除 Tracker 自定义配置失败",
-      "failedToImport": "导入失败：{{names}}",
-      "importedAndSkipped": "已导入 {{imported}} 项，跳过 {{skipped}} 项",
-      "importedCount_other": "已导入 {{count}} 项自定义配置",
-      "noCustomizationsImported": "未导入任何自定义配置"
     }
   },
   "quickActions": {

@@ -23,8 +23,7 @@ func TestAPIKeyFromQuery_AllowsQueryParam(t *testing.T) {
 	authService := auth.NewService(db)
 	sessionManager := scs.New()
 
-	apiKeyValue, _, err := authService.CreateAPIKey(ctx, "test-key")
-	require.NoError(t, err)
+	apiKeyValue := createUsedAPIKey(t, db)
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -8,27 +8,8 @@
     "sections": "Sezioni",
     "sectionLabels": {
       "server-stats": "Statistiche del server",
-      "tracker-breakdown": "Ripartizione per tracker",
       "global-stats": "Schede statistiche globali",
       "instances": "Schede istanze"
-    },
-    "trackerDefaults": "Valori predefiniti della ripartizione per tracker",
-    "defaultSort": "Ordinamento predefinito",
-    "direction": "Direzione",
-    "descending": "Decrescente",
-    "ascending": "Crescente",
-    "itemsPerPage": "Elementi per pagina",
-    "sortColumnLabels": {
-      "tracker": "Nome tracker",
-      "uploaded": "Caricato",
-      "downloaded": "Scaricato",
-      "downloadedSession": "Scaricato (sessione)",
-      "uploadedSession": "Caricato (sessione)",
-      "ratio": "Rapporto",
-      "buffer": "Buffer",
-      "count": "Torrent",
-      "size": "Dimensione",
-      "performance": "Distribuito"
     }
   },
   "instanceCard": {
@@ -40,7 +21,7 @@
     "download": "Download",
     "upload": "Upload",
     "totalSize": "Dimensione totale",
-    "totalSizeTooltip": "Dimensione totale di tutti i torrent, inclusi i cross-seed",
+    "totalSizeTooltip": "Dimensione totale di tutti i torrent. Le copie di una release contano una sola volta.",
     "freeSpace": "Spazio libero",
     "showMore": "Mostra di più",
     "showLess": "Mostra di meno",
@@ -58,7 +39,6 @@
     "errors": "Errori",
     "reannounceTooltip": "Riannuncio automatico al tracker abilitato",
     "altSpeedLimits": "Limiti di velocità alternativi: {{status}}",
-    "localFileAccess": "Accesso ai file locali abilitato",
     "connectable": "Connettibile",
     "portInfo": ". Porta: {{port}}",
     "connectionStatus": "Stato connessione qBittorrent: {{status}}",
@@ -76,6 +56,10 @@
       "disable": "Disabilita",
       "cancel": "Annulla"
     }
+  },
+  "uniqueSize": {
+    "calculating": "calcolo in corso",
+    "calculatingTooltip": "qui sta leggendo gli elenchi dei file per trovare le copie di ogni release. Fino ad allora, questa dimensione conta per intero ogni cross-seed collegato."
   },
   "mobileOverview": {
     "instances": "Istanze",
@@ -107,102 +91,6 @@
       "uploaded": "Caricato",
       "ratio": "Rapporto",
       "peers": "Peer"
-    }
-  },
-  "trackerBreakdown": {
-    "title": "Ripartizione per tracker",
-    "trackersCount": "{{count}} tracker",
-    "importTooltip": "Importa personalizzazioni",
-    "exportTooltip": "Esporta personalizzazioni",
-    "sort": "Ordina: {{column}}",
-    "sortOptions": {
-      "tracker": "Tracker",
-      "uploaded": "Caricato",
-      "downloaded": "Scaricato",
-      "downloadedSession": "Scaricato (sessione)",
-      "uploadedSession": "Caricato (sessione)",
-      "ratio": "Rapporto",
-      "torrents": "Torrent",
-      "size": "Dimensione",
-      "seeded": "Distribuito"
-    },
-    "tableHeaders": {
-      "tracker": "Tracker",
-      "uploaded": "Caricato",
-      "downloaded": "Scaricato",
-      "downloadedSession": "Scaricato (sessione)",
-      "uploadedSession": "Caricato (sessione)",
-      "ratio": "Rapporto",
-      "buffer": "Buffer",
-      "torrents": "Torrent",
-      "size": "Dimensione",
-      "seeded": "Distribuito"
-    },
-    "seededTooltip": "Caricato ÷ Dimensione contenuto — quante volte hai distribuito il tuo contenuto",
-    "mergedFrom": "Unito da: {{domains}}",
-    "original": "Originale: {{domain}}",
-    "mergeTooltip": "Unisci i tracker selezionati in questo gruppo",
-    "mergeIntoGroup": "Unisci nel gruppo",
-    "addToMerge": "Aggiungi all'unione",
-    "rename": "Rinomina",
-    "edit": "Modifica",
-    "delete": "Elimina",
-    "pagination": {
-      "range": "{{start}}-{{end}} di {{total}} tracker",
-      "previous": "Precedente",
-      "next": "Successivo"
-    },
-    "customizeDialog": {
-      "editTitle": "Modifica nome tracker",
-      "renameTitle": "Rinomina tracker",
-      "mergeTitle": "Unisci tracker",
-      "editDescription": "Aggiorna il nome visualizzato per questo tracker.",
-      "renameDescription": "Assegna a questo tracker un nome visualizzato personalizzato.",
-      "mergeDescription": "Combina questi tracker in un'unica voce con un nome personalizzato.",
-      "displayName": "Nome visualizzato",
-      "displayNamePlaceholder": "es. TorrentLeech",
-      "domains": "Dominio/i",
-      "selectedTrackers": "Tracker selezionati",
-      "uncheckDuplicate": "Deseleziona gli URL dei tracker duplicati per evitare di contare due volte gli stessi torrent.",
-      "primary": "Principale",
-      "cancel": "Annulla",
-      "saving": "Salvataggio...",
-      "save": "Salva",
-      "renameAction": "Rinomina",
-      "mergeAction": "Unisci"
-    },
-    "importDialog": {
-      "title": "Importa personalizzazioni tracker",
-      "description": "Incolla il JSON per importare le personalizzazioni dei tracker (rinomine e unioni).",
-      "jsonData": "Dati JSON",
-      "invalidFormat": "Formato non valido: previsto un array trackerCustomizations",
-      "missingDisplayName": "Voce non valida: displayName mancante",
-      "invalidDomains": "Voce non valida: domains deve essere un array non vuoto",
-      "invalidJson": "JSON non valido",
-      "newCount": "{{count}} nuovo/i",
-      "conflictCount_one": "{{count}} conflitto",
-      "conflictCount_other": "{{count}} conflitti",
-      "unchangedCount": "{{count}} invariato/i",
-      "resolveConflicts": "Risolvi i conflitti",
-      "conflictsWith": "In conflitto con: {{name}}",
-      "skip": "Ignora",
-      "overwrite": "Sovrascrivi",
-      "cancel": "Annulla",
-      "importing": "Importazione...",
-      "import": "Importa"
-    },
-    "toasts": {
-      "noCustomizationsToExport": "Nessuna personalizzazione da esportare",
-      "copiedToClipboard": "Copiato negli appunti",
-      "failedToCopy": "Impossibile copiare negli appunti",
-      "createFailed": "Impossibile creare la personalizzazione del tracker",
-      "updateFailed": "Impossibile aggiornare la personalizzazione del tracker",
-      "deleteFailed": "Impossibile eliminare la personalizzazione del tracker",
-      "failedToImport": "Importazione non riuscita: {{names}}",
-      "importedAndSkipped": "Importati {{imported}}, ignorati {{skipped}}",
-      "importedCount_one": "{{count}} personalizzazione importata",
-      "importedCount_other": "{{count}} personalizzazioni importate",
-      "noCustomizationsImported": "Nessuna personalizzazione importata"
     }
   },
   "quickActions": {

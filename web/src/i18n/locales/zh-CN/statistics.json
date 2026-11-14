@@ -1,0 +1,119 @@
+{
+  "title": "统计",
+  "recordingSince": "自 {{date}} 起记录",
+  "notRecording": "qui 尚未记录任何传输。",
+  "partial": "不完整的时段",
+  "periods": {
+    "24h": "24 小时",
+    "7d": "7 天",
+    "30d": "30 天",
+    "1y": "一年",
+    "all": "全部时间",
+    "custom": "自定义"
+  },
+  "customRange": {
+    "from": "第一天",
+    "to": "最后一天",
+    "apply": "应用",
+    "range": "{{from}} 至 {{to}}"
+  },
+  "instances": {
+    "all": "所有实例",
+    "count_other": "{{count}} 个实例",
+    "removed": "已移除"
+  },
+  "tiles": {
+    "uploaded": "已上传",
+    "downloaded": "已下载",
+    "ratio": "分享率",
+    "buffer": "缓冲 {{buffer}}",
+    "crossSeed": "来自辅种",
+    "crossSeedShare": "占上传的 {{percent}}%",
+    "change": "与上一时段相比 {{change}}"
+  },
+  "chart": {
+    "title": "传输趋势",
+    "descriptionHour": "按 Tracker，每小时",
+    "descriptionDay": "按 Tracker，每天",
+    "upload": "上传",
+    "download": "下载",
+    "other": "其他",
+    "otherCount": "其他（{{groups}}）",
+    "total": "合计",
+    "gap": "包含 {{duration}} 的记录空缺",
+    "gapLabel": "空缺 {{duration}}",
+    "foldedDay": "（整天，UTC）",
+    "empty": "此时段内没有传输。"
+  },
+  "groups": {
+    "public": "公开",
+    "noTracker": "无 Tracker"
+  },
+  "errors": {
+    "load": "无法加载统计：{{message}}"
+  },
+  "allTimeNote": "全部时间包含基线：qui 首次记录时种子已有的字节数。基线没有日期，因此图表不显示基线。",
+  "serverStatisticsNote": "这些数字是每个种子传输量的总和。仪表板上的服务器统计读取 qBittorrent 的计数器，其中也包含协议流量，因此数字会不同。",
+  "table": {
+    "title": "按分组",
+    "descriptionTracker": "每个 Tracker 在此时段内的传输量。点击一行可打开详情。",
+    "descriptionCategory": "每个分类在此时段内的传输量，按字节传输时种子所在的分类统计。点击一行可打开详情。",
+    "descriptionRelease": "qui 从种子名称中读取的每个值在此时段内的传输量。点击一行可打开详情。",
+    "groupBy": "分组依据",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "分类",
+      "releaseGroup": "发布组",
+      "resolution": "分辨率",
+      "source": "来源",
+      "contentType": "内容类型"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "uploaded": "已上传",
+      "downloaded": "已下载",
+      "ratio": "分享率",
+      "buffer": "缓冲",
+      "torrents": "种子数",
+      "size": "大小",
+      "seeded": "做种量"
+    },
+    "seededValue": "{{value}}x",
+    "total": "合计",
+    "noCategory": "无分类",
+    "none": "无",
+    "liveError": "无法加载 qBittorrent 中当前的种子：{{message}}",
+    "liveNote": "种子数、大小和做种量描述的是 qBittorrent 中当前的种子，而不是此时段。做种量是它们的总上传量除以大小。",
+    "categoryNote": "qui 按 UTC 日保存分类合计。在 UTC 日中间开始或结束的时段会计入整天，因此分类合计可能与顶部的数字不同。",
+    "releaseNote": "qui 从种子名称中读取这些值，并按 UTC 日保存每个种子的字节数。在 UTC 日中间开始或结束的时段会计入整天，因此各行的合计可能与顶部的数字不同。",
+    "baselineNote": "全部时间中，每一行都包含其种子的基线。"
+  },
+  "detail": {
+    "share": "上传占比",
+    "shareOf": "共 {{total}}",
+    "crossSeed": "来自辅种",
+    "crossSeedShare": "占其上传的 {{percent}}",
+    "bestHour": "最佳小时",
+    "bestDay": "最佳日",
+    "averageHour": "每小时平均",
+    "averageDay": "每日平均",
+    "chartHour": "{{group}} 每小时",
+    "chartDay": "{{group}} 每日",
+    "chartLegend": "线上方为上传，下方为下载",
+    "topTorrents": "{{group}} 的热门种子",
+    "topTorrentsCategoryNote": "分类的热门种子按每个种子当前的分类统计。"
+  },
+  "topTorrents": {
+    "title": "热门种子",
+    "description": "该时段内上传最多的种子。点击一行可查看其每天的上传量。",
+    "columns": {
+      "torrent": "种子",
+      "first24h": "前 24 小时"
+    },
+    "deleted": "已删除",
+    "crossSeed": "辅种",
+    "note": "已删除的种子保留其位置和名称。种子计入其当前的 Tracker。前 24 小时是添加后 24 小时内的上传量。如果 qui 在此之后才首次看到该种子，则为空。",
+    "utcNote": "每个柱子代表一个 UTC 日。",
+    "yearNote": "每个柱子代表一个 UTC 日，年份柱子除外：超过详细数据保留期后，qui 为每个种子每年只保留一个数值。"
+  }
+}

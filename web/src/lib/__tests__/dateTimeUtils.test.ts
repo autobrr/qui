@@ -5,6 +5,7 @@
 
 import type { DateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import {
+  formatClockTime,
   formatDate,
   formatDateOnly,
   formatISOTimestamp,
@@ -175,6 +176,19 @@ describe("formatTimeOnly", () => {
 
   it("shifts time by timezone", () => {
     expect(formatTimeOnly(TS_2024_06_15_14_30_45_UTC, utcPrefs({ timezone: "America/New_York" }))).toMatch(/^10:30$/)
+  })
+})
+
+describe("formatClockTime", () => {
+  // regression: #4110
+  it("falls back to local time for a saved time zone that Intl rejects", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      const date = new Date(TS_2024_06_15_14_30_45_UTC * 1000)
+      expect(formatClockTime(date, utcPrefs({ timezone: "America/Honolulu" }), date)).toMatch(/^\d{2}:\d{2}$/)
+    } finally {
+      errSpy.mockRestore()
+    }
   })
 })
 

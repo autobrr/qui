@@ -6,6 +6,7 @@ package releases
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/autobrr/go-cache/ttlcache"
 	"github.com/autobrr/rls"
+	"github.com/autobrr/rls/taginfo"
 
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -31,6 +33,9 @@ var hdrTagMatchers = []struct {
 }
 
 var trailingTokenRegexCache sync.Map
+
+// releaseBuilder builds a release from its tags as rls.ParseString does.
+var releaseBuilder = rls.NewTagBuilder().Init(taginfo.All())
 
 // Parser caches rls parsing results so we do not repeatedly parse the same release names.
 //
@@ -83,11 +88,37 @@ func (p *Parser) Parse(name string) *rls.Release {
 		return cached
 	}
 
-	release := rls.ParseString(key)
+	// The cache keeps each release, so its tag list gets the exact size.
+	tags, end := rls.ParseTagsString(key)
+	release := releaseBuilder.Build(slices.Clone(tags), end)
 	enrichReleaseHDR(key, &release)
+	enrichUHDWebSource(&release)
 	enrichEpisodeRange(&release)
 	p.cache.Set(key, &release, ttlcache.DefaultTTL)
 	return &release
+}
+
+// enrichUHDWebSource reads the web source of a name such as
+// "UHD.AMZN.WEB-DL". rls gives "UHD.BluRay" for a UHD tag that another tag
+// separates from its web source.
+func enrichUHDWebSource(release *rls.Release) {
+	if release.Source != "UHD.BluRay" {
+		return
+	}
+	bareUHD := false
+	for _, tag := range release.Tags() {
+		if !tag.Is(rls.TagTypeSource) {
+			continue
+		}
+		if strings.EqualFold(fmt.Sprintf("%o", tag), "UHD") {
+			bareUHD = true
+			continue
+		}
+		if source := tag.Normalize(); bareUHD && strings.HasPrefix(strings.ToUpper(source), "WEB") {
+			release.Source = "UHD." + source
+		}
+		return
+	}
 }
 
 // enrichEpisodeRange turns a multi-episode release such as "S00E02-E05" into a
@@ -332,6 +363,8 @@ func trailingTokenRegexes(token string) []*regexp.Regexp {
 	return actual.([]*regexp.Regexp)
 }
 
+var hdrTagSeparators = strings.NewReplacer(" ", "", ".", "", "_", "", "-", "")
+
 // CanonicalHDRTag maps an HDR tag string to its canonical form.
 // For example, "HDR10P", "HDR10PLUS", and "HDR10+" all map to "HDR10+".
 func CanonicalHDRTag(tag string) string {
@@ -340,7 +373,7 @@ func CanonicalHDRTag(tag string) string {
 		return ""
 	}
 
-	key := strings.NewReplacer(" ", "", ".", "", "_", "", "-", "").Replace(upper)
+	key := hdrTagSeparators.Replace(upper)
 
 	switch key {
 	case "DOVI", "DOLBYVISION", "DV":

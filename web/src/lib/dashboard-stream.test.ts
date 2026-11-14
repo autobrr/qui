@@ -13,11 +13,12 @@ import {
   mergeDashboardInstanceMeta,
   mergeDashboardStatsSnapshot,
   resolveDashboardDataStatusKind,
+  resolveDashboardSizes,
   resolveDashboardStreamError,
   resolveDashboardTorrentCounts,
   shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
-import type { InstanceResponse, TorrentCounts } from "@/types"
+import type { InstanceResponse, TorrentCounts, TorrentStats } from "@/types"
 
 function makeCounts(overrides: Partial<TorrentCounts> = {}): TorrentCounts {
   return {
@@ -25,16 +26,6 @@ function makeCounts(overrides: Partial<TorrentCounts> = {}): TorrentCounts {
     categories: {},
     tags: {},
     trackers: { "tracker.example": 1 },
-    trackerTransfers: {
-      "tracker.example": {
-        uploaded: 10,
-        downloaded: 20,
-        uploadedSession: 5,
-        downloadedSession: 7,
-        totalSize: 30,
-        count: 1,
-      },
-    },
     total: 1,
     ...overrides,
   }
@@ -95,7 +86,7 @@ describe("resolveDashboardTorrentCounts", () => {
 
   it("uses incoming counts when the stream includes them", () => {
     const currentCounts = makeCounts()
-    const incomingCounts = makeCounts({ status: { all: 0 }, trackers: {}, trackerTransfers: {}, total: 0 })
+    const incomingCounts = makeCounts({ status: { all: 0 }, trackers: {}, total: 0 })
 
     expect(resolveDashboardTorrentCounts(incomingCounts, currentCounts)).toBe(incomingCounts)
   })
@@ -258,5 +249,30 @@ describe("mergeDashboardStatsSnapshot", () => {
 
     expect(merged.counts).toBe(cachedCounts)
     expect(merged.stats?.totalDownloadSpeed).toBe(1)
+  })
+})
+
+describe("resolveDashboardSizes", () => {
+  const stats = (overrides: Partial<TorrentStats>): TorrentStats => ({
+    total: 1, downloading: 0, seeding: 1, paused: 0, error: 0, totalSize: 100, totalSeedingSize: 80, ...overrides,
+  })
+
+  it("adds the Unique sizes of instances whose first build ended", () => {
+    expect(resolveDashboardSizes([
+      stats({ uniqueSize: 60, uniqueSeedingSize: 50 }),
+      stats({ uniqueSize: 30, uniqueSeedingSize: 20 }),
+    ])).toEqual({ totalSize: 90, seedingSize: 70, calculating: false })
+  })
+
+  it("adds the old size of an instance before its first build and marks the total", () => {
+    expect(resolveDashboardSizes([
+      stats({ uniqueSize: 60, uniqueSeedingSize: 50 }),
+      stats({}),
+    ])).toEqual({ totalSize: 160, seedingSize: 130, calculating: true })
+  })
+
+  it("leaves out an instance with no stats", () => {
+    expect(resolveDashboardSizes([null, stats({ uniqueSize: 60, uniqueSeedingSize: 50 })]))
+      .toEqual({ totalSize: 60, seedingSize: 50, calculating: false })
   })
 })

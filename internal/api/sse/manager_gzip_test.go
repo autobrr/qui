@@ -38,7 +38,7 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 
 	canned := cannedResponse()
 	provider := &fakeSyncProvider{torrentsResponse: canned}
-	manager := NewStreamManager(nil, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -54,7 +54,7 @@ func TestGzipStreamFlushesEveryEvent(t *testing.T) {
 	require.Equal(t, streamEventInit, initPayload.Type)
 
 	receive(t, subscribed, "the session to subscribe")
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
+	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 	updateEvent := reader.waitForTick(t, 5*time.Second)
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.True(t, isTickEvent(updatePayload.Type), "expected a tick frame, got %q", updatePayload.Type)
@@ -68,7 +68,7 @@ func TestStreamStaysPlainWithoutGzip(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)
@@ -111,7 +111,7 @@ func TestGzipNegotiationReadsRepeatedHeaderLines(t *testing.T) {
 	store := newTestInstanceStore(t)
 
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, store)
+	manager := NewStreamManager(nil, provider, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	instanceID := seedActiveInstance(t, manager)

@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/stringutils"
 
 	"github.com/autobrr/qui/internal/models"
@@ -996,10 +997,10 @@ type queueTestSyncManager struct {
 	torrents []qbt.Torrent
 }
 
-func (f *queueTestSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *queueTestSyncManager) GetTorrentRefs(_ context.Context, _ int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	copied := make([]qbt.Torrent, len(f.torrents))
 	copy(copied, f.torrents)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (f *queueTestSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
@@ -1047,7 +1048,7 @@ func (*queueTestSyncManager) ExtractDomainFromURL(raw string) string {
 	return strings.ToLower(host)
 }
 
-func (*queueTestSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*queueTestSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -1080,10 +1081,10 @@ type gazelleSkipHashSyncManager struct {
 	cachedInstanceCalls    int
 }
 
-func (g *gazelleSkipHashSyncManager) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (g *gazelleSkipHashSyncManager) GetTorrentRefs(_ context.Context, _ int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	copied := make([]qbt.Torrent, len(g.torrents))
 	copy(copied, g.torrents)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (g *gazelleSkipHashSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -1146,7 +1147,7 @@ func (*gazelleSkipHashSyncManager) ExtractDomainFromURL(raw string) string {
 	return strings.ToLower(host)
 }
 
-func (*gazelleSkipHashSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*gazelleSkipHashSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -1813,8 +1814,8 @@ func TestSearchRunLoop_GazelleOnly_DoesNotSleepWhenLookupSkippedByLocalPrefilter
 	state := &searchRunState{
 		run:  run,
 		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 60},
-		queue: []qbt.Torrent{
-			sourceTorrent,
+		queue: []*qbt.Torrent{
+			&sourceTorrent,
 		},
 	}
 
@@ -1937,8 +1938,8 @@ func TestSearchRunLoop_GazelleOnly_SleepsOnlyAfterLookupAttempted(t *testing.T) 
 	state := &searchRunState{
 		run:  run,
 		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 1},
-		queue: []qbt.Torrent{
-			sourceTorrent,
+		queue: []*qbt.Torrent{
+			&sourceTorrent,
 		},
 	}
 
@@ -2042,8 +2043,8 @@ func TestSearchRunLoop_NoBackendDoesNotSleepWithoutLookupAttempt(t *testing.T) {
 			IntervalSeconds: 1,
 			IndexerIDs:      []int{1},
 		},
-		queue: []qbt.Torrent{
-			sourceTorrent,
+		queue: []*qbt.Torrent{
+			&sourceTorrent,
 		},
 	}
 
@@ -2206,8 +2207,8 @@ func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testi
 			DisableTorznab:  false,
 			IntervalSeconds: 1,
 		},
-		queue: []qbt.Torrent{
-			sourceTorrent,
+		queue: []*qbt.Torrent{
+			&sourceTorrent,
 		},
 	}
 
@@ -2294,4 +2295,12 @@ func gazelleClientsForTest() (*gazelleClientSet, error) {
 			"orpheus.network": client,
 		},
 	}, nil
+}
+
+func (*queueTestSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}
+
+func (*gazelleSkipHashSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

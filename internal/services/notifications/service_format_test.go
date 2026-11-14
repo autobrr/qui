@@ -194,3 +194,17 @@ func TestFormatEventPartialOrphanScan(t *testing.T) {
 	require.Contains(t, message, "/data/missing")
 	require.Contains(t, message, "Automatic cleanup is disabled")
 }
+
+func TestFormatEventSystemNoticeNamesNoInstance(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	title, message := svc.formatEvent(context.Background(), Event{
+		Type:    EventSystemNotice,
+		Title:   "Recording stopped",
+		Message: "qui cannot write the Transfer history.\nCause: disk I/O error",
+	}, true)
+
+	require.Equal(t, "Recording stopped", title)
+	require.Equal(t, "qui cannot write the Transfer history.\nCause: disk I/O error", message)
+}

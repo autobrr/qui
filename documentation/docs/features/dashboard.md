@@ -11,7 +11,9 @@ The Dashboard is the start page of qui. It shows statistics for every qBittorren
 
 ## Sections
 
-The Dashboard has four sections. You can hide and reorder each one. Server Statistics and Tracker Breakdown also collapse.
+The Dashboard has three sections. You can hide and reorder each one. Server Statistics also collapses.
+
+The Dashboard has no table for each tracker. The [Statistics](./statistics.md) page shows the upload, download, ratio, buffer, torrents, size, and seeded value of each tracker for a period that you select. To rename or merge trackers, see [Tracker Customizations](./tracker-customizations.md).
 
 ### Server Statistics
 
@@ -26,33 +28,16 @@ The section header shows the combined all-time download, upload, ratio, and peer
 
 If no instance reports all-time data yet, qui hides this section.
 
-### Tracker Breakdown
-
-One row per tracker, aggregated across all instances:
-
-| Column | Content |
-|--------|---------|
-| Tracker | Display name or announce domain, with the tracker icon |
-| Uploaded / Downloaded | All-time totals for the torrents on this tracker |
-| Uploaded (Session) / Downloaded (Session) | Totals for this qBittorrent session |
-| Ratio | Upload divided by download |
-| Buffer | Upload minus download |
-| Torrents | Number of torrents |
-| Size | Total content size |
-| Seeded | Upload divided by content size |
-
-Click a column header to sort. The row actions rename trackers or merge several announce domains into one entry. See [Tracker Customizations](./tracker-customizations.md).
-
 ### Global Stats Cards
 
-Cards with combined numbers: connected instances, total torrents, total download speed, and total upload speed.
+Cards with combined numbers: connected instances, total torrents, total download speed, and total upload speed. The torrent card also shows the total size, and the upload card shows the size of the torrents that seed now. Both sizes are the [Unique size](#unique-size).
 
 ### Instance Cards
 
 One card per instance with:
 
 - Torrent counts: **Downloading**, **Active**, **Total**
-- Current download and upload speed, total size, and free disk space
+- Current download and upload speed, total size, and free disk space. The total size is the [Unique size](#unique-size).
 - qBittorrent, Web API, and libtorrent versions, and the qBittorrent connection status (connectable, firewalled, or disconnected). The tooltip shows the listen port.
 - **Show more** reveals uptime, peer connections, queued I/O jobs, buffer sizes, and external IP addresses
 - A turtle or rabbit button that toggles alternative speed limits after a confirmation dialog
@@ -60,18 +45,29 @@ One card per instance with:
 
 The eye icon next to the instance URL toggles [Incognito Mode](./incognito.md) for the whole app. On the Dashboard it blurs host names and external IP addresses and replaces tracker names with fake domains.
 
+### Unique size
+
+A cross-seed often uses the data of another torrent. In hardlink or reflink mode, the two torrents have different folders, but the disk holds the data one time. The Unique size counts the copies of a release one time. Two torrents are copies when qui puts them in one group of [Group copies](./torrent-management.md#group-copies). You do not have to turn on the **Group copies** switch. Torrents with the same content path also count one time.
+
+A torrent can hold only some of the files of a release. For example, it holds two of the three episodes of a season pack, it is a REPACK that changes one file, or it is a single episode of a season pack that you also have. Such a torrent is not in the group, but the Unique size counts the files that it shares with the release one time. When two torrents of one release each have a file of the same size, qui counts the two files as one file.
+
+qui does not make sure that two copies share their data on the disk. If you downloaded a release two times, or an episode and then its season pack, the disk holds two copies, but the Unique size counts the data one time.
+
+qui counts the copies one time in each instance. A copy on a second instance counts again.
+
+qui finds the copies in the background from its start. The first time, it reads the file lists of the torrents that can have a copy, four torrents at a time. qui keeps the lists and reads a list again only when its torrent changes. Until the first search after a start of qui ends, the Dashboard shows the old size with the mark **calculating**. The old size counts torrents with the same content path one time, but it counts a hardlinked or reflinked cross-seed in full.
+
+The sidebar of the torrent list does not use the Unique size for categories and tags.
+
 ## Configure the layout
 
 Click **Layout Settings** to open the **Dashboard Settings** dialog.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Sections | Show, hide, and reorder the four sections | All visible |
-| Default Sort | Sort column for Tracker Breakdown | Uploaded |
-| Direction | Sort direction for Tracker Breakdown | Descending |
-| Items Per Page | Tracker Breakdown rows per page (10, 15, 25, or 50) | 15 |
+| Sections | Show, hide, and reorder the three sections | All visible |
 
-qui stores these choices and the collapsed state of Server Statistics and Tracker Breakdown in its database. Every browser and device shows the same layout.
+qui stores these choices and the collapsed state of Server Statistics in its database. Every browser and device shows the same layout.
 
 ## Live updates
 

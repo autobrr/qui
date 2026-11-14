@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistiche",
     "search": "Ricerca",
     "crossSeed": "Cross-Seed",
     "automations": "Automazioni",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistiche",
     "clients": "Client",
     "settings": "Impostazioni",
     "qbittorrentClients": "Client qBittorrent",
@@ -101,17 +103,22 @@
     "cancel": "Annulla",
     "close": "Chiudi",
     "create": "Crea",
-    "copyPath": "Copia percorso",
     "scrollToTop": "Scorri in alto",
     "search": "Cerca",
-    "select": "Seleziona"
+    "select": "Seleziona",
+    "copyValue": "Copia {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Ho capito"
   },
   "placeholders": {
     "search": "Cerca...",
     "selectItems": "Seleziona elementi..."
   },
   "feedback": {
-    "noResultsFound": "Nessun risultato trovato."
+    "noResultsFound": "Nessun risultato trovato.",
+    "copied": "{{label}} copiato negli appunti",
+    "copyFailed": "Impossibile copiare negli appunti"
   },
   "errors": {
     "unknown": "Errore sconosciuto",
@@ -150,16 +157,72 @@
     "dark": "Scuro",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "Passato alla modalità {{mode}}",
     "switchedToTheme": "Passato al tema {{theme}}",
     "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza."
+    "premiumThemeError": "Questo tema richiede una licenza. Apri Impostazioni → Temi per attivare una licenza."
   },
   "updateBanner": {
     "updateAvailable": "Aggiornamento disponibile",
     "versionAvailable": "La versione {{version}} è ora disponibile",
     "dismiss": "Ignora"
+  },
+  "systemNotice": {
+    "needsAttention": "Richiede attenzione",
+    "since": "Da {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Vai alla soluzione",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Registrazione interrotta",
+        "title": "Registrazione interrotta",
+        "effect": "qui non può scrivere lo storico dei trasferimenti. Riprova alla prossima scrittura.",
+        "fix": "Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database.",
+        "menuFix": "Libera spazio su disco per il database"
+      },
+      "shrink_failed": {
+        "short": "Riduzione non riuscita",
+        "title": "Riduzione non riuscita",
+        "effect": "qui non è riuscito a ridurre il file del database. Il database non è cambiato e qui funziona normalmente.",
+        "fix": "Il log di qui contiene i dettagli.",
+        "menuFix": "Leggi il log di qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Il disco ha troppo poco spazio libero. Una riduzione richiede fino a due volte la dimensione del file del database. Libera spazio sul disco, poi riprova.",
+            "menuFix": "Libera spazio, poi riprova"
+          },
+          "locked": {
+            "fix": "Un altro programma teneva aperto il file del database. Chiudi quel programma, ad esempio uno strumento di backup o un visualizzatore di database, poi riprova.",
+            "menuFix": "Chiudi l'altro programma, poi riprova"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Disco quasi pieno",
+        "title": "Disco quasi pieno",
+        "effect": "Il disco del database di qui ha poco spazio libero. Quando il disco è pieno, ogni scrittura di qui fallisce.",
+        "fix": "Libera spazio sul disco, riduci «Mantieni il dettaglio giornaliero per» o elimina la cronologia più vecchia nelle impostazioni Statistiche.",
+        "menuFix": "Libera spazio su disco per il database",
+        "action": "Apri le impostazioni Statistiche"
+      }
+    },
+    "actions": {
+      "tryAgain": "Riprova",
+      "dismiss": "Ignora",
+      "openLog": "Apri il log"
+    },
+    "unknown": {
+      "short": "Avviso di sistema",
+      "title": "Avviso di sistema",
+      "effect": "qui ha trovato un errore che richiede un tuo intervento.",
+      "fix": "Il log di qui contiene i dettagli.",
+      "menuFix": "Leggi il log di qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "File del database ridotto da {{before}} a {{after}}",
+    "nextStart": "La riduzione verrà eseguita al prossimo avvio di qui",
+    "failed": "Impossibile richiedere la riduzione"
   },
   "pwaUpdate": {
     "reload": "Ricarica",
@@ -244,6 +307,9 @@
     "perkSuffix": "su Discord e la nostra eterna gratitudine.",
     "yearly": "{{price}} / anno",
     "monthly": "{{price}} / mese",
-    "notLicense": "I temi premium sono un acquisto unico separato."
+    "notLicense": "La licenza dei temi è un acquisto unico separato."
+  },
+  "labels": {
+    "path": "Percorso"
   }
 }

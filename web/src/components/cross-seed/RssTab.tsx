@@ -267,7 +267,10 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>{t("automation.targetInstances")}</Label>
+            <div className="flex items-center gap-2">
+              <Label>{t("automation.instancesToSearch")}</Label>
+              <FieldHelp>{t("automation.instancesToSearchHelp")}</FieldHelp>
+            </div>
             <MultiSelect
               options={instanceOptions}
               selected={form.targetInstanceIds.map(String)}

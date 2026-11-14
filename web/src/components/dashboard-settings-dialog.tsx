@@ -18,19 +18,9 @@ import {
   DialogTrigger
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSettings } from "@/hooks/useDashboardSettings"
 
-const SECTION_IDS = ["server-stats", "tracker-breakdown", "global-stats", "instances"] as const
-
-const SORT_COLUMN_IDS = ["tracker", "uploaded", "downloaded", "uploadedSession", "downloadedSession", "ratio", "buffer", "count", "size", "performance"] as const
+const SECTION_IDS = ["server-stats", "global-stats", "instances"] as const
 
 export function DashboardSettingsDialog({ iconOnly }: { iconOnly?: boolean }) {
   const { t } = useTranslation("dashboard")
@@ -46,24 +36,12 @@ export function DashboardSettingsDialog({ iconOnly }: { iconOnly?: boolean }) {
   const [order, setOrder] = useState<string[]>(
     () => settings?.sectionOrder || DEFAULT_DASHBOARD_SETTINGS.sectionOrder
   )
-  const [sortColumn, setSortColumn] = useState(
-    () => settings?.trackerBreakdownSortColumn || "uploaded"
-  )
-  const [sortDirection, setSortDirection] = useState(
-    () => settings?.trackerBreakdownSortDirection || "desc"
-  )
-  const [itemsPerPage, setItemsPerPage] = useState(
-    () => settings?.trackerBreakdownItemsPerPage || 15
-  )
 
   // Sync local state only when dialog opens (not on every settings change to avoid overwriting user edits)
   useEffect(() => {
     if (open && settings) {
       setVisibility(settings.sectionVisibility || DEFAULT_DASHBOARD_SETTINGS.sectionVisibility)
       setOrder(settings.sectionOrder || DEFAULT_DASHBOARD_SETTINGS.sectionOrder)
-      setSortColumn(settings.trackerBreakdownSortColumn || "uploaded")
-      setSortDirection(settings.trackerBreakdownSortDirection || "desc")
-      setItemsPerPage(settings.trackerBreakdownItemsPerPage || 15)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -88,22 +66,6 @@ export function DashboardSettingsDialog({ iconOnly }: { iconOnly?: boolean }) {
     ;[newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]
     setOrder(newOrder)
     updateSettings.mutate({ sectionOrder: newOrder })
-  }
-
-  const handleSortColumnChange = (value: string) => {
-    setSortColumn(value)
-    updateSettings.mutate({ trackerBreakdownSortColumn: value })
-  }
-
-  const handleSortDirectionChange = (value: string) => {
-    setSortDirection(value)
-    updateSettings.mutate({ trackerBreakdownSortDirection: value })
-  }
-
-  const handleItemsPerPageChange = (value: string) => {
-    const num = parseInt(value, 10)
-    setItemsPerPage(num)
-    updateSettings.mutate({ trackerBreakdownItemsPerPage: num })
   }
 
   return (
@@ -171,65 +133,6 @@ export function DashboardSettingsDialog({ iconOnly }: { iconOnly?: boolean }) {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Tracker Breakdown Settings */}
-          <div className="space-y-4">
-            <Label className="text-sm font-medium">{t("settingsDialog.trackerDefaults")}</Label>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="sort-column" className="text-xs text-muted-foreground">
-                  {t("settingsDialog.defaultSort")}
-                </Label>
-                <Select value={sortColumn} onValueChange={handleSortColumnChange}>
-                  <SelectTrigger id="sort-column">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SORT_COLUMN_IDS.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {t(`settingsDialog.sortColumnLabels.${value}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="sort-direction" className="text-xs text-muted-foreground">
-                  {t("settingsDialog.direction")}
-                </Label>
-                <Select value={sortDirection} onValueChange={handleSortDirectionChange}>
-                  <SelectTrigger id="sort-direction">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="desc">{t("settingsDialog.descending")}</SelectItem>
-                    <SelectItem value="asc">{t("settingsDialog.ascending")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="items-per-page" className="text-xs text-muted-foreground">
-                {t("settingsDialog.itemsPerPage")}
-              </Label>
-              <Select value={String(itemsPerPage)} onValueChange={handleItemsPerPageChange}>
-                <SelectTrigger id="items-per-page" className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10</SelectItem>
-                  <SelectItem value="15">15</SelectItem>
-                  <SelectItem value="25">25</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </div>
