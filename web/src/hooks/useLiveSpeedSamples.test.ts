@@ -44,8 +44,24 @@ describe("useLiveSpeedSamples", () => {
 
     setVisibility("hidden")
     act(() => {
-      vi.advanceTimersByTime(LIVE_SAMPLE_MS)
+      document.dispatchEvent(new Event("visibilitychange"))
     })
     expect(result.current).toEqual([])
+  })
+
+  it("drops the samples that are older than 3 minutes after the browser paused the timer", () => {
+    vi.useFakeTimers()
+    setVisibility("visible")
+    const { result } = renderHook(() => useLiveSpeedSamples([instance(1, true)]))
+    act(() => {
+      vi.advanceTimersByTime(2 * LIVE_SAMPLE_MS)
+    })
+    expect(result.current).toHaveLength(2)
+
+    vi.setSystemTime(Date.now() + 10 * 60_000)
+    act(() => {
+      vi.advanceTimersByTime(LIVE_SAMPLE_MS)
+    })
+    expect(result.current).toHaveLength(1)
   })
 })

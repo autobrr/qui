@@ -43,7 +43,8 @@
   "offline": {
     "password": "Offline: qui braucht erneut das Passwort der Instanz",
     "cause": "Offline: {{cause}}",
-    "noAnswer": "Offline: qBittorrent antwortet nicht"
+    "noAnswer": "Offline: qBittorrent antwortet nicht",
+    "hidden": "Offline. Der Incognito-Modus verbirgt die Ursache."
   },
   "issues": {
     "unregistered_one": "{{count}} unregistriert",

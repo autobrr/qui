@@ -43,7 +43,8 @@
   "offline": {
     "password": "Fora de línia: qui torna a necessitar la contrasenya de la instància",
     "cause": "Fora de línia: {{cause}}",
-    "noAnswer": "Fora de línia: qBittorrent no respon"
+    "noAnswer": "Fora de línia: qBittorrent no respon",
+    "hidden": "Fora de línia. El mode incògnit n’amaga la causa."
   },
   "issues": {
     "unregistered_one": "{{count}} no registrat",

@@ -84,7 +84,8 @@ export function NeedsAttention({ statsData, className }: { statsData: DashboardI
 /** The free disk space of each instance that answers. */
 export function Storage({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
   const { t } = useTranslation("dashboard")
-  const rows = statsData.filter(d => instanceHealth(d) === "ok" && d.serverState?.free_space_on_disk !== undefined)
+  // qBittorrent reports -1 when it cannot read the free space.
+  const rows = statsData.filter(d => instanceHealth(d) === "ok" && (d.serverState?.free_space_on_disk ?? -1) >= 0)
   if (rows.length === 0) return null
 
   return (

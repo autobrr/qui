@@ -183,6 +183,19 @@ describe("DashboardOverview, 24 h", () => {
 
     await screen.findByText("statistics:partial")
     expect(screen.getAllByTestId("gap-mark")).toHaveLength(1)
+    const gapTitles = [...document.querySelectorAll("rect > title")].map(title => title.textContent ?? "").filter(title => title.includes("statistics:chart.gap"))
+    expect(gapTitles).toHaveLength(1)
+  })
+
+  it("labels the hours in the timezone of the date and time preferences", async () => {
+    localStorage.setItem("qui-datetime-preferences", JSON.stringify({ timezone: "Asia/Kolkata", timeFormat: "24h", dateFormat: "iso" }))
+    answer = () => [hourRow("a.test", 2, GiB, 0)]
+    renderOverview([stats(1)])
+
+    await screen.findByRole("region", { name: "trackers.title" })
+    const times = [...document.querySelectorAll("rect > title")].map(title => /time=(\S+)/.exec(title.textContent ?? "")?.[1])
+    expect(times.length).toBeGreaterThan(0)
+    expect(times.every(time => time?.endsWith(":30"))).toBe(true)
   })
 
   it("has no partial label and no gap mark for a full day without a gap", async () => {
@@ -279,6 +292,15 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
+  it("shows a free space that qBittorrent cannot read as unknown, not as an amount", async () => {
+    renderOverview([stats(1, {}, {}, { free_space_on_disk: -1 })])
+
+    expect(screen.queryByRole("region", { name: "storage.title" })).toBeNull()
+    fireEvent.click(within(screen.getByRole("list", { name: "instances.title" })).getByText("instance 1"))
+    const sheet = await screen.findByRole("dialog")
+    expect(within(sheet).getByTestId("fact-free").textContent).toBe("details.unknowndetails.freeSpace")
+  })
+
   it("opens the bottom sheet with the details on a tap on a phone", async () => {
     renderOverview([stats(1), stats(2)])
 
@@ -367,7 +389,7 @@ describe("DashboardOverview in incognito mode", () => {
     answer = () => [hourRow("tracker-a.test", 2, GiB, 0)]
     renderOverview([
       stats(1),
-      stats(2, { stats: null }, { connected: false, recentErrors: [{ id: 1, instanceId: 2, errorType: "connection", errorMessage: "dial tcp qbit-2.example.test:8080: connection refused", occurredAt: "" }] }),
+      stats(2, { stats: null }, { connected: false, recentErrors: [{ id: 1, instanceId: 2, errorType: "connection", errorMessage: "dial tcp 198.51.100.9:8080: connection refused", occurredAt: "" }] }),
     ])
 
     await screen.findByRole("region", { name: "trackers.title" })
@@ -377,7 +399,8 @@ describe("DashboardOverview in incognito mode", () => {
     expect(text).not.toContain("tracker-a.test")
     expect(text).not.toContain("qbit-1.example.test")
     expect(text).not.toContain("qbit-2.example.test")
+    expect(text).not.toContain("198.51.100.9")
     expect(text).not.toContain("203.0.113.7")
-    expect(text).toContain("offline.cause cause=Dial tcp ••••••: connection refused")
+    expect(text).toContain("offline.hidden")
   })
 })

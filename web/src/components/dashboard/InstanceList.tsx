@@ -31,7 +31,6 @@ import {
   issueClass,
   layerColor,
   MASK,
-  maskHost,
   offlineCause,
   OTHER_LAYER,
   type ChartLayer,
@@ -42,7 +41,7 @@ import { resolveDashboardDataStatusKind, resolveDashboardSizes } from "@/lib/das
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
-import { cn, formatBytes, formatDuration } from "@/lib/utils"
+import { cn, formatBytes, formatBytesOrFallback, formatDuration } from "@/lib/utils"
 import type { TransferHistoryBytes } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
@@ -153,7 +152,8 @@ function useOfflineText() {
       case "password":
         return t("offline.password")
       case "error":
-        return t("offline.cause", { cause: formatErrorMessage(incognito ? maskHost(cause.message, d.instance.host) : cause.message) })
+        // The error text can hold the host, its IP address, or a path, so incognito mode hides all of it.
+        return incognito ? t("offline.hidden") : t("offline.cause", { cause: formatErrorMessage(cause.message) })
       default:
         return t("offline.noAnswer")
     }
@@ -429,7 +429,7 @@ function DetailFacts({ d }: { d: DashboardInstanceStats }) {
     { key: "downloading", label: t("details.downloading"), value: count(d.stats?.downloading) },
     { key: "seeding", label: t("details.seeding"), value: count(d.stats?.seeding) },
     { key: "size", label: t("details.size"), value: <>{formatBytes(size.totalSize)}{size.calculating && <> <SizeCalculatingMark /></>}</> },
-    { key: "free", label: t("details.freeSpace"), value: free !== undefined ? formatBytes(free) : unknown },
+    { key: "free", label: t("details.freeSpace"), value: formatBytesOrFallback(free ?? -1, unknown) },
     { key: "peers", label: t("details.peers"), value: count(d.serverState?.total_peer_connections) },
     { key: "uptime", label: t("details.uptime"), value: uptime !== undefined ? formatDuration(uptime) : unknown },
     { key: "version", label: t("details.version"), value: version || unknown },

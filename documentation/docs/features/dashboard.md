@@ -79,7 +79,7 @@ A disk is almost full when the free space is less than 5% of the free space plus
 
 ## Incognito mode
 
-The eye button in the page header turns [Incognito Mode](./incognito.md) on and off for the whole app. On the Dashboard, incognito mode hides the hosts and the external IP addresses, also in the cause of an offline instance. It replaces the tracker names with fake domains.
+The eye button in the page header turns [Incognito Mode](./incognito.md) on and off for the whole app. On the Dashboard, incognito mode hides the hosts, the external IP addresses, and the cause of an offline instance, because the error text can hold the host or its IP address. It replaces the tracker names with fake domains.
 
 ### Unique size
 

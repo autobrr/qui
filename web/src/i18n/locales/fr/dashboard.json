@@ -43,7 +43,8 @@
   "offline": {
     "password": "Hors ligne : qui a de nouveau besoin du mot de passe de l'instance",
     "cause": "Hors ligne : {{cause}}",
-    "noAnswer": "Hors ligne : qBittorrent ne répond pas"
+    "noAnswer": "Hors ligne : qBittorrent ne répond pas",
+    "hidden": "Hors ligne. Le mode incognito masque la cause."
   },
   "issues": {
     "unregistered_one": "{{count}} non enregistré",

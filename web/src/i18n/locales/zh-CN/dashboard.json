@@ -43,7 +43,8 @@
   "offline": {
     "password": "离线：qui 需要重新输入实例的密码",
     "cause": "离线：{{cause}}",
-    "noAnswer": "离线：qBittorrent 无响应"
+    "noAnswer": "离线：qBittorrent 无响应",
+    "hidden": "离线。隐身模式隐藏了原因。"
   },
   "issues": {
     "unregistered_other": "{{count}} 个未注册",

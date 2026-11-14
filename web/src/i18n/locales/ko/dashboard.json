@@ -43,7 +43,8 @@
   "offline": {
     "password": "오프라인: qui에 인스턴스 비밀번호를 다시 입력해야 합니다",
     "cause": "오프라인: {{cause}}",
-    "noAnswer": "오프라인: qBittorrent가 응답하지 않습니다"
+    "noAnswer": "오프라인: qBittorrent가 응답하지 않습니다",
+    "hidden": "오프라인. 시크릿 모드에서는 원인이 숨겨집니다."
   },
   "issues": {
     "unregistered_other": "{{count}}개 등록되지 않음",

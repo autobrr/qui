@@ -43,7 +43,8 @@
   "offline": {
     "password": "Offline: qui znovu potřebuje heslo instance",
     "cause": "Offline: {{cause}}",
-    "noAnswer": "Offline: qBittorrent neodpovídá"
+    "noAnswer": "Offline: qBittorrent neodpovídá",
+    "hidden": "Offline. Anonymní režim skrývá příčinu."
   },
   "issues": {
     "unregistered_one": "{{count}} neregistrovaný",

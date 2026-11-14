@@ -43,7 +43,8 @@
   "offline": {
     "password": "Offline: qui needs the password of the instance again",
     "cause": "Offline: {{cause}}",
-    "noAnswer": "Offline: qBittorrent does not answer"
+    "noAnswer": "Offline: qBittorrent does not answer",
+    "hidden": "Offline. Incognito mode hides the cause."
   },
   "issues": {
     "unregistered_one": "{{count}} unregistered",

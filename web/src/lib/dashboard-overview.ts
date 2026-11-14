@@ -51,18 +51,6 @@ export type OfflineCause =
 // Incognito mode shows this in place of a host or an address.
 export const MASK = "••••••"
 
-/** Replaces the host of the instance in text with MASK, with and without its scheme and port. */
-export function maskHost(text: string, host: string): string {
-  const names = [host]
-  try {
-    const url = new URL(host)
-    names.push(url.host, url.hostname)
-  } catch {
-    // A host without a scheme is not a URL. The plain string still applies.
-  }
-  return names.filter(Boolean).sort((a, b) => b.length - a.length).reduce((masked, name) => masked.replaceAll(name, MASK), text)
-}
-
 export function offlineCause(d: DashboardInstanceStats): OfflineCause {
   if (d.instance.hasDecryptionError) return { kind: "password" }
   const message = d.instance.recentErrors?.[0]?.errorMessage || d.streamError

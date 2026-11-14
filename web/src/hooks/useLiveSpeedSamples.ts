@@ -23,16 +23,28 @@ export function useLiveSpeedSamples(statsData: DashboardInstanceStats[]): LiveSa
   const [samples, setSamples] = useState<LiveSample[]>([])
 
   useEffect(() => {
+    const clear = () => setSamples(previous => previous.length > 0 ? [] : previous)
     const sample = () => {
       if (document.visibilityState !== "visible") {
-        setSamples(previous => previous.length > 0 ? [] : previous)
+        clear()
         return
       }
       const speeds = new Map(latest.current.filter(d => instanceHealth(d) === "ok").map(d => [d.instance.id, { up: d.stats?.totalUploadSpeed ?? 0, down: d.stats?.totalDownloadSpeed ?? 0 }]))
-      setSamples(previous => [...previous.slice(-(LIVE_SAMPLES - 1)), { time: Date.now(), speeds }])
+      const now = Date.now()
+      // A browser can pause the timer of a hidden tab, so a sample from before the pause can be older than the window.
+      setSamples(previous => [...previous.filter(old => now - old.time < LIVE_SAMPLES * LIVE_SAMPLE_MS).slice(-(LIVE_SAMPLES - 1)), { time: now, speeds }])
+    }
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        clear()
+      }
     }
     const timer = setInterval(sample, LIVE_SAMPLE_MS)
-    return () => clearInterval(timer)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
   }, [])
 
   return samples

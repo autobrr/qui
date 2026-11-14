@@ -43,7 +43,8 @@
   "offline": {
     "password": "Не в мережі: qui знову потрібен пароль екземпляра",
     "cause": "Не в мережі: {{cause}}",
-    "noAnswer": "Не в мережі: qBittorrent не відповідає"
+    "noAnswer": "Не в мережі: qBittorrent не відповідає",
+    "hidden": "Не в мережі. Режим інкогніто приховує причину."
   },
   "issues": {
     "unregistered_one": "{{count}} незареєстрований",

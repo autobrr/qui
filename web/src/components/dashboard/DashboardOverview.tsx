@@ -23,7 +23,7 @@ import {
   trackerGroupShares,
   type DashboardInstanceStats
 } from "@/lib/dashboard-overview"
-import { HISTORY_WRITE_MS, presetPeriod, recordedFrom, sumBytes, type StatisticsPeriod } from "@/lib/statistics"
+import { formatGapLength, HISTORY_WRITE_MS, presetPeriod, recordedFrom, sumBytes, type StatisticsPeriod } from "@/lib/statistics"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { themeArea } from "@/lib/theme-areas"
 import { formatBytes } from "@/lib/utils"
@@ -63,7 +63,8 @@ interface ShownDay {
 export function DashboardOverview({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const { t, i18n } = useTranslation("dashboard")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const hour12 = usePersistedDateTimePreferences().preferences.timeFormat === "12h"
+  const { preferences } = usePersistedDateTimePreferences()
+  const hour12 = preferences.timeFormat === "12h"
   const [unit] = useSpeedUnits()
 
   const statusQuery = useTransferHistoryStatus()
@@ -120,7 +121,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   const peers = statsData.reduce((sum, d) => sum + (d.serverState?.total_peer_connections ?? 0), 0)
   const remaining = statsData.reduce((sum, d) => sum + (d.stats?.totalRemainingSize ?? 0), 0)
   const percent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
-  const timeFormat = useMemo(() => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12 }), [locale, hour12])
+  const timeFormat = useMemo(() => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12, timeZone: preferences.timezone }), [locale, hour12, preferences.timezone])
   const clock = (time: number) => timeFormat.format(time)
 
   const totals = dayData?.totals
@@ -142,7 +143,11 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   } else if (dayChart) {
     const up = slotTotals(dayChart.layers, "up")
     const down = slotTotals(dayChart.layers, "down")
-    const titles = hours.map((hour, index) => t("stream.hourTitle", { time: clock(hour.start), uploaded: formatBytes(up[index] ?? 0), downloaded: formatBytes(down[index] ?? 0) }))
+    const titles = hours.map((hour, index) => {
+      const title = t("stream.hourTitle", { time: clock(hour.start), uploaded: formatBytes(up[index] ?? 0), downloaded: formatBytes(down[index] ?? 0) })
+      // The hover area of the hour lies over the gap mark, so the title also gives the gap.
+      return hour.gapSeconds > 0 ? `${title}\n${t("statistics:chart.gap", { duration: formatGapLength(hour.gapSeconds, locale) })}` : title
+    })
     chart = <StreamChart layers={dayChart.layers} kind="bars" gaps={hours.map(hour => hour.gapSeconds)} titles={titles} label={t("stream.dayLabel")} className="h-36 lg:h-56" />
   } else {
     chart = (

@@ -43,7 +43,8 @@
   "offline": {
     "password": "Offline: o qui precisa da senha da instância de novo",
     "cause": "Offline: {{cause}}",
-    "noAnswer": "Offline: o qBittorrent não responde"
+    "noAnswer": "Offline: o qBittorrent não responde",
+    "hidden": "Offline. O modo anônimo oculta a causa."
   },
   "issues": {
     "unregistered_one": "{{count}} não registrado",
