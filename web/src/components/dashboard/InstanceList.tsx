@@ -202,7 +202,7 @@ function InstanceLines({ statsData, layerOf, onOpen }: { statsData: DashboardIns
         const down = d.stats?.totalDownloadSpeed ?? 0
         return (
           <li key={d.instance.id} className="border-b border-border/60">
-            <button type="button" onClick={() => onOpen(d.instance.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left active:bg-muted/50">
+            <button type="button" disabled={health === "loading"} onClick={() => onOpen(d.instance.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left active:bg-muted/50">
               <Swatch d={d} layer={layerOf.get(d.instance.id) ?? OTHER_LAYER} />
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-2">
@@ -222,7 +222,7 @@ function InstanceLines({ statsData, layerOf, onOpen }: { statsData: DashboardIns
                   </span>
                 )}
               </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              {health !== "loading" && <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
             </button>
           </li>
         )

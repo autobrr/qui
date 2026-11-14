@@ -251,6 +251,7 @@ describe("DashboardOverview after a failed read", () => {
 
     await screen.findByText(/^stream\.loadError/)
     expect(screen.getByTestId("upload-caption").textContent).toBe("")
+    expect(screen.queryByText(/^stream\.peakHour/)).toBeNull()
     expect(screen.queryByRole("region", { name: "trackers.title" })).toBeNull()
   })
 })
@@ -269,6 +270,17 @@ describe("DashboardOverview without history", () => {
 
     fireEvent.click(day.parentElement!)
     expect((await screen.findAllByText("stream.noHistory")).length).toBeGreaterThan(0)
+  })
+
+  // regression: #4141
+  it("opens on Live when no active instance recorded in the last 24 hours, also when a disabled one did", async () => {
+    statuses = [recorded(1, 48), recorded(2, 48)]
+    answer = id => id === 2 ? [hourRow("a.test", 2, GiB, 0)] : []
+    renderOverview([stats(1)])
+
+    await vi.waitFor(() => expect(transferRequests.sort()).toEqual([1, 2]))
+    await vi.waitFor(() => expect(screen.getByRole("tab", { name: "stream.day" }).hasAttribute("disabled")).toBe(true))
+    expect(screen.queryByRole("region", { name: "trackers.title" })).toBeNull()
   })
 
   it("opens on Live when the instances recorded nothing in the last 24 hours", async () => {
@@ -319,6 +331,14 @@ describe("DashboardOverview instances", () => {
     fireEvent.click(within(screen.getByRole("list", { name: "instances.title" })).getByText("instance 1"))
     const sheet = await screen.findByRole("dialog")
     expect(within(sheet).getByTestId("fact-free").textContent).toBe("details.unknowndetails.freeSpace")
+  })
+
+  // regression: #4141
+  it("opens no bottom sheet for an instance that is still loading", () => {
+    renderOverview([stats(1, { stats: null, isLoading: true })])
+
+    fireEvent.click(within(screen.getByRole("list", { name: "instances.title" })).getByText("instance 1"))
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
   it("opens the bottom sheet with the details on a tap on a phone", async () => {

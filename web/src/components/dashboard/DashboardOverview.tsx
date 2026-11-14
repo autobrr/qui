@@ -84,8 +84,8 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   // After a failed read, the page shows the error and not the numbers of an older period.
   const failed = statusQuery.error ?? day.error
   const current = failed ? undefined : shown
-  // An instance with older history and no row in the last 24 hours has no history for the period.
-  const noHistory = statusQuery.isSuccess && (!hasHistory || (current !== undefined && current.rows.every(rows => rows.length === 0)))
+  // An active instance with older history and no row in the last 24 hours has no history for the period. The rows of a disabled or removed instance count in the totals only.
+  const noHistory = statusQuery.isSuccess && (!hasHistory || (current !== undefined && current.rows.every((rows, index) => rows.length === 0 || !instanceIds.includes(current.instanceIds[index]))))
 
   const dayData = useMemo(() => {
     if (!current?.period.from) return undefined
@@ -141,9 +141,11 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
     : t("stream.liveDownloading", { downloading: downloading.toLocaleString(locale), size: formatBytes(remaining) })
 
   const hours = dayChart?.hours ?? []
-  const peaks = layerPeaks(range === "day" ? dayChart?.layers ?? [] : liveLayers)
-  const peakUp = range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.up) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.up, unit) })
-  const peakDown = range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.down) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.down, unit) })
+  // A chart that is loading, failed, or has no sample yet has no peak to give.
+  const shownLayers = range === "day" ? dayChart?.layers : liveLayers.length > 0 ? liveLayers : undefined
+  const peaks = shownLayers && layerPeaks(shownLayers)
+  const peakUp = peaks && (range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.up) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.up, unit) }))
+  const peakDown = peaks && (range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.down) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.down, unit) }))
 
   let chart: ReactNode
   if (range === "live") {
