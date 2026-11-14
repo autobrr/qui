@@ -134,6 +134,10 @@ describe("TrackerCustomizationsManager", () => {
 
   // regression: #4108
   it("drops a domain from the selection when an import gives it a customization", async () => {
+    mocks.deleteTrackerCustomization.mockImplementation((id: number) => {
+      mocks.customizations = mocks.customizations.filter(c => c.id !== id)
+      return Promise.resolve()
+    })
     mocks.instances = [{ id: 1, isActive: true }]
     mocks.activeTrackers = { "a.example.invalid": "https://a.example.invalid/announce", "b.example.invalid": "https://b.example.invalid/announce" }
     mocks.customizations = []
@@ -155,6 +159,11 @@ describe("TrackerCustomizationsManager", () => {
     await screen.findByText("Alpha")
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
     expect(screen.getByRole("button", { name: "trackerCustomizations.rename" })).not.toBeNull()
+
+    // A delete of the imported customization gives the domain its row back, unselected.
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.delete" }))
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "trackerCustomizations.rename" })).toHaveLength(2))
+    expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
   })
 
   // regression: #4108
