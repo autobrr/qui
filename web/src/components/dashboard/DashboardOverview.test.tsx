@@ -390,6 +390,20 @@ describe("DashboardOverview instances", () => {
     expect(String(mocks.toastError.mock.calls[0][0])).toMatch(/^common:errors\.altSpeedToggle message=/)
   })
 
+  // regression: #4141
+  it("leaves the cause out of the speed limit error in incognito mode", async () => {
+    mocks.incognitoMode = [true, () => {}]
+    toggleFails = true
+    renderOverview([stats(1)])
+    fireEvent.click(within(screen.getByRole("list", { name: "instances.title" })).getByText("instance 1"))
+    const sheet = await screen.findByRole("dialog")
+
+    fireEvent.click(within(sheet).getByRole("switch"))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByText("altSpeedDialog.enable"))
+    await vi.waitFor(() => expect(mocks.toastError).toHaveBeenCalledTimes(1))
+    expect(mocks.toastError.mock.calls[0][0]).toBe("common:errors.altSpeedToggleHidden")
+  })
+
   it("opens the torrent list with the filter of an issue", async () => {
     const { router } = renderOverview([stats(1, { torrentCounts: { status: { unregistered: 4 }, categories: {}, tags: {}, trackers: {}, total: 10 } })])
 

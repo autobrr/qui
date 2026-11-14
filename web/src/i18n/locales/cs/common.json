@@ -126,7 +126,8 @@
     "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
     "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
     "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}",
-    "altSpeedToggle": "Alternativní rychlostní limity se nepodařilo změnit: {{message}}"
+    "altSpeedToggle": "Alternativní rychlostní limity se nepodařilo změnit: {{message}}",
+    "altSpeedToggleHidden": "Alternativní rychlostní limity se nepodařilo změnit. Anonymní režim skrývá příčinu."
   },
   "status": {
     "disabled": "Vypnuto",

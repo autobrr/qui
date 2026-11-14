@@ -471,11 +471,13 @@ function DetailActions({ d, onClose }: { d: DashboardInstanceStats; onClose?: ()
 function AltSpeedSwitch({ d }: { d: DashboardInstanceStats }) {
   const { t } = useTranslation("dashboard")
   const [confirming, setConfirming] = useState(false)
+  const [incognito] = useIncognitoMode()
   const queryClient = useQueryClient()
   const { mutate: toggle, isPending } = useMutation({
     mutationFn: () => api.toggleAlternativeSpeedLimits(d.instance.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["torrents-list", d.instance.id] }),
-    onError: (error: Error) => toast.error(t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
+    // The error text can hold the host or its IP address, so incognito mode leaves it out.
+    onError: (error: Error) => toast.error(incognito ? t("common:errors.altSpeedToggleHidden") : t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
   })
   const enabled = d.altSpeedEnabled
   const id = `alt-speed-${d.instance.id}`

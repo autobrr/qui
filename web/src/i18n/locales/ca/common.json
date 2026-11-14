@@ -126,7 +126,8 @@
     "httpStatusHtml": "Error HTTP! Estat: {{status}} (el servidor ha retornat una pàgina d'error HTML)",
     "ssoHtmlResponse": "S'ha rebut una resposta HTML en lloc de JSON de l'API. Si ets darrere d'un servidor intermediari SSO (Cloudflare Access, Pangolin, etc.), prova d'actualitzar la pàgina o de tornar a obrir l'URL en una pestanya nova.",
     "torrentFileDownloadFailed": "No s'ha pogut baixar el fitxer torrent: {{status}}",
-    "altSpeedToggle": "No s'han pogut canviar els límits de velocitat alternatius: {{message}}"
+    "altSpeedToggle": "No s'han pogut canviar els límits de velocitat alternatius: {{message}}",
+    "altSpeedToggleHidden": "No s'han pogut canviar els límits de velocitat alternatius. El mode incògnit n’amaga la causa."
   },
   "status": {
     "disabled": "Desactivat",

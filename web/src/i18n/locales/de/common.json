@@ -126,7 +126,8 @@
     "httpStatusHtml": "HTTP-Fehler! Status: {{status}} (Server hat eine HTML-Fehlerseite zurückgegeben)",
     "ssoHtmlResponse": "Die API hat HTML statt JSON zurückgegeben. Wenn du hinter einem SSO-Proxy (Cloudflare Access, Pangolin usw.) bist, lade die Seite neu oder öffne die URL in einem neuen Tab.",
     "torrentFileDownloadFailed": "Torrent-Datei konnte nicht heruntergeladen werden: {{status}}",
-    "altSpeedToggle": "Alternative Geschwindigkeitsbegrenzungen konnten nicht geändert werden: {{message}}"
+    "altSpeedToggle": "Alternative Geschwindigkeitsbegrenzungen konnten nicht geändert werden: {{message}}",
+    "altSpeedToggleHidden": "Alternative Geschwindigkeitsbegrenzungen konnten nicht geändert werden. Der Incognito-Modus verbirgt die Ursache."
   },
   "status": {
     "disabled": "Deaktiviert",

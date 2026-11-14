@@ -688,7 +688,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["alternative-speed-limits", instanceId] })
     },
-    onError: (error: Error) => toast.error(t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
+    // The error text can hold the host or its IP address, so incognito mode leaves it out.
+    onError: (error: Error) => toast.error(incognitoMode ? t("common:errors.altSpeedToggleHidden") : t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
   })
 
   useEffect(() => {
