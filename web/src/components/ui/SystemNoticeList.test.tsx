@@ -74,8 +74,7 @@ describe("SystemNoticeList", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Recording stopped/ }))
 
-    const detail = await screen.findByRole("dialog")
-    expect(detail.textContent).toContain("Recording stopped")
+    const detail = await screen.findByRole("dialog", { name: "Recording stopped" })
     expect(detail.textContent).toContain("qui cannot write the transfer history. It tries again at the next write.")
     expect(detail.textContent).toContain("Make sure that the disk has free space and that qui can write its database file.")
     expect(detail.textContent).toContain("attempt to write a readonly database")

@@ -40,6 +40,7 @@ export function SystemNoticeList() {
 function SystemNoticeRow({ notice, now }: { notice: SystemNotice; now: number }) {
   const { short } = useSystemNoticeDescription(notice.kind)
   const [open, setOpen] = useState(false)
+  const titleId = useId()
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -53,8 +54,8 @@ function SystemNoticeRow({ notice, now }: { notice: SystemNotice; now: number })
         </span>
         <ChevronRight className="hidden h-3.5 w-3.5 text-sidebar-foreground/60 group-hover:block group-data-[state=open]:block" />
       </PopoverTrigger>
-      <PopoverContent side="right" align="end" sideOffset={16} className="w-80 p-0">
-        <SystemNoticeDetail notice={notice} onNavigate={() => setOpen(false)} />
+      <PopoverContent side="right" align="end" sideOffset={16} className="w-80 p-0" aria-labelledby={titleId}>
+        <SystemNoticeDetail notice={notice} titleId={titleId} onNavigate={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
   )

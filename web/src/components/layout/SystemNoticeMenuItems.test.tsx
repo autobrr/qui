@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
@@ -66,6 +66,23 @@ describe("SystemNoticeMenuItems", () => {
     expect(dialog.textContent).toContain("Make sure that the disk has free space and that qui can write its database file.")
     expect(dialog.textContent).toContain("attempt to write a readonly database")
     expect(screen.queryByRole("menu")).toBeNull()
+  })
+
+  it("keeps the age in an open dialog up to date", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "Date"] })
+    try {
+      const justOpened: SystemNotice = { ...open[0], openedAt: new Date().toISOString() }
+      render(<Menu notices={[justOpened]} />)
+      fireEvent.click(await screen.findByRole("menuitem", { name: /Recording stopped/ }))
+      const dialog = await screen.findByRole("dialog", { name: "Recording stopped" })
+      expect(dialog.textContent).toContain("1 minute ago")
+
+      act(() => vi.advanceTimersByTime(3 * 60 * 1000))
+
+      expect(dialog.textContent).toContain("3 minutes ago")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("keeps the dialog closed when a notice that closed while open comes back", async () => {

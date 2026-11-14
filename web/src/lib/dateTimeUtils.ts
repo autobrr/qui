@@ -311,7 +311,16 @@ export function formatNarrowAge(ageMs: number): string {
  */
 export function formatClockTime(date: Date, preferences?: DateTimePreferences, now = new Date()): string {
   const prefs = preferences || getStoredPreferences()
-  const timeZone = prefs.timezone
+  const hour12 = prefs.timeFormat === "12h"
+  try {
+    return formatClockTimeIn(date, now, prefs.timezone, hour12)
+  } catch (error) {
+    console.error("Error formatting time:", error)
+    return formatClockTimeIn(date, now, undefined, hour12)
+  }
+}
+
+function formatClockTimeIn(date: Date, now: Date, timeZone: string | undefined, hour12: boolean): string {
   const day = getFormatter(["en-CA"], { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
   const today = day.format(date) === day.format(now)
 
@@ -320,7 +329,7 @@ export function formatClockTime(date: Date, preferences?: DateTimePreferences, n
     ...(today ? {} : { weekday: "short" as const }),
     hour: "2-digit",
     minute: "2-digit",
-    hour12: prefs.timeFormat === "12h",
+    hour12,
   }).format(date)
 }
 

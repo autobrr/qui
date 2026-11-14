@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { CopyButton } from "@/components/ui/copy-button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useNow } from "@/hooks/useNow"
 import { useSystemNoticeDescription } from "@/hooks/useSystemNoticeDescription"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { cn } from "@/lib/utils"
@@ -40,23 +41,25 @@ export function SystemNoticeHeading({ count }: { count: number }) {
 type SystemNoticeDetailProps = {
   notice: SystemNotice
   titleAs?: ElementType
+  titleId?: string
   onNavigate?: () => void
 }
 
-export function SystemNoticeDetail({ notice, titleAs: Title = "p", onNavigate }: SystemNoticeDetailProps) {
+export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNavigate }: SystemNoticeDetailProps) {
   const { t } = useTranslation("common")
+  const now = useNow()
   const description = useSystemNoticeDescription(notice.kind)
   const { formatClockTime } = useDateTimeFormatters()
   const openedAt = new Date(notice.openedAt)
   // Like the row, the detail counts a notice under one minute old as one minute.
-  const ageFrom = new Date(Math.min(openedAt.getTime(), Date.now() - 60 * 1000))
+  const ageFrom = new Date(Math.min(openedAt.getTime(), now - 60 * 1000))
 
   return (
     <div>
       <div className="flex items-start gap-3 px-4 pr-10 pt-4">
         <SystemNoticeDot className="mt-1.5" />
         <div className="min-w-0">
-          <Title className="text-sm font-semibold leading-snug">{description.title}</Title>
+          <Title {...(titleId && { id: titleId })} className="text-sm font-semibold leading-snug">{description.title}</Title>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {t("systemNotice.since", { time: formatClockTime(openedAt), age: formatRelativeTime(ageFrom) })}
           </p>
