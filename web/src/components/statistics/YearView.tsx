@@ -9,7 +9,7 @@ import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { calendarDays, daysSinceMonday, formatGapLength, monthBars, yearSummary, type CalendarDay, type StatisticsBar } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-year"
@@ -72,6 +72,8 @@ function Calendar({ days }: { days: CalendarDay[] }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const scroller = useRef<HTMLDivElement>(null)
+  // The start of the day that the pointer is on, or that the user tapped last.
+  const [shown, setShown] = useState<number>()
 
   // On a narrow screen the calendar scrolls sideways, so it opens at the latest weeks.
   useEffect(() => {
@@ -108,7 +110,7 @@ function Calendar({ days }: { days: CalendarDay[] }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-4 text-xs text-muted-foreground">
-        <span>{t("yearView.calendar")}</span>
+        <span aria-live="polite">{(shown !== undefined && labels.get(shown)) || t("yearView.calendar")}</span>
         <span className="hidden items-center gap-1 sm:flex" aria-hidden>
           {t("yearView.less")}
           <span className="size-3 rounded-[3px] bg-muted" />
@@ -117,7 +119,7 @@ function Calendar({ days }: { days: CalendarDay[] }) {
         </span>
       </div>
       <div ref={scroller} className="overflow-x-auto pb-1">
-        <ol className="flex w-max gap-[3px]" aria-label={t("yearView.calendar")}>
+        <ol className="flex w-max gap-[3px]" aria-label={t("yearView.calendar")} onMouseLeave={() => setShown(undefined)}>
           {weeks.map((week, index) => {
             const first = week.find(day => day && new Date(day.start).getDate() === 1)
             return (
@@ -132,10 +134,13 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                       title={labels.get(day.start)}
                       aria-label={labels.get(day.start)}
                       data-gap={day.gapSeconds > 0 || undefined}
+                      onMouseEnter={() => setShown(day.start)}
+                      onClick={() => setShown(day.start)}
                       className={cn(
                         "size-3 rounded-[3px]",
                         day.uploaded === undefined ? "border border-dashed border-border" : !day.uploaded && "bg-muted",
-                        day.gapSeconds > 0 && "ring-1 ring-yellow-500"
+                        day.gapSeconds > 0 && "ring-1 ring-yellow-500",
+                        shown === day.start && "outline outline-1 outline-foreground"
                       )}
                       style={day.uploaded ? { background: HEAT[thresholds.filter(threshold => day.uploaded! > threshold).length] } : undefined}
                     />

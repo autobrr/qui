@@ -240,7 +240,12 @@ function barKey(start: Date, width: TransferHistoryRow["width"], unit: ChartUnit
   if (unit === "hour") {
     return start.getTime()
   }
-  // A day row counts by its middle, so a start a few hours off its midnight stays on its day.
+  // A folded day is a UTC day that starts at a UTC midnight, so its bar keeps the date of the stored day, as a category
+  // bar does. Where a local day also starts at a UTC midnight, the two dates are the same.
+  if (width === "day" && start.getTime() % (24 * HOUR) === 0) {
+    return localDateOfUtc(start.getTime())
+  }
+  // A local day row counts by its middle, so a start a few hours off its midnight stays on its day.
   return startOfLocalDay(width === "day" ? new Date(start.getTime() + 12 * HOUR) : start).getTime()
 }
 

@@ -888,6 +888,19 @@ describe("Statistics year view", () => {
     expect(screen.getByTestId("chart").getAttribute("data-uploaded")).toBe(String(1000 * KiB))
   })
 
+  it("shows the date and the upload of a tapped day above the calendar", async () => {
+    answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day" ? [dayRow("a.test", daysAgo(1), 100 * KiB)] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("periods.1y"), { button: 0 })
+    await screen.findByRole("list", { name: "yearView.calendar" })
+    const cell = calendarCells().find(cell => cell.getAttribute("aria-label")?.includes("uploaded=100 KiB"))!
+
+    fireEvent.click(cell)
+
+    const readout = screen.getByText(cell.getAttribute("aria-label")!)
+    expect(readout.tagName).toBe("SPAN")
+  })
+
   it("shows weeks in the chart of the detail band of a long period", async () => {
     answer = ({ bucket }) => bucket === "day" ? [dayRow("a.test", daysAgo(1), KiB)] : []
     renderPage()

@@ -65,7 +65,7 @@ If a chart covers more than 120 days, the bars of the days are too thin to read.
 
 The year view has these parts:
 
-- A calendar with one cell for each day of the period, for the last 53 weeks at most. Each column is one week, from Monday to Sunday. A cell with a stronger color has more upload. A cell with a dashed border is a day before the first recording. A cell with a yellow ring is a day that a [recording gap](#recording-gap) covers, or the day after the gap that holds its bytes. To see the date and the upload of a day, hold the pointer on its cell. On a phone, the calendar scrolls sideways and opens at the latest weeks.
+- A calendar with one cell for each day of the period, for the last 53 weeks at most. Each column is one week, from Monday to Sunday. A cell with a stronger color has more upload. A cell with a dashed border is a day before the first recording. A cell with a yellow ring is a day that a [recording gap](#recording-gap) covers, or the day after the gap that holds its bytes. To see the date and the upload of a day, hold the pointer on its cell or tap it. The line above the calendar then shows them. On a phone, the calendar scrolls sideways and opens at the latest weeks.
 - **Best day**: the day of the period with the most upload.
 - **Best month**: the month of the period with the most upload.
 - **Weekends**: the share of the upload of the period that moved on a Saturday or a Sunday.
