@@ -106,7 +106,7 @@ A script or a coding agent can save, replace, and remove a custom theme through 
 - `PUT /api/themes/custom/{id}` with `{ "css": "..." }` replaces the theme.
 - `DELETE /api/themes/custom/{id}` removes the theme.
 
-The rule about files from other websites applies to create and to replace.
+The rule about files from other websites applies to create and to replace. If two files in the theme directory have the same id, for example `Ocean.css` and `Ocean.CSS`, replace and remove answer 409 and change neither file. Rename one of the files.
 
 ## Theme selection syncs across devices
 

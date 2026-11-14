@@ -219,21 +219,49 @@ func (h *ThemesHandler) findCustomTheme(w http.ResponseWriter, r *http.Request) 
 		RespondError(w, http.StatusInternalServerError, "Cannot read the custom themes folder "+dir)
 		return "", nil, false
 	}
-	var folded os.DirEntry
-	for _, entry := range entries {
-		entryID := customThemeID(entry.Name())
-		if entryID == id {
-			return dir, entry, true
-		}
-		if folded == nil && strings.EqualFold(entryID, id) {
-			folded = entry
-		}
-	}
-	if folded == nil {
+	i, err := findCustomThemeFile(entries, id)
+	if errors.Is(err, errCustomThemeNotFound) {
 		RespondError(w, http.StatusNotFound, "Custom theme not found")
 		return "", nil, false
 	}
-	return dir, folded, true
+	if err != nil {
+		RespondError(w, http.StatusConflict, err.Error())
+		return "", nil, false
+	}
+	return dir, entries[i], true
+}
+
+var errCustomThemeNotFound = errors.New("custom theme not found")
+
+// findCustomThemeFile returns the index of the theme file with the id, exact case first.
+// It returns errCustomThemeNotFound when no file has the id, and an error that
+// names the files when two files have it, as Ocean.css and Ocean.CSS can on a
+// case-sensitive file system, so that no change picks one of them.
+func findCustomThemeFile(entries []os.DirEntry, id string) (int, error) {
+	var exact, folded []int
+	for i, entry := range entries {
+		entryID := customThemeID(entry.Name())
+		if entryID == id {
+			exact = append(exact, i)
+		} else if strings.EqualFold(entryID, id) {
+			folded = append(folded, i)
+		}
+	}
+	found := exact
+	if len(found) == 0 {
+		found = folded
+	}
+	switch len(found) {
+	case 0:
+		return -1, errCustomThemeNotFound
+	case 1:
+		return found[0], nil
+	}
+	names := make([]string, len(found))
+	for n, i := range found {
+		names[n] = entries[i].Name()
+	}
+	return -1, fmt.Errorf("these theme files have the id %q: %s. Rename one of them", id, strings.Join(names, ", "))
 }
 
 func (h *ThemesHandler) respondWriteError(w http.ResponseWriter, dir string, err error) {

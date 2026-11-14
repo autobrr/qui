@@ -4407,6 +4407,8 @@ paths:
           description: Premium access required
         '404':
           description: No custom theme has this id
+        '409':
+          description: Two theme files have this id, for example Ocean.css and Ocean.CSS. The message names them.
         '500':
           description: The custom themes directory cannot be read or written. The message names the directory.
     delete:
@@ -4421,6 +4423,8 @@ paths:
           description: Premium access required
         '404':
           description: No custom theme has this id
+        '409':
+          description: Two theme files have this id, for example Ocean.css and Ocean.CSS. The message names them.
         '500':
           description: The custom themes directory cannot be read or written. The message names the directory.
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"testing/fstest"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -406,4 +408,33 @@ func TestCustomTheme_ReplaceAppliesOutsideFileRule(t *testing.T) {
 	list := rig.do(t, http.MethodGet, "/api/themes/custom", nil)
 	require.Equal(t, http.StatusOK, list.Code)
 	require.Contains(t, list.Body.String(), "a.png", "the list route serves a hand-made file with a url()")
+}
+
+// regression: #4124
+func TestFindCustomThemeFile(t *testing.T) {
+	// An in-memory folder keeps names that differ only in letter case on every OS.
+	folder := fstest.MapFS{
+		"Ocean.CSS": {}, "Ocean.css": {},
+		"Nord.css": {}, "nord.css": {},
+		"Dusk.css": {},
+	}
+	entries, err := fs.ReadDir(folder, ".")
+	require.NoError(t, err)
+
+	for id, want := range map[string]string{"nord": "nord.css", "Nord": "Nord.css", "dusk": "Dusk.css"} {
+		i, err := findCustomThemeFile(entries, id)
+		require.NoError(t, err, id)
+		require.Equal(t, want, entries[i].Name(), id)
+	}
+
+	for _, id := range []string{"Ocean", "ocean", "NORD"} {
+		_, err := findCustomThemeFile(entries, id)
+		require.Error(t, err, id)
+		require.NotErrorIs(t, err, errCustomThemeNotFound, id)
+	}
+	_, err = findCustomThemeFile(entries, "Ocean")
+	require.EqualError(t, err, `these theme files have the id "Ocean": Ocean.CSS, Ocean.css. Rename one of them`)
+
+	_, err = findCustomThemeFile(entries, "gone")
+	require.ErrorIs(t, err, errCustomThemeNotFound)
 }
