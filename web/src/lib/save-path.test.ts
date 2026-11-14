@@ -73,6 +73,23 @@ describe("resolveDestinationPath", () => {
     })).toBe("/downloads")
   })
 
+  // qBittorrent: a subcategory with no path saves under its parent's folder, and a relative path counts from the default folder.
+  it.each([
+    ["tv/anime", { tv: { name: "tv", savePath: "/media/tv" }, "tv/anime": { name: "tv/anime", savePath: "" } }, "/data", "/media/tv/anime"],
+    ["tv/anime/new", { tv: { name: "tv", savePath: "" } }, "/data", "/data/tv/anime/new"],
+    ["books", { books: { name: "books", savePath: "library/books" } }, "/data", "/data/library/books"],
+    ["tv/anime", { tv: { name: "tv", savePath: "E:\\media\\tv" } }, "D:\\data", "E:\\media\\tv\\anime"],
+    ["tv", { tv: { name: "tv", savePath: "\\\\nas\\tv" } }, "D:\\data", "\\\\nas\\tv"],
+  ])("resolves %s as qBittorrent does", (category, cats, defaultSavePath, expected) => {
+    expect(resolveDestinationPath({
+      autoTMM: true,
+      savePath: "",
+      category,
+      categories: cats as Record<string, Category>,
+      defaultSavePath,
+    })).toBe(expected)
+  })
+
   it("returns nothing when the destination cannot be resolved", () => {
     expect(resolveDestinationPath({
       autoTMM: true,
