@@ -76,14 +76,14 @@ describe("themeThumbnailPalette", () => {
     expect(palette.primary).toBe("teal")
   })
 
-  it("resolves a reference inside a color function against the pictured theme", () => {
+  it("passes a value that is not a plain reference to the browser as written", () => {
     const palette = themeThumbnailPalette(theme({
-      light: { "--primary": "red", "--background": "color-mix(in oklab, var(--primary) 20%, white)", "--card": "var(--missing, ivory)" },
+      light: { "--background": "var(--missing, rgb(20 30 40))", "--card": "color-mix(in oklab, var(--primary) 50%, white)" },
       dark: {},
     }), false, null)
 
-    expect(palette.background).toBe("color-mix(in oklab, red 20%, white)")
-    expect(palette.card).toBe("ivory")
+    expect(palette.background).toBe("var(--missing, rgb(20 30 40))")
+    expect(palette.card).toBe("color-mix(in oklab, var(--primary) 50%, white)")
   })
 
   it("leaves out a token in a reference cycle", () => {

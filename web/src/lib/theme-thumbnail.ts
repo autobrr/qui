@@ -19,8 +19,7 @@ const THUMBNAIL_TOKENS = {
 
 export type ThemeThumbnailPalette = Partial<Record<keyof typeof THUMBNAIL_TOKENS, string>>
 
-// var(--name) or var(--name, fallback), with no parentheses in the fallback.
-const VAR_REFERENCE = /var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*?))?\s*\)/g
+const VAR_REFERENCE = /^var\(\s*(--[\w-]+)\s*\)$/
 
 /**
  * The colors that a thumbnail of the theme paints in one mode. A light-only
@@ -39,19 +38,14 @@ export function themeThumbnailPalette(theme: Theme, dark: boolean, variation: st
     }
     return token(name)
   }
-  // Each reference resolves against this theme, also inside a color function, because the page
-  // would resolve it against the theme in use. Ten passes end a cycle.
+  // A theme can point one token at another; ten steps end a cycle. Any other value, such as a
+  // color function, goes to the browser as written, as the CSS of the theme does.
   const resolve = (name: string): string | undefined => {
     let value = lookup(name)
     for (let step = 0; value !== undefined && step < 10; step++) {
-      if (!value.includes("var(")) return value
-      let missing = false
-      value = value.replace(VAR_REFERENCE, (_match, reference: string, fallback?: string) => {
-        const found = lookup(reference) ?? fallback
-        if (found === undefined) missing = true
-        return found ?? ""
-      })
-      if (missing) return undefined
+      const reference = VAR_REFERENCE.exec(value)
+      if (!reference) return value
+      value = lookup(reference[1])
     }
     return undefined
   }
