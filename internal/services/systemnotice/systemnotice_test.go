@@ -66,3 +66,34 @@ func TestAClosedNoticeSendsAgainWhenItOpensAgain(t *testing.T) {
 	require.Len(t, notices.List(), 1)
 	require.Len(t, notifier.all(), 2)
 }
+
+func TestDismiss(t *testing.T) {
+	t.Parallel()
+	notices := systemnotice.New(nil)
+	notices.Open(systemnotice.RecordingStopped, "disk I/O error")
+	notices.Open(systemnotice.ShrinkFailed, "database or disk is full")
+
+	require.ErrorIs(t, notices.Dismiss(t.Context(), systemnotice.RecordingStopped), systemnotice.ErrNotDismissible)
+	require.NoError(t, notices.Dismiss(t.Context(), systemnotice.ShrinkFailed))
+
+	open := notices.List()
+	require.Len(t, open, 1)
+	require.Equal(t, systemnotice.RecordingStopped, open[0].Kind, "a notice that closes itself stays open")
+}
+
+func TestTheNotificationGivesTheFixOfTheReason(t *testing.T) {
+	t.Parallel()
+	notifier := &sent{}
+	notices := systemnotice.New(notifier)
+
+	notices.OpenWithReason(systemnotice.ShrinkFailed, "disk_full", "database or disk is full")
+
+	open := notices.List()
+	require.Len(t, open, 1)
+	require.Equal(t, "disk_full", open[0].Reason)
+	require.Equal(t, systemnotice.SeverityWarning, open[0].Severity)
+	events := notifier.all()
+	require.Len(t, events, 1)
+	require.Equal(t, "Shrink failed", events[0].Title)
+	require.Contains(t, events[0].Message, "Free space on the disk")
+}

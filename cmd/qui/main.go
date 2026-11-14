@@ -42,12 +42,14 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/dbshrink"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/lowdisk"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
@@ -620,6 +622,7 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 	}
 	defer db.Close()
+	startupShrink, shrinkRan := db.RunPendingShrink(context.Background())
 
 	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
@@ -680,6 +683,9 @@ func (app *Application) runServer() {
 		notificationService.Start(notificationCtx)
 	}
 	systemNotices := systemnotice.New(notificationService)
+	lowDiskCtx, lowDiskCancel := context.WithCancel(context.Background())
+	defer lowDiskCancel()
+	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
@@ -929,6 +935,15 @@ func (app *Application) runServer() {
 
 	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
 	restarter := update.NewRestarter(updateInputs.BinaryPath)
+	updateAvailability := update.Decide(updateInputs)
+	var shrinkRestarter dbshrink.Restarter
+	if updateAvailability.Restart {
+		shrinkRestarter = restarter
+	}
+	databaseShrink := dbshrink.New(db, systemNotices, shrinkRestarter)
+	if shrinkRan {
+		databaseShrink.Report(startupShrink)
+	}
 	selfUpdater := update.NewUpdater(update.Config{
 		Repository: "autobrr/qui",
 		Version:    buildinfo.Version,
@@ -952,7 +967,7 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
-		UpdateAvailability:               update.Decide(updateInputs),
+		UpdateAvailability:               updateAvailability,
 		Restarter:                        restarter,
 		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
@@ -982,6 +997,7 @@ func (app *Application) runServer() {
 		DiscScanService:                  discScanService,
 		TransferHistory:                  transferHistory,
 		SystemNotices:                    systemNotices,
+		DatabaseShrink:                   databaseShrink,
 		BackendPool:                      backendPool,
 		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,

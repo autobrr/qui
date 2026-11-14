@@ -12,7 +12,7 @@ import "@/i18n"
 import { Statistics } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
 import type { StatisticsBar } from "@/lib/statistics"
-import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryRow } from "@/types"
+import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string, options?: Record<string, unknown>) => {
@@ -51,6 +51,8 @@ interface TransferRequest {
   bucket: string
   groupBy: string | null
   group: string | null
+  groupOf: string | null
+  limit: string | null
   from: string | null
   to: string | null
   timeZone: string | null
@@ -59,14 +61,26 @@ interface TransferRequest {
 let statuses: TransferHistoryInstance[]
 let configuredIds: number[]
 let answer: (request: TransferRequest) => TransferHistoryRow[]
+// The answer of a query by torrent. The mock limits the rows to the group of a query for one torrent.
+let torrentAnswer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
 let liveGroups: (instanceId: number) => LiveTrackerGroup[]
 // While set, the transfer route waits for it before it answers: for each bucket, or only for holdBucket.
 let hold: Promise<void> | undefined
 let holdBucket: string | undefined
+// While set, the route holds only the queries with this groupOf.
+let holdGroupOf: string | undefined
 
 function row(group: string, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
   return { group, start: new Date(Date.now() - DAY).toISOString(), width: "hour", gapSeconds: 0, uploaded, downloaded, statisticsCrossSeedUploaded: 0, ...extra }
+}
+
+function torrentRow(hash: string, name: string, uploaded: number, torrent: Partial<TransferHistoryTorrent> = {}, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
+  return row(hash, uploaded, 0, {
+    width: "total",
+    torrent: { name, trackerGroup: "a.test", deleted: false, statisticsCrossSeed: false, uploadFirst24h: null, ...torrent },
+    ...extra,
+  })
 }
 
 function recordedDaysAgo(instanceId: number, name: string, days: number): TransferHistoryInstance {
@@ -117,9 +131,11 @@ beforeEach(() => {
   requests = []
   hold = undefined
   holdBucket = undefined
+  holdGroupOf = undefined
   configuredIds = [1, 2]
   statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 400)]
   answer = () => []
+  torrentAnswer = () => []
   liveGroups = () => []
   server.use(
     http.get("*/api/instances/:id/tracker-groups", ({ params }) => HttpResponse.json({ groups: liveGroups(Number(params.id)) })),
@@ -132,16 +148,18 @@ beforeEach(() => {
         bucket: url.searchParams.get("bucket") ?? "",
         groupBy: url.searchParams.get("groupBy"),
         group: url.searchParams.get("group"),
+        groupOf: url.searchParams.get("groupOf"),
+        limit: url.searchParams.get("limit"),
         from: url.searchParams.get("from"),
         to: url.searchParams.get("to"),
         timeZone: url.searchParams.get("timeZone"),
       }
       requests.push(transfer)
-      if (holdBucket === undefined || transfer.bucket === holdBucket) {
+      if ((holdBucket === undefined || transfer.bucket === holdBucket) && (holdGroupOf === undefined || transfer.groupOf === holdGroupOf)) {
         await hold
       }
-      const rows = answer(transfer)
-      return HttpResponse.json({ rows: transfer.group === null ? rows : rows.filter(row => row.group === transfer.group) })
+      const rows = transfer.groupBy === "torrent" ? torrentAnswer(transfer) : answer(transfer)
+      return HttpResponse.json({ rows: transfer.group === null || transfer.groupOf !== null ? rows : rows.filter(row => row.group === transfer.group) })
     })
   )
 })
@@ -315,7 +333,7 @@ describe("Statistics", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
       })
-      await vi.waitFor(() => expect(requests.filter(request => request.bucket === "total")).toHaveLength(4))
+      await vi.waitFor(() => expect(requests.filter(request => request.bucket === "total" && request.groupBy === "tracker")).toHaveLength(4))
       await act(async () => {
         await new Promise(resolve => setTimeout(resolve, 200))
       })
@@ -377,15 +395,15 @@ describe("Statistics", () => {
     renderPage()
 
     await expectTile("tiles.uploaded", "8 KiB | ")
-    expect(requests.filter(request => request.bucket === "total")).toEqual([])
+    expect(requests.filter(request => request.bucket === "total" && request.groupBy === "tracker")).toEqual([])
   })
 
   it("shows the error in the chart when one instance fails", async () => {
     server.use(http.get("*/api/instances/2/transfer-history", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    // The chart and the table both read the rows of the chart.
-    expect(await screen.findAllByText("errors.load message=database is locked")).toHaveLength(2)
+    // The chart and the table both read the rows of the chart. The top torrents read the instance too.
+    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(3))
     expect(screen.queryByText("chart.empty")).toBeNull()
   })
 
@@ -394,15 +412,15 @@ describe("Statistics", () => {
     server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    // The line at the top of the page and the table both show it.
-    expect(await screen.findAllByText("errors.load message=database is locked")).toHaveLength(2)
+    // The line at the top of the page, the table, and the top torrents show it.
+    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(3))
   })
 
   it("says that a period with no transfer has none", async () => {
     renderPage()
 
-    // The chart and the table both say so.
-    expect(await screen.findAllByText("chart.empty")).toHaveLength(2)
+    // The chart, the table, and the top torrents say so.
+    await vi.waitFor(() => expect(screen.getAllByText("chart.empty")).toHaveLength(3))
     expect(screen.queryByTestId("chart")).toBeNull()
   })
 
@@ -493,6 +511,37 @@ describe("Statistics", () => {
     expect(within(table).queryByText("table.columns.torrents")).toBeNull()
   })
 
+  it("shows a spinner while the query of a release attribute runs, then its rows with None for no value", async () => {
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" && bucket === "total" ? [row("1080p", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []
+    renderPage()
+    const tab = await screen.findByText("table.groupings.resolution")
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+    fireEvent.mouseDown(tab, { button: 0 })
+
+    await vi.waitFor(() => expect(requests.some(request => request.groupBy === "resolution" && request.bucket === "total")).toBe(true))
+    const tableCard = screen.getByText("table.title").closest("[data-slot=card]")
+    expect(screen.queryByRole("table")).toBeNull()
+    expect(tableCard?.querySelector(".animate-spin")).not.toBeNull()
+
+    release()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "1080p")).toEqual(["1080p", "2 KiB", "0 B", "∞", "+2 KiB"]))
+    expect(cells(table, "table.none")[1]).toBe("1 KiB")
+    expect(within(table).queryByText("table.columns.torrents")).toBeNull()
+  })
+
+  it("opens the detail band of a release attribute row from the days of that value", async () => {
+    answer = ({ bucket, groupBy }) => groupBy === "releaseGroup" && bucket === "total" ? [row("", 1024, 0, { width: "total" })] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("table.groupings.releaseGroup"), { button: 0 })
+    fireEvent.click(await within(await screen.findByRole("table")).findByText("table.none"))
+
+    await vi.waitFor(() => expect(requests.find(request => request.groupBy === "releaseGroup" && request.bucket === "day")).toMatchObject({ group: "", timeZone: null }))
+    expect(await screen.findByTestId("group-chart")).toBeTruthy()
+  })
+
   it("includes the Baseline in a row of all time", async () => {
     answer = ({ bucket }) => bucket === "total" ? [row("a.test", 1024, 0, { start: undefined, width: "total", baseline: { uploaded: 4096, downloaded: 0, statisticsCrossSeedUploaded: 0 } })] : []
     renderPage()
@@ -539,6 +588,19 @@ describe("Statistics", () => {
     await expectFact("detail.averageDay", "1 KiB | ")
   })
 
+  // regression: #4114
+  it("masks the release groups of the table in incognito mode", async () => {
+    mocks.incognitoMode = [true, () => {}]
+    answer = ({ bucket, groupBy }) => groupBy === "releaseGroup" && bucket === "total" ? [row("PRIVATEGRP", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("table.groupings.releaseGroup"), { button: 0 })
+
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(within(table).getAllByRole("row").length).toBe(4))
+    expect(table.textContent).not.toContain("PRIVATEGRP")
+    expect(cells(table, "table.none")[1]).toBe("1 KiB")
+  })
+
   it("masks the tracker names and the category names of the table in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     answer = ({ bucket, groupBy }) => {
@@ -554,8 +616,178 @@ describe("Statistics", () => {
 
     fireEvent.mouseDown(screen.getByText("table.groupings.category"), { button: 0 })
 
-    await vi.waitFor(() => expect(within(screen.getByRole("table")).queryByText("table.columns.category")).toBeTruthy())
+    await vi.waitFor(() => expect(within(screen.getByRole("table")).queryByText("table.groupings.category")).toBeTruthy())
     await vi.waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("row").length).toBeGreaterThan(2))
     expect(screen.getByRole("table").textContent).not.toContain("private-category")
+  })
+
+  it("lists the top torrents of the instances in the order of their upload, with a deleted torrent and its name", async () => {
+    torrentAnswer = ({ instanceId, bucket }) => {
+      if (bucket !== "total") {
+        return []
+      }
+      return instanceId === 1
+        ? [torrentRow("h1", "Alpha", 3072, { uploadFirst24h: 1024 }), torrentRow("h2", "Bravo", 1024, { deleted: true })]
+        : [torrentRow("h3", "Charlie", 2048, { statisticsCrossSeed: true })]
+    }
+    renderPage()
+
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(within(table).queryByText("Bravo")).toBeTruthy())
+    const names = within(table).getAllByRole("button").map(button => button.textContent)
+    expect(names).toEqual(["Alpha", "CharlietopTorrents.crossSeed", "BravotopTorrents.deleted"])
+    expect(cells(table, "Alpha").slice(1)).toEqual(["a.test", "3 KiB", "0 B", "∞", "1 KiB"])
+    const asked = requests.filter(request => request.groupBy === "torrent")
+    expect(asked.map(request => [request.instanceId, request.bucket, request.limit, request.group])).toEqual([[1, "total", "10", null], [2, "total", "10", null]])
+  })
+
+  it("shows the upload of an open torrent for each day, from the rows of that torrent on its instance", async () => {
+    torrentAnswer = ({ instanceId, bucket, group }) => {
+      if (bucket === "total") {
+        return instanceId === 2 ? [torrentRow("h3", "Charlie", 2048)] : []
+      }
+      return group === "h3" ? [torrentRow("h3", "Charlie", 2048, {}, { width: "day", start: new Date(Date.now() - DAY).toISOString() })] : []
+    }
+    renderPage()
+
+    fireEvent.click(await within(await screen.findByRole("table")).findByText("Charlie"))
+
+    await vi.waitFor(() => expect(screen.getByTestId("group-chart")).toBeTruthy())
+    expect(requests.filter(request => request.groupBy === "torrent" && request.bucket === "day").map(request => [request.instanceId, request.group])).toEqual([[2, "h3"]])
+    // The 30 days of the period start at a local midnight, so they touch 30 or 31 UTC days.
+    expect(Number(screen.getByTestId("group-chart").getAttribute("data-bars"))).toBeGreaterThanOrEqual(30)
+    expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
+  })
+
+  // regression: #4113
+  it("keeps the top torrents on the period of the other numbers while a moved period loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      let moved = false
+      answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
+      torrentAnswer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "total" ? [torrentRow("h1", moved ? "Bravo" : "Alpha", 2048)] : []
+      const torrentTable = () => screen.getAllByRole("table").at(-1)!
+      renderPage()
+      await vi.waitFor(() => expect(within(torrentTable()).queryByText("Alpha")).toBeTruthy())
+      moved = true
+      requests = []
+      let release = () => {}
+      holdBucket = "day"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "total")).toBe(true))
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      })
+      // The chart of the new period still loads, so the card keeps the torrents of the old period.
+      expect(within(torrentTable()).queryByText("Alpha")).toBeTruthy()
+      expect(within(torrentTable()).queryByText("Bravo")).toBeNull()
+      release()
+      await vi.waitFor(() => expect(within(torrentTable()).queryByText("Bravo")).toBeTruthy())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // regression: #4113
+  it("keeps the top torrents of an open row while a moved period loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 0, { width: "day" })] : []
+      torrentAnswer = ({ instanceId, groupOf, group }) => groupOf === "tracker" && group === "a.test" && instanceId === 1 ? [torrentRow("h1", "Alpha", 2048)] : []
+      renderPage()
+      fireEvent.click(await within((await screen.findAllByRole("table"))[0]).findByText("a.test"))
+      const heading = await screen.findByText("detail.topTorrents group=a.test")
+      await vi.waitFor(() => expect(heading.nextElementSibling?.textContent).toBe("Alpha2 KiB"))
+      requests = []
+      let release = () => {}
+      holdGroupOf = "tracker"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      // The page loads the moved period, then the open row asks for the torrents of its group, which wait.
+      await vi.waitFor(() => expect(requests.some(request => request.groupOf === "tracker")).toBe(true))
+      expect(screen.getByText("detail.topTorrents group=a.test").nextElementSibling?.textContent).toBe("Alpha2 KiB")
+      release()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // regression: #4113
+  it("keeps the daily chart of an open torrent on the period of the shown rows while a moved period loads", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    try {
+      torrentAnswer = ({ instanceId, bucket, group }) => {
+        if (instanceId !== 1) {
+          return []
+        }
+        return bucket === "total" ? [torrentRow("h1", "Alpha", 2048)] : group === "h1" ? [torrentRow("h1", "Alpha", 2048, {}, { width: "day", start: new Date(Date.now() - DAY).toISOString() })] : []
+      }
+      renderPage()
+      fireEvent.click(await within(await screen.findByRole("table")).findByText("Alpha"))
+      await vi.waitFor(() => expect(screen.getByTestId("group-chart")).toBeTruthy())
+      const firstEnd = requests.find(request => request.groupBy === "torrent" && request.bucket === "day")?.to
+      requests = []
+      let release = () => {}
+      holdBucket = "total"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 60_000)
+      })
+
+      await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "total")).toBe(true))
+      // The table still shows the rows of the old period, so the open chart stays on that period.
+      expect(requests.filter(request => request.groupBy === "torrent" && request.bucket === "day")).toEqual([])
+      expect(screen.getByTestId("group-chart")).toBeTruthy()
+      // The day rows of the new period wait, and the open chart keeps its bars meanwhile.
+      const releaseTotals = release
+      holdBucket = "day"
+      hold = new Promise(resolve => {
+        release = resolve
+      })
+      releaseTotals()
+      await vi.waitFor(() => expect(requests.some(request => request.groupBy === "torrent" && request.bucket === "day" && Date.parse(request.to ?? "") > Date.parse(firstEnd ?? ""))).toBe(true))
+      expect(screen.getByTestId("group-chart")).toBeTruthy()
+      release()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows the top torrents of a group in the detail band of its row", async () => {
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 0, { width: "day" })] : []
+    torrentAnswer = ({ instanceId, groupOf, group, limit }) => groupOf === "tracker" && group === "a.test" && limit === "5" && instanceId === 1 ? [torrentRow("h1", "Alpha", 2048)] : []
+    renderPage()
+    const tables = await screen.findAllByRole("table")
+    fireEvent.click(await within(tables[0]).findByText("a.test"))
+
+    const heading = await screen.findByText("detail.topTorrents group=a.test")
+    await vi.waitFor(() => expect(heading.nextElementSibling?.textContent).toBe("Alpha2 KiB"))
+  })
+
+  it("masks the torrent names in incognito mode", async () => {
+    mocks.incognitoMode = [true, () => {}]
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Private.Release.Name-GRP", 1024)] : []
+    renderPage()
+
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(2))
+    expect(table.textContent).not.toContain("Private.Release.Name-GRP")
+    expect(table.textContent).not.toContain("a.test")
   })
 })

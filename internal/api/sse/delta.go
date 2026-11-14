@@ -526,8 +526,7 @@ func countsEqual(a, b *qbittorrent.TorrentCounts) bool {
 		maps.Equal(a.CategorySizes, b.CategorySizes) &&
 		maps.Equal(a.Tags, b.Tags) &&
 		maps.Equal(a.TagSizes, b.TagSizes) &&
-		maps.Equal(a.Trackers, b.Trackers) &&
-		maps.Equal(a.TrackerTransfers, b.TrackerTransfers)
+		maps.Equal(a.Trackers, b.Trackers)
 }
 
 // subsetRows returns the rows at the given indices, preserving order.

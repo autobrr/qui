@@ -138,7 +138,9 @@ func (m *Module) foldIfNewDay(today int64, retentionDays int) {
 		err := m.foldHours(ctx, beforeDay)
 		m.foldMu.Unlock()
 		if err == nil {
+			m.answers.foldStarted()
 			err = m.store.FoldTorrentDays(ctx, beforeDay)
+			m.answers.foldEnded()
 		}
 		// At shutdown, the first reading after the next start folds again.
 		if err != nil && m.foldCtx.Err() == nil {

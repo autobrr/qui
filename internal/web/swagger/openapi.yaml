@@ -3539,12 +3539,15 @@ paths:
         - Transfer History
       summary: Get the transfer history of an instance
       description: >-
-        Returns the upload and download that qui recorded for each torrent of the instance, added up by Tracker group or by
-        category. A row can be wider than the bucket that the query asks for: qui stores the category totals for each UTC day,
-        so a query for categories by hour returns day rows. After the Detail retention, qui folds the hourly totals into days, so a
-        query for hours in a folded period also returns day rows. The width field of each row tells its bucket. Without a start, the
-        period has no start, and each total row also holds the Baseline: the bytes that the torrents had when qui first recorded
-        the instance. A removed instance keeps its history.
+        Returns the upload and download that qui recorded for each torrent of the instance, added up by Tracker group, by
+        category, or by a release attribute, or for each torrent. A row can be wider than the bucket that the query asks for: qui
+        stores the category totals and the bytes of each torrent for each UTC day, so a query for categories, release attributes,
+        or torrents by hour returns day rows. After the
+        Detail retention, qui folds the hourly totals into days, so a query for hours in a folded period also returns day rows, and
+        it folds the days of each torrent into one row for each year, so a query for the days of a torrent in a folded year returns
+        one year row. The width field of each row tells its bucket. Without a start, the period has no start, and each total row
+        also holds the Baseline: the bytes that the torrents had when qui first recorded the instance. A removed instance keeps
+        its history, and a deleted torrent keeps its rows.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: from
@@ -3568,16 +3571,39 @@ paths:
         - name: groupBy
           in: query
           required: true
+          description: >-
+            What the rows group by. A torrent row has the hash of the torrent as its group, counts toward the Tracker group and
+            the category of the torrent now, and counts all its upload as upload from Statistics cross-seeds when the torrent has
+            that flag. releaseGroup, resolution, source, and contentType add up the torrent rows by a value that qui read from
+            the name of each torrent when it first saw the torrent or saw a new name. A torrent whose name holds no value of the
+            attribute is in the group with an empty name. qui keeps the answer of a release attribute until it writes the history
+            of the instance again.
           schema:
             type: string
-            enum: [tracker, category]
+            enum: [tracker, category, torrent, releaseGroup, resolution, source, contentType]
         - name: group
           in: query
           description: >-
-            Limits the answer to the rows of one Tracker group or one category, by the group name of a row. An empty value
-            selects the torrents with no category. Leave it out for each group.
+            Limits the answer to the rows of one group of the grouping groupOf, by the group name of a row. An empty value
+            selects the torrents with no category, or with no value of the release attribute. Leave it out for each group.
           schema:
             type: string
+        - name: groupOf
+          in: query
+          description: >-
+            The grouping of group. The default is groupBy. Only groupBy=torrent takes another grouping, so that groupBy=torrent
+            with groupOf=tracker and a group gives the torrents of one Tracker group.
+          schema:
+            type: string
+            enum: [tracker, category, torrent, releaseGroup, resolution, source, contentType]
+        - name: limit
+          in: query
+          description: >-
+            Keeps the rows of the groups with the most upload, the Baseline included, and orders the rows by that upload. Leave
+            it out, or give 0, for each group.
+          schema:
+            type: integer
+            minimum: 0
         - name: timeZone
           in: query
           description: >-
@@ -3588,7 +3614,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Transfer rows, ordered by bucket start and group
+          description: Transfer rows, ordered by bucket start and group, or by upload when the query has a limit
           content:
             application/json:
               schema:
@@ -6529,6 +6555,101 @@ paths:
                 items:
                   $ref: '#/components/schemas/SystemNotice'
 
+  /api/database/shrink:
+    get:
+      tags:
+        - System
+      summary: Read the database shrink status
+      description: >-
+        Returns the size of the SQLite database file, the free space on its disk, and the space that a shrink needs: up to
+        two times the size of the file. It also returns whether a shrink is pending and the outcome of the shrink at the
+        last start, until the web UI dismisses it. On Postgres, available is false and the other numbers are zero. An API
+        key with an instance limit cannot use this route.
+      responses:
+        '200':
+          description: The shrink status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseShrinkStatus'
+        '500':
+          description: Failed to read the file size or the free disk space
+    post:
+      tags:
+        - System
+      summary: Shrink the database file
+      description: >-
+        Stores the "shrink pending" mark and restarts qui. At the next start, before any service starts, qui makes the
+        SQLite file smaller and gives the free space back to the disk. Where Restart is not available, the shrink runs at
+        the next start of qui. When the shrink fails, qui starts as usual and opens the System notice "shrink_failed". Only
+        a signed-in browser can use this route, because the shrink restarts qui.
+      security:
+        - SessionAuth: []
+      responses:
+        '202':
+          description: The shrink is pending
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - restarting
+                properties:
+                  restarting:
+                    type: boolean
+                    description: True when qui restarts now. False when the shrink waits for the next start.
+        '409':
+          description: The database is Postgres, the disk has too little free space, or an update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to store the mark, or the restart was refused. A refused restart keeps the mark for the next start.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/database/shrink/result:
+    delete:
+      tags:
+        - System
+      summary: Dismiss the outcome of the last shrink
+      description: Forgets the sizes before and after the shrink at the last start, after the web UI showed them. An API key with an instance limit cannot use this route.
+      responses:
+        '204':
+          description: The outcome is dismissed
+
+  /api/system-notices/{kind}:
+    delete:
+      tags:
+        - System
+      summary: Dismiss a System notice
+      description: Closes a System notice that the user can dismiss, for example "shrink_failed". A notice such as "recording_stopped" closes itself when the fault is gone, and returns 409. A dismissed "low_disk" stays hidden, also after a restart, until the free space recovers to the limit plus 10% and drops below the limit again, or until "recording_stopped" opens after the dismiss.
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            type: string
+          description: The kind of the notice
+      responses:
+        '204':
+          description: The notice is closed
+        '409':
+          description: The notice closes itself and cannot be dismissed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: qui could not store the dismiss
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/system/restart:
     post:
       tags:
@@ -8918,19 +9039,68 @@ components:
       properties:
         kind:
           type: string
-          enum: [recording_stopped]
+          enum: [recording_stopped, shrink_failed, low_disk]
           description: The kind of the notice. The web UI shows the title and the fix of each kind.
         severity:
           type: string
-          enum: [error]
+          enum: [error, warning]
+        reason:
+          type: string
+          description: Selects the fix that the notice shows. For shrink_failed it is disk_full, locked, or unknown. Absent for a kind with one fix.
+          example: disk_full
         cause:
           type: string
-          description: The error that opened the notice, or the latest error while it is open
+          description: The error that opened the notice, or the latest error while it is open. For low_disk, the free space, the size of the disk, and the limit.
           example: "write the transfer history of instance 1: attempt to write a readonly database"
         openedAt:
           type: string
           format: date-time
           description: When the notice opened
+
+    DatabaseShrinkStatus:
+      type: object
+      required:
+        - available
+        - fileBytes
+        - freeBytes
+        - needBytes
+        - restartAvailable
+        - pending
+      properties:
+        available:
+          type: boolean
+          description: True on SQLite. Postgres has no file to shrink.
+        fileBytes:
+          type: integer
+          format: int64
+          description: The size of the database file
+        freeBytes:
+          type: integer
+          format: int64
+          description: The free space on the disk of the database file
+        needBytes:
+          type: integer
+          format: int64
+          description: The free space that a shrink needs, two times the size of the file
+        restartAvailable:
+          type: boolean
+          description: False where qui cannot restart itself. The shrink then runs at the next start.
+        pending:
+          type: boolean
+          description: True when the shrink runs at the next start
+        result:
+          type: object
+          description: The outcome of the shrink at the last start, until the web UI dismisses it
+          required:
+            - beforeBytes
+            - afterBytes
+          properties:
+            beforeBytes:
+              type: integer
+              format: int64
+            afterBytes:
+              type: integer
+              format: int64
 
     LatestVersionResponse:
       type: object
@@ -10871,14 +11041,15 @@ components:
       properties:
         group:
           type: string
-          description: The Tracker group or the category.
+          description: The Tracker group, the category, the value of the release attribute, or the hash of the torrent.
         start:
           type: string
           format: date-time
-          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups and UTC days for categories and for the folded hours, and starts at the first of them. Absent for a total row of a period with no start.
+          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups, UTC days for categories, release attributes, torrents, and the folded hours, and the folded years of a torrent, and starts at the first of them. Absent for a total row of a period with no start.
         width:
           type: string
-          enum: [hour, day, total]
+          enum: [hour, day, year, total]
+          description: The bucket of the row. A year row is a UTC year of a torrent that qui folded.
         gapSeconds:
           type: integer
           format: int64
@@ -10894,6 +11065,29 @@ components:
           format: int64
         baseline:
           $ref: '#/components/schemas/TransferHistoryBytes'
+        torrent:
+          $ref: '#/components/schemas/TransferHistoryTorrent'
+
+    TransferHistoryTorrent:
+      type: object
+      description: The torrent of a row of the grouping by torrent.
+      properties:
+        name:
+          type: string
+        trackerGroup:
+          type: string
+          description: The Tracker group of the torrent now.
+        deleted:
+          type: boolean
+          description: True while the torrent is not in qBittorrent.
+        statisticsCrossSeed:
+          type: boolean
+          description: True when the torrent completed with less than 1% of its size downloaded.
+        uploadFirst24h:
+          type: integer
+          format: int64
+          nullable: true
+          description: The upload of the first 24 hours after the add. Null when qui first saw the torrent after them.
 
     LiveTrackerGroup:
       type: object

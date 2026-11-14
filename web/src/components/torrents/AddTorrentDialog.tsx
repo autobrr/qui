@@ -835,7 +835,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="flex flex-col w-full max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] sm:max-h-[85vh] p-0 !translate-y-0 !top-[5vh] sm:!top-[7.5vh]">
+      <DialogContent className="flex flex-col w-full max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90dvh] sm:max-h-[85dvh] p-0 !translate-y-0 !top-[5dvh] sm:!top-[7.5dvh]">
         <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
           <DialogTitle>{t("addTorrentDialog.title")}</DialogTitle>
           <DialogDescription>

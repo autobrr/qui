@@ -37,6 +37,10 @@ const (
 	// doubles after a write that passes it: the next try is as large, so
 	// with the same limit it would fail each time and store nothing.
 	maxWriteTimeout = 10 * time.Minute
+	// partTorrents is the most torrents that one transaction of a write
+	// stores. SQLite has one writer for all of qui, and the other writes run
+	// between two parts.
+	partTorrents = 2000
 )
 
 // Reading is the state of one instance at one successful read of qBittorrent.
@@ -89,6 +93,8 @@ type Module struct {
 	customizations *models.TrackerCustomizationStore
 	parser         *releases.Parser
 	notices        *systemnotice.Module
+	answers        answerCache
+	partSize       int
 
 	// settingsMu keeps the order of two SetSettings calls.
 	settingsMu sync.Mutex
@@ -148,6 +154,7 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		customizations: customizations,
 		parser:         releases.NewParser(time.Minute),
 		notices:        notices,
+		partSize:       partTorrents,
 		wake:           make(chan struct{}, 1),
 		done:           make(chan struct{}),
 		instances:      make(map[int]*instance),
@@ -421,7 +428,30 @@ func (m *Module) load(instanceID int) (*instance, error) {
 	if err := m.dropStoredCauses(ctx, instanceID); err != nil {
 		return nil, err
 	}
-	return newInstance(instanceID, row, records), nil
+	inst := newInstance(instanceID, row, records)
+	if row == nil {
+		return inst, nil
+	}
+	// A write after this time lacks parts. A delete that one of its parts
+	// stored is newer than the complete reading.
+	since := row.FirstRecordedAt
+	if row.CompleteReadingAt != nil {
+		since = *row.CompleteReadingAt
+	}
+	if !since.Before(row.LastReadingAt) {
+		return inst, nil
+	}
+	deletes, err := m.store.DeleteEventsSince(ctx, instanceID, since.Unix()+1)
+	if err != nil {
+		return nil, err
+	}
+	inst.deletedLate = make(map[string]time.Time, len(deletes))
+	for key := range deletes {
+		if at := time.Unix(key.Second, 0); at.After(inst.deletedLate[key.Hash]) {
+			inst.deletedLate[key.Hash] = at
+		}
+	}
+	return inst, nil
 }
 
 type writeOutcome int
@@ -466,53 +496,96 @@ func (m *Module) refreshMapper(ctx context.Context) error {
 	return nil
 }
 
-// write stores the changes of inst. After a failure, the changes stay in
-// memory for the next write.
+// write stores the changes of inst, in parts of at most m.partSize
+// torrents, each in its own transaction. After a failure, the changes of the
+// parts that it did not store stay in memory for the next write.
 func (m *Module) write(inst *instance) error {
 	if !inst.hasChanges() {
 		return nil
 	}
 	start := time.Now()
 	timeout := cmp.Or(inst.writeTimeout, dbTimeout)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	w := inst.changes()
-	ids, err := m.store.Write(ctx, w)
-	if err != nil {
-		switch m.outcome(err, w) {
-		case stored:
-		case notStored:
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				inst.writeTimeout = min(2*timeout, maxWriteTimeout)
+	if inst.unsure == sameRows {
+		// The database can hold a part that this write stores again, so the
+		// write numbers follow the stored count.
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		writes, err := m.store.Writes(ctx, inst.id)
+		cancel()
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: failed to read the stored writes; the changes stay in memory for the next write")
+			return m.writeFailed(inst.id, err)
+		}
+		inst.writes, inst.unsure = writes, sure
+	}
+	parts := inst.parts(m.partSize)
+	torrents := 0
+	for i, w := range parts.writes {
+		torrents += len(w.Counters)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ids, err := m.store.Write(ctx, w)
+		passed := errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded)
+		cancel()
+		m.answers.changed(inst.id)
+		if err != nil {
+			if done, err := m.partFailed(inst, parts, i, err, timeout, passed); !done {
+				return err
 			}
-			log.Error().Err(err).Int("instanceID", inst.id).Dur("timeLimit", timeout).Msg("transfer history: failed to write; the changes stay in memory for the next write")
-			return m.writeFailed(inst.id, err)
-		case unknown:
-			// The stored counters decide the next difference, so no byte
-			// counts twice. The bytes of a torrent that is gone at the next
-			// reading are lost.
-			log.Error().Err(err).Int("instanceID", inst.id).Msg("transfer history: cannot tell which changes are stored; the next reading loads the stored history again")
-			m.keepCauses(inst.id, w.Events)
-			m.reloads[inst.id] = struct{}{}
-			delete(m.instances, inst.id)
-			return m.writeFailed(inst.id, err)
+		}
+		for _, rec := range w.Records {
+			if rec.ID == 0 {
+				rec.ID = ids[rec.Hash]
+			}
 		}
 	}
-	for _, rec := range w.Records {
-		if rec.ID == 0 {
-			rec.ID = ids[rec.Hash]
-		}
-	}
-	inst.writes = w.Number
-	inst.writeTimeout = 0
-	inst.reset()
+	inst.forget(parts, len(parts.writes))
+	inst.writeTimeout, inst.unsure = 0, sure
 	m.clearFailedWrite(inst.id)
-	log.Debug().Int("instanceID", inst.id).Int("torrents", len(w.Counters)).Dur("elapsed", time.Since(start)).
+	log.Debug().Int("instanceID", inst.id).Int("torrents", torrents).Int("parts", len(parts.writes)).Dur("elapsed", time.Since(start)).
 		Msg("transfer history: wrote the changes")
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
 	if err := m.refreshMapper(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Warn().Err(err).Msg("transfer history: failed to read the tracker customizations")
 	}
 	return nil
+}
+
+// partFailed handles the error err of the part i of parts. It reports true
+// when the part is stored anyway, and otherwise the error of the write.
+func (m *Module) partFailed(inst *instance, parts parts, i int, err error, timeout time.Duration, passed bool) (bool, error) {
+	w := parts.writes[i]
+	outcome := m.outcome(err, w)
+	if outcome != stored && errors.Is(err, models.ErrTransferHistoryCommitUnknown) {
+		// The commit can also land after the check.
+		inst.markUnsure(w)
+	}
+	if outcome == unknown && inst.unsure == sameRows {
+		// No part that the database can hold has rows that add up, so a
+		// second write of those parts counts no byte twice.
+		outcome = notStored
+	}
+	switch outcome {
+	case stored:
+		return true, nil
+	case notStored:
+		inst.forget(parts, i)
+		if passed {
+			inst.writeTimeout = min(2*timeout, maxWriteTimeout)
+		}
+		log.Error().Err(err).Int("instanceID", inst.id).Int("part", i+1).Int("parts", len(parts.writes)).Dur("timeLimit", timeout).
+			Msg("transfer history: failed to write; the changes stay in memory for the next write")
+	case unknown:
+		// The stored counters decide the next difference, so no byte counts
+		// twice. The bytes of a torrent that is gone at the next reading are lost.
+		log.Error().Err(err).Int("instanceID", inst.id).Int("part", i+1).Int("parts", len(parts.writes)).
+			Msg("transfer history: cannot tell which changes are stored; the next reading loads the stored history again")
+		for _, unstored := range parts.writes[i:] {
+			m.keepCauses(inst.id, unstored.Events)
+		}
+		m.reloads[inst.id] = struct{}{}
+		delete(m.instances, inst.id)
+	}
+	return false, m.writeFailed(inst.id, err)
 }
 
 func (m *Module) writeFailed(instanceID int, err error) error {

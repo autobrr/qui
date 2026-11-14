@@ -15,15 +15,11 @@ export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   userId: 0,
   sectionVisibility: {
     "server-stats": true,
-    "tracker-breakdown": true,
     "global-stats": true,
     "instances": true,
   },
-  sectionOrder: ["server-stats", "tracker-breakdown", "global-stats", "instances"],
+  sectionOrder: ["server-stats", "global-stats", "instances"],
   sectionCollapsed: {},
-  trackerBreakdownSortColumn: "uploaded",
-  trackerBreakdownSortDirection: "desc",
-  trackerBreakdownItemsPerPage: 15,
   createdAt: "",
   updatedAt: "",
 }
@@ -64,9 +60,6 @@ export function useUpdateDashboardSettings() {
           sectionVisibility: newData.sectionVisibility ?? previousSettings.sectionVisibility,
           sectionOrder: newData.sectionOrder ?? previousSettings.sectionOrder,
           sectionCollapsed: newData.sectionCollapsed ?? previousSettings.sectionCollapsed,
-          trackerBreakdownSortColumn: newData.trackerBreakdownSortColumn ?? previousSettings.trackerBreakdownSortColumn,
-          trackerBreakdownSortDirection: newData.trackerBreakdownSortDirection ?? previousSettings.trackerBreakdownSortDirection,
-          trackerBreakdownItemsPerPage: newData.trackerBreakdownItemsPerPage ?? previousSettings.trackerBreakdownItemsPerPage,
         })
       }
 

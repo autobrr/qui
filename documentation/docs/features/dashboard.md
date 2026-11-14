@@ -11,7 +11,9 @@ The Dashboard is the start page of qui. It shows statistics for every qBittorren
 
 ## Sections
 
-The Dashboard has four sections. You can hide and reorder each one. Server Statistics and Tracker Breakdown also collapse.
+The Dashboard has three sections. You can hide and reorder each one. Server Statistics also collapses.
+
+The Dashboard has no table for each tracker. The [Statistics](./statistics.md) page shows the upload, download, ratio, buffer, torrents, size, and seeded value of each tracker for a period that you select. To rename or merge trackers, see [Tracker Customizations](./tracker-customizations.md).
 
 ### Server Statistics
 
@@ -25,23 +27,6 @@ The section header shows the combined all-time download, upload, ratio, and peer
 | Peers | Current peer connections |
 
 If no instance reports all-time data yet, qui hides this section.
-
-### Tracker Breakdown
-
-One row per tracker, aggregated across all instances:
-
-| Column | Content |
-|--------|---------|
-| Tracker | Display name or announce domain, with the tracker icon |
-| Uploaded / Downloaded | All-time totals for the torrents on this tracker |
-| Uploaded (Session) / Downloaded (Session) | Totals for this qBittorrent session |
-| Ratio | Upload divided by download |
-| Buffer | Upload minus download |
-| Torrents | Number of torrents |
-| Size | Total content size |
-| Seeded | Upload divided by content size |
-
-Click a column header to sort. The row actions rename trackers or merge several announce domains into one entry. See [Tracker Customizations](./tracker-customizations.md).
 
 ### Global Stats Cards
 
@@ -80,12 +65,9 @@ Click **Layout Settings** to open the **Dashboard Settings** dialog.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Sections | Show, hide, and reorder the four sections | All visible |
-| Default Sort | Sort column for Tracker Breakdown | Uploaded |
-| Direction | Sort direction for Tracker Breakdown | Descending |
-| Items Per Page | Tracker Breakdown rows per page (10, 15, 25, or 50) | 15 |
+| Sections | Show, hide, and reorder the three sections | All visible |
 
-qui stores these choices and the collapsed state of Server Statistics and Tracker Breakdown in its database. Every browser and device shows the same layout.
+qui stores these choices and the collapsed state of Server Statistics in its database. Every browser and device shows the same layout.
 
 ## Live updates
 

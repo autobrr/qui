@@ -90,6 +90,13 @@ func (m *Module) deleteHistory(d HistoryDelete) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), deleteTimeout)
 	defer cancel()
 	defer m.dropSize()
+	defer func() {
+		if d.AllInstances {
+			m.answers.changedAll()
+		} else {
+			m.answers.changed(d.InstanceID)
+		}
+	}()
 
 	ids := []int{d.InstanceID}
 	if d.AllInstances {
