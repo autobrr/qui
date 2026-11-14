@@ -537,7 +537,8 @@
       "locked": "Verrouillé",
       "lock": "Verrouillé",
       "showTheme": "Afficher",
-      "hideTheme": "Masquer"
+      "hideTheme": "Masquer",
+      "defaultThemeVisit": "qui affiche le thème par défaut pour cette visite, car l'adresse contient ?theme=default. Sélectionnez un thème pour y mettre fin."
     },
     "toasts": {
       "premiumRequired": "Licence requise",
@@ -682,13 +683,44 @@
       "badge": "Personnalisé",
       "title": "Thèmes personnalisés",
       "lockedTitle": "Les thèmes personnalisés nécessitent une licence",
-      "lockedDescription": "Obtenez une licence pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
+      "lockedDescription": "Obtenez une licence pour ajouter vos propres thèmes : écrivez ou collez un thème dans l'éditeur de thèmes, ou placez des fichiers CSS de thème dans un dossier sur le serveur.",
       "unlockCta": "Obtenir une licence",
       "refresh": "Actualiser",
       "detectedCount": "Thèmes trouvés : {{total}}",
       "parseErrorsTitle": "Impossible d'analyser ces fichiers :",
       "noneFound": "Aucun thème personnalisé trouvé. Déposez un fichier .css dans le dossier des thèmes puis cliquez sur Actualiser.",
-      "loadError": "Impossible de charger les thèmes personnalisés. Vérifiez les journaux du serveur et les permissions du dossier des thèmes."
+      "loadError": "Impossible de charger les thèmes personnalisés. Vérifiez les journaux du serveur et les permissions du dossier des thèmes.",
+      "newTheme": "Nouveau thème",
+      "copyPrompt": "Copier le prompt pour votre IA",
+      "promptCopied": "Prompt copié. Collez-le dans votre assistant IA et décrivez l'apparence souhaitée.",
+      "promptCopyFailed": "Impossible de copier le prompt",
+      "edit": "Modifier",
+      "remove": "Supprimer",
+      "removeTitle": "Supprimer le thème ?",
+      "removeDescription": "qui supprime le fichier de {{theme}} du dossier des thèmes personnalisés. Cette action est irréversible. Un appareil qui utilise ce thème affichera le thème par défaut.",
+      "removeConfirm": "Supprimer",
+      "removed": "Thème supprimé",
+      "removeFailed": "Impossible de supprimer le thème : {{message}}",
+      "editor": {
+        "newTitle": "Nouveau thème",
+        "editTitle": "Modifier le thème",
+        "description": "Collez ou écrivez le CSS d'un thème. Ce navigateur affiche le thème pendant que vous le modifiez. Enregistrer stocke le thème sur le serveur.",
+        "name": "Nom",
+        "css": "CSS",
+        "nameInvalid": "Saisissez un nom contenant une lettre ou un chiffre.",
+        "save": "Enregistrer",
+        "saved": "Thème enregistré",
+        "replaceTitle": "Remplacer le thème ?",
+        "replaceDescription": "Un thème personnalisé avec le nom de fichier {{filename}} existe déjà. Le remplacer par ce thème ?",
+        "replace": "Remplacer",
+        "problems": {
+          "empty": "Collez le CSS d'un thème pour voir un aperçu.",
+          "missingRoot": "qui ne peut pas utiliser ce CSS : il n'a aucun bloc :root avec un design token. L'aperçu affiche le dernier CSS que qui a pu utiliser.",
+          "missingDark": "qui ne peut pas utiliser ce CSS : il n'a aucun bloc .dark avec un design token. L'aperçu affiche le dernier CSS que qui a pu utiliser.",
+          "outsideFile": "La ligne {{line}} peut faire charger au navigateur un fichier depuis un autre site web : l'aperçu l'ignore donc et Enregistrer la refuse. Utilisez url() uniquement avec une adresse data: ou un #fragment, et n'utilisez ni @import, ni image-set(), ni échappement par barre oblique inverse.",
+          "unreadable": "qui ne peut pas lire la ligne {{line}} : une chaîne entre guillemets ou un url() n'est pas fermé. L'aperçu affiche le dernier CSS que qui a pu utiliser."
+        }
+      }
     },
     "layout": {
       "mobileSplit": "Thème distinct pour la disposition mobile",

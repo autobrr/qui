@@ -60,6 +60,7 @@ import { useOpenSystemNotice, useSystemNotices } from "@/hooks/useSystemNotices"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
+import { themeArea } from "@/lib/theme-areas"
 import {
   Archive,
   ChartColumn,
@@ -253,6 +254,7 @@ export function MobileFooterNav() {
 
   return (
     <nav
+      {...themeArea("mobile-nav")}
       className={cn(
         "fixed bottom-0 left-0 right-0 z-40 lg:hidden",
         "bg-background/80 backdrop-blur-md border-t border-border/50",

@@ -537,7 +537,8 @@
       "locked": "Bloquejat",
       "lock": "Bloqueja",
       "showTheme": "Mostra",
-      "hideTheme": "Amaga"
+      "hideTheme": "Amaga",
+      "defaultThemeVisit": "qui mostra el tema per defecte durant aquesta visita, perquè l'adreça conté ?theme=default. Selecciona un tema per acabar-la."
     },
     "toasts": {
       "premiumRequired": "Cal una llicència",
@@ -682,13 +683,44 @@
       "badge": "Personalitzat",
       "title": "Temes personalitzats",
       "lockedTitle": "Els temes personalitzats necessiten una llicència",
-      "lockedDescription": "Aconsegueix una llicència per carregar els teus propis fitxers CSS de tema des d'un directori del disc.",
+      "lockedDescription": "Aconsegueix una llicència per afegir els teus propis temes: escriu o enganxa un tema a l'editor de temes, o posa fitxers CSS de tema en una carpeta del servidor.",
       "unlockCta": "Aconsegueix una llicència",
       "refresh": "Actualitza",
       "detectedCount": "Temes trobats: {{total}}",
       "parseErrorsTitle": "No s'han pogut analitzar aquests fitxers:",
       "noneFound": "No s'ha trobat cap tema personalitzat. Posa un fitxer .css al directori dels temes i fes clic a Actualitza.",
-      "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos del directori dels temes."
+      "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos del directori dels temes.",
+      "newTheme": "Tema nou",
+      "copyPrompt": "Copia la indicació per a la teva IA",
+      "promptCopied": "S'ha copiat la indicació. Enganxa-la al teu assistent d'IA i descriu l'aspecte que vols.",
+      "promptCopyFailed": "No s'ha pogut copiar la indicació",
+      "edit": "Edita",
+      "remove": "Suprimeix",
+      "removeTitle": "Vols suprimir el tema?",
+      "removeDescription": "qui elimina el fitxer de {{theme}} de la carpeta de temes personalitzats. No es pot desfer. Un dispositiu que utilitzi aquest tema mostrarà el tema per defecte.",
+      "removeConfirm": "Suprimeix",
+      "removed": "S'ha suprimit el tema",
+      "removeFailed": "No s'ha pogut suprimir el tema: {{message}}",
+      "editor": {
+        "newTitle": "Tema nou",
+        "editTitle": "Edita el tema",
+        "description": "Enganxa o escriu el CSS d'un tema. Aquest navegador mostra el tema mentre l'edites. En desar, el tema es guarda al servidor.",
+        "name": "Nom",
+        "css": "CSS",
+        "nameInvalid": "Introdueix un nom amb una lletra o un dígit.",
+        "save": "Desa",
+        "saved": "S'ha desat el tema",
+        "replaceTitle": "Vols substituir el tema?",
+        "replaceDescription": "Ja existeix un tema personalitzat amb el nom de fitxer {{filename}}. Vols substituir-lo per aquest tema?",
+        "replace": "Substitueix",
+        "problems": {
+          "empty": "Enganxa el CSS d'un tema per veure'n una previsualització.",
+          "missingRoot": "qui no pot utilitzar aquest CSS: no té cap bloc :root amb un token de disseny. La previsualització mostra l'últim CSS que qui ha pogut utilitzar.",
+          "missingDark": "qui no pot utilitzar aquest CSS: no té cap bloc .dark amb un token de disseny. La previsualització mostra l'últim CSS que qui ha pogut utilitzar.",
+          "outsideFile": "La línia {{line}} pot fer que el navegador carregui un fitxer d'un altre lloc web, de manera que la previsualització l'omet i Desa la rebutja. Utilitza url() només amb una adreça data: o un #fragment, i no utilitzis @import, image-set() ni seqüències d'escapament amb barra inversa.",
+          "unreadable": "qui no pot llegir la línia {{line}}: una cadena entre cometes o un url() no està tancat. La previsualització mostra l'últim CSS que qui ha pogut utilitzar."
+        }
+      }
     },
     "layout": {
       "mobileSplit": "Tema separat per a la disposició mòbil",

@@ -5,6 +5,7 @@
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
 import { isDemo } from "@/lib/demo";
+import { endDefaultThemeVisit, isDefaultThemeVisit } from "@/lib/default-theme-visit";
 import { isSpreadsheetDocumentTitle, SPREADSHEET_THEME_IDS, spreadsheetDocumentTitle } from "@/lib/spreadsheet-disguise";
 import { loadThemeFonts } from "./fontLoader";
 import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
@@ -72,6 +73,10 @@ const getSystemTheme = (): typeof THEME_DARK | typeof THEME_LIGHT => {
   return getSystemPreference().matches ? THEME_DARK : THEME_LIGHT;
 };
 
+const isDarkMode = (mode: ThemeMode): boolean => {
+  return mode === THEME_DARK || (mode === THEME_AUTO && getSystemPreference().matches);
+};
+
 const dispatchThemeChange = (mode: ThemeMode, theme: Theme, isSystemChange: boolean, variant?: string | null): void => {
   const event = new CustomEvent("themechange", {
     detail: { mode, theme, isSystemChange, variant },
@@ -106,7 +111,7 @@ export const getAppliedCustomThemeCss = (): string | null => {
 
 // Sync the html/body background to the theme and persist the critical vars so
 // the anti-FOUC inline script can paint the right background on next load.
-const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, string>): void => {
+const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, string>, persist: boolean): void => {
   const backgroundColor = cssVars["--background"];
   if (!backgroundColor) {
     return;
@@ -114,6 +119,9 @@ const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, stri
   root.style.backgroundColor = backgroundColor;
   if (document.body) {
     document.body.style.backgroundColor = backgroundColor;
+  }
+  if (!persist) {
+    return;
   }
   try {
     localStorage.setItem("theme-critical-vars", JSON.stringify({
@@ -146,9 +154,11 @@ const cacheAppliedTheme = (theme: Theme): void => {
   }
 };
 
-// Core theme application logic
+// Core theme application logic. A default theme visit paints without writing
+// the boot caches, so the next normal load shows the stored theme again.
 const applyTheme = async (theme: Theme, variation: string | null, isDark: boolean, withTransition = false): Promise<void> => {
   const root = document.documentElement;
+  const persist = !isDefaultThemeVisit();
 
   // Kick off font loading in the background (non-blocking)
   // Fonts will render when ready; no need to wait
@@ -162,9 +172,9 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
   const effectiveIsDark = theme.lightOnly ? false : isDark;
 
   // Store lightOnly flag for anti-FOUC script
-  if (theme.lightOnly) {
+  if (persist && theme.lightOnly) {
     localStorage.setItem("theme-light-only", "true");
-  } else {
+  } else if (persist) {
     localStorage.removeItem("theme-light-only");
   }
 
@@ -211,8 +221,10 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
   }
 
   root.setAttribute("data-theme", theme.id);
-  applyCriticalBackground(root, cssVars);
-  cacheAppliedTheme(theme);
+  applyCriticalBackground(root, cssVars, persist);
+  if (persist) {
+    cacheAppliedTheme(theme);
+  }
 
   // Spreadsheet disguise: the tab title is a tell. Set/restore it on theme
   // application so every page (not just those running useTitleBarSpeeds)
@@ -284,6 +296,9 @@ const addMediaQueryListener = (
 // preview stub here. The stored id is kept so the theme comes back when the
 // registry can serve it (license activated, custom theme file restored).
 export const getCurrentTheme = (): Theme => {
+  if (isDefaultThemeVisit()) {
+    return getDefaultTheme();
+  }
   const storedThemeId = getStoredThemeId();
   if (storedThemeId) {
     const theme = getThemeById(storedThemeId);
@@ -301,7 +316,21 @@ export const getCurrentThemeMode = (): ThemeMode => {
 // isSystemChange marks applications that restore existing state (catalog
 // hydration, server pull) rather than a user selection, so the server sync
 // never pushes them.
+// During a default theme visit, a system change paints the default theme and
+// stores nothing; a user selection ends the visit.
 export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: string, isSystemChange = false): Promise<void> => {
+  if (isDefaultThemeVisit()) {
+    if (isSystemChange) {
+      const defaultTheme = getDefaultTheme();
+      const currentMode = getCurrentThemeMode();
+      const currentVariation = getThemeVariation(defaultTheme.id);
+      await applyTheme(defaultTheme, currentVariation, isDarkMode(currentMode), false);
+      dispatchThemeChange(currentMode, defaultTheme, true, currentVariation);
+      return;
+    }
+    endDefaultThemeVisit();
+  }
+
   const theme = getThemeById(themeId);
 
   // Unknown ids and locked premium stubs apply the default instead. The
@@ -322,8 +351,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
       setStoredVariation(defaultTheme.id, currentVariation);
     }
 
-    const isDark = currentMode === THEME_DARK ||
-      (currentMode === THEME_AUTO && getSystemPreference().matches);
+    const isDark = isDarkMode(currentMode);
 
     await applyTheme(defaultTheme, currentVariation, isDark, false);
     // System-driven fallback, not a user selection: flagged so the server
@@ -346,8 +374,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     setStoredVariation(theme.id, currentVariation);
   }
 
-  const isDark = currentMode === THEME_DARK ||
-    (currentMode === THEME_AUTO && getSystemPreference().matches);
+  const isDark = isDarkMode(currentMode);
 
   await applyTheme(theme, currentVariation, isDark, false);
   dispatchThemeChange(currentMode, theme, isSystemChange, currentVariation);
@@ -358,11 +385,31 @@ export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
   const variation = getThemeVariation(theme.id);
   setStoredMode(mode);
 
-  const isDark = mode === THEME_DARK ||
-    (mode === THEME_AUTO && getSystemPreference().matches);
+  const isDark = isDarkMode(mode);
 
   await applyTheme(theme, variation, isDark, false);
   dispatchThemeChange(mode, theme, false, variation);
+};
+
+/**
+ * Shows css in this browser only, through the style element of an applied
+ * custom theme. It writes no theme slot, boot cache, or stored selection, so a
+ * reload ends it. endCustomThemePreview paints the active theme again.
+ */
+export const previewCustomThemeCss = (css: string, cssVars: Theme["cssVars"]): void => {
+  const root = document.documentElement;
+  void loadThemeFonts({ cssVars });
+  Array.from(root.style)
+    .filter(prop => prop.startsWith("--"))
+    .forEach(prop => root.style.removeProperty(prop));
+  root.style.removeProperty("background-color");
+  document.body?.style.removeProperty("background-color");
+  applyCustomThemeStyle(css);
+};
+
+export const endCustomThemePreview = async (): Promise<void> => {
+  const theme = getCurrentTheme();
+  await applyTheme(theme, getThemeVariation(theme.id), isDarkMode(getCurrentThemeMode()), false);
 };
 
 export const initializeTheme = async (): Promise<void> => {
@@ -404,8 +451,7 @@ export const setThemeVariation = async (variation: string): Promise<void> => {
   setStoredVariation(theme.id, variation);
 
   const currentMode = getCurrentThemeMode();
-  const isDark = currentMode === THEME_DARK ||
-    (currentMode === THEME_AUTO && getSystemPreference().matches);
+  const isDark = isDarkMode(currentMode);
 
   await applyTheme(theme, variation, isDark, false);
   dispatchThemeChange(currentMode, theme, false, variation);

@@ -162,6 +162,7 @@ import type {
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
+import type { CustomThemeFile } from "./custom-themes"
 // The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled
 // English namespaces out of the entry chunk into eight extra initial requests.
 import i18n from "i18next"
@@ -2367,12 +2368,30 @@ class ApiClient {
     return this.request("/themes", { signal })
   }
 
-  // Custom themes (sideloaded CSS files; premium-gated server-side)
+  // Custom themes (CSS files in the custom themes folder; premium-gated server-side)
   async getCustomThemes(): Promise<{
     directory: string
-    themes: Array<{ id: string; filename: string; css: string }>
+    themes: CustomThemeFile[]
   }> {
     return this.request("/themes/custom")
+  }
+
+  async createCustomTheme(id: string, css: string): Promise<CustomThemeFile> {
+    return this.request<CustomThemeFile>("/themes/custom", {
+      method: "POST",
+      body: JSON.stringify({ id, css }),
+    })
+  }
+
+  async replaceCustomTheme(id: string, css: string): Promise<CustomThemeFile> {
+    return this.request<CustomThemeFile>(`/themes/custom/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ css }),
+    })
+  }
+
+  async deleteCustomTheme(id: string): Promise<void> {
+    return this.request(`/themes/custom/${encodeURIComponent(id)}`, { method: "DELETE" })
   }
 
   // Theme settings (theme selection stored in the database; writes premium-gated server-side)

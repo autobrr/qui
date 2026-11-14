@@ -4335,6 +4335,94 @@ paths:
           description: Premium access required
         '500':
           description: Failed to check premium access or read the custom themes directory
+    post:
+      tags:
+        - Themes
+      summary: Create a custom theme
+      description: Write `<id>.css` into the custom themes directory. Requires premium access and Settings write. The CSS cannot load a file from another website, so it refuses `@import`, `image-set()`, a `url()` whose target is not a `data:` address or a `#fragment`, and a backslash outside a quoted string. Comments are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, css]
+              properties:
+                id:
+                  type: string
+                  pattern: '^[a-z0-9][a-z0-9_-]{0,63}$'
+                css:
+                  type: string
+                  description: The theme CSS, 1 MiB at most.
+      responses:
+        '201':
+          description: Custom theme created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomTheme'
+        '400':
+          description: Invalid payload, invalid id, empty or oversize CSS, CSS that loads a file from another website (the message names the line), or the directory already has 100 theme files
+        '403':
+          description: Premium access required
+        '409':
+          description: A file with this id exists. The match ignores letter case.
+        '500':
+          description: The custom themes directory cannot be read or written. The message names the directory.
+
+  /api/themes/custom/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The id of a custom theme, as the list route returns it.
+        schema:
+          type: string
+    put:
+      tags:
+        - Themes
+      summary: Replace a custom theme
+      description: Replace the CSS of a custom theme file. Requires premium access and Settings write. The same outside-file rule as create applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [css]
+              properties:
+                css:
+                  type: string
+                  description: The theme CSS, 1 MiB at most.
+      responses:
+        '200':
+          description: Custom theme replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomTheme'
+        '400':
+          description: Invalid payload, empty or oversize CSS, or CSS that loads a file from another website (the message names the line)
+        '403':
+          description: Premium access required
+        '404':
+          description: No custom theme has this id
+        '500':
+          description: The custom themes directory cannot be read or written. The message names the directory.
+    delete:
+      tags:
+        - Themes
+      summary: Remove a custom theme
+      description: Delete a custom theme file. Requires premium access and Settings write.
+      responses:
+        '204':
+          description: Custom theme removed
+        '403':
+          description: Premium access required
+        '404':
+          description: No custom theme has this id
+        '500':
+          description: The custom themes directory cannot be read or written. The message names the directory.
 
   /api/themes/settings:
     get:
@@ -7880,6 +7968,15 @@ components:
           type: object
           additionalProperties: true
 
+    CustomTheme:
+      type: object
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        css:
+          type: string
     ThemeSettings:
       type: object
       required:

@@ -537,7 +537,8 @@
       "locked": "Locked",
       "lock": "Lock",
       "showTheme": "Show",
-      "hideTheme": "Hide"
+      "hideTheme": "Hide",
+      "defaultThemeVisit": "qui shows the default theme for this visit, because the address has ?theme=default. Select a theme to end it."
     },
     "toasts": {
       "premiumRequired": "License required",
@@ -682,13 +683,44 @@
       "badge": "Custom",
       "title": "Custom Themes",
       "lockedTitle": "Custom themes need a license",
-      "lockedDescription": "Get a license to sideload your own theme CSS files from a directory on disk.",
+      "lockedDescription": "Get a license to add your own themes: write or paste a theme in the theme editor, or put theme CSS files into a folder on the server.",
       "unlockCta": "Get a license",
       "refresh": "Refresh",
       "detectedCount": "Themes found: {{total}}",
       "parseErrorsTitle": "Could not parse these files:",
       "noneFound": "No custom themes found. Drop a .css file into the themes directory and click Refresh.",
-      "loadError": "Couldn't load custom themes. Check the server logs and the themes directory permissions."
+      "loadError": "Couldn't load custom themes. Check the server logs and the themes directory permissions.",
+      "newTheme": "New theme",
+      "copyPrompt": "Copy prompt for your AI",
+      "promptCopied": "Prompt copied. Paste it into your AI assistant and describe the look that you want.",
+      "promptCopyFailed": "Could not copy the prompt",
+      "edit": "Edit",
+      "remove": "Remove",
+      "removeTitle": "Remove the theme?",
+      "removeDescription": "qui deletes the file of {{theme}} from the custom themes folder. You cannot undo this. A device that uses this theme shows the default theme.",
+      "removeConfirm": "Remove",
+      "removed": "Theme removed",
+      "removeFailed": "Could not remove the theme: {{message}}",
+      "editor": {
+        "newTitle": "New theme",
+        "editTitle": "Edit theme",
+        "description": "Paste or write the CSS of a theme. This browser shows the theme while you edit. Save stores the theme on the server.",
+        "name": "Name",
+        "css": "CSS",
+        "nameInvalid": "Enter a name with a letter or a digit.",
+        "save": "Save",
+        "saved": "Theme saved",
+        "replaceTitle": "Replace the theme?",
+        "replaceDescription": "A custom theme with the file name {{filename}} exists. Replace it with this theme?",
+        "replace": "Replace",
+        "problems": {
+          "empty": "Paste the CSS of a theme to see a preview.",
+          "missingRoot": "qui cannot use this CSS: it has no :root block with a design token. The preview shows the last CSS that qui could use.",
+          "missingDark": "qui cannot use this CSS: it has no .dark block with a design token. The preview shows the last CSS that qui could use.",
+          "outsideFile": "Line {{line}} can make the browser load a file from another website, so the preview leaves it out and Save refuses it. Use url() only with a data: address or a #fragment, and no @import, image-set(), or backslash escape.",
+          "unreadable": "qui cannot read line {{line}}: a quoted string or a url() is not closed. The preview shows the last CSS that qui could use."
+        }
+      }
     },
     "layout": {
       "mobileSplit": "Separate theme for mobile layout",

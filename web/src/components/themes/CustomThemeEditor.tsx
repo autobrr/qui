@@ -1,0 +1,267 @@
+/*
+ * Copyright (c) 2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useEffect, useId, useMemo, useReducer, useRef } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { AlertTriangle, Loader2 } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Textarea } from "@/components/ui/textarea"
+import { useDebounce } from "@/hooks/useDebounce"
+import { useIsMobile } from "@/hooks/useMediaQuery"
+import { refreshCustomThemes } from "@/hooks/useCustomThemes"
+import { APIError, api } from "@/lib/api"
+import { findOutsideFile } from "@/lib/css-outside-files"
+import { readThemeName, themeIdFromName, writeThemeName } from "@/lib/custom-theme-editor"
+import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
+import { endCustomThemePreview, previewCustomThemeCss, setTheme } from "@/utils/theme"
+import { findThemeCssProblem, parseThemeCSS } from "@/utils/themeParser"
+
+const PREVIEW_DELAY_MS = 300
+
+export type CustomThemeEditorTarget =
+  | { kind: "new" }
+  | { kind: "edit"; id: string; css: string }
+
+type EditorPhase =
+  | { kind: "editing"; error: string | null }
+  | { kind: "saving" }
+  | { kind: "confirm-replace" }
+
+interface EditorState {
+  name: string
+  css: string
+  phase: EditorPhase
+}
+
+type EditorAction =
+  | { type: "name"; name: string }
+  | { type: "css"; css: string }
+  | { type: "save-start" }
+  | { type: "save-failed"; error: string }
+  | { type: "conflict" }
+  | { type: "keep-editing" }
+
+function editorReducer(state: EditorState, action: EditorAction): EditorState {
+  switch (action.type) {
+    case "name":
+      return { ...state, name: action.name }
+    case "css":
+      return { ...state, css: action.css, name: readThemeName(action.css) ?? state.name }
+    case "save-start":
+      return { ...state, phase: { kind: "saving" } }
+    case "save-failed":
+      return { ...state, phase: { kind: "editing", error: action.error } }
+    case "conflict":
+      return { ...state, phase: { kind: "confirm-replace" } }
+    case "keep-editing":
+      return state.phase.kind === "confirm-replace" ? { ...state, phase: { kind: "editing", error: null } } : state
+  }
+}
+
+function initialState(target: CustomThemeEditorTarget): EditorState {
+  const css = target.kind === "edit" ? target.css : ""
+  return { name: readThemeName(css) ?? "", css, phase: { kind: "editing", error: null } }
+}
+
+type CssProblem = "empty" | "missing-root" | "missing-dark"
+
+function cssProblem(css: string): CssProblem | null {
+  return css.trim() === "" ? "empty" : findThemeCssProblem(css)
+}
+
+type PreviewProblem =
+  | { kind: CssProblem }
+  | { kind: "outside-file" | "unreadable"; line: number }
+
+// The preview refuses an outside file too, so the browser never loads one; Save leaves that refusal to the server.
+function previewProblemOf(css: string): PreviewProblem | null {
+  const problem = cssProblem(css)
+  return problem ? { kind: problem } : findOutsideFile(css)
+}
+
+const PROBLEM_KEYS = {
+  "empty": "themes.custom.editor.problems.empty",
+  "missing-root": "themes.custom.editor.problems.missingRoot",
+  "missing-dark": "themes.custom.editor.problems.missingDark",
+  "outside-file": "themes.custom.editor.problems.outsideFile",
+  "unreadable": "themes.custom.editor.problems.unreadable",
+} as const
+
+interface CustomThemeEditorProps {
+  target: CustomThemeEditorTarget
+  onClose: () => void
+}
+
+/**
+ * Edits one custom theme with a live preview in this browser. Closing it in
+ * any way paints the active theme again; a saved new theme becomes the active
+ * theme of the slot that the picker changes.
+ */
+export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
+  const { t } = useTranslation("settings")
+  const queryClient = useQueryClient()
+  const isMobile = useIsMobile()
+  const nameId = useId()
+  const cssId = useId()
+  const [state, dispatch] = useReducer(editorReducer, target, initialState)
+
+  const previewCss = useDebounce(state.css, PREVIEW_DELAY_MS)
+  const previewProblem = useMemo(() => previewProblemOf(previewCss), [previewCss])
+  const previewed = useRef(false)
+
+  useEffect(() => {
+    if (previewProblem) return
+    const parsed = parseThemeCSS(previewCss)
+    if (!parsed) return
+    previewCustomThemeCss(previewCss, parsed.cssVars)
+    previewed.current = true
+  }, [previewCss, previewProblem])
+
+  useEffect(() => () => {
+    if (previewed.current) void endCustomThemePreview()
+  }, [])
+
+  const name = state.name.trim()
+  const id = target.kind === "edit" ? target.id : themeIdFromName(name)
+  const saving = state.phase.kind === "saving"
+  const canSave = !saving && id !== "" && name !== "" && cssProblem(state.css) === null
+
+  const save = async (replace: boolean) => {
+    const css = writeThemeName(state.css, name)
+    dispatch({ type: "save-start" })
+    let savedId: string
+    try {
+      const saved = target.kind === "edit" || replace ? await api.replaceCustomTheme(id, css) : await api.createCustomTheme(id, css)
+      savedId = saved.id
+      await refreshCustomThemes(queryClient)
+    } catch (error) {
+      if (target.kind === "new" && !replace && error instanceof APIError && error.status === 409) {
+        dispatch({ type: "conflict" })
+        return
+      }
+      dispatch({ type: "save-failed", error: error instanceof Error ? error.message : String(error) })
+      return
+    }
+
+    if (target.kind === "new") {
+      await setTheme(`${CUSTOM_THEME_PREFIX}${savedId}`)
+    }
+    toast.success(t("themes.custom.editor.saved"))
+    onClose()
+  }
+
+  return (
+    <>
+      <Sheet
+        open
+        modal={false}
+        onOpenChange={(open) => {
+          if (!open && !saving) onClose()
+        }}
+      >
+        <SheetContent
+          side={isMobile ? "bottom" : "right"}
+          className={isMobile ? "h-[75dvh] gap-3" : "w-full gap-3 sm:max-w-xl"}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <SheetHeader className="pb-0">
+            <SheetTitle>
+              {t(target.kind === "edit" ? "themes.custom.editor.editTitle" : "themes.custom.editor.newTitle")}
+            </SheetTitle>
+            <SheetDescription>{t("themes.custom.editor.description")}</SheetDescription>
+          </SheetHeader>
+
+          <div className="flex min-h-0 flex-1 flex-col gap-3 px-4">
+            <div className="space-y-1.5">
+              <Label htmlFor={nameId}>{t("themes.custom.editor.name")}</Label>
+              <Input
+                id={nameId}
+                value={state.name}
+                onChange={(event) => dispatch({ type: "name", name: event.target.value })}
+                disabled={saving}
+              />
+              {target.kind === "new" && name !== "" && id === "" && (
+                <p className="text-xs text-destructive">{t("themes.custom.editor.nameInvalid")}</p>
+              )}
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+              <Label htmlFor={cssId}>{t("themes.custom.editor.css")}</Label>
+              <Textarea
+                id={cssId}
+                value={state.css}
+                onChange={(event) => dispatch({ type: "css", css: event.target.value })}
+                disabled={saving}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                className="min-h-40 flex-1 resize-none font-mono text-xs field-sizing-fixed md:text-xs"
+              />
+              {previewProblem && (
+                <p className="text-xs text-muted-foreground">
+                  {t(PROBLEM_KEYS[previewProblem.kind], "line" in previewProblem ? { line: previewProblem.line } : undefined)}
+                </p>
+              )}
+              {state.phase.kind === "editing" && state.phase.error && (
+                <p role="alert" className="flex items-start gap-1 text-xs font-medium text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span className="break-words">{state.phase.error}</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          <SheetFooter className="flex-row justify-end gap-2 pt-0">
+            <Button variant="outline" onClick={onClose} disabled={saving}>
+              {t("common:actions.cancel")}
+            </Button>
+            <Button onClick={() => void save(false)} disabled={!canSave}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t("themes.custom.editor.save")}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <AlertDialog
+        open={state.phase.kind === "confirm-replace"}
+        onOpenChange={(open) => {
+          if (!open) dispatch({ type: "keep-editing" })
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("themes.custom.editor.replaceTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("themes.custom.editor.replaceDescription", { filename: `${id}.css` })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common:actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void save(true)}>
+              {t("themes.custom.editor.replace")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}

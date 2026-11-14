@@ -30,6 +30,7 @@ const ALL_KINDS_MAP = {
   "search.history": true,
   "tracker.icons": true,
   "theme.settings": true,
+  "theme.custom": true,
   "client.settings": true,
 } satisfies Record<ActivityEvent["kind"], true>
 
@@ -76,6 +77,7 @@ describe("activityQueryKeys", () => {
     expect(activityQueryKeys(ev({ kind: "indexer.activity" }))).toEqual([["indexer-activity"]])
     expect(activityQueryKeys(ev({ kind: "tracker.icons" }))).toEqual([["tracker-icons"]])
     expect(activityQueryKeys(ev({ kind: "theme.settings" }))).toEqual([["theme-settings"]])
+    expect(activityQueryKeys(ev({ kind: "theme.custom" }))).toEqual([["custom-themes"]])
   })
 
   it("returns nothing for an unknown kind", () => {

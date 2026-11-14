@@ -539,7 +539,8 @@
       "locked": "Zamčený",
       "lock": "Zamknout",
       "showTheme": "Zobrazit",
-      "hideTheme": "Skrýt"
+      "hideTheme": "Skrýt",
+      "defaultThemeVisit": "qui při této návštěvě zobrazuje výchozí motiv, protože adresa obsahuje ?theme=default. Výběrem motivu to ukončíte."
     },
     "toasts": {
       "premiumRequired": "Vyžaduje se licence",
@@ -684,13 +685,44 @@
       "badge": "Vlastní",
       "title": "Vlastní motivy",
       "lockedTitle": "Vlastní motivy vyžadují licenci",
-      "lockedDescription": "Získejte licenci a načítejte vlastní CSS soubory motivů z adresáře na disku.",
+      "lockedDescription": "Získejte licenci a přidávejte vlastní motivy: napište nebo vložte motiv v editoru motivů, nebo umístěte CSS soubory motivů do složky na serveru.",
       "unlockCta": "Získat licenci",
       "refresh": "Obnovit",
       "detectedCount": "Nalezené motivy: {{total}}",
       "parseErrorsTitle": "Tyto soubory se nepodařilo zpracovat:",
       "noneFound": "Nenalezeny žádné vlastní motivy. Vložte soubor .css do adresáře motivů a klikněte na Obnovit.",
-      "loadError": "Nepodařilo se načíst vlastní motivy. Zkontrolujte logy serveru a oprávnění adresáře motivů."
+      "loadError": "Nepodařilo se načíst vlastní motivy. Zkontrolujte logy serveru a oprávnění adresáře motivů.",
+      "newTheme": "Nový motiv",
+      "copyPrompt": "Kopírovat prompt pro vaši AI",
+      "promptCopied": "Prompt zkopírován. Vložte ho do svého AI asistenta a popište vzhled, který chcete.",
+      "promptCopyFailed": "Prompt se nepodařilo zkopírovat",
+      "edit": "Upravit",
+      "remove": "Odstranit",
+      "removeTitle": "Odstranit motiv?",
+      "removeDescription": "qui smaže soubor motivu {{theme}} ze složky vlastních motivů. Tuto akci nelze vrátit zpět. Zařízení, které tento motiv používá, zobrazí výchozí motiv.",
+      "removeConfirm": "Odstranit",
+      "removed": "Motiv odstraněn",
+      "removeFailed": "Motiv se nepodařilo odstranit: {{message}}",
+      "editor": {
+        "newTitle": "Nový motiv",
+        "editTitle": "Upravit motiv",
+        "description": "Vložte nebo napište CSS motivu. Tento prohlížeč motiv zobrazuje už během úprav. Tlačítko Uložit uloží motiv na server.",
+        "name": "Název",
+        "css": "CSS",
+        "nameInvalid": "Zadejte název, který obsahuje písmeno nebo číslici.",
+        "save": "Uložit",
+        "saved": "Motiv uložen",
+        "replaceTitle": "Nahradit motiv?",
+        "replaceDescription": "Vlastní motiv s názvem souboru {{filename}} už existuje. Nahradit ho tímto motivem?",
+        "replace": "Nahradit",
+        "problems": {
+          "empty": "Vložte CSS motivu a zobrazí se náhled.",
+          "missingRoot": "qui toto CSS nemůže použít: nemá blok :root s design tokenem. Náhled zobrazuje poslední CSS, které qui mohlo použít.",
+          "missingDark": "qui toto CSS nemůže použít: nemá blok .dark s design tokenem. Náhled zobrazuje poslední CSS, které qui mohlo použít.",
+          "outsideFile": "Řádek {{line}} může způsobit, že prohlížeč načte soubor z jiného webu, proto ho náhled vynechá a Uložit ho odmítne. Používejte url() jen s adresou data: nebo s #fragment a nepoužívejte @import, image-set() ani escape sekvence se zpětným lomítkem.",
+          "unreadable": "qui nemůže přečíst řádek {{line}}: řetězec v uvozovkách nebo url() není uzavřen. Náhled zobrazuje poslední CSS, které qui mohlo použít."
+        }
+      }
     },
     "layout": {
       "mobileSplit": "Samostatný motiv pro mobilní rozložení",

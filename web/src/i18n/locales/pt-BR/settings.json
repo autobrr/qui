@@ -537,7 +537,8 @@
       "locked": "Bloqueado",
       "lock": "Bloquear",
       "showTheme": "Mostrar",
-      "hideTheme": "Ocultar"
+      "hideTheme": "Ocultar",
+      "defaultThemeVisit": "qui mostra o tema padrão nesta visita porque o endereço contém ?theme=default. Selecione um tema para encerrar."
     },
     "toasts": {
       "premiumRequired": "Licença necessária",
@@ -682,13 +683,44 @@
       "badge": "Personalizado",
       "title": "Temas Personalizados",
       "lockedTitle": "Temas personalizados precisam de uma licença",
-      "lockedDescription": "Obtenha uma licença para fazer o sideload de seus próprios arquivos CSS de tema de um diretório no disco.",
+      "lockedDescription": "Obtenha uma licença para adicionar seus próprios temas: escreva ou cole um tema no editor de temas, ou coloque arquivos CSS de tema em uma pasta no servidor.",
       "unlockCta": "Obter uma licença",
       "refresh": "Atualizar",
       "detectedCount": "Temas encontrados: {{total}}",
       "parseErrorsTitle": "Não foi possível analisar estes arquivos:",
       "noneFound": "Nenhum tema personalizado encontrado. Coloque um arquivo .css no diretório de temas e clique em Atualizar.",
-      "loadError": "Não foi possível carregar os temas personalizados. Verifique os logs do servidor e as permissões do diretório de temas."
+      "loadError": "Não foi possível carregar os temas personalizados. Verifique os logs do servidor e as permissões do diretório de temas.",
+      "newTheme": "Novo tema",
+      "copyPrompt": "Copiar prompt para sua IA",
+      "promptCopied": "Prompt copiado. Cole-o no seu assistente de IA e descreva a aparência que você quer.",
+      "promptCopyFailed": "Não foi possível copiar o prompt",
+      "edit": "Editar",
+      "remove": "Remover",
+      "removeTitle": "Remover o tema?",
+      "removeDescription": "qui exclui o arquivo de {{theme}} da pasta de temas personalizados. Não é possível desfazer. Um dispositivo que usa este tema mostrará o tema padrão.",
+      "removeConfirm": "Remover",
+      "removed": "Tema removido",
+      "removeFailed": "Não foi possível remover o tema: {{message}}",
+      "editor": {
+        "newTitle": "Novo tema",
+        "editTitle": "Editar tema",
+        "description": "Cole ou escreva o CSS de um tema. Este navegador mostra o tema enquanto você edita. Salvar armazena o tema no servidor.",
+        "name": "Nome",
+        "css": "CSS",
+        "nameInvalid": "Insira um nome com uma letra ou um dígito.",
+        "save": "Salvar",
+        "saved": "Tema salvo",
+        "replaceTitle": "Substituir o tema?",
+        "replaceDescription": "Já existe um tema personalizado com o nome de arquivo {{filename}}. Substituí-lo por este tema?",
+        "replace": "Substituir",
+        "problems": {
+          "empty": "Cole o CSS de um tema para ver uma visualização.",
+          "missingRoot": "qui não pode usar este CSS: ele não tem um bloco :root com um design token. A visualização mostra o último CSS que o qui conseguiu usar.",
+          "missingDark": "qui não pode usar este CSS: ele não tem um bloco .dark com um design token. A visualização mostra o último CSS que o qui conseguiu usar.",
+          "outsideFile": "A linha {{line}} pode fazer o navegador carregar um arquivo de outro site, por isso a visualização a omite e Salvar a recusa. Use url() somente com um endereço data: ou um #fragment, e não use @import, image-set() nem escape com barra invertida.",
+          "unreadable": "qui não consegue ler a linha {{line}}: uma string entre aspas ou um url() não está fechado. A visualização mostra o último CSS que o qui conseguiu usar."
+        }
+      }
     },
     "layout": {
       "mobileSplit": "Tema separado para o layout móvel",

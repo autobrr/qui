@@ -537,7 +537,8 @@
       "locked": "Gesperrt",
       "lock": "Sperren",
       "showTheme": "Anzeigen",
-      "hideTheme": "Ausblenden"
+      "hideTheme": "Ausblenden",
+      "defaultThemeVisit": "qui zeigt für diesen Besuch das Standard-Theme, weil die Adresse ?theme=default enthält. Wähle ein Theme, um das zu beenden."
     },
     "toasts": {
       "premiumRequired": "Lizenz erforderlich",
@@ -682,13 +683,44 @@
       "badge": "Eigene",
       "title": "Eigene Themes",
       "lockedTitle": "Eigene Themes erfordern eine Lizenz",
-      "lockedDescription": "Hol dir eine Lizenz, um eigene Theme-CSS-Dateien aus einem Verzeichnis auf der Festplatte zu laden.",
+      "lockedDescription": "Hol dir eine Lizenz, um eigene Themes hinzuzufügen: Schreibe oder füge ein Theme im Theme-Editor ein, oder lege Theme-CSS-Dateien in einen Ordner auf dem Server.",
       "unlockCta": "Lizenz holen",
       "refresh": "Aktualisieren",
       "detectedCount": "Gefundene Themes: {{total}}",
       "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
       "noneFound": "Keine eigenen Themes gefunden. Lege eine .css-Datei im Themes-Verzeichnis ab und klicke auf Aktualisieren.",
-      "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Themes-Verzeichnisses."
+      "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Themes-Verzeichnisses.",
+      "newTheme": "Neues Theme",
+      "copyPrompt": "Prompt für deine KI kopieren",
+      "promptCopied": "Prompt kopiert. Füge ihn in deinen KI-Assistenten ein und beschreibe den gewünschten Look.",
+      "promptCopyFailed": "Prompt konnte nicht kopiert werden",
+      "edit": "Bearbeiten",
+      "remove": "Entfernen",
+      "removeTitle": "Theme entfernen?",
+      "removeDescription": "qui löscht die Datei von {{theme}} aus dem Ordner für eigene Themes. Das kann nicht rückgängig gemacht werden. Ein Gerät, das dieses Theme nutzt, zeigt dann das Standard-Theme.",
+      "removeConfirm": "Entfernen",
+      "removed": "Theme entfernt",
+      "removeFailed": "Theme konnte nicht entfernt werden: {{message}}",
+      "editor": {
+        "newTitle": "Neues Theme",
+        "editTitle": "Theme bearbeiten",
+        "description": "Füge das CSS eines Themes ein oder schreibe es selbst. Dieser Browser zeigt das Theme schon beim Bearbeiten. Speichern legt das Theme auf dem Server ab.",
+        "name": "Name",
+        "css": "CSS",
+        "nameInvalid": "Gib einen Namen mit einem Buchstaben oder einer Ziffer ein.",
+        "save": "Speichern",
+        "saved": "Theme gespeichert",
+        "replaceTitle": "Theme ersetzen?",
+        "replaceDescription": "Ein eigenes Theme mit dem Dateinamen {{filename}} existiert bereits. Durch dieses Theme ersetzen?",
+        "replace": "Ersetzen",
+        "problems": {
+          "empty": "Füge das CSS eines Themes ein, um eine Vorschau zu sehen.",
+          "missingRoot": "qui kann dieses CSS nicht verwenden: Es hat keinen :root-Block mit einem Design-Token. Die Vorschau zeigt das letzte CSS, das qui verwenden konnte.",
+          "missingDark": "qui kann dieses CSS nicht verwenden: Es hat keinen .dark-Block mit einem Design-Token. Die Vorschau zeigt das letzte CSS, das qui verwenden konnte.",
+          "outsideFile": "Zeile {{line}} kann den Browser dazu bringen, eine Datei von einer anderen Website zu laden. Die Vorschau lässt sie deshalb weg, und Speichern lehnt sie ab. Verwende url() nur mit einer data:-Adresse oder einem #fragment, und kein @import, kein image-set() und keine Escape-Sequenz mit Backslash.",
+          "unreadable": "qui kann Zeile {{line}} nicht lesen: Ein String in Anführungszeichen oder ein url() ist nicht geschlossen. Die Vorschau zeigt das letzte CSS, das qui verwenden konnte."
+        }
+      }
     },
     "layout": {
       "mobileSplit": "Eigenes Theme für das mobile Layout",

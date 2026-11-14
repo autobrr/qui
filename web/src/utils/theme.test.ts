@@ -4,7 +4,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { setTheme, setThemeMode } from "./theme"
+import { endCustomThemePreview, previewCustomThemeCss, setTheme, setThemeMode } from "./theme"
+import { _setDefaultThemeVisitForTests, isDefaultThemeVisit } from "@/lib/default-theme-visit"
 import { parseCachedTheme, registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 
@@ -29,6 +30,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  _setDefaultThemeVisitForTests(false)
   registerCustomThemes([])
   localStorage.clear()
   vi.restoreAllMocks()
@@ -111,5 +113,106 @@ describe("boot cache for custom themes", () => {
     expect(cached?.id).toBe("custom:ocean")
     expect(cached?.isCustom).toBe(true)
     expect(cached?.rawCss).toBe(":root { --background: navy; }")
+  })
+})
+
+const customTheme = {
+  id: "custom:ocean",
+  name: "Ocean",
+  isPremium: true,
+  isCustom: true,
+  rawCss: ":root { --background: teal; } .dark { --background: navy; }",
+  cssVars: { light: { "--background": "teal" }, dark: { "--background": "navy" } },
+}
+
+function bootCaches() {
+  return ["color-theme", "theme", "theme-cache", "theme-critical-vars", "theme-light-only"].map(key => localStorage.getItem(key))
+}
+
+function customStyle(): string | null {
+  return document.getElementById("custom-theme-style")?.textContent ?? null
+}
+
+describe("custom theme preview", () => {
+  it("shows the css without a write to the stored theme or the boot caches", async () => {
+    await setTheme("minimal")
+    const before = bootCaches()
+    const events: unknown[] = []
+    const listener = (event: Event) => events.push(event)
+    window.addEventListener("themechange", listener)
+
+    previewCustomThemeCss(":root { --background: red; } .dark { --background: maroon; }", {
+      light: { "--background": "red" },
+      dark: { "--background": "maroon" },
+    })
+
+    window.removeEventListener("themechange", listener)
+    expect(customStyle()).toContain("--background: red")
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("")
+    expect(document.documentElement.style.backgroundColor).toBe("")
+    expect(bootCaches()).toEqual(before)
+    expect(events).toEqual([])
+  })
+
+  it("ends by painting the active theme again", async () => {
+    registerCustomThemes([customTheme])
+    await setTheme("custom:ocean")
+    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} })
+
+    await endCustomThemePreview()
+
+    expect(customStyle()).toBe(customTheme.rawCss)
+    expect(document.documentElement.getAttribute("data-theme")).toBe("custom:ocean")
+  })
+
+  it("ends on a built-in theme without the preview style", async () => {
+    await setTheme("minimal")
+    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} })
+
+    await endCustomThemePreview()
+
+    expect(customStyle()).toBeNull()
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
+  })
+})
+
+describe("default theme visit", () => {
+  it("paints the default theme on a system change and writes nothing", async () => {
+    registerCustomThemes([customTheme])
+    await setTheme("custom:ocean")
+    const before = bootCaches()
+    _setDefaultThemeVisitForTests(true)
+
+    await setTheme("custom:ocean", "dark", undefined, true)
+
+    expect(document.documentElement.getAttribute("data-theme")).toBe("minimal")
+    expect(customStyle()).toBeNull()
+    expect(bootCaches()).toEqual(before)
+    expect(isDefaultThemeVisit()).toBe(true)
+  })
+
+  it("ends when the user selects a theme, which then applies and stores as normal", async () => {
+    registerCustomThemes([customTheme])
+    _setDefaultThemeVisitForTests(true)
+
+    await setTheme("custom:ocean")
+
+    expect(isDefaultThemeVisit()).toBe(false)
+    expect(document.documentElement.getAttribute("data-theme")).toBe("custom:ocean")
+    expect(localStorage.getItem("color-theme")).toBe("custom:ocean")
+    expect(JSON.parse(localStorage.getItem("theme-cache") ?? "{}").id).toBe("custom:ocean")
+  })
+
+  it("keeps the default theme on a mode change", async () => {
+    registerCustomThemes([customTheme])
+    await setTheme("custom:ocean")
+    _setDefaultThemeVisitForTests(true)
+
+    await setThemeMode("dark")
+
+    expect(document.documentElement.getAttribute("data-theme")).toBe("minimal")
+    expect(localStorage.getItem("color-theme")).toBe("custom:ocean")
+    expect(JSON.parse(localStorage.getItem("theme-cache") ?? "{}").id).toBe("custom:ocean")
+    expect(isDefaultThemeVisit()).toBe(true)
   })
 })

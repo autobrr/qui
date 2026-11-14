@@ -535,7 +535,8 @@
       "locked": "잠김",
       "lock": "잠금",
       "showTheme": "표시",
-      "hideTheme": "숨기기"
+      "hideTheme": "숨기기",
+      "defaultThemeVisit": "주소에 ?theme=default가 있으므로 qui가 이번 방문 동안 기본 테마를 표시합니다. 테마를 선택하면 종료됩니다."
     },
     "toasts": {
       "premiumRequired": "라이선스가 필요합니다",
@@ -680,13 +681,44 @@
       "badge": "사용자 지정",
       "title": "사용자 지정 테마",
       "lockedTitle": "사용자 지정 테마에는 라이선스가 필요합니다",
-      "lockedDescription": "라이선스를 받으면 디스크의 디렉터리에서 직접 만든 테마 CSS 파일을 불러올 수 있습니다.",
+      "lockedDescription": "라이선스를 받으면 직접 만든 테마를 추가할 수 있습니다. 테마 편집기에서 테마를 작성하거나 붙여넣거나, 서버의 폴더에 테마 CSS 파일을 넣으세요.",
       "unlockCta": "라이선스 받기",
       "refresh": "새로 고침",
       "detectedCount": "찾은 테마: {{total}}개",
       "parseErrorsTitle": "다음 파일을 분석할 수 없습니다:",
       "noneFound": "사용자 지정 테마를 찾을 수 없습니다. 테마 디렉터리에 .css 파일을 넣고 새로 고침을 클릭하세요.",
-      "loadError": "사용자 지정 테마를 불러오지 못했습니다. 서버 로그와 테마 디렉터리 권한을 확인하세요."
+      "loadError": "사용자 지정 테마를 불러오지 못했습니다. 서버 로그와 테마 디렉터리 권한을 확인하세요.",
+      "newTheme": "새 테마",
+      "copyPrompt": "AI용 프롬프트 복사",
+      "promptCopied": "프롬프트를 복사했습니다. AI 어시스턴트에 붙여넣고 원하는 모양을 설명하세요.",
+      "promptCopyFailed": "프롬프트를 복사하지 못했습니다",
+      "edit": "편집",
+      "remove": "제거",
+      "removeTitle": "테마를 제거할까요?",
+      "removeDescription": "qui가 사용자 지정 테마 폴더에서 {{theme}}의 파일을 삭제합니다. 이 작업은 되돌릴 수 없습니다. 이 테마를 사용하는 기기에는 기본 테마가 표시됩니다.",
+      "removeConfirm": "제거",
+      "removed": "테마를 제거했습니다",
+      "removeFailed": "테마를 제거하지 못했습니다: {{message}}",
+      "editor": {
+        "newTitle": "새 테마",
+        "editTitle": "테마 편집",
+        "description": "테마의 CSS를 붙여넣거나 작성하세요. 편집하는 동안 이 브라우저에 테마가 표시됩니다. 저장하면 테마가 서버에 보관됩니다.",
+        "name": "이름",
+        "css": "CSS",
+        "nameInvalid": "문자나 숫자가 포함된 이름을 입력하세요.",
+        "save": "저장",
+        "saved": "테마를 저장했습니다",
+        "replaceTitle": "테마를 교체할까요?",
+        "replaceDescription": "파일 이름이 {{filename}}인 사용자 지정 테마가 이미 있습니다. 이 테마로 교체할까요?",
+        "replace": "교체",
+        "problems": {
+          "empty": "미리 보기를 보려면 테마의 CSS를 붙여넣으세요.",
+          "missingRoot": "qui에서 이 CSS를 사용할 수 없습니다: 디자인 토큰이 있는 :root 블록이 없습니다. 미리 보기에는 qui가 마지막으로 사용할 수 있었던 CSS가 표시됩니다.",
+          "missingDark": "qui에서 이 CSS를 사용할 수 없습니다: 디자인 토큰이 있는 .dark 블록이 없습니다. 미리 보기에는 qui가 마지막으로 사용할 수 있었던 CSS가 표시됩니다.",
+          "outsideFile": "{{line}}행은 브라우저가 다른 웹사이트의 파일을 불러오게 할 수 있으므로 미리 보기에서 제외되고 저장할 수 없습니다. url()은 data: 주소나 #fragment에만 사용하고, @import, image-set(), 백슬래시 이스케이프는 사용하지 마세요.",
+          "unreadable": "qui가 {{line}}행을 읽을 수 없습니다: 따옴표로 묶은 문자열이나 url()이 닫히지 않았습니다. 미리 보기에는 qui가 마지막으로 사용할 수 있었던 CSS가 표시됩니다."
+        }
+      }
     },
     "layout": {
       "mobileSplit": "모바일 레이아웃용 별도 테마",

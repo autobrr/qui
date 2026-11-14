@@ -10,6 +10,7 @@ import type { ReactNode } from "react"
 import { setThemeLocalOnly, useThemeSettingsSync } from "./useThemeSettingsSync"
 import { setStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { themes } from "@/config/themes"
+import { _setDefaultThemeVisitForTests } from "@/lib/default-theme-visit"
 import type { ThemeSlots } from "@/types"
 
 const { mockApi } = vi.hoisted(() => {
@@ -70,6 +71,7 @@ function dispatchThemeChange(detail: object) {
 
 afterEach(() => {
   cleanup()
+  _setDefaultThemeVisitForTests(false)
   viewportWidth = 1024
   vi.clearAllMocks()
   localStorage.clear()
@@ -135,6 +137,27 @@ describe("useThemeSettingsSync", () => {
       mode: "dark",
       variation: "blue",
     }, "default")
+  })
+
+  it("neither pulls nor pushes a slot during a default theme visit", async () => {
+    themes.push({ id: "free-theme", name: "Free", cssVars: { light: {}, dark: {} } })
+    localStorage.setItem("color-theme", "custom:broken")
+    const slots: ThemeSlots = { default: { themeId: "free-theme", mode: "dark" } }
+    mockApi.getThemeSettings.mockResolvedValue(slots)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(["theme-settings"], slots)
+    _setDefaultThemeVisitForTests(true)
+    renderHook(() => useThemeSettingsSync(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+
+    dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
+
+    expect(mockSetTheme).not.toHaveBeenCalled()
+    expect(localStorage.getItem("color-theme")).toBe("custom:broken")
+    expect(mockApi.updateThemeSettings).not.toHaveBeenCalled()
   })
 
   it("pushes the stored selection and variation, not the applied fallback theme", () => {

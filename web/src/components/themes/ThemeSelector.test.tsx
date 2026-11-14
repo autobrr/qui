@@ -4,7 +4,9 @@
  */
 
 import type { Theme } from "@/config/themes"
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react"
+import type { ReactElement } from "react"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -35,10 +37,24 @@ const fixture = vi.hoisted(() => {
       makeTheme("gruvbox", "Community theme", { isPremium: true }),
     ],
     customThemes: [
-      makeTheme("custom:local", "Custom theme", { isCustom: true }),
+      {
+        ...makeTheme("custom:local", "Custom theme", { isCustom: true }),
+        rawCss: "/* @name: Custom theme */\n:root { --background: white; }\n.dark { --background: black; }\n",
+      },
     ],
   }
 })
+
+const license = vi.hoisted(() => ({ hasPremiumAccess: true }))
+const themeUtils = vi.hoisted(() => ({
+  previewCustomThemeCss: vi.fn(),
+  endCustomThemePreview: vi.fn(() => Promise.resolve()),
+  setTheme: vi.fn(() => Promise.resolve()),
+}))
+const customThemesHook = vi.hoisted(() => ({
+  refreshCustomThemes: vi.fn<() => Promise<Array<{ id: string; filename: string; css: string }>>>(() => Promise.resolve([])),
+}))
+const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()) }))
 
 vi.mock("@/config/themes", () => ({
   themes: fixture.builtInThemes,
@@ -48,7 +64,7 @@ vi.mock("@/config/themes", () => ({
 
 vi.mock("@/hooks/useLicense.ts", () => ({
   useHasPremiumAccess: () => ({
-    hasPremiumAccess: true,
+    hasPremiumAccess: license.hasPremiumAccess,
     isLoading: false,
     isError: false,
   }),
@@ -68,6 +84,14 @@ vi.mock("@/hooks/useCustomThemes", () => ({
     isError: false,
     refetch: vi.fn(),
   }),
+  refreshCustomThemes: customThemesHook.refreshCustomThemes,
+}))
+
+vi.mock("@/hooks/useDebounce", () => ({ useDebounce: (value: unknown) => value }))
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsMobile: () => false }))
+vi.mock("@/lib/utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/utils")>(),
+  copyTextToClipboard: clipboard.copyTextToClipboard,
 }))
 
 vi.mock("@/hooks/useTheme", () => ({
@@ -85,6 +109,7 @@ vi.mock("@/utils/theme", () => ({
     accent: "green",
   }),
   getThemeVariation: () => null,
+  ...themeUtils,
 }))
 
 vi.mock("@/components/themes/ThemeLayoutSettings", () => ({
@@ -98,6 +123,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
+    success: vi.fn(),
   },
 }))
 
@@ -106,9 +132,18 @@ import { ThemeSelector } from "@/components/themes/ThemeSelector"
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  license.hasPremiumAccess = true
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 function themeCards(): HTMLElement[] {
   return within(screen.getByRole("list", { name: "themes.selector.title" })).getAllByRole("listitem")
@@ -192,5 +227,224 @@ describe("ThemeSelector", () => {
     for (const card of within(catalog).getAllByRole("listitem")) {
       expect(card.textContent).not.toMatch(/premium/i)
     }
+  })
+})
+
+const RED_THEME = "/* @name: Red Alert */\n:root { --background: red; }\n.dark { --background: darkred; }\n"
+
+interface RecordedRequest {
+  method: string
+  path: string
+  body: unknown
+}
+
+function recordCustomThemeApi(respond: (req: RecordedRequest) => Response): RecordedRequest[] {
+  const requests: RecordedRequest[] = []
+  const handler = async ({ request }: { request: Request }) => {
+    const text = await request.text()
+    const recorded = { method: request.method, path: new URL(request.url).pathname, body: text ? JSON.parse(text) : null }
+    requests.push(recorded)
+    return respond(recorded)
+  }
+  server.use(
+    http.post("*/api/themes/custom", handler),
+    http.put("*/api/themes/custom/:id", handler),
+    http.delete("*/api/themes/custom/:id", handler)
+  )
+  return requests
+}
+
+function cssField(): HTMLTextAreaElement {
+  return screen.getByLabelText("themes.custom.editor.css") as HTMLTextAreaElement
+}
+
+function nameField(): HTMLInputElement {
+  return screen.getByLabelText("themes.custom.editor.name") as HTMLInputElement
+}
+
+function openNewTheme() {
+  fireEvent.click(screen.getByRole("button", { name: "themes.custom.newTheme" }))
+}
+
+function saveButton(): HTMLButtonElement {
+  return screen.getByRole("button", { name: "themes.custom.editor.save" }) as HTMLButtonElement
+}
+
+describe("ThemeSelector custom theme editor", () => {
+  it("keeps the box locked without a license, and the text names the editor", () => {
+    license.hasPremiumAccess = false
+    render(<ThemeSelector />)
+
+    expect(screen.queryByRole("button", { name: "themes.custom.newTheme" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "themes.custom.copyPrompt" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "themes.custom.edit" })).toBeNull()
+    expect(screen.getByText("themes.custom.lockedDescription")).toBeTruthy()
+  })
+
+  it("previews pasted CSS, fills the name, and saves a new theme as the selection", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+
+    expect(nameField().value).toBe("Red Alert")
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, {
+      light: { "--background": "red" },
+      dark: { "--background": "darkred" },
+    })
+
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(themeUtils.setTheme).toHaveBeenCalledWith("custom:red-alert"))
+    expect(requests).toEqual([{ method: "POST", path: "/api/themes/custom", body: { id: "red-alert", css: RED_THEME } }])
+    expect(customThemesHook.refreshCustomThemes).toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull())
+  })
+
+  it("writes an edited name into the @name line", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "blood-moon", filename: "blood-moon.css", css: "" }, { status: 201 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(nameField(), { target: { value: "Blood Moon" } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("Red Alert", "Blood Moon") })
+  })
+
+  it("says why qui cannot use CSS without a .dark block and keeps the last good preview", () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(cssField(), { target: { value: ":root { --background: blue; }" } })
+
+    expect(screen.getByText("themes.custom.editor.problems.missingDark")).toBeTruthy()
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything())
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  it("leaves CSS that loads an outside file out of the preview, and Save still asks the server", async () => {
+    const refusal = "The theme can load a file from another website, line 4: url() can only use a data: address or a #fragment"
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ error: refusal }, { status: 400 }))
+    const outside = `${RED_THEME}body { background: url(https://example.invalid/a.png); }\n`
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(cssField(), { target: { value: outside } })
+
+    expect(screen.getByText("themes.custom.editor.problems.outsideFile")).toBeTruthy()
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything())
+
+    fireEvent.click(saveButton())
+    expect((await screen.findByRole("alert")).textContent).toBe(refusal)
+    expect(requests).toHaveLength(1)
+  })
+
+  it("asks before it replaces a theme with the same name, and a yes replaces and selects it", async () => {
+    const requests = recordCustomThemeApi((req) =>
+      req.method === "POST"
+        ? HttpResponse.json({ error: "A custom theme with the id \"red-alert\" exists" }, { status: 409 })
+        : HttpResponse.json({ id: "Red-Alert", filename: "Red-Alert.css", css: RED_THEME }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+
+    const question = await screen.findByRole("alertdialog")
+    expect(within(question).getByText("themes.custom.editor.replaceTitle")).toBeTruthy()
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+
+    fireEvent.click(within(question).getByRole("button", { name: "themes.custom.editor.replace" }))
+
+    await waitFor(() => expect(themeUtils.setTheme).toHaveBeenCalledWith("custom:Red-Alert"))
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "POST /api/themes/custom",
+      "PUT /api/themes/custom/red-alert",
+    ])
+    expect(requests[1].body).toEqual({ css: RED_THEME })
+  })
+
+  it("restores the active theme on Cancel and on Esc", async () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(screen.getByRole("button", { name: "common:actions.cancel" }))
+
+    await waitFor(() => expect(themeUtils.endCustomThemePreview).toHaveBeenCalledTimes(1))
+    expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull()
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.keyDown(cssField(), { key: "Escape" })
+
+    await waitFor(() => expect(themeUtils.endCustomThemePreview).toHaveBeenCalledTimes(2))
+    expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull()
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  it("shows the message of a refused save and keeps the editor open", async () => {
+    const refusal = "The theme can load a file from another website, line 3: url() can only use a data: address or a #fragment"
+    recordCustomThemeApi(() => HttpResponse.json({ error: refusal }, { status: 400 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+
+    expect((await screen.findByRole("alert")).textContent).toBe(refusal)
+    expect(cssField().value).toBe(RED_THEME)
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  it("edits the current file of a custom theme with replace and keeps the selection", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "local", filename: "local.css", css: "" }))
+    const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")
+    customThemesHook.refreshCustomThemes.mockResolvedValueOnce([{ id: "local", filename: "local.css", css: onDisk }])
+    render(<ThemeSelector />)
+
+    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await waitFor(() => expect(cssField().value).toBe(onDisk))
+    expect(nameField().value).toBe("Custom theme")
+
+    const edited = onDisk.replace("linen", "ivory")
+    fireEvent.change(cssField(), { target: { value: edited } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(themeUtils.endCustomThemePreview).toHaveBeenCalled())
+    expect(requests).toEqual([{ method: "PUT", path: "/api/themes/custom/local", body: { css: edited } }])
+    expect(customThemesHook.refreshCustomThemes).toHaveBeenCalled()
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  it("asks before it removes a custom theme, then removes it", async () => {
+    const requests = recordCustomThemeApi(() => new HttpResponse(null, { status: 204 }))
+    render(<ThemeSelector />)
+
+    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.remove" }))
+    const question = await screen.findByRole("alertdialog")
+    expect(requests).toEqual([])
+
+    fireEvent.click(within(question).getByRole("button", { name: "themes.custom.removeConfirm" }))
+
+    await waitFor(() => expect(requests).toEqual([{ method: "DELETE", path: "/api/themes/custom/local", body: null }]))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+  })
+
+  it("copies the AI prompt with the theme areas", async () => {
+    render(<ThemeSelector />)
+
+    fireEvent.click(screen.getByRole("button", { name: "themes.custom.copyPrompt" }))
+
+    await waitFor(() => expect(clipboard.copyTextToClipboard).toHaveBeenCalledTimes(1))
+    expect(clipboard.copyTextToClipboard.mock.calls[0][0]).toContain("[data-qui-area=\"torrent-table\"]")
   })
 })

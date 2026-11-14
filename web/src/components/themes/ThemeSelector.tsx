@@ -15,10 +15,75 @@ import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { buildThemeCatalog, isThemeShown } from "@/lib/theme-catalog"
 import { ThemeLayoutSettings } from "@/components/themes/ThemeLayoutSettings"
-import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff } from "lucide-react"
-import { useId } from "react"
+import { CustomThemeEditor, type CustomThemeEditorTarget } from "@/components/themes/CustomThemeEditor"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
+import { api } from "@/lib/api"
+import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
+import { useDefaultThemeVisit } from "@/lib/default-theme-visit"
+import { buildThemePrompt } from "@/lib/theme-prompt"
+import { copyTextToClipboard } from "@/lib/utils"
+import { refreshCustomThemes } from "@/hooks/useCustomThemes"
+import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff, Plus, Sparkles, Pencil, Trash2, Info } from "lucide-react"
+import { useId, useState } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+
+interface CustomThemeFileRef {
+  id: string
+  label: string
+  css: string
+}
+
+interface CustomThemeActionsProps {
+  file: CustomThemeFileRef
+  describedBy?: string
+  onEdit: (file: CustomThemeFileRef) => void
+  onRemove: (file: CustomThemeFileRef) => void
+}
+
+function CustomThemeActions({ file, describedBy, onEdit, onRemove }: CustomThemeActionsProps) {
+  const { t } = useTranslation("settings")
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="xs"
+        className="h-6"
+        aria-describedby={describedBy}
+        onClick={(e) => {
+          e.stopPropagation()
+          onEdit(file)
+        }}
+      >
+        <Pencil />
+        {t("themes.custom.edit")}
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        className="h-6 text-destructive hover:text-destructive"
+        aria-describedby={describedBy}
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove(file)
+        }}
+      >
+        <Trash2 />
+        {t("themes.custom.remove")}
+      </Button>
+    </div>
+  )
+}
 
 interface ThemeCardProps {
   theme: Theme
@@ -28,9 +93,12 @@ interface ThemeCardProps {
   onSelect: () => void
   onVariationSelect: (themeId: string, variationId: string) => void
   onShownChange: (shown: boolean) => void
+  customFile?: CustomThemeFileRef
+  onEdit: (file: CustomThemeFileRef) => void
+  onRemove: (file: CustomThemeFileRef) => void
 }
 
-function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariationSelect, onShownChange }: ThemeCardProps) {
+function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariationSelect, onShownChange, customFile, onEdit, onRemove }: ThemeCardProps) {
   const { t } = useTranslation("settings")
   const titleId = useId()
   // Get current variation for theme (validated)
@@ -160,6 +228,10 @@ function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariation
               {t(isShown ? "themes.selector.hideTheme" : "themes.selector.showTheme")}
             </Button>
           </div>
+
+          {customFile && (
+            <CustomThemeActions file={customFile} describedBy={titleId} onEdit={onEdit} onRemove={onRemove} />
+          )}
         </CardContent>
       </Card>
     </div>
@@ -181,6 +253,42 @@ export function ThemeSelector() {
   // Subscribe so the picker re-renders when the async theme registry lands.
   const builtins = useBuiltinThemes()
   const [visibility, setThemeShown] = useThemeVisibility()
+  const defaultThemeVisit = useDefaultThemeVisit()
+  const queryClient = useQueryClient()
+  const [editorTarget, setEditorTarget] = useState<CustomThemeEditorTarget | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<CustomThemeFileRef | null>(null)
+
+  const removeTheme = useMutation({
+    mutationFn: (file: CustomThemeFileRef) => api.deleteCustomTheme(file.id),
+    onSuccess: async () => {
+      setRemoveTarget(null)
+      toast.success(t("themes.custom.removed"))
+      await queryClient.invalidateQueries({ queryKey: ["custom-themes"] })
+    },
+    onError: (error) => {
+      toast.error(t("themes.custom.removeFailed", { message: error.message }))
+    },
+  })
+
+  const copyPrompt = async () => {
+    try {
+      await copyTextToClipboard(buildThemePrompt())
+      toast.success(t("themes.custom.promptCopied"))
+    } catch {
+      toast.error(t("themes.custom.promptCopyFailed"))
+    }
+  }
+
+  const customFileOf = (theme: Theme): CustomThemeFileRef | undefined => {
+    if (!theme.isCustom || theme.rawCss === undefined) return undefined
+    const id = theme.id.slice(CUSTOM_THEME_PREFIX.length)
+    return { id, label: theme.name, css: theme.rawCss }
+  }
+  // Edit reads the file again, because it can have changed by hand on the server. A failed read opens the copy of the picker.
+  const editTheme = async (file: CustomThemeFileRef) => {
+    const fresh = await refreshCustomThemes(queryClient).catch(() => [])
+    setEditorTarget({ kind: "edit", id: file.id, css: fresh.find(theme => theme.id === file.id)?.css ?? file.css })
+  }
 
   // The server is the authority: a premium theme without a license arrives as
   // a locked stub with no CSS, so the locked flag is the gate.
@@ -251,6 +359,13 @@ export function ThemeSelector() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 px-4">
+        {defaultThemeVisit && (
+          <p className="flex items-center gap-2 rounded-md border p-3 text-sm">
+            <Info className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {t("themes.selector.defaultThemeVisit")}
+          </p>
+        )}
+
         {isError && !hasPremiumAccess && (
           <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
             <WifiOff className="h-4 w-4 flex-shrink-0" />
@@ -288,6 +403,9 @@ export function ThemeSelector() {
               onSelect={() => handleThemeSelect(theme.id)}
               onVariationSelect={handleVariationSelect}
               onShownChange={(shown) => setThemeShown(theme, shown)}
+              customFile={hasPremiumAccess ? customFileOf(theme) : undefined}
+              onEdit={editTheme}
+              onRemove={setRemoveTarget}
             />
           ))}
         </div>
@@ -342,15 +460,25 @@ export function ThemeSelector() {
                 {t("themes.custom.unlockCta")}
               </Button>
             ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => refetchCustomThemes()}
-                disabled={customThemesFetching}
-              >
-                <RefreshCw className={`mr-1 h-3 w-3 ${customThemesFetching ? "animate-spin" : ""}`} />
-                {t("themes.custom.refresh")}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setEditorTarget({ kind: "new" })}>
+                  <Plus className="mr-1 h-3 w-3" />
+                  {t("themes.custom.newTheme")}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void copyPrompt()}>
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  {t("themes.custom.copyPrompt")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchCustomThemes()}
+                  disabled={customThemesFetching}
+                >
+                  <RefreshCw className={`mr-1 h-3 w-3 ${customThemesFetching ? "animate-spin" : ""}`} />
+                  {t("themes.custom.refresh")}
+                </Button>
+              </div>
             )}
           </div>
 
@@ -360,15 +488,51 @@ export function ThemeSelector() {
                 <AlertTriangle className="h-3 w-3" />
                 {t("themes.custom.parseErrorsTitle")}
               </p>
-              <ul className="list-inside list-disc space-y-0.5 text-xs text-destructive">
+              <ul className="space-y-0.5 text-xs text-destructive">
                 {customThemeErrors.map((error) => (
-                  <li key={error.filename}>{error.filename}</li>
+                  <li key={error.filename} className="flex flex-wrap items-center justify-between gap-1">
+                    <span className="break-all">{error.filename}</span>
+                    <CustomThemeActions file={{ id: error.id, label: error.filename, css: error.css }} onEdit={editTheme} onRemove={setRemoveTarget} />
+                  </li>
                 ))}
               </ul>
             </div>
           )}
         </div>
       </CardContent>
+
+      {editorTarget && (
+        <CustomThemeEditor target={editorTarget} onClose={() => setEditorTarget(null)} />
+      )}
+
+      <AlertDialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !removeTheme.isPending) setRemoveTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("themes.custom.removeTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("themes.custom.removeDescription", { theme: removeTarget?.label ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removeTheme.isPending}>{t("common:actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={removeTheme.isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                if (removeTarget) removeTheme.mutate(removeTarget)
+              }}
+            >
+              {t("themes.custom.removeConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

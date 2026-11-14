@@ -535,7 +535,8 @@
       "locked": "已锁定",
       "lock": "锁定",
       "showTheme": "显示",
-      "hideTheme": "隐藏"
+      "hideTheme": "隐藏",
+      "defaultThemeVisit": "由于地址中包含 ?theme=default，qui 在本次访问中显示默认主题。选择一个主题即可结束。"
     },
     "toasts": {
       "premiumRequired": "需要许可证",
@@ -680,13 +681,44 @@
       "badge": "自定义",
       "title": "自定义主题",
       "lockedTitle": "自定义主题需要许可证",
-      "lockedDescription": "获取许可证即可从磁盘目录加载你自己的主题 CSS 文件。",
+      "lockedDescription": "获取许可证即可添加你自己的主题：在主题编辑器中编写或粘贴主题，或将主题 CSS 文件放入服务器上的文件夹。",
       "unlockCta": "获取许可证",
       "refresh": "刷新",
       "detectedCount": "找到的主题：{{total}}",
       "parseErrorsTitle": "无法解析以下文件：",
       "noneFound": "未找到自定义主题。请将 .css 文件放入主题目录，然后点击刷新。",
-      "loadError": "无法加载自定义主题。请检查服务器日志和主题目录权限。"
+      "loadError": "无法加载自定义主题。请检查服务器日志和主题目录权限。",
+      "newTheme": "新建主题",
+      "copyPrompt": "复制给 AI 的提示词",
+      "promptCopied": "提示词已复制。请将其粘贴到你的 AI 助手中，并描述你想要的外观。",
+      "promptCopyFailed": "无法复制提示词",
+      "edit": "编辑",
+      "remove": "移除",
+      "removeTitle": "要移除此主题吗？",
+      "removeDescription": "qui 将从自定义主题文件夹中删除 {{theme}} 的文件。此操作无法撤销。使用此主题的设备将显示默认主题。",
+      "removeConfirm": "移除",
+      "removed": "主题已移除",
+      "removeFailed": "无法移除主题：{{message}}",
+      "editor": {
+        "newTitle": "新建主题",
+        "editTitle": "编辑主题",
+        "description": "粘贴或编写主题的 CSS。编辑时，此浏览器会显示该主题。点击保存会将主题存储到服务器。",
+        "name": "名称",
+        "css": "CSS",
+        "nameInvalid": "请输入包含字母或数字的名称。",
+        "save": "保存",
+        "saved": "主题已保存",
+        "replaceTitle": "要替换此主题吗？",
+        "replaceDescription": "已存在文件名为 {{filename}} 的自定义主题。要用此主题替换它吗？",
+        "replace": "替换",
+        "problems": {
+          "empty": "粘贴主题的 CSS 以查看预览。",
+          "missingRoot": "qui 无法使用此 CSS：其中没有包含设计令牌的 :root 块。预览显示的是 qui 上次能够使用的 CSS。",
+          "missingDark": "qui 无法使用此 CSS：其中没有包含设计令牌的 .dark 块。预览显示的是 qui 上次能够使用的 CSS。",
+          "outsideFile": "第 {{line}} 行可能让浏览器从其他网站加载文件，因此预览会忽略该行，保存也会拒绝它。url() 只能用于 data: 地址或 #fragment，且不要使用 @import、image-set() 或反斜杠转义。",
+          "unreadable": "qui 无法读取第 {{line}} 行：有引号字符串或 url() 未闭合。预览显示的是 qui 上次能够使用的 CSS。"
+        }
+      }
     },
     "layout": {
       "mobileSplit": "为移动布局使用单独的主题",

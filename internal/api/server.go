@@ -550,8 +550,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			r.With(browserOnly).Route("/license", licenseHandler.Routes)
 
-			// Sideloaded custom themes (premium-gated inside the handler)
+			// Custom themes (premium-gated inside the handler)
 			r.Get("/themes/custom", themesHandler.ListCustomThemes)
+			r.With(settings.Write).Post("/themes/custom", themesHandler.CreateCustomTheme)
+			r.With(settings.Write).Put("/themes/custom/{id}", themesHandler.ReplaceCustomTheme)
+			r.With(settings.Write).Delete("/themes/custom/{id}", themesHandler.DeleteCustomTheme)
 
 			// Persisted theme selection (reads are public above)
 			r.With(settings.Write).Put("/themes/settings", themesHandler.UpdateThemeSettings)

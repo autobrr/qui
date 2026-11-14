@@ -12,6 +12,7 @@ import { useIsAuthed } from "@/hooks/useIsAuthed"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { getThemeById } from "@/config/themes"
+import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
 import { setTheme, type ThemeMode } from "@/utils/theme"
 import type { ThemeSettings, ThemeSlot } from "@/types"
 
@@ -107,7 +108,7 @@ export function useThemeSettingsSync(): void {
   // changes, and when the async theme registry lands, since the id may only
   // resolve from then on.
   useEffect(() => {
-    if (!selection?.themeId) return
+    if (!selection?.themeId || isDefaultThemeVisit()) return
     lastSynced.current = JSON.stringify(selection)
     // Mirror the server selection locally even when it resolves to a locked
     // stub or an unknown id, so the push below never sends a differing local
@@ -132,7 +133,7 @@ export function useThemeSettingsSync(): void {
     const handleThemeChange = (event: Event) => {
       const { theme, mode, isSystemChange, variant } = (event as CustomEvent).detail
       const slot = slotRef.current
-      if (isSystemChange || !slot) return
+      if (isSystemChange || !slot || isDefaultThemeVisit()) return
       // Mode changes during a locked fallback still sync.
       const payload = storedThemeSelection(mode, theme.id, variant)
       const serialized = JSON.stringify(payload)
