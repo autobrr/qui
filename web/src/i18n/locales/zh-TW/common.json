@@ -168,17 +168,26 @@
     "dismiss": "關閉"
   },
   "systemNotice": {
+    "needsAttention": "需要處理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修復",
     "kinds": {
       "recording_stopped": {
+        "short": "記錄已停止",
         "title": "記錄已停止",
-        "fix": "qui 會在下次寫入時重試。請確認磁碟有可用空間，且 qui 可以寫入資料庫檔案。"
+        "effect": "qui 無法寫入傳輸歷史。它會在下次寫入時重試。",
+        "fix": "請確認磁碟有可用空間，且 qui 可以寫入資料庫檔案。",
+        "menuFix": "為資料庫釋放磁碟空間"
       }
     },
     "unknown": {
+      "short": "系統通知",
       "title": "系統通知",
-      "fix": "qui 需要你採取動作。詳情請查看 qui 日誌。"
-    },
-    "cause": "原因：{{cause}}"
+      "effect": "qui 發現了一個需要你處理的故障。",
+      "fix": "詳情請查看 qui 日誌。",
+      "menuFix": "查看 qui 日誌"
+    }
   },
   "pwaUpdate": {
     "reload": "重新載入",

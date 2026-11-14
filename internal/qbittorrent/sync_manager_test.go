@@ -3129,9 +3129,9 @@ func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
 	require.Equal(t, 0, unsupported.Status["tracker_error"])
 }
 
-// A torrent that an empty mapping does not place gets its domain from its
-// primary tracker.
-func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
+// A torrent that an empty mapping does not place gets its domains from the
+// steps after the mapping.
+func TestEmptyAuthoritativeMappingPlacesTorrentsByTheLaterSteps(t *testing.T) {
 	t.Parallel()
 
 	sm := &SyncManager{

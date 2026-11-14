@@ -119,18 +119,22 @@ type trackerURLDomain struct{ domain, url string }
 // trackerResolver gives the Trackers of a torrent from the first step that
 // gives a result:
 //  1. The tracker mapping entry for the torrent, less the tracker exclusions.
-//  2. The primary tracker, if it is not blank and not a pseudo tracker label.
-//  3. Else the entries for the torrent in the tracker list of the sync data,
-//     less the tracker exclusions.
+//  2. The entries for the torrent in the tracker list of the sync data, less
+//     the tracker exclusions, when the torrent has no primary tracker or the
+//     list holds the domain of the primary tracker. The mapping is built from
+//     this list, so a torrent gets the same Trackers before the mapping holds
+//     it. A list without the primary tracker is older than a tracker edit.
+//  3. Else the primary tracker, if it is not blank and not a pseudo tracker
+//     label.
 //  4. Else, with a tracker count of 0, No tracker.
 //
 // A torrent that gets no result is in no tracker row until the next sync.
 type trackerResolver struct {
 	trackerSources
-	// want limits the index of step 3 to some hashes. Nil indexes each hash.
+	// want limits the index of step 2 to some hashes. Nil indexes each hash.
 	want func(hash string) bool
 	// mainDataByHash is the tracker list of the sync data, by torrent. It is
-	// built at the first torrent that needs step 3.
+	// built at the first torrent that needs step 2.
 	mainDataByHash map[string][]trackerURLDomain
 }
 
@@ -138,7 +142,7 @@ func newTrackerResolver(src trackerSources, want func(hash string) bool) *tracke
 	return &trackerResolver{trackerSources: src, want: want}
 }
 
-// mainDataEntries returns the entries of step 3 for hash.
+// mainDataEntries returns the entries of step 2 for hash.
 func (r *trackerResolver) mainDataEntries(hash string) []trackerURLDomain {
 	if r.mainData == nil {
 		return nil
@@ -169,29 +173,41 @@ func (src trackerSources) excluded(domain, hash string) bool {
 	return skip
 }
 
-// needsMainData reports whether step 3 reads the sync data for t.
-func needsMainData(t *qbt.Torrent) bool {
-	primary := strings.TrimSpace(t.Tracker)
-	return primary == "" || IsPseudoTrackerLabel(primary)
+// mapped reports whether step 1 gives a result for hash.
+func (src trackerSources) mapped(hash string) bool {
+	for domain := range src.mapping[hash] {
+		if !src.excluded(domain, hash) {
+			return true
+		}
+	}
+	return false
 }
 
 // fallback runs steps 2 to 4 for a torrent that the mapping does not place. It
 // calls visit for each domain and reports whether the torrent is in No tracker.
 func (r *trackerResolver) fallback(t *qbt.Torrent, visit func(domain, url string)) (noTracker bool) {
-	if !needsMainData(t) {
-		if domain := r.extractDomain(t.Tracker); domain != "" && !r.excluded(domain, t.Hash) {
-			visit(domain, t.Tracker)
+	entries := r.mainDataEntries(t.Hash)
+	visitEntries := func() (found bool) {
+		for _, entry := range entries {
+			if !r.excluded(entry.domain, t.Hash) {
+				found = true
+				visit(entry.domain, entry.url)
+			}
 		}
+		return found
+	}
+	if primary := strings.TrimSpace(t.Tracker); primary == "" || IsPseudoTrackerLabel(primary) {
+		return !visitEntries() && t.TrackersCount == 0
+	}
+	domain := r.extractDomain(t.Tracker)
+	if slices.ContainsFunc(entries, func(e trackerURLDomain) bool { return e.domain == domain }) {
+		visitEntries()
 		return false
 	}
-	found := false
-	for _, entry := range r.mainDataEntries(t.Hash) {
-		if !r.excluded(entry.domain, t.Hash) {
-			found = true
-			visit(entry.domain, entry.url)
-		}
+	if domain != "" && !r.excluded(domain, t.Hash) {
+		visit(domain, t.Tracker)
 	}
-	return !found && t.TrackersCount == 0
+	return false
 }
 
 // inAny reports whether one of the Trackers of t is in set. The key "" is No
@@ -293,7 +309,19 @@ func newTorrentListRule(filters FilterOptions, health *TrackerHealthSnapshot, us
 	}
 
 	if hasTrackerFilter(filters) {
-		r.tracker = newTrackerResolver(trackers, nil)
+		var want func(hash string) bool
+		switch {
+		case trackers.mapping == nil:
+		case len(trackers.exclusions) == 0:
+			// The mapping holds no hash with an empty set of domains.
+			want = func(hash string) bool {
+				_, ok := trackers.mapping[hash]
+				return !ok
+			}
+		default:
+			want = func(hash string) bool { return !trackers.mapped(hash) }
+		}
+		r.tracker = newTrackerResolver(trackers, want)
 	}
 	return r
 }
@@ -527,16 +555,21 @@ func countTrackers(in torrentCountsInput, result *torrentCountsResult) {
 func resolveTrackers(in torrentCountsInput, visit func(i int, domain, url string), noTracker func(i int)) {
 	torrents := in.torrents
 	placed := placeMappedTorrents(in, func(domain string, i int) { visit(i, domain, "") })
-	need := make(map[string]struct{})
-	for i := range torrents {
-		if !placed[i] && needsMainData(torrents[i]) {
-			need[torrents[i].Hash] = struct{}{}
+	// Without a mapping, no torrent is placed, so each hash is needed.
+	var want func(hash string) bool
+	if in.domainToHashes != nil {
+		need := make(map[string]struct{})
+		for i := range torrents {
+			if !placed[i] {
+				need[torrents[i].Hash] = struct{}{}
+			}
+		}
+		want = func(hash string) bool {
+			_, ok := need[hash]
+			return ok
 		}
 	}
-	resolver := newTrackerResolver(in.trackers, func(hash string) bool {
-		_, ok := need[hash]
-		return ok
-	})
+	resolver := newTrackerResolver(in.trackers, want)
 	for i := range torrents {
 		if placed[i] {
 			continue

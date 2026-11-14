@@ -428,3 +428,47 @@ func TestTrackerGroupsDoNotDeduplicateEmptyContentPath(t *testing.T) {
 		{Kind: trackergroup.Domain, Name: "a.example.invalid"}: {Count: 2, Uploaded: 110, TotalSize: 330},
 	}, groups)
 }
+
+// regression: #4100
+func TestTrackerFilterFindsATorrentThatTheMappingDoesNotHoldUnderEachDomain(t *testing.T) {
+	t.Parallel()
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash-mapped", Tracker: "https://alpha.example/announce", TrackersCount: 1},
+		{Hash: "hash-new", Tracker: "https://charlie.example/announce", TrackersCount: 2},
+		{Hash: "hash-edited", Tracker: "https://charlie.example/announce", TrackersCount: 2},
+	}
+	mainData := &qbt.MainData{Trackers: map[string][]string{
+		"https://alpha.example/announce":   {"hash-mapped", "hash-new", "hash-edited"},
+		"https://charlie.example/announce": {"hash-new", "hash-edited"},
+	}}
+	mapping := func() *ValidatedTrackerMapping {
+		return &ValidatedTrackerMapping{
+			HashToDomains:  map[string]map[string]struct{}{"hash-mapped": {"alpha.example": {}}, "hash-edited": {"old.example": {}}},
+			DomainToHashes: map[string]map[string]struct{}{"alpha.example": {"hash-mapped": {}}, "old.example": {"hash-edited": {}}},
+		}
+	}
+	hashes := func(rows []qbt.Torrent) []string {
+		out := make([]string, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, row.Hash)
+		}
+		return out
+	}
+	filter := FilterOptions{Trackers: []string{"alpha.example"}}
+
+	t.Run("no tracker exclusions", func(t *testing.T) {
+		t.Parallel()
+		sm := &SyncManager{validatedTrackerMapping: map[int]*ValidatedTrackerMapping{7: mapping()}}
+		rows := listRows(sm, &Client{instanceID: 7}, torrents, filter, mainData, false, nil)
+		require.Equal(t, []string{"hash-mapped", "hash-new"}, hashes(rows))
+	})
+
+	t.Run("the mapping holds a torrent only under an excluded domain", func(t *testing.T) {
+		t.Parallel()
+		sm := &SyncManager{validatedTrackerMapping: map[int]*ValidatedTrackerMapping{7: mapping()}}
+		client := &Client{instanceID: 7, trackerExclusions: map[string]map[string]struct{}{"old.example": {"hash-edited": {}}}}
+		rows := listRows(sm, client, torrents, filter, mainData, false, nil)
+		require.Equal(t, []string{"hash-mapped", "hash-new", "hash-edited"}, hashes(rows))
+	})
+}

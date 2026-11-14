@@ -168,17 +168,26 @@
     "dismiss": "Dismiss"
   },
   "systemNotice": {
+    "needsAttention": "Needs attention",
+    "since": "Since {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Go to the fix",
     "kinds": {
       "recording_stopped": {
+        "short": "Recording stopped",
         "title": "Recording stopped",
-        "fix": "qui tries again at the next write. Make sure that the disk has free space and that qui can write its database file."
+        "effect": "qui cannot write the transfer history. It tries again at the next write.",
+        "fix": "Make sure that the disk has free space and that qui can write its database file.",
+        "menuFix": "Free disk space for the database"
       }
     },
     "unknown": {
+      "short": "System notice",
       "title": "System notice",
-      "fix": "qui needs an action from you. The qui log has the details."
-    },
-    "cause": "Cause: {{cause}}"
+      "effect": "qui found a fault that needs an action from you.",
+      "fix": "The qui log has the details.",
+      "menuFix": "Read the qui log"
+    }
   },
   "pwaUpdate": {
     "reload": "Reload",
