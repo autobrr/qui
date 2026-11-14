@@ -27,6 +27,9 @@ const (
 	RecordingStopped Kind = "recording_stopped"
 	// ShrinkFailed opens when the shrink of the database file at startup fails.
 	ShrinkFailed Kind = "shrink_failed"
+	// LowDisk opens on SQLite when the disk of the database file has little
+	// free space.
+	LowDisk Kind = "low_disk"
 )
 
 type Severity string
@@ -66,6 +69,14 @@ var definitions = map[Kind]definition{
 			"locked":    "Another program held the database file. Stop the other program, for example a backup tool or a database viewer, then try again. The database did not change.",
 		},
 	},
+	LowDisk: {
+		severity:    SeverityWarning,
+		title:       "Low disk",
+		dismissible: true,
+		fixes: map[string]string{
+			"": "The disk of the qui database has little free space. When the disk is full, each write of qui fails. Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.",
+		},
+	},
 }
 
 const notifyTimeout = 10 * time.Second
@@ -83,14 +94,15 @@ type Notice struct {
 type Module struct {
 	notifier notifications.Notifier
 
-	mu   sync.Mutex
-	open map[Kind]Notice
+	mu        sync.Mutex
+	open      map[Kind]Notice
+	onDismiss map[Kind]func(context.Context) error
 }
 
 // New returns a module with no open notice. It sends each notice that opens
 // to notifier.
 func New(notifier notifications.Notifier) *Module {
-	return &Module{notifier: notifier, open: make(map[Kind]Notice)}
+	return &Module{notifier: notifier, open: make(map[Kind]Notice), onDismiss: make(map[Kind]func(context.Context) error)}
 }
 
 // Open opens the notice of kind with its cause. A notice that is already open
@@ -123,11 +135,35 @@ func (m *Module) Close(kind Kind) {
 	delete(m.open, kind)
 }
 
+// IsOpen reports whether the notice of kind is open.
+func (m *Module) IsOpen(kind Kind) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, isOpen := m.open[kind]
+	return isOpen
+}
+
+// OnDismiss sets fn to run when the user dismisses the notice of kind. When fn
+// returns an error, the notice stays open and Dismiss returns that error.
+func (m *Module) OnDismiss(kind Kind, fn func(context.Context) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onDismiss[kind] = fn
+}
+
 // Dismiss closes the notice of kind for the user. It returns
 // ErrNotDismissible for a kind that closes itself.
-func (m *Module) Dismiss(kind Kind) error {
+func (m *Module) Dismiss(ctx context.Context, kind Kind) error {
 	if !definitions[kind].dismissible {
 		return ErrNotDismissible
+	}
+	m.mu.Lock()
+	fn := m.onDismiss[kind]
+	m.mu.Unlock()
+	if fn != nil {
+		if err := fn(ctx); err != nil {
+			return err
+		}
 	}
 	m.Close(kind)
 	return nil
