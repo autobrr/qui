@@ -187,8 +187,12 @@ export function Statistics() {
   }, [shown.chart, shown.period, since])
 
   const libraryPoints = useMemo(
-    () => shown.library && buildLibraryPoints(shown.library, shown.period, selected.map(status => activeIds.has(status.instanceId))),
-    [shown.library, shown.period, selected, activeIds]
+    () => shown.library && buildLibraryPoints(shown.library, shown.period, selected.map(status => ({
+      firstRecordedAt: status.firstRecordedAt,
+      // Until the instances load, each instance counts as recorded, so that a sum never leaves one out.
+      recording: instancesQuery.data === undefined || activeIds.has(status.instanceId),
+    }))),
+    [shown.library, shown.period, selected, activeIds, instancesQuery.data]
   )
   const unique = libraryPoints && newestUniqueSize(libraryPoints)
   const newestCount = [...libraryPoints ?? []].reverse().find(point => point.torrents !== null)?.torrents ?? undefined

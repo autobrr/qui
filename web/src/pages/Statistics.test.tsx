@@ -849,6 +849,23 @@ describe("Statistics", () => {
     await expectTile("tiles.unique", "4 KiB | tiles.uniqueTotal size=4 KiB")
   })
 
+  it("leaves a gap, not a zero, after the last row of a removed instance", async () => {
+    configuredIds = []
+    statuses = [recordedDaysAgo(1, "Old box", 400)]
+    libraryAnswer = () => [libraryRow(3, { torrents: 1, totalSize: 4096, uniqueSize: 2048 }), libraryRow(2, { torrents: 1, totalSize: 4096, uniqueSize: 2048 })]
+    renderPage()
+
+    expect(await growthPoints()).toEqual([[1, 4096, 2048], [1, 4096, 2048], [null, null, null], [null, null, null]])
+    await expectTile("tiles.unique", "2 KiB | tiles.uniqueTotal size=4 KiB")
+  })
+
+  it("leaves a gap on each day when an instance that qui records has no row in the period", async () => {
+    libraryAnswer = instanceId => instanceId === 1 ? [libraryRow(1, { torrents: 1, totalSize: 4096, uniqueSize: 2048 }), libraryRow(0, { torrents: 1, totalSize: 4096, uniqueSize: 2048 })] : []
+    renderPage()
+
+    expect(await growthPoints()).toEqual([[null, null, null], [null, null, null]])
+  })
+
   it("says that the period has no Unique size before the first Copy groups build", async () => {
     libraryAnswer = () => [libraryRow(0, { torrents: 1, totalSize: 4096 })]
     renderPage()
