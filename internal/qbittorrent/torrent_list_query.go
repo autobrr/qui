@@ -310,7 +310,15 @@ func newTorrentListRule(filters FilterOptions, health *TrackerHealthSnapshot, us
 
 	if hasTrackerFilter(filters) {
 		var want func(hash string) bool
-		if trackers.mapping != nil {
+		switch {
+		case trackers.mapping == nil:
+		case len(trackers.exclusions) == 0:
+			// The mapping holds no hash with an empty set of domains.
+			want = func(hash string) bool {
+				_, ok := trackers.mapping[hash]
+				return !ok
+			}
+		default:
 			want = func(hash string) bool { return !trackers.mapped(hash) }
 		}
 		r.tracker = newTrackerResolver(trackers, want)
