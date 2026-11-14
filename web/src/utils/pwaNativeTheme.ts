@@ -4,6 +4,7 @@
  */
 
 import { converter, formatHex } from "culori"
+import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
 
 /**
  * Converts OKLCH color string to hex using proper culori library
@@ -106,7 +107,8 @@ export function initializePWANativeTheme(): void {
       // `theme.ts` writes `theme-critical-vars` on theme application.
       let backgroundColor = ""
       try {
-        const criticalVarsRaw = localStorage.getItem("theme-critical-vars")
+        // A default theme visit paints without updating this cache, so it holds the stored theme.
+        const criticalVarsRaw = isDefaultThemeVisit() ? null : localStorage.getItem("theme-critical-vars")
         if (criticalVarsRaw) {
           const criticalVars = JSON.parse(criticalVarsRaw) as { background?: string }
           backgroundColor = (criticalVars.background || "").trim()

@@ -54,7 +54,7 @@ describe("parseCustomThemes", () => {
 
     expect(themes).toHaveLength(1)
     expect(themes[0].id).toBe(`${CUSTOM_THEME_PREFIX}ocean`)
-    expect(errors).toEqual([{ filename: "broken.css" }])
+    expect(errors).toEqual([{ id: "broken", filename: "broken.css", css: invalidCss }])
   })
 
   it("falls back to a default name when @name is absent", () => {
@@ -98,6 +98,7 @@ describe("decideCustomThemeAction", () => {
     storedThemeId: null,
     themes: [],
     appliedCustomCss: null,
+    defaultThemeVisit: false,
   }
 
   it("does nothing while the license check is loading or errored", () => {
@@ -159,5 +160,28 @@ describe("decideCustomThemeAction", () => {
         appliedCustomCss: ocean.rawCss!,
       })
     ).toBe("register")
+  })
+})
+
+describe("decideCustomThemeAction during a default theme visit", () => {
+  const visit: CustomThemeDecisionInput = {
+    isLoading: false,
+    isError: false,
+    hasPremiumAccess: true,
+    hasData: true,
+    storedThemeId: "custom:gone",
+    themes: [],
+    appliedCustomCss: null,
+    defaultThemeVisit: true,
+  }
+
+  it("registers the list without a downgrade or a re-apply", () => {
+    expect(decideCustomThemeAction(visit)).toBe("register")
+    expect(decideCustomThemeAction({ ...visit, defaultThemeVisit: false })).toBe("register-and-downgrade")
+  })
+
+  it("clears without a downgrade when the license is missing", () => {
+    expect(decideCustomThemeAction({ ...visit, hasPremiumAccess: false })).toBe("clear")
+    expect(decideCustomThemeAction({ ...visit, hasPremiumAccess: false, defaultThemeVisit: false })).toBe("clear-and-downgrade")
   })
 })

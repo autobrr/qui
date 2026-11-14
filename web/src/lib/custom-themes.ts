@@ -16,7 +16,9 @@ export interface CustomThemeFile {
 }
 
 export interface CustomThemeParseError {
+  id: string
   filename: string
+  css: string
 }
 
 export interface ParsedCustomThemes {
@@ -37,7 +39,7 @@ export function parseCustomThemes(files: CustomThemeFile[]): ParsedCustomThemes 
   for (const file of files) {
     const result = parseThemeCSS(file.css)
     if (!result) {
-      errors.push({ filename: file.filename })
+      errors.push({ id: file.id, filename: file.filename, css: file.css })
       continue
     }
     themes.push({
@@ -83,23 +85,25 @@ export interface CustomThemeDecisionInput {
   themes: Theme[]
   /** Raw CSS currently injected for the active custom theme, or null. */
   appliedCustomCss: string | null
+  /** A default theme visit (`?theme=default`) applies and stores no selection. */
+  defaultThemeVisit: boolean
 }
 
 export function decideCustomThemeAction(input: CustomThemeDecisionInput): CustomThemeAction {
-  const { isLoading, isError, hasPremiumAccess, hasData, storedThemeId, themes, appliedCustomCss } = input
+  const { isLoading, isError, hasPremiumAccess, hasData, storedThemeId, themes, appliedCustomCss, defaultThemeVisit } = input
 
   // While the license check is in flight or errored, leave state untouched -
   // downgrading here would clobber a premium user's selection before it resolves.
   if (isLoading || isError) return "noop"
 
   if (!hasPremiumAccess) {
-    return isCustomThemeId(storedThemeId) ? "clear-and-downgrade" : "clear"
+    return isCustomThemeId(storedThemeId) && !defaultThemeVisit ? "clear-and-downgrade" : "clear"
   }
 
   // Premium, but the custom-themes list hasn't loaded yet.
   if (!hasData) return "noop"
 
-  if (!isCustomThemeId(storedThemeId)) return "register"
+  if (defaultThemeVisit || !isCustomThemeId(storedThemeId)) return "register"
 
   const active = themes.find(theme => theme.id === storedThemeId)
   if (!active) return "register-and-downgrade"

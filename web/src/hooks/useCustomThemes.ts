@@ -4,17 +4,32 @@
  */
 
 import { useEffect, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, type QueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { parseCustomThemes, decideCustomThemeAction, type ParsedCustomThemes } from "@/lib/custom-themes"
 import { registerCustomThemes, getDefaultTheme } from "@/config/themes"
 import { setTheme, getAppliedCustomThemeCss } from "@/utils/theme"
+import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
+import type { CustomThemeFile } from "@/lib/custom-themes"
 
 const EMPTY: ParsedCustomThemes = { themes: [], errors: [] }
+const CUSTOM_THEMES_KEY = ["custom-themes"]
 
 /**
- * Loads sideloaded custom themes (premium-gated). It fetches the directory
+ * Loads the custom themes again and registers them at once, so a theme saved a
+ * moment ago resolves before the next render.
+ */
+export async function refreshCustomThemes(queryClient: QueryClient): Promise<CustomThemeFile[]> {
+  // A list request that started before a write can miss it, so it does not answer this one.
+  await queryClient.cancelQueries({ queryKey: CUSTOM_THEMES_KEY })
+  const data = await queryClient.fetchQuery({ queryKey: CUSTOM_THEMES_KEY, queryFn: () => api.getCustomThemes(), staleTime: 0 })
+  registerCustomThemes(parseCustomThemes(data.themes).themes)
+  return data.themes
+}
+
+/**
+ * Loads the custom themes (premium-gated). It fetches the directory
  * listing only when the user has premium access, parses each file with the
  * shared theme parser, registers the results so they resolve in the picker,
  * and re-applies / downgrades the stored selection as the registry changes.
@@ -23,7 +38,7 @@ export function useCustomThemes() {
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
 
   const query = useQuery({
-    queryKey: ["custom-themes"],
+    queryKey: CUSTOM_THEMES_KEY,
     queryFn: () => api.getCustomThemes(),
     enabled: hasPremiumAccess,
     staleTime: 5 * 60 * 1000,
@@ -47,6 +62,7 @@ export function useCustomThemes() {
       storedThemeId,
       themes: parsed.themes,
       appliedCustomCss: getAppliedCustomThemeCss(),
+      defaultThemeVisit: isDefaultThemeVisit(),
     })
 
     switch (action) {

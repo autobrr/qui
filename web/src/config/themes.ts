@@ -4,6 +4,7 @@
  */
 
 import { FALLBACK_THEME } from "@/utils/themeLoader";
+import { isDefaultThemeVisit } from "@/lib/default-theme-visit";
 
 export interface Theme {
   id: string;
@@ -40,6 +41,7 @@ export function parseCachedTheme(raw: string | null): Theme | null {
 }
 
 function hydrateCachedTheme(): Theme[] {
+  if (isDefaultThemeVisit()) return [];
   try {
     const cached = parseCachedTheme(localStorage.getItem("theme-cache"));
     return cached ? [cached] : [];

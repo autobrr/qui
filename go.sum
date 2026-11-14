@@ -27,10 +27,6 @@ github.com/autobrr/go-qbittorrent v1.19.1-0.20261112163254-c559a2a43556 h1:o+XVT
 github.com/autobrr/go-qbittorrent v1.19.1-0.20261112163254-c559a2a43556/go.mod h1:aye48eKGobQZ4CWipVTwlhZ5AHdIhvIyaHYT80xP/KA=
 github.com/autobrr/go-torrent v1.1.1 h1:Vc5R3QGZlmAEoEyEYqT2B9j/CX7to82GzFlHhXbphCw=
 github.com/autobrr/go-torrent v1.1.1/go.mod h1:MNqAUt4SVvZTVyVSD3iQHXgi+ARVM3Z6dY0aTvXTnvY=
-github.com/autobrr/rls v0.10.1-0.20261113171516-c9ee0a124e72 h1:9Yi1SqOcklzA8dG8IyEGLW5FBhvaCiuY0ng7v32UQ5o=
-github.com/autobrr/rls v0.10.1-0.20261113171516-c9ee0a124e72/go.mod h1:y8kqxXKH+n61TVBw9bg5qgsf0py2R8K+1f77lNUGkTY=
-github.com/autobrr/rls v0.11.0 h1:LlYzVV50F6pugKIneVs7piqwrjN33/ftS6H76DJXlmY=
-github.com/autobrr/rls v0.11.0/go.mod h1:y8kqxXKH+n61TVBw9bg5qgsf0py2R8K+1f77lNUGkTY=
 github.com/autobrr/rls v0.11.1-0.20261113231303-fca00698a352 h1:LuOmOhXZzKj2o85dj2IjajwXMm3fNBQjsCjLKsOdhDE=
 github.com/autobrr/rls v0.11.1-0.20261113231303-fca00698a352/go.mod h1:y8kqxXKH+n61TVBw9bg5qgsf0py2R8K+1f77lNUGkTY=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
@@ -199,6 +195,10 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8=
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
+github.com/tdewolff/parse/v2 v2.8.20 h1:eU+UStwuoeHnXdaSBIoEfNnj33URx24gJDdNViHHYwM=
+github.com/tdewolff/parse/v2 v2.8.20/go.mod h1:OemXEPll2+Sn7pQ6xFxC9cEm1wDnNt1hC2q3jIh+OoI=
+github.com/tdewolff/test v1.0.12 h1:7F21DqIajswxuche0geHdrUZRCWE4oko4b7bcmkkrxk=
+github.com/tdewolff/test v1.0.12/go.mod h1:XPuWBzvdUzhCuxWO1ojpXsyzsA5bFoS3tO/Q3kFuTG8=
 github.com/tmaxmax/go-sse v0.11.0 h1:nogmJM6rJUoOLoAwEKeQe5XlVpt9l7N82SS1jI7lWFg=
 github.com/tmaxmax/go-sse v0.11.0/go.mod h1:u/2kZQR1tyngo1lKaNCj1mJmhXGZWS1Zs5yiSOD+Eg8=
 github.com/ulikunitz/xz v0.5.11/go.mod h1:nbz6k7qbPmH4IRqmfOplQw/tblSgqTqBwxkY0oWt/14=

@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker } from "@/lib/incognito"
 import { formatSpeedWithUnit } from "@/lib/speedUnits"
 import { getRowBackgroundClass, getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { themeArea } from "@/lib/theme-areas"
 import { extractTrackerHost, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
@@ -92,6 +93,7 @@ export function CompactRow({
   // Compact view
   return (
     <div
+      {...themeArea("torrent-row")}
       className={cn(
         "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
         groupAccentClass,

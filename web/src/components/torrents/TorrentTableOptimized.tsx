@@ -116,6 +116,7 @@ import { GroupCopiesToolbar } from "./table/GroupCopiesToolbar"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
+import { themeArea } from "@/lib/theme-areas"
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_SIZING = {}
@@ -1173,6 +1174,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
           <TorrentDropZone
             ref={parentRef}
+            {...themeArea("torrent-table")}
             className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
             role="grid"
             aria-label={t("tableView.tableAriaLabel")}

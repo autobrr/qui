@@ -240,6 +240,26 @@ func TestPermissionLevels(t *testing.T) {
 	})
 }
 
+func TestCustomThemeWritesNeedSettingsWrite(t *testing.T) {
+	rig := newPermissionRig(t)
+	readKey := rig.key(t, models.Permission{Area: models.AreaSettings, Level: models.LevelRead})
+	writeKey := rig.key(t, models.Permission{Area: models.AreaSettings, Level: models.LevelWrite})
+
+	for _, route := range []string{
+		"POST /api/themes/custom",
+		"PUT /api/themes/custom/ocean",
+		"DELETE /api/themes/custom/ocean",
+	} {
+		method, path, _ := strings.Cut(route, " ")
+		status, body := rig.send(t, method, path, readKey, nil)
+		require.Equal(t, http.StatusForbidden, status, route)
+		require.Equal(t, "API key needs Settings: write\n", body, route)
+
+		_, body = rig.send(t, method, path, writeKey, nil)
+		require.False(t, strings.HasPrefix(body, needsPermissionPrefix), "%s: %q", route, body)
+	}
+}
+
 func TestFilesWithPasskeysNeedWrite(t *testing.T) {
 	rig := newPermissionRig(t)
 	key := rig.key(t,

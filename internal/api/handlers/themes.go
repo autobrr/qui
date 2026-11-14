@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 
@@ -22,7 +23,7 @@ import (
 )
 
 const (
-	// maxCustomThemeFileSize caps the size of a single sideloaded theme file.
+	// maxCustomThemeFileSize caps the size of a single custom theme file.
 	maxCustomThemeFileSize = 1 << 20 // 1 MiB
 	// maxCustomThemeFiles caps how many theme files are scanned/returned.
 	maxCustomThemeFiles = 100
@@ -61,6 +62,9 @@ type ThemesHandler struct {
 	// activity signals stored-selection changes so open tabs refetch instead
 	// of polling.
 	activity activity.Publisher
+	// customThemeWrites serializes create, replace, and remove, so two creates
+	// of one id cannot both pass the existence check and the file limit.
+	customThemeWrites sync.Mutex
 }
 
 func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker, settings themeSettingsStore, authed func(context.Context) bool, publisher activity.Publisher) *ThemesHandler {
@@ -70,7 +74,7 @@ func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker, setti
 	return &ThemesHandler{themesDir: themesDir, premium: premium, settings: settings, authed: authed, activity: publisher}
 }
 
-// CustomTheme is a single sideloaded theme file and its raw CSS contents.
+// CustomTheme is a single custom theme file and its raw CSS contents.
 type CustomTheme struct {
 	ID       string `json:"id"`
 	Filename string `json:"filename"`
@@ -83,69 +87,71 @@ type CustomThemesResponse struct {
 	Themes    []CustomTheme `json:"themes"`
 }
 
-// ListCustomThemes returns the sideloaded custom theme CSS files and their
+// ListCustomThemes returns the custom theme CSS files and their
 // contents. It is premium-gated: callers without an active premium-access
 // license receive 403. The directory is scanned fresh on every request so
 // edits are picked up without a restart.
 func (h *ThemesHandler) ListCustomThemes(w http.ResponseWriter, r *http.Request) {
-	hasPremium, err := h.premium.HasPremiumAccess(r.Context())
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to check premium access for custom themes")
-		RespondError(w, http.StatusInternalServerError, "Failed to check premium access")
+	if !h.requirePremium(w, r) {
 		return
 	}
-	if !hasPremium {
-		RespondError(w, http.StatusForbidden, "Premium access required")
-		return
-	}
-
-	themes := make([]CustomTheme, 0)
 
 	dir, err := h.themesDir.EnsureCustomThemesDir()
 	if err != nil {
 		// Non-fatal: report the resolved directory with an empty list rather
 		// than failing the request (e.g. an unwritable user-supplied override).
 		log.Warn().Err(err).Str("dir", dir).Msg("Custom themes directory unavailable")
-		RespondJSON(w, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: themes})
+		RespondJSON(w, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: []CustomTheme{}})
 		return
 	}
 
-	entries, err := os.ReadDir(dir)
+	entries, err := customThemeEntries(dir)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			RespondJSON(w, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: themes})
-			return
-		}
 		log.Error().Err(err).Str("dir", dir).Msg("Failed to read custom themes directory")
 		RespondError(w, http.StatusInternalServerError, "Failed to read themes directory")
 		return
 	}
 
+	themes := make([]CustomTheme, 0)
 	for _, entry := range entries {
 		if len(themes) >= maxCustomThemeFiles {
 			break
 		}
-		// Regular files only: skips subdirectories AND symlinks in one check,
-		// so a symlink pointing outside the themes directory is never read.
-		if !entry.Type().IsRegular() {
-			continue
-		}
 		name := entry.Name()
-		if !strings.EqualFold(filepath.Ext(name), ".css") {
-			continue
-		}
 		css, ok := readCustomThemeCSS(filepath.Join(dir, name))
 		if !ok {
 			continue
 		}
 		themes = append(themes, CustomTheme{
-			ID:       strings.TrimSuffix(name, filepath.Ext(name)),
+			ID:       customThemeID(name),
 			Filename: name,
 			CSS:      string(css),
 		})
 	}
 
 	RespondJSON(w, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: themes})
+}
+
+// customThemeEntries returns the theme files of dir in directory order: regular
+// .css files only. That one check skips subdirectories and symlinks, so a
+// symlink that points outside the directory is never read or written.
+func customThemeEntries(dir string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return slices.DeleteFunc(entries, func(entry os.DirEntry) bool { return !isCustomThemeFile(entry) }), nil
+}
+
+func isCustomThemeFile(entry os.DirEntry) bool {
+	return entry.Type().IsRegular() && strings.EqualFold(filepath.Ext(entry.Name()), ".css")
+}
+
+func customThemeID(filename string) string {
+	return strings.TrimSuffix(filename, filepath.Ext(filename))
 }
 
 func readCustomThemeCSS(path string) ([]byte, bool) {

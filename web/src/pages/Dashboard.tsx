@@ -57,6 +57,7 @@ import {
   shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
 import { TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
+import { themeArea } from "@/lib/theme-areas"
 import { cn, formatBytes, formatBytesOrFallback, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
@@ -826,7 +827,7 @@ function InstanceCard({
   // Unified return statement
   return (
     <>
-      <Card className="hover:shadow-lg transition-shadow">
+      <Card {...themeArea("dashboard-card")} className="hover:shadow-lg transition-shadow">
         <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} grid-cols-[minmax(0,1fr)] overflow-hidden`}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 w-full">
             <Link
@@ -1190,7 +1191,7 @@ function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
 
   return (
-    <Card className="sm:hidden px-4 py-3">
+    <Card {...themeArea("dashboard-card")} className="sm:hidden px-4 py-3">
       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
         {[
           { Icon: HardDrive, label: t("mobileOverview.instances"), value: `${globalStats.connected}/${globalStats.total}`, caption: t("mobileOverview.connected") },
@@ -1222,7 +1223,7 @@ function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
 
   return (
     <>
-      <Card>
+      <Card {...themeArea("dashboard-card")}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">{t("globalStats.instances")}</CardTitle>
           <HardDrive className="h-4 w-4 text-muted-foreground" />
@@ -1235,7 +1236,7 @@ function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card {...themeArea("dashboard-card")}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">{t("globalStats.totalTorrents")}</CardTitle>
           <Activity className="h-4 w-4 text-muted-foreground" />
@@ -1249,7 +1250,7 @@ function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card {...themeArea("dashboard-card")}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">{t("globalStats.totalDownload")}</CardTitle>
           <Download className="h-4 w-4 text-muted-foreground" />
@@ -1262,7 +1263,7 @@ function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card {...themeArea("dashboard-card")}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">{t("globalStats.totalUpload")}</CardTitle>
           <Upload className="h-4 w-4 text-muted-foreground" />
@@ -1767,7 +1768,7 @@ export function Dashboard() {
               })}
             </>
           ) : (
-            <Card className="p-8 text-center">
+            <Card {...themeArea("dashboard-card")} className="p-8 text-center">
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold">{t("emptyState.allDisabled")}</h3>
                 <p className="text-muted-foreground">
@@ -1783,7 +1784,7 @@ export function Dashboard() {
           )}
         </div>
       ) : (
-        <Card className="p-8 sm:p-12 text-center">
+        <Card {...themeArea("dashboard-card")} className="p-8 sm:p-12 text-center">
           <div className="space-y-4">
             <HardDrive className="h-12 w-12 mx-auto text-muted-foreground" />
             <div>

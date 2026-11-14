@@ -77,7 +77,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Theme slot**: One stored theme selection (theme, mode, variation) on the server. There is a default slot and an optional mobile slot. A theme that a browser keeps local is not a slot, because it never reaches the server.
 - **Free theme**: A theme that qui ships from its own repo. It needs no license.
 - **Community theme**: A theme from the `autobrr/qui-community-themes` repo. qui ships it built in, and it needs the license. _Avoid_: premium theme, user theme.
-- **Custom theme**: A theme that comes from a `.css` file in the custom themes folder on the server. It needs the license. _Avoid_: sideloaded theme.
+- **Custom theme**: A theme that comes from a `.css` file in the custom themes folder on the server. The user puts the file there by hand, or saves it from Settings → Themes or through the API. It needs the license. _Avoid_: sideloaded theme.
+- **Theme area**: A part of the UI with a fixed name that a custom theme can style, for example the torrent table. qui keeps the name across releases. _Avoid_: hook, selector.
+- **Theme preview**: A custom theme that one browser shows before the user saves it. It reaches no theme slot and no other browser, and a page reload ends it.
+- **Default theme visit**: A page visit that opens with `?theme=default` in the address. qui shows the default theme until the next page load without the parameter, and it reads and writes no theme slot and no theme cache in the browser. A theme selection in a picker ends it. _Avoid_: safe mode.
 - **Hidden theme**: A theme that the quick theme pickers do not show. A community theme starts hidden, unless qui showed it before it became a community theme. The user shows or hides a theme in Settings → Themes. _Avoid_: disabled theme.
 
 ## Client settings

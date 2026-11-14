@@ -46,6 +46,7 @@ import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getIncognitoCategories, getIncognitoTags, getIncognitoTrackers, getLinuxCount, useIncognitoMode } from "@/lib/incognito"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { TRACKER_HEALTH_DISPLAY } from "@/lib/torrent-table/row-display"
+import { themeArea } from "@/lib/theme-areas"
 import { cn, formatBytes, takeTurns } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -1836,7 +1837,7 @@ const FilterSidebarComponent = ({
 
   if (isConcreteInstanceScope && !isInstanceActive) {
     return (
-      <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
+      <div {...themeArea("filter-sidebar")} className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
         {t("filterSidebar.instanceDisabled")}
       </div>
     )
@@ -1848,6 +1849,7 @@ const FilterSidebarComponent = ({
 
   return (
     <div
+      {...themeArea("filter-sidebar")}
       className={`${className} h-full w-full ${sidebarMaxWidth} flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 ${
         isStaleData ? "opacity-75 transition-opacity duration-200" : ""
       }`}
