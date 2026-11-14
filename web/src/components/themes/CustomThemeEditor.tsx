@@ -136,7 +136,13 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
   useEffect(() => {
     if (previewProblem) return
     // A default theme visit is for repair, and the saved CSS can hide the page, so only a change previews.
-    if (isDefaultThemeVisit() && previewCss === openedCss.current) return
+    if (isDefaultThemeVisit() && previewCss === openedCss.current) {
+      if (shown.current) {
+        shown.current = null
+        void endCustomThemePreview()
+      }
+      return
+    }
     const parsed = parseThemeCSS(previewCss)
     if (!parsed) return
     shown.current = { css: previewCss, cssVars: parsed.cssVars, lightOnly: parsed.metadata.lightOnly === true }

@@ -424,6 +424,11 @@ describe("ThemeSelector custom theme editor", () => {
     const repaired = fixture.customThemes[0].rawCss.replace("white", "ivory")
     fireEvent.change(cssField(), { target: { value: repaired } })
     expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(repaired, expect.anything(), false)
+
+    fireEvent.change(cssField(), { target: { value: fixture.customThemes[0].rawCss } })
+    expect(themeUtils.endCustomThemePreview).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new CustomEvent("themechange", { detail: { mode: "dark", theme: { id: "minimal" }, isSystemChange: true } }))
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
   })
 
   it("closes with a message when the list does not load after a save, and selects nothing", async () => {
