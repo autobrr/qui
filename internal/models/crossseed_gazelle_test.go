@@ -9,8 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestCrossSeedStore_GazelleKeys_EncryptedAndRedacted(t *testing.T) {
@@ -34,15 +36,11 @@ func TestCrossSeedStore_GazelleKeys_EncryptedAndRedacted(t *testing.T) {
 	require.Equal(t, domain.RedactedStr, updated.RedactedAPIKey)
 	require.Equal(t, domain.RedactedStr, updated.OrpheusAPIKey)
 
-	red, ok, err := store.GetDecryptedGazelleAPIKey(ctx, "redacted.sh")
+	keys, err := store.GetDecryptedGazelleAPIKeys(ctx)
 	require.NoError(t, err)
-	require.True(t, ok)
-	require.Equal(t, "red-key", red)
-
-	ops, ok, err := store.GetDecryptedGazelleAPIKey(ctx, "orpheus.network")
-	require.NoError(t, err)
-	require.True(t, ok)
-	require.Equal(t, "ops-key", ops)
+	require.True(t, keys.Enabled)
+	require.Equal(t, map[string]string{models.GazelleKeyRedacted: "red-key", models.GazelleKeyOrpheus: "ops-key"}, keys.Keys)
+	require.Empty(t, keys.Errs)
 }
 
 func TestCrossSeedStore_GazelleKeys_PreserveAndClear(t *testing.T) {
@@ -73,15 +71,9 @@ func TestCrossSeedStore_GazelleKeys_PreserveAndClear(t *testing.T) {
 	require.Equal(t, domain.RedactedStr, updated.RedactedAPIKey)
 	require.Empty(t, updated.OrpheusAPIKey)
 
-	red, ok, err := store.GetDecryptedGazelleAPIKey(ctx, "redacted.sh")
+	keys, err := store.GetDecryptedGazelleAPIKeys(ctx)
 	require.NoError(t, err)
-	require.True(t, ok)
-	require.Equal(t, "red-key", red)
-
-	ops, ok, err := store.GetDecryptedGazelleAPIKey(ctx, "orpheus.network")
-	require.NoError(t, err)
-	require.False(t, ok)
-	require.Empty(t, ops)
+	require.Equal(t, map[string]string{models.GazelleKeyRedacted: "red-key"}, keys.Keys)
 }
 
 func TestCrossSeedStore_GazelleKeys_DisabledGatesDecryption(t *testing.T) {
@@ -101,10 +93,10 @@ func TestCrossSeedStore_GazelleKeys_DisabledGatesDecryption(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	got, ok, err := store.GetDecryptedGazelleAPIKey(ctx, "redacted.sh")
+	keys, err := store.GetDecryptedGazelleAPIKeys(ctx)
 	require.NoError(t, err)
-	require.False(t, ok)
-	require.Empty(t, got)
+	require.False(t, keys.Enabled)
+	require.Empty(t, keys.Keys)
 }
 
 func TestCrossSeedStore_SecretsRedactedOnlyWhenDecryptable(t *testing.T) {
@@ -147,4 +139,42 @@ func TestCrossSeedStore_SecretsRedactedOnlyWhenDecryptable(t *testing.T) {
 			require.Equal(t, tt.want, settings.SeasonPackTVDBPIN)
 		})
 	}
+}
+
+func TestCrossSeedStore_SearchRunKeepsGazelleSummary(t *testing.T) {
+	checkSearchRunGazelleSummary(t, testdb.NewMigratedSQLite(t, "crossseed-search-run-gazelle-summary"))
+}
+
+func TestCrossSeedStore_SearchRunKeepsGazelleSummaryPostgresIntegration(t *testing.T) {
+	checkSearchRunGazelleSummary(t, testdb.NewMigratedPostgres(t, "crossseed-search-run-gazelle-summary"))
+}
+
+func checkSearchRunGazelleSummary(t *testing.T, db *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instances, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{InstanceID: instance.ID, Status: models.CrossSeedSearchRunStatusRunning})
+	require.NoError(t, err)
+	require.Empty(t, run.GazelleSummary, "a run starts with no RED/OPS summary")
+
+	run.GazelleSummary = []models.CrossSeedGazelleSiteSummary{
+		{Site: "redacted.sh", Name: "Redacted", Asked: 3, Matched: 1, Failed: 1, NotAsked: map[string]int{"not_music": 2}},
+	}
+	require.NoError(t, store.UpdateSearchRunProgress(ctx, run))
+	got, err := store.GetSearchRun(ctx, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, run.GazelleSummary, got.GazelleSummary)
+
+	run.GazelleSummary[0].Asked = 4
+	require.NoError(t, store.UpdateSearchRun(ctx, run))
+	runs, err := store.ListSearchRuns(ctx, instance.ID, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, run.GazelleSummary, runs[0].GazelleSummary)
 }

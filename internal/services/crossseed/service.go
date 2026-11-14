@@ -46,6 +46,7 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/metadata"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -194,6 +195,7 @@ type Service struct {
 	jackettService           *jackett.Service
 	arrService               arrLookupService // ARR service for ID lookup
 	notifier                 notifications.Notifier
+	systemNotices            *systemnotice.Module
 
 	// External program execution
 	externalProgramStore   *models.ExternalProgramStore
@@ -311,6 +313,7 @@ func NewService(
 	completionStore *models.InstanceCrossSeedCompletionStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
 	notifier notifications.Notifier,
+	systemNotices *systemnotice.Module,
 	recoverErroredTorrents bool,
 	seasonPackRunStore seasonPackRunCreator,
 	settler *Settler,
@@ -351,6 +354,7 @@ func NewService(
 		jackettService:                jackettService,
 		arrService:                    arrLookup,
 		notifier:                      notifier,
+		systemNotices:                 systemNotices,
 		externalProgramStore:          externalProgramStore,
 		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,

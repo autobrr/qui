@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
 // trigger is how a cross-seed was found.
@@ -78,11 +79,23 @@ func (d triggerDefaults) request(torrentData, indexer string) *CrossSeedRequest 
 		Tags:                         slices.Clone(d.addTags),
 		StartPaused:                  new(true),
 		InheritSourceTags:            d.inheritSourceTags,
-		IndexerName:                  indexer,
+		IndexerName:                  placementIndexerName(indexer),
 		FindIndividualEpisodes:       d.findIndividualEpisodes,
 		SkipAutoResume:               d.skipAutoResume,
 		SkipRecheck:                  d.skipRecheck,
 		SkipPieceBoundarySafetyCheck: d.skipPieceBoundarySafetyCheck,
 		sourceFilter:                 d.sourceFilter,
 	}
+}
+
+// placementIndexerName returns the indexer name that sets the category and the
+// link folder of a cross-seed. A match from a RED/OPS site keeps the
+// PlacementName of the site.
+func placementIndexerName(indexer string) string {
+	for _, site := range gazellemusic.Sites() {
+		if site.DisplayName == indexer {
+			return site.PlacementName
+		}
+	}
+	return indexer
 }

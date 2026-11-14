@@ -27,6 +27,56 @@ export interface CrossSeedTorrentInfo {
   filteredIndexers?: number[]
   excludedIndexers?: Record<number, string>
   contentMatches?: string[]
+  /** What a search asks each RED/OPS site: will_ask, or not_asked with its reason. */
+  gazellePlan?: CrossSeedGazelleLookup[]
+}
+
+export type CrossSeedGazelleLookupStatus = "will_ask" | "match" | "no_match" | "not_asked" | "failed"
+
+export type CrossSeedGazelleLookupReason =
+  | "disabled"
+  | "no_api_key"
+  | "cooldown"
+  | "not_selected"
+  | "source_site"
+  | "already_seeded"
+  | "not_music"
+  | "key_rejected"
+  | "timed_out"
+  | "error"
+
+/** The RED/OPS lookup of one site for one search: the plan before the search, or the outcome after it. */
+export interface CrossSeedGazelleLookup {
+  /** API host of the site. */
+  site: string
+  name: string
+  shortName: string
+  indexerId: number
+  status: CrossSeedGazelleLookupStatus
+  reason?: CrossSeedGazelleLookupReason
+  detail?: string
+  /** Torznab indexers of the site that the search leaves out. */
+  replacedIndexerIds?: number[]
+}
+
+/** One RED/OPS site, as GET /api/cross-seed/gazelle/sites describes it. */
+export interface CrossSeedGazelleSite {
+  site: string
+  name: string
+  shortName: string
+  indexerId: number
+  /** RED/OPS is on and the site has an API key. */
+  active: boolean
+  replacedIndexerIds: number[]
+}
+
+export interface CrossSeedGazelleSiteSummary {
+  site: string
+  name: string
+  asked: number
+  matched: number
+  failed: number
+  notAsked?: Partial<Record<CrossSeedGazelleLookupReason, number>>
 }
 
 export type CrossSeedResultClass = "added" | "exists" | "skipped" | "stranded" | "failed"
@@ -114,7 +164,7 @@ export interface CrossSeedTorrentSearchResponse {
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
   queryDegraded?: CrossSeedQueryDegradedReason
-  gazelleTimedOut?: boolean
+  gazelleLookups?: CrossSeedGazelleLookup[]
   torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
 }
@@ -441,6 +491,7 @@ export interface CrossSeedSearchRun {
   intervalSeconds: number
   cooldownMinutes: number
   results: CrossSeedSearchResult[]
+  gazelleSummary?: CrossSeedGazelleSiteSummary[]
   createdAt: string
 }
 

@@ -196,6 +196,22 @@
             "menuFix": "Chiudi l'altro programma, poi riprova"
           }
         }
+      },
+      "redacted_key_rejected": {
+        "short": "Chiave Redacted rifiutata",
+        "title": "Redacted ha rifiutato la chiave API",
+        "effect": "qui non cerca su Redacted finché non incolli una nuova chiave.",
+        "fix": "Crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Redacted e incollala nelle impostazioni RED/OPS di qui.",
+        "menuFix": "Incolla una nuova chiave nelle impostazioni",
+        "action": "Apri le impostazioni RED/OPS"
+      },
+      "orpheus_key_rejected": {
+        "short": "Chiave Orpheus rifiutata",
+        "title": "Orpheus ha rifiutato la chiave API",
+        "effect": "qui non cerca su Orpheus finché non incolli una nuova chiave.",
+        "fix": "Crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Orpheus e incollala nelle impostazioni RED/OPS di qui.",
+        "menuFix": "Incolla una nuova chiave nelle impostazioni",
+        "action": "Apri le impostazioni RED/OPS"
       }
     },
     "actions": {

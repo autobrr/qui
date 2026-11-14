@@ -51,6 +51,8 @@ import type {
   ManualCrossSeedProposal,
   ManualCrossSeedProposalsResponse,
   SeasonPackRun,
+  CrossSeedGazelleLookup,
+  CrossSeedGazelleSite,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
@@ -1348,6 +1350,7 @@ class ApiClient {
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
       content_matches?: string[]
+      gazellePlan?: CrossSeedGazelleLookup[]
     }
 
     const raw = await this.request<RawTorrentInfo>(
@@ -1376,6 +1379,7 @@ class ApiClient {
       filteredIndexers: raw.filtered_indexers,
       excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
       contentMatches: raw.content_matches,
+      gazellePlan: raw.gazellePlan,
     }
   }
 
@@ -1432,6 +1436,8 @@ class ApiClient {
       query?: string
       limit?: number
       indexerIds?: number[]
+      /** API hosts of the RED/OPS sites to ask. Undefined means every site. */
+      gazelleSites?: string[]
       findIndividualEpisodes?: boolean
       cacheMode?: "bypass"
     } = {}
@@ -1446,6 +1452,9 @@ class ApiClient {
     }
     if (options.indexerIds && options.indexerIds.length > 0) {
       body.indexer_ids = options.indexerIds
+    }
+    if (options.gazelleSites) {
+      body.gazelle_sites = options.gazelleSites
     }
     if (options.findIndividualEpisodes !== undefined) {
       body.find_individual_episodes = options.findIndividualEpisodes
@@ -1475,6 +1484,7 @@ class ApiClient {
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
       content_matches?: string[]
+      gazellePlan?: CrossSeedGazelleLookup[]
     } | null
 
     type RawSearchResult = {
@@ -1506,7 +1516,8 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
-      gazelle_timed_out?: boolean
+      // Already camelCase over the wire, like decisionTrace.
+      gazelleLookups?: CrossSeedGazelleLookup[]
       torznab_failed?: boolean
       // Already camelCase over the wire, like cache.
       decisionTrace?: CrossSeedSearchDecisionTrace
@@ -1538,6 +1549,7 @@ class ApiClient {
       filteredIndexers: torrent?.filtered_indexers ?? undefined,
       excludedIndexers: normalizeExcludedIndexerMap(torrent?.excluded_indexers),
       contentMatches: torrent?.content_matches ?? undefined,
+      gazellePlan: torrent?.gazellePlan ?? undefined,
     })
 
     return {
@@ -1567,7 +1579,7 @@ class ApiClient {
       cache: response.cache,
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
-      gazelleTimedOut: response.gazelle_timed_out ?? undefined,
+      gazelleLookups: response.gazelleLookups ?? undefined,
       torznabFailed: response.torznab_failed ?? undefined,
       decisionTrace: response.decisionTrace,
     }
@@ -1793,6 +1805,10 @@ class ApiClient {
 
   async getCrossSeedSettings(): Promise<CrossSeedAutomationSettings> {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
+  }
+
+  async getCrossSeedGazelleSites(): Promise<CrossSeedGazelleSite[]> {
+    return this.request<CrossSeedGazelleSite[]>("/cross-seed/gazelle/sites")
   }
 
   async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {

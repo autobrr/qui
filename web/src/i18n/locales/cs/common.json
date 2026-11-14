@@ -196,6 +196,22 @@
             "menuFix": "Ukončete jiný program a zkuste to znovu"
           }
         }
+      },
+      "redacted_key_rejected": {
+        "short": "Klíč pro Redacted odmítnut",
+        "title": "Redacted odmítl klíč API",
+        "effect": "qui nehledá na Redacted, dokud nevložíte nový klíč.",
+        "fix": "V nastavení profilu na Redacted vytvořte klíč API s oprávněním „Torrents“ a vložte ho do nastavení RED/OPS v qui.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení RED/OPS"
+      },
+      "orpheus_key_rejected": {
+        "short": "Klíč pro Orpheus odmítnut",
+        "title": "Orpheus odmítl klíč API",
+        "effect": "qui nehledá na Orpheus, dokud nevložíte nový klíč.",
+        "fix": "V nastavení profilu na Orpheus vytvořte klíč API s oprávněním „Torrents“ a vložte ho do nastavení RED/OPS v qui.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení RED/OPS"
       }
     },
     "actions": {

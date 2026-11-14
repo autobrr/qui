@@ -51,6 +51,10 @@ const bulkActionDialogImportPattern = {
 
 const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
 
+// "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
+const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
+const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
+
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
   {
@@ -159,6 +163,17 @@ export default tseslint.config([
     files: ['src/components/ui/{dialog,alert-dialog,sheet}.tsx'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [...torrentListImportPatterns, bulkActionDialogImportPattern] }],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
+    rules: {
+      'no-restricted-syntax': ['error',
+        { selector: 'Literal[regex.pattern=/orpheus|opsfet|flacsfor|redacted/i]', message: gazelleSiteMessage },
+        { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+        { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+      ],
     },
   },
   {

@@ -788,6 +788,7 @@ func (app *Application) runServer() {
 		instanceCrossSeedCompletionStore,
 		trackerCustomizationStore,
 		notificationService,
+		systemNotices,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 		seasonPackRunStore,
 		settler,

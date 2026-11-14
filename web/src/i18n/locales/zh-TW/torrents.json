@@ -662,7 +662,6 @@
     "partialResults": "部分結果：部分索引器未回應",
     "arrLookupFailed": "中繼資料 ID 查詢失敗：僅按標題搜尋，結果可能不完整",
     "arrNoIds": "未找到該資源的中繼資料 ID：僅按標題搜尋",
-    "gazelleTimedOut": "RED/OPS 未及時回應",
     "torznabFailed": "Torznab 搜尋失敗：僅顯示 RED/OPS 結果",
     "searchScope": "搜尋範圍",
     "noIndexers": "沒有可用的 Torznab 索引器",
@@ -754,7 +753,29 @@
       "useRss": "使用 RSS 自動化功能進行持續輔種",
       "checkIndexers": "檢查索引器頁面以檢視哪些被限流"
     },
-    "routedTo": "輔種將新增到輔種實例 {{instance}}。"
+    "routedTo": "輔種將新增到輔種實例 {{instance}}。",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "將查詢",
+      "match": "相符",
+      "noMatch": "無相符",
+      "openSettings": "開啟設定",
+      "notAsked": {
+        "disabled": "未查詢：已關閉",
+        "noApiKey": "未查詢：無 API 金鑰",
+        "cooldown": "未查詢：最近已搜尋",
+        "notSelected": "未查詢：未選取",
+        "sourceSite": "未查詢：種子來自 {{site}}",
+        "alreadySeeded": "未查詢：您已在那裡做種",
+        "notMusic": "未查詢：不是音樂",
+        "other": "未查詢"
+      },
+      "failed": {
+        "keyRejected": "失敗：網站拒絕了 API 金鑰",
+        "timedOut": "失敗：逾時",
+        "other": "失敗：{{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "篩選 {{column}}",

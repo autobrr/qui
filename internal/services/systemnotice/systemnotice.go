@@ -27,6 +27,10 @@ const (
 	RecordingStopped Kind = "recording_stopped"
 	// ShrinkFailed opens when the shrink of the database file at startup fails.
 	ShrinkFailed Kind = "shrink_failed"
+	// RedactedKeyRejected and OrpheusKeyRejected open when the site rejects the
+	// RED/OPS API key in a cross-seed search.
+	RedactedKeyRejected Kind = "redacted_key_rejected"
+	OrpheusKeyRejected  Kind = "orpheus_key_rejected"
 )
 
 type Severity string
@@ -66,6 +70,18 @@ var definitions = map[Kind]definition{
 			"locked":    "Another program held the database file. Stop the other program, for example a backup tool or a database viewer, then try again. The database did not change.",
 		},
 	},
+	RedactedKeyRejected: keyRejected("Redacted"),
+	OrpheusKeyRejected:  keyRejected("Orpheus"),
+}
+
+func keyRejected(site string) definition {
+	return definition{
+		severity: SeverityError,
+		title:    site + " rejected the API key",
+		fixes: map[string]string{
+			"": "qui does not search " + site + " until you paste a new key. Make an API key with the Torrents permission in your " + site + " profile settings, and paste it in the RED/OPS settings of qui.",
+		},
+	}
 }
 
 const notifyTimeout = 10 * time.Second

@@ -196,6 +196,21 @@
     "cancelDialog": {
       "title": "Cancel Library Scan?",
       "description": "This stops the current library scan. Cross-seeds that were already added stay, but no more torrents are searched."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: {{asked}} asked, {{matched}} matched, {{failed}} failed",
+      "siteWithNotAsked": "{{counts}}, {{notAsked}} not asked ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "off",
+        "noApiKey": "no API key",
+        "cooldown": "searched recently",
+        "sourceSite": "from the site",
+        "alreadySeeded": "already seeded",
+        "notMusic": "not music",
+        "other": "other"
+      }
     }
   },
   "rules": {

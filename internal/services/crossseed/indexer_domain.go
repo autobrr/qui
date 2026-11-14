@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -22,11 +23,15 @@ import (
 //
 // Format: tracker_domain -> []indexer_domains
 func initializeDomainMappings() map[string][]string {
-	return map[string][]string{
-		"landof.tv":      {"broadcasthe.net"},
-		"flacsfor.me":    {"redacted.sh"},
-		"home.opsfet.ch": {"orpheus.network"},
+	mappings := map[string][]string{
+		"landof.tv": {"broadcasthe.net"},
 	}
+	for _, site := range gazellemusic.Sites() {
+		for _, domain := range site.AnnounceDomains {
+			mappings[domain] = append(mappings[domain], site.Host)
+		}
+	}
+	return mappings
 }
 
 // filterIndexersByExistingContent removes indexers for which we already have matching content

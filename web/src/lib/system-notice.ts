@@ -11,7 +11,10 @@ export type SystemNoticeRoute = Pick<LinkProps, "to" | "search">
 
 // The page where the user fixes each kind of System notice. A kind with no
 // entry shows no action button. Its label is systemNotice.kinds.<kind>.action.
-export const systemNoticeRoutes: Partial<Record<string, SystemNoticeRoute>> = {}
+export const systemNoticeRoutes: Partial<Record<string, SystemNoticeRoute>> = {
+  redacted_key_rejected: { to: "/settings", search: { tab: "indexers" } },
+  orpheus_key_rejected: { to: "/settings", search: { tab: "indexers" } },
+}
 
 const freshMs = 10 * 60 * 1000
 

@@ -720,7 +720,6 @@
     "partialResults": "Partial results - some indexers did not respond",
     "arrLookupFailed": "Metadata ID lookup failed - searched by title only, results may be incomplete",
     "arrNoIds": "No metadata IDs found for this release - searched by title only",
-    "gazelleTimedOut": "RED/OPS did not answer in time",
     "torznabFailed": "Torznab search failed - showing RED/OPS results only",
     "searchScope": "Search Scope",
     "noIndexers": "No Torznab indexers available",
@@ -813,7 +812,29 @@
       "useRss": "Use the RSS automation feature for ongoing cross-seeding",
       "checkIndexers": "Check the indexers page to see which ones are rate-limited"
     },
-    "routedTo": "Cross-seeds go to the Cross-seed instance {{instance}}."
+    "routedTo": "Cross-seeds go to the Cross-seed instance {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "will ask",
+      "match": "match",
+      "noMatch": "no match",
+      "openSettings": "Open settings",
+      "notAsked": {
+        "disabled": "not asked: off",
+        "noApiKey": "not asked: no API key",
+        "cooldown": "not asked: searched recently",
+        "notSelected": "not asked: not selected",
+        "sourceSite": "not asked: the torrent comes from {{site}}",
+        "alreadySeeded": "not asked: you already seed it there",
+        "notMusic": "not asked: not music",
+        "other": "not asked"
+      },
+      "failed": {
+        "keyRejected": "failed: the site rejected the API key",
+        "timedOut": "failed: timed out",
+        "other": "failed: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "Filter {{column}}",

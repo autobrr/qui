@@ -95,9 +95,12 @@ linters:
         - pattern: ^orphanscan\.(isIgnoredPath|isPathProtectedByIgnorePaths|TorrentFileMap\.(Has|HasAnyInDir))$
           pkg: ^github\.com/autobrr/qui/internal/services/orphanscan$
           msg: ask the protected path module in internal/services/orphanscan/protected.go
-        - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts))$
+        - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|decideGazelleSites|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts|collectGazelleFacts|gazelleLocalFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^gazellemusic\.(siteTable|KnownTrackers|TrackerToSite)$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed/gazellemusic$
+          msg: read the RED/OPS sites through the site table in internal/services/crossseed/gazellemusic/sites.go
         - pattern: ^crossseed\.(isSourceMovingOrChecking|isSourceErrored)$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Source gate in internal/services/crossseed/source_gate.go
@@ -256,6 +259,12 @@ linters:
         linters:
           - forbidigo
         text: free space ledger
+
+      # Only the site table reads the raw facts about the RED/OPS sites.
+      - path: internal/services/crossseed/gazellemusic/sites\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: the site table
 
       # Only the Search scope module decides what a search asks (ADR 0029).
       - path: internal/services/crossseed/search_scope\.go$|_test\.go$

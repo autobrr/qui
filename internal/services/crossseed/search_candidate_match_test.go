@@ -2517,7 +2517,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 
 	search := func(titles []string) *TorrentSearchResponse {
 		arrLookup.result.Titles = append([]string(nil), titles...)
-		response, _, _, searchErr := service.searchTorrentMatches(
+		response, searchErr := service.searchTorrentMatches(
 			context.Background(),
 			instanceID,
 			sourceHash,

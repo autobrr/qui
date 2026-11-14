@@ -34,8 +34,12 @@ import { api } from "@/lib/api"
 import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { GazelleScopeEntries } from "@/components/torrents/GazelleScopeEntries"
+import { useGazelleLookupText } from "@/hooks/useGazelleLookupText"
+import { gazelleReportLines } from "@/lib/gazelle-lookup"
 import type {
   CrossSeedApplyResponse,
+  CrossSeedGazelleLookup,
   CrossSeedSearchDecisionTrace,
   CrossSeedSearchRejectedCandidate,
   CrossSeedTorrentSearchResponse,
@@ -70,8 +74,12 @@ export interface CrossSeedDialogProps {
   error: string | null
   applyResult: CrossSeedApplyResponse | null
   indexerOptions: CrossSeedIndexerOption[]
-  /** RED/OPS is on and has an API key, so a search runs without Torznab indexers. */
-  gazelleConfigured: boolean
+  /** The search will ask a RED/OPS site, so it runs without Torznab indexers. */
+  gazelleAsks: boolean
+  /** The RED/OPS sites with the outcome of the last search, or the plan before it. */
+  gazelleEntries: CrossSeedGazelleLookup[]
+  /** The pseudo indexer IDs of the RED/OPS entries that the user can pick. */
+  selectableGazelleIds: number[]
   indexerMode: "all" | "custom"
   selectedIndexerIds: number[]
   indexerNameMap: Record<number, string>
@@ -97,7 +105,6 @@ export interface CrossSeedDialogProps {
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
   partial?: boolean
   queryDegraded?: string
-  gazelleTimedOut?: boolean
   torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
   canForceRefresh?: boolean
@@ -126,7 +133,9 @@ const CrossSeedDialogComponent = ({
   error,
   applyResult,
   indexerOptions,
-  gazelleConfigured,
+  gazelleAsks,
+  gazelleEntries,
+  selectableGazelleIds,
   indexerMode,
   selectedIndexerIds,
   indexerNameMap,
@@ -152,7 +161,6 @@ const CrossSeedDialogComponent = ({
   cacheMetadata,
   partial,
   queryDegraded,
-  gazelleTimedOut,
   torznabFailed,
   decisionTrace,
   canForceRefresh,
@@ -217,18 +225,22 @@ const CrossSeedDialogComponent = ({
     [decisionTrace]
   )
 
+  // After a search, gazelleEntries holds the outcome of each RED/OPS site.
+  const gazelleLookups = useMemo(
+    () => (hasSearched && !isLoading ? gazelleEntries.filter(entry => entry.status !== "will_ask") : []),
+    [hasSearched, isLoading, gazelleEntries]
+  )
+  const showReport = Boolean(decisionTrace) || gazelleLookups.length > 0
+
   const handleCopyTraceReport = useCallback(async () => {
-    if (!decisionTrace) {
-      return
-    }
-    const report = buildCrossSeedTraceReport(decisionTrace, sourceTorrent?.name ?? torrent?.name ?? "", indexerNameMap)
+    const report = buildCrossSeedTraceReport(decisionTrace, sourceTorrent?.name ?? torrent?.name ?? "", indexerNameMap, gazelleLookups)
     try {
       await copyTextToClipboard(report)
       toast.success(t("crossSeedDialog.trace.copied"))
     } catch {
       toast.error(t("crossSeedDialog.trace.copyFailed"))
     }
-  }, [decisionTrace, sourceTorrent?.name, torrent?.name, indexerNameMap, t])
+  }, [decisionTrace, sourceTorrent?.name, torrent?.name, indexerNameMap, gazelleLookups, t])
 
   // Auto-expand results when there are failures
   const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
@@ -312,7 +324,6 @@ const CrossSeedDialogComponent = ({
           )}
           {partial && <HeaderWarning>{t("crossSeedDialog.partialResults")}</HeaderWarning>}
           {queryDegraded && queryDegradedMessageKeys[queryDegraded] && <HeaderWarning>{t(queryDegradedMessageKeys[queryDegraded])}</HeaderWarning>}
-          {gazelleTimedOut && <HeaderWarning>{t("crossSeedDialog.gazelleTimedOut")}</HeaderWarning>}
           {torznabFailed && <HeaderWarning>{t("crossSeedDialog.torznabFailed")}</HeaderWarning>}
           {crossSeedInstanceName && (
             <p className="mt-2 text-xs text-muted-foreground">{t("crossSeedDialog.routedTo", { instance: crossSeedInstanceName })}</p>
@@ -333,18 +344,21 @@ const CrossSeedDialogComponent = ({
                 onClearIndexerSelection={onClearIndexerSelection}
                 onScopeSearch={onScopeSearch}
                 isSearching={isLoading}
+                gazelleEntries={gazelleEntries}
+                selectableGazelleIds={selectableGazelleIds}
               />
             ) : (
               <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1.5">
                   <p className="font-medium">{t("crossSeedDialog.noIndexers")}</p>
                   <p className="text-xs">
-                    {gazelleConfigured ? t("crossSeedDialog.gazelleOnlySearch") : t("crossSeedDialog.noIndexersHelp")}
+                    {gazelleAsks ? t("crossSeedDialog.gazelleOnlySearch") : t("crossSeedDialog.noIndexersHelp")}
                   </p>
                 </div>
-                {gazelleConfigured && <ScopeSearchButton onClick={onScopeSearch} isSearching={isLoading} disabled={isLoading} />}
+                {gazelleAsks && <ScopeSearchButton onClick={onScopeSearch} isSearching={isLoading} disabled={isLoading} />}
               </div>
             )}
+            <GazelleScopeEntries entries={gazelleEntries} />
             {(capabilityFilteredIndexerEntries.length > 0 && indexerOptions.length > 0) && (
               <div className="mt-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
                 <p className="font-medium text-[11px] text-foreground">{t("crossSeedDialog.capabilityNote")}</p>
@@ -516,30 +530,34 @@ const CrossSeedDialogComponent = ({
                   </div>
                 </>
               )}
-              {decisionTrace && (
+              {showReport && (
                 <Collapsible open={traceOpen} onOpenChange={setTraceOpen}>
                   <div className="rounded-lg border bg-muted/20">
                     <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-muted/40 transition-colors">
                       <div className="flex items-center gap-2 text-sm">
                         <ChevronRight className={`h-3.5 w-3.5 transition-transform ${traceOpen ? "rotate-90" : ""}`} />
                         <span className="font-medium">{t("crossSeedDialog.trace.title")}</span>
-                        <Badge variant="secondary" className="text-xs">
-                          {t("crossSeedDialog.trace.summaryBadge", { total: decisionTrace.totalResults, matches: decisionTrace.finalMatches })}
-                        </Badge>
+                        {decisionTrace && (
+                          <Badge variant="secondary" className="text-xs">
+                            {t("crossSeedDialog.trace.summaryBadge", { total: decisionTrace.totalResults, matches: decisionTrace.finalMatches })}
+                          </Badge>
+                        )}
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="space-y-2.5 px-2.5 pb-2.5 text-xs">
-                        <p className="text-muted-foreground">
-                          {t("crossSeedDialog.trace.summary", {
-                            total: decisionTrace.totalResults,
-                            release: decisionTrace.releaseFiltered,
-                            size: decisionTrace.sizeFiltered,
-                            late: decisionTrace.lateContentFiltered,
-                            duplicates: decisionTrace.duplicateFiltered,
-                            matches: decisionTrace.finalMatches,
-                          })}
-                        </p>
+                        {decisionTrace && (
+                          <p className="text-muted-foreground">
+                            {t("crossSeedDialog.trace.summary", {
+                              total: decisionTrace.totalResults,
+                              release: decisionTrace.releaseFiltered,
+                              size: decisionTrace.sizeFiltered,
+                              late: decisionTrace.lateContentFiltered,
+                              duplicates: decisionTrace.duplicateFiltered,
+                              matches: decisionTrace.finalMatches,
+                            })}
+                          </p>
+                        )}
                         {traceIndexerRows.length > 0 && (
                           <div className="space-y-1">
                             <p className="font-medium text-foreground">{t("crossSeedDialog.trace.indexersHeading")}</p>
@@ -586,6 +604,12 @@ const CrossSeedDialogComponent = ({
                                 </ul>
                               </div>
                             ))}
+                          </div>
+                        )}
+                        {gazelleLookups.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">{t("crossSeedDialog.gazelle.heading")}</p>
+                            <GazelleTraceRows lookups={gazelleLookups} />
                           </div>
                         )}
                         <Button type="button" variant="outline" size="sm" onClick={handleCopyTraceReport} className="h-7">
@@ -715,12 +739,18 @@ CrossSeedDialog.displayName = "CrossSeedDialog"
 
 // Plain-text report for sharing in bug reports; deliberately not localized.
 export function buildCrossSeedTraceReport(
-  trace: CrossSeedSearchDecisionTrace,
+  trace: CrossSeedSearchDecisionTrace | undefined,
   sourceName: string,
-  indexerNameMap: Record<number, string>
+  indexerNameMap: Record<number, string>,
+  gazelleLookups: CrossSeedGazelleLookup[] = []
 ): string {
   const lines: string[] = []
   lines.push("qui cross-seed search report")
+  if (!trace) {
+    lines.push(`source: ${sourceName}`)
+    lines.push(...gazelleReportLines(gazelleLookups))
+    return lines.join("\n")
+  }
   lines.push(`source: ${sourceName} (${formatBytes(trace.sourceSize)})`)
   lines.push(`size tolerance: ${trace.tolerancePercent}%`)
   lines.push(
@@ -735,6 +765,7 @@ export function buildCrossSeedTraceReport(
       lines.push(`  ${name}: ${outcome.status}${candidates}${detail}`)
     }
   }
+  lines.push(...gazelleReportLines(gazelleLookups))
   const groups = groupTraceReasons(trace)
   if (groups.length > 0) {
     lines.push("rejections:")
@@ -821,6 +852,22 @@ interface CrossSeedScopeSelectorProps {
   onClearIndexerSelection: () => void
   onScopeSearch: () => void
   isSearching: boolean
+  gazelleEntries: CrossSeedGazelleLookup[]
+  selectableGazelleIds: number[]
+}
+
+function GazelleTraceRows({ lookups }: { lookups: CrossSeedGazelleLookup[] }) {
+  const lookupText = useGazelleLookupText()
+  return (
+    <ul className="space-y-0.5">
+      {lookups.map(lookup => (
+        <li key={lookup.site} className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="min-w-0 truncate">{lookup.name}</span>
+          <span className="min-w-0 break-words text-muted-foreground">{lookupText(lookup)}</span>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 // Memoized indexer option component to prevent re-rendering
@@ -861,8 +908,11 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
   onClearIndexerSelection,
   onScopeSearch,
   isSearching,
+  gazelleEntries,
+  selectableGazelleIds,
 }: CrossSeedScopeSelectorProps) {
   const { t } = useTranslation("torrents")
+  const lookupText = useGazelleLookupText()
   const total = indexerOptions.length
   const selectedCount = selectedIndexerIds.length
   const excludedCount = excludedIndexerIds.length
@@ -979,6 +1029,23 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
                 <DropdownMenuLabel className="text-xs">{t("crossSeedDialog.scope.availableIndexers")}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {indexerItems}
+                {gazelleEntries.map(entry => {
+                  const selectable = selectableGazelleIds.includes(entry.indexerId)
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={entry.site}
+                      checked={selectable && selectedIndexerIds.includes(entry.indexerId)}
+                      disabled={!selectable}
+                      onCheckedChange={() => onToggleIndexer(entry.indexerId)}
+                      onSelect={(event) => event.preventDefault()}
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span>{entry.name}</span>
+                        {!selectable && <span className="text-[11px] text-muted-foreground">{lookupText(entry)}</span>}
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  )
+                })}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={(event) => event.preventDefault()}

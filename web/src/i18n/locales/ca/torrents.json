@@ -1406,7 +1406,6 @@
     "partialResults": "Resultats parcials: hi ha indexadors que no han respost",
     "arrLookupFailed": "Ha fallat la cerca d'ID de metadades: s'ha cercat només pel títol i els resultats poden ser incomplets",
     "arrNoIds": "No s'ha trobat cap ID de metadades d'aquesta release: s'ha cercat només pel títol",
-    "gazelleTimedOut": "RED/OPS no ha respost a temps",
     "torznabFailed": "La cerca de Torznab ha fallat: només es mostren resultats de RED/OPS",
     "searchScope": "Abast de la cerca",
     "noIndexers": "No hi ha cap indexador de Torznab disponible",
@@ -1499,7 +1498,29 @@
       "useRss": "Fes servir l'automatització d'RSS per al cross-seeding continu",
       "checkIndexers": "Mira la pàgina d'indexadors per veure quins tenen límit de freqüència"
     },
-    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}."
+    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "es consultarà",
+      "match": "coincidència",
+      "noMatch": "cap coincidència",
+      "openSettings": "Obre la configuració",
+      "notAsked": {
+        "disabled": "no consultat: desactivat",
+        "noApiKey": "no consultat: sense clau API",
+        "cooldown": "no consultat: cercat fa poc",
+        "notSelected": "no consultat: no seleccionat",
+        "sourceSite": "no consultat: el torrent ve de {{site}}",
+        "alreadySeeded": "no consultat: ja el comparteixes allà",
+        "notMusic": "no consultat: no és música",
+        "other": "no consultat"
+      },
+      "failed": {
+        "keyRejected": "error: el lloc ha rebutjat la clau API",
+        "timedOut": "error: temps esgotat",
+        "other": "error: {{detail}}"
+      }
+    }
   },
   "manualCrossSeed": {
     "title": "Coincidència manual de cross-seed",

@@ -953,7 +953,7 @@ func TestSearchTorrentMatches_GroupFallbackPreservesSelectedFileProvenance(t *te
 			require.Equal(t, tt.fileGroup, selected.Group)
 			require.True(t, releaseHasGroupTag(selected, tt.fileGroup), "fixture must carry an explicit selected-file group")
 
-			response, _, _, err := svc.searchTorrentMatches(
+			response, err := svc.searchTorrentMatches(
 				context.Background(),
 				instanceID,
 				sourceHash,

@@ -196,6 +196,22 @@
             "menuFix": "Stop the other program, then try again"
           }
         }
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted key rejected",
+        "title": "Redacted rejected the API key",
+        "effect": "qui does not search Redacted until you paste a new key.",
+        "fix": "Make an API key with the Torrents permission in your Redacted profile settings, and paste it in the RED/OPS settings of qui.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open RED/OPS settings"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus key rejected",
+        "title": "Orpheus rejected the API key",
+        "effect": "qui does not search Orpheus until you paste a new key.",
+        "fix": "Make an API key with the Torrents permission in your Orpheus profile settings, and paste it in the RED/OPS settings of qui.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open RED/OPS settings"
       }
     },
     "actions": {

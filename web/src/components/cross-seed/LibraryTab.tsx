@@ -34,6 +34,8 @@ import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/categor
 import { crossSeedRouteText, normalizeNumberList, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import { libraryRunState } from "@/lib/run-state"
 import type {
+  CrossSeedGazelleLookupReason,
+  CrossSeedGazelleSiteSummary,
   CrossSeedAutomationSettings,
   CrossSeedSearchResult,
   CrossSeedSearchSettings,
@@ -50,9 +52,28 @@ const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60
 const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720
 
-function isOpsRedTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
-  const haystack = `${indexerName} ${indexerID} ${baseURL}`.toLowerCase()
-  return /(^|[^a-z0-9])(ops|orpheus|opsfet|redacted|flacsfor)([^a-z0-9]|$)/.test(haystack)
+const gazelleReasonKeys: Partial<Record<CrossSeedGazelleLookupReason, string>> = {
+  disabled: "scan.gazelleSummary.reasons.disabled",
+  no_api_key: "scan.gazelleSummary.reasons.noApiKey",
+  cooldown: "scan.gazelleSummary.reasons.cooldown",
+  source_site: "scan.gazelleSummary.reasons.sourceSite",
+  already_seeded: "scan.gazelleSummary.reasons.alreadySeeded",
+  not_music: "scan.gazelleSummary.reasons.notMusic",
+}
+
+/** GazelleRunSummary is the RED/OPS line of one Library Scan run. */
+function GazelleRunSummary({ summary }: { summary: CrossSeedGazelleSiteSummary[] }) {
+  const { t } = useTranslation("crossseed")
+  const sites = summary.map(site => {
+    const notAsked = Object.entries(site.notAsked ?? {}) as Array<[CrossSeedGazelleLookupReason, number]>
+    const notAskedTotal = notAsked.reduce((total, [, count]) => total + count, 0)
+    const reasons = notAsked
+      .map(([reason, count]) => t("scan.gazelleSummary.reasonCount", { count, reason: t(gazelleReasonKeys[reason] ?? "scan.gazelleSummary.reasons.other") }))
+      .join(", ")
+    const counts = t("scan.gazelleSummary.site", { name: site.name, asked: site.asked, matched: site.matched, failed: site.failed })
+    return notAskedTotal > 0 ? t("scan.gazelleSummary.siteWithNotAsked", { counts, notAsked: notAskedTotal, reasons }) : counts
+  })
+  return <p className="px-2 pt-0.5 text-[11px] text-muted-foreground">{t("scan.gazelleSummary.line", { sites: sites.join("; ") })}</p>
 }
 
 export function LibraryTab({ settings }: { settings: CrossSeedAutomationSettings }) {
@@ -196,7 +217,12 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   const gazelleSavedHasOpsKey = Boolean((settings.orpheusApiKey ?? "").trim())
   const gazelleSavedHasRedKey = Boolean((settings.redactedApiKey ?? "").trim())
   const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
-  const gazelleSavedFullyConfigured = gazelleSavedEnabled && gazelleSavedHasOpsKey && gazelleSavedHasRedKey
+  const { data: gazelleSites } = useQuery({
+    queryKey: ["cross-seed", "gazelle-sites", gazelleSavedEnabled, gazelleSavedHasOpsKey, gazelleSavedHasRedKey],
+    queryFn: () => api.getCrossSeedGazelleSites(),
+    staleTime: 60 * 1000,
+  })
+  const gazelleSavedFullyConfigured = (gazelleSites ?? []).length > 0 && (gazelleSites ?? []).every(site => site.active)
 
   const seededSearchNeedsGazelle = !seededSearchTorznabEnabled && !gazelleSavedConfigured
   const seededSearchGazelleOnlyRun = !seededSearchTorznabEnabled && gazelleSavedConfigured
@@ -215,18 +241,11 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
   }, [seededSearchIntervalMinimum])
 
-  const seededSearchIndexerExclusions = useMemo(() => {
-    const disallowedIDs = new Set<number>()
-    if (!gazelleSavedFullyConfigured) {
-      return disallowedIDs
-    }
-    for (const idx of enabledIndexers) {
-      if (isOpsRedTorznabIndexer(idx.name, idx.indexer_id, idx.base_url)) {
-        disallowedIDs.add(idx.id)
-      }
-    }
-    return disallowedIDs
-  }, [enabledIndexers, gazelleSavedFullyConfigured])
+  // The search asks a RED/OPS site with a key through its API, and leaves out its Torznab indexers.
+  const seededSearchIndexerExclusions = useMemo(
+    () => new Set((gazelleSites ?? []).flatMap(site => site.replacedIndexerIds)),
+    [gazelleSites]
+  )
 
   const seededSearchIndexerOptions = useMemo(
     () => enabledIndexers
@@ -246,13 +265,13 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       return gazelleSavedConfigured ? t("scan.indexers.placeholderTorznabDisabledGazelleOnly") : t("scan.indexers.placeholderTorznabDisabledEnableGazelle")
     }
     if (seededSearchIndexerOptions.length > 0) {
-      return gazelleSavedFullyConfigured ? t("scan.indexers.placeholderAllEnabledNonOpsRed") : t("scan.indexers.placeholderAllEnabled")
+      return seededSearchIndexerExclusions.size > 0 ? t("scan.indexers.placeholderAllEnabledNonOpsRed") : t("scan.indexers.placeholderAllEnabled")
     }
     if (seededSearchHasOnlyOpsRedIndexers) {
       return t("scan.indexers.placeholderOnlyOpsRedEnabled")
     }
     return t("scan.indexers.placeholderNoTorznabConfigured")
-  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchHasOnlyOpsRedIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled, t])
+  }, [gazelleSavedConfigured, seededSearchIndexerExclusions.size, seededSearchHasOnlyOpsRedIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled, t])
 
   const seededSearchEffectiveIndexerIds = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
 
@@ -728,6 +747,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                               </div>
                             </div>
                           </CollapsibleTrigger>
+                          {run.gazelleSummary && run.gazelleSummary.length > 0 && <GazelleRunSummary summary={run.gazelleSummary} />}
                           {hasResults && (
                             <CollapsibleContent>
                               <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">

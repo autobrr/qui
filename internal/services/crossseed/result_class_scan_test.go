@@ -435,6 +435,9 @@ func (s *statusScan) isResult(decl *ast.FuncDecl, name string) (isResult, known 
 	if i, paramType := paramIndex(decl.Type, name); i >= 0 {
 		names = append(names, typeName(paramType))
 	}
+	if decl.Recv != nil && len(decl.Recv.List) == 1 && len(decl.Recv.List[0].Names) == 1 && decl.Recv.List[0].Names[0].Name == name {
+		names = append(names, typeName(decl.Recv.List[0].Type))
+	}
 	ast.Inspect(decl.Body, func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.FuncLit:
