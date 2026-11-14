@@ -315,7 +315,10 @@ export function TrackerCustomizationsManager() {
             customizations={customizations ?? []}
             createCustomization={createCustomization}
             updateCustomization={updateCustomization}
-            onDone={() => setImportOpen(false)}
+            onDone={() => {
+              setImportOpen(false)
+              clearSelection()
+            }}
           />
         )}
       </Dialog>

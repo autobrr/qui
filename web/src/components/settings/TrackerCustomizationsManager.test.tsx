@@ -11,6 +11,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { TrackerCustomization } from "@/types"
 
 const mocks = vi.hoisted(() => ({
+  instances: [] as { id: number; isActive: boolean }[],
+  activeTrackers: {} as Record<string, string>,
   customizations: [] as TrackerCustomization[],
   listTrackerCustomizations: vi.fn(),
   createTrackerCustomization: vi.fn(),
@@ -23,11 +25,12 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
-vi.mock("@/hooks/useInstances", () => ({ useInstances: () => ({ instances: [] }) }))
+vi.mock("@/hooks/useInstances", () => ({ useInstances: () => ({ instances: mocks.instances }) }))
 vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => ({ data: {} }) }))
 vi.mock("@/lib/incognito", () => ({ useIncognitoMode: () => [false], getLinuxTrackerDomain: (d: string) => d }))
 vi.mock("@/lib/api", () => ({
   api: {
+    getActiveTrackers: () => Promise.resolve(mocks.activeTrackers),
     listTrackerCustomizations: mocks.listTrackerCustomizations,
     createTrackerCustomization: mocks.createTrackerCustomization,
     updateTrackerCustomization: mocks.updateTrackerCustomization,
@@ -67,6 +70,8 @@ function renderManager() {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  mocks.instances = []
+  mocks.activeTrackers = {}
   vi.unstubAllGlobals()
 })
 
@@ -127,6 +132,30 @@ describe("TrackerCustomizationsManager", () => {
 
     await openAndPaste()
     expect(screen.getByRole("button", { name: "trackerCustomizations.importDialog.importing" }).hasAttribute("disabled")).toBe(true)
+  })
+
+  it("clears the domain selection after an import, so a later rename does not take an imported domain", async () => {
+    mocks.instances = [{ id: 1, isActive: true }]
+    mocks.activeTrackers = { "a.example.invalid": "https://a.example.invalid/announce", "b.example.invalid": "https://b.example.invalid/announce" }
+    mocks.customizations = []
+    mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
+    mocks.createTrackerCustomization.mockImplementation((data: { displayName: string; domains: string[] }) => {
+      const created = customization(9, data.displayName, data.domains)
+      mocks.customizations = [created]
+      return Promise.resolve(created)
+    })
+    renderManager()
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "a.example.invalid" }))
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+    fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), {
+      target: { value: JSON.stringify({ trackerCustomizations: [{ displayName: "Alpha", domains: ["a.example.invalid"] }] }) },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.import" }))
+
+    await screen.findByText("Alpha")
+    expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
+    expect(screen.getByRole("button", { name: "trackerCustomizations.rename" })).not.toBeNull()
   })
 })
 

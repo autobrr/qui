@@ -65,12 +65,25 @@ describe("parseTrackerCustomizationsImport", () => {
     expect(result.entries[0].isIdentical).toBe(false)
   })
 
+  it("cleans the domains as the server stores them, so a padded domain still conflicts", () => {
+    const existing = [customization(7, "Tracker", ["a.example.invalid"])]
+    const text = JSON.stringify({ trackerCustomizations: [{ displayName: "Tracker", domains: [" A.example.invalid ", "a.example.invalid", ""] }] })
+
+    const result = parseTrackerCustomizationsImport(text, existing)
+
+    expect(result.valid).toBe(true)
+    if (!result.valid) return
+    expect(result.entries[0]).toMatchObject({ domains: ["a.example.invalid"], isIdentical: true })
+    expect(result.entries[0].conflict?.id).toBe(7)
+  })
+
   it("names the fault of a text it cannot import", () => {
     expect(parseTrackerCustomizationsImport("", [])).toEqual({ valid: false, error: null })
     expect(parseTrackerCustomizationsImport("{", [])).toEqual({ valid: false, error: "invalidJson" })
     expect(parseTrackerCustomizationsImport("{}", [])).toEqual({ valid: false, error: "invalidFormat" })
     expect(parseTrackerCustomizationsImport(JSON.stringify({ trackerCustomizations: [{ domains: ["a.example.invalid"] }] }), [])).toEqual({ valid: false, error: "missingDisplayName" })
     expect(parseTrackerCustomizationsImport(JSON.stringify({ trackerCustomizations: [{ displayName: "x", domains: [] }] }), [])).toEqual({ valid: false, error: "invalidDomains" })
+    expect(parseTrackerCustomizationsImport(JSON.stringify({ trackerCustomizations: [{ displayName: "x", domains: [" "] }] }), [])).toEqual({ valid: false, error: "invalidDomains" })
   })
 })
 

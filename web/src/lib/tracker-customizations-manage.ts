@@ -53,8 +53,9 @@ export type ImportParse = { valid: true; entries: ImportEntry[] } | { valid: fal
 
 /**
  * Reads the JSON of an export, with or without a Markdown code fence. Each
- * entry keeps only displayName and domains. A field of an older export, such
- * as includedInStats, is ignored. An empty text gives no error.
+ * entry keeps only displayName and domains, cleaned as the server stores them.
+ * A field of an older export, such as includedInStats, is ignored. An empty
+ * text gives no error.
  */
 export function parseTrackerCustomizationsImport(text: string, existing: readonly TrackerCustomization[]): ImportParse {
   let jsonText = text.trim()
@@ -82,20 +83,22 @@ export function parseTrackerCustomizationsImport(text: string, existing: readonl
   for (const [index, entry] of raw.entries()) {
     const { displayName, domains } = (entry ?? {}) as { displayName?: unknown; domains?: unknown }
     if (!displayName || typeof displayName !== "string") return { valid: false, error: "missingDisplayName" }
-    if (!Array.isArray(domains) || domains.length === 0 || !domains.every(d => typeof d === "string")) {
+    if (!Array.isArray(domains) || !domains.every(d => typeof d === "string")) {
       return { valid: false, error: "invalidDomains" }
     }
+    // The server stores the domains trimmed, lowercased, and without repeats.
+    const normalized = [...new Set(domains.map(d => d.trim().toLowerCase()).filter(Boolean))]
+    if (normalized.length === 0) return { valid: false, error: "invalidDomains" }
 
-    const match = domains.map(d => byDomain.get(d.toLowerCase())).find(c => c !== undefined)
+    const match = normalized.map(d => byDomain.get(d)).find(c => c !== undefined)
     const conflict = match ? { id: match.id, displayName: match.displayName, domains: match.domains } : null
     let isIdentical = false
     if (conflict) {
       // Order counts: the first domain is the primary.
       const have = conflict.domains.map(d => d.toLowerCase())
-      const want = domains.map(d => d.toLowerCase())
-      isIdentical = conflict.displayName === displayName && have.length === want.length && want.every((d, i) => d === have[i])
+      isIdentical = conflict.displayName === displayName && have.length === normalized.length && normalized.every((d, i) => d === have[i])
     }
-    entries.push({ index, displayName, domains, conflict, isIdentical })
+    entries.push({ index, displayName, domains: normalized, conflict, isIdentical })
   }
   return { valid: true, entries }
 }
