@@ -172,8 +172,9 @@ func top(rows []TransferRow, limit int) []TransferRow {
 	groups := slices.SortedFunc(maps.Keys(uploaded), func(x, y string) int {
 		return cmp.Or(cmp.Compare(uploaded[y], uploaded[x]), cmp.Compare(x, y))
 	})
-	rank := make(map[string]int, limit)
-	for i, group := range groups[:min(limit, len(groups))] {
+	kept := groups[:min(limit, len(groups))]
+	rank := make(map[string]int, len(kept))
+	for i, group := range kept {
 		rank[group] = i
 	}
 	rows = slices.DeleteFunc(rows, func(r TransferRow) bool { _, ok := rank[r.Group]; return !ok })
