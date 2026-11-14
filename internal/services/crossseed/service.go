@@ -116,6 +116,7 @@ type qbittorrentSync interface {
 
 const (
 	searchResultCacheTTL                  = 5 * time.Minute
+	gazelleLocalCacheTTL                  = time.Minute
 	indexerDomainCacheTTL                 = 1 * time.Minute
 	contentFilteringWaitTimeout           = 20 * time.Second
 	contentFilteringPollInterval          = 150 * time.Millisecond
@@ -182,8 +183,11 @@ type Service struct {
 	searchResultCache *ttlcache.Cache[string, cachedTorrentSearchResults]
 	// asyncFilteringCache stores async filtering state by torrent key for UI polling
 	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
-	indexerDomainCache  *ttlcache.Cache[string, string]
-	stringNormalizer    *stringutils.Normalizer[string, string]
+	// gazelleLocalCache keeps the local RED/OPS checks of a torrent for a short
+	// time, so the search after the dialog opens does not run them again.
+	gazelleLocalCache  *ttlcache.Cache[string, gazelleLocalResult]
+	indexerDomainCache *ttlcache.Cache[string, string]
+	stringNormalizer   *stringutils.Normalizer[string, string]
 
 	// sizeMismatchWarned tracks (source hash, matched hash) pairs whose
 	// size-mismatch rejection already logged at warn; repeats drop to trace.
@@ -329,6 +333,9 @@ func NewService(
 		ttlcache.DisableUpdateTime(true))
 	indexerDomainCache := ttlcache.New[string, string](
 		ttlcache.SetDefaultTTL(indexerDomainCacheTTL))
+	gazelleLocalCache := ttlcache.New[string, gazelleLocalResult](
+		ttlcache.SetDefaultTTL(gazelleLocalCacheTTL),
+		ttlcache.DisableUpdateTime(true))
 	contentFilesCache := ttlcache.New[string, qbt.TorrentFiles](
 		ttlcache.SetDefaultTTL(5 * time.Minute))
 	dedupCache := ttlcache.New[string, *dedupCacheEntry](
@@ -347,6 +354,7 @@ func NewService(
 		releaseCache:                  NewReleaseCache(),
 		searchResultCache:             searchCache,
 		asyncFilteringCache:           asyncFilteringCache,
+		gazelleLocalCache:             gazelleLocalCache,
 		indexerDomainCache:            indexerDomainCache,
 		stringNormalizer:              stringutils.NewDefaultNormalizer(),
 		automationStore:               automationStore,

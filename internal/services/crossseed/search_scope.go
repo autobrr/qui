@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
@@ -262,7 +263,7 @@ func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torren
 	}
 	scope := decideSearchScope(f)
 	if scope.err == nil && scope.asksGazelle() {
-		f.gazelleLocalSeeded, scope.exportedTorrent = s.gazelleLocalFacts(ctx, instanceID, torrent, scope.gazelleHosts())
+		f.gazelleLocalSeeded, scope.exportedTorrent = s.cachedGazelleLocalFacts(ctx, instanceID, torrent, scope.gazelleHosts())
 		if len(f.gazelleLocalSeeded) > 0 {
 			exported := scope.exportedTorrent
 			scope = decideSearchScope(f)
@@ -292,7 +293,7 @@ func (s *Service) collectGazellePlan(ctx context.Context, instanceID int, torren
 	}
 	plan := decideGazelleSites(f)
 	if hosts := (searchScope{gazelle: plan}).gazelleHosts(); len(hosts) > 0 {
-		if f.gazelleLocalSeeded, _ = s.gazelleLocalFacts(ctx, instanceID, torrent, hosts); len(f.gazelleLocalSeeded) > 0 {
+		if f.gazelleLocalSeeded, _ = s.cachedGazelleLocalFacts(ctx, instanceID, torrent, hosts); len(f.gazelleLocalSeeded) > 0 {
 			plan = decideGazelleSites(f)
 		}
 	}
@@ -311,6 +312,30 @@ func (s *Service) collectGazelleFacts(ctx context.Context, instanceID int, torre
 		f.musicCheckPassed = gazellePlausibleContent(files)
 	}
 	return nil
+}
+
+// gazelleLocalResult is the result of the local RED/OPS checks of one torrent.
+type gazelleLocalResult struct {
+	checked  []string
+	seeded   []string
+	exported []byte
+}
+
+// cachedGazelleLocalFacts answers as gazelleLocalFacts does. It reuses a result
+// of the last minute that checked each of hosts.
+func (s *Service) cachedGazelleLocalFacts(ctx context.Context, instanceID int, torrent *qbt.Torrent, hosts []string) ([]string, []byte) {
+	key := asyncFilteringCacheKey(instanceID, torrent.Hash)
+	if s.gazelleLocalCache != nil {
+		if hit, ok := s.gazelleLocalCache.Get(key); ok && !slices.ContainsFunc(hosts, func(host string) bool { return !slices.Contains(hit.checked, host) }) {
+			seeded := slices.DeleteFunc(slices.Clone(hit.seeded), func(host string) bool { return !slices.Contains(hosts, host) })
+			return seeded, hit.exported
+		}
+	}
+	seeded, exported := s.gazelleLocalFacts(ctx, instanceID, torrent, hosts)
+	if s.gazelleLocalCache != nil {
+		s.gazelleLocalCache.Set(key, gazelleLocalResult{checked: slices.Clone(hosts), seeded: seeded, exported: exported}, ttlcache.DefaultTTL)
+	}
+	return seeded, exported
 }
 
 // gazelleLocalFacts returns the hosts whose content or target hash the

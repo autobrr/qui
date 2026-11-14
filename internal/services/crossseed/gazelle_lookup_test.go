@@ -338,3 +338,22 @@ func TestSkippedRejectedSiteDoesNotReopenNotice(t *testing.T) {
 	require.Empty(t, svc.systemNotices.List())
 	require.Len(t, notifier.Events(), 1)
 }
+
+// The search after the dialog opens reuses the local RED/OPS checks of the
+// plan, so one open and one search export the torrent once.
+func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
+	svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), nil)
+	svc.gazelleLocalCache = ttlcache.New[string, gazelleLocalResult]()
+	syncManager := svc.syncManager.(*hashFilteringSyncManager)
+	syncManager.exportedTorrent = []byte("d4:infod4:name3:abcee")
+	clients, err := svc.buildGazelleClientSet(t.Context(), nil)
+	require.NoError(t, err)
+
+	plan, err := svc.collectGazellePlan(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], clients)
+	require.NoError(t, err)
+	require.Equal(t, GazelleWillAsk, gazelleLookupOf(t, plan, "orpheus.network").Status)
+	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, syncManager.exportCalls)
+}

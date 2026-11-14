@@ -1079,6 +1079,7 @@ type gazelleSkipHashSyncManager struct {
 	expectedTargetHash     string
 	cachedInstanceTorrents []internalqb.CrossInstanceTorrentView
 	cachedInstanceCalls    int
+	exportCalls            int
 }
 
 func (g *gazelleSkipHashSyncManager) GetTorrentRefs(_ context.Context, _ int, _ internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
@@ -1099,6 +1100,7 @@ func (g *gazelleSkipHashSyncManager) GetTorrentFilesBatch(_ context.Context, _ i
 }
 
 func (g *gazelleSkipHashSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	g.exportCalls++
 	return g.exportedTorrent, "", "", nil
 }
 
