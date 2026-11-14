@@ -1131,19 +1131,34 @@ type TransferHistoryTorrentFacts struct {
 // TorrentFacts returns the records of the torrents of an instance, or the
 // record of the torrent with hash when hash is set.
 func (s *TransferHistoryStore) TorrentFacts(ctx context.Context, instanceID int, hash string) ([]TransferHistoryTorrentFacts, error) {
-	query := `
+	where, args := "instance_id = ?", []any{instanceID}
+	if hash != "" {
+		where, args = where+" AND hash = ?", append(args, hash)
+	}
+	return s.torrentFacts(ctx, where, args)
+}
+
+// TorrentFactsOf returns the records of the torrents with ids.
+func (s *TransferHistoryStore) TorrentFactsOf(ctx context.Context, ids []int64) ([]TransferHistoryTorrentFacts, error) {
+	var facts []TransferHistoryTorrentFacts
+	for chunk := range slices.Chunk(ids, torrentTransferChunk) {
+		part, err := s.torrentFacts(ctx, "id IN ("+placeholders(len(chunk))+")", int64Args(chunk))
+		if err != nil {
+			return nil, err
+		}
+		facts = append(facts, part...)
+	}
+	return facts, nil
+}
+
+func (s *TransferHistoryStore) torrentFacts(ctx context.Context, where string, args []any) ([]TransferHistoryTorrentFacts, error) {
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, hash, name, tracker_domain, private, category, release_group, resolution, source,
 			content_type, COALESCE(statistics_cross_seed, FALSE), deleted, upload_first_24h,
 			baseline_uploaded, baseline_downloaded,
 			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE)
 		FROM transfer_history_torrents
-		WHERE instance_id = ?`
-	args := []any{instanceID}
-	if hash != "" {
-		query += " AND hash = ?"
-		args = append(args, hash)
-	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
+		WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("read transfer history torrent facts: %w", err)
 	}
@@ -1170,6 +1185,40 @@ func (s *TransferHistoryStore) TorrentFacts(ctx context.Context, instanceID int,
 		return nil, fmt.Errorf("read transfer history torrent facts: %w", err)
 	}
 	return facts, nil
+}
+
+// TransferHistoryTorrentBaseline is the Baseline of one torrent.
+type TransferHistoryTorrentBaseline struct {
+	TorrentID           int64
+	Uploaded            int64
+	Downloaded          int64
+	StatisticsCrossSeed bool
+}
+
+// TorrentBaselines returns the Baseline of each torrent of an instance that
+// has one.
+func (s *TransferHistoryStore) TorrentBaselines(ctx context.Context, instanceID int) ([]TransferHistoryTorrentBaseline, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, baseline_uploaded, baseline_downloaded,
+			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE)
+		FROM transfer_history_torrents
+		WHERE instance_id = ? AND (baseline_uploaded > 0 OR baseline_downloaded > 0)`, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history torrent baselines: %w", err)
+	}
+	defer rows.Close()
+	var baselines []TransferHistoryTorrentBaseline
+	for rows.Next() {
+		var b TransferHistoryTorrentBaseline
+		if err := rows.Scan(&b.TorrentID, &b.Uploaded, &b.Downloaded, &b.StatisticsCrossSeed); err != nil {
+			return nil, fmt.Errorf("scan transfer history torrent baseline: %w", err)
+		}
+		baselines = append(baselines, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history torrent baselines: %w", err)
+	}
+	return baselines, nil
 }
 
 // TorrentDaysFoldedBefore returns the latest UTC day before which a fold moved

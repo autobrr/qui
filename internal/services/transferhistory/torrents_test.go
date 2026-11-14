@@ -29,6 +29,11 @@ func torrents(limit int) transferhistory.TransferQuery {
 	return q
 }
 
+func limited(q transferhistory.TransferQuery, limit int) transferhistory.TransferQuery {
+	q.Limit = limit
+	return q
+}
+
 func within(q transferhistory.TransferQuery, groupOf transferhistory.Grouping, group string) transferhistory.TransferQuery {
 	q.GroupOf = groupOf
 	return withGroup(q, group)
@@ -108,6 +113,25 @@ func TestTheGroupingByTorrentPostgresIntegration(t *testing.T) {
 						Name: "Some.Show.S01E01.1080p.WEB-DL-GRP", TrackerGroup: "tracker.example", StatisticsCrossSeed: true, UploadFirst24h: new(int64(60)),
 					}),
 					torrentRow("old", day10, transferhistory.BucketTotal, 40, 0, 0, facts("Some.Show.S01E01.1080p.WEB-DL-GRP", nil)),
+				),
+				expect(torrents(1),
+					torrentRow("c", day10, transferhistory.BucketTotal, 60, 0, 0, &transferhistory.TorrentFacts{
+						Name: "Some.Show.S01E01.1080p.WEB-DL-GRP", TrackerGroup: "tracker.example", StatisticsCrossSeed: true, UploadFirst24h: new(int64(60)),
+					}),
+				),
+			},
+		},
+		{
+			name: "a limit picks among torrents with the same upload by hash",
+			steps: []step{
+				reading(at(0), torrent("b", 0, 0), torrent("a", 0, 0), torrent("c", 0, 0)),
+				reading(at(5*time.Minute), torrent("b", 300, 0), torrent("a", 300, 0), torrent("c", 100, 0)),
+				expect(torrents(1),
+					torrentRow("a", day10, transferhistory.BucketTotal, 300, 0, 0, facts("Some.Show.S01E01.1080p.WEB-DL-GRP", new(int64(300)))),
+				),
+				expect(torrents(2),
+					torrentRow("a", day10, transferhistory.BucketTotal, 300, 0, 0, facts("Some.Show.S01E01.1080p.WEB-DL-GRP", new(int64(300)))),
+					torrentRow("b", day10, transferhistory.BucketTotal, 300, 0, 0, facts("Some.Show.S01E01.1080p.WEB-DL-GRP", new(int64(300)))),
 				),
 			},
 		},

@@ -78,23 +78,19 @@ func (a *answer) torrentRows(ctx context.Context, store *models.TransferHistoryS
 	if err != nil {
 		return nil, err
 	}
-	// A year holds only the days before the latest fold. The cutoff only
-	// grows, so a cutoff read after the rows also covers the years in them,
-	// also when a fold commits between the two reads.
-	foldedBefore, err := store.TorrentDaysFoldedBefore(ctx)
+	inPeriod, err := yearsInPeriod(ctx, store, fromDay, toDay)
 	if err != nil {
 		return nil, err
 	}
-	foldedTo := min(toDay, foldedBefore)
 	for _, r := range rows {
 		f := byID[r.TorrentID]
-		if f == nil || r.Year && (fromDay >= foldedTo || dayOf(time.Date(int(r.Bucket), time.January, 1, 0, 0, 0, 0, time.UTC)) >= foldedTo) {
+		if f == nil || r.Year && !inPeriod(r.Bucket) {
 			continue
 		}
 		b := torrentBucket{facts: f, width: BucketDay, bucket: r.Bucket, uploaded: r.Uploaded, downloaded: r.Downloaded}
 		switch {
 		case r.Year:
-			b.width, b.start = BucketYear, time.Date(int(r.Bucket), time.January, 1, 0, 0, 0, 0, time.UTC)
+			b.width, b.start = BucketYear, yearStart(r.Bucket)
 		case total:
 			b.width = BucketTotal
 			if !q.From.IsZero() {
@@ -108,11 +104,34 @@ func (a *answer) torrentRows(ctx context.Context, store *models.TransferHistoryS
 	return byID, nil
 }
 
+// yearsInPeriod returns whether the year row of a fold belongs to the period
+// of UTC days [fromDay, toDay). A year holds only the days before the latest
+// fold. The caller reads the rows first: the cutoff only grows, so a cutoff
+// read after the rows also covers the years in them, also when a fold
+// commits between the two reads.
+func yearsInPeriod(ctx context.Context, store *models.TransferHistoryStore, fromDay, toDay int64) (func(year int64) bool, error) {
+	foldedBefore, err := store.TorrentDaysFoldedBefore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	foldedTo := min(toDay, foldedBefore)
+	return func(year int64) bool {
+		return fromDay < foldedTo && dayOf(yearStart(year)) < foldedTo
+	}, nil
+}
+
+func yearStart(year int64) time.Time {
+	return time.Date(int(year), time.January, 1, 0, 0, 0, 0, time.UTC)
+}
+
 // byTorrent reads the rows of each torrent. A day row is a UTC day, and a
 // query for hours gets day rows. A total covers each whole stored bucket that
 // overlaps the period, UTC days and the years that qui folded, and starts at
 // the first of them.
 func (a *answer) byTorrent(ctx context.Context, store *models.TransferHistoryStore) error {
+	if a.query.Group == nil && a.query.Bucket == BucketTotal && a.query.Limit > 0 {
+		return a.topTorrents(ctx, store)
+	}
 	total := a.query.Bucket == BucketTotal
 	noStart := a.query.From.IsZero()
 	facts, err := a.torrentRows(ctx, store, func(b torrentBucket) {
@@ -147,6 +166,100 @@ func (a *answer) byTorrent(ctx context.Context, store *models.TransferHistorySto
 		return a.addGaps(ctx, store, fromDay*24, toDay*24, models.TransferHistoryBuckets{}, BucketTotal, false)
 	}
 	return a.addGaps(ctx, store, fromDay*24, toDay*24, models.TransferHistoryBuckets{Width: 24}, BucketDay, false)
+}
+
+// torrentSum is the transfer of one torrent in the period, for topTorrents.
+type torrentSum struct {
+	uploaded, downloaded int64
+	start                time.Time
+	baseline             *models.TransferHistoryTorrentBaseline
+}
+
+func (s *torrentSum) rank() int64 {
+	if s.baseline == nil {
+		return s.uploaded
+	}
+	return s.uploaded + s.baseline.Uploaded
+}
+
+// topTorrents answers the totals of the torrents with the most upload, as
+// byTorrent does. It reads the records of the torrents that it keeps only,
+// because the records of each torrent of a large library take longer to read
+// than the bytes of a short period. It keeps each torrent that ties with the
+// last one, so that Transfer picks among them by hash, as for the other
+// queries.
+func (a *answer) topTorrents(ctx context.Context, store *models.TransferHistoryStore) error {
+	q := a.query
+	fromDay, toDay := daysOf(q.From, q.To)
+	rows, err := store.TorrentTransfer(ctx, q.InstanceID, nil, fromDay, toDay, true)
+	if err != nil {
+		return err
+	}
+	inPeriod, err := yearsInPeriod(ctx, store, fromDay, toDay)
+	if err != nil {
+		return err
+	}
+	var start time.Time
+	if !q.From.IsZero() {
+		start = time.Unix(fromDay*86400, 0).UTC()
+	}
+	sums := make(map[int64]*torrentSum)
+	sumOf := func(id int64) *torrentSum {
+		s := sums[id]
+		if s == nil {
+			s = &torrentSum{start: start}
+			sums[id] = s
+		}
+		return s
+	}
+	for _, r := range rows {
+		if r.Year && !inPeriod(r.Bucket) {
+			continue
+		}
+		s := sumOf(r.TorrentID)
+		s.uploaded += r.Uploaded
+		s.downloaded += r.Downloaded
+		if r.Year && !start.IsZero() && yearStart(r.Bucket).Before(s.start) {
+			s.start = yearStart(r.Bucket)
+		}
+	}
+	if q.From.IsZero() {
+		baselines, err := store.TorrentBaselines(ctx, q.InstanceID)
+		if err != nil {
+			return err
+		}
+		for i := range baselines {
+			sumOf(baselines[i].TorrentID).baseline = &baselines[i]
+		}
+	}
+
+	ids := slices.SortedFunc(maps.Keys(sums), func(x, y int64) int { return cmp.Compare(sums[y].rank(), sums[x].rank()) })
+	if len(ids) > q.Limit {
+		last := sums[ids[q.Limit-1]].rank()
+		if n := slices.IndexFunc(ids[q.Limit:], func(id int64) bool { return sums[id].rank() < last }); n >= 0 {
+			ids = ids[:q.Limit+n]
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	facts, err := store.TorrentFactsOf(ctx, ids)
+	if err != nil {
+		return err
+	}
+	a.torrents = make(map[string]*models.TransferHistoryTorrentFacts, len(facts))
+	for i := range facts {
+		f := &facts[i]
+		s := sums[f.ID]
+		a.torrents[f.Hash] = f
+		r := a.rowOf(rowKey{group: f.Hash, width: BucketTotal}, s.start)
+		addBytes(&r.Bytes, s.uploaded, s.downloaded, f.StatisticsCrossSeed)
+		if s.baseline != nil {
+			r.Baseline = &Bytes{}
+			addBytes(r.Baseline, s.baseline.Uploaded, s.baseline.Downloaded, s.baseline.StatisticsCrossSeed)
+		}
+	}
+	return a.addGaps(ctx, store, fromDay*24, toDay*24, models.TransferHistoryBuckets{}, BucketTotal, false)
 }
 
 // addTorrentFacts sets the facts of the torrent of each row of the grouping by
