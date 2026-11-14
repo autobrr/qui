@@ -17,6 +17,10 @@ const SERIES = [
   { key: "uniqueSize", color: 2 },
 ] as const
 
+function isolated(points: LibraryPoint[], key: "totalSize" | "uniqueSize", index: number): boolean {
+  return points[index]?.[key] !== null && (points[index - 1]?.[key] ?? null) === null && (points[index + 1]?.[key] ?? null) === null
+}
+
 /** The total size and the Unique size for each day. A day with no value shows as a gap in its line. */
 export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
   const { t, i18n } = useTranslation("statistics")
@@ -37,6 +41,7 @@ export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
         <YAxis tickLine={false} axisLine={false} width={72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
         <ChartTooltip
           cursor={{ stroke: "var(--border)" }}
+          filterNull={false}
           isAnimationActive={false}
           content={({ active, payload }) => {
             const point = active ? (payload?.[0]?.payload as LibraryPoint | undefined) : undefined
@@ -72,7 +77,10 @@ export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
             strokeWidth={2}
             fill={`var(--color-${key})`}
             fillOpacity={0.1}
-            dot={points.length < 3}
+            dot={({ index, cx, cy }: { index: number; cx?: number; cy?: number }) => (
+              // A day between two gaps has no line, so it gets a dot.
+              <circle key={index} cx={cx} cy={cy} r={isolated(points, key, index) && cy !== undefined ? 3 : 0} fill={`var(--color-${key})`} />
+            )}
             isAnimationActive={false}
           />
         ))}
