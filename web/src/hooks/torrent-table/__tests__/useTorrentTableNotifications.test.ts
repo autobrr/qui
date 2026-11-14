@@ -5,6 +5,7 @@
 
 import { type UseTorrentTableNotificationsParams, useTorrentTableNotifications } from "@/hooks/torrent-table/useTorrentTableNotifications"
 import { EMPTY_ACTION_TARGET, type ActionTarget } from "@/lib/torrent-selection"
+import { LIST_FACTS } from "@/test/mockListFacts"
 import { makeTorrent } from "@/test/mockTorrent"
 import { renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
@@ -28,7 +29,8 @@ function makeParams(overrides: Partial<UseTorrentTableNotificationsParams> = {})
     supportsTrackerHealth: false,
     onSelectionChange: vi.fn(),
     actionTarget: EMPTY_ACTION_TARGET,
-    selectedTotalSize: 0,
+    totalSize: 0, excludedSize: 0,
+    listFacts: LIST_FACTS,
     ...overrides,
   }
 }
@@ -97,11 +99,28 @@ describe("useTorrentTableNotifications — onFilteredDataUpdate", () => {
 })
 
 describe("useTorrentTableNotifications — onSelectionChange", () => {
-  it("publishes the Action target with the size", () => {
+  it("publishes the Action target with the size facts", () => {
     const actionTarget: ActionTarget = { kind: "ticks", hashes: ["a"], count: 1, previewTorrents: [makeTorrent({ hash: "a" })] }
-    const params = makeParams({ actionTarget, selectedTotalSize: 100 })
+    const params = makeParams({ actionTarget, totalSize: 600, excludedSize: 100 })
     renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
-    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({ actionTarget, selectedTotalSize: 100 })
+    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith({ actionTarget, totalSize: 600, excludedSize: 100, instanceId: 1, instanceIds: undefined, listFacts: LIST_FACTS })
+  })
+
+  it("publishes the instance subset of the Unified view", () => {
+    const instanceIds = [2, 3]
+    const params = makeParams({ instanceId: 0, instanceIds })
+    renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
+    expect(vi.mocked(params.onSelectionChange!)).toHaveBeenCalledWith(expect.objectContaining({ instanceId: 0, instanceIds }))
+  })
+
+  it("does not publish again on a stream tick while the selection is empty", () => {
+    const onSelectionChange = vi.fn()
+    const instanceIds = [2, 3]
+    const { rerender } = renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), {
+      initialProps: makeParams({ onSelectionChange, instanceIds }),
+    })
+    rerender(makeParams({ onSelectionChange, instanceIds, torrents: [makeTorrent({ hash: "h0", progress: 0.5 })] }))
+    expect(onSelectionChange).toHaveBeenCalledTimes(1)
   })
 
   it("fires even while loading (no loading gate on selection)", () => {

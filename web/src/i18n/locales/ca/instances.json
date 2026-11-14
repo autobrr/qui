@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Desactivada",
-      "enabled": "Activada",
       "connected": "Connectada",
       "disconnected": "Desconnectada"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verificació TLS:",
       "tlsSkipped": "Omesa",
       "tlsStrict": "Estricta",
-      "localFileAccess": "Accés als fitxers locals:",
-      "testingConnection": "S'està provant la connexió..."
+      "testingConnection": "S'està provant la connexió...",
+      "fileAccess": "Accés als fitxers:"
     },
     "deleteDialog": {
       "title": "Elimina la instància",
@@ -111,7 +110,8 @@
       "none": "Cap",
       "usernamePassword": "Nom d'usuari i contrasenya",
       "apiKey": "Clau API"
-    }
+    },
+    "sshAfterSave": "L'accés SSH als fitxers de la instància es configura a la configuració de la instància després de desar."
   },
   "settingsButton": {
     "tooltip": "Configuració de la instància"
@@ -150,7 +150,8 @@
         "downloads": "Baixades",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "Límits de sembra"
+        },
+        "ssh": {
+          "title": "Accés SSH",
+          "description": "Accedeix als fitxers d'aquesta instància per SSH quan qui i qBittorrent s'executen en màquines diferents"
         }
       }
     },
@@ -939,8 +944,7 @@
       "enableDryRunPrompt": {
         "title": "Vols activar l'execució de prova?",
         "description": "L'execució de prova simula totes les accions sense canviar res. Pots revisar els torrents afectats al registre d'activitat.",
-        "enableWithout": "Activa-ho sense execució de prova",
-        "enableWith": "Activa-ho amb execució de prova"
+        "saveAndEnable": "Desa i activa"
       },
       "freeSpace": {
         "title": "Origen de l'espai lliure",
@@ -950,14 +954,14 @@
         "defaultSource": "Predeterminat (qBittorrent)",
         "pathSource": "Camí al servidor",
         "pathSourceWindowsUnsupported": "Camí al servidor (no compatible amb Windows)",
-        "pathSourceLocalAccessRequired": "Camí al servidor (cal accés local)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Introdueix el camí on vols comprovar l'espai lliure (p. ex., un punt de muntatge)",
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
-          "localAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local.",
-          "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor»."
-        }
+          "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor».",
+          "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Camí al servidor (necessita accés local o SSH)"
       },
       "grouping": {
         "title": "Grups de condicions agrupades",
@@ -1137,7 +1141,6 @@
         "switchedIntervalForFreeSpace": "S'ha canviat a un interval de 5 minuts perquè les supressions per espai lliure tenen un temps d'espera d'uns 5 minuts",
         "pathSourceUnsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows. S'ha canviat al valor predeterminat de qBittorrent.",
         "switchFreeSpaceSourceDefault": "Canvia l'origen de l'espai lliure a Predeterminat (qBittorrent)",
-        "enableLocalAccessOrDefault": "Activa l'accés al sistema de fitxers local a la configuració de la instància, o fes servir Predeterminat (qBittorrent)",
         "enterPathOrDefault": "Introdueix un camí o torna a posar l'origen de l'espai lliure a Predeterminat (qBittorrent)",
         "addScoreRule": "Afegeix com a mínim una regla de puntuació per ordenar per puntuació",
         "fieldMultiplierInvalid": "El multiplicador de camp ha de ser un número vàlid",
@@ -1154,7 +1157,8 @@
         "groupIdInvalid": "L'ID del grup només pot contenir caràcters alfanumèrics i guions baixos",
         "selectGroupKey": "Selecciona com a mínim una clau",
         "groupExists": "Ja hi ha un grup amb aquest ID",
-        "customGroupAdded": "S'ha afegit el grup personalitzat"
+        "customGroupAdded": "S'ha afegit el grup personalitzat",
+        "setUpFilesystemAccessOrDefault": "Configura l'accés al sistema de fitxers local o per SSH a la configuració de la instància, o fes servir Predeterminat (qBittorrent)"
       },
       "trackerMatchInclude": "Inclou",
       "trackerMatchExclude": "Exclou"
@@ -1356,10 +1360,8 @@
     "orphanScanOverview": {
       "title": "Exploració d'orfes",
       "noInstancesDescription": "No hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir aquest servei.",
-      "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent.\nCal activar l'accés al sistema de fitxers local per a cada instància.",
+      "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent.\nNecessita accés als fitxers de cada instància. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
       "description": "Explora els directoris de baixada i identifica els fitxers orfes per netejar-los.",
-      "noLocalAccess": "Sense accés local",
-      "noLocalAccessTooltip": "qui i qBittorrent s'han d'executar a la mateixa màquina. Activa «Accés al sistema de fitxers local» a la configuració de la instància per fer servir l'exploració d'orfes.",
       "remoteLimits": "La supressió i la neteja automàtica en una instància remota necessiten la identitat dels fitxers, que qui només pot llegir si el servidor li permet executar GNU find i stat.",
       "remoteNoIdentity": "Aquesta instància remota no li permet executar-los, de manera que qui no pot saber quan dos camins són el mateix fitxer, i un fitxer accessible per un segon camí, per exemple amb un muntatge bind, pot aparèixer a la llista encara que un torrent l'utilitzi. Les exploracions d'aquí es poden previsualitzar i exportar, però no suprimir.",
       "on": "Activada",
@@ -1379,6 +1381,8 @@
       "viewPreview": "Mostra la previsualització",
       "recentScans": "Exploracions recents",
       "scannedPaths": "Camins d'exploració seleccionats ({{total}})",
+      "scanPathsLoading": "Carregant els camins d'exploració...",
+      "scanPathsLoadFailed": "No s'han pogut carregar els camins d'exploració",
       "zeroOrphans": "0 orfes",
       "deletedStats": "{{deleted}} eliminats · {{size}}",
       "partialFailure": "Error parcial: comprova les exploracions recents",
@@ -1415,7 +1419,9 @@
       "deletedDirs_other": "{{count}} directoris",
       "deletedSeparator": ", ",
       "errorMessage": "Missatge d'error",
-      "scanPaths": "Camins d'exploració"
+      "scanPaths": "Camins d'exploració",
+      "noFilesystemAccess": "Sense accés al sistema de fitxers",
+      "noFilesystemAccessTooltip": "L'exploració d'orfes necessita accés als fitxers d'aquesta instància. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància."
     },
     "orphanScanPreview": {
       "title": "Previsualització d'orfes",
@@ -1750,6 +1756,92 @@
       "testEmailQueued": "El qBittorrent ha posat a la cua el correu de prova",
       "testEmailQueuedDescription": "El qBittorrent fa servir la configuració desada. Comproveu la safata d'entrada i el registre del qBittorrent per si hi ha errors.",
       "testEmailFailed": "No s'ha pogut enviar el correu de prova"
+    },
+    "ssh": {
+      "localWins": "L'accés al sistema de fitxers local està activat, així que qui llegeix els fitxers d'aquesta instància localment i no fa servir aquesta configuració SSH.",
+      "labels": {
+        "host": "Amfitrió SSH",
+        "hostDescription": "Nom d'amfitrió o adreça IP de la màquina que conté els fitxers d'aquesta instància, sense esquema ni port. Canviar l'amfitrió o el port descarta la clau d'amfitrió fixada, de manera que la propera prova torna a ser un primer contacte.",
+        "port": "Port",
+        "username": "Nom d'usuari",
+        "privateKey": "Clau privada",
+        "privateKeyDescription": "Una clau privada OpenSSH sense contrasenya. qui la desa xifrada i no la torna a mostrar mai. Torna a fer falta quan canvia l'amfitrió, el port o el nom d'usuari."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Hi ha una clau desada. Enganxa'n una de nova per substituir-la."
+      },
+      "validation": {
+        "hostRequired": "L'amfitrió SSH és obligatori",
+        "portRange": "El port ha d'estar entre 1 i 65535",
+        "usernameRequired": "El nom d'usuari és obligatori",
+        "keyRequired": "La clau privada és necessària quan canvia l'amfitrió, el port o el nom d'usuari"
+      },
+      "buttons": {
+        "save": "Desa la configuració SSH",
+        "clear": "Suprimeix l'accés SSH",
+        "test": "Prova la connexió",
+        "testing": "S'està provant...",
+        "confirm": "Confirma la clau d'amfitrió",
+        "replace": "Substitueix la clau d'amfitrió"
+      },
+      "test": {
+        "title": "Connexió",
+        "pinnedAtRest": "Clau d'amfitrió fixada. Prova la connexió per veure què permet l'amfitrió.",
+        "unpinnedAtRest": "Encara no hi ha cap clau d'amfitrió fixada. Prova la connexió per confirmar l'empremta de l'amfitrió.",
+        "saveFirst": "Desa primer els canvis. La prova utilitza les credencials desades."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Primer contacte",
+          "text": "Compara aquesta empremta amb la de l'amfitrió abans de confirmar-la. Les connexions posteriors rebutjaran qualsevol altra clau."
+        },
+        "pinned": {
+          "title": "Clau d'amfitrió fixada"
+        },
+        "mismatch": {
+          "title": "La clau d'amfitrió ha canviat",
+          "text": "L'amfitrió ha presentat una clau diferent de la fixada. Substitueix-la només si esperes el canvi, per exemple després de reinstal·lar el servidor."
+        },
+        "pinUnreadable": {
+          "title": "La clau fixada no es pot llegir",
+          "text": "La clau fixada no es pot desxifrar, normalment perquè la clau de xifratge de qui ha canviat. Substitueix-la per continuar.",
+          "noKey": "L'amfitrió no ha respost, així que no hi ha cap clau amb què substituir-la."
+        },
+        "error": {
+          "title": "Ha fallat la connexió"
+        }
+      },
+      "fingerprint": {
+        "label": "Empremta",
+        "pinned": "Fixada",
+        "presented": "Presentada"
+      },
+      "probes": {
+        "tier": "Nivell: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + ordres",
+        "tierHint": "Les ordres necessiten un shell POSIX amb GNU find i stat a l'amfitrió. Sense ells, qui només fa servir SFTP i no pot llegir la identitat dels fitxers.",
+        "sftp": "SFTP",
+        "statvfs": "Espai lliure (statvfs)",
+        "hardlink": "Enllaços durs (hardlink@openssh.com)",
+        "limits": "Extensió limits",
+        "exec": "Ordres",
+        "gnuUserland": "GNU find i stat",
+        "yes": "Disponible",
+        "no": "No disponible"
+      },
+      "replaceDialog": {
+        "title": "Vols substituir la clau d'amfitrió fixada?",
+        "description": "A partir d'ara qui confiarà en la clau presentada per a aquest amfitrió i rebutjarà la fixada.",
+        "cancel": "Cancel·la",
+        "confirm": "Substitueix"
+      },
+      "toast": {
+        "saved": "S'ha desat la configuració SSH",
+        "cleared": "S'ha suprimit l'accés SSH"
+      }
     }
   },
   "backups": {
@@ -1999,5 +2091,21 @@
       "allBackupsDeleted": "S'han eliminat totes les còpies de seguretat",
       "failedToDeleteBackups": "No s'han pogut eliminar les còpies de seguretat"
     }
+  },
+  "access": {
+    "local": "Local",
+    "remote": "Per SSH",
+    "none": "Cap",
+    "localFull": "qui llegeix i escriu els fitxers d'aquesta instància en aquesta màquina.",
+    "limits": {
+      "noIdentity": "Sense identitat dels fitxers: qui no pot saber quan dos camins són el mateix fitxer. L'exploració d'orfes no pot suprimir aquí, i una destinació de hardlink existent atura una addició per hardlink.",
+      "noReflinks": "Sense reflinks en una instància remota.",
+      "noHardlinkExtension": "Sense hardlinks: el servidor no anuncia hardlink@openssh.com. Una addició de cross-seed per hardlink falla aquí, o s'afegeix en mode normal quan «Recorre al mode normal si hi ha un error» està activat."
+    }
+  },
+  "deleteHistory": {
+    "label": "Elimina també l'historial de transferències",
+    "description": "Sense aquesta opció, qui conserva l'historial amb el nom de la instància.",
+    "failed": "La instància s'ha eliminat, però qui no ha pogut eliminar tot el seu historial. Mira a Configuració > Estadístiques i elimina-hi la resta."
   }
 }

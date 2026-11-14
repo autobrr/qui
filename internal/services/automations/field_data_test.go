@@ -130,6 +130,16 @@ func TestNeedsFor(t *testing.T) {
 			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true}},
 		},
 		{
+			name:  "include cross-seeds delete with FREE_SPACE reads the groups of its claims",
+			rules: enabled(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds, Condition: &RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1"}}}),
+			want:  RuleNeeds{FreeSpace: true, CrossMatch: CrossMatchNeeds{SameContent: true, OtherShared: true}},
+		},
+		{
+			name:  "tag that includes cross-seeds",
+			rules: enabled(&models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, IncludeCrossSeeds: true, Tags: []string{"x"}}}}),
+			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}, TagCrossSeeds: true},
+		},
+		{
 			name:  "category that blocks on cross-seeds",
 			rules: enabled(&models.ActionConditions{Category: &models.CategoryAction{Enabled: true, BlockIfCrossSeedInCategories: []string{"keep"}}}),
 			want:  RuleNeeds{CrossMatch: CrossMatchNeeds{SameContent: true}},

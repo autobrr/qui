@@ -10,16 +10,6 @@ import (
 	"unicode/utf8"
 )
 
-// windowsReservedNames contains device names that are reserved on Windows.
-// These cannot be used as filenames regardless of extension.
-var windowsReservedNames = map[string]bool{
-	"CON": true, "PRN": true, "AUX": true, "NUL": true,
-	"COM1": true, "COM2": true, "COM3": true, "COM4": true,
-	"COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true,
-	"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true,
-	"LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
-}
-
 // illegalCharsRegex matches characters that are illegal in Windows filenames.
 // These are: < > : " / \ | ? *
 var illegalCharsRegex = regexp.MustCompile(`[<>:"/\\|?*]`)
@@ -55,18 +45,32 @@ func SanitizePathSegment(name string) string {
 		return "_"
 	}
 
-	// Check for Windows reserved names (case-insensitive)
-	// Check both with and without extension (e.g., "CON.txt" is also reserved)
-	upper := strings.ToUpper(result)
-	baseName := upper
-	if idx := strings.Index(upper, "."); idx > 0 {
-		baseName = upper[:idx]
-	}
-	if windowsReservedNames[baseName] {
+	if IsWindowsDeviceName(result) {
 		result = "_" + result
 	}
 
 	return result
+}
+
+// IsWindowsDeviceName reports whether a path component is a reserved Windows
+// device name, ignoring its extension and trailing spaces.
+func IsWindowsDeviceName(component string) bool {
+	base, _, _ := strings.Cut(component, ".")
+	base = strings.TrimRight(base, " ")
+	for _, name := range []string{"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} {
+		if strings.EqualFold(base, name) {
+			return true
+		}
+	}
+	if len(base) < 4 || (!strings.EqualFold(base[:3], "COM") && !strings.EqualFold(base[:3], "LPT")) {
+		return false
+	}
+	switch n := base[3:]; n {
+	case "\u00b9", "\u00b2", "\u00b3":
+		return true
+	default:
+		return len(n) == 1 && n[0] >= '1' && n[0] <= '9'
+	}
 }
 
 // TorrentPathComponent maps one component of a torrent's file path to the name

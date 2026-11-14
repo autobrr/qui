@@ -1512,8 +1512,8 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 
 	service := &partialPoolCoordinator{automationStore: store}
 	service.observePartialPoolMembers(t.Context(), time.Now(), pool, map[int]partialPoolTorrentInventory{
-		instanceID: newPartialPoolTorrentInventory([]qbt.Torrent{{Hash: source.TorrentKey}}, true),
-	})
+		instanceID: newPartialPoolTorrentInventory([]*qbt.Torrent{{Hash: source.TorrentKey}}, true),
+	}, partialPoolAllLocal(pool))
 	require.FileExists(t, stagingPath)
 	require.FileExists(t, cleanupFaultPath)
 	require.DirExists(t, stagingRoot)
@@ -1527,8 +1527,8 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 
 	require.NoError(t, os.Remove(cleanupFaultPath))
 	service.observePartialPoolMembers(t.Context(), time.Now(), pool, map[int]partialPoolTorrentInventory{
-		instanceID: newPartialPoolTorrentInventory([]qbt.Torrent{{Hash: source.TorrentKey}}, true),
-	})
+		instanceID: newPartialPoolTorrentInventory([]*qbt.Torrent{{Hash: source.TorrentKey}}, true),
+	}, partialPoolAllLocal(pool))
 	require.NoFileExists(t, stagingPath)
 	require.NoDirExists(t, stagingRoot)
 	require.NoFileExists(t, ownerPath)

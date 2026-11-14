@@ -40,7 +40,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		torrents[5].Hash: TrackerHealthError,
 	})
 
-	t.Run("matchTorrentStatus filters correctly", func(t *testing.T) {
+	t.Run("each status matches its states", func(t *testing.T) {
 		testCases := []struct {
 			status   string
 			expected int // Expected number of matches
@@ -59,7 +59,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		for _, tc := range testCases {
 			count := 0
 			for _, torrent := range torrents {
-				if sm.matchTorrentStatusWithTrackerHealth(&torrent, tc.status, cachedHealth) {
+				if def, _ := lookupStatus(tc.status); def.matches(&torrent, cachedHealth) {
 					count++
 				}
 			}
@@ -76,7 +76,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 			torrents[i].UpSpeed = int64(i * 500)  // 0, 500, 1000, ...
 		}
 
-		stats := sm.calculateStats(torrents)
+		stats := sm.calculateStats(torrentRefs(torrents), nil)
 
 		assert.Equal(t, 10, stats.Total, "Total should be 10")
 		assert.Positive(t, stats.TotalDownloadSpeed, "Should have download speed")
@@ -94,99 +94,6 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		assert.Equal(t, 2, stats.Downloading, "Should have 2 actively downloading torrents")
 		assert.Equal(t, 2, stats.Seeding, "Should have 2 actively seeding torrents")
 	})
-}
-
-func TestSyncManager_TorrentBelongsToTrackerDomain(t *testing.T) {
-	sm := &SyncManager{}
-
-	tests := []struct {
-		name     string
-		torrent  *qbt.Torrent
-		domain   string
-		expected bool
-	}{
-		{
-			name:     "nil torrent returns false",
-			torrent:  nil,
-			domain:   "example.com",
-			expected: false,
-		},
-		{
-			name:     "empty trackers uses Tracker field - match",
-			torrent:  &qbt.Torrent{Tracker: "http://tracker.example.com/announce"},
-			domain:   "tracker.example.com",
-			expected: true,
-		},
-		{
-			name:     "empty trackers uses Tracker field - no match",
-			torrent:  &qbt.Torrent{Tracker: "http://tracker.example.com/announce"},
-			domain:   "other.com",
-			expected: false,
-		},
-		{
-			name: "trackers slice - first matches",
-			torrent: &qbt.Torrent{
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://first.com/announce"},
-					{Url: "http://second.com/announce"},
-				},
-			},
-			domain:   "first.com",
-			expected: true,
-		},
-		{
-			name: "trackers slice - second matches",
-			torrent: &qbt.Torrent{
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://first.com/announce"},
-					{Url: "http://second.com/announce"},
-				},
-			},
-			domain:   "second.com",
-			expected: true,
-		},
-		{
-			name: "trackers slice - none match",
-			torrent: &qbt.Torrent{
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://first.com/announce"},
-					{Url: "http://second.com/announce"},
-				},
-			},
-			domain:   "third.com",
-			expected: false,
-		},
-		{
-			name: "trackers slice takes precedence over Tracker field",
-			torrent: &qbt.Torrent{
-				Tracker: "http://tracker.example.com/announce",
-				Trackers: []qbt.TorrentTracker{
-					{Url: "http://different.com/announce"},
-				},
-			},
-			domain:   "tracker.example.com",
-			expected: false, // Trackers slice doesn't contain this domain
-		},
-		{
-			name:     "empty domain",
-			torrent:  &qbt.Torrent{Tracker: "http://example.com/announce"},
-			domain:   "",
-			expected: false,
-		},
-		{
-			name:     "empty tracker field and empty slice",
-			torrent:  &qbt.Torrent{},
-			domain:   "example.com",
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := sm.torrentBelongsToTrackerDomain(tt.torrent, tt.domain)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestSyncManager_GetTrackerHealthSnapshot_NilWhenNoCache(t *testing.T) {
@@ -324,7 +231,7 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	// If we reach here without race detector complaints, the test passes
 }
 
-func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
+func TestListRules_Exclusions(t *testing.T) {
 	sm := &SyncManager{}
 
 	torrents := []qbt.Torrent{
@@ -393,50 +300,12 @@ func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData, nil, false)
+		result := listRows(sm, nil, torrents, tc.filters, mainData, false, nil)
 		assert.ElementsMatch(t, tc.expected, hashes(result), tc.name)
 	}
 }
 
-func TestFiltersRequireTrackerData(t *testing.T) {
-	testCases := []struct {
-		name    string
-		filters FilterOptions
-		want    bool
-	}{
-		{
-			name:    "include tracker health statuses",
-			filters: FilterOptions{Status: []string{"unregistered"}},
-			want:    true,
-		},
-		{
-			name:    "exclude tracker health statuses",
-			filters: FilterOptions{ExcludeStatus: []string{"tracker_down"}},
-			want:    true,
-		},
-		{
-			name:    "include tracker error status",
-			filters: FilterOptions{Status: []string{"tracker_error"}},
-			want:    true,
-		},
-		{
-			name:    "non tracker health statuses",
-			filters: FilterOptions{Status: []string{"downloading"}},
-			want:    false,
-		},
-		{
-			name:    "no statuses",
-			filters: FilterOptions{},
-			want:    false,
-		},
-	}
-
-	for _, tc := range testCases {
-		assert.Equal(t, tc.want, filtersRequireTrackerData(tc.filters), tc.name)
-	}
-}
-
-func TestSyncManager_ApplyManualFiltersUsesCachedTrackerHealth(t *testing.T) {
+func TestListRulesUseCachedTrackerHealth(t *testing.T) {
 	sm := &SyncManager{}
 	cachedHealth := NewTrackerHealthSnapshot(map[string]TrackerHealth{
 		"unregistered": TrackerHealthUnregistered,
@@ -450,13 +319,13 @@ func TestSyncManager_ApplyManualFiltersUsesCachedTrackerHealth(t *testing.T) {
 		{Hash: "error", Name: "Error"},
 	}
 
-	filtered := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{Status: []string{"unregistered", "tracker_error"}}, nil, nil, false, cachedHealth)
+	filtered := listRows(sm, nil, torrents, FilterOptions{Status: []string{"unregistered", "tracker_error"}}, nil, false, cachedHealth)
 	assert.Equal(t, []qbt.Torrent{torrents[1], torrents[3]}, filtered)
 
-	excluded := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{ExcludeStatus: []string{"tracker_down"}}, nil, nil, false, cachedHealth)
+	excluded := listRows(sm, nil, torrents, FilterOptions{ExcludeStatus: []string{"tracker_down"}}, nil, false, cachedHealth)
 	assert.Equal(t, []qbt.Torrent{torrents[0], torrents[1], torrents[3]}, excluded)
 
-	withoutCache := sm.applyManualFilters(nil, torrents, FilterOptions{Status: []string{"unregistered"}}, nil, nil, false)
+	withoutCache := listRows(sm, nil, torrents, FilterOptions{Status: []string{"unregistered"}}, nil, false, nil)
 	assert.Empty(t, withoutCache)
 }
 
@@ -527,10 +396,10 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 		"down":  TrackerHealthDown,
 	})
 
-	sm.sortTorrents(torrents, "state", true, true, cachedHealth)
+	sortTorrentValues(sm, torrents, "state", true, true, cachedHealth)
 	assert.Equal(t, []string{"paused_old", "paused", "uploading_old", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
 
-	sm.sortTorrents(torrents, "state", false, true, cachedHealth)
+	sortTorrentValues(sm, torrents, "state", false, true, cachedHealth)
 	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "uploading_old", "paused", "paused_old"}, hashes(torrents))
 }
 
@@ -556,7 +425,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", false, true, cachedHealth)
+	sortTorrentValues(sm, torrents, "state", false, true, cachedHealth)
 	assert.Equal(t, []string{"unregistered", "down", "error", "healthy"}, hashes(torrents))
 
 	unsupportedTorrents := []qbt.Torrent{
@@ -566,7 +435,7 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 		{Hash: "error", Name: "bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
 	}
-	sm.sortTorrents(unsupportedTorrents, "state", false, false, cachedHealth)
+	sortTorrentValues(sm, unsupportedTorrents, "state", false, false, cachedHealth)
 	assert.Equal(t, []string{"healthy", "error", "down", "unregistered"}, hashes(unsupportedTorrents))
 }
 
@@ -596,10 +465,10 @@ func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", true, false, nil)
+	sortTorrentValues(sm, torrents, "state", true, false, nil)
 	assert.Equal(t, []string{"older", "newer"}, hashes(torrents))
 
-	sm.sortTorrents(torrents, "state", false, false, nil)
+	sortTorrentValues(sm, torrents, "state", false, false, nil)
 	assert.Equal(t, []string{"newer", "older"}, hashes(torrents))
 }
 
@@ -620,8 +489,46 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrents(torrents, "state", false, false, nil)
+	sortTorrentValues(sm, torrents, "state", false, false, nil)
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
+}
+
+// regression: #2538
+func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
+	sm := &SyncManager{}
+	torrents := []qbt.Torrent{
+		{Name: "[Grp] Some Show - 05 [1080p].mkv", Category: "anime", Tags: "fansub, weekly"},
+		{Name: "Who Is It? [Grp]", Category: "music"},
+		{Name: "Ubuntu.20.04.LTS.Desktop.amd64.iso", Category: "linux", Tags: "ubuntu, desktop"},
+		{Name: "Disc1.iso", Category: "games"},
+		{Name: "Movie.2023.1080p.BluRay.x264", Category: "movies", Tags: "action, drama"},
+	}
+
+	tests := []struct {
+		name   string
+		search string
+		want   []string
+	}{
+		{"bracketed group tag", "[Grp] Some Show", []string{"[Grp] Some Show - 05 [1080p].mkv"}},
+		{"full bracketed name", "[Grp] Some Show - 05 [1080p].mkv", []string{"[Grp] Some Show - 05 [1080p].mkv"}},
+		{"unbalanced bracket", "[Grp", []string{"[Grp] Some Show - 05 [1080p].mkv", "Who Is It? [Grp]"}},
+		{"glob with a bad pattern falls back to literal", "It? [Grp", []string{"Who Is It? [Grp]"}},
+		{"full name holding a question mark and brackets", "Who Is It? [Grp]", []string{"Who Is It? [Grp]"}},
+		{"star on name", "*.iso", []string{"Ubuntu.20.04.LTS.Desktop.amd64.iso", "Disc1.iso"}},
+		{"question mark on name", "disc?.iso", []string{"Disc1.iso"}},
+		{"star on category", "mov*", []string{"Movie.2023.1080p.BluRay.x264"}},
+		{"star on a single tag", "dra*", []string{"Movie.2023.1080p.BluRay.x264"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			for _, torrent := range sm.filterTorrentsBySearch(torrentRefs(torrents), tt.search) {
+				got = append(got, torrent.Name)
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 // TestSyncManager_SearchFunctionality tests the search and filtering logic
@@ -640,7 +547,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	}
 
 	t.Run("filterTorrentsBySearch exact match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrents, "ubuntu")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "ubuntu")
 
 		// Should find 2 ubuntu torrents
 		assert.Len(t, results, 2, "Should find 2 Ubuntu torrents")
@@ -654,7 +561,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	})
 
 	t.Run("filterTorrentsBySearch fuzzy match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrents, "2023")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "2023")
 
 		// Should find torrents with 2023 in name or tags
 		assert.GreaterOrEqual(t, len(results), 2, "Should find at least 2 torrents with '2023'")
@@ -668,7 +575,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	})
 
 	t.Run("filterTorrentsBySearch hash match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrents, "dd44")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "dd44")
 
 		assert.Len(t, results, 1, "Should find torrent by hash")
 		assert.Equal(t, "Movie.2023.1080p.BluRay.x264", results[0].Name)
@@ -677,12 +584,12 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	t.Run("filterTorrentsBySearch non-hex search skips hash fields", func(t *testing.T) {
 		// "x264" cannot be part of a hex infohash, so the hash fields are not
 		// scanned; the name still matches.
-		results := sm.filterTorrentsBySearch(torrents, "x264")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "x264")
 		assert.Len(t, results, 2, "Should match names, not hashes")
 	})
 
-	t.Run("filterTorrentsByGlob pattern match", func(t *testing.T) {
-		results := sm.filterTorrentsByGlob(torrents, "*.iso")
+	t.Run("filterTorrentsBySearch glob pattern match", func(t *testing.T) {
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "*.iso")
 
 		// Should find all ISO files
 		assert.GreaterOrEqual(t, len(results), 3, "Should find at least 3 ISO files")
@@ -692,9 +599,9 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		}
 	})
 
-	t.Run("filterTorrentsByGlob episode example skips season packs", func(t *testing.T) {
+	t.Run("filterTorrentsBySearch glob episode example skips season packs", func(t *testing.T) {
 		// The search help offers this pattern; ? would also hit a season-only name.
-		results := sm.filterTorrentsByGlob([]qbt.Torrent{
+		results := sm.filterTorrentsBySearch([]*qbt.Torrent{
 			{Name: "Some.Show.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 			{Name: "Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		}, "*S[0-9][0-9]E[0-9][0-9]*")
@@ -765,7 +672,7 @@ func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
 	torrents := createTestTorrents(1000) // 1k torrents
 
 	for b.Loop() {
-		results := sm.filterTorrentsBySearch(torrents, "test-torrent-5")
+		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "test-torrent-5")
 		if len(results) == 0 {
 			b.Fatal("Should find at least one match")
 		}
@@ -782,7 +689,7 @@ func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	torrents := createTestTorrents(10000) // 10k torrents
 
 	for b.Loop() {
-		stats := sm.calculateStats(torrents)
+		stats := sm.calculateStats(torrentRefs(torrents), nil)
 		if stats.Total != 10000 {
 			b.Fatal("Stats calculation failed")
 		}

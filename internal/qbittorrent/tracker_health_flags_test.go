@@ -128,13 +128,13 @@ func newFlagsRig(t *testing.T) *flagsRig {
 	return rig
 }
 
-// pass syncs MainData, as the loop's GetTorrents does when the cache is stale,
+// pass syncs MainData, as the loop's read does when the cache is stale,
 // runs one health pass, and returns the torrents/info requests it sent.
 func (rig *flagsRig) pass(t *testing.T) [][]string {
 	t.Helper()
 	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
 	rig.mu.Lock()
 	before := len(rig.requests)
@@ -295,22 +295,22 @@ func TestFlagsPassMapsDomainsFromMainData(t *testing.T) {
 
 // The tracker conditions of automations read every tracker URL from MainData,
 // with no request to qBittorrent.
-func TestAttachTrackerURLsReadsMainData(t *testing.T) {
+func TestTrackerURLsReadsMainData(t *testing.T) {
 	t.Parallel()
 
 	rig := newFlagsRig(t)
 	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
 	require.NoError(t, err)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
-	torrents := rig.sm.AttachTrackerURLs(t.Context(), 1, []qbt.Torrent{{Hash: flagsHashHealthy}, {Hash: "unknown"}})
-	urls := make([]string, 0, len(torrents[0].Trackers))
-	for _, tracker := range torrents[0].Trackers {
+	lookup := rig.sm.TrackerURLs(t.Context(), 1)
+	urls := make([]string, 0, len(lookup.Trackers(flagsHashHealthy)))
+	for _, tracker := range lookup.Trackers(flagsHashHealthy) {
 		urls = append(urls, tracker.Url)
 	}
 	slices.Sort(urls)
 	require.Equal(t, []string{"https://ok.example.invalid/announce", "https://second.example.invalid/announce"}, urls)
-	require.Empty(t, torrents[1].Trackers)
+	require.Empty(t, lookup.Trackers("unknown"))
 	rig.mu.Lock()
 	defer rig.mu.Unlock()
 	require.Empty(t, rig.requests, "no torrents/info request")
@@ -341,33 +341,33 @@ func TestFlagsPassRefetchesEditedTorrents(t *testing.T) {
 // hashes, never in one request for the whole library. A rule can run every
 // minute, so later runs fetch only the torrents whose flags changed or that
 // qui edited.
-func TestHydrateTorrentTrackersFetchesByHashOnFlagsVersions(t *testing.T) {
+func TestTrackerDetailsFetchesByHashOnFlagsVersions(t *testing.T) {
 	t.Parallel()
 
 	rig := newFlagsRig(t)
-	hydrate := func(downFlags announceFlags) ([]qbt.Torrent, [][]string) {
+	hydrate := func(downFlags announceFlags) (TrackerLookup, [][]string) {
 		rig.mu.Lock()
 		before := len(rig.requests)
 		rig.mu.Unlock()
-		torrents, err := rig.sm.HydrateTorrentTrackers(t.Context(), 1, []qbt.Torrent{
+		lookup, err := rig.sm.TrackerDetails(t.Context(), 1, []*qbt.Torrent{
 			{Hash: flagsHashDown, HasTrackerWarning: downFlags.trackerWarning, HasTrackerError: downFlags.trackerError, HasOtherAnnounceError: downFlags.otherAnnounceError},
 			{Hash: flagsHashHealthy},
 		})
 		require.NoError(t, err)
 		rig.mu.Lock()
 		defer rig.mu.Unlock()
-		return torrents, sortedRequests(slices.Clone(rig.requests[before:]))
+		return lookup, sortedRequests(slices.Clone(rig.requests[before:]))
 	}
 
 	down := announceFlags{otherAnnounceError: true}
-	torrents, requests := hydrate(down)
-	require.Equal(t, qbt.TrackerStatusNotWorking, torrents[0].Trackers[0].Status)
-	require.Equal(t, qbt.TrackerStatusOK, torrents[1].Trackers[0].Status)
+	lookup, requests := hydrate(down)
+	require.Equal(t, qbt.TrackerStatusNotWorking, lookup.Trackers(flagsHashDown)[0].Status)
+	require.Equal(t, qbt.TrackerStatusOK, lookup.Trackers(flagsHashHealthy)[0].Status)
 	require.Equal(t, [][]string{{flagsHashDown, flagsHashHealthy}}, requests)
 
-	torrents, requests = hydrate(down)
+	lookup, requests = hydrate(down)
 	require.Empty(t, requests, "the second run reads the cache")
-	require.Equal(t, qbt.TrackerStatusNotWorking, torrents[0].Trackers[0].Status)
+	require.Equal(t, qbt.TrackerStatusNotWorking, lookup.Trackers(flagsHashDown)[0].Status)
 
 	_, requests = hydrate(announceFlags{})
 	require.Equal(t, [][]string{{flagsHashDown}}, requests, "a flag change fetches that torrent")
@@ -379,22 +379,22 @@ func TestHydrateTorrentTrackersFetchesByHashOnFlagsVersions(t *testing.T) {
 
 // A torrent without tracker data matches a negated tracker condition, so an
 // automation run must not see a partial fetch as complete.
-func TestHydrateTorrentTrackersReportsPartialFetch(t *testing.T) {
+func TestTrackerDetailsReportsPartialFetch(t *testing.T) {
 	t.Parallel()
 
 	rig := newFlagsRig(t)
-	torrents := []qbt.Torrent{{Hash: flagsHashDown}, {Hash: flagsHashHealthy}}
+	torrents := []*qbt.Torrent{{Hash: flagsHashDown}, {Hash: flagsHashHealthy}}
 	rig.set(func() {
 		// 101 torrents need two requests.
 		for i := range 99 {
 			hash := fmt.Sprintf("%040x", i+0xf000)
 			rig.torrents[hash] = &flagsTorrent{trackers: rig.torrents[flagsHashHealthy].trackers}
-			torrents = append(torrents, qbt.Torrent{Hash: hash})
+			torrents = append(torrents, &qbt.Torrent{Hash: hash})
 		}
 		rig.failFrom = 2
 	})
 
-	_, err := rig.sm.HydrateTorrentTrackers(t.Context(), 1, torrents)
+	_, err := rig.sm.TrackerDetails(t.Context(), 1, torrents)
 	require.Error(t, err)
 }
 

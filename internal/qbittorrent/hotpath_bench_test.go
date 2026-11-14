@@ -110,7 +110,7 @@ func benchTrackerHealth(torrents []qbt.Torrent) *TrackerHealthSnapshot {
 	now := time.Now()
 	byHash := make(map[string]TrackerHealth)
 	for i := range torrents {
-		if health := trackerHealthOf(&torrents[i], now); health != "" {
+		if health := trackerHealthOf(&torrents[i], torrents[i].Trackers, now); health != "" {
 			byHash[torrents[i].Hash] = health
 		}
 	}
@@ -131,7 +131,7 @@ const benchSize = 10000
 func BenchmarkHotSearch(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
-	torrents := benchTorrents(benchSize)
+	refs := torrentRefs(benchTorrents(benchSize))
 
 	// "hit" matches on the cheap exact path, "miss" walks every fallback tier.
 	for _, tc := range []struct{ name, search string }{
@@ -141,7 +141,7 @@ func BenchmarkHotSearch(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				_ = sm.filterTorrentsBySearch(torrents, tc.search)
+				_ = sm.filterTorrentsBySearch(refs, tc.search)
 			}
 		})
 	}
@@ -154,9 +154,9 @@ func BenchmarkNormalizeForSearch(b *testing.B) {
 	}
 }
 
-// --- manual filtering -----------------------------------------------------
+// --- list rules -----------------------------------------------------------
 
-func BenchmarkHotManualFilters(b *testing.B) {
+func BenchmarkHotListRules(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	torrents := benchTorrents(benchSize)
@@ -171,7 +171,7 @@ func BenchmarkHotManualFilters(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				_ = sm.applyManualFilters(nil, torrents, tc.filters, nil, nil, false)
+				_ = listRows(sm, nil, torrents, tc.filters, nil, false, nil)
 			}
 		})
 	}
@@ -182,7 +182,7 @@ func BenchmarkHotManualFilters(b *testing.B) {
 func BenchmarkHotCounts(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
-	torrents := benchTorrents(benchSize)
+	torrents := torrentRefs(benchTorrents(benchSize))
 
 	for b.Loop() {
 		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
@@ -213,18 +213,19 @@ func BenchmarkHotCountsWithTrackers(b *testing.B) {
 	sm := &SyncManager{validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping}}
 	client := &Client{instanceID: 1, trackerExclusions: make(map[string]map[string]struct{})}
 
+	refs := torrentRefs(torrents)
 	for b.Loop() {
-		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, torrents, nil, false, false)
+		_ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, refs, nil, false, false)
 	}
 }
 
 func BenchmarkHotStats(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
-	torrents := benchTorrents(benchSize)
+	torrents := torrentRefs(benchTorrents(benchSize))
 
 	for b.Loop() {
-		_ = sm.calculateStats(torrents)
+		_ = sm.calculateStats(torrents, nil)
 	}
 }
 
@@ -238,7 +239,7 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
 	torrents := benchTorrents(benchSize)
-	counts := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, false, false)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrentRefs(torrents), nil, false, false)
 
 	page := torrents[:300]
 	views := make([]TorrentView, len(page))
@@ -250,7 +251,7 @@ func BenchmarkHotResponseEncode(b *testing.B) {
 		Torrents: views,
 		Total:    len(torrents),
 		Counts:   counts,
-		Stats:    sm.calculateStats(torrents),
+		Stats:    sm.calculateStats(torrentRefs(torrents), nil),
 		HasMore:  true,
 	}
 
@@ -270,22 +271,23 @@ func BenchmarkHotSort(b *testing.B) {
 	sm := &SyncManager{}
 	src := benchTorrents(benchSize)
 	health := benchTrackerHealth(src)
-	work := make([]qbt.Torrent, len(src))
+	refs := torrentRefs(src)
+	work := make([]*qbt.Torrent, len(src))
 
 	for _, tc := range []struct {
 		name string
-		run  func(t []qbt.Torrent)
+		run  func(t []*qbt.Torrent)
 	}{
-		{"name", func(t []qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
-		{"state", func(t []qbt.Torrent) { sm.sortTorrents(t, "state", false, true, health) }},
-		{"tracker", func(t []qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
-		{"added_on", func(t []qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
-		{"eta", func(t []qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
+		{"name", func(t []*qbt.Torrent) { sm.sortTorrents(t, "name", false, false, nil) }},
+		{"state", func(t []*qbt.Torrent) { sm.sortTorrents(t, "state", false, true, health) }},
+		{"tracker", func(t []*qbt.Torrent) { sm.sortTorrents(t, "tracker", false, false, nil) }},
+		{"added_on", func(t []*qbt.Torrent) { sm.sortTorrents(t, "added_on", false, false, nil) }},
+		{"eta", func(t []*qbt.Torrent) { sm.sortTorrents(t, "eta", false, false, nil) }},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
 				b.StopTimer()
-				copy(work, src)
+				copy(work, refs)
 				b.StartTimer()
 				tc.run(work)
 			}
@@ -327,5 +329,60 @@ func BenchmarkHotSortCrossInstance(b *testing.B) {
 				sm.sortCrossInstanceTorrents(work, sortKey, false)
 			}
 		})
+	}
+}
+
+// --- filtered list --------------------------------------------------------
+
+// BenchmarkFilteredList sends one filtered page of 300 rows through
+// ListTorrents, with the counts cached and the cached read, as a
+// stream tick between syncs does.
+func BenchmarkFilteredList(b *testing.B) {
+	benchSilence(b)
+	for _, size := range []int{5600, 50000} {
+		torrents := benchTorrents(size)
+		client := newListTestClient(b, 1, torrents, func(i int) []qbt.TorrentTracker {
+			if torrents[i].Tracker == "" {
+				return nil
+			}
+			return []qbt.TorrentTracker{{Url: torrents[i].Tracker, Status: qbt.TrackerStatusOK}}
+		})
+		sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+		// The health pass stores the tracker mapping. Without one, the counts cache stays off.
+		sm.refreshTrackerHealthCounts(b.Context(), 1)
+		if !sm.hasTrackerMapping(1) {
+			b.Fatal("no tracker mapping")
+		}
+		for _, tc := range []struct {
+			name    string
+			filters FilterOptions
+		}{
+			{"completed", FilterOptions{Status: []string{"completed"}}},
+			{"running", FilterOptions{Status: []string{"running"}}},
+			{"stopped", FilterOptions{Status: []string{"stopped"}}},
+			{"stalled", FilterOptions{Status: []string{"stalled"}}},
+			{"stalled_uploading", FilterOptions{Status: []string{"stalled_uploading"}}},
+			{"stalled_downloading", FilterOptions{Status: []string{"stalled_downloading"}}},
+			{"error", FilterOptions{Status: []string{"error"}}},
+			{"category", FilterOptions{Categories: []string{"movies"}}},
+			{"tag", FilterOptions{Tags: []string{"permaseed"}}},
+			{"completed+category", FilterOptions{Status: []string{"completed"}, Categories: []string{"movies"}}},
+			{"completed+tag", FilterOptions{Status: []string{"completed"}, Tags: []string{"permaseed"}}},
+		} {
+			b.Run(fmt.Sprintf("%d/%s", size, tc.name), func(b *testing.B) {
+				view := TorrentListView{InstanceID: 1, Limit: 300, Sort: "added_on", Order: "desc", Filters: tc.filters, SidebarCounts: true, CacheOnly: true, FullPasskeyAccess: true}
+				resp, err := sm.ListTorrents(b.Context(), view)
+				if err != nil || resp.Counts == nil {
+					b.Fatal("warm-up request failed", err)
+				}
+				cached := client.countsCache.Load()
+				for b.Loop() {
+					_, _ = sm.ListTorrents(b.Context(), view)
+				}
+				if cached == nil || client.countsCache.Load() != cached {
+					b.Fatal("the counts were not served from the cache")
+				}
+			})
+		}
 	}
 }

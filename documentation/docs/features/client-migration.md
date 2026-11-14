@@ -29,6 +29,19 @@ If you do not set `--skip-backup`, the command archives both directories to `qbt
 
 `--qbit-dir` is qBittorrent's session directory. Common locations: `~/.local/share/qBittorrent/BT_backup` on Linux, `%LOCALAPPDATA%\qBittorrent\BT_backup` on Windows, and `/config/qBittorrent/BT_backup` in Docker images.
 
+## What your trackers see
+
+After the migration, qBittorrent announces each torrent as a new client. The announce has a new peer ID, and the upload and download counters for the session start at 0. The tracker records no new download.
+
+Trackers that run UNIT3D or the current Gazelle keep seed time per user and torrent, not per client. On these trackers, the seed time continues from the total that the tracker already has. The tracker adds no time for the period when no client announces. Other tracker software can show a "seeding since" time per client. That time starts again.
+
+The seeding time that the command writes into qBittorrent does not go to the tracker. qBittorrent uses it only for its share limits.
+
+Two problems can stop the announces:
+
+- The tracker does not accept your qBittorrent version. Before you migrate, make sure that each tracker accepts that version.
+- The source client and qBittorrent seed the same torrent at the same time. Some trackers do not permit this. Stop the source client before you start qBittorrent.
+
 ## Save paths
 
 By default, the command carries over save paths from the source client without changes. qBittorrent must see the downloaded data at those same paths. Otherwise, the torrents show as missing files.

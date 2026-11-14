@@ -163,7 +163,7 @@ func TestShareLimitEditReadsAnUnknownVersion(t *testing.T) {
 	client, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 
 	forgetVersion(t, client, stub)
@@ -205,7 +205,7 @@ type versionSink struct {
 	errs           []error
 }
 
-func (s *versionSink) HandleMainData(int, *qbt.MainData) {
+func (s *versionSink) HandleSyncUpdate(int, qbt.SyncUpdate) {
 	s.liveReannounce = append(s.liveReannounce, s.client.Supports(CapLiveReannounce))
 }
 func (*versionSink) HandleTrackerHealthUpdated(int)     {}
@@ -238,14 +238,14 @@ func TestFullSyncUpdateReadsTheVersionFirst(t *testing.T) {
 		t.Run(tc.from+" to "+tc.to, func(t *testing.T) {
 			t.Parallel()
 			client, stub, sm, sink := newSyncedStubClient(t, tc.from)
-			require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+			require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
 			stub.WebAPIVersion = tc.to
-			require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+			require.NoError(t, client.SyncOwner().Sync(t.Context()))
 
 			live := tc.to == "2.15.1"
 			require.Equal(t, []bool{!live, live}, sink.liveReannounce)
-			resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, "", "", "", FilterOptions{})
+			resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1})
 			require.NoError(t, err)
 			require.Equal(t, map[int]string{1: tc.to}, resp.WebAPIVersions)
 			require.Len(t, resp.Torrents, 1)
@@ -262,12 +262,12 @@ func TestFullSyncUpdateWithAFailedVersionReadLeavesTheVersionUnknown(t *testing.
 	client, stub, sm, sink := newSyncedStubClient(t, "2.15.1")
 
 	stub.WebAPIVersionStatus = http.StatusBadGateway
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.Equal(t, []bool{false}, sink.liveReannounce)
 	require.Empty(t, client.GetWebAPIVersion())
 	require.Empty(t, sink.errs, "the sync succeeded, so the stream gets no error")
 
-	resp, err := sm.GetTorrentsWithFilters(t.Context(), 1, 0, 0, "", "", "", FilterOptions{})
+	resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1})
 	require.NoError(t, err)
 	require.Equal(t, map[int]string{1: ""}, resp.WebAPIVersions)
 }
@@ -296,9 +296,9 @@ func TestPartialSyncUpdateSendsNoVersionRequest(t *testing.T) {
 	client, stub, _, _ := newSyncedStubClient(t, "2.15.1")
 	stub.PartialUpdates = true
 
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	reads := stub.VersionReads()
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.Equal(t, 2, stub.Syncs())
 	require.Equal(t, reads, stub.VersionReads())
 }
@@ -320,13 +320,13 @@ func TestUnifiedViewCarriesTheVersionOfEachInstance(t *testing.T) {
 		client, err := NewClientWithTimeout(instance.ID, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 		require.NoError(t, err)
 		t.Cleanup(client.optimisticUpdates.Close)
-		require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+		require.NoError(t, client.SyncOwner().Sync(t.Context()))
 		clients[instance.ID] = client
 		want[instance.ID] = version
 	}
 	sm := NewSyncManager(&ClientPool{instanceStore: store, clients: clients}, nil)
 
-	resp, err := sm.GetCrossInstanceTorrentsWithFilters(t.Context(), 0, 0, "", "", "", FilterOptions{}, nil)
+	resp, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true})
 	require.NoError(t, err)
 	require.Equal(t, want, resp.WebAPIVersions)
 }

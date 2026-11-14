@@ -153,17 +153,6 @@ func TestCountsEqualCoversEveryField(t *testing.T) {
 	}
 }
 
-func TestCountsEqualCoversTransferFields(t *testing.T) {
-	base := &qbittorrent.TorrentCounts{TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": {}}}
-	typ := reflect.TypeFor[qbittorrent.TrackerTransferStats]()
-	for i := range typ.NumField() {
-		var stats qbittorrent.TrackerTransferStats
-		setSampleValue(t, reflect.ValueOf(&stats).Elem().Field(i))
-		changed := &qbittorrent.TorrentCounts{TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": stats}}
-		require.False(t, countsEqual(base, changed), "%s must affect countsEqual", typ.Field(i).Name)
-	}
-}
-
 func BenchmarkSingleRowFingerprint(b *testing.B) {
 	row := qbittorrent.TorrentView{
 		Torrent: &qbt.Torrent{
@@ -255,7 +244,7 @@ func TestStreamResendsARowThatGainsAnOptionalValue(t *testing.T) {
 		for view, limit := range map[string]int{"list": 300, "details row": 1} {
 			t.Run(name+"/"+view, func(t *testing.T) {
 				g := &subscriptionGroup{}
-				opts := StreamOptions{InstanceID: 1, Limit: limit}
+				opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: limit}}
 				g.buildUpdatePayload(opts, singleResp(row(false)), &StreamMeta{})
 				payload := g.buildUpdatePayload(opts, singleResp(row(true)), &StreamMeta{})
 				require.Equal(t, []string{"a"}, changedHashes(payload))
@@ -263,7 +252,7 @@ func TestStreamResendsARowThatGainsAnOptionalValue(t *testing.T) {
 		}
 		t.Run(name+"/cross-instance", func(t *testing.T) {
 			g := &subscriptionGroup{}
-			opts := StreamOptions{InstanceIDs: []int{1}}
+			opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
 			cross := func(known bool) qbittorrent.CrossInstanceTorrentView {
 				tv := row(known)
 				return qbittorrent.CrossInstanceTorrentView{TorrentView: &tv, InstanceID: 1}

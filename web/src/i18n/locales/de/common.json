@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistiken",
     "search": "Suche",
     "crossSeed": "Cross-Seed",
     "automations": "Automatisierungen",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistiken",
     "clients": "Clients",
     "settings": "Einstellungen",
     "qbittorrentClients": "qBittorrent-Clients",
@@ -105,6 +107,9 @@
     "search": "Suchen",
     "select": "Auswählen",
     "copyValue": "{{label}} kopieren"
+  },
+  "featureNotice": {
+    "gotIt": "Verstanden"
   },
   "placeholders": {
     "search": "Suchen...",
@@ -161,6 +166,63 @@
     "updateAvailable": "Update verfügbar",
     "versionAvailable": "Version {{version}} ist jetzt verfügbar",
     "dismiss": "Verwerfen"
+  },
+  "systemNotice": {
+    "needsAttention": "Erfordert Aufmerksamkeit",
+    "since": "Seit {{time}}, {{age}}",
+    "causeLabel": "Ursache",
+    "actionFallback": "Zur Behebung",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Aufzeichnung gestoppt",
+        "title": "Aufzeichnung gestoppt",
+        "effect": "qui kann den Übertragungsverlauf nicht schreiben. Es versucht es beim nächsten Schreiben erneut.",
+        "fix": "Stelle sicher, dass der Datenträger freien Speicher hat und qui die Datenbankdatei schreiben kann.",
+        "menuFix": "Speicher für die Datenbank freigeben"
+      },
+      "shrink_failed": {
+        "short": "Verkleinern fehlgeschlagen",
+        "title": "Verkleinern fehlgeschlagen",
+        "effect": "qui konnte die Datenbankdatei nicht verkleinern. Die Datenbank ist unverändert, und qui läuft normal weiter.",
+        "fix": "Details stehen im qui-Log.",
+        "menuFix": "qui-Log lesen",
+        "reasons": {
+          "disk_full": {
+            "fix": "Auf dem Datenträger ist zu wenig Platz frei. Das Verkleinern braucht bis zum Doppelten der Größe der Datenbankdatei. Gib Platz frei und versuche es erneut.",
+            "menuFix": "Platz freigeben, dann erneut versuchen"
+          },
+          "locked": {
+            "fix": "Ein anderes Programm hielt die Datenbankdatei. Beende dieses Programm, zum Beispiel ein Backup-Tool oder einen Datenbank-Viewer, und versuche es erneut.",
+            "menuFix": "Anderes Programm beenden, dann erneut versuchen"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Wenig Speicherplatz",
+        "title": "Wenig Speicherplatz",
+        "effect": "Der Datenträger der qui-Datenbank hat wenig freien Platz. Ist der Datenträger voll, schlägt jeder Schreibvorgang von qui fehl.",
+        "fix": "Gib Platz auf dem Datenträger frei, verkürze „Tägliche Details behalten für“ oder lösche älteren Verlauf in den Statistik-Einstellungen.",
+        "menuFix": "Speicher für die Datenbank freigeben",
+        "action": "Statistik-Einstellungen öffnen"
+      }
+    },
+    "actions": {
+      "tryAgain": "Erneut versuchen",
+      "dismiss": "Ausblenden",
+      "openLog": "Log öffnen"
+    },
+    "unknown": {
+      "short": "Systemhinweis",
+      "title": "Systemhinweis",
+      "effect": "qui hat einen Fehler gefunden, der eine Aktion von dir benötigt.",
+      "fix": "Details stehen im qui-Log.",
+      "menuFix": "qui-Log lesen"
+    }
+  },
+  "databaseShrink": {
+    "done": "Datenbankdatei von {{before}} auf {{after}} verkleinert",
+    "nextStart": "Das Verkleinern läuft beim nächsten Start von qui",
+    "failed": "Verkleinern konnte nicht angefordert werden"
   },
   "pwaUpdate": {
     "reload": "Neu laden",

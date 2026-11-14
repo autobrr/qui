@@ -285,12 +285,9 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 		addedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
 		failedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
 		for _, result := range resp.Results {
-			switch result.Status {
-			case "added", "added_hardlink", "added_reflink":
-				if result.Success {
-					addedResults = append(addedResults, result)
-				}
-			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error", partialPoolRegistrationErrorStatus, crossSeedUnavailableStatus, crossSeedCannotSeeStatus:
+			if class := result.class(); class == ClassAdded {
+				addedResults = append(addedResults, result)
+			} else if class == ClassStranded || class == ClassFailed {
 				failedResults = append(failedResults, result)
 			}
 		}

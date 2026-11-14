@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -27,7 +28,7 @@ import (
 
 // dedupCacheEntry stores cached deduplication results to avoid recomputation.
 type dedupCacheEntry struct {
-	deduplicated    []qbt.Torrent
+	deduplicated    []*qbt.Torrent
 	duplicateHashes map[string][]string
 }
 
@@ -92,7 +93,7 @@ type SearchCandidateStatus struct {
 type searchRunState struct {
 	run   *models.CrossSeedSearchRun
 	opts  SearchRunOptions
-	queue []qbt.Torrent
+	queue []*qbt.Torrent
 	index int
 	// skipCache stores cooldown evaluation results keyed by torrent hash so we
 	// don't hammer the database twice when calculating totals and iterating.
@@ -424,7 +425,7 @@ func (s *Service) contentPrefilterRejectionForCrossSeedResponse(instanceID int, 
 		hashes = append(hashes, resp.TorrentInfo.Hash)
 	}
 	for _, result := range resp.Results {
-		if result.Status != "exists" {
+		if result.class() != ClassExists {
 			continue
 		}
 		hasExistingResult = true
@@ -566,7 +567,7 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 //
 // Note: XOR has theoretical collision risk (different sets could produce same signature),
 // but the 5-minute TTL and count in key make practical impact negligible.
-func dedupCacheKey(instanceID int, torrents []qbt.Torrent) string {
+func dedupCacheKey(instanceID int, torrents []*qbt.Torrent) string {
 	n := len(torrents)
 	if n == 0 {
 		return fmt.Sprintf("dedup:%d:0:0", instanceID)
@@ -601,7 +602,7 @@ func dedupCacheKey(instanceID int, torrents []qbt.Torrent) string {
 // IMPORTANT: Returned slices are backed by cached data and must be treated as read-only.
 // Do not append to, reorder, or modify the returned slices in-place. This avoids defensive
 // copies on cache hits to reduce memory pressure from repeated deduplication calls.
-func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]string) {
+func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []*qbt.Torrent) ([]*qbt.Torrent, map[string][]string) {
 	if len(torrents) <= 1 {
 		return torrents, map[string][]string{}
 	}
@@ -623,21 +624,21 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	}
 
 	type torrentWithRelease struct {
-		torrent   qbt.Torrent
+		torrent   *qbt.Torrent
 		read      namedRelease
 		titleKeys []string
 	}
 
 	reads := s.readLocalTorrents(ctx, instanceID, func(yield func(*qbt.Torrent) bool) {
-		for i := range torrents {
-			if !yield(&torrents[i]) {
+		for _, torrent := range torrents {
+			if !yield(torrent) {
 				return
 			}
 		}
 	})
 	parsed := make([]torrentWithRelease, 0, len(torrents))
-	for i, torrent := range torrents {
-		read := reads.read(s.matcher(), instanceID, &torrents[i])
+	for _, torrent := range torrents {
+		read := reads.read(s.matcher(), instanceID, torrent)
 		parsed = append(parsed, torrentWithRelease{torrent: torrent, read: read, titleKeys: s.matcher().titleKeys(read)})
 	}
 
@@ -769,7 +770,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	}
 
 	// Build deduplicated list from group representatives
-	deduplicated := make([]qbt.Torrent, 0, len(groups))
+	deduplicated := make([]*qbt.Torrent, 0, len(groups))
 	totalDuplicates := 0
 
 	for _, group := range groups {
@@ -853,7 +854,7 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 
 // duplicateGazelleSites maps each representative hash in duplicates to the
 // RED/OPS hosts of its duplicate copies in torrents.
-func (s *Service) duplicateGazelleSites(torrents []qbt.Torrent, duplicates map[string][]string) map[string][]string {
+func (s *Service) duplicateGazelleSites(torrents []*qbt.Torrent, duplicates map[string][]string) map[string][]string {
 	representativeOf := make(map[string]string)
 	for representative, hashes := range duplicates {
 		for _, hash := range hashes {
@@ -861,12 +862,12 @@ func (s *Service) duplicateGazelleSites(torrents []qbt.Torrent, duplicates map[s
 		}
 	}
 	sites := make(map[string][]string)
-	for i := range torrents {
-		representative, ok := representativeOf[torrents[i].Hash]
+	for _, torrent := range torrents {
+		representative, ok := representativeOf[torrent.Hash]
 		if !ok {
 			continue
 		}
-		if site, ok := s.detectGazelleSourceSite(&torrents[i]); ok && !slices.Contains(sites[representative], site) {
+		if site, ok := s.detectGazelleSourceSite(torrent); ok && !slices.Contains(sites[representative], site) {
 			sites[representative] = append(sites[representative], site)
 		}
 	}
@@ -878,7 +879,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	queueStart := time.Now()
 	log.Info().Int("instanceID", state.opts.InstanceID).Msg("[CROSSSEED-SEARCH] Building search queue")
 
-	filterOpts := qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}
+	var filterOpts qbittorrent.TorrentRefFilter
 
 	// Apply category filter if only one category is specified
 	if len(state.opts.Categories) == 1 {
@@ -890,7 +891,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		filterOpts.Tag = state.opts.Tags[0]
 	}
 
-	torrents, err := s.syncManager.GetTorrents(ctx, state.opts.InstanceID, filterOpts)
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, state.opts.InstanceID, filterOpts)
 	if err != nil {
 		return fmt.Errorf("list torrents: %w", err)
 	}
@@ -904,11 +905,11 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 
 	// Filter torrents inline without creating intermediate copies
 	gate := s.sourceGate()
-	filtered := make([]qbt.Torrent, 0, len(torrents))
+	filtered := make([]*qbt.Torrent, 0, len(torrents))
 	for _, torrent := range torrents {
 		// A moving or checking torrent stays: the check at its turn reads its
 		// state then.
-		if answer := gate.check(&torrent, state.opts.sourceFilter); answer == sourcePass || answer == sourceMovingOrChecking {
+		if answer := gate.check(torrent, state.opts.sourceFilter); answer == sourcePass || answer == sourceMovingOrChecking {
 			filtered = append(filtered, torrent)
 		}
 	}
@@ -923,7 +924,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		for _, h := range state.opts.SpecificHashes {
 			hashSet[normalizeUpperTrim(h)] = true
 		}
-		specific := make([]qbt.Torrent, 0, len(deduplicated))
+		specific := make([]*qbt.Torrent, 0, len(deduplicated))
 		for _, torrent := range deduplicated {
 			if hashSet[normalizeUpperTrim(torrent.Hash)] {
 				specific = append(specific, torrent)
@@ -937,7 +938,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	// Dir Scan applies this name rule to an archived release. Change both together.
 	searchable := deduplicated
 	if state.opts.SkipIndividualEpisodes {
-		searchable = slices.DeleteFunc(slices.Clone(deduplicated), func(t qbt.Torrent) bool {
+		searchable = slices.DeleteFunc(slices.Clone(deduplicated), func(t *qbt.Torrent) bool {
 			return isTVEpisode(s.releaseCache.Parse(t.Name))
 		})
 		log.Info().
@@ -954,7 +955,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		// this from memory.
 		packSource := torrents
 		if filterOpts.Category != "" || filterOpts.Tag != "" {
-			if all, allErr := s.syncManager.GetTorrents(ctx, state.opts.InstanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}); allErr == nil {
+			if all, allErr := s.syncManager.GetTorrentRefs(ctx, state.opts.InstanceID, qbittorrent.TorrentRefFilter{}); allErr == nil {
 				packSource = all
 			} else {
 				log.Warn().Err(allErr).Int("instanceID", state.opts.InstanceID).Msg("Failed to list all torrents for ensemble pack suppression; using run-scoped list")
@@ -965,7 +966,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		if virtual := s.buildEnsembleSeasonCandidates(deduplicated, packSource); len(virtual) > 0 {
 			// searchable can alias cache-backed deduplicated; never append to
 			// it in place. Virtual entries go last so real torrents search first.
-			queue := make([]qbt.Torrent, 0, len(searchable)+len(virtual))
+			queue := make([]*qbt.Torrent, 0, len(searchable)+len(virtual))
 			queue = append(queue, searchable...)
 			queue = append(queue, virtual...)
 			state.queue = queue
@@ -978,8 +979,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	state.duplicateSourceSites = s.duplicateGazelleSites(filtered, duplicates)
 
 	totalEligible := 0
-	for i := range state.queue {
-		torrent := &state.queue[i]
+	for _, torrent := range state.queue {
 		skip, err := s.shouldSkipCandidate(ctx, state, torrent)
 		if err != nil {
 			return fmt.Errorf("evaluate search candidate %s: %w", torrent.Hash, err)
@@ -1013,14 +1013,14 @@ func (s *Service) nextSearchCandidate(ctx context.Context, state *searchRunState
 		torrent := state.queue[state.index]
 		state.index++
 
-		skip, err := s.shouldSkipCandidate(ctx, state, &torrent)
+		skip, err := s.shouldSkipCandidate(ctx, state, torrent)
 		if err != nil {
 			return nil, err
 		}
 		if skip {
 			continue
 		}
-		return &torrent, nil
+		return torrent, nil
 	}
 }
 
@@ -1556,10 +1556,9 @@ func classifyFailedCrossSeedSearchResult(results []InstanceCrossSeedResult) mode
 		return models.CrossSeedSearchResultStatusFailed
 	}
 	for _, result := range results {
-		if result.Status == "exists" || isSkippedCrossSeedResultStatus(result.Status) {
-			continue
+		if class := result.class(); class != ClassExists && class != ClassSkipped {
+			return models.CrossSeedSearchResultStatusFailed
 		}
-		return models.CrossSeedSearchResultStatusFailed
 	}
 	return models.CrossSeedSearchResultStatusSkipped
 }

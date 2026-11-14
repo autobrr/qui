@@ -28,7 +28,7 @@ import {
   resolveTrackerDisplay,
   type TrackerCustomizationLookup
 } from "@/lib/tracker-customizations"
-import { getStatusBadgeProps, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
+import { getStatusBadgeProps, SELECT_COLUMN_WIDTH, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
@@ -368,7 +368,7 @@ export const createColumns = ({
           />
         </div>
       ),
-      size: 40,
+      size: SELECT_COLUMN_WIDTH,
       enableResizing: false,
       meta: {
         headerString: selectionLabel,

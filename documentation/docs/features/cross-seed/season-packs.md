@@ -135,7 +135,7 @@ In hardlink mode, qui can also apply piece-boundary protection to incomplete pac
 
 ## Prerequisites
 
-- The target instance must have **Local filesystem access** enabled, or be a remote instance
+- The target instance must have **Local filesystem access** enabled, or be a [remote instance](../ssh-access.md)
 - You must enable **Hardlink or reflink mode** on the target instance. Season packs always use linked trees. A remote instance supports hardlink mode only; reflink mode needs local access.
 - You must configure a writable link-mode base directory for the instance. In the current UI/API, this is the same base directory field used by hardlink/reflink mode.
 
@@ -175,6 +175,8 @@ If you do not already have an API key for autobrr:
 
 - Go to **Settings > API Keys**
 - Click **Create API Key**
+- Under **Permissions**, pick **Cross-seed: run** for check and apply. To read the run list with this key, also pick **Cross-seed: read**.
+- Pick no instance under **Instance limit**, because the cross-seed routes refuse a key with an Instance limit. See [API key permissions](../../api/permissions.md).
 - Copy the generated key
 
 ### 3. Configure the autobrr external filter

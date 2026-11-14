@@ -187,8 +187,8 @@ func TestClassifyAnnouncementSourceUnknownSizePreflight(t *testing.T) {
 		{"missing announcement group with codec", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.265", false, false},
 		{"missing announcement group with codec and resolution", "Sample.Show.S08E11.1080p.WEB-DL.H.264-NTb", "Sample Show S08E11 1080p WEB-DL H.265", false, true},
 		{"conflicting announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-KIRI", false, false},
-		{"split group", "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", false, true},
-		{"split group with skip recheck", "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", true, false},
+		{"split group", "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", false, true},
+		{"split group with skip recheck", "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", true, false},
 	}
 
 	for _, tt := range tests {
@@ -503,7 +503,7 @@ func TestClassifyAnnouncementSourceAvoidsUnnecessaryFileLookups(t *testing.T) {
 		},
 		{
 			name:        "plausible split group exact source",
-			sourceName:  "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch]",
+			sourceName:  "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]",
 			candidate:   "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI",
 			candidateSz: size,
 			wantLookups: 1,

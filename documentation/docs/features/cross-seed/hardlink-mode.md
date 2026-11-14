@@ -18,8 +18,8 @@ Hardlink mode is an opt-in cross-seeding strategy. qui creates a hardlinked copy
 
 ## Requirements
 
-- The target qBittorrent instance must have **Local filesystem access** enabled, or be a remote instance.
-- A link target that already holds a different file stops the add on every instance, local or remote, instead of falling back to a regular add. A regular add would put the torrent inside the matched torrent's own path and leave the half-built link tree behind, so qui refuses and leaves the target for you to clean up. On an instance with local filesystem access, a target that is already qui's own link to the same file is reused instead of stopping the add. A remote instance cannot compare file identity over SFTP, so any existing target stops the add there.
+- The target qBittorrent instance must have **Local filesystem access** enabled, or be a [remote instance](../ssh-access.md). On a remote instance, the SSH server must be able to create hardlinks. The connection test on the SSH tab shows this.
+- A link target that already holds a different file stops the add on every instance, local or remote, instead of falling back to a regular add. A regular add would put the torrent inside the matched torrent's own path and leave the half-built link tree behind, so qui refuses and leaves the target for you to clean up. A target that is already qui's own link to the same file is reused instead of stopping the add. This applies on an instance with local filesystem access, and on a remote instance where qui can run commands on the host. On a remote instance where qui only has SFTP, qui cannot tell its own link from another file, so any existing target stops the add there.
 - The hardlink base directory must reside on the **same filesystem/volume** as the instance download paths. Hardlinks cannot cross filesystems.
 - qui must have permission to read the instance content paths and write to the hardlink base directory.
 
@@ -35,7 +35,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 
 - Hardlink mode is a **per-instance setting**, not a per-request setting. Each qBittorrent instance has its own hardlink configuration.
 - Torrents added in hardlink or reflink mode always use an explicit `savepath` (the link-tree root), which turns **AutoTMM off**. If you enable AutoTMM after the add, qBittorrent can move files out of the link tree.
-- If qui cannot create a hardlink (due to missing local access, a filesystem mismatch, or an invalid base directory), the cross-seed **fails** by default.
+- If qui cannot create a hardlink (due to missing filesystem access, an SSH server that cannot create hardlinks, a filesystem mismatch, or an invalid base directory), the cross-seed **fails** by default.
 - If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. A link target that already holds a different file is the exception: it fails the cross-seed even with fallback on. Filesystem fallback uses a full recheck, except for a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) when **Skip recheck** is on. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
 - If qBittorrent returns an unsafe file path, qui rejects the cross-seed without regular-mode fallback. This applies to hardlink and reflink modes.
 - When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. qui always enforces this fallback check, even when the **Piece boundary safety check** in **Cross-Seed > Matching rules > Safety & validation** is off (the default).
@@ -109,6 +109,8 @@ If the active member's downloaded-byte counter makes no progress for 15 minutes,
 
 Hardlink members require every originally linked file to verify completely before acquisition because repair could modify the source through the shared inode. A propagated hardlink that fails verification is removed only when the current qui process can prove it created that exact link; otherwise the member stays paused for manual recovery. Reflink members can safely repair incomplete clones through copy-on-write, so failed target verification keeps the clone and can return the member to normal pooled acquisition.
 
+Pooled completion needs local filesystem access on the instance. An instance can lose this access, for example when you change it to SSH access. Then qui pauses each pool member on that instance that is not complete and moves it to manual review. qui does not change the files of that member. The member stays in manual review when the instance gets local filesystem access again.
+
 ## Notes
 
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until you remove all remaining links.
@@ -157,6 +159,7 @@ When the Source instance has a route, qui adds no cross-seed to it from a search
 - The Source instance uses hardlink or reflink mode and has at least one base directory. A routed add never uses regular mode, and it ignores the **Fallback to regular mode on error** setting. If a link fails, the add fails.
 - The Source instance has [Local Filesystem Access](../instance-settings.md#local-filesystem-access). Link mode alone does not need it, but a route does.
 - The Cross-seed instance is online and runs qBittorrent 5.0 or later. It needs no Local Filesystem Access.
+- The Cross-seed instance is not a remote instance. qui refuses a route to a remote instance, and the route form does not list one.
 - The qBittorrent of the Cross-seed instance can read and write the folders that the route maps. It reads the linked files there, and it downloads files that the matched torrent does not have (pending files) into the same folders.
 - A route has one step. The Cross-seed instance cannot have a route of its own, and no other instance can route to the Source instance. Several Source instances can route to one Cross-seed instance.
 
@@ -236,6 +239,10 @@ Some users moved cross-seeds with two automations: an [Export to Instance](../au
 
 A route has one step, so the Cross-seed instance cannot get a route while the Source instance routes to it. To swap the roles, you must click **Clear route** first. After you clear a route, the routed torrents stay on the Cross-seed instance, and their files stay in the base directories of the Source instance. The orphan scan of the Source instance then no longer keeps their reflinked files and their pending files. A hardlinked file stays kept while a torrent on the Source instance uses the same file. Move or delete the old routed torrents before you clear the route.
 
+:::warning
+After a route clear, do not set up SSH access on the old Cross-seed instance while it still holds routed torrents. Their files are in the base directories of the Source instance, next to the linked cross-seeds of the Source instance itself. The orphan scan of a remote instance counts only the torrents of [instances on the same SSH server](../orphan-scan.md#other-instances-on-the-same-server), so it does not count the torrents of the Source instance. The orphan scan of the old Cross-seed instance can then delete the linked cross-seeds of the Source instance. Move or delete the routed torrents first.
+:::
+
 ## Reflink Mode (Alternative)
 
 Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks, reflinks allow qBittorrent to modify the cloned files (download missing pieces, repair corrupted data) without any effect on the original seeded files.
@@ -260,7 +267,7 @@ Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks
   - **FreeBSD**: not supported
 
 :::note
-Windows reflink mode uses ReFS block cloning and requires a ReFS filesystem. qui does not support NTFS. If the matched source path is a symlink, qui resolves it before cloning. The resolved source and the reflink base directory must reside on the same ReFS volume. If reflink creation fails, fallback depends on the "Fallback to regular mode" setting.
+Windows reflink mode uses ReFS block cloning and requires a ReFS filesystem. qui does not support NTFS. Before cloning, qui makes the new destination file use the source file's Integrity Streams setting, even when the destination folder has a different setting. The source file's setting stays unchanged. If the matched source path is a symlink, qui resolves it before cloning. The resolved source and the reflink base directory must reside on the same ReFS volume. For cross-seeds based on an existing torrent, the "Fallback to regular mode" setting can allow fallback when the support probe fails; a reflink creation error fails the add without fallback. Dir Scan can also fall back after a creation error when that setting is enabled, but a lost filesystem connection still fails the add.
 :::
 
 :::tip
@@ -291,7 +298,7 @@ Reflinks use copy-on-write semantics:
    - Single filesystem: `/mnt/data/cross-seed`
    - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`
 5. Choose a **Directory organization** preset (`flat`, `by-tracker`, `by-instance`).
-6. If you want failed reflinks to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode"**.
+6. Enable **"Fallback to regular mode"** if you want regular mode when the filesystem support probe fails. For behavior after creation errors, see [Reflink Requirements](#reflink-requirements).
 
 :::note
 Hardlink and reflink modes are mutually exclusive. You can enable only one per instance.

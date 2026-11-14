@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "仪表盘",
+    "statistics": "统计",
     "search": "搜索",
     "crossSeed": "辅种",
     "automations": "自动化",
@@ -78,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "仪表盘",
+    "statistics": "统计",
     "clients": "客户端",
     "settings": "设置",
     "qbittorrentClients": "qBittorrent 客户端",
@@ -105,6 +107,9 @@
     "search": "搜索",
     "select": "选择",
     "copyValue": "复制 {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "知道了"
   },
   "placeholders": {
     "search": "搜索...",
@@ -161,6 +166,63 @@
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 现已可用",
     "dismiss": "关闭"
+  },
+  "systemNotice": {
+    "needsAttention": "需要处理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修复",
+    "kinds": {
+      "recording_stopped": {
+        "short": "记录已停止",
+        "title": "记录已停止",
+        "effect": "qui 无法写入传输历史。它会在下次写入时重试。",
+        "fix": "请确认磁盘有可用空间，并且 qui 可以写入数据库文件。",
+        "menuFix": "为数据库释放磁盘空间"
+      },
+      "shrink_failed": {
+        "short": "压缩失败",
+        "title": "压缩失败",
+        "effect": "qui 无法缩小数据库文件。数据库没有变化，qui 照常运行。",
+        "fix": "详情请查看 qui 日志。",
+        "menuFix": "查看 qui 日志",
+        "reasons": {
+          "disk_full": {
+            "fix": "磁盘可用空间不足。压缩最多需要数据库文件大小的两倍空间。请释放磁盘空间后重试。",
+            "menuFix": "释放空间后重试"
+          },
+          "locked": {
+            "fix": "另一个程序占用了数据库文件。请关闭该程序（例如备份工具或数据库查看器）后重试。",
+            "menuFix": "关闭其他程序后重试"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "磁盘空间不足",
+        "title": "磁盘空间不足",
+        "effect": "qui 数据库所在磁盘的可用空间很少。磁盘写满后，qui 的每次写入都会失败。",
+        "fix": "请释放磁盘空间，或在统计设置中缩短“保留每日详情”，或删除较早的历史。",
+        "menuFix": "为数据库释放磁盘空间",
+        "action": "打开统计设置"
+      }
+    },
+    "actions": {
+      "tryAgain": "重试",
+      "dismiss": "忽略",
+      "openLog": "打开日志"
+    },
+    "unknown": {
+      "short": "系统通知",
+      "title": "系统通知",
+      "effect": "qui 发现了一个需要你处理的故障。",
+      "fix": "详情请查看 qui 日志。",
+      "menuFix": "查看 qui 日志"
+    }
+  },
+  "databaseShrink": {
+    "done": "数据库文件已从 {{before}} 压缩到 {{after}}",
+    "nextStart": "压缩将在 qui 下次启动时执行",
+    "failed": "无法请求压缩"
   },
   "pwaUpdate": {
     "reload": "重新加载",

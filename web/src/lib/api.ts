@@ -4,6 +4,8 @@
  */
 
 import type {
+  ApiKey,
+  ApiKeyRequest,
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
@@ -34,6 +36,7 @@ import type {
   CrossSeedRouteStatus,
   CrossSeedRouteTestResult,
   CrossSeedInstanceResult,
+  CrossSeedResultClass,
   CrossSeedQueryDegradedReason,
   CrossSeedSearchDecisionTrace,
   CrossSeedRun,
@@ -53,6 +56,8 @@ import type {
   CrossSeedTorrentSearchSelection,
   DashboardSettings,
   DashboardSettingsInput,
+  TransferHistorySettings,
+  TransferHistorySettingsStatus,
   DirScanDirectory,
   DirScanDirectoryCreate,
   DirScanTriggerResponse,
@@ -137,8 +142,16 @@ import type {
   UncheckedInstance,
   User,
   VersionInfo,
+  SystemNotice,
+  DatabaseShrinkStatus,
   WarningResponse,
-  WebSeed
+  WebSeed,
+  SSHCredentials,
+  SSHTestResponse,
+  LiveTrackerGroup,
+  TransferHistoryInstance,
+  TransferHistoryQuery,
+  TransferHistoryRow
 } from "@/types"
 import type {
   ArrInstance,
@@ -490,6 +503,7 @@ type RawCrossSeedInstanceResult = {
   instance_name: string
   success: boolean
   status: string
+  class: CrossSeedResultClass
   message?: string
   matched_torrent?: RawCrossSeedMatchedTorrent
   cross_seed_instance_id?: number
@@ -502,6 +516,7 @@ function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): Cr
     instanceName: instance.instance_name,
     success: instance.success,
     status: instance.status,
+    class: instance.class,
     message: instance.message,
     crossSeedInstanceId: instance.cross_seed_instance_id,
     crossSeedInstanceName: instance.cross_seed_instance_name,
@@ -563,6 +578,8 @@ export interface StreamSubscription {
   search?: string
   filters?: TorrentFilters | null
   summary?: boolean
+  groupCopies?: boolean
+  uniqueSize?: boolean
 }
 
 function normalizeStreamSubscription(stream: StreamSubscription) {
@@ -577,6 +594,8 @@ function normalizeStreamSubscription(stream: StreamSubscription) {
     search: stream.search ?? "",
     filters: serializeFilters(stream.filters) ?? null,
     summary: stream.summary ?? false,
+    ...(stream.groupCopies ? { groupCopies: true } : {}),
+    ...(stream.uniqueSize ? { uniqueSize: true } : {}),
   }
 }
 
@@ -813,12 +832,63 @@ class ApiClient {
     return this.request(`/instances/${id}/test`, { method: "POST" })
   }
 
+  async setSSHCredentials(id: number, data: SSHCredentials): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "PUT", body: JSON.stringify(data) })
+  }
+
+  async clearSSHCredentials(id: number): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "DELETE" })
+  }
+
+  async testSSH(id: number): Promise<SSHTestResponse> {
+    return this.request<SSHTestResponse>(`/instances/${id}/ssh-test`, { method: "POST" })
+  }
+
+  async confirmSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
+  async replaceSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key/replace`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
 
   async getTransferInfo(id: number): Promise<TransferInfo> {
     return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
+  }
+
+  async getTransferHistory(instanceId: number, query: TransferHistoryQuery): Promise<TransferHistoryRow[]> {
+    const params = new URLSearchParams({ to: query.to.toISOString(), bucket: query.bucket, groupBy: query.groupBy })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    if (query.group !== undefined) {
+      params.set("group", query.group)
+    }
+    if (query.groupOf) {
+      params.set("groupOf", query.groupOf)
+    }
+    if (query.limit) {
+      params.set("limit", String(query.limit))
+    }
+    if (query.timeZone) {
+      params.set("timeZone", query.timeZone)
+    }
+    const response = await this.request<{ rows: TransferHistoryRow[] }>(`/instances/${instanceId}/transfer-history?${params}`)
+    return response.rows
+  }
+
+  async getTrackerGroups(instanceId: number): Promise<LiveTrackerGroup[]> {
+    const response = await this.request<{ groups: LiveTrackerGroup[] }>(`/instances/${instanceId}/tracker-groups`)
+    return response.groups
+  }
+
+  async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {
+    const response = await this.request<{ instances: TransferHistoryInstance[] }>("/transfer-history/status")
+    return response.instances
   }
 
   async getInstanceReannounceActivity(
@@ -1003,6 +1073,8 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       preferCached?: boolean
+      groupCopies?: boolean
+      uniqueSize?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1014,6 +1086,8 @@ class ApiClient {
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
     if (params.preferCached) searchParams.set("prefer", "stale")
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
+    if (params.uniqueSize) searchParams.set("uniqueSize", "true")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`,
@@ -1097,6 +1171,7 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       instanceIds?: number[]
+      groupCopies?: boolean
     },
     signal?: AbortSignal
   ): Promise<TorrentResponse> {
@@ -1110,6 +1185,7 @@ class ApiClient {
     if (params.instanceIds && params.instanceIds.length > 0) {
       searchParams.set("instanceIds", params.instanceIds.join(","))
     }
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
 
     const response = await this.request<TorrentResponse>(
       `/torrents/cross-instance?${searchParams}`,
@@ -2190,20 +2266,21 @@ class ApiClient {
   }
 
   // API Key endpoints
-  async getApiKeys(): Promise<{
-    id: number
-    name: string
-    key?: string
-    createdAt: string
-    lastUsedAt?: string
-  }[]> {
+  async getApiKeys(): Promise<ApiKey[]> {
     return this.request("/api-keys")
   }
 
-  async createApiKey(name: string): Promise<{ id: number; key: string; name: string }> {
+  async createApiKey(data: ApiKeyRequest): Promise<{ id: number; key: string; name: string }> {
     return this.request("/api-keys", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateApiKey(id: number, data: ApiKeyRequest): Promise<ApiKey> {
+    return this.request(`/api-keys/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     })
   }
 
@@ -2394,6 +2471,27 @@ class ApiClient {
     }
   }
 
+  async getSystemNotices(): Promise<SystemNotice[]> {
+    return this.request<SystemNotice[]>("/system-notices")
+  }
+
+  async dismissSystemNotice(kind: string): Promise<void> {
+    await this.request<void>(`/system-notices/${encodeURIComponent(kind)}`, { method: "DELETE" })
+  }
+
+  async getDatabaseShrink(): Promise<DatabaseShrinkStatus> {
+    return this.request<DatabaseShrinkStatus>("/database/shrink")
+  }
+
+  /** Stores the "shrink pending" mark. restarting is false where qui cannot restart itself. */
+  async requestDatabaseShrink(): Promise<{ restarting: boolean }> {
+    return this.request<{ restarting: boolean }>("/database/shrink", { method: "POST" })
+  }
+
+  async dismissDatabaseShrinkResult(): Promise<void> {
+    await this.request<void>("/database/shrink/result", { method: "DELETE" })
+  }
+
   async getTrackerIcons(): Promise<Record<string, string>> {
     return this.request<Record<string, string>>("/tracker-icons")
   }
@@ -2527,6 +2625,26 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     })
+  }
+
+  async getTransferHistorySettingsStatus(): Promise<TransferHistorySettingsStatus> {
+    return this.request<TransferHistorySettingsStatus>("/transfer-history/status")
+  }
+
+  async updateTransferHistorySettings(data: TransferHistorySettings): Promise<TransferHistorySettings> {
+    return this.request<TransferHistorySettings>("/transfer-history/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  /** Deletes the history of one instance or of all instances: everything, or the UTC days before the day of `before`. */
+  async deleteTransferHistory(target: { instanceId: number | "all"; before?: Date }): Promise<void> {
+    const params = new URLSearchParams({ instanceId: String(target.instanceId) })
+    if (target.before) {
+      params.set("before", target.before.toISOString())
+    }
+    return this.request<void>(`/transfer-history?${params}`, { method: "DELETE" })
   }
 
   // Log Exclusions endpoints

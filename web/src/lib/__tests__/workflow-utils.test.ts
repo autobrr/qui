@@ -12,7 +12,9 @@ import {
   generateUniqueName,
   getTrackerMatchMode,
   getTrackerTokens,
+  loadWorkflowNames,
   parseImportJSON,
+  toCopyInput,
   toDuplicateInput,
   toEditInput,
   toExportFormat,
@@ -21,7 +23,12 @@ import {
   type WorkflowImport
 } from "@/lib/workflow-utils"
 import type { ActionConditions, Automation } from "@/types"
-import { describe, expect, it } from "vitest"
+import { QueryClient } from "@tanstack/react-query"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+const listAutomations = vi.hoisted(() => vi.fn())
+
+vi.mock("@/lib/api", () => ({ api: { listAutomations } }))
 
 const conditions: ActionConditions = { schemaVersion: "1" }
 
@@ -92,8 +99,8 @@ describe("toExportFormat", () => {
 
 // Intent: turn clipboard JSON back into an AutomationInput. Two safety
 // invariants matter: imported automations always START disabled (so a paste
-// can't immediately fire side-effects) and the imported name is uniquified
-// so it can't clobber an existing automation by accident.
+// can't immediately fire side-effects) and an imported name that the
+// instance already has is uniquified, so two rules never share a name.
 describe("fromImportFormat", () => {
   const baseExport = (overrides: Partial<WorkflowImport> = {}): WorkflowImport => ({
     name: "Imported",
@@ -115,6 +122,12 @@ describe("fromImportFormat", () => {
 
   it("uniquifies the name against existing names", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["My workflow"]).name).toBe("My workflow (copy)")
+    expect(fromImportFormat(baseExport({ name: "My workflow" }), ["MY WORKFLOW", "My workflow (copy)"]).name).toBe("My workflow (copy 2)")
+  })
+
+  // regression: #4062
+  it("keeps the name when the instance has no rule with that name", () => {
+    expect(fromImportFormat(baseExport({ name: "My workflow" }), ["Other"]).name).toBe("My workflow")
   })
 
   // The backend resolves the two fields: a non-empty trackerPattern wins.
@@ -168,8 +181,9 @@ describe("getTrackerTokens", () => {
 })
 
 // Intent: duplicate within the same instance — equivalent to export+import
-// round-tripping. Guarantees the duplicate gets a fresh name and ships
-// disabled, same as a clipboard import.
+// round-tripping, except that the duplicate always gets a copy suffix, also
+// when the list of existing names is not loaded. It ships disabled, same as
+// a clipboard import.
 describe("toDuplicateInput", () => {
   it("round-trips through export -> import and produces a unique disabled copy", () => {
     const original = makeAutomation({ name: "Source", enabled: true, dryRun: true })
@@ -177,6 +191,62 @@ describe("toDuplicateInput", () => {
     expect(result.name).toBe("Source (copy)")
     expect(result.enabled).toBe(false)
     expect(result.dryRun).toBe(true)
+  })
+
+  // regression: #4062
+  it("adds a copy suffix when no existing name is known", () => {
+    expect(toDuplicateInput(makeAutomation({ name: "Source" }), []).name).toBe("Source (copy)")
+  })
+})
+
+// Intent: "Copy to instance" names the copy for the target instance. The
+// name stays when the target has no rule with it, and a name that is taken
+// there gets the same suffix as a duplicate.
+// regression: #4062
+describe("toCopyInput", () => {
+  it("keeps the name when the target instance has no rule with that name", () => {
+    const result = toCopyInput(makeAutomation({ name: "Source", enabled: true }), ["Other"])
+    expect(result.name).toBe("Source")
+    expect(result.enabled).toBe(false)
+    expect(result.sortOrder).toBeUndefined()
+  })
+
+  it("adds a copy suffix when the target instance has the name in another case", () => {
+    expect(toCopyInput(makeAutomation({ name: "Source" }), ["source"]).name).toBe("Source (copy)")
+    expect(toCopyInput(makeAutomation({ name: "Source" }), ["SOURCE", "Source (copy)"]).name).toBe("Source (copy 2)")
+  })
+})
+
+// Intent: copy, duplicate, and import name the new rule against the rule
+// names of the instance. An instance whose rule list is not loaded must not
+// read as an instance with no rules, or the new rule takes a name in use.
+// regression: #4062
+describe("loadWorkflowNames", () => {
+  afterEach(() => {
+    listAutomations.mockReset()
+  })
+
+  it("reads the rule list from the server when it is not loaded", async () => {
+    listAutomations.mockResolvedValueOnce([makeAutomation({ name: "Source" })])
+    expect(await loadWorkflowNames(new QueryClient(), 2)).toEqual(["Source"])
+    expect(listAutomations).toHaveBeenCalledWith(2)
+  })
+
+  it("uses the loaded rule list", async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(["automations", 2], [makeAutomation({ name: "Loaded" })])
+    expect(await loadWorkflowNames(queryClient, 2)).toEqual(["Loaded"])
+    expect(listAutomations).not.toHaveBeenCalled()
+  })
+
+  it("returns no names when the server sends null for an instance with no rules", async () => {
+    listAutomations.mockResolvedValueOnce(null)
+    expect(await loadWorkflowNames(new QueryClient(), 2)).toEqual([])
+  })
+
+  it("rejects when the rule list cannot be read", async () => {
+    listAutomations.mockRejectedValueOnce(new Error("list failed"))
+    await expect(loadWorkflowNames(new QueryClient(), 2)).rejects.toThrow("list failed")
   })
 })
 

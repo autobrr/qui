@@ -135,6 +135,8 @@ paths:
         - Authentication
       summary: Logout
       description: End the current session
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Logged out successfully
@@ -178,6 +180,8 @@ paths:
                   minLength: 8
                   writeOnly: true
                   description: New password will be hashed and never returned in responses
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Password changed. Every session is ended, including the caller's.
@@ -215,6 +219,8 @@ paths:
         - API Keys
       summary: List API keys
       description: Get all API keys for the current user
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: List of API keys
@@ -228,20 +234,18 @@ paths:
       tags:
         - API Keys
       summary: Create API key
-      description: Generate a new API key
+      description: Generate a new API key with the Permissions it holds.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - name
-              properties:
-                name:
-                  type: string
-                  description: Descriptive name for the API key
+              $ref: '#/components/schemas/ApiKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
+        '400':
+          description: Missing name, invalid Permission list, or an Instance limit with an id that is not an instance
         '201':
           description: API key created
           content:
@@ -259,10 +263,48 @@ paths:
                   createdAt:
                     type: string
                     format: date-time
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKeyPermission'
+                  instanceIds:
+                    type: array
+                    items:
+                      type: integer
                   message:
                     type: string
 
   /api/api-keys/{id}:
+    put:
+      tags:
+        - API Keys
+      summary: Update API key
+      description: Set the name, the Permissions, and the Instance limit of an API key. The change applies on the next request of the key.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyRequest'
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '400':
+          description: Missing name, invalid Permission list, or an Instance limit with an id that is not an instance
+        '404':
+          description: API key not found
     delete:
       tags:
         - API Keys
@@ -274,6 +316,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: API key deleted successfully
@@ -286,6 +330,8 @@ paths:
         - Client API Keys
       summary: List client API keys
       description: Get all client API keys for external applications
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: List of client API keys
@@ -316,6 +362,8 @@ paths:
                 instanceId:
                   type: integer
                   description: ID of the qBittorrent instance to proxy to
+      security:
+        - SessionAuth: []
       responses:
         '201':
           description: Client API key created
@@ -351,6 +399,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Client API key deleted successfully
@@ -410,6 +460,8 @@ paths:
                     $ref: '#/components/schemas/PathMapping'
                   default: []
                   description: Path mappings to convert remote paths to local paths (useful for remote instances)
+      security:
+        - SessionAuth: []
       responses:
         '201':
           description: External program created
@@ -462,6 +514,8 @@ paths:
                   items:
                     $ref: '#/components/schemas/PathMapping'
                   description: Path mappings to convert remote paths to local paths
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: External program updated
@@ -484,6 +538,8 @@ paths:
           required: true
           schema:
             type: integer
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: External program deleted successfully
@@ -1255,6 +1311,8 @@ paths:
                 privateKey:
                   type: string
                   description: PEM-encoded private key without a passphrase. Write-only.
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Credentials stored
@@ -1277,6 +1335,8 @@ paths:
         an orphan scan deletion runs on the instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Credentials cleared
@@ -1301,6 +1361,8 @@ paths:
         failed request.
       parameters:
         - $ref: '#/components/parameters/instanceID'
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Dial result
@@ -1333,6 +1395,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SSHHostKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Host key pinned
@@ -1367,6 +1431,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SSHHostKeyRequest'
+      security:
+        - SessionAuth: []
       responses:
         '204':
           description: Host key pin replaced
@@ -1688,14 +1754,20 @@ paths:
           description: |
             JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
             Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
-            `sort`, `order`, `search`, `filters`, and `summary`. Use a positive `instanceId`
+            `sort`, `order`, `search`, `filters`, `summary`, `groupCopies`, and `uniqueSize`. Use a positive `instanceId`
             or 1 to 64 positive `instanceIds` for a cross-instance view.
             `key` is returned as `meta.streamKey`. `page` starts at 0.
             `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
             `added_on` and `order` to `desc`. `filters` is a JSON object with the
             same fields as the torrent list filters. If `summary` is true, the
             frames carry the totals, stats, counts, and server state of the view,
-            but no rows. `summary` needs a single `instanceId`.
+            but no rows. `summary` needs a single `instanceId`. If `groupCopies` is
+            true, the frames carry Copy groups and `copyGroupsReady`, as the torrent
+            list does with `groupCopies=true`. A frame follows when the groups
+            change, also when no torrent changed. `groupCopies` cannot be combined
+            with `summary`. If `uniqueSize` is true, the stats carry `uniqueSize`
+            and `uniqueSeedingSize`, as the torrent list does with
+            `uniqueSize=true`. `uniqueSize` needs a single `instanceId`.
           schema:
             type: string
           example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
@@ -1746,7 +1818,8 @@ paths:
         connection before any other event of that subscription. The other
         subscriptions of the connection get no `init`. A connection holds at
         most 64 subscriptions. When the connection closes, the server removes
-        each of its subscriptions.
+        each of its subscriptions. Only the API key or session that opened the
+        connection can change it. Any other caller gets a 404.
       requestBody:
         required: true
         content:
@@ -1833,6 +1906,18 @@ paths:
           schema:
             type: string
             description: JSON object with filter criteria (`status`, `categories`, `tags`, `excludeTags`, `trackers`)
+        - name: groupCopies
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Collapse each Copy group into adjacent rows, the Group representative first. Pages, offsets, and `hasMore` then count top rows. `total` still counts torrents. While `copyGroupsReady` is false, the rows are flat.
+        - name: uniqueSize
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Add `stats.uniqueSize` and `stats.uniqueSeedingSize`, the size of the matching torrents and of the seeding ones with each Copy group counted one time. The two fields are absent until the first Copy groups build that read the instance ends.
       responses:
         '200':
           description: Paginated torrent list
@@ -1844,7 +1929,15 @@ paths:
                   torrents:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Torrent'
+                      allOf:
+                        - $ref: '#/components/schemas/Torrent'
+                        - type: object
+                          properties:
+                            copy_group:
+                              $ref: '#/components/schemas/CopyGroupRow'
+                  copyGroupsReady:
+                    type: boolean
+                    description: Sent only when the request has `groupCopies=true`. False while the map of Copy groups is not ready; the rows are then flat.
                   total:
                     type: integer
                   page:
@@ -2138,7 +2231,7 @@ paths:
               properties:
                 field:
                   type: string
-                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents. `magnet_uri` is only available here; torrent list responses omit it.
+                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents. `magnet_uri` is only available here; torrent list responses omit it. An API key needs write access to torrents for `magnet_uri`, because the link holds the announce URL with the tracker passkey.
                   enum:
                     - name
                     - hash
@@ -2219,6 +2312,8 @@ paths:
                       List of per-torrent field values for the matching torrents. When `field=tags`, each item is the raw
                       comma-separated tag string returned for one matching torrent, and an empty string indicates
                       an untagged torrent.
+        '403':
+          description: 'The API key needs `Torrents: write` to read `magnet_uri`'
 
   /api/instances/{instanceID}/torrents/{hash}/export:
     get:
@@ -2264,7 +2359,7 @@ paths:
       tags:
         - Torrent Details
       summary: Get torrent trackers
-      description: Get list of trackers for a torrent
+      description: Get list of trackers for a torrent. A key without write access to torrents gets each URL as its scheme and host.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -3421,7 +3516,7 @@ paths:
       tags:
         - Trackers
       summary: List active trackers
-      description: Get active tracker domains and representative tracker URLs for an instance
+      description: Get active tracker domains and representative tracker URLs for an instance. A key without write access to torrents gets each URL as its scheme and host.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -3437,6 +3532,336 @@ paths:
           description: Invalid instance ID
         '500':
           description: Failed to get active trackers
+
+  /api/instances/{instanceID}/transfer-history:
+    get:
+      tags:
+        - Transfer History
+      summary: Get the transfer history of an instance
+      description: >-
+        Returns the upload and download that qui recorded for each torrent of the instance, added up by Tracker group, by
+        category, or by a release attribute, or for each torrent. A row can be wider than the bucket that the query asks for: qui
+        stores the category totals and the bytes of each torrent for each UTC day, so a query for categories, release attributes,
+        or torrents by hour returns day rows. After the
+        Detail retention, qui folds the hourly totals into days, so a query for hours in a folded period also returns day rows, and
+        it folds the days of each torrent into one row for each year, so a query for the days of a torrent in a folded year returns
+        one year row. The width field of each row tells its bucket. Without a start, the period has no start, and each total row
+        also holds the Baseline: the bytes that the torrents had when qui first recorded the instance. A removed instance keeps
+        its history, and a deleted torrent keeps its rows.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: from
+          in: query
+          description: Start of the period, RFC 3339. Leave it out for a period with no start.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End of the period, RFC 3339. The default is now.
+          schema:
+            type: string
+            format: date-time
+        - name: bucket
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [hour, day, total]
+        - name: groupBy
+          in: query
+          required: true
+          description: >-
+            What the rows group by. A torrent row has the hash of the torrent as its group, counts toward the Tracker group and
+            the category of the torrent now, and counts all its upload as upload from Statistics cross-seeds when the torrent has
+            that flag. releaseGroup, resolution, source, and contentType add up the torrent rows by a value that qui read from
+            the name of each torrent when it first saw the torrent or saw a new name. A torrent whose name holds no value of the
+            attribute is in the group with an empty name. qui keeps the answer of a release attribute until it writes the history
+            of the instance again.
+          schema:
+            type: string
+            enum: [tracker, category, torrent, releaseGroup, resolution, source, contentType]
+        - name: group
+          in: query
+          description: >-
+            Limits the answer to the rows of one group of the grouping groupOf, by the group name of a row. An empty value
+            selects the torrents with no category, or with no value of the release attribute. Leave it out for each group.
+          schema:
+            type: string
+        - name: groupOf
+          in: query
+          description: >-
+            The grouping of group. The default is groupBy. Only groupBy=torrent takes another grouping, so that groupBy=torrent
+            with groupOf=tracker and a group gives the torrents of one Tracker group.
+          schema:
+            type: string
+            enum: [tracker, category, torrent, releaseGroup, resolution, source, contentType]
+        - name: limit
+          in: query
+          description: >-
+            Keeps the rows of the groups with the most upload, the Baseline included, and orders the rows by that upload. Leave
+            it out, or give 0, for each group.
+          schema:
+            type: integer
+            minimum: 0
+        - name: timeZone
+          in: query
+          description: >-
+            IANA time zone name, for example America/New_York. The day rows of Tracker groups start at the midnights of
+            this zone, and an hour counts toward the day of its start. The day rows of categories stay UTC days. The
+            default is UTC.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transfer rows, ordered by bucket start and group, or by upload when the query has a limit
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferHistoryRow'
+        '400':
+          description: Invalid instance ID or query
+        '500':
+          description: Failed to read transfer history
+
+  /api/instances/{instanceID}/transfer-history/library:
+    get:
+      tags:
+        - Transfer History
+      summary: Get the library of an instance for each day
+      description: >-
+        Returns one row for each UTC day that overlaps the period and has stored data, with the oldest day first. A row
+        holds the torrent count, the total size, and the Unique size of the instance at the last reading of the day, and
+        the number of torrents that qui saw added, completed, and deleted on that day. qui finds these events when it
+        reads the torrent list, so an event has the time of that read. The torrents that an instance has at its first
+        recording get no add event and no completion event. A removed instance keeps its history.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: from
+          in: query
+          description: Start of the period, RFC 3339. Leave it out for a period with no start.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End of the period, RFC 3339. The default is now.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Library rows, ordered by day
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferHistoryLibraryRow'
+        '400':
+          description: Invalid instance ID or query
+        '500':
+          description: Failed to read transfer history
+
+  /api/instances/{instanceID}/transfer-history/deletes:
+    get:
+      tags:
+        - Transfer History
+      summary: List the deleted torrents of an instance
+      description: >-
+        Returns a page of the torrents that left the instance in the period, with the newest delete first. Each delete names
+        its cause: an automation rule, the user in qui, a backup restore, a Client Proxy API key, or outside qui. A delete
+        that qui did not start has the cause outside. The counts cover the whole period and each cause, also with a cause
+        filter. A removed instance keeps its history.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: from
+          in: query
+          description: Start of the period, RFC 3339. Leave it out for a period with no start.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End of the period, RFC 3339. The default is now.
+          schema:
+            type: string
+            format: date-time
+        - name: cause
+          in: query
+          description: Limits the deletes to one kind of cause. The value other selects a backup restore, a Client Proxy API key, and outside qui. Leave it out for each cause.
+          schema:
+            type: string
+            enum: [automation, user, other]
+        - name: limit
+          in: query
+          description: Size of the page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          description: Number of newer deletes before the page.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: A page of deletes and the count of each kind of cause
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deletes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferHistoryDelete'
+                  counts:
+                    type: object
+                    description: Number of deletes in the period for each value of the cause filter.
+                    properties:
+                      automation:
+                        type: integer
+                        format: int64
+                      user:
+                        type: integer
+                        format: int64
+                      other:
+                        type: integer
+                        format: int64
+        '400':
+          description: Invalid instance ID or query
+        '500':
+          description: Failed to read transfer history
+
+  /api/instances/{instanceID}/tracker-groups:
+    get:
+      tags:
+        - Transfer History
+      summary: Get the torrents of an instance by Tracker group
+      description: >-
+        Returns the torrents that are in qBittorrent now, added up by Tracker group. A torrent counts toward one group, also
+        when it has more than one tracker domain. Tracker customizations apply. The numbers do not come from the transfer
+        history, so a deleted torrent is not in them.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: One entry for each Tracker group, ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LiveTrackerGroup'
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to read tracker groups
+
+  /api/transfer-history/status:
+    get:
+      tags:
+        - Transfer History
+      summary: Get the status of the transfer history
+      description: Returns each instance that has transfer history, also a removed one, with its name and the time of its first recording. It also returns the space that the history takes in the database and the Statistics settings. An API key with an instance limit cannot use this route.
+      responses:
+        '200':
+          description: Instances with transfer history, the size of the history, and the settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instances:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferHistoryInstance'
+                  historyBytes:
+                    type: integer
+                    format: int64
+                    description: Bytes that the tables of the transfer history and their indexes take in the database. qui measures it at most once an hour and after each fold.
+                  settings:
+                    $ref: '#/components/schemas/TransferHistorySettings'
+        '500':
+          description: Failed to read transfer history status
+
+  /api/transfer-history/settings:
+    put:
+      tags:
+        - Transfer History
+      summary: Change the Statistics settings
+      description: >-
+        Sets the recording switch and the Detail retention for all instances. While recording is off, qui records nothing and
+        keeps the stored history. When recording goes on again, the bytes of the time off land on the first hour after it, with
+        the length of that time as a Recording gap. After the Detail retention, qui folds the hourly totals into days, and the
+        daily bytes of each torrent into one row for each year. An API key with an instance limit cannot use this route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferHistorySettings'
+      responses:
+        '200':
+          description: The stored settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferHistorySettings'
+        '400':
+          description: A field is missing, or the Detail retention is not 0, 90, or 400 days
+        '500':
+          description: Failed to save transfer history settings
+
+  /api/transfer-history:
+    delete:
+      tags:
+        - Transfer History
+      summary: Delete transfer history
+      description: >-
+        Deletes the transfer history of one instance, also a removed one, or of all instances. Without before, qui deletes
+        everything: the next reading of the instance starts a new Baseline, and a removed instance has no history after that.
+        With before, qui deletes each UTC day before the UTC day of that time, so each row from that time on stays. When that
+        day starts after the first recording, the Baseline goes too, and the first recording moves to that day. qui deletes in a
+        series of short writes. On SQLite, the database file keeps its size, and SQLite uses the free space again. On Postgres,
+        a delete of everything of all instances returns the space at once. An API key with an instance limit cannot use this route.
+      parameters:
+        - in: query
+          name: instanceId
+          required: true
+          schema:
+            type: string
+          description: The instance ID, or `all` for all instances.
+        - in: query
+          name: before
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Delete the history before this time, in RFC 3339. The time must be after 0001-01-01T00:00:00Z and not in the future.
+      responses:
+        '204':
+          description: The history is deleted
+        '400':
+          description: Invalid instanceId or before
+        '500':
+          description: Failed to delete transfer history
 
   /api/instances/{instanceID}/automations/{ruleID}/apply:
     post:
@@ -3674,6 +4099,8 @@ paths:
               properties:
                 licenseKey:
                   type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License activated successfully
@@ -3716,6 +4143,8 @@ paths:
               properties:
                 licenseKey:
                   type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License validated successfully
@@ -3749,6 +4178,8 @@ paths:
         - Licenses
       summary: Check premium access
       description: Check if any active licenses grant premium access
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Premium access status
@@ -3766,6 +4197,8 @@ paths:
         - Licenses
       summary: List licenses
       description: List all stored licenses
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Licenses retrieved
@@ -3798,6 +4231,8 @@ paths:
           required: true
           schema:
             type: string
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: License deleted successfully
@@ -3810,6 +4245,8 @@ paths:
         - Licenses
       summary: Refresh licenses
       description: Refresh all stored licenses from the licensing service
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: Licenses refreshed successfully
@@ -4102,6 +4539,12 @@ paths:
               JSON-encoded filter options. Must include the `expr` field for cross-instance filtering.
               See CrossInstanceFilterOptions schema for structure details.
             example: '{"expr":"Hash == \"abcd1234\" || Hash == \"efgh5678\""}'
+        - name: groupCopies
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Collapse each Copy group into adjacent rows, the Group representative first. Pages, offsets, and `hasMore` then count top rows. `total` still counts torrents. While `copyGroupsReady` is false, the rows are flat.
       responses:
         '200':
           description: Paginated torrent list from all instances
@@ -4123,10 +4566,15 @@ paths:
                             instance_name:
                               type: string
                               description: Name of the instance this torrent belongs to
+                            copy_group:
+                              $ref: '#/components/schemas/CopyGroupRow'
                   total:
                     type: integer
                   hasMore:
                     type: boolean
+                  copyGroupsReady:
+                    type: boolean
+                    description: Sent only when the request has `groupCopies=true`. False while the map of Copy groups is not ready; the rows are then flat.
                   isCrossInstance:
                     type: boolean
                     default: true
@@ -4444,7 +4892,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DirScanDirectory'
         '400':
-          description: Invalid request body
+          description: Invalid request body, a target instance qui cannot read files on, or a path that is not absolute on a remote instance
         '500':
           description: Failed to create directory
 
@@ -4488,7 +4936,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DirScanDirectory'
         '400':
-          description: Invalid request body
+          description: Invalid request body, a target instance qui cannot read files on, or a path that is not absolute on a remote instance
         '404':
           description: Directory not found
         '500':
@@ -6091,12 +6539,125 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionResponse'
 
+  /api/system-notices:
+    get:
+      tags:
+        - System
+      summary: List open System notices
+      description: Returns the open System notices. A System notice is a fault in qui that needs an action from the user, for example "recording_stopped" when qui cannot write the Transfer history. The list is empty when no notice is open.
+      responses:
+        '200':
+          description: Open System notices, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SystemNotice'
+
+  /api/database/shrink:
+    get:
+      tags:
+        - System
+      summary: Read the database shrink status
+      description: >-
+        Returns the size of the SQLite database file, the free space on its disk, and the space that a shrink needs: up to
+        two times the size of the file. It also returns whether a shrink is pending and the outcome of the shrink at the
+        last start, until the web UI dismisses it. On Postgres, available is false and the other numbers are zero. An API
+        key with an instance limit cannot use this route.
+      responses:
+        '200':
+          description: The shrink status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseShrinkStatus'
+        '500':
+          description: Failed to read the file size or the free disk space
+    post:
+      tags:
+        - System
+      summary: Shrink the database file
+      description: >-
+        Stores the "shrink pending" mark and restarts qui. At the next start, before any service starts, qui makes the
+        SQLite file smaller and gives the free space back to the disk. Where Restart is not available, the shrink runs at
+        the next start of qui. When the shrink fails, qui starts as usual and opens the System notice "shrink_failed". Only
+        a signed-in browser can use this route, because the shrink restarts qui.
+      security:
+        - SessionAuth: []
+      responses:
+        '202':
+          description: The shrink is pending
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - restarting
+                properties:
+                  restarting:
+                    type: boolean
+                    description: True when qui restarts now. False when the shrink waits for the next start.
+        '409':
+          description: The database is Postgres, the disk has too little free space, or an update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to store the mark, or the restart was refused. A refused restart keeps the mark for the next start.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/database/shrink/result:
+    delete:
+      tags:
+        - System
+      summary: Dismiss the outcome of the last shrink
+      description: Forgets the sizes before and after the shrink at the last start, after the web UI showed them. An API key with an instance limit cannot use this route.
+      responses:
+        '204':
+          description: The outcome is dismissed
+
+  /api/system-notices/{kind}:
+    delete:
+      tags:
+        - System
+      summary: Dismiss a System notice
+      description: Closes a System notice that the user can dismiss, for example "shrink_failed". A notice such as "recording_stopped" closes itself when the fault is gone, and returns 409. A dismissed "low_disk" stays hidden, also after a restart, until the free space recovers to the limit plus 10% and drops below the limit again, or until "recording_stopped" opens after the dismiss.
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            type: string
+          description: The kind of the notice
+      responses:
+        '204':
+          description: The notice is closed
+        '409':
+          description: The notice closes itself and cannot be dismissed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: qui could not store the dismiss
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/system/restart:
     post:
       tags:
         - System
       summary: Restart qui
       description: Runs the same graceful shutdown as SIGTERM, then restarts qui in place with the same process ID and command line. qui checks the binary before the shutdown. Only one update or restart runs at a time.
+      security:
+        - SessionAuth: []
       responses:
         '202':
           description: The restart started
@@ -6131,6 +6692,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SelfUpdateRequest'
+      security:
+        - SessionAuth: []
       responses:
         '200':
           description: The new binary is in place. qui restarts next.
@@ -6443,7 +7006,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Get orphan scan settings
-      description: Get orphan file scanning settings for an instance. Requires local filesystem access.
+      description: Get orphan file scanning settings for an instance. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -6454,14 +7017,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrphanScanSettings'
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
     put:
       tags:
         - Orphan Scan
       summary: Update orphan scan settings
-      description: Update orphan file scanning settings for an instance. Requires local filesystem access.
+      description: Update orphan file scanning settings for an instance. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -6480,7 +7043,7 @@ paths:
         '400':
           description: Invalid settings (e.g., non-absolute ignore paths)
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
 
@@ -6505,7 +7068,7 @@ paths:
                     format: int64
                     description: ID of the created scan run
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
         '409':
@@ -6516,7 +7079,7 @@ paths:
       tags:
         - Orphan Scan
       summary: List orphan scan runs
-      description: Get recent orphan scan runs for an instance. Requires local filesystem access.
+      description: Get recent orphan scan runs for an instance. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: limit
@@ -6537,7 +7100,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/OrphanScanRun'
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Instance not found
 
@@ -6546,7 +7109,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Get orphan scan run
-      description: Get details of a specific scan run including the list of orphan files found. Requires local filesystem access.
+      description: Get details of a specific scan run including the list of orphan files found. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6579,14 +7142,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrphanScanRunWithFiles'
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Run not found
     delete:
       tags:
         - Orphan Scan
       summary: Cancel orphan scan run
-      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires local filesystem access.
+      description: Cancel a pending, scanning, or preview_ready run. Cannot cancel runs that are actively deleting. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6610,7 +7173,7 @@ paths:
         '400':
           description: Run already finished
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Run not found
         '409':
@@ -6621,7 +7184,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Confirm orphan file deletion
-      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires local filesystem access.
+      description: Confirm deletion of orphan files from a preview_ready run. This initiates the actual file deletion. Requires filesystem access, local or over SSH.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: runID
@@ -6647,7 +7210,7 @@ paths:
         '409':
           description: A scan or deletion is already in progress for this instance. Also returned when the run scanned a remote instance that does not report file identity, or whose scan did not read it for every file, where the run stays preview_ready. And when the instance's filesystem access or SSH endpoint changed since the scan, which marks the run failed.
         '403':
-          description: Instance does not have local filesystem access enabled
+          description: Instance has no filesystem access, local or over SSH
         '404':
           description: Run not found
 
@@ -7147,7 +7710,13 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      description: API key for authentication
+      description: |
+        API key for authentication. Browser-only routes refuse every API key with
+        403 "API key not allowed; use the web UI": API key and client API key
+        management, system update and restart, instance SSH credential and host-key
+        routes, change password, logout, license routes, and external program
+        create, update, and delete. When authentication is disabled, qui ignores
+        API keys and these routes accept the request.
     ApiKeyQuery:
       type: apiKey
       in: query
@@ -7361,6 +7930,56 @@ components:
           type: string
           format: date-time
           nullable: true
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyPermission'
+        instanceIds:
+          type: array
+          description: The Instance limit. An empty list means every instance.
+          items:
+            type: integer
+
+    ApiKeyPermission:
+      type: object
+      description: One area and one level. Write includes read and run. Run does not include read.
+      required:
+        - area
+        - level
+      properties:
+        area:
+          type: string
+          enum: [instances, torrents, crossSeed, dirScan, automations, rss, backups, orphanScan, externalPrograms, indexers, arr, notifications, settings, logs, system]
+        level:
+          type: string
+          enum: [read, run, write]
+
+    ApiKeyRequest:
+      type: object
+      required:
+        - name
+        - permissions
+      properties:
+        name:
+          type: string
+          description: Descriptive name for the API key
+        permissions:
+          type: array
+          description: Each area allows only some levels. The list must not be empty.
+          items:
+            $ref: '#/components/schemas/ApiKeyPermission'
+        instanceIds:
+          type: array
+          description: >-
+            The Instance limit: the instances that the key can reach. An empty list means
+            every instance, also the ones added later. A new instance does not join a list
+            that is not empty, and a deleted instance stays in the list and matches nothing.
+            Each id must be an instance, but an edit can keep a deleted instance that the key
+            holds. A key with a list gets a 403 on another instance, on an automation that
+            exports to another instance, and on the cross-seed, Dir Scan, and cross-instance
+            routes.
+          items:
+            type: integer
 
     ClientApiKey:
       type: object
@@ -7947,6 +8566,23 @@ components:
           description: All-time uploaded bytes. Absent until the instance completes its first sync.
 
 
+    CopyGroupRow:
+      type: object
+      description: Sent only on a row of a Copy group with two or more matching torrents. A plain row has no `copy_group`.
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: Group id, 16 hex characters. It changes when qui restarts.
+        first_sorted:
+          type: object
+          description: Sent on the Group representative only. The torrent whose place the group takes in the sort.
+          required: [instance_id, hash]
+          properties:
+            instance_id:
+              type: integer
+            hash:
+              type: string
     Torrent:
       type: object
       properties:
@@ -8392,6 +9028,80 @@ components:
           additionalProperties: true
           description: Opaque torrent filter selections
 
+    SystemNotice:
+      type: object
+      description: An open System notice
+      required:
+        - kind
+        - severity
+        - cause
+        - openedAt
+      properties:
+        kind:
+          type: string
+          enum: [recording_stopped, shrink_failed, low_disk]
+          description: The kind of the notice. The web UI shows the title and the fix of each kind.
+        severity:
+          type: string
+          enum: [error, warning]
+        reason:
+          type: string
+          description: Selects the fix that the notice shows. For shrink_failed it is disk_full, locked, or unknown. Absent for a kind with one fix.
+          example: disk_full
+        cause:
+          type: string
+          description: The error that opened the notice, or the latest error while it is open. For low_disk, the free space, the size of the disk, and the limit.
+          example: "write the transfer history of instance 1: attempt to write a readonly database"
+        openedAt:
+          type: string
+          format: date-time
+          description: When the notice opened
+
+    DatabaseShrinkStatus:
+      type: object
+      required:
+        - available
+        - fileBytes
+        - freeBytes
+        - needBytes
+        - restartAvailable
+        - pending
+      properties:
+        available:
+          type: boolean
+          description: True on SQLite. Postgres has no file to shrink.
+        fileBytes:
+          type: integer
+          format: int64
+          description: The size of the database file
+        freeBytes:
+          type: integer
+          format: int64
+          description: The free space on the disk of the database file
+        needBytes:
+          type: integer
+          format: int64
+          description: The free space that a shrink needs, two times the size of the file
+        restartAvailable:
+          type: boolean
+          description: False where qui cannot restart itself. The shrink then runs at the next start.
+        pending:
+          type: boolean
+          description: True when the shrink runs at the next start
+        result:
+          type: object
+          description: The outcome of the shrink at the last start, until the web UI dismisses it
+          required:
+            - beforeBytes
+            - afterBytes
+          properties:
+            beforeBytes:
+              type: integer
+              format: int64
+            afterBytes:
+              type: integer
+              format: int64
+
     LatestVersionResponse:
       type: object
       description: Information about the latest available version when an update is available
@@ -8531,6 +9241,15 @@ components:
         status:
           type: string
           description: The result of the add. crossseed_instance_unavailable means that the instance routes its cross-seeds, and its Cross-seed instance is unavailable or the route breaks a route rule. crossseed_instance_cannot_see_data means that the Cross-seed instance does not list the linked files at the mapped path.
+        class:
+          type: string
+          description: What the result means for its reader. stranded means that qBittorrent holds the torrent, but qui could not finish the add. A status that qui does not know has the class failed.
+          enum:
+            - added
+            - exists
+            - skipped
+            - stranded
+            - failed
         message:
           type: string
           nullable: true
@@ -8879,10 +9598,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        tags:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -8925,6 +9640,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        rssSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when checking RSS feeds (empty means all)
+        rssSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when checking RSS feeds (empty means all)
+        rssSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when checking RSS feeds
+        rssSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when checking RSS feeds
         webhookSourceCategories:
           type: array
           items:
@@ -8945,22 +9680,50 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        rssAutomationTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by RSS automation
+        seededSearchTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by seeded torrent search
+        completionSearchTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by completion search
+        webhookTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to cross-seeds added by webhook requests
+        inheritSourceTags:
+          type: boolean
+          description: Copy the source torrent's tags onto the cross-seed
+        skipAutoResumeRss:
+          type: boolean
+          description: Leave RSS automation cross-seeds paused instead of resuming them
+        skipAutoResumeSeededSearch:
+          type: boolean
+          description: Leave seeded torrent search cross-seeds paused instead of resuming them
+        skipAutoResumeCompletion:
+          type: boolean
+          description: Leave completion search cross-seeds paused instead of resuming them
+        skipAutoResumeWebhook:
+          type: boolean
+          description: Leave webhook cross-seeds paused instead of resuming them
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+          description: Skip the check that refuses a match whose extra files share pieces with content files. Risky, since downloading those pieces can corrupt data you already seed.
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
-        useHardlinks:
-          type: boolean
-          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
-        hardlinkBaseDir:
-          type: string
-          description: Base directory for hardlink trees (must be on same filesystem as downloads)
-        hardlinkDirPreset:
-          type: string
-          enum: [flat, by-tracker, by-instance]
-          description: Directory organization preset for hardlink trees
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
@@ -9022,10 +9785,6 @@ components:
           description: Orpheus (OPS) API key. Responses return a redacted placeholder when a value is set and leave the field out when no value is set or qui cannot decrypt it. In a request, leave the field out or send the placeholder to keep the stored value, and send an empty string to clear it.
         runIntervalMinutes:
           type: integer
-        tags:
-          type: array
-          items:
-            type: string
         targetInstanceIds:
           type: array
           items:
@@ -9069,6 +9828,26 @@ components:
         runExternalProgramId:
           type: integer
           nullable: true
+        rssSourceCategories:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents in these categories when checking RSS feeds (empty means all)
+        rssSourceTags:
+          type: array
+          items:
+            type: string
+          description: Only match against torrents with these tags when checking RSS feeds (empty means all)
+        rssSourceExcludeCategories:
+          type: array
+          items:
+            type: string
+          description: Skip torrents in these categories when checking RSS feeds
+        rssSourceExcludeTags:
+          type: array
+          items:
+            type: string
+          description: Skip torrents with any of these tags when checking RSS feeds
         webhookSourceCategories:
           type: array
           items:
@@ -9089,6 +9868,54 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags when processing webhook requests
+        rssAutomationTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by RSS automation
+        seededSearchTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by seeded torrent search
+        completionSearchTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by completion search
+        webhookTags:
+          type: array
+          items:
+            type: string
+          default: ["cross-seed"]
+          description: Tags applied to cross-seeds added by webhook requests
+        inheritSourceTags:
+          type: boolean
+          default: false
+          description: Copy the source torrent's tags onto the cross-seed
+        skipAutoResumeRss:
+          type: boolean
+          default: false
+          description: Leave RSS automation cross-seeds paused instead of resuming them
+        skipAutoResumeSeededSearch:
+          type: boolean
+          default: false
+          description: Leave seeded torrent search cross-seeds paused instead of resuming them
+        skipAutoResumeCompletion:
+          type: boolean
+          default: false
+          description: Leave completion search cross-seeds paused instead of resuming them
+        skipAutoResumeWebhook:
+          type: boolean
+          default: false
+          description: Leave webhook cross-seeds paused instead of resuming them
+        skipPieceBoundarySafetyCheck:
+          type: boolean
+          default: true
+          description: Skip the check that refuses a match whose extra files share pieces with content files. Risky, since downloading those pieces can corrupt data you already seed.
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
@@ -9096,16 +9923,6 @@ components:
           type: boolean
           default: false
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
-        useHardlinks:
-          type: boolean
-          description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
-        hardlinkBaseDir:
-          type: string
-          description: Base directory for hardlink trees (must be on same filesystem as downloads)
-        hardlinkDirPreset:
-          type: string
-          enum: [flat, by-tracker, by-instance]
-          description: Directory organization preset for hardlink trees
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
@@ -9153,9 +9970,11 @@ components:
         createdAt:
           type: string
           format: date-time
+          readOnly: true
         updatedAt:
           type: string
           format: date-time
+          readOnly: true
 
     CrossSeedAutomationStatus:
       type: object
@@ -9941,7 +10760,7 @@ components:
           description: Torrent state
         tracker:
           type: string
-          description: Primary tracker URL
+          description: Primary tracker URL. A key without write access to torrents gets its scheme and host.
         tracker_health:
           type: string
           enum: [unregistered, tracker_down, tracker_error]
@@ -9959,18 +10778,18 @@ components:
       properties:
         expr:
           type: string
-          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching.
+          description: Expression filter (required for cross-instance filtering). Supports logical operators and hash matching. An expression that does not compile gives no rows.
           example: 'Hash == "abcd1234" || Hash == "efgh5678"'
         status:
           type: array
           items:
             type: string
-          description: Filter by torrent status
+          description: Filter by torrent status. A value is a status of qui, for example `seeding` or `completed`, or a qBittorrent state name such as `stalledUP`, in any letter case. A value that qui does not know gives no rows.
         excludeStatus:
           type: array
           items:
             type: string
-          description: Array of strings to omit torrents with these statuses
+          description: Array of strings to omit torrents with these statuses. A value that qui does not know gives no rows.
         categories:
           type: array
           items:
@@ -9995,7 +10814,7 @@ components:
           type: array
           items:
             type: string
-          description: Filter by tracker hostnames
+          description: Filter by tracker hostnames. The value "" selects the torrents with no tracker.
         excludeTrackers:
           type: array
           items:
@@ -10162,7 +10981,10 @@ components:
           type: array
           items:
             type: string
-          description: Directories selected for scanning. Some paths can be unavailable during a partial scan.
+          description: Directories selected for scanning. Some paths can be unavailable during a partial scan. Only the response for one run includes this field; the runs list leaves it out.
+        scanPathCount:
+          type: integer
+          description: Number of entries in scanPaths.
         filesFound:
           type: integer
           description: Number of orphan entries found, files and abandoned directories together
@@ -10199,6 +11021,185 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    TransferHistoryBytes:
+      type: object
+      properties:
+        uploaded:
+          type: integer
+          format: int64
+        downloaded:
+          type: integer
+          format: int64
+        statisticsCrossSeedUploaded:
+          type: integer
+          format: int64
+          description: The part of uploaded that came from Statistics cross-seeds, the torrents that completed with less than 1% of their size downloaded.
+
+    TransferHistoryRow:
+      type: object
+      properties:
+        group:
+          type: string
+          description: The Tracker group, the category, the value of the release attribute, or the hash of the torrent.
+        start:
+          type: string
+          format: date-time
+          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups, UTC days for categories, release attributes, torrents, and the folded hours, and the folded years of a torrent, and starts at the first of them. Absent for a total row of a period with no start.
+        width:
+          type: string
+          enum: [hour, day, year, total]
+          description: The bucket of the row. A year row is a UTC year of a torrent that qui folded.
+        gapSeconds:
+          type: integer
+          format: int64
+          description: Length of the times without a read of the instance that ended in the bucket. Their bytes are in the bucket.
+        uploaded:
+          type: integer
+          format: int64
+        downloaded:
+          type: integer
+          format: int64
+        statisticsCrossSeedUploaded:
+          type: integer
+          format: int64
+        baseline:
+          $ref: '#/components/schemas/TransferHistoryBytes'
+        torrent:
+          $ref: '#/components/schemas/TransferHistoryTorrent'
+
+    TransferHistoryTorrent:
+      type: object
+      description: The torrent of a row of the grouping by torrent.
+      properties:
+        name:
+          type: string
+        trackerGroup:
+          type: string
+          description: The Tracker group of the torrent now.
+        deleted:
+          type: boolean
+          description: True while the torrent is not in qBittorrent.
+        statisticsCrossSeed:
+          type: boolean
+          description: True when the torrent completed with less than 1% of its size downloaded.
+        uploadFirst24h:
+          type: integer
+          format: int64
+          nullable: true
+          description: The upload of the first 24 hours after the add. Null when qui first saw the torrent after them.
+
+    LiveTrackerGroup:
+      type: object
+      properties:
+        group:
+          type: string
+          description: The name of the Tracker group, as in the rows of the transfer history.
+        torrents:
+          type: integer
+          description: Number of torrents of the group.
+        size:
+          type: integer
+          format: int64
+          description: Total size of the torrents. Torrents of the group that share one content path count once.
+        uploaded:
+          type: integer
+          format: int64
+          description: Lifetime upload of the torrents.
+
+    TransferHistoryLibraryRow:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date-time
+          description: Start of the UTC day.
+        torrents:
+          type: integer
+          format: int64
+          description: Number of torrents at the last reading of the day. Absent when qui stored no value for the day.
+        totalSize:
+          type: integer
+          format: int64
+          description: >-
+            Size in bytes of the torrents at the last reading of the day, with each torrent counted in full. Absent when qui
+            stored no value for the day.
+        uniqueSize:
+          type: integer
+          format: int64
+          description: >-
+            Unique size in bytes, with each Copy group counted one time. Absent for a day without a completed Copy groups
+            build.
+        added:
+          type: integer
+          format: int64
+        completed:
+          type: integer
+          format: int64
+        deleted:
+          type: integer
+          format: int64
+
+    TransferHistoryDelete:
+      type: object
+      properties:
+        time:
+          type: string
+          format: date-time
+          description: Time of the first read of the torrent list without the torrent.
+        hash:
+          type: string
+        name:
+          type: string
+        trackerGroup:
+          type: string
+        uploaded:
+          type: integer
+          format: int64
+          description: The upload counter of the torrent at the last read that held it.
+        downloaded:
+          type: integer
+          format: int64
+          description: The download counter of the torrent at the last read that held it.
+        ratio:
+          type: number
+          description: The ratio that qBittorrent reported at the last read that held the torrent. Absent when qui did not read the torrent between its start and the delete.
+        seedingSeconds:
+          type: integer
+          format: int64
+          description: The seeding time that qBittorrent reported at the last read that held the torrent. Absent when qui did not read the torrent between its start and the delete.
+        cause:
+          type: object
+          properties:
+            kind:
+              type: string
+              enum: [automation, user, backupRestore, clientProxy, outside]
+            name:
+              type: string
+              description: Name of the automation rule or of the Client Proxy API key. Absent for the other kinds.
+
+    TransferHistorySettings:
+      type: object
+      required: [recording, detailRetentionDays]
+      properties:
+        recording:
+          type: boolean
+          description: Whether qui records the transfer history. The default is true.
+        detailRetentionDays:
+          type: integer
+          enum: [0, 90, 400]
+          description: Days that qui keeps the hourly totals and the daily bytes of each torrent. 0 keeps them forever. The default is 400.
+
+    TransferHistoryInstance:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        name:
+          type: string
+        firstRecordedAt:
+          type: string
+          format: date-time
 
     DiscScanRun:
       type: object
@@ -11137,6 +12138,8 @@ tags:
     description: Directory scanner operations for data-based matching and injection
   - name: Orphan Scan
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
+  - name: Transfer History
+    description: The upload and download that qui recorded for each instance
   - name: Disc Scans
     description: BDInfo scans of Blu-ray Discs (BDMV folders and .iso files) in torrents
   - name: RSS

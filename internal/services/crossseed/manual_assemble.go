@@ -98,7 +98,7 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 	}
 	check, refusal := s.adder.Check(ctx, receiverID, AddFacts{ManualAssembly: true}, collectHashes(prep.meta)...)
 	if refusal != nil {
-		if refusal.Status != "exists" {
+		if refusal.Status != StatusExists {
 			return nil, refusal.Err
 		}
 		resp.Ready, resp.Reason = false, "already_exists"
@@ -189,10 +189,10 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if err != nil {
 		return nil, err
 	}
-	torrents := make(map[string]qbt.Torrent, len(cached))
+	torrents := make(map[string]*qbt.Torrent, len(cached))
 	for _, view := range cached {
 		if view.Torrent != nil {
-			torrents[normalizeHash(view.Hash)] = *view.Torrent
+			torrents[normalizeHash(view.Hash)] = view.Torrent
 		}
 	}
 	hashes := normalizedHashes(req.TargetHashes...)
@@ -231,7 +231,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 				prep.rejected[hash] = "target_not_found"
 				continue
 			}
-			switch s.sourceGate().check(&torrent, sourceFilter{}) {
+			switch s.sourceGate().check(torrent, sourceFilter{}) {
 			case sourceIncomplete:
 				prep.rejected[hash] = "incomplete"
 				continue
@@ -250,8 +250,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 			}
 			id := episodeIdentity{series: parsed.Series, episode: parsed.Episode}
 			if releases.IsEpisodeRange(parsed) {
-				eps := parsed.SeriesEpisodes()
-				id = episodeIdentity{series: eps[0][0], episode: eps[0][1]}
+				id = rangeEpisodeIdentity(parsed)
 			} else if id.episode <= 0 {
 				prep.rejected[hash] = "no_episode_identity"
 				continue
@@ -285,7 +284,11 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 		if _, ok := selected[hash]; !ok && reason == "" {
 			reason = "not_paired"
 		}
-		resp.Targets = append(resp.Targets, ManualAssembleTarget{Hash: hash, Name: torrents[hash].Name, Reason: reason})
+		var name string
+		if torrent := torrents[hash]; torrent != nil {
+			name = torrent.Name
+		}
+		resp.Targets = append(resp.Targets, ManualAssembleTarget{Hash: hash, Name: name, Reason: reason})
 	}
 	resp.MatchedEpisodes = len(episodes)
 	resp.Coverage = float64(len(episodes)) / float64(prep.totalEpisodes)

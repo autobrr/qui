@@ -179,14 +179,6 @@
     "renameTorrentSuccess": "Renamed torrent to \"{{name}}\"",
     "renameTorrentFailed": "Failed to rename torrent: {{error}}",
     "renameTorrentEmpty": "Torrent name cannot be empty",
-    "renameFileSuccess": "Renamed file to \"{{name}}\"",
-    "renameFileFailed": "Failed to rename file: {{error}}",
-    "renameFilePathsRequired": "Both original and new file paths are required",
-    "renameFileUnchanged": "File name unchanged",
-    "renameFolderSuccess": "Renamed folder to \"{{name}}\"",
-    "renameFolderFailed": "Failed to rename folder: {{error}}",
-    "renameFolderPathsRequired": "Both original and new folder paths are required",
-    "renameFolderUnchanged": "Folder name unchanged",
     "partialTags": {
       "title_one": "Partially updated tags for {{count}} torrent",
       "title_other": "Partially updated tags for {{count}} torrents",
@@ -620,10 +612,7 @@
     "bottomPriorityBatch": "Bottom Priority ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Rename",
-    "renameTorrent": "Rename Torrent",
-    "renameFile": "Rename File",
-    "renameFolder": "Rename Folder"
+    "renameTorrent": "Rename Torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1239,6 +1228,7 @@
     "status": "Status",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Peers",
     "leeches": "Leeches",
     "downloaded": "DLs",
     "message": "Message",
@@ -1502,7 +1492,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Auto-searches after typing"
     },
-    "ratio": "Ratio:"
+    "ratio": "Ratio:",
+    "added": "Added {{time}}"
   },
   "tableView": {
     "ascending": "ascending",
@@ -1657,7 +1648,7 @@
       "dropped": "Pack added. Dropped targets: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "This instance needs local filesystem access to assemble a pack.",
+        "no_filesystem_access": "This instance needs filesystem write access to assemble a pack. Enable Local Filesystem Access, or set up SSH access, in instance settings.",
         "no_link_mode": "Enable hardlink or reflink mode on this instance to select several targets.",
         "no_base_directory": "Configure a link base directory on this instance.",
         "no_episode_files": "No playable episode files were found in this pack.",
@@ -1678,6 +1669,34 @@
         "link_failed": "Failed to create the links.",
         "add_failed": "Failed to add the torrent."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} more copy of {{name}}",
+    "copies_other": "{{count}} more copies of {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A hidden copy has missing files",
+      "error": "A hidden copy has an error",
+      "unregistered": "A hidden copy is unregistered",
+      "trackerError": "A hidden copy has a tracker error",
+      "trackerDown": "The tracker of a hidden copy is down"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} ticked",
+    "badgeTicked_other": "+{{hidden}} · {{count}} ticked",
+    "hiddenTicked_one": "{{count}} hidden copy is ticked",
+    "hiddenTicked_other": "{{count}} hidden copies are ticked",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Group copies",
+    "ungroupCopies": "Ungroup copies",
+    "grouping": "Grouping…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Group your cross-seeds",
+      "description": "Show the copies of one torrent as a single row.",
+      "action": "Try it"
     }
   }
 }

@@ -12,6 +12,8 @@
     "externalPrograms": "Externe Programme",
     "notifications": "Benachrichtigungen",
     "dateTime": "Zeit & Sprache",
+    "statistics": "Statistik",
+    "trackers": "Tracker-Anpassungen",
     "premiumThemes": "Designs",
     "security": "Sicherheit",
     "logs": "Protokolle"
@@ -129,16 +131,71 @@
     "apiDocs": "API-Dokumentation",
     "description": "Mit API-Keys können externe Anwendungen auf deine qBittorrent-Instanzen zugreifen.",
     "createButton": "API-Key erstellen",
+    "editButton": "{{name}} bearbeiten",
+    "deleteButton": "{{name}} löschen",
     "loading": "API-Keys werden geladen...",
     "empty": "Noch keine API-Keys erstellt",
     "createDialog": {
       "title": "API-Key erstellen",
-      "description": "Gib deinem API-Key einen aussagekräftigen Namen, um seinen Zweck zu erkennen.",
+      "description": "Gib dem Key einen Namen und wähle nur den Zugriff aus, den er braucht.",
       "nameLabel": "Name",
       "namePlaceholder": "z. B. Automatisierungsskript",
       "nameRequired": "Name ist erforderlich",
       "submit": "API-Key erstellen",
       "creating": "Wird erstellt..."
+    },
+    "editDialog": {
+      "title": "API-Key bearbeiten",
+      "description": "Änderungen gelten ab der nächsten Anfrage dieses Keys. qui zeigt den Key selbst nie wieder an.",
+      "submit": "Änderungen speichern",
+      "saving": "Wird gespeichert..."
+    },
+    "permissions": {
+      "title": "Berechtigungen",
+      "help": "Schreiben umfasst Lesen und Ausführen. Ausführen umfasst nicht Lesen, weil Einstellungen Zugangsdaten enthalten.",
+      "required": "Wähle mindestens eine Berechtigung aus.",
+      "access": "Zugriff",
+      "allAreas": "Alle Bereiche",
+      "allAreasExcept": "Alle Bereiche außer {{areas}}",
+      "refusedByLimit": "Cross-Seed und Verzeichnis-Scanner lehnen einen Key mit Instanzlimit ab, daher speichert qui diese Berechtigungen nicht.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Zugriff nach Bereich für {{name}} anzeigen",
+      "partialArea": "{{area}} (nur {{levels}})",
+      "legend": {
+        "title": "Ein Block pro Berechtigungsbereich:",
+        "none": "kein Zugriff"
+      },
+      "levels": {
+        "read": "lesen",
+        "run": "ausführen",
+        "write": "schreiben"
+      },
+      "areas": {
+        "instances": "Instanzen",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Verzeichnis-Scanner",
+        "automations": "Automatisierungen",
+        "rss": "RSS",
+        "backups": "Backups",
+        "orphanScan": "Orphan-Scan",
+        "externalPrograms": "Externe Programme",
+        "indexers": "Indexer",
+        "arr": "Arr",
+        "notifications": "Benachrichtigungen",
+        "settings": "Einstellungen",
+        "logs": "Protokolle",
+        "system": "System"
+      }
+    },
+    "instanceLimit": {
+      "title": "Instanzlimit",
+      "help": "Wähle die Instanzen aus, die dieser Key erreichen kann. Ohne Auswahl gilt der Key für alle Instanzen, auch für später hinzugefügte.",
+      "reaches": "Reichweite",
+      "all": "Alle Instanzen",
+      "only": "Nur {{instances}}",
+      "none": "Keine Instanzen. Das Limit enthält nur gelöschte Instanzen.",
+      "deleted": "Gelöschte Instanz {{id}}"
     },
     "newKey": {
       "label": "Dein neuer API-Key",
@@ -156,7 +213,9 @@
       "created": "API-Key erfolgreich erstellt",
       "createFailed": "API-Key konnte nicht erstellt werden",
       "deleted": "API-Key erfolgreich gelöscht",
-      "deleteFailed": "API-Key konnte nicht gelöscht werden"
+      "deleteFailed": "API-Key konnte nicht gelöscht werden",
+      "updated": "API-Key erfolgreich aktualisiert",
+      "updateFailed": "API-Key konnte nicht aktualisiert werden"
     }
   },
   "externalPrograms": {
@@ -240,7 +299,7 @@
     "loading": "Benachrichtigungsziele werden geladen…",
     "loadFailed": "Benachrichtigungsziele konnten nicht geladen werden",
     "empty": "Keine Benachrichtigungsziele konfiguriert. Füge eines hinzu, um Warnungen zu erhalten.",
-    "allEvents": "Alle Ereignisse",
+    "allEvents": "Alle Ereignisse außer Systemhinweis",
     "showList": "Liste anzeigen",
     "hideList": "Liste ausblenden",
     "badges": {
@@ -337,6 +396,56 @@
     "toasts": {
       "success": "Datums- und Zeiteinstellungen gespeichert",
       "error": "Datums- und Zeiteinstellungen konnten nicht gespeichert werden"
+    }
+  },
+  "statistics": {
+    "cardTitle": "Statistik",
+    "cardDescription": "qui speichert den Upload und Download jedes Torrents in seiner Datenbank. Diese Einstellungen gelten für alle Instanzen.",
+    "recording": {
+      "label": "Übertragungsverlauf aufzeichnen",
+      "description": "Solange dies aus ist, zeichnet qui nichts auf und behält den gespeicherten Verlauf. Die Zeit, in der es aus ist, wird zu einer Aufzeichnungslücke."
+    },
+    "retention": {
+      "label": "Tägliche Details behalten für",
+      "description": "Nach dieser Zeit fasst qui die stündlichen Summen zu Tagen zusammen und die täglichen Bytes jedes Torrents zu einer Zeile pro Jahr. Die Summen bleiben gleich. Wenn du eine kürzere Zeit wählst, fasst qui die älteren Details bei der nächsten Abfrage zusammen, und du kannst sie nicht zurückholen.",
+      "days90": "90 Tage",
+      "days400": "400 Tage",
+      "forever": "Immer"
+    },
+    "size": {
+      "label": "Größe des Verlaufs"
+    },
+    "deleteHistory": {
+      "label": "Verlauf löschen",
+      "description": "Löscht den Übertragungsverlauf einer Instanz oder aller Instanzen. Du kannst ihn nicht wiederherstellen.",
+      "instance": "Instanz",
+      "allInstances": "Alle Instanzen",
+      "unnamedInstance": "Instanz {{id}}",
+      "everything": "Alles",
+      "before": "Alles vor einem Datum",
+      "date": "Datum",
+      "button": "Verlauf löschen",
+      "confirmTitle": "Verlauf löschen?",
+      "confirmEverything": "qui löscht den gesamten Verlauf von {{name}}. Die Aufzeichnung beginnt neu mit einer neuen Basislinie. Das kann nicht rückgängig gemacht werden.",
+      "confirmBefore": "qui löscht den Verlauf von {{name}} vor dem {{date}}. Wenn die Aufzeichnung vor diesem Datum begann, werden auch die Bytes von vor der ersten Aufzeichnung gelöscht, und „Aufzeichnung seit“ wechselt auf dieses Datum. Das kann nicht rückgängig gemacht werden.",
+      "sqliteSpace": "Die Datenbankdatei behält ihre Größe. SQLite nutzt den freien Platz wieder für neuen Verlauf.",
+      "postgresSpace": "Wenn du alles von allen Instanzen löschst, gibt Postgres den Platz sofort an die Festplatte zurück. Nach einem anderen Löschen nutzt Postgres den freien Platz wieder für neuen Verlauf.",
+      "cancel": "Abbrechen",
+      "confirm": "Löschen",
+      "deleted": "Verlauf gelöscht",
+      "failed": "Verlauf konnte nicht gelöscht werden",
+      "shrink": {
+        "label": "Auch die Datenbankdatei verkleinern",
+        "restart": "qui startet neu und verkleinert die Datei, sodass du den Speicherplatz zurückbekommst. qui ist kurz nicht erreichbar.",
+        "nextStart": "qui kann sich in dieser Installation nicht selbst neu starten. Das Verkleinern läuft beim nächsten Start von qui.",
+        "tooLittleSpace": "Auf dem Datenträger sind {{free}} frei, das Verkleinern braucht bis zu {{need}}. Du kannst das gefahrlos auslassen: SQLite nutzt den freien Platz wieder für neuen Verlauf.",
+        "manualDocs": "Datei von Hand verkleinern"
+      }
+    },
+    "loadFailed": "Statistik-Einstellungen konnten nicht geladen werden",
+    "toasts": {
+      "saved": "Statistik-Einstellungen gespeichert",
+      "saveFailed": "Statistik-Einstellungen konnten nicht gespeichert werden"
     }
   },
   "security": {
@@ -1102,6 +1211,74 @@
       "bind": "Bind-Adresse",
       "configDir": "Konfigurationsverzeichnis",
       "dataDir": "Datenverzeichnis"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker-Anpassungen",
+    "cardDescription": "Benenne Tracker um und fasse die Domains eines Trackers zu einem Eintrag zusammen. qui zeigt den Anzeigenamen überall, wo es den Tracker zeigt.",
+    "loading": "Tracker werden geladen…",
+    "empty": "Noch keine Tracker. Tracker erscheinen hier, sobald eine Instanz Torrents hat.",
+    "importTooltip": "Anpassungen importieren",
+    "exportTooltip": "Anpassungen exportieren",
+    "mergedFrom": "Zusammengeführt aus: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Ausgewählte Tracker zu dieser Gruppe zusammenführen",
+    "mergeIntoGroup": "Zu Gruppe zusammenführen",
+    "addToMerge": "Zum Zusammenführen hinzufügen",
+    "rename": "Umbenennen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "customizeDialog": {
+      "editTitle": "Tracker-Name bearbeiten",
+      "renameTitle": "Tracker umbenennen",
+      "mergeTitle": "Tracker zusammenführen",
+      "editDescription": "Aktualisiere den Anzeigenamen für diesen Tracker.",
+      "renameDescription": "Gib diesem Tracker einen eigenen Anzeigenamen.",
+      "mergeDescription": "Fasse diese Tracker zu einem einzigen Eintrag mit eigenem Namen zusammen.",
+      "displayName": "Anzeigename",
+      "displayNamePlaceholder": "z. B. TorrentLeech",
+      "domains": "Domain(s)",
+      "selectedTrackers": "Ausgewählte Tracker",
+      "primary": "Primär",
+      "removeDomain": "{{domain}} entfernen",
+      "cancel": "Abbrechen",
+      "saving": "Wird gespeichert...",
+      "save": "Speichern",
+      "renameAction": "Umbenennen",
+      "mergeAction": "Zusammenführen"
+    },
+    "importDialog": {
+      "title": "Tracker-Anpassungen importieren",
+      "description": "Füge JSON ein, um Tracker-Anpassungen (Umbenennungen und Zusammenführungen) zu importieren.",
+      "jsonData": "JSON-Daten",
+      "invalidFormat": "Ungültiges Format: trackerCustomizations-Array erwartet",
+      "missingDisplayName": "Ungültiger Eintrag: displayName fehlt",
+      "invalidDomains": "Ungültiger Eintrag: domains muss ein nicht-leeres Array sein",
+      "invalidJson": "Ungültiges JSON",
+      "newCount": "{{count}} neu",
+      "conflictCount_one": "{{count}} Konflikt",
+      "conflictCount_other": "{{count}} Konflikte",
+      "unchangedCount": "{{count}} unverändert",
+      "resolveConflicts": "Konflikte auflösen",
+      "conflictsWith": "Konflikt mit: {{name}}",
+      "skip": "Überspringen",
+      "overwrite": "Überschreiben",
+      "cancel": "Abbrechen",
+      "importing": "Wird importiert...",
+      "import": "Importieren"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Keine Anpassungen zum Exportieren",
+      "copiedToClipboard": "In die Zwischenablage kopiert",
+      "failedToCopy": "Kopieren in die Zwischenablage fehlgeschlagen",
+      "createFailed": "Tracker-Anpassung konnte nicht erstellt werden",
+      "updateFailed": "Tracker-Anpassung konnte nicht aktualisiert werden",
+      "deleteFailed": "Tracker-Anpassung konnte nicht gelöscht werden",
+      "failedToImport": "Import fehlgeschlagen: {{names}}",
+      "importedAndSkipped": "{{imported}} importiert, {{skipped}} übersprungen",
+      "importedCount_one": "{{count}} Anpassung importiert",
+      "importedCount_other": "{{count}} Anpassungen importiert",
+      "noCustomizationsImported": "Keine Anpassungen importiert"
     }
   }
 }

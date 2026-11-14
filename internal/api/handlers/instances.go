@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
@@ -268,7 +269,7 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 	// the request context rather than the library's checked accessor, which syncs
 	// on context.Background() and would outlive this handler's deadline against a
 	// saturated WebUI. A failed sync still leaves the last good state to serve.
-	if syncManager := client.GetSyncManager(); syncManager != nil {
+	if syncManager := client.SyncOwner(); syncManager != nil {
 		if err := syncManager.Sync(ctx); err != nil {
 			log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to sync before reading server state; serving cached state")
 		}
@@ -677,6 +678,7 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
 		return
 	}
+	instances = slices.DeleteFunc(instances, func(inst *models.Instance) bool { return !middleware.ReachesInstance(r, inst.ID) })
 
 	response := h.buildInstanceResponsesParallel(r.Context(), instances)
 
@@ -948,7 +950,7 @@ func linkModeError(effective *models.Instance) string {
 
 	if effective.UseHardlinks {
 		if !canWrite {
-			return "Cannot enable hardlink mode without local filesystem access"
+			return "Cannot enable hardlink mode without filesystem write access. Enable Local Filesystem Access, or set up SSH access, in instance settings first."
 		}
 		if effective.HardlinkBaseDir == "" {
 			return "Cannot enable hardlink mode without a base directory"

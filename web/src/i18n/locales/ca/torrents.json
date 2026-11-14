@@ -265,15 +265,13 @@
     "bottomPriorityBatch": "Prioritat mínima ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Reanomena",
-    "renameTorrent": "Reanomena el torrent",
-    "renameFile": "Reanomena el fitxer",
-    "renameFolder": "Reanomena la carpeta"
+    "renameTorrent": "Reanomena el torrent"
   },
   "trackersTable": {
     "status": "Estat",
     "tracker": "Tracker",
     "seeds": "Llav.",
+    "peers": "Parells",
     "leeches": "Sang.",
     "downloaded": "Baix.",
     "message": "Missatge",
@@ -431,14 +429,6 @@
     "renameTorrentSuccess": "S'ha reanomenat el torrent a \"{{name}}\"",
     "renameTorrentFailed": "No s'ha pogut reanomenar el torrent: {{error}}",
     "renameTorrentEmpty": "El nom del torrent no pot ser buit",
-    "renameFileSuccess": "S'ha reanomenat el fitxer a \"{{name}}\"",
-    "renameFileFailed": "No s'ha pogut reanomenar el fitxer: {{error}}",
-    "renameFilePathsRequired": "Calen tant el camí original com el nou del fitxer",
-    "renameFileUnchanged": "El nom del fitxer no ha canviat",
-    "renameFolderSuccess": "S'ha reanomenat la carpeta a \"{{name}}\"",
-    "renameFolderFailed": "No s'ha pogut reanomenar la carpeta: {{error}}",
-    "renameFolderPathsRequired": "Calen tant el camí original com el nou de la carpeta",
-    "renameFolderUnchanged": "El nom de la carpeta no ha canviat",
     "partialTags": {
       "title_one": "S'han actualitzat parcialment les etiquetes d'{{count}} torrent",
       "title_other": "S'han actualitzat parcialment les etiquetes de {{count}} torrents",
@@ -691,7 +681,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
-    "ratio": "Ràtio:"
+    "ratio": "Ràtio:",
+    "added": "Afegit {{time}}"
   },
   "crossSeedTable": {
     "name": "Nom",
@@ -1553,7 +1544,7 @@
       "dropped": "S'ha afegit el pack. Destinacions descartades: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Aquesta instància necessita accés al sistema de fitxers local per muntar un pack.",
+        "no_filesystem_access": "Aquesta instància necessita accés d'escriptura al sistema de fitxers per muntar un pack. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
         "no_link_mode": "Activa el mode hardlink o reflink en aquesta instància per seleccionar diverses destinacions.",
         "no_base_directory": "Configura un directori base d'enllaços en aquesta instància.",
         "no_episode_files": "No s'ha trobat cap fitxer d'episodi reproduïble en aquest pack.",
@@ -1678,6 +1669,34 @@
       "partialSuccess": "Se n'han afegit {{added}} i {{failed}} han fallat",
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} còpia més de {{name}}",
+    "copies_other": "{{count}} còpies més de {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A una còpia amagada li falten fitxers",
+      "error": "Una còpia amagada té un error",
+      "unregistered": "Una còpia amagada no està registrada",
+      "trackerError": "Una còpia amagada té un error del tracker",
+      "trackerDown": "El tracker d'una còpia amagada ha caigut"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} seleccionada",
+    "badgeTicked_other": "+{{hidden}} · {{count}} seleccionades",
+    "hiddenTicked_one": "{{count}} còpia amagada està seleccionada",
+    "hiddenTicked_other": "{{count}} còpies amagades estan seleccionades",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Agrupa les còpies",
+    "ungroupCopies": "Desagrupa les còpies",
+    "grouping": "S'està agrupant…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Agrupa els teus cross-seeds",
+      "description": "Mostra les còpies d'un torrent en una sola fila.",
+      "action": "Prova-ho"
     }
   }
 }

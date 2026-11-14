@@ -185,14 +185,6 @@
     "renameTorrentSuccess": "Torrent přejmenován na \"{{name}}\"",
     "renameTorrentFailed": "Nepodařilo se přejmenovat torrent: {{error}}",
     "renameTorrentEmpty": "Název torrentu nemůže být prázdný",
-    "renameFileSuccess": "Soubor přejmenován na \"{{name}}\"",
-    "renameFileFailed": "Nepodařilo se přejmenovat soubor: {{error}}",
-    "renameFilePathsRequired": "Původní a nová cesta souboru jsou vyžadovány",
-    "renameFileUnchanged": "Název souboru nezměněn",
-    "renameFolderSuccess": "Adresář přejmenován na \"{{name}}\"",
-    "renameFolderFailed": "Nepodařilo se přejmenovat adresář: {{error}}",
-    "renameFolderPathsRequired": "Původní a nová cesta adresáře jsou vyžadovány",
-    "renameFolderUnchanged": "Název adresáře nezměněn",
     "partialTags": {
       "title_one": "Částečně aktualizovány tagy pro {{count}} torrent",
       "title_few": "Částečně aktualizovány tagy pro {{count}} torrenty",
@@ -672,10 +664,7 @@
     "bottomPriorityBatch": "Nejnižší priorita ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Přejmenovat",
-    "renameTorrent": "Přejmenovat torrent",
-    "renameFile": "Přejmenovat soubor",
-    "renameFolder": "Přejmenovat složku"
+    "renameTorrent": "Přejmenovat torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1309,6 +1298,7 @@
     "status": "Stav",
     "tracker": "Tracker",
     "seeds": "Seedy",
+    "peers": "Peerové",
     "leeches": "Stahovatelé",
     "downloaded": "Stáhnuto",
     "message": "Zpráva",
@@ -1570,7 +1560,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Automatické hledání po zadání"
     },
-    "ratio": "Poměr:"
+    "ratio": "Poměr:",
+    "added": "Přidáno {{time}}"
   },
   "tableView": {
     "ascending": "vzestupně",
@@ -1734,7 +1725,7 @@
       "dropped": "Balíček přidán. Vynechané cíle: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Tato instance potřebuje přístup k místnímu souborovému systému pro sestavení balíčku.",
+        "no_filesystem_access": "Tato instance potřebuje přístup k souborovému systému pro zápis, aby mohla sestavit balíček. Povolte „Lokální přístup k souborům“ nebo nastavte přístup přes SSH v nastavení instance.",
         "no_link_mode": "Pro výběr více cílů povolte v této instanci pevné odkazy nebo reflinky.",
         "no_base_directory": "Nastavte základní adresář odkazů této instance.",
         "no_episode_files": "V balíčku nebyly nalezeny přehratelné soubory epizod.",
@@ -1755,6 +1746,37 @@
         "link_failed": "Odkazy nelze vytvořit.",
         "add_failed": "Torrent nelze přidat."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} další kopie položky {{name}}",
+    "copies_few": "{{count}} další kopie položky {{name}}",
+    "copies_other": "{{count}} dalších kopií položky {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Skryté kopii chybí soubory",
+      "error": "Skrytá kopie má chybu",
+      "unregistered": "Skrytá kopie není registrovaná",
+      "trackerError": "Skrytá kopie má chybu trackeru",
+      "trackerDown": "Tracker skryté kopie je nedostupný"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} vybraná",
+    "badgeTicked_few": "+{{hidden}} · {{count}} vybrané",
+    "badgeTicked_other": "+{{hidden}} · {{count}} vybraných",
+    "hiddenTicked_one": "{{count}} skrytá kopie je vybraná",
+    "hiddenTicked_few": "{{count}} skryté kopie jsou vybrané",
+    "hiddenTicked_other": "{{count}} skrytých kopií je vybraných",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Seskupit kopie",
+    "ungroupCopies": "Zrušit seskupení kopií",
+    "grouping": "Seskupování…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Seskupte svá křížová sdílení",
+      "description": "Zobrazí kopie jednoho torrentu jako jeden řádek.",
+      "action": "Vyzkoušet"
     }
   }
 }

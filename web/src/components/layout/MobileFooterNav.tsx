@@ -4,6 +4,8 @@
  */
 
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
+import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -42,6 +44,7 @@ import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
+import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
@@ -53,11 +56,13 @@ import {
   setThemeVariation,
   type ThemeMode
 } from "@/utils/theme"
+import { useOpenSystemNotice, useSystemNotices } from "@/hooks/useSystemNotices"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
 import {
   Archive,
+  ChartColumn,
   Check,
   Code,
   Copyright,
@@ -145,6 +150,8 @@ export function MobileFooterNav() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+  const systemNotices = useSystemNotices()
+  const openSystemNotice = useOpenSystemNotice(systemNotices)
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
   const updateItemLabel = updateInfo && (
     <>
@@ -268,6 +275,17 @@ export function MobileFooterNav() {
             location.pathname === "/dashboard" && "text-primary"
           )} />
           <span className="truncate">{t("mobileNav.dashboard")}</span>
+        </Link>}
+
+        {!isDemo && <Link
+          to="/statistics"
+          className={cn(
+            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            location.pathname === "/statistics" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <ChartColumn className="h-5 w-5" />
+          <span className="truncate">{t("mobileNav.statistics")}</span>
         </Link>}
 
         {/* Clients access */}
@@ -420,6 +438,9 @@ export function MobileFooterNav() {
                   "h-5 w-5",
                   location.pathname === "/settings" && "text-primary"
                 )} />
+                {systemNotices.length > 0 && (
+                  <span className={cn("absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
+                )}
                 {updateInfo && (
                   <Badge
                     className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center bg-green-500 hover:bg-green-500 text-white"
@@ -432,7 +453,8 @@ export function MobileFooterNav() {
               <span className="truncate">{t("mobileNav.settings")}</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
+          <DropdownMenuContent align="end" side="top" className={cn("mb-2", systemNotices.length > 0 ? "w-72" : "w-56")}>
+            <SystemNoticeMenuItems notices={systemNotices} onOpen={openSystemNotice.open} />
             {updateInfo && (
               <>
                 <DropdownMenuItem asChild>
@@ -758,6 +780,7 @@ export function MobileFooterNav() {
           </div>
         </DialogContent>
       </Dialog>
+      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </nav>
   )
 }

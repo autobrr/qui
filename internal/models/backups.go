@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -1209,6 +1210,54 @@ func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64)
 	return scanBackupItems(rows)
 }
 
+// ListTorrentBlobPathsForRuns returns each torrent blob path that an item of
+// the given runs references, one time.
+func (s *BackupStore) ListTorrentBlobPathsForRuns(ctx context.Context, runIDs []int64) ([]string, error) {
+	const chunkSize = 900 // SQLite parameter limit
+
+	seen := make(map[string]struct{})
+	var paths []string
+
+	for chunk := range slices.Chunk(runIDs, chunkSize) {
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT DISTINCT i.torrent_blob_path
+			FROM instance_backup_runs r
+			JOIN instance_backup_items_view i
+			  ON i.instance_id = r.instance_id
+			 AND i.from_seq <= r.items_seq
+			 AND (i.to_seq IS NULL OR i.to_seq > r.items_seq)
+			WHERE r.id IN `+buildInPlaceholders(len(chunk))+`
+			  AND i.torrent_blob_path IS NOT NULL`, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var path string
+			if err := rows.Scan(&path); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if _, ok := seen[path]; !ok {
+				seen[path] = struct{}{}
+				paths = append(paths, path)
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return paths, nil
+}
+
 func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {
 	instanceID, seq, ok, err := s.runSnapshot(ctx, runID)
 	if err != nil {
@@ -1699,7 +1748,7 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		       keep_hourly, keep_daily, keep_weekly, keep_monthly,
 		       include_categories, include_tags, include_save_paths, custom_path, created_at, updated_at
 		FROM instance_backup_settings
-		WHERE enabled = 1
+		WHERE enabled = 1 AND instance_id IN (SELECT id FROM instances WHERE is_active = 1)
 	`)
 	if err != nil {
 		return nil, err

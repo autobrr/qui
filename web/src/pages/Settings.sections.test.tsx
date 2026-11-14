@@ -34,6 +34,8 @@ vi.mock("@/components/settings/ExternalProgramsManager", () => ({ ExternalProgra
 vi.mock("@/components/settings/NotificationsManager", () => ({ NotificationsManager: () => <div data-testid="section-notifications" /> }))
 vi.mock("@/components/settings/DateTimePreferencesForm", () => ({ DateTimePreferencesForm: () => <div data-testid="section-datetime" /> }))
 vi.mock("@/components/settings/LogSettingsPanel", () => ({ LogSettingsPanel: () => <div data-testid="section-logs" /> }))
+vi.mock("@/components/settings/StatisticsSettingsCard", () => ({ StatisticsSettingsCard: () => <div data-testid="section-statistics" /> }))
+vi.mock("@/components/settings/TrackerCustomizationsManager", () => ({ TrackerCustomizationsManager: () => <div data-testid="section-trackers" /> }))
 vi.mock("@/components/themes/ThemeSelector", () => ({ ThemeSelector: () => <div data-testid="section-themes" /> }))
 vi.mock("@/components/themes/LicenseManager.tsx", () => ({ LicenseManager: () => null }))
 

@@ -20,22 +20,21 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// The bracket-anime pack puts the fansub tag in Site and hands Group whatever
-// word is left over, so it disagrees with its own scene-styled counterpart on
-// both fields at once. The eztv names are the trap: an indexer label lands in
-// Site too, and two different groups share it.
+// A bracket-anime pack that ends in its fansub tag after a leftover word puts
+// the tag in Site and hands Group that word, so it disagrees with its own
+// scene-styled counterpart on both fields at once. The eztv names are the trap:
+// an indexer label lands in Site too, and two different groups share it.
 const (
-	fansubBracketPack   = "[KIRI] Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
+	fansubBracketPack   = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
 	fansubTaggedPack    = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
-	otherFansubBracket  = "[EMBER] Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (EMBER)][Batch]"
+	otherFansubBracket  = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (EMBER)][Batch][EMBER]"
 	otherFansubTagged   = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-EMBER"
 	labelledLeftoverOne = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.FoV[eztv]"
 	labelledLeftoverTwo = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.KILLERS[eztv]"
 	labelledTaggedOne   = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV[eztv]"
 	labelledTaggedTwo   = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KILLERS[eztv]"
 	bareFansubEpisode   = "[KIRI] Azure Compass - 01 (1080p)"
-	// No trailing bracket to spend, so the leftover word is the fansub tag
-	// again and Group repeats Site.
+	// A leading bracket with no group after it, so Group repeats Site.
 	fansubRepeatedTag = "[KIRI] Azure Compass S01 [Web][MKV][h265][1080p][AAC 2.0][Softsubs (KIRI)]"
 	// eztv both labels other groups' releases and releases under its own name,
 	// so every shape of "the label is also a group" has to stay rejected.
@@ -64,7 +63,7 @@ func releaseHasGroupTag(release *rls.Release, group string) bool {
 
 func TestGroupFallbackUsesRawSiteWhenSelectedEpisodeHasNoGroup(t *testing.T) {
 	const (
-		split  = "[KIRI] Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
+		split  = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
 		tagged = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 	)
 	svc := newGroupFallbackService()
@@ -88,7 +87,7 @@ func TestGroupFallbackUsesRawSiteWhenSelectedEpisodeHasNoGroup(t *testing.T) {
 
 func TestGroupFallbackUsesRawSiteForExistingEpisode(t *testing.T) {
 	const (
-		split  = "[KIRI] Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
+		split  = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
 		tagged = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 	)
 	svc := newGroupFallbackService()
@@ -115,8 +114,8 @@ func classifyGroupPair(svc *Service, sourceName, candidateName string, sourceSiz
 }
 
 // The whole rescue reads rls tag provenance, so pin the parses it reads. rls
-// PR #18 makes a leading bracket set Group as well as Site; when that lands
-// these pins fail rather than the rescue silently widening to indexer labels.
+// sets Group as well as Site from a leading bracket, so the split name carries
+// its fansub tag in a trailing bracket.
 func TestGroupSiteFallback_ParsePreconditions(t *testing.T) {
 	t.Parallel()
 
@@ -256,16 +255,16 @@ func TestGroupSiteFallback_RequiresFallbackGroupProvenance(t *testing.T) {
 	require.Equal(t, "group/site mismatch", decision.RejectReason)
 }
 
-// A bracket name with no leftover word leaves Group empty, which is the
+// A bracket name with no leftover word repeats its tag into Group, which is the
 // long-standing "candidate simply lacks the tag" case. The rescue must not
-// touch it: it needs both fields filled on one side.
+// touch it: it needs two different fields on one side.
 func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 	t.Parallel()
 
 	svc := newGroupFallbackService()
 	siteOnly := svc.releaseCache.Parse(bareFansubEpisode)
-	require.Empty(t, siteOnly.Group, "fixture must carry a site and no group")
 	require.NotEmpty(t, siteOnly.Site)
+	require.Equal(t, siteOnly.Site, siteOnly.Group, "fixture must carry no group but its site")
 
 	bare := svc.releaseCache.Parse("Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264")
 	require.Empty(t, bare.Group)
@@ -276,12 +275,12 @@ func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
 		namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
 	))
 
-	// A leading label with nothing left over leaves Group empty too. Strict
+	// A leading label with nothing left over repeats into Group too. Strict
 	// matching already reads that side's identity off Site, so the rescue must
 	// keep its hands off rather than declare the label a fansub name.
 	labelled := svc.releaseCache.Parse(labelWithoutGroup)
-	require.Empty(t, labelled.Group, "fixture must leave the group empty")
 	require.Equal(t, "eztv", labelled.Site)
+	require.Equal(t, "eztv", labelled.Group, "fixture must carry no group but its site")
 	require.False(t, svc.matcher().crossFieldGroupSiteFallback(
 		namedRelease{release: labelled, rawName: labelWithoutGroup},
 		namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup},
@@ -522,7 +521,7 @@ func TestFindCandidates_KeepsFileDerivedStrictEpisodeIdentity(t *testing.T) {
 	const (
 		instanceID     = 1
 		sourceHash     = "existing-episode"
-		bracketEpisode = "[KIRI] Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
+		bracketEpisode = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
 		taggedEpisode  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 	)
 
@@ -791,7 +790,7 @@ func TestGroupSiteFallback_RejectsConflictingEnrichmentProvenance(t *testing.T) 
 	const (
 		rawFoV         = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV"
 		rawKIRI        = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
-		bracketEpisode = "[KIRI] Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
+		bracketEpisode = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
 		taggedEpisode  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 	)
 

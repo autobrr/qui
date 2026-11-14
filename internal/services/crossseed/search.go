@@ -9,15 +9,14 @@ import (
 	"fmt"
 	"maps"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
@@ -124,16 +123,14 @@ func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash str
 		return nil, nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
-		Hashes: []string{hash},
-	})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
 	if err != nil {
 		return nil, nil, fmt.Errorf("load torrents: %w", err)
 	}
 	if len(torrents) == 0 {
 		return nil, nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
-	sourceTorrent := &torrents[0]
+	sourceTorrent := torrents[0]
 	if err := s.requireSource(sourceTorrent); err != nil {
 		return nil, nil, err
 	}
@@ -164,7 +161,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		return nil, false, false, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
 
-	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 	searchSource, contentInfo := s.readSearchSource(ctx, sourceTorrent, sourceFiles)
 	searchRelease := searchSource.release
 	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
@@ -219,34 +215,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		}, gazelle.lookupCompleted, gazelle.remoteRequestsMade, nil
 	}
 
-	query := strings.TrimSpace(opts.Query)
-	var seasonPtr, episodePtr *int
-	queryRelease := searchRelease
-	if contentInfo.ContentType == "music" {
-		// Keyed on the content type, not the parsed type: the file-extension signal forces music
-		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
-		// too. Audiobooks are excluded here only; they still take the music query shaping below.
-		queryRelease = s.matcher().parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
-	}
-	if query == "" {
-		safeQuery := BuildTorznabQuery(sourceTorrent.Name, queryRelease, contentInfo.IsMusic)
-		query = safeQuery.Query
-		seasonPtr = safeQuery.Season
-		episodePtr = safeQuery.Episode
-
-		log.Debug().
-			Str("originalName", sourceTorrent.Name).
-			Str("generatedQuery", query).
-			Bool("hasSeason", seasonPtr != nil).
-			Bool("hasEpisode", episodePtr != nil).
-			Str("contentType", contentInfo.ContentType).
-			Msg("[CROSSSEED-SEARCH] Generated search query with fallback parsing")
-	}
-
-	limit := effectiveTorznabCrossSeedSearchLimit(opts.Limit)
-
-	filteredIndexerIDs := scope.torznabIndexerIDs
-
 	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
 	var arrTitles []string
@@ -277,119 +245,43 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		}
 	}
 
-	searchReq := &jackett.TorznabSearchRequest{
-		Query:            query,
-		ReleaseName:      sourceTorrent.Name,
-		Limit:            limit,
-		IndexerIDs:       filteredIndexerIDs,
-		CacheMode:        opts.CacheMode,
-		ReturnAllResults: true,
-	}
-
-	// Apply the arr- or tag-sourced IDs and set OmitQueryForIDs flag
-	if externalIDs != nil {
-		if externalIDs.IMDbID != "" {
-			searchReq.IMDbID = externalIDs.IMDbID
-		}
-		if externalIDs.TVDbID > 0 {
-			searchReq.TVDbID = strconv.Itoa(externalIDs.TVDbID)
-		}
-		if externalIDs.TMDbID > 0 {
-			searchReq.TMDbID = externalIDs.TMDbID
-		}
-		if externalIDs.TVMazeID > 0 {
-			searchReq.TVMazeID = externalIDs.TVMazeID
-		}
-		searchReq.OmitQueryForIDs = true // Cross-seed: omit q when IDs present
-		// An absolute-numbered source has an episode but no season, and Torznab
-		// ep counts within a season. The map gives ID-capable indexers the
-		// seasoned pair; text indexers keep the title-only query. Keyed on the
-		// parsed release, not the safe-query pointers, so a caller-supplied
-		// query still carries the map.
-		if searchRelease.Series == 0 && searchRelease.Episode > 0 && episodeMap != nil && episodeMap.Absolute == searchRelease.Episode {
-			searchReq.EpisodeMap = episodeMap
-		}
-	}
-
-	if seasonPtr != nil {
-		searchReq.Season = seasonPtr
-	}
-	if episodePtr != nil {
-		searchReq.Episode = episodePtr
-	}
-
-	// Add music-specific parameters if we have them
-	if contentInfo.IsMusic {
-		// Parse music information from the source release or torrent name
-		var musicRelease rls.Release
-		if sourceRelease.Type == rls.Music && sourceRelease.Artist != "" {
-			musicRelease = *sourceRelease
-		} else {
-			// Try to parse music info from torrent name
-			musicRelease = *s.matcher().parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
-		}
-
-		if musicRelease.Artist != "" {
-			searchReq.Artist = musicRelease.Artist
-		}
-		if musicRelease.Title != "" {
-			searchReq.Album = musicRelease.Title // For music, Title represents the album
-		}
-	}
+	gatherIn := s.matcher().buildTorznabRequest(torznabRequestInput{
+		torrentName:   sourceTorrent.Name,
+		source:        searchSource,
+		contentInfo:   contentInfo,
+		externalIDs:   externalIDs,
+		episodeMap:    episodeMap,
+		arrTitles:     arrTitles,
+		tagSourcedIDs: tagSourcedIDs,
+		indexerIDs:    scope.torznabIndexerIDs,
+		query:         opts.Query,
+		limit:         opts.Limit,
+		cacheMode:     opts.CacheMode,
+	})
+	searchReq := gatherIn.req
 
 	// Apply category filtering to the search request with indexer-specific optimization
-	if len(contentInfo.Categories) > 0 {
-		searchReq.Categories = s.jackettService.GetOptimalCategoriesForIndexers(ctx, contentInfo.Categories, filteredIndexerIDs)
+	if len(searchReq.Categories) > 0 {
+		searchReq.Categories = s.jackettService.GetOptimalCategoriesForIndexers(ctx, searchReq.Categories, searchReq.IndexerIDs)
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Str("contentType", contentInfo.ContentType).
 			Ints("originalCategories", contentInfo.Categories).
 			Ints("optimizedCategories", searchReq.Categories).
-			Ints("targetIndexers", filteredIndexerIDs).
+			Ints("targetIndexers", searchReq.IndexerIDs).
 			Msg("[CROSSSEED-SEARCH] Optimized categories for target indexers")
-
-		// Add season/episode info for TV content only if not already set by safe query
-		if !contentInfo.IsMusic && queryRelease.Series > 0 && searchReq.Season == nil {
-			season := queryRelease.Series
-			searchReq.Season = &season
-
-			if queryRelease.Episode > 0 && searchReq.Episode == nil {
-				episode := queryRelease.Episode
-				searchReq.Episode = &episode
-			}
-		}
-
-		// Year hurts TV searches on many indexers; keep it for movies only.
-		if searchRelease.Year > 0 && contentInfo.ContentType != "tv" {
-			searchReq.Year = searchRelease.Year
-		}
-
-		logEvent := log.Debug().
-			Str("torrentName", sourceTorrent.Name).
-			Str("contentType", contentInfo.ContentType).
-			Ints("categories", contentInfo.Categories).
-			Int("year", queryRelease.Year)
-
-		// Show different metadata based on content type
-		if !contentInfo.IsMusic {
-			// For TV/Movies, show series/episode data
-			logEvent = logEvent.
-				Str("releaseType", queryRelease.Type.String()).
-				Int("series", queryRelease.Series).
-				Int("episode", queryRelease.Episode)
-		} else {
-			// For music, show music-specific metadata
-			logEvent = logEvent.
-				Str("releaseType", "music").
-				Str("artist", queryRelease.Artist).
-				Str("title", queryRelease.Title).
-				Str("disc", queryRelease.Disc).
-				Str("source", queryRelease.Source).
-				Str("group", queryRelease.Group)
-		}
-
-		logEvent.Msg("[CROSSSEED-SEARCH] Applied RLS-based content type filtering")
 	}
+
+	log.Debug().
+		Str("torrentName", sourceTorrent.Name).
+		Str("contentType", contentInfo.ContentType).
+		Str("query", searchReq.Query).
+		Bool("hasSeason", searchReq.Season != nil).
+		Bool("hasEpisode", searchReq.Episode != nil).
+		Int("year", searchReq.Year).
+		Str("artist", searchReq.Artist).
+		Str("album", searchReq.Album).
+		Msg("[CROSSSEED-SEARCH] Built Torznab request")
 
 	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer waitCancel()
@@ -442,14 +334,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		RescueTitleMismatches:  opts.RescueTitleMismatches,
 	}
 	usable := s.searchUsablePredicate(searchBase)
-	gatherIn := gatherInput{req: searchReq, tagSourcedIDs: tagSourcedIDs, torrentName: sourceTorrent.Name}
-	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
-		var altSeason int
-		gatherIn.altTitle, altSeason, _ = s.matcher().alternateTitleQuery(searchReq.Query, searchSource, arrTitles)
-		if altSeason > 0 {
-			gatherIn.altTitleSeason = new(altSeason)
-		}
-	}
 	gatherer := searchGatherer{search: s.searchOnce, idCapIndexers: s.jackettService.IndexerIDsWithIDSearchCaps, usable: usable}
 	remoteRequestsMade = true
 	searchResp, coveredIndexerIDs, torznabAnswered, err := gatherer.gather(ctx, waitCtx, gatherIn)
@@ -643,7 +527,7 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		sourceInfo.FileCount = len(sourceFiles)
 	}
 
-	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, scored, limit)
+	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, scored, searchReq.Limit)
 	gazelle := waitGazelle()
 	if err != nil {
 		return nil, gazelle.lookupCompleted, remoteRequestsMade, err

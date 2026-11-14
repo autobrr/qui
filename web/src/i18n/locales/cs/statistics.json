@@ -1,0 +1,121 @@
+{
+  "title": "Statistiky",
+  "recordingSince": "Záznam od {{date}}",
+  "notRecording": "qui zatím nezaznamenal žádný přenos.",
+  "partial": "Neúplné období",
+  "periods": {
+    "24h": "24 hodin",
+    "7d": "7 dní",
+    "30d": "30 dní",
+    "1y": "Rok",
+    "all": "Celkem",
+    "custom": "Vlastní"
+  },
+  "customRange": {
+    "from": "První den",
+    "to": "Poslední den",
+    "apply": "Použít",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Všechny instance",
+    "count_one": "{{count}} instance",
+    "count_few": "{{count}} instance",
+    "count_other": "{{count}} instancí",
+    "removed": "odebraná"
+  },
+  "tiles": {
+    "uploaded": "Odesláno",
+    "downloaded": "Staženo",
+    "ratio": "Poměr",
+    "buffer": "Rezerva {{buffer}}",
+    "crossSeed": "Z cross-seedů",
+    "crossSeedShare": "{{percent}} % odeslaných dat",
+    "change": "{{change}} oproti předchozímu období"
+  },
+  "chart": {
+    "title": "Přenos v čase",
+    "descriptionHour": "Podle trackeru, po hodinách",
+    "descriptionDay": "Podle trackeru, po dnech",
+    "upload": "Odesílání",
+    "download": "Stahování",
+    "other": "Ostatní",
+    "otherCount": "Ostatní ({{groups}})",
+    "total": "Celkem",
+    "gap": "Obsahuje mezeru v záznamu {{duration}}",
+    "gapLabel": "mezera {{duration}}",
+    "foldedDay": "(celý den, UTC)",
+    "empty": "V tomto období žádný přenos."
+  },
+  "groups": {
+    "public": "Veřejné",
+    "noTracker": "Bez trackeru"
+  },
+  "errors": {
+    "load": "Statistiky se nepodařilo načíst: {{message}}"
+  },
+  "allTimeNote": "Celkem zahrnuje výchozí stav: bajty, které torrenty měly, když je qui poprvé zaznamenal. Graf výchozí stav neukazuje, protože nemá datum.",
+  "serverStatisticsNote": "Tato čísla sčítají přenos jednotlivých torrentů. Statistiky serveru na nástěnce čtou čítače qBittorrentu, které počítají i provoz protokolu, proto se čísla liší.",
+  "table": {
+    "title": "Podle skupiny",
+    "descriptionTracker": "Přenos za období pro každý tracker. Klikněte na řádek, abyste otevřeli jeho detail.",
+    "descriptionCategory": "Přenos za období pro každou kategorii, pod kategorií, kterou měl každý torrent, když se bajty přenesly. Klikněte na řádek, abyste otevřeli jeho detail.",
+    "descriptionRelease": "Přenos za období pro každou hodnotu, kterou qui čte z názvů torrentů. Kliknutím na řádek otevřete jeho podrobnosti.",
+    "groupBy": "Seskupit podle",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Kategorie",
+      "releaseGroup": "Release skupina",
+      "resolution": "Rozlišení",
+      "source": "Zdroj",
+      "contentType": "Typ obsahu"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "uploaded": "Odesláno",
+      "downloaded": "Staženo",
+      "ratio": "Poměr",
+      "buffer": "Náskok",
+      "torrents": "Torrenty",
+      "size": "Velikost",
+      "seeded": "Sdíleno X krát"
+    },
+    "seededValue": "{{value}}×",
+    "total": "Celkem",
+    "noCategory": "Bez kategorie",
+    "none": "Žádné",
+    "liveError": "Torrenty, které jsou nyní v qBittorrentu, se nepodařilo načíst: {{message}}",
+    "liveNote": "Torrenty, Velikost a Sdíleno X krát popisují torrenty, které jsou nyní v qBittorrentu, ne období. Sdíleno X krát je jejich celkové odeslání dělené jejich velikostí.",
+    "categoryNote": "qui ukládá součty kategorií pro každý den UTC. Období, které začíná nebo končí uvnitř dne UTC, počítá celý tento den, takže součet kategorií se může lišit od čísel nahoře.",
+    "releaseNote": "qui čte tyto hodnoty z názvů torrentů a ukládá bajty každého torrentu pro každý den UTC. Období, které začíná nebo končí uprostřed dne UTC, započítá celý den, takže součet řádků se může lišit od čísel nahoře.",
+    "baselineNote": "Pro celé období zahrnuje každý řádek výchozí stav svých torrentů."
+  },
+  "detail": {
+    "share": "Podíl na odeslání",
+    "shareOf": "z {{total}}",
+    "crossSeed": "Z cross-seedů",
+    "crossSeedShare": "{{percent}} jeho odeslání",
+    "bestHour": "Nejlepší hodina",
+    "bestDay": "Nejlepší den",
+    "averageHour": "Průměr za hodinu",
+    "averageDay": "Průměr za den",
+    "chartHour": "{{group}} za hodinu",
+    "chartDay": "{{group}} za den",
+    "chartLegend": "Odesílání nad čarou, stahování pod ní",
+    "topTorrents": "Nejlepší torrenty skupiny {{group}}",
+    "topTorrentsCategoryNote": "Nejlepší torrenty kategorie se řídí kategorií, kterou má každý torrent nyní."
+  },
+  "topTorrents": {
+    "title": "Nejlepší torrenty",
+    "description": "Torrenty s největším odesláním v období. Kliknutím na řádek zobrazíte jeho odeslání po dnech.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "Prvních 24 hodin"
+    },
+    "deleted": "Smazáno",
+    "crossSeed": "Cross-seed",
+    "note": "Smazaný torrent si ponechá své místo i se jménem. Torrent se počítá k trackeru, který má nyní. Prvních 24 hodin je odeslání za 24 hodin po přidání. Hodnota je prázdná, když qui torrent poprvé viděl až po nich.",
+    "utcNote": "Každý sloupec je jeden den UTC.",
+    "yearNote": "Každý sloupec je jeden den UTC, kromě sloupce roku: po uplynutí doby uchování podrobností qui uchovává jedno číslo pro každý torrent a rok."
+  }
+}

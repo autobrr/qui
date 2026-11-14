@@ -179,14 +179,6 @@
     "renameTorrentSuccess": "Torrent rinominato in \"{{name}}\"",
     "renameTorrentFailed": "Rinomina del torrent non riuscita: {{error}}",
     "renameTorrentEmpty": "Il nome del torrent non può essere vuoto",
-    "renameFileSuccess": "File rinominato in \"{{name}}\"",
-    "renameFileFailed": "Rinomina del file non riuscita: {{error}}",
-    "renameFilePathsRequired": "Sono richiesti sia il percorso file originale sia quello nuovo",
-    "renameFileUnchanged": "Nome del file invariato",
-    "renameFolderSuccess": "Cartella rinominata in \"{{name}}\"",
-    "renameFolderFailed": "Rinomina della cartella non riuscita: {{error}}",
-    "renameFolderPathsRequired": "Sono richiesti sia il percorso cartella originale sia quello nuovo",
-    "renameFolderUnchanged": "Nome della cartella invariato",
     "partialTags": {
       "title_one": "Tag aggiornati parzialmente per {{count}} torrent",
       "title_other": "Tag aggiornati parzialmente per {{count}} torrent",
@@ -620,10 +612,7 @@
     "bottomPriorityBatch": "Priorità minima ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Rinomina",
-    "renameTorrent": "Rinomina torrent",
-    "renameFile": "Rinomina file",
-    "renameFolder": "Rinomina cartella"
+    "renameTorrent": "Rinomina torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1239,6 +1228,7 @@
     "status": "Stato",
     "tracker": "Tracker",
     "seeds": "Seed",
+    "peers": "Peer",
     "leeches": "Leech",
     "downloaded": "DL",
     "message": "Messaggio",
@@ -1502,7 +1492,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Ricerca automatica durante la digitazione"
     },
-    "ratio": "Rapporto:"
+    "ratio": "Rapporto:",
+    "added": "Aggiunto {{time}}"
   },
   "tableView": {
     "ascending": "crescente",
@@ -1657,7 +1648,7 @@
       "dropped": "Pacchetto aggiunto. Destinazioni escluse: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Questa istanza richiede accesso al file system locale per assemblare un pacchetto.",
+        "no_filesystem_access": "Questa istanza richiede l'accesso in scrittura al filesystem per assemblare un pacchetto. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza.",
         "no_link_mode": "Abilita hardlink o reflink su questa istanza per selezionare più destinazioni.",
         "no_base_directory": "Configura una directory di base per i collegamenti di questa istanza.",
         "no_episode_files": "Nessun file episodio riproducibile trovato nel pacchetto.",
@@ -1678,6 +1669,34 @@
         "link_failed": "Impossibile creare i collegamenti.",
         "add_failed": "Impossibile aggiungere il torrent."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} altra copia di {{name}}",
+    "copies_other": "{{count}} altre copie di {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "A una copia nascosta mancano dei file",
+      "error": "Una copia nascosta ha un errore",
+      "unregistered": "Una copia nascosta non è registrata",
+      "trackerError": "Una copia nascosta ha un errore del tracker",
+      "trackerDown": "Il tracker di una copia nascosta non è raggiungibile"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} selezionata",
+    "badgeTicked_other": "+{{hidden}} · {{count}} selezionate",
+    "hiddenTicked_one": "{{count}} copia nascosta è selezionata",
+    "hiddenTicked_other": "{{count}} copie nascoste sono selezionate",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Raggruppa le copie",
+    "ungroupCopies": "Separa le copie",
+    "grouping": "Raggruppamento…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Raggruppa i tuoi cross-seed",
+      "description": "Mostra le copie di un torrent in un'unica riga.",
+      "action": "Prova"
     }
   }
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -23,7 +24,7 @@ type reflinkFallbackSafetySyncManager struct {
 	addTorrentOpts map[string]string
 }
 
-func (*reflinkFallbackSafetySyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (*reflinkFallbackSafetySyncManager) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 	for _, hash := range filter.Hashes {
 		torrents = append(torrents, qbt.Torrent{Hash: hash})
@@ -31,7 +32,7 @@ func (*reflinkFallbackSafetySyncManager) GetTorrents(_ context.Context, _ int, f
 	if len(torrents) == 0 {
 		torrents = append(torrents, qbt.Torrent{Hash: "dummy"})
 	}
-	return torrents, nil
+	return testTorrentRefs(torrents), nil
 }
 
 func (m *reflinkFallbackSafetySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -89,7 +90,7 @@ func (*reflinkFallbackSafetySyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (*reflinkFallbackSafetySyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*reflinkFallbackSafetySyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -186,7 +187,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	req := &CrossSeedRequest{}
@@ -197,6 +198,54 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 	require.Equal(t, "rejected", result.Status)
 	require.Contains(t, result.Message, "Content file sizes do not match")
 	require.Nil(t, sync.addTorrentOpts, "AddTorrent should not be called when reuse safety checks fail")
+}
+
+func TestProcessCrossSeedCandidate_ReflinkAddAllowsSizeMismatch(t *testing.T) {
+	t.Parallel()
+
+	instanceID := 1
+	matchedHash := "matchedhash"
+	torrentName := "Movie.2024.1080p.WEB-DL-GROUP"
+
+	sync := &reflinkFallbackSafetySyncManager{
+		files: map[string]qbt.TorrentFiles{
+			normalizeHash(matchedHash): {{Name: "Movie.2024.mkv", Size: 1_000_000}},
+		},
+		props: map[string]*qbt.TorrentProperties{
+			normalizeHash(matchedHash): {SavePath: "/downloads/movies"},
+		},
+	}
+	service := &Service{
+		syncManager: sync,
+		instanceStore: &reflinkFallbackSafetyInstanceStore{
+			instances: map[int]*models.Instance{
+				instanceID: {ID: instanceID, UseReflinks: true, HasLocalFilesystemAccess: true},
+			},
+		},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+	candidate := CrossSeedCandidate{
+		InstanceID:   instanceID,
+		InstanceName: "Test",
+		Torrents: []*qbt.Torrent{{
+			Hash:        matchedHash,
+			Name:        torrentName,
+			Progress:    1.0,
+			Category:    "movies",
+			ContentPath: "/downloads/movies/" + torrentName,
+		}},
+	}
+	sourceFiles := qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1_000_001}}
+
+	withAdder(service)
+	result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), "newhash", "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
+
+	// The rig has no reflink base directory, so the add reaches reflink mode and fails there.
+	require.Equal(t, "reflink_error", result.Status)
 }
 
 func (*reflinkFallbackSafetySyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {

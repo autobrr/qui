@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"golang.org/x/net/idna"
 )
@@ -89,6 +91,8 @@ type Config struct {
 	OIDCDisableBuiltInLogin bool   `toml:"oidcDisableBuiltInLogin" mapstructure:"oidcDisableBuiltInLogin"`
 	OIDCAllowedSubject      string `toml:"oidcAllowedSubject" mapstructure:"oidcAllowedSubject"`
 	OIDCAllowedEmail        string `toml:"oidcAllowedEmail" mapstructure:"oidcAllowedEmail"`
+
+	live *atomic.Pointer[Config]
 }
 
 // IsOIDCUserAllowed reports whether the OIDC user with the given subject and
@@ -118,6 +122,31 @@ func (c *Config) ValidateOIDCAllowedUser() error {
 // attribute: set explicitly, or implied by an HTTPS OIDC redirect URL.
 func (c *Config) SecureSessionCookie() bool {
 	return c.SessionCookieSecure || strings.HasPrefix(strings.ToLower(c.OIDCRedirectURL), "https://")
+}
+
+// Publish makes the current values the ones that Live returns. Call it after a
+// complete change to the config. The config must not change during the call.
+func (c *Config) Publish() {
+	if c.live == nil {
+		c.live = new(atomic.Pointer[Config])
+	}
+	published := *c
+	published.live = nil
+	// A reload decodes into the existing slices, so the published copy needs its own.
+	published.CORSAllowedOrigins = slices.Clone(c.CORSAllowedOrigins)
+	published.ExternalProgramAllowList = slices.Clone(c.ExternalProgramAllowList)
+	published.AuthDisabledAllowedCIDRs = slices.Clone(c.AuthDisabledAllowedCIDRs)
+	c.live.Store(&published)
+}
+
+// Live returns the last published config, which a reload does not change. Code
+// that runs while qui serves requests must read the config through Live. A
+// config that was never published returns itself.
+func (c *Config) Live() *Config {
+	if c.live == nil {
+		return c
+	}
+	return c.live.Load()
 }
 
 // IsAuthDisabled returns true only when both AuthDisabled and

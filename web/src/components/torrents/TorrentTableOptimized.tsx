@@ -7,7 +7,7 @@ import { isClientConnectionErrorCode } from "@/lib/sync-stream-state"
 import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
-import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext, type ListFacts } from "@/contexts/TorrentSelectionContext"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
 import { useTorrentTableArrowNavigation } from "@/hooks/torrent-table/useTorrentTableArrowNavigation"
@@ -24,12 +24,11 @@ import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
-import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentListEmptyMessage } from "@/hooks/useTorrentListEmptyMessage"
-import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentListController } from "@/hooks/useTorrentListController"
 import { EMPTY_SIDEBAR_FILTERS, hasSidebarFilters } from "@/lib/filter-views"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { GROUPED_SELECT_COLUMN_WIDTH } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
 import { useTable } from "@tanstack/react-table"
@@ -60,7 +59,6 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useGlobalMaxRatio, useListenPort, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -112,8 +110,11 @@ import { TorrentDropZone } from "./TorrentDropZone"
 import { TableColumnHeader } from "./table/TableColumnHeader"
 import { ColumnOrderMenu } from "./ColumnOrderMenu"
 import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
+import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
+import { useCopyGroupRows } from "@/hooks/useCopyGroupRows"
+import { GroupCopiesToolbar } from "./table/GroupCopiesToolbar"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
-import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
+import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -231,7 +232,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   useLayoutEffect(() => {
     setStatusBarContainer(document.getElementById("qui-status-bar-container"))
   }, [])
-  const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const instanceMaxRatio = useGlobalMaxRatio(instanceId)
@@ -268,76 +268,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Delayed loading state to avoid flicker on fast loads
   const [showLoadingState, setShowLoadingState] = useState(false)
 
-  // Use the shared torrent actions hook
-  const torrentActions = useTorrentActions({
-    instanceId,
-    instanceIds,
-    onActionComplete: (action) => {
-      if (action === TORRENT_ACTIONS.DELETE) {
-        clearSelection()
-      }
-    },
-  })
-  const {
-    showDeleteDialog,
-    closeDeleteDialog,
-    deleteFiles,
-    setDeleteFiles,
-    isDeleteFilesLocked,
-    toggleDeleteFilesLock,
-    blockCrossSeeds,
-    setBlockCrossSeeds,
-    deleteCrossSeeds,
-    setDeleteCrossSeeds,
-    showTagsDialog,
-    setShowTagsDialog,
-    showCommentDialog,
-    setShowCommentDialog,
-    showCategoryDialog,
-    setShowCategoryDialog,
-    showCreateCategoryDialog,
-    setShowCreateCategoryDialog,
-    showShareLimitDialog,
-    setShowShareLimitDialog,
-    showSpeedLimitDialog,
-    setShowSpeedLimitDialog,
-    showLocationDialog,
-    setShowLocationDialog,
-    showRenameTorrentDialog,
-    setShowRenameTorrentDialog,
-    showRenameFileDialog,
-    setShowRenameFileDialog,
-    showRenameFolderDialog,
-    setShowRenameFolderDialog,
-    showRecheckDialog,
-    setShowRecheckDialog,
-    showReannounceDialog,
-    setShowReannounceDialog,
-    showTmmDialog,
-    setShowTmmDialog,
-    pendingTmmEnable,
-    showLocationWarningDialog,
-    setShowLocationWarningDialog,
-    isPending,
-    proceedToLocationDialog,
-    prepareDeleteAction,
-    prepareTagsAction,
-    prepareCommentAction,
-    prepareCategoryAction,
-    prepareCreateCategoryAction,
-    prepareShareLimitAction,
-    prepareSpeedLimitAction,
-    prepareLocationAction,
-    prepareRenameTorrentAction,
-    prepareTmmAction,
-  } = torrentActions
-
-  // Fetch metadata using shared hook
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
-    fallbackDelayMs: 1500,
-  })
-  const metadataTags = metadata?.tags || []
-  const metadataCategories = metadata?.categories || {}
+  const { pick: pickBulkAction, isPending, isExporting } = useBulkActions()
 
   const navigate = useNavigate()
 
@@ -346,6 +277,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
+
+  const [groupCopiesSetting, toggleGroupCopies] = usePersistedGroupCopies()
 
   // Fetch torrents data with backend sorting
   const {
@@ -377,6 +310,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     streamRetryAttempt,
     isCrossSeedFiltering,
     isCrossInstanceEndpoint,
+    visibleRows,
+    groupExpansion,
+    toggleGroup,
+    copyGroupsReady,
   } = useTorrentListController({
     instanceId,
     instanceIds,
@@ -385,6 +322,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     search: effectiveSearch,
     sort: activeSortField,
     order: activeSortOrder,
+    groupCopies: groupCopiesSetting,
   })
 
   // When the stream drops but rows are already on screen, the data is stale but
@@ -522,10 +460,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
   const instanceSubcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, subcategoriesFromData)
   const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): instanceSubcategoriesEnabled
-  const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
-  const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
-  const isLoadingTags = isMetadataLoading && availableTags.length === 0
-  const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -554,6 +488,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
+  // With no sort set by the user, the server sorts by added time.
+  const sortedColumnId = sorting[0]?.id ?? "added_on"
 
   const effectiveServerState = useEffectiveServerState({ instanceId, serverState })
 
@@ -582,7 +518,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleCheckboxPointerDown,
     handleCheckboxChange,
   } = useTorrentSelection({
-    sortedTorrents,
+    visibleTorrents: visibleRows,
+    groupExpansion,
+    groupedRows: copyGroupsReady === true,
     isReadOnly,
     isCrossInstanceEndpoint,
     instanceId,
@@ -590,6 +528,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   const { selection, publishSummary } = useTorrentSelectionContext()
+  const { hasGroups, describeRow: describeCopyGroupRow } = useCopyGroupRows({ rows: torrents, expansion: groupExpansion, selection, getSelectionIdentity })
 
   // Memoize columns to avoid unnecessary recalculations
   const { columns, torrentIdentityCounts } = useTorrentTableColumns({
@@ -627,14 +566,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [columns, columnVisibility, columnSizing])
   const availableWidth = containerWidth - (showRowGutter ? SPREADSHEET_ROW_GUTTER_WIDTH : 0)
   const effectiveStretch = stretchNameColumn && fixedColsWidth + NAME_COLUMN_MIN_WIDTH <= availableWidth
+  const widenSelect = copyGroupsReady && columnVisibility.name === false
   const effectiveColumnSizing = useMemo(() => {
-    if (!effectiveStretch) return columnSizing
-    return { ...columnSizing, name: availableWidth - fixedColsWidth }
-  }, [effectiveStretch, columnSizing, availableWidth, fixedColsWidth])
+    const sizing = widenSelect ? { ...columnSizing, select: GROUPED_SELECT_COLUMN_WIDTH } : columnSizing
+    if (!effectiveStretch) return sizing
+    return { ...sizing, name: availableWidth - fixedColsWidth }
+  }, [effectiveStretch, columnSizing, availableWidth, fixedColsWidth, widenSelect])
 
   const table = useTable({
     features: torrentTableFeatures,
-    data: sortedTorrents,
+    data: visibleRows,
     columns,
     // For cross-seed filtering, enable client-side sorting and filtering
     // For regular filtering, backend handles sorting and column filters
@@ -703,13 +644,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     actionTarget,
     selectedTotalSize,
     selectedFormattedSize,
-    deleteDialogTotalSize,
-    deleteDialogFormattedSize,
+    totalSize,
+    excludedSize,
   } = useTorrentSelectionDerivations({
     selection,
     getSelectionIdentity,
     getVisibleRows: () => table.getRowModel().rows,
     sortedTorrents,
+    isGrouped: hasGroups,
     columnFiltersExpr,
     clientSideFiltering: isCrossSeedFiltering,
     filters,
@@ -790,6 +732,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 
+  const listFacts = useMemo<ListFacts>(() => ({
+    isCrossInstance: Boolean(isCrossInstanceEndpoint),
+    categories,
+    tags,
+    allowSubcategories,
+    capabilities,
+    sortField: activeSortField,
+    sortOrder: activeSortOrder,
+  }), [isCrossInstanceEndpoint, categories, tags, allowSubcategories, capabilities, activeSortField, activeSortOrder])
+
   // Fire parent-facing notifications when filtered data or selection changes
   useTorrentTableNotifications({
     onFilteredDataUpdate,
@@ -804,7 +756,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     supportsTrackerHealth,
     onSelectionChange: publishSummary,
     actionTarget,
-    selectedTotalSize,
+    totalSize,
+    excludedSize,
+    instanceIds,
+    listFacts,
   })
 
   // Callback for context menu to fetch field values on demand: explicit
@@ -899,37 +854,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { isMac, selectAllWithShortcut } = useTorrentTableHotkeys({
     sortedTorrents,
     selectAll,
-  })
-
-  // Dialog wiring: each wrapper passes its value with the Action target to the handler.
-  const {
-    crossSeedWarning,
-    hasCrossSeedTag,
-    renameHash,
-    runAction,
-    handleExportWrapper,
-    handleDeleteWrapper,
-    handleSetCommentWrapper,
-    handleTagsWrapper,
-    handleSetCategoryWrapper,
-    handleSetLocationWrapper,
-    handleRenameTorrentWrapper,
-    handleRenameFileWrapper,
-    handleRenameFolderWrapper,
-    prepareRecheckWrapper,
-    prepareReannounceWrapper,
-    handleRecheckWrapper,
-    handleReannounceWrapper,
-    handleTmmConfirmWrapper,
-    handleSetShareLimitWrapper,
-    handleSetSpeedLimitsWrapper,
-  } = useTorrentListActions({
-    instanceId,
-    actionTarget,
-    actions: torrentActions,
-    exportTorrents,
-    sort: activeSortField,
-    order: activeSortOrder,
   })
 
   const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
@@ -1033,33 +957,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     readOnly: isReadOnly,
     actionTarget,
     onTorrentSelect,
-    onAction: runAction,
-    onPrepareDelete: prepareDeleteAction,
-    onPrepareTags: prepareTagsAction,
-    onPrepareComment: prepareCommentAction,
-    onPrepareCategory: prepareCategoryAction,
-    onPrepareCreateCategory: prepareCreateCategoryAction,
-    onPrepareShareLimit: prepareShareLimitAction,
-    onPrepareSpeedLimits: prepareSpeedLimitAction,
-    onPrepareLocation: prepareLocationAction,
-    onPrepareRenameTorrent: prepareRenameTorrentAction,
-    onPrepareRecheck: prepareRecheckWrapper,
-    onPrepareReannounce: prepareReannounceWrapper,
-    onPrepareTmm: prepareTmmAction,
-    availableCategories,
-    onSetCategory: handleSetCategoryWrapper,
+    onPick: pickBulkAction,
     isPending,
-    onExport: handleExportWrapper,
-    isExporting: isExportingTorrent,
+    isExporting,
     capabilities,
-    useSubcategories: allowSubcategories,
     canCrossSeedSearch,
     onCrossSeedSearch,
     isCrossSeedSearching,
     onManualCrossSeed,
     onFilterChange,
     onFetchTorrentField: fetchTorrentField,
-  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckWrapper, prepareReannounceWrapper, prepareTmmAction, availableCategories, handleSetCategoryWrapper, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
+  }), [instanceId, isReadOnly, actionTarget, onTorrentSelect, pickBulkAction, isPending, isExporting, capabilities, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
@@ -1093,6 +1001,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
                 const actions = (
                   <>
+                    <GroupCopiesToolbar groupCopies={groupCopiesSetting} onToggleGroupCopies={toggleGroupCopies} />
                     {desktopViewMode === "compact" && compactSortOptions.length > 0 && (
                       <div className="flex items-center">
                         <DropdownMenu>
@@ -1267,7 +1176,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
             role="grid"
             aria-label={t("tableView.tableAriaLabel")}
-            aria-rowcount={totalCount}
+            // -1 is the ARIA value for an unknown count: the visible rows of a grouped list are known only after all pages load.
+            aria-rowcount={copyGroupsReady ? -1 : totalCount}
             aria-colcount={table.getVisibleLeafColumns().length}
             onDropPayload={handleDropPayload}
           >
@@ -1338,6 +1248,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   const rowInstanceID = (torrent as Partial<CrossInstanceTorrent>).instanceId ?? instanceId
                   const isSelected = selectedTorrent?.hash === torrent.hash && selectedInstanceID === rowInstanceID
                   const isRowSelected = isTorrentSelected(torrent)
+                  const copyGroup = describeCopyGroupRow(torrent)
 
                   return (
                     <TorrentTableRow
@@ -1359,6 +1270,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       compact={compactRowProps}
                       onRowClick={handleRowClick}
                       onRowContextMenu={handleRowContextMenu}
+                      copyGroupId={copyGroup.groupId}
+                      copyGroupOpen={copyGroup.open}
+                      copies={copyGroup.copies}
+                      hiddenCopyProblem={copyGroup.hiddenProblem}
+                      hiddenCopyTicks={copyGroup.hiddenTicks}
+                      sortedTorrent={copyGroup.sortedTorrent}
+                      sortedColumnId={copyGroup.sortedTorrent ? sortedColumnId : undefined}
+                      nestedCopy={copyGroup.nestedCopy}
+                      onToggleCopyGroup={toggleGroup}
                     />
                   )
                 })}
@@ -1454,6 +1374,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       </>
                     )}
                   </div>
+                  {copyGroupsReady === false && (
+                    <span className="flex items-center gap-1 opacity-70">
+                      <Loader2 className="h-3 w-3 animate-spin"/>
+                      {t("copyGroups.grouping")}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
@@ -1620,76 +1546,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             return statusBarContainer ? createPortal(statusBarContent, statusBarContainer) : statusBarContent
           })()}
         </div>
-
-        <TorrentTableDialogs
-          instanceId={instanceId}
-          actionTarget={actionTarget}
-          isPending={isPending}
-          showDeleteDialog={showDeleteDialog}
-          closeDeleteDialog={closeDeleteDialog}
-          showCommentDialog={showCommentDialog}
-          setShowCommentDialog={setShowCommentDialog}
-          showTagsDialog={showTagsDialog}
-          setShowTagsDialog={setShowTagsDialog}
-          showCategoryDialog={showCategoryDialog}
-          setShowCategoryDialog={setShowCategoryDialog}
-          showCreateCategoryDialog={showCreateCategoryDialog}
-          setShowCreateCategoryDialog={setShowCreateCategoryDialog}
-          showShareLimitDialog={showShareLimitDialog}
-          setShowShareLimitDialog={setShowShareLimitDialog}
-          showSpeedLimitDialog={showSpeedLimitDialog}
-          setShowSpeedLimitDialog={setShowSpeedLimitDialog}
-          showLocationDialog={showLocationDialog}
-          setShowLocationDialog={setShowLocationDialog}
-          showRenameTorrentDialog={showRenameTorrentDialog}
-          setShowRenameTorrentDialog={setShowRenameTorrentDialog}
-          showRenameFileDialog={showRenameFileDialog}
-          setShowRenameFileDialog={setShowRenameFileDialog}
-          showRenameFolderDialog={showRenameFolderDialog}
-          setShowRenameFolderDialog={setShowRenameFolderDialog}
-          showRecheckDialog={showRecheckDialog}
-          setShowRecheckDialog={setShowRecheckDialog}
-          showReannounceDialog={showReannounceDialog}
-          setShowReannounceDialog={setShowReannounceDialog}
-          showTmmDialog={showTmmDialog}
-          setShowTmmDialog={setShowTmmDialog}
-          pendingTmmEnable={pendingTmmEnable}
-          showLocationWarningDialog={showLocationWarningDialog}
-          setShowLocationWarningDialog={setShowLocationWarningDialog}
-          deleteFiles={deleteFiles}
-          setDeleteFiles={setDeleteFiles}
-          isDeleteFilesLocked={isDeleteFilesLocked}
-          toggleDeleteFilesLock={toggleDeleteFilesLock}
-          blockCrossSeeds={blockCrossSeeds}
-          setBlockCrossSeeds={setBlockCrossSeeds}
-          deleteCrossSeeds={deleteCrossSeeds}
-          setDeleteCrossSeeds={setDeleteCrossSeeds}
-          handleDeleteWrapper={handleDeleteWrapper}
-          handleSetCommentWrapper={handleSetCommentWrapper}
-          handleTagsWrapper={handleTagsWrapper}
-          handleSetCategoryWrapper={handleSetCategoryWrapper}
-          handleSetShareLimitWrapper={handleSetShareLimitWrapper}
-          handleSetSpeedLimitsWrapper={handleSetSpeedLimitsWrapper}
-          handleSetLocationWrapper={handleSetLocationWrapper}
-          renameHash={renameHash}
-          handleRenameTorrentWrapper={handleRenameTorrentWrapper}
-          handleRenameFileWrapper={handleRenameFileWrapper}
-          handleRenameFolderWrapper={handleRenameFolderWrapper}
-          handleRecheckWrapper={handleRecheckWrapper}
-          handleReannounceWrapper={handleReannounceWrapper}
-          handleTmmConfirmWrapper={handleTmmConfirmWrapper}
-          proceedToLocationDialog={proceedToLocationDialog}
-          deleteDialogTotalSize={deleteDialogTotalSize}
-          deleteDialogFormattedSize={deleteDialogFormattedSize}
-          crossSeedWarning={crossSeedWarning}
-          hasCrossSeedTag={hasCrossSeedTag}
-          availableTags={availableTags}
-          availableCategories={availableCategories}
-          isLoadingTags={isLoadingTags}
-          isLoadingCategories={isLoadingCategories}
-          allowSubcategories={allowSubcategories}
-          capabilities={capabilities}
-        />
 
         {/* Instance Preferences Dialog */}
         {instance && instanceId > 0 && (

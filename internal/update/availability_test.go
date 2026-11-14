@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/buildinfo"
 )
 
 func TestAvailability(t *testing.T) {
@@ -46,7 +48,7 @@ func TestAvailability(t *testing.T) {
 			got := Decide(Inputs{
 				AppContainer:      appContainer(exists, tt.pid, tt.kubernetes),
 				DisableSelfUpdate: tt.disabled,
-				ReleaseVersion:    isReleaseVersion(tt.version),
+				ReleaseVersion:    buildinfo.IsRelease(tt.version),
 				DirWritable:       tt.dirWritable,
 			})
 			require.Equal(t, Availability{SelfUpdate: tt.wantSelfUpdate, Restart: tt.wantRestart, SelfUpdateUnavailableReason: tt.wantReason}, got)

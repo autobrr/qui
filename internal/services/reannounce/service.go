@@ -195,7 +195,7 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 	torrents := s.lookupTorrents(ctx, instanceID, upperHashes)
 	var handled []string
 	for hash, torrent := range torrents {
-		if !s.torrentMeetsCriteria(torrent, settings) {
+		if !s.torrentMeetsCriteria(*torrent, settings) {
 			continue
 		}
 		if s.hasHealthyTracker(torrent.Trackers) {
@@ -253,9 +253,7 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		return
 	}
 
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
-		Filter: qbt.TorrentFilterStalled,
-	})
+	torrents, err := s.cachedTorrents(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch cached torrents")
 		return
@@ -269,7 +267,7 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		prefilter.MonitorAll = settings.MonitorAll || (!settings.ExcludeTrackers && len(settings.Trackers) > 0)
 		var hashes []string
 		for _, torrent := range torrents {
-			if s.torrentMeetsCriteria(torrent, &prefilter) {
+			if s.torrentMeetsCriteria(*torrent, &prefilter) {
 				hashes = append(hashes, torrent.Hash)
 			}
 		}
@@ -287,12 +285,14 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 				log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch trackers for candidates")
 				return
 			}
-			torrents = append(torrents, fresh...)
+			for i := range fresh {
+				torrents = append(torrents, &fresh[i])
+			}
 		}
 	}
 
 	for _, torrent := range torrents {
-		if !s.torrentMeetsCriteria(torrent, settings) {
+		if !s.torrentMeetsCriteria(*torrent, settings) {
 			continue
 		}
 		// Skip if we have tracker data and it shows healthy.
@@ -322,9 +322,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 		return nil
 	}
 
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
-		Filter: qbt.TorrentFilterStalled,
-	})
+	torrents, err := s.cachedTorrents(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents for snapshot")
 		return nil
@@ -341,7 +339,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 	for _, torrent := range torrents {
 		// Use torrentMatchesFilters (not torrentMeetsCriteria) so we can show
 		// torrents still in their initial wait period
-		if !s.torrentMatchesFilters(torrent, settings) {
+		if !s.torrentMatchesFilters(*torrent, settings) {
 			continue
 		}
 
@@ -602,23 +600,45 @@ func (s *Service) baseContext() context.Context {
 	return s.baseCtx
 }
 
-func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []string) map[string]qbt.Torrent {
-	result := make(map[string]qbt.Torrent)
+// lookupTorrents returns the torrents of hashes from the Sync snapshot, keyed
+// by the upper-case hash. The torrents are shared: never change one.
+func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []string) map[string]*qbt.Torrent {
+	result := make(map[string]*qbt.Torrent)
 	if len(hashes) == 0 {
 		return result
 	}
 	if s.syncManager == nil {
 		return result
 	}
-	sync, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
+	sync, err := s.syncManager.GetSyncOwner(ctx, instanceID)
 	if err != nil || sync == nil {
 		return result
 	}
-	filter := qbt.TorrentFilterOptions{Hashes: hashes}
-	for hash, torrent := range sync.GetTorrentMap(filter) {
-		result[strings.ToUpper(hash)] = torrent
+	snapshot := sync.Snapshot()
+	if snapshot == nil {
+		return result
+	}
+	for _, hash := range hashes {
+		if torrent, ok := snapshot.Torrent(hash); ok {
+			result[strings.ToUpper(torrent.Hash)] = torrent
+		}
 	}
 	return result
+}
+
+// cachedTorrents returns all torrents of the Sync snapshot. The callers keep
+// the stalled ones through torrentMatchesFilters. The torrents are shared:
+// never change one.
+func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
+	sync, err := s.syncManager.GetSyncOwner(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := sync.Snapshot()
+	if snapshot == nil {
+		return nil, nil
+	}
+	return snapshot.Torrents(), nil
 }
 
 func (s *Service) getSettings(ctx context.Context, instanceID int) *models.InstanceReannounceSettings {

@@ -26,7 +26,7 @@ type plannedSearch struct {
 
 func planSearches(t *testing.T, result *ScanResult, skipEpisodes bool) []plannedSearch {
 	t.Helper()
-	selection := selectEligibleRootWork(result, nil, NewParser(nil), 0, time.Now(), nil, skipEpisodes, nil)
+	selection := selectEligibleRootWork(fsops.HostPaths, result, nil, NewParser(nil), 0, time.Now(), nil, skipEpisodes, nil)
 	var planned []plannedSearch
 	for _, root := range selection.roots {
 		for _, item := range root.items {
@@ -112,7 +112,7 @@ func TestArchivedRelease_SeasonFolderSplitsIntoEpisodesAndPack(t *testing.T) {
 
 	// The episode searches keep paths below their own folder, so a volume
 	// pairs with the volume of an episode torrent.
-	episode := buildSearcheeWorkItems(result.Searchees[1], NewParser(nil))[1].searchee
+	episode := buildSearcheeWorkItems(fsops.HostPaths, result.Searchees[1], NewParser(nil))[1].searchee
 	require.True(t, episode.IsArchived)
 	require.Equal(t, filepath.Join(season, "Show.Name.S02E01.720p.HDTV.x264-GRP"), episode.Path)
 	rels := make([]string, 0, len(episode.Files))
@@ -149,7 +149,7 @@ func TestArchivedRelease_AgeCutoffReadsTheVolumes(t *testing.T) {
 		release("New.Game-GRP", fresh),
 	}}
 
-	selection := selectEligibleRootWork(result, nil, NewParser(nil), 7, now, nil, false, nil)
+	selection := selectEligibleRootWork(fsops.HostPaths, result, nil, NewParser(nil), 7, now, nil, false, nil)
 
 	require.Len(t, selection.roots, 1)
 	require.Equal(t, "New.Game-GRP", selection.roots[0].root.Name)
@@ -335,7 +335,7 @@ func TestArchivedRelease_SearchMetadataReadsTheFolderName(t *testing.T) {
 			{Path: "/data/" + tt.name + "/Sample/Artist-Track.S01E01-sample.mkv", RelPath: filepath.Join("Sample", "Artist-Track.S01E01-sample.mkv"), Size: 5},
 		}}
 
-		meta, arrLookupName := svc.buildSearcheeMetadata(searchee)
+		meta, arrLookupName := svc.buildSearcheeMetadata(fsops.HostPaths, searchee)
 		info := determineContentInfo(meta, searchee)
 
 		require.Equal(t, tt.name, arrLookupName)
@@ -372,7 +372,7 @@ func TestArchivedRelease_WebhookRootOfASeasonPackSearchesThePack(t *testing.T) {
 	runID, err := store.CreateRun(t.Context(), dir.ID, triggeredByWebhook, root)
 	require.NoError(t, err)
 	logger := zerolog.Nop()
-	result, _, ok := svc.runScanPhase(t.Context(), dir, root, runID, &logger)
+	result, _, ok := svc.runScanPhase(t.Context(), dir, &scanTarget{backend: local.NewBackend(), instance: &models.Instance{ID: dir.TargetInstanceID, HasLocalFilesystemAccess: true}}, root, runID, &logger)
 	require.True(t, ok)
 
 	// The same searches as a full scan of the parent folder plans.

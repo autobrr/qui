@@ -138,13 +138,34 @@ func TestCheckWebhookDropsReadsOfFillDuringSettingsSave(t *testing.T) {
 		checked <- err
 	}()
 	<-fillStarted
-	_, err = svc.UpdateAutomationSettings(t.Context(), models.DefaultCrossSeedAutomationSettings())
+	settings := models.DefaultCrossSeedAutomationSettings()
+	settings.CategoryMappingRules = []models.CategoryMappingRule{{Categories: []string{"films"}, ContentType: "movie"}}
+	_, err = svc.UpdateAutomationSettings(t.Context(), settings)
 	require.NoError(t, err)
 	close(release)
 	require.NoError(t, <-checked)
 
 	require.True(t, checkPack(t, svc).CanCrossSeed)
 	require.Equal(t, []string{"folder", "folder"}, recorder.requests(), "the reads that the fill made with the old rules are not stored")
+}
+
+// regression: #4072
+func TestCheckWebhookKeepsReadsAfterSettingsSaveWithSameRules(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "local-reads-same-rules")
+	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	folder := seasonFolderTorrent("folder")
+	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	svc.automationStore = store
+	checkPack(t, svc)
+
+	settings := models.DefaultCrossSeedAutomationSettings()
+	settings.RunIntervalMinutes = 60
+	_, err = svc.UpdateAutomationSettings(t.Context(), settings)
+	require.NoError(t, err)
+
+	require.True(t, checkPack(t, svc).CanCrossSeed)
+	require.Equal(t, []string{"folder"}, recorder.requests())
 }
 
 // regression: #3739

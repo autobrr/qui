@@ -90,6 +90,7 @@ type DB struct {
 	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
 	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
 	dialect     Dialect
+	sqlitePath  string // empty on Postgres
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -509,6 +510,11 @@ const (
 	connectionSetupTimeout   = 5 * time.Second
 )
 
+// sqliteTimeParams makes the driver convert each time to UTC when it binds it
+// and when it reads it back, and write each bound time in the one text form
+// that SQL time functions read (ADR 0044, ADR 0045).
+const sqliteTimeParams = "_timezone=UTC&_time_format=sqlite"
+
 type pragmaExecFn func(ctx context.Context, stmt string) error
 
 // init registers the pragma hook while this package is still initializing, so
@@ -553,7 +559,7 @@ var connectionPragmas = []pragmaDirective{
 	{stmt: "PRAGMA synchronous = NORMAL", allowReadOnly: false}, // NORMAL is safe with WAL and much faster than FULL
 	{stmt: "PRAGMA mmap_size = 268435456", allowReadOnly: true}, // 256MB memory-mapped I/O for better performance
 	{stmt: "PRAGMA page_size = 4096", allowReadOnly: false},     // Optimal page size for modern systems
-	{stmt: "PRAGMA cache_size = -64000", allowReadOnly: true},   // 64MB cache (negative = KB, positive = pages)
+	{stmt: "PRAGMA cache_size = -2000", allowReadOnly: true},    // 2MB per connection; the OS page cache already holds the file
 	{stmt: "PRAGMA foreign_keys = ON", allowReadOnly: true},
 	{stmt: fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis), allowReadOnly: true},
 	{stmt: "PRAGMA analysis_limit = 400", allowReadOnly: true},
@@ -615,6 +621,14 @@ func newStmtCache() *ttlcache.Cache[string, *sql.Stmt] {
 	)
 }
 
+func openSQLiteReader(databasePath string) (*sql.DB, error) {
+	readerPool, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro&%s", databasePath, sqliteTimeParams))
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite reader at %s: %w", databasePath, err)
+	}
+	return readerPool, nil
+}
+
 // New opens the SQLite database at databasePath, creating the parent directory
 // and applying any pending migrations. The returned DB routes writes through a
 // single serialized connection and reads through a read-only pool.
@@ -635,7 +649,7 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// Open writer connection (single connection for all writes)
-	writerConn, err := sql.Open("sqlite", databasePath)
+	writerConn, err := sql.Open("sqlite", databasePath+"?"+sqliteTimeParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open writer connection at %s: %w", databasePath, err)
 	}
@@ -662,11 +676,10 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// Open reader pool (read-only connection pool for concurrent reads)
-	readerDSN := fmt.Sprintf("file:%s?mode=ro", databasePath)
-	readerPool, err := sql.Open("sqlite", readerDSN)
+	readerPool, err := openSQLiteReader(databasePath)
 	if err != nil {
 		writerConn.Close()
-		return nil, fmt.Errorf("failed to open reader pool at %s: %w", databasePath, err)
+		return nil, err
 	}
 
 	// Configure reader pool for concurrent reads
@@ -694,6 +707,7 @@ func New(databasePath string) (*DB, error) {
 		writerStmts: newStmtCache(),
 		readerStmts: newStmtCache(),
 		dialect:     DialectSQLite,
+		sqlitePath:  databasePath,
 		writerSem:   make(chan struct{}, 1),
 	}
 

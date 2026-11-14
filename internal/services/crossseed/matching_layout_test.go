@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -60,7 +61,7 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "rar", Name: "Example.RAR.Release", Progress: 1.0},
 			{Hash: "mkv", Name: "Example.2024.1080p.GRP", Progress: 1.0},
 		},
@@ -96,7 +97,7 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibilityBeforeTopLevelFolder(t
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "single", Name: "Minimal.Payload", Progress: 1.0},
 			{Hash: "folder", Name: "Minimal.Payload", Progress: 1.0},
 		},
@@ -136,7 +137,7 @@ func TestFindBestCandidateMatch_FolderIncomingPrefersFolderExisting(t *testing.T
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "rootless", Name: "Payload.Rootless", Progress: 1.0},
 			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
 		},
@@ -170,7 +171,7 @@ func TestFindBestCandidateMatch_FilenameAlignmentBeatsRootFolderAlignment(t *tes
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
 			{Hash: "filename", Name: "Payload.Rootless", Progress: 1.0},
 		},
@@ -212,7 +213,7 @@ func TestFindBestCandidateMatch_UploadCXRootlessRegression(t *testing.T) {
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "folder", Name: "Some.Release.2017.LIMITED.1080p.BluRay.x264-DRONES", Progress: 1.0},
 			{Hash: "rootless", Name: "some.release.2017.limited.1080p.bluray.x264-drones.mkv", Progress: 1.0},
 		},
@@ -249,7 +250,7 @@ func TestFindBestCandidateMatch_RejectsSeasonPackAgainstEpisodeCandidate(t *test
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "ep", Name: "The.Show.S01E01.2160p.WEB-DL-GRP", Progress: 1.0},
 		},
 	}
@@ -266,7 +267,7 @@ type candidateSelectionSyncManager struct {
 	files map[string]qbt.TorrentFiles
 }
 
-func (c *candidateSelectionSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (c *candidateSelectionSyncManager) GetTorrentRefs(context.Context, int, internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -323,7 +324,7 @@ func (c *candidateSelectionSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (c *candidateSelectionSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (c *candidateSelectionSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 

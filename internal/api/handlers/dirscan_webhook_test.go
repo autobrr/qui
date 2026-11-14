@@ -46,50 +46,6 @@ func dirScanWebhookJSONBody(t *testing.T, payload any) *bytes.Reader {
 	return bytes.NewReader(body)
 }
 
-func TestPathMatchesDirectory(t *testing.T) {
-	t.Parallel()
-
-	root := string(filepath.Separator)
-	tests := []struct {
-		name     string
-		path     string
-		dir      string
-		expected bool
-	}{
-		{
-			name:     "same path matches",
-			path:     filepath.Clean("/data/media/tv"),
-			dir:      filepath.Clean("/data/media/tv"),
-			expected: true,
-		},
-		{
-			name:     "child path matches",
-			path:     filepath.Clean("/data/media/tv/Show Name"),
-			dir:      filepath.Clean("/data/media/tv"),
-			expected: true,
-		},
-		{
-			name:     "sibling path does not match",
-			path:     filepath.Clean("/data/media/tv-shows"),
-			dir:      filepath.Clean("/data/media/tv"),
-			expected: false,
-		},
-		{
-			name:     "filesystem root matches descendants",
-			path:     filepath.Join(root, "data", "media", "movies"),
-			dir:      root,
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.expected, pathMatchesDirectory(tt.path, tt.dir))
-		})
-	}
-}
-
 func TestDownloadClientAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -168,7 +124,6 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,
@@ -225,7 +180,6 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,
@@ -273,7 +227,6 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,
@@ -322,7 +275,6 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,
@@ -394,7 +346,7 @@ func TestWebhookTriggerScan_VolumeInDiscFolderScansTheRelease(t *testing.T) {
 	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
 	require.NoError(t, err)
 
-	service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil, instanceStore,
+	service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil,
 		nil, nil, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()), nil)
 	hub, events := newActivityHub(t)
 	service.SetActivityPublisher(hub)
@@ -437,8 +389,17 @@ func TestNormalizeScanRoot_StaysInsideTheDirectory(t *testing.T) {
 	volume := filepath.Join(disc, "movie.rar")
 	require.NoError(t, os.WriteFile(volume, []byte("volume"), 0o600))
 
-	require.Equal(t, root, normalizeScanRoot(volume, root))
-	require.Equal(t, disc, normalizeScanRoot(volume, disc))
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook-boundary")
+	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
+	require.NoError(t, err)
+	localAccess := true
+	instance, err := instanceStore.Create(t.Context(), "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	require.NoError(t, err)
+	service := dirscan.NewService(dirscan.DefaultConfig(), models.NewDirScanStore(db), nil, nil, nil, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()), nil)
+	dir := &models.DirScanDirectory{Path: root, TargetInstanceID: instance.ID}
+	require.Equal(t, root, service.WebhookScanRoot(t.Context(), dir, volume))
+	dir.Path = disc
+	require.Equal(t, disc, service.WebhookScanRoot(t.Context(), dir, volume))
 }
 
 func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
@@ -456,7 +417,6 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,
@@ -518,7 +478,6 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,
@@ -579,7 +538,6 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,
@@ -646,7 +604,6 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		instanceStore,
 		nil,
 		nil,
 		nil,

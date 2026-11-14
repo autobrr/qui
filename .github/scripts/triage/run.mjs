@@ -71,6 +71,7 @@ const profiles = {
       "Bash(gh discussion list:*)",
       "Bash(gh discussion view:*)",
       "Bash(./.github/scripts/discussion-write.sh:*)",
+      "Bash(./.github/scripts/qbit-source.sh:*)",
     ],
   },
   // The ratchet edits one file, its test and the allowlist. It has no GitHub

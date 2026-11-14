@@ -12,6 +12,8 @@
     "externalPrograms": "Programmes Externes",
     "notifications": "Notifications",
     "dateTime": "Heure et Langue",
+    "statistics": "Statistiques",
+    "trackers": "Personnalisation des trackers",
     "premiumThemes": "Thèmes",
     "security": "Sécurité",
     "logs": "Logs"
@@ -129,16 +131,71 @@
     "apiDocs": "Docs API",
     "description": "Les clés API permettent aux applications externes d'accéder à vos instances qBittorrent.",
     "createButton": "Créer une clé API",
+    "editButton": "Modifier {{name}}",
+    "deleteButton": "Supprimer {{name}}",
     "loading": "Chargement des clés API...",
     "empty": "Aucune clé API créée pour le moment",
     "createDialog": {
       "title": "Créer une clé API",
-      "description": "Donnez à votre clé API un nom descriptif pour mémoriser son utilité.",
+      "description": "Donnez un nom à la clé et choisissez uniquement l'accès dont elle a besoin.",
       "nameLabel": "Nom",
       "namePlaceholder": "ex: Script d'automatisation",
       "nameRequired": "Le nom est requis",
       "submit": "Créer une clé API",
       "creating": "Création..."
+    },
+    "editDialog": {
+      "title": "Modifier la clé API",
+      "description": "Les modifications s'appliquent à la prochaine requête de cette clé. qui n'affiche plus jamais la clé elle-même.",
+      "submit": "Enregistrer les modifications",
+      "saving": "Enregistrement..."
+    },
+    "permissions": {
+      "title": "Permissions",
+      "help": "L'écriture inclut la lecture et l'exécution. L'exécution n'inclut pas la lecture, car les paramètres contiennent des identifiants.",
+      "required": "Choisissez au moins une permission.",
+      "access": "Accès",
+      "allAreas": "Tous les domaines",
+      "allAreasExcept": "Tous les domaines sauf {{areas}}",
+      "refusedByLimit": "Cross-Seed et l'analyse de répertoires refusent une clé avec une limite d'instances : qui n'enregistre donc pas ces permissions.",
+      "entry": "{{area}} : {{level}}",
+      "showByArea": "Afficher l'accès par domaine pour {{name}}",
+      "partialArea": "{{area}} ({{levels}} uniquement)",
+      "legend": {
+        "title": "Un bloc par domaine de permissions :",
+        "none": "aucun accès"
+      },
+      "levels": {
+        "read": "lecture",
+        "run": "exécution",
+        "write": "écriture"
+      },
+      "areas": {
+        "instances": "Instances",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Analyse de répertoires",
+        "automations": "Automatisations",
+        "rss": "RSS",
+        "backups": "Sauvegardes",
+        "orphanScan": "Analyse d'orphelins",
+        "externalPrograms": "Programmes externes",
+        "indexers": "Indexeurs",
+        "arr": "Arr",
+        "notifications": "Notifications",
+        "settings": "Paramètres",
+        "logs": "Logs",
+        "system": "Système"
+      }
+    },
+    "instanceLimit": {
+      "title": "Limite d'instances",
+      "help": "Choisissez les instances que cette clé peut atteindre. Sans choix, la clé atteint toutes les instances, y compris celles ajoutées plus tard.",
+      "reaches": "Portée",
+      "all": "Toutes les instances",
+      "only": "Uniquement {{instances}}",
+      "none": "Aucune instance. La limite ne contient que des instances supprimées.",
+      "deleted": "Instance supprimée {{id}}"
     },
     "newKey": {
       "label": "Votre nouvelle clé API",
@@ -156,7 +213,9 @@
       "created": "Clé API créée avec succès",
       "createFailed": "Échec de la création de la clé API",
       "deleted": "Clé API supprimée avec succès",
-      "deleteFailed": "Échec de la suppression de la clé API"
+      "deleteFailed": "Échec de la suppression de la clé API",
+      "updated": "Clé API mise à jour avec succès",
+      "updateFailed": "Échec de la mise à jour de la clé API"
     }
   },
   "externalPrograms": {
@@ -240,7 +299,7 @@
     "loading": "Chargement des cibles de notification...",
     "loadFailed": "Échec du chargement des cibles de notification",
     "empty": "Aucune cible de notification configurée. Ajoutez-en une pour recevoir des alertes.",
-    "allEvents": "Tous les événements",
+    "allEvents": "Tous les événements sauf l'avis système",
     "showList": "Afficher la liste",
     "hideList": "Masquer la liste",
     "badges": {
@@ -337,6 +396,56 @@
     "toasts": {
       "success": "Préférences de date et heure sauvegardées",
       "error": "Échec de la sauvegarde des préférences"
+    }
+  },
+  "statistics": {
+    "cardTitle": "Statistiques",
+    "cardDescription": "qui enregistre l'envoi et la réception de chaque torrent dans sa base de données. Ces paramètres s'appliquent à toutes les instances.",
+    "recording": {
+      "label": "Enregistrer l'historique des transferts",
+      "description": "Tant que cette option est désactivée, qui n'enregistre rien et conserve l'historique stocké. Cette période devient une interruption d'enregistrement."
+    },
+    "retention": {
+      "label": "Conserver le détail quotidien pendant",
+      "description": "Après cette durée, qui regroupe les totaux horaires par jour, et les octets quotidiens de chaque torrent en une ligne par année. Les totaux restent les mêmes. Si vous choisissez une durée plus courte, qui regroupe le détail plus ancien à la lecture suivante, et vous ne pouvez pas le récupérer.",
+      "days90": "90 jours",
+      "days400": "400 jours",
+      "forever": "Toujours"
+    },
+    "size": {
+      "label": "Taille de l'historique"
+    },
+    "deleteHistory": {
+      "label": "Supprimer l'historique",
+      "description": "Supprime l'historique de transfert d'une instance ou de toutes les instances. Vous ne pourrez pas le récupérer.",
+      "instance": "Instance",
+      "allInstances": "Toutes les instances",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Tout",
+      "before": "Tout avant une date",
+      "date": "Date",
+      "button": "Supprimer l'historique",
+      "confirmTitle": "Supprimer l'historique ?",
+      "confirmEverything": "qui supprime tout l'historique de {{name}}. L'enregistrement reprend avec une nouvelle base de référence. Cette action est irréversible.",
+      "confirmBefore": "qui supprime l'historique de {{name}} avant le {{date}}. Si l'enregistrement a commencé avant cette date, les octets d'avant le premier enregistrement sont aussi supprimés, et « Enregistrement depuis » passe à cette date. Cette action est irréversible.",
+      "sqliteSpace": "Le fichier de base de données garde sa taille. SQLite réutilise l'espace libre pour le nouvel historique.",
+      "postgresSpace": "Une suppression de tout pour toutes les instances rend l'espace au disque immédiatement. Après une autre suppression, Postgres réutilise l'espace libre pour le nouvel historique.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer",
+      "deleted": "Historique supprimé",
+      "failed": "Échec de la suppression de l'historique",
+      "shrink": {
+        "label": "Réduire aussi le fichier de base de données",
+        "restart": "qui redémarre et réduit le fichier, pour vous rendre l’espace disque. qui est indisponible pendant un court moment.",
+        "nextStart": "qui ne peut pas redémarrer seul sur cette installation. La réduction aura lieu au prochain démarrage de qui.",
+        "tooLittleSpace": "Le disque a {{free}} libres, et une réduction demande jusqu’à {{need}}. Vous pouvez laisser cette option désactivée sans risque : SQLite réutilise l’espace libre pour le nouvel historique.",
+        "manualDocs": "Réduire le fichier à la main"
+      }
+    },
+    "loadFailed": "Impossible de charger les paramètres des statistiques",
+    "toasts": {
+      "saved": "Paramètres des statistiques enregistrés",
+      "saveFailed": "Impossible d'enregistrer les paramètres des statistiques"
     }
   },
   "security": {
@@ -1102,6 +1211,74 @@
       "bind": "Adresse de liaison",
       "configDir": "Répertoire de configuration",
       "dataDir": "Répertoire de données"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Personnalisation des trackers",
+    "cardDescription": "Renommez les trackers et fusionnez les domaines d'un même tracker en une seule entrée. qui affiche le nom d'affichage partout où il affiche le tracker.",
+    "loading": "Chargement des trackers…",
+    "empty": "Aucun tracker pour l'instant. Les trackers apparaissent ici lorsqu'une instance a des torrents.",
+    "importTooltip": "Importer les personnalisations",
+    "exportTooltip": "Exporter les personnalisations",
+    "mergedFrom": "Fusionné de : {{domains}}",
+    "original": "Original : {{domain}}",
+    "mergeTooltip": "Fusionner les trackers sélectionnés dans ce groupe",
+    "mergeIntoGroup": "Fusionner dans le groupe",
+    "addToMerge": "Ajouter à la fusion",
+    "rename": "Renommer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "customizeDialog": {
+      "editTitle": "Modifier le nom du Tracker",
+      "renameTitle": "Renommer le Tracker",
+      "mergeTitle": "Fusionner les Trackers",
+      "editDescription": "Mettre à jour le nom d'affichage pour ce tracker.",
+      "renameDescription": "Donner à ce tracker un nom d'affichage personnalisé.",
+      "mergeDescription": "Combiner ces trackers en une seule entrée avec un nom personnalisé.",
+      "displayName": "Nom d'affichage",
+      "displayNamePlaceholder": "ex: TorrentLeech",
+      "domains": "Domaine(s)",
+      "selectedTrackers": "Tracker(s) Sélectionné(s)",
+      "primary": "Principal",
+      "removeDomain": "Retirer {{domain}}",
+      "cancel": "Annuler",
+      "saving": "Sauvegarde...",
+      "save": "Sauvegarder",
+      "renameAction": "Renommer",
+      "mergeAction": "Fusionner"
+    },
+    "importDialog": {
+      "title": "Importer des personnalisations de trackers",
+      "description": "Collez du JSON pour importer des personnalisations de trackers (renommages et fusions).",
+      "jsonData": "Données JSON",
+      "invalidFormat": "Format invalide : expected trackerCustomizations array",
+      "missingDisplayName": "Entrée invalide : displayName manquant",
+      "invalidDomains": "Entrée invalide : domains doit être un tableau non vide",
+      "invalidJson": "JSON Invalide",
+      "newCount": "{{count}} nouveau(x)",
+      "conflictCount_one": "{{count}} conflit",
+      "conflictCount_other": "{{count}} conflits",
+      "unchangedCount": "{{count}} inchangé(s)",
+      "resolveConflicts": "Résoudre les conflits",
+      "conflictsWith": "En conflit avec : {{name}}",
+      "skip": "Ignorer",
+      "overwrite": "Écraser",
+      "cancel": "Annuler",
+      "importing": "Importation...",
+      "import": "Importer"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Aucune personnalisation à exporter",
+      "copiedToClipboard": "Copié dans le presse-papiers",
+      "failedToCopy": "Échec de la copie dans le presse-papiers",
+      "createFailed": "Échec de la création de la personnalisation du tracker",
+      "updateFailed": "Échec de la mise à jour de la personnalisation du tracker",
+      "deleteFailed": "Échec de la suppression de la personnalisation du tracker",
+      "failedToImport": "Échec de l'importation : {{names}}",
+      "importedAndSkipped": "Importés {{imported}}, ignorés {{skipped}}",
+      "importedCount_one": "{{count}} personnalisation importée",
+      "importedCount_other": "{{count}} personnalisations importées",
+      "noCustomizationsImported": "Aucune personnalisation importée"
     }
   }
 }

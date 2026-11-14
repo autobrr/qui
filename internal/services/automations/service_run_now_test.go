@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -113,4 +114,33 @@ func TestRunLock_RejectsOverlappingRuns(t *testing.T) {
 	activities, err = svc.ApplyRuleNow(t.Context(), instanceID, runNowPauseRule())
 	require.NoError(t, err)
 	require.Len(t, activities, 1)
+}
+
+func TestManualRun_FinishesAfterTheCallerGoesAway(t *testing.T) {
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	t.Run("rule", func(t *testing.T) {
+		svc, instanceID := newRunNowService(t)
+		activities, err := svc.ApplyRuleNow(gone, instanceID, runNowPauseRule())
+		require.NoError(t, err)
+		require.Len(t, activities, 1)
+		require.Equal(t, models.ActivityOutcomeSuccess, activities[0].Outcome)
+	})
+
+	t.Run("instance", func(t *testing.T) {
+		svc, instanceID := newRunNowService(t)
+		rule := runNowPauseRule()
+		rule.InstanceID = instanceID
+		rule.Enabled = true
+		_, err := svc.ruleStore.Create(t.Context(), rule)
+		require.NoError(t, err)
+
+		require.NoError(t, svc.ApplyOnceForInstance(gone, instanceID))
+		stored, err := svc.activityStore.ListByInstance(t.Context(), instanceID, 10)
+		require.NoError(t, err)
+		require.Len(t, stored, 1)
+		require.Equal(t, models.ActivityActionPaused, stored[0].Action)
+		require.Equal(t, models.ActivityOutcomeSuccess, stored[0].Outcome)
+	})
 }

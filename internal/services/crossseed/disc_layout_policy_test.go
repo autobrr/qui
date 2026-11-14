@@ -22,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -36,7 +37,7 @@ type discPolicySyncManager struct {
 	renameFolderErr error
 }
 
-func (m *discPolicySyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *discPolicySyncManager) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) > 0 {
 		torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 		for _, hash := range filter.Hashes {
@@ -46,12 +47,12 @@ func (m *discPolicySyncManager) GetTorrents(_ context.Context, _ int, filter qbt
 				torrents = append(torrents, qbt.Torrent{Hash: hash})
 			}
 		}
-		return torrents, nil
+		return testTorrentRefs(torrents), nil
 	}
 	if m.matchedTorrent != nil {
-		return []qbt.Torrent{*m.matchedTorrent}, nil
+		return testTorrentRefs([]qbt.Torrent{*m.matchedTorrent}), nil
 	}
-	return []qbt.Torrent{{Hash: "dummy"}}, nil
+	return testTorrentRefs([]qbt.Torrent{{Hash: "dummy"}}), nil
 }
 
 func (m *discPolicySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -111,7 +112,7 @@ func (*discPolicySyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (*discPolicySyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*discPolicySyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -194,7 +195,7 @@ func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
 		result := service.processCrossSeedCandidate(
 			context.Background(),
 			CrossSeedCandidate{
-				InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matchedTorrent}, titleRescue: true,
+				InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matchedTorrent}, titleRescue: true,
 			},
 			[]byte("torrent"),
 			newHash,
@@ -296,7 +297,7 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	// Request with StartPaused = false - normally would auto-resume
@@ -387,7 +388,7 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	// Request with StartPaused = true and no SkipAutoResume - normally would auto-resume
@@ -480,7 +481,7 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	// Request with StartPaused = true and no SkipAutoResume - should auto-resume
@@ -581,7 +582,7 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	startPausedFalse := false
@@ -680,7 +681,7 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	startPausedFalse := false

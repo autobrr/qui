@@ -114,7 +114,7 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "Test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
 	withAdder(service)

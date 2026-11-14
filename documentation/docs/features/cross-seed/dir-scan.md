@@ -2,19 +2,19 @@
 sidebar_position: 4
 title: Cross-seed from a directory scan
 sidebar_label: Directory Scanner
-description: Scan local folders for content already on disk and cross-seed it to your trackers, without a torrent in qBittorrent.
+description: Scan folders for content already on disk and cross-seed it to your trackers, without a torrent in qBittorrent.
 ---
 
 # Directory Scanner
 
-Directory Scanner (Dir Scan) scans local folders to find cross-seed opportunities for content already on disk. Library Scan queries the qBittorrent torrent list. Dir Scan works directly with files on the filesystem.
+Directory Scanner (Dir Scan) scans folders to find cross-seed opportunities for content already on disk. The folders are on the machine that holds the files of the target instance. Library Scan queries the qBittorrent torrent list. Dir Scan works directly with files on the filesystem.
 
 Configure it in **Cross-Seed > Directories**.
 
 ## Requirements
 
-- Enable **Local filesystem access** in Instance Settings on at least one qBittorrent instance.
-- qui must have direct read access to files on the same host or through shared mounts with the target qBittorrent instance.
+- At least one qBittorrent instance with filesystem access. Enable **Local filesystem access** in Instance Settings, or set up SSH access for a [remote instance](../ssh-access.md).
+- With local filesystem access, qui must have direct read access to files on the same host or through shared mounts with the target qBittorrent instance. For a remote instance, see [Remote instances](#remote-instances).
 - Configure at least one enabled Torznab indexer in **Settings > Indexers** (from Prowlarr, Jackett, or a native tracker endpoint).
 - Optional: Configure Sonarr/Radarr in **Settings > Integrations** for external ID lookups (IMDb, TMDb, TVDb, TVMaze).
 
@@ -69,6 +69,24 @@ When you enable **Local filesystem access** on a qBittorrent instance, it instru
 2. qui must use file-based matching (inode checks, size checks) instead of the qBittorrent API alone.
 
 qui requires direct read access to the files, either on the same host or through shared network or volume mounts.
+
+### Remote instances
+
+Dir Scan also works when the target is a remote instance. qui then reads the directory over SSH.
+
+- The **Directory Path** is a path on the remote machine, and it must be absolute.
+- You cannot add the same directory path two times, also for two different instances.
+- Hardlink mode and regular adds work. Reflink mode needs local filesystem access.
+- On a remote instance where qui only has SFTP, Dir Scan cannot detect files that already seed. Dir Scan searches each such file one time. Files that an earlier scan marked as already seeding keep that status until you click **Reset Scan Progress**.
+- qBittorrent can run in a container where a save path differs from the path that the SSH user sees. Dir Scan then cannot detect the already-seeding files of the torrents in that save path.
+- If qui cannot read a folder with commands during a scan, it reads that folder over SFTP, and gets no file identity for the files in it. The log gives the number of files.
+
+A lost connection has these results:
+
+- If the connection drops while qui reads the directory or the torrents of the instance, the run fails before qui searches or removes anything.
+- If the connection drops during an add in hardlink mode, qui refuses that add, also with **Fallback to regular mode** on. The next run tries the item again.
+
+Do not change the SSH settings of the instance during a run. A change of the host, port, username, key, or host key fails the scan or refuses each later add. Run the scan again. If you rename a file after such a change and before the next scan, Dir Scan searches that file one more time.
 
 ### Recommended: Use the same volume paths
 
@@ -131,7 +149,9 @@ A full scan is a manual or scheduled scan of the whole directory. Full scans run
 
 Dir Scan waits between searches. See [Search pacing](#search-pacing).
 
-Dir Scan also pauses between torrent-file downloads from a native indexer. A native indexer is an indexer that qui reaches at the tracker's own Torznab endpoint. Dir Scan does not pause between downloads from an indexer behind Prowlarr or Jackett. Library Scan uses the same rule for downloads.
+Dir Scan also pauses between torrent-file downloads from a native indexer. A native indexer is an indexer that qui reaches at the tracker's own Torznab endpoint. Dir Scan does not pause between downloads from an indexer behind Prowlarr or Jackett. Only Dir Scan pauses between torrent-file downloads. Library Scan does not pause between them.
+
+A Dir Scan download from a native indexer waits while a search to that indexer is open. It goes 60 seconds after the indexer answers that search. If a download fails, each retry also waits 60 seconds, so a download that fails can take about 3 minutes before Dir Scan goes to the next item.
 :::
 
 ### Search pacing
@@ -167,6 +187,8 @@ Dir Scan maintains a FileID index (inode + device on Unix) to track files presen
 - Torrents whose infohash is on the target instance's [cross-seed blocklist](./overview.md#blocklist)
 
 This prevents redundant searches and duplicate additions.
+
+On a remote instance where qui only has SFTP, Dir Scan has no FileID index. See [Remote instances](#remote-instances).
 
 If you remove a torrent from qBittorrent, its files leave the index. For example, an automation rule can remove torrents with missing files. The next scan of the directory treats those files as new searchees and searches indexers for them again. Sometimes qui cannot read the torrents of the instance, the file list of a torrent, or a file of a torrent during a scan. Then the files that an earlier scan marked as already seeding keep that status. This happens when qBittorrent does not answer, when qui has not synced with the instance since it started, or when qui has no permission on a save path. It also happens when a file of a completed torrent is missing, for example because a save path is not mapped into qui's container. A missing file that qBittorrent skips does not count, because qBittorrent may not have written it. When a file of a torrent or the file list of a torrent is the reason, qui logs one of them at the Info level for each scan.
 
@@ -277,7 +299,7 @@ Each scan directory has its own configuration:
 |---------|-------------|
 | Directory Path | The path qui scans (immediate children become searchees). |
 | qBittorrent Path Prefix | Path mapping for container configurations. See [Docker and Path Mapping](#docker-and-path-mapping). |
-| Target qBittorrent Instance | Where qui adds matched torrents. Must have Local filesystem access enabled. |
+| Target qBittorrent Instance | Where qui adds matched torrents. Must have Local filesystem access enabled, or be a [remote instance](../ssh-access.md). |
 | Category override | Overrides the global Default Category for this directory. |
 | Additional tags | Added on top of the global Dir Scan tags. |
 | Scan Interval (minutes) | How often qui rescans (minimum 60 minutes, default 1440 = 24 hours). |
@@ -379,6 +401,8 @@ The same steps apply to Lidarr and Readarr.
 
 :::tip
 The webhook uses query-param API key authentication (`?apikey=...`), matching the cross-seed webhook format. You can also use the `X-API-Key` header instead.
+
+The key needs **Dir Scan: run** and no Instance limit. See [API key permissions](../../api/permissions.md).
 :::
 
 #### How path matching works
@@ -447,7 +471,7 @@ The UI shows the current phase and progress during active scans.
 
 You configure each instance under **Cross-Seed > After injection > [Hardlink / Reflink Mode](./hardlink-mode.md#how-to-enable)**.
 
-If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan uses the same behavior as other cross-seed methods:
+If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan uses the same behavior as other cross-seed methods. A remote instance supports hardlink mode only.
 
 - Builds a link tree that matches the incoming torrent's layout.
 - Adds the torrent pointing at that tree (`contentLayout=Original`). Full matches use `skip_checking=true`. For partial matches, qBittorrent verifies existing data and downloads missing files into the link tree.
@@ -504,7 +528,7 @@ Expand a run to see each added or failed torrent and its failure reason.
 
 - Make sure that at least one indexer is enabled and not rate-limited.
 - Make sure that the scan path contains valid media files.
-- Make sure that the target instance has **Local filesystem access** enabled.
+- Make sure that the target instance has **Local filesystem access** enabled, or that its [SSH access](../ssh-access.md) is set up and the connection test passes.
 
 **Permissions errors:**
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -30,6 +31,7 @@ type scanWorkSelection struct {
 }
 
 func selectEligibleRootWork(
+	d fsops.PathDialect,
 	scanResult *ScanResult,
 	trackedFiles *trackedFilesIndex,
 	parser *Parser,
@@ -63,7 +65,7 @@ func selectEligibleRootWork(
 			discoveredPaths[f.Path] = struct{}{}
 		}
 
-		items := buildSearcheeWorkItems(root, parser)
+		items := buildSearcheeWorkItems(d, root, parser)
 		pendingItems := make([]searcheeWorkItem, 0, len(items))
 		droppedItems := make([]workItemDropDecision, 0, len(items))
 		for _, item := range items {

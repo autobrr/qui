@@ -37,6 +37,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -90,7 +91,7 @@ type seasonPackRunCreator interface {
 
 // qbittorrentSync exposes the sync manager functionality needed by the service.
 type qbittorrentSync interface {
-	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	// GetTorrentFilesBatch returns files keyed by the provided hashes (canonicalized by the sync manager).
 	// The returned map uses normalized hashes; missing entries indicate per-hash fetch failures or absent torrents.
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
@@ -102,7 +103,7 @@ type qbittorrentSync interface {
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	ExtractDomainFromURL(urlStr string) string
-	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error)
 	RenameTorrent(ctx context.Context, instanceID int, hash, name string) error
 	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
@@ -206,6 +207,8 @@ type Service struct {
 	// excluded from matching. Set at startup via config.
 	recoverErroredTorrentsEnabled bool
 
+	// settingsMu makes the read, the save, and the forget of a settings save one step.
+	settingsMu       sync.Mutex
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
 	automationWake   chan struct{}
@@ -224,6 +227,8 @@ type Service struct {
 	torrentFilesCache *ttlcache.Cache[string, qbt.TorrentFiles]
 	// localReadMemo remembers the file-based reads of local torrents.
 	localReadMemo localReadMemo
+	// copyGroups is nil without a sync manager.
+	copyGroups *copyGroupsJob
 
 	// Cached deduplication results to avoid recomputing on every search run.
 	// Key: "dedup:{instanceID}:{torrentCount}:{hashSignature}" where hashSignature
@@ -371,6 +376,7 @@ func NewService(
 	svc.aligner = NewAligner(syncManager)
 	if syncManager != nil {
 		syncManager.SetFilesChangedHandler(svc.forgetLocalRead)
+		svc.copyGroups = newCopyGroupsJob(svc, syncManager)
 	}
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,
@@ -654,15 +660,6 @@ func (s *Service) ReconcileInterruptedRuns(ctx context.Context) {
 		log.Error().Err(err).Msg("failed to reconcile interrupted automation runs")
 	} else if automationCount > 0 {
 		log.Info().Int64("count", automationCount).Msg("reconciled interrupted automation runs")
-	}
-}
-
-func isSkippedCrossSeedResultStatus(status string) bool {
-	switch status {
-	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold", "skipped_recheck", "skipped_unsafe_pieces", contentPrefilterRejectedContentStatus:
-		return true
-	default:
-		return false
 	}
 }
 

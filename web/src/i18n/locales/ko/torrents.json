@@ -173,14 +173,6 @@
     "renameTorrentSuccess": "토렌트 이름을 \"{{name}}\"(으)로 변경했습니다",
     "renameTorrentFailed": "토렌트 이름을 변경하지 못했습니다: {{error}}",
     "renameTorrentEmpty": "토렌트 이름은 비워 둘 수 없습니다",
-    "renameFileSuccess": "파일 이름을 \"{{name}}\"(으)로 변경했습니다",
-    "renameFileFailed": "파일 이름을 변경하지 못했습니다: {{error}}",
-    "renameFilePathsRequired": "원본 및 새 파일 경로가 모두 필요합니다",
-    "renameFileUnchanged": "파일 이름이 변경되지 않았습니다",
-    "renameFolderSuccess": "폴더 이름을 \"{{name}}\"(으)로 변경했습니다",
-    "renameFolderFailed": "폴더 이름을 변경하지 못했습니다: {{error}}",
-    "renameFolderPathsRequired": "원본 및 새 폴더 경로가 모두 필요합니다",
-    "renameFolderUnchanged": "폴더 이름이 변경되지 않았습니다",
     "partialTags": {
       "title_other": "토렌트 {{count}}개의 태그를 일부 업데이트했습니다",
       "succeeded": "{{actions}} 성공",
@@ -568,10 +560,7 @@
     "bottomPriorityBatch": "최하위 우선순위 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "이름 바꾸기",
-    "renameTorrent": "토렌트 이름 바꾸기",
-    "renameFile": "파일 이름 바꾸기",
-    "renameFolder": "폴더 이름 바꾸기"
+    "renameTorrent": "토렌트 이름 바꾸기"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1169,6 +1158,7 @@
     "status": "상태",
     "tracker": "트래커",
     "seeds": "시드",
+    "peers": "피어",
     "leeches": "리처",
     "downloaded": "DL",
     "message": "메시지",
@@ -1426,7 +1416,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
     },
-    "ratio": "비율:"
+    "ratio": "비율:",
+    "added": "{{time}} 추가됨"
   },
   "tableView": {
     "ascending": "오름차순",
@@ -1580,7 +1571,7 @@
       "dropped": "팩을 추가했습니다. 제외된 대상: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "팩을 조립하려면 이 인스턴스에 로컬 파일 시스템 접근 권한이 필요합니다.",
+        "no_filesystem_access": "이 인스턴스가 팩을 조립하려면 파일시스템 쓰기 접근이 필요합니다. 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하거나 SSH 접근을 설정하세요.",
         "no_link_mode": "여러 대상을 선택하려면 이 인스턴스에서 하드링크 또는 reflink 모드를 활성화하세요.",
         "no_base_directory": "이 인스턴스의 링크 기본 디렉터리를 설정하세요.",
         "no_episode_files": "이 팩에서 재생 가능한 에피소드 파일을 찾지 못했습니다.",
@@ -1601,6 +1592,31 @@
         "link_failed": "링크를 만들지 못했습니다.",
         "add_failed": "토렌트를 추가하지 못했습니다."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}}의 추가 사본 {{count}}개",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "숨겨진 사본에 누락된 파일이 있습니다",
+      "error": "숨겨진 사본에 오류가 있습니다",
+      "unregistered": "숨겨진 사본이 등록되지 않았습니다",
+      "trackerError": "숨겨진 사본에 트래커 오류가 있습니다",
+      "trackerDown": "숨겨진 사본의 트래커가 다운되었습니다"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · {{count}}개 선택됨",
+    "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "사본 묶기",
+    "ungroupCopies": "사본 묶음 풀기",
+    "grouping": "묶는 중…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Cross-Seed 묶기",
+      "description": "한 토렌트의 사본을 한 행으로 표시합니다.",
+      "action": "사용해 보기"
     }
   }
 }

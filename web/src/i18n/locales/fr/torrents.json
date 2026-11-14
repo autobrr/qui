@@ -179,14 +179,6 @@
     "renameTorrentSuccess": "Torrent renommé en \"{{name}}\"",
     "renameTorrentFailed": "Échec du renommage du torrent : {{error}}",
     "renameTorrentEmpty": "Le nom du torrent ne peut pas être vide",
-    "renameFileSuccess": "Fichier renommé en \"{{name}}\"",
-    "renameFileFailed": "Échec du renommage du fichier : {{error}}",
-    "renameFilePathsRequired": "L'ancien et le nouveau nom de fichier sont requis",
-    "renameFileUnchanged": "Nom du fichier inchangé",
-    "renameFolderSuccess": "Dossier renommé en \"{{name}}\"",
-    "renameFolderFailed": "Échec du renommage du dossier : {{error}}",
-    "renameFolderPathsRequired": "L'ancien et le nouveau nom de dossier sont requis",
-    "renameFolderUnchanged": "Nom du dossier inchangé",
     "partialTags": {
       "title_one": "Mise à jour partielle des tags pour {{count}} torrent",
       "title_other": "Mise à jour partielle des tags pour {{count}} torrents",
@@ -620,10 +612,7 @@
     "bottomPriorityBatch": "Priorité minimale ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Renommer",
-    "renameTorrent": "Renommer le torrent",
-    "renameFile": "Renommer le fichier",
-    "renameFolder": "Renommer le dossier"
+    "renameTorrent": "Renommer le torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1239,6 +1228,7 @@
     "status": "Statut",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Pairs",
     "leeches": "Leeches",
     "downloaded": "Téléchargés",
     "message": "Message",
@@ -1502,7 +1492,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Recherche automatique pendant la frappe"
     },
-    "ratio": "Ratio :"
+    "ratio": "Ratio :",
+    "added": "Ajouté {{time}}"
   },
   "tableView": {
     "ascending": "croissant",
@@ -1657,7 +1648,7 @@
       "dropped": "Pack ajouté. Cibles écartées : {{names}}",
       "rejected": "{{name}} : {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Cette instance nécessite un accès au système de fichiers local pour assembler un pack.",
+        "no_filesystem_access": "Cette instance nécessite un accès en écriture au système de fichiers pour assembler un pack. Activez « Accès au système de fichiers local » ou configurez l'accès SSH dans les paramètres de l'instance.",
         "no_link_mode": "Activez les liens physiques ou les reflinks sur cette instance pour sélectionner plusieurs cibles.",
         "no_base_directory": "Configurez un répertoire de base pour les liens sur cette instance.",
         "no_episode_files": "Aucun fichier vidéo d’épisode trouvé dans ce pack.",
@@ -1678,6 +1669,34 @@
         "link_failed": "Impossible de créer les liens.",
         "add_failed": "Impossible d’ajouter le torrent."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} autre copie de {{name}}",
+    "copies_other": "{{count}} autres copies de {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Il manque des fichiers à une copie masquée",
+      "error": "Une copie masquée a une erreur",
+      "unregistered": "Une copie masquée n'est pas enregistrée",
+      "trackerError": "Une copie masquée a une erreur de tracker",
+      "trackerDown": "Le tracker d'une copie masquée est injoignable"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} sélectionnée",
+    "badgeTicked_other": "+{{hidden}} · {{count}} sélectionnées",
+    "hiddenTicked_one": "{{count}} copie masquée est sélectionnée",
+    "hiddenTicked_other": "{{count}} copies masquées sont sélectionnées",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Grouper les copies",
+    "ungroupCopies": "Dégrouper les copies",
+    "grouping": "Regroupement…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Groupez vos Cross-Seeds",
+      "description": "Affiche les copies d'un torrent sur une seule ligne.",
+      "action": "Essayer"
     }
   }
 }

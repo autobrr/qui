@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -84,7 +85,7 @@ func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completio
 	}
 }
 
-func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *completionPollingSyncMock) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 {
 		return nil, nil
 	}
@@ -109,7 +110,7 @@ func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter
 	m.hits[hash]++
 
 	torrent := sequence[index]
-	return []qbt.Torrent{torrent}, nil
+	return testTorrentRefs([]qbt.Torrent{torrent}), nil
 }
 
 func (m *completionPollingSyncMock) hitCount(hash string) int {
@@ -155,7 +156,7 @@ func (*completionPollingSyncMock) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (*completionPollingSyncMock) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*completionPollingSyncMock) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 

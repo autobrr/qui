@@ -124,7 +124,7 @@ To restart the service, click **End** and then **Run** in the right sidebar of T
 
 ## Restart from qui
 
-qui can restart itself through the API (`POST /api/system/restart`). On Windows, `qui serve` starts two `qui.exe` processes. The first process only supervises. The second process serves qui. When qui restarts, only the second process stops and starts again.
+qui can restart itself through the API (`POST /api/system/restart`). This route needs a signed-in browser, or authentication turned off, and returns `403` to an API key. On Windows, `qui serve` starts two `qui.exe` processes. The first process only supervises. The second process serves qui. When qui restarts, only the second process stops and starts again.
 
 - The task shows **Running** during and after the restart.
 - **End** stops both processes.

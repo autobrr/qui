@@ -23,7 +23,7 @@ describe("getCapabilityReason", () => {
     expect(getCapabilityReason("supportsTrackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
     expect(getCapabilityReason("supportsListCreatedBy", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.qbittorrent52)
     // An instance without Read has no filesystem access, local or remote.
-    expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.filesystemAccess)
     // Trusted identity needs local access, so a remote instance can never get it.
     expect(getCapabilityReason("trustedIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
     expect(getCapabilityReason("trustedIdentity", i18n.t, true)).toBe(deAutomations.queryBuilder.capabilityReasons.remoteInstance)

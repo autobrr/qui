@@ -59,7 +59,7 @@ type releaseFilterDebugInfo struct {
 	Type       string   `json:"type,omitempty"`
 	Title      string   `json:"title,omitempty"`
 	Subtitle   string   `json:"subtitle,omitempty"`
-	Alt        string   `json:"alt,omitempty"`
+	Alt        []string `json:"alt,omitempty"`
 	Collection string   `json:"collection,omitempty"`
 	Year       int      `json:"year,omitempty"`
 	Month      int      `json:"month,omitempty"`

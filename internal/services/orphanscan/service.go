@@ -7,13 +7,10 @@ package orphanscan
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"math/rand"
-	"net"
 	"os"
 	"path"
 	"slices"
@@ -42,7 +39,9 @@ type healthChecker interface {
 
 // syncReader is the slice of the sync manager an orphan scan reads. ADR 0005.
 type syncReader interface {
-	GetTorrentsFresh(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	// GetTorrentRefsFresh returns the torrents of the Sync snapshot: never
+	// change one.
+	GetTorrentRefsFresh(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (qbittorrent.InstanceFolders, error)
 }
@@ -289,15 +288,15 @@ func walkReaches(ctx context.Context, backend fsops.Backend, cover, below string
 	}
 }
 
-func scanRootsFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent) []string {
+func scanRootsFromTorrents(d fsops.PathDialect, torrents []*qbt.Torrent) []string {
 	scanRoots := make(map[string]struct{})
-	for i := range torrents {
-		addAbsoluteScanRoot(d, scanRoots, torrents[i].SavePath)
+	for _, torrent := range torrents {
+		addAbsoluteScanRoot(d, scanRoots, torrent.SavePath)
 
 		// Auto TMM can rewrite save_path to a category root without moving the
 		// payload. content_path still points at the real file/folder on disk, and
 		// using it directly is enough for conservative overlap detection.
-		addAbsoluteScanRoot(d, scanRoots, torrents[i].ContentPath)
+		addAbsoluteScanRoot(d, scanRoots, torrent.ContentPath)
 	}
 
 	roots := make([]string, 0, len(scanRoots))
@@ -312,16 +311,11 @@ func scanRootsOverlap(d fsops.PathDialect, a, b []string) bool {
 		return false
 	}
 
-	for _, ra := range a {
-		na := fsops.NormalizePath(d, ra)
-		if na == "" {
-			continue
-		}
-		for _, rb := range b {
-			nb := fsops.NormalizePath(d, rb)
-			if nb == "" {
-				continue
-			}
+	isEmpty := func(p string) bool { return p == "" }
+	normA := slices.DeleteFunc(normalizePaths(d, a), isEmpty)
+	normB := slices.DeleteFunc(normalizePaths(d, b), isEmpty)
+	for _, na := range normA {
+		for _, nb := range normB {
 			if na == nb || isPathUnderNormalized(d, na, nb) || isPathUnderNormalized(d, nb, na) {
 				return true
 			}
@@ -600,7 +594,7 @@ func (s *Service) ConfirmDeletion(ctx context.Context, instanceID int, runID int
 	}
 	// Before the capability check, since saving SSH credentials also resets the
 	// tier. A run from before the endpoint was recorded has none and keeps its preview.
-	if run.FilesystemEndpoint != "" && walkedEndpoint(instance) != run.FilesystemEndpoint {
+	if run.FilesystemEndpoint != "" && fsops.WalkedEndpoint(instance) != run.FilesystemEndpoint {
 		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed since the scan")
 		return s.failChangedPreview(ctx, instanceID, runID)
 	}
@@ -726,23 +720,6 @@ func (s *Service) PathDialect(ctx context.Context, instanceID int) (fsops.PathDi
 	return backend.Paths(), nil
 }
 
-// walkedEndpoint names the SSH server and credentials a remote walk reads
-// through instance, and is empty for any other mode. The account is part of it
-// because a username change keeps the pin and can see other files. A digest of
-// the stored pin is part of it because a host key replaced at the same address
-// is another server, and a digest of the stored private key because another
-// key can log in to another view of the same server. Both are sealed with a
-// random nonce, so any save of either changes the digest, even of the same key.
-func walkedEndpoint(instance *models.Instance) string {
-	if models.FilesystemAccessMode(instance) != models.FilesystemModeRemote {
-		return ""
-	}
-	pin := sha256.Sum256([]byte(instance.SSHHostKeyEncrypted))
-	key := sha256.Sum256([]byte(instance.SSHKeyEncrypted))
-	return instance.SSHUsername + "@" + net.JoinHostPort(instance.SSHHost, strconv.Itoa(instance.SSHPort)) +
-		"#" + hex.EncodeToString(pin[:8]) + "." + hex.EncodeToString(key[:8])
-}
-
 // canDeleteOrphans reports whether caps can delete a preview. It needs Identity
 // as well as Write, because the walker spots a second path to a torrent's file
 // (a bind mount inside the scanned tree) only by its file identity.
@@ -827,7 +804,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// it, so a scan that cannot record it stops here instead of leaving a
 	// preview labeled "none".
 	mode := models.FilesystemAccessMode(instance)
-	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode, walkedEndpoint(instance)); err != nil {
+	if err := s.store.UpdateRunFilesystemMode(ctx, runID, mode, fsops.WalkedEndpoint(instance)); err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled while saving filesystem mode")
 			return
@@ -986,7 +963,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 	}
 
-	allOrphans = dropAliasOrphans(d, dedupeOrphans(d, allOrphans), keys)
+	allOrphans = dropAliasOrphans(ctx, backend, instance, dedupeOrphans(d, allOrphans), keys)
 	// The default is incomplete, which refuses a remote delete, so a failed write only costs the confirm.
 	if err := s.store.UpdateRunIdentityComplete(ctx, runID, !keys.incomplete); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to record file identity")
@@ -1052,7 +1029,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to reload instance after the scan: %v", err))
 		return
 	}
-	if current, endpointChanged := models.FilesystemAccessMode(reloaded), walkedEndpoint(reloaded) != walkedEndpoint(instance); current != mode || endpointChanged {
+	if current, endpointChanged := models.FilesystemAccessMode(reloaded), fsops.WalkedEndpoint(reloaded) != fsops.WalkedEndpoint(instance); current != mode || endpointChanged {
 		log.Info().Int64("run", runID).Str("scannedWith", string(mode)).Str("now", string(current)).Bool("endpointChanged", endpointChanged).
 			Msg("orphanscan: failing scan, filesystem access changed while it ran")
 		s.failRun(ctx, runID, instanceID, ScanModeChangedMessage)
@@ -1411,7 +1388,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 	// The protection map below comes from the current instance either way, so
 	// this keeps the delete on the server whose paths the user reviewed.
-	if walkedEndpoint(instance) != run.FilesystemEndpoint {
+	if fsops.WalkedEndpoint(instance) != run.FilesystemEndpoint {
 		log.Info().Int64("run", runID).Msg("orphanscan: refusing deletion, the SSH endpoint changed after the confirm")
 		s.failRun(ctx, runID, instanceID, FilesystemModeChangedMessage)
 		return
@@ -1496,7 +1473,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		if err != nil {
 			log.Warn().Err(err).Int64("run", runID).Msg("orphanscan: stopping deletion, cannot reload the instance")
 			sshChanged = true
-		} else if walkedEndpoint(current) != run.FilesystemEndpoint {
+		} else if fsops.WalkedEndpoint(current) != run.FilesystemEndpoint {
 			log.Info().Int64("run", runID).Msg("orphanscan: stopping deletion, the SSH settings changed during it")
 			sshChanged = true
 		}
@@ -2218,7 +2195,7 @@ func (r *buildFileMapResult) mergeProtection(d fsops.PathDialect, other *buildFi
 	return added
 }
 
-func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
+func buildFileMapFromTorrents(d fsops.PathDialect, torrents []*qbt.Torrent, filesByHash map[string]qbt.TorrentFiles, wantPaths bool) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap(d)
 	scanRoots := make(map[string]struct{})
 	skippedRoots := make(map[string]struct{})
@@ -2226,8 +2203,7 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []qbt.Torrent, files
 	stableMissingFiles := 0
 	var torrentPaths []string
 
-	for i := range torrents {
-		torrent := torrents[i]
+	for _, torrent := range torrents {
 		savePath := d.Clean(torrent.SavePath)
 		hasAbsSavePath := savePath != "" && d.IsAbs(savePath)
 		files, ok := filesByHash[canonicalizeHash(torrent.Hash)]
@@ -2369,7 +2345,7 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialec
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -2412,7 +2388,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 		return nil, readinessErr
 	}
 
-	torrents, err := s.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -2521,7 +2497,11 @@ func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathD
 	case routed == nil:
 		return nil
 	}
-	other, err := buildFileMapFromTorrents(d, routed.Torrents, routed.Files, wantPaths)
+	routedRefs := make([]*qbt.Torrent, len(routed.Torrents))
+	for i := range routed.Torrents {
+		routedRefs[i] = &routed.Torrents[i]
+	}
+	other, err := buildFileMapFromTorrents(d, routedRefs, routed.Files, wantPaths)
 	if err != nil {
 		return fmt.Errorf("routed torrents of the Cross-seed instance: %w", err)
 	}
@@ -2534,18 +2514,18 @@ func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathD
 // peer: fresh torrents and file lists.
 type freshTorrents struct{ sync syncReader }
 
-func (r freshTorrents) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
-	return r.sync.GetTorrentsFresh(ctx, instanceID, qbt.TorrentFilterOptions{})
+func (r freshTorrents) GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
+	return r.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 }
 
 func (r freshTorrents) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	return r.sync.GetTorrentFilesBatch(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hashes)
 }
 
-func torrentHashes(torrents []qbt.Torrent) []string {
+func torrentHashes(torrents []*qbt.Torrent) []string {
 	hashes := make([]string, 0, len(torrents))
-	for i := range torrents {
-		hashes = append(hashes, torrents[i].Hash)
+	for _, torrent := range torrents {
+		hashes = append(hashes, torrent.Hash)
 	}
 	return hashes
 }

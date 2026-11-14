@@ -24,6 +24,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 func TestDetectContentType(t *testing.T) {
@@ -235,10 +236,8 @@ func TestGetActivityStatusMergesCooldownScopes(t *testing.T) {
 	service := NewService(store)
 	defer service.searchScheduler.Stop()
 
-	queryUntil := time.Now().Add(time.Minute)
-	grabUntil := queryUntil.Add(time.Minute)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, queryUntil)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeGrab, grabUntil)
+	answer429(t, service.slots, store.indexers[0], requestSearch, "60")
+	grabUntil := answer429(t, service.slots, store.indexers[0], requestDownload, "120")
 
 	status, err := service.GetActivityStatus(context.Background())
 	if err != nil {
@@ -1984,8 +1983,8 @@ func TestSearchMultipleIndexersSkipsRateLimitedIndexers(t *testing.T) {
 	}
 
 	service := NewService(store)
-	service.rateLimiter = NewRateLimiter(time.Millisecond)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(time.Minute))
+	defer service.searchScheduler.Stop()
+	answer429(t, service.slots, store.indexers[0], requestSearch, "60")
 
 	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	if err == nil {
@@ -2009,9 +2008,9 @@ func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
 	}
 
 	service := NewService(store)
-	service.rateLimiter = NewRateLimiter(time.Millisecond)
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(time.Minute))
-	service.rateLimiter.SetCooldown(2, rateLimitScopeQuery, time.Now().Add(2*time.Minute))
+	defer service.searchScheduler.Stop()
+	answer429(t, service.slots, store.indexers[0], requestSearch, "60")
+	answer429(t, service.slots, store.indexers[1], requestSearch, "120")
 
 	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	var rateLimitErr *RateLimitError
@@ -2974,9 +2973,9 @@ func TestSearchIndexersWithSchedulerRSSDeduplicatedIndexerStillCompletes(t *test
 		},
 	}
 	service := NewService(store)
-	// Swap in a fast rate limiter so the first job's exec starts promptly.
+	// Swap in a short Request gap so the first job's exec starts promptly.
 	service.searchScheduler.Stop()
-	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 1)
+	service.searchScheduler = newSearchScheduler(newRequestSlots(1*time.Millisecond, nil, nil), 1)
 	defer service.searchScheduler.Stop()
 
 	var startOnce sync.Once
@@ -3052,7 +3051,7 @@ func TestSearchIndexersWithSchedulerMixedFailureAndRateLimitSurfacesRateLimit(t 
 	}
 	service := NewService(store)
 	service.searchScheduler.Stop()
-	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 2)
+	service.searchScheduler = newSearchScheduler(newRequestSlots(1*time.Millisecond, nil, nil), 2)
 	defer service.searchScheduler.Stop()
 
 	failErr := errors.New("indexer two unreachable")
@@ -3206,7 +3205,7 @@ func TestSearchIndexersWithSchedulerDedupExcludedFromFailureThreshold(t *testing
 	}
 	service := NewService(store)
 	service.searchScheduler.Stop()
-	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 2)
+	service.searchScheduler = newSearchScheduler(newRequestSlots(1*time.Millisecond, nil, nil), 2)
 	defer service.searchScheduler.Stop()
 
 	failErr := errors.New("indexer two unreachable")
@@ -3496,25 +3495,39 @@ func TestExecuteIndexerSearchSchedulesLatencyCleanup(t *testing.T) {
 }
 
 func TestGetActivityStatusOrdersCooldownsByEnd(t *testing.T) {
-	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{
-		{ID: 1, Name: "Alpha"},
-		{ID: 2, Name: "Charlie"},
-		{ID: 3, Name: "Bravo"},
-		{ID: 4, Name: "Delta"},
-	}}
-	service := NewService(store)
-	defer service.searchScheduler.Stop()
+	synctest.Test(t, func(t *testing.T) {
+		store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Alpha"},
+			{ID: 2, Name: "Charlie"},
+			{ID: 3, Name: "Bravo"},
+			{ID: 4, Name: "Delta"},
+		}}
+		service := newService(store, releases.DefaultParser)
+		defer service.searchScheduler.Stop()
 
-	base := time.Now().Add(time.Minute)
-	// Indexers 2 and 3 share a cooldown end, and their names sort the opposite
-	// way from their IDs, so the name tiebreak has to decide.
-	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, base.Add(3*time.Minute))
-	service.rateLimiter.SetCooldown(2, rateLimitScopeQuery, base.Add(time.Minute))
-	service.rateLimiter.SetCooldown(3, rateLimitScopeGrab, base.Add(time.Minute))
-	service.rateLimiter.SetCooldown(4, rateLimitScopeQuery, base)
+		// Indexers 2 and 3 share a cooldown end, and their names sort the opposite
+		// way from their IDs, so the name tiebreak has to decide.
+		answer429(t, service.slots, store.indexers[0], requestSearch, "240")
+		answer429(t, service.slots, store.indexers[1], requestSearch, "120")
+		answer429(t, service.slots, store.indexers[2], requestDownload, "120")
+		answer429(t, service.slots, store.indexers[3], requestSearch, "60")
 
-	want := []int{4, 3, 2, 1}
-	for range 20 {
+		want := []int{4, 3, 2, 1}
+		for range 20 {
+			status, err := service.GetActivityStatus(context.Background())
+			if err != nil {
+				t.Fatalf("GetActivityStatus() error = %v", err)
+			}
+			got := make([]int, 0, len(status.CooldownIndexers))
+			for _, cooldown := range status.CooldownIndexers {
+				got = append(got, cooldown.IndexerID)
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("cooldown order = %v, want %v", got, want)
+			}
+		}
+
+		time.Sleep(time.Minute)
 		status, err := service.GetActivityStatus(context.Background())
 		if err != nil {
 			t.Fatalf("GetActivityStatus() error = %v", err)
@@ -3523,8 +3536,8 @@ func TestGetActivityStatusOrdersCooldownsByEnd(t *testing.T) {
 		for _, cooldown := range status.CooldownIndexers {
 			got = append(got, cooldown.IndexerID)
 		}
-		if !slices.Equal(got, want) {
-			t.Fatalf("cooldown order = %v, want %v", got, want)
+		if want := []int{3, 2, 1}; !slices.Equal(got, want) {
+			t.Fatalf("cooldowns after one minute = %v, want %v: an ended cooldown must leave the list", got, want)
 		}
-	}
+	})
 }

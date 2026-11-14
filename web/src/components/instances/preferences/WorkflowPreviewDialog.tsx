@@ -15,7 +15,9 @@ import {
 } from "@/components/ui/alert-dialog"
 import { getRuleSkipReason } from "@/components/query-builder/constants"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { PathCell } from "@/components/ui/path-cell"
+import { Switch } from "@/components/ui/switch"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
@@ -24,7 +26,7 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
 import { Download, Loader2 } from "lucide-react"
-import { useMemo } from "react"
+import { useId, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 
@@ -66,6 +68,19 @@ interface WorkflowPreviewDialogProps {
   showScore?: boolean
   /** Error message when the preview request failed; the dialog still allows saving */
   previewError?: string | null
+  dryRun?: boolean
+  onDryRunChange?: (dryRun: boolean) => void
+}
+
+export function DryRunToggle({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+  const { t } = useTranslation("instances")
+  const id = useId()
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Label htmlFor={id} className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.dryRun")}</Label>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  )
 }
 
 // Extract all field names from a condition tree
@@ -270,6 +285,8 @@ export function WorkflowPreviewDialog({
   isInitialLoading = false,
   showScore = false,
   previewError = null,
+  dryRun = false,
+  onDryRunChange,
 }: WorkflowPreviewDialogProps) {
   const { t, i18n } = useTranslation(["instances", "automations"])
   const { t: tTorrents } = useTranslation("torrents")
@@ -296,6 +313,8 @@ export function WorkflowPreviewDialog({
 
   const confirmClassName = destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
 
+  const dryRunToggle = onDryRunChange && <DryRunToggle checked={dryRun} onCheckedChange={onDryRunChange} />
+
   // Show loading state when initial preview is being fetched.
   // Save stays reachable so a slow preview never blocks enabling the rule.
   if (isInitialLoading) {
@@ -307,6 +326,7 @@ export function WorkflowPreviewDialog({
             <p className="text-sm text-muted-foreground">{t("preferences.workflowPreview.loadingPreview")}</p>
             <p className="text-xs text-muted-foreground text-center">{t("preferences.workflowPreview.skipPreviewHint")}</p>
           </div>
+          {dryRunToggle}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
@@ -479,6 +499,8 @@ export function WorkflowPreviewDialog({
             )}
           </div>
         )}
+
+        {dryRunToggle}
 
         <AlertDialogFooter className="mt-4 sm:justify-between">
           <div>

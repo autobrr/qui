@@ -16,6 +16,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -48,7 +49,7 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance: %w", err)
 	}
-	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
@@ -58,7 +59,7 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 		if normalizeHash(torrent.Hash) != want {
 			continue
 		}
-		switch s.sourceGate().check(&torrent, sourceFilter{}) {
+		switch s.sourceGate().check(torrent, sourceFilter{}) {
 		case sourceIncomplete:
 			return nil, fmt.Errorf("%w: manual match target %q is not complete", ErrTorrentNotComplete, torrent.Name)
 		case sourceErrored:
@@ -72,7 +73,7 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 			Candidates: []CrossSeedCandidate{{
 				InstanceID:   instanceID,
 				InstanceName: instance.Name,
-				Torrents:     []qbt.Torrent{torrent},
+				Torrents:     []*qbt.Torrent{torrent},
 				MatchType:    manualMatchType,
 			}},
 		}, nil
@@ -178,7 +179,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	// ponytail: title+size heuristic can miss exotic containment shapes; the
 	// manual picker behind the proposals covers those.
 	type coarseEntry struct {
-		torrent qbt.Torrent
+		torrent *qbt.Torrent
 		ratio   float64
 		keep    bool
 	}
@@ -188,15 +189,15 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		if view.Torrent == nil {
 			continue
 		}
-		torrent := *view.Torrent
+		torrent := view.Torrent
 		if wantHash != "" && normalizeHash(torrent.Hash) == wantHash {
 			// The requested hash claims its shortlist slot outright: the
 			// "always included" guarantee must survive a coarse pass crowded
 			// with keeps that outrank it.
-			requestedTorrent = &torrent
+			requestedTorrent = torrent
 			continue
 		}
-		if s.sourceGate().check(&torrent, sourceFilter{}) != sourcePass {
+		if s.sourceGate().check(torrent, sourceFilter{}) != sourcePass {
 			continue
 		}
 		entry := coarseEntry{torrent: torrent}
@@ -215,9 +216,9 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		return cmp.Compare(b.ratio, a.ratio)
 	})
 
-	shortlist := make([]qbt.Torrent, 0, manualMatchCoarseLimit)
+	shortlist := make([]*qbt.Torrent, 0, manualMatchCoarseLimit)
 	if requestedTorrent != nil {
-		shortlist = append(shortlist, *requestedTorrent)
+		shortlist = append(shortlist, requestedTorrent)
 	}
 	for _, entry := range coarse {
 		if entry.keep && len(shortlist) < manualMatchCoarseLimit {
@@ -248,7 +249,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	// Effective destination varies only through the target save path (link-mode
 	// base-dir selection); cache per save path.
 	effectiveBySavePath := make(map[string]string)
-	effectiveFor := func(torrent qbt.Torrent) string {
+	effectiveFor := func(torrent *qbt.Torrent) string {
 		if path, ok := effectiveBySavePath[torrent.SavePath]; ok {
 			return path
 		}
@@ -268,7 +269,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		}
 		// A rootless target sends the add to its content dir, not its save path.
 		// A pinned target is never an episode in a pack.
-		effectiveSavePath := cmp.Or(rootlessDestDir(&torrent, candidateFiles, false), torrent.SavePath)
+		effectiveSavePath := cmp.Or(rootlessDestDir(torrent, candidateFiles, false), torrent.SavePath)
 		// The apply skips link modes for a pick whose files do not validate,
 		// landing it at the target's save path; only a validated pick reaches
 		// the link-mode destination. Mirror the apply's validation call so the

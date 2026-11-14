@@ -173,14 +173,6 @@
     "renameTorrentSuccess": "已将种子重命名为「{{name}}」",
     "renameTorrentFailed": "重命名种子失败：{{error}}",
     "renameTorrentEmpty": "种子名称不能为空",
-    "renameFileSuccess": "已将文件重命名为「{{name}}」",
-    "renameFileFailed": "重命名文件失败：{{error}}",
-    "renameFilePathsRequired": "需要提供原始和新文件路径",
-    "renameFileUnchanged": "文件名未更改",
-    "renameFolderSuccess": "已将文件夹重命名为「{{name}}」",
-    "renameFolderFailed": "重命名文件夹失败：{{error}}",
-    "renameFolderPathsRequired": "需要提供原始和新文件夹路径",
-    "renameFolderUnchanged": "文件夹名未更改",
     "partialTags": {
       "title_other": "部分更新了 {{count}} 个种子的标签",
       "succeeded": "{{actions}} 成功",
@@ -568,10 +560,7 @@
     "bottomPriorityBatch": "最低优先级 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "重命名",
-    "renameTorrent": "重命名种子",
-    "renameFile": "重命名文件",
-    "renameFolder": "重命名文件夹"
+    "renameTorrent": "重命名种子"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -1169,6 +1158,7 @@
     "status": "状态",
     "tracker": "Tracker",
     "seeds": "做种",
+    "peers": "节点",
     "leeches": "下载",
     "downloaded": "已完成",
     "message": "消息",
@@ -1426,7 +1416,8 @@
       "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "输入后自动搜索"
     },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "添加于{{time}}"
   },
   "tableView": {
     "ascending": "升序",
@@ -1580,7 +1571,7 @@
       "dropped": "整季包已添加。已排除的目标：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此实例需要本地文件系统访问权限才能组装整季包。",
+        "no_filesystem_access": "此实例需要文件系统写入权限才能组装整季包。请在实例设置中启用“本地文件系统访问”或设置 SSH 访问。",
         "no_link_mode": "请在此实例上启用硬链接或 reflink 模式，以选择多个目标。",
         "no_base_directory": "请为此实例配置链接基础目录。",
         "no_episode_files": "此整季包中未找到可播放的单集文件。",
@@ -1601,6 +1592,31 @@
         "link_failed": "创建链接失败。",
         "add_failed": "添加种子失败。"
       }
+    }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 个副本",
+    "labelWithProblem": "{{label}}。{{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "某个隐藏的副本文件丢失",
+      "error": "某个隐藏的副本出错",
+      "unregistered": "某个隐藏的副本未注册",
+      "trackerError": "某个隐藏的副本有 Tracker 错误",
+      "trackerDown": "某个隐藏的副本的 Tracker 离线"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已选 {{count}} 个",
+    "hiddenTicked_other": "已选中 {{count}} 个隐藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合并副本",
+    "ungroupCopies": "取消合并副本",
+    "grouping": "正在分组…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "合并你的辅种",
+      "description": "将同一种子的多个副本显示为一行。",
+      "action": "试试看"
     }
   }
 }

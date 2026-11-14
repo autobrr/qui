@@ -5,28 +5,18 @@
 
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, renderHook } from "@testing-library/react"
-import { useMemo } from "react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { StreamState } from "@/contexts/SyncStreamContext"
-import type { ActionTarget } from "@/lib/torrent-selection"
 import { makeTorrent } from "@/test/mockTorrent"
-import type { LocalCrossSeedMatch, Torrent, TorrentFilters, TorrentResponse } from "@/types"
+import type { TorrentFilters, TorrentResponse } from "@/types"
 
 vi.mock("@/lib/api", () => ({
   api: {
     getTorrents: vi.fn(),
     getCrossInstanceTorrents: vi.fn(),
-    getDeleteCrossSeeds: vi.fn(),
-    addCrossSeedBlocklist: vi.fn(),
-    bulkAction: vi.fn(),
-    renameTorrent: vi.fn(),
   },
-}))
-
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock("@/hooks/useInstances", () => ({
@@ -55,8 +45,7 @@ vi.mock("@/contexts/SyncStreamContext", () => ({
 import { api } from "@/lib/api"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { resetPendingListRefetchesForTests, TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { useTorrentListActions, useTorrentListController } from "@/hooks/useTorrentListController"
+import { useTorrentListController } from "@/hooks/useTorrentListController"
 import { STREAM_HIDDEN_PAUSE_DELAY_MS, TORRENT_STREAM_POLL_INTERVAL_MS } from "@/hooks/useTorrentsList"
 
 const mockedApi = vi.mocked(api, true)
@@ -114,21 +103,11 @@ interface LayoutProps {
   columnFiltersExpr?: string | null
   search?: string
   sort?: string
-  /** Builds the Action target from the loaded rows, as a Layout does. */
-  target?: (rows: Torrent[]) => ActionTarget
+  groupCopies?: boolean
 }
 
-const tickAll = (rows: Torrent[]): ActionTarget => ({
-  kind: "ticks",
-  hashes: rows.map(row => row.hash),
-  count: rows.length,
-  previewTorrents: rows,
-})
-
-const exportTorrents = vi.fn()
-
-// Acts like a Layout: load the list, build the Action target from its rows, and run bulk actions on it.
-function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "added_on", target = tickAll }: LayoutProps) {
+// Acts like a Layout: load the list.
+function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "added_on", groupCopies }: LayoutProps) {
   const list = useTorrentListController({
     instanceId: 1,
     filters,
@@ -136,34 +115,13 @@ function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "
     search,
     sort,
     order: "desc",
+    groupCopies,
   })
-  const actionTarget = useMemo(() => target(list.torrents), [target, list.torrents])
-  const actions = useTorrentActions({ instanceId: 1 })
-  const bulk = useTorrentListActions({ instanceId: 1, actionTarget, actions, exportTorrents, sort, order: "desc" })
-  return { list, actions, bulk }
+  return { list }
 }
 
 function renderLayout(initialProps: LayoutProps = {}) {
   return renderHook((props: LayoutProps) => useLayout(props), { initialProps, wrapper: makeWrapper() })
-}
-
-function crossSeedMatch(overrides: Partial<LocalCrossSeedMatch>): LocalCrossSeedMatch {
-  return {
-    instanceId: 1,
-    instanceName: "qb",
-    hash: "match",
-    name: "Example.Release.2024.1080p-GRP",
-    size: 1,
-    progress: 1,
-    savePath: "/data",
-    contentPath: "/data/x",
-    category: "",
-    tags: "",
-    state: "uploading",
-    tracker: "",
-    matchType: "content_path",
-    ...overrides,
-  } as LocalCrossSeedMatch
 }
 
 beforeEach(() => {
@@ -183,14 +141,10 @@ beforeEach(() => {
 
   mockedApi.getTorrents.mockResolvedValue(makeResponse())
   mockedApi.getCrossInstanceTorrents.mockResolvedValue(makeResponse({ isCrossInstance: true }))
-  mockedApi.getDeleteCrossSeeds.mockResolvedValue({ matches: [], uncheckedInstances: [] })
-  mockedApi.addCrossSeedBlocklist.mockResolvedValue({} as Awaited<ReturnType<typeof api.addCrossSeedBlocklist>>)
-  mockedApi.bulkAction.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
   cleanup()
-  resetPendingListRefetchesForTests()
   localStorage.clear()
   focusManager.setFocused(undefined)
   vi.useRealTimers()
@@ -387,6 +341,119 @@ describe("useTorrentListController — load more", () => {
   })
 })
 
+describe("useTorrentListController — Copy groups", () => {
+  // The server sends a group as adjacent rows: the Group representative with
+  // first_sorted, then the other members with the id only.
+  const representative = (hash: string, id: string) =>
+    makeTorrent({ hash, copy_group: { id, first_sorted: { instance_id: 1, hash } } })
+  const member = (hash: string, id: string) => makeTorrent({ hash, copy_group: { id } })
+  const visible = (result: { current: ReturnType<typeof useLayout> }) => result.current.list.visibleRows.map(row => row.hash)
+
+  it("shows the loaded rows as they are on a flat list", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })], total: 2 }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(result.current.list.visibleRows).toBe(result.current.list.torrents)
+  })
+
+  it("starts each group collapsed and opens one group at a time", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({
+      torrents: [representative("A", "g1"), member("a1", "g1"), makeTorrent({ hash: "B" }), representative("C", "g2"), member("c1", "g2")],
+      total: 5,
+      copyGroupsReady: true,
+    }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(result.current.list.torrents).toHaveLength(5)
+    expect(visible(result)).toEqual(["A", "B", "C"])
+
+    act(() => result.current.list.toggleGroup("g1"))
+    expect(visible(result)).toEqual(["A", "a1", "B", "C"])
+
+    act(() => result.current.list.toggleGroup("g2"))
+    expect(visible(result)).toEqual(["A", "a1", "B", "C", "c1"])
+
+    act(() => result.current.list.toggleGroup("g1"))
+    expect(visible(result)).toEqual(["A", "B", "C", "c1"])
+  })
+
+  it("puts a group at the place of its first row and its representative on top when a merge moved a member", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({
+      torrents: [member("a1", "g1"), makeTorrent({ hash: "B" }), representative("A", "g1")],
+      total: 3,
+      copyGroupsReady: true,
+    }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(visible(result)).toEqual(["A", "B"])
+
+    act(() => result.current.list.toggleGroup("g1"))
+    expect(visible(result)).toEqual(["A", "a1", "B"])
+  })
+
+  it("closes the groups when the selection scope changes and keeps them open on a sort", async () => {
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({
+      torrents: [representative("A", "g1"), member("a1", "g1")],
+      total: 2,
+      copyGroupsReady: true,
+    }))
+    const { result, rerender } = renderLayout({ groupCopies: true })
+    await flush()
+    act(() => result.current.list.toggleGroup("g1"))
+    act(() => result.current.list.toggleGroup("g9"))
+
+    rerender({ groupCopies: true, sort: "name" })
+    await flush()
+    expect([...result.current.list.groupExpansion]).toEqual(["g1", "g9"])
+
+    const scopes: LayoutProps[] = [
+      { filters: { ...FILTERS, status: ["downloading"] } },
+      { columnFiltersExpr: "AddedOn > 1704067200" },
+      { search: "linux" },
+    ]
+    for (const scope of scopes) {
+      rerender({ groupCopies: true, sort: "name" })
+      await flush()
+      act(() => result.current.list.toggleGroup("g1"))
+
+      rerender({ groupCopies: true, sort: "name", ...scope })
+      await flush()
+      expect(result.current.list.groupExpansion.size).toBe(0)
+      expect(visible(result)).toEqual(["A"])
+    }
+  })
+
+  it("keeps the load-more window in Filter Cross-Seeds when the option changes", async () => {
+    const crossSeed = { ...FILTERS, expr: "Hash == \"h0\" || Hash == \"h1\"" }
+    const crossRows = Array.from({ length: 300 }, (_, i) => ({ ...makeTorrent({ hash: `h${i}` }), instanceId: 1, instanceName: "qb" }))
+    mockedApi.getCrossInstanceTorrents.mockResolvedValue(makeResponse({ isCrossInstance: true, crossInstanceTorrents: crossRows, total: 300 }))
+    const { result, rerender } = renderLayout({ filters: crossSeed })
+    await flush()
+    act(() => result.current.list.reportNearEnd())
+    expect(result.current.list.loadedRows).toBe(200)
+
+    rerender({ filters: crossSeed, groupCopies: true })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(200)
+  })
+
+  it("counts the visible rows in the load-more window", async () => {
+    // 150 groups of two torrents: 300 rows in memory, 150 visible.
+    const groups = Array.from({ length: 150 }, (_, i) => [representative(`r${i}`, `g${i}`), member(`m${i}`, `g${i}`)]).flat()
+    mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => params.page === 0
+      ? makeResponse({ torrents: groups, total: 400, hasMore: true, copyGroupsReady: true })
+      : makeResponse({ torrents: [], total: 400, hasMore: false, copyGroupsReady: true }))
+    const { result } = renderLayout({ groupCopies: true })
+    await flush()
+    expect(result.current.list.loadedRows).toBe(100)
+
+    act(() => result.current.list.reportNearEnd())
+    expect(result.current.list.loadedRows).toBe(150)
+    await flush()
+    expect(mockedApi.getTorrents.mock.calls.map(([, params]) => params.page)).toContain(1)
+  })
+})
+
 describe("useTorrentListController — hidden tab", () => {
   it("keeps the stream open and stops polling while the tab is hidden for less than the pause delay", async () => {
     renderLayout()
@@ -426,190 +493,5 @@ describe("useTorrentListController — hidden tab", () => {
 
     await advance(TORRENT_STREAM_POLL_INTERVAL_MS)
     expect(mockedApi.getTorrents.mock.calls.length).toBe(callsWhenShown + 2)
-  })
-})
-
-const SELECT_ALL = { filters: FILTERS, search: "linux", excludeHashes: ["b"] }
-const selectAllTarget = (rows: Torrent[]): ActionTarget => ({ kind: "selectAll", selectAll: SELECT_ALL, count: 40, previewTorrents: rows })
-
-function bulkCalls(action: string) {
-  return mockedApi.bulkAction.mock.calls.filter(([, body]) => body.action === action)
-}
-
-describe("useTorrentListActions — bulk actions", () => {
-  it("sends the Select all scope, not the loaded rows, in Select all mode", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 40, hasMore: true }))
-
-    const { result } = renderLayout({ target: selectAllTarget })
-    await flush()
-    act(() => {
-      result.current.bulk.runAction(TORRENT_ACTIONS.RESUME)
-    })
-    act(() => {
-      result.current.bulk.handleTagsWrapper({ add: ["keep"], remove: [] })
-    })
-    await flush()
-
-    for (const action of ["resume", "addTags"]) {
-      expect(bulkCalls(action)).toEqual([[1, expect.objectContaining({ hashes: [], selectAll: true, ...SELECT_ALL })]])
-    }
-  })
-
-  it("passes the value of each dialog with the Action target", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 1 }))
-
-    const { result } = renderLayout()
-    await flush()
-    act(() => {
-      result.current.bulk.runAction(TORRENT_ACTIONS.RECHECK)
-      result.current.bulk.handleTagsWrapper({ add: ["new"], remove: ["old"] })
-      result.current.bulk.handleSetCategoryWrapper("movies")
-      result.current.bulk.handleSetLocationWrapper("/data/movies")
-      result.current.bulk.handleSetShareLimitWrapper(2, 60, -1)
-      result.current.bulk.handleSetSpeedLimitsWrapper(100, 200)
-    })
-    await flush()
-
-    const target = { hashes: ["a"], selectAll: false }
-    expect(bulkCalls("recheck")).toEqual([[1, expect.objectContaining(target)]])
-    expect(bulkCalls("removeTags")).toEqual([[1, expect.objectContaining({ ...target, tags: "old" })]])
-    expect(bulkCalls("addTags")).toEqual([[1, expect.objectContaining({ ...target, tags: "new" })]])
-    expect(bulkCalls("setCategory")).toEqual([[1, expect.objectContaining({ ...target, category: "movies" })]])
-    expect(bulkCalls("setLocation")).toEqual([[1, expect.objectContaining({ ...target, location: "/data/movies" })]])
-    expect(bulkCalls("setShareLimit")).toEqual([[1, expect.objectContaining({ ...target, ratioLimit: 2, seedingTimeLimit: 60, inactiveSeedingTimeLimit: -1 })]])
-    expect(bulkCalls("setUploadLimit")).toEqual([[1, expect.objectContaining({ ...target, uploadLimit: 100 })]])
-    expect(bulkCalls("setDownloadLimit")).toEqual([[1, expect.objectContaining({ ...target, downloadLimit: 200 })]])
-  })
-
-  it("renames the torrent of the Action target, and does nothing with no torrent", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "only" })], total: 1 }))
-
-    const { result, rerender } = renderLayout()
-    await flush()
-    await act(async () => {
-      await result.current.bulk.handleRenameTorrentWrapper("new")
-    })
-    expect(mockedApi.renameTorrent).toHaveBeenCalledWith(1, "only", "new")
-
-    mockedApi.renameTorrent.mockClear()
-    rerender({ target: () => tickAll([]) })
-    await act(async () => {
-      await result.current.bulk.handleRenameTorrentWrapper("new")
-    })
-    expect(mockedApi.renameTorrent).not.toHaveBeenCalled()
-  })
-})
-
-describe("useTorrentListActions — delete and cross-seeds", () => {
-  it("flags the cross-seed tag of a ticked row", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a", tags: "cross-seed" })], total: 1 }))
-
-    const { result } = renderLayout()
-    await flush()
-    expect(result.current.bulk.hasCrossSeedTag).toBe(true)
-  })
-
-  it("blocks the tagged torrent before the delete, only when the user asks", async () => {
-    // A fixed target: the first delete removes the row from the list.
-    const tagged = [makeTorrent({ hash: "a", tags: "cross-seed" })]
-    const target = () => tickAll(tagged)
-    const order: string[] = []
-    mockedApi.addCrossSeedBlocklist.mockImplementation(async () => {
-      order.push("block")
-      return {} as Awaited<ReturnType<typeof api.addCrossSeedBlocklist>>
-    })
-    mockedApi.bulkAction.mockImplementation(async (_id, body) => {
-      order.push(body.action)
-    })
-
-    const { result } = renderLayout({ target })
-    await flush()
-    await act(async () => {
-      await result.current.bulk.handleDeleteWrapper()
-    })
-    expect(order).toEqual(["delete"])
-
-    order.length = 0
-    act(() => {
-      result.current.actions.setBlockCrossSeeds(true)
-    })
-    await act(async () => {
-      await result.current.bulk.handleDeleteWrapper()
-    })
-    expect(order).toEqual(["block", "delete"])
-    expect(mockedApi.addCrossSeedBlocklist).toHaveBeenCalledWith({ instanceId: 1, infoHash: "a" })
-  })
-
-  it("does not flag or block a target without the tag", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a", tags: "linux" })], total: 1 }))
-
-    const { result } = renderLayout()
-    await flush()
-    act(() => {
-      result.current.actions.setBlockCrossSeeds(true)
-    })
-    await act(async () => {
-      await result.current.bulk.handleDeleteWrapper()
-    })
-
-    expect(result.current.bulk.hasCrossSeedTag).toBe(false)
-    expect(mockedApi.addCrossSeedBlocklist).not.toHaveBeenCalled()
-    expect(bulkCalls("delete")).toHaveLength(1)
-  })
-
-  it("checks the ticked rows and flags the tag of an affected cross-seed", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a", tags: "linux" })], total: 1 }))
-    mockedApi.getDeleteCrossSeeds.mockResolvedValue({ matches: [crossSeedMatch({ tags: "cross-seed" })], uncheckedInstances: [] })
-
-    const { result } = renderLayout()
-    await flush()
-    act(() => {
-      result.current.bulk.crossSeedWarning.search()
-    })
-    await flush()
-
-    expect(mockedApi.getDeleteCrossSeeds).toHaveBeenCalledWith(1, { targets: [{ instanceId: 1, hash: "a" }] }, expect.any(AbortSignal))
-    expect(result.current.bulk.crossSeedWarning.hasWarning).toBe(true)
-    expect(result.current.bulk.hasCrossSeedTag).toBe(true)
-  })
-
-  it("blocks no torrent on another instance that the delete keeps", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a", tags: "cross-seed" })], total: 1 }))
-    mockedApi.getDeleteCrossSeeds.mockResolvedValue({ matches: [crossSeedMatch({ instanceId: 2, hash: "a", tags: "cross-seed" })], uncheckedInstances: [] })
-
-    const { result } = renderLayout()
-    await flush()
-    act(() => {
-      result.current.actions.setBlockCrossSeeds(true)
-      result.current.bulk.crossSeedWarning.search()
-    })
-    await flush()
-    await act(async () => {
-      await result.current.bulk.handleDeleteWrapper()
-    })
-
-    expect(mockedApi.addCrossSeedBlocklist.mock.calls).toEqual([[{ instanceId: 1, infoHash: "a" }]])
-  })
-
-  it("checks the Select all scope, and deletes the chosen cross-seeds in a second request", async () => {
-    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 40, hasMore: true }))
-    mockedApi.getDeleteCrossSeeds.mockResolvedValue({ matches: [crossSeedMatch({ hash: "cs1" })], uncheckedInstances: [] })
-
-    const { result } = renderLayout({ target: selectAllTarget })
-    await flush()
-    act(() => {
-      result.current.actions.setDeleteCrossSeeds(true)
-      result.current.bulk.crossSeedWarning.search()
-    })
-    await flush()
-    await act(async () => {
-      await result.current.bulk.handleDeleteWrapper()
-    })
-
-    expect(mockedApi.getDeleteCrossSeeds).toHaveBeenCalledWith(1, { selectAll: true, ...SELECT_ALL }, expect.any(AbortSignal))
-    expect(bulkCalls("delete")).toEqual([
-      [1, expect.objectContaining({ hashes: [], selectAll: true, ...SELECT_ALL })],
-      [1, expect.objectContaining({ targets: [{ instanceId: 1, hash: "cs1" }] })],
-    ])
   })
 })

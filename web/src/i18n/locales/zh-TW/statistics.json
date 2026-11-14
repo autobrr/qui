@@ -1,0 +1,119 @@
+{
+  "title": "統計",
+  "recordingSince": "自 {{date}} 起記錄",
+  "notRecording": "qui 尚未記錄任何傳輸。",
+  "partial": "不完整的時段",
+  "periods": {
+    "24h": "24 小時",
+    "7d": "7 天",
+    "30d": "30 天",
+    "1y": "一年",
+    "all": "全部時間",
+    "custom": "自訂"
+  },
+  "customRange": {
+    "from": "第一天",
+    "to": "最後一天",
+    "apply": "套用",
+    "range": "{{from}} 至 {{to}}"
+  },
+  "instances": {
+    "all": "所有實例",
+    "count_other": "{{count}} 個實例",
+    "removed": "已移除"
+  },
+  "tiles": {
+    "uploaded": "已上傳",
+    "downloaded": "已下載",
+    "ratio": "分享率",
+    "buffer": "緩衝 {{buffer}}",
+    "crossSeed": "來自輔種",
+    "crossSeedShare": "佔上傳的 {{percent}}%",
+    "change": "與上一時段相比 {{change}}"
+  },
+  "chart": {
+    "title": "傳輸趨勢",
+    "descriptionHour": "依 Tracker，每小時",
+    "descriptionDay": "依 Tracker，每天",
+    "upload": "上傳",
+    "download": "下載",
+    "other": "其他",
+    "otherCount": "其他（{{groups}}）",
+    "total": "合計",
+    "gap": "包含 {{duration}} 的記錄空缺",
+    "gapLabel": "空缺 {{duration}}",
+    "foldedDay": "（整天，UTC）",
+    "empty": "此時段內沒有傳輸。"
+  },
+  "groups": {
+    "public": "公開",
+    "noTracker": "無 Tracker"
+  },
+  "errors": {
+    "load": "無法載入統計：{{message}}"
+  },
+  "allTimeNote": "全部時間包含基準：qui 首次記錄時種子已有的位元組數。基準沒有日期，因此圖表不顯示基準。",
+  "serverStatisticsNote": "這些數字是每個種子傳輸量的總和。儀表板上的伺服器統計讀取 qBittorrent 的計數器，其中也包含協定流量，因此數字會不同。",
+  "table": {
+    "title": "依分組",
+    "descriptionTracker": "每個 Tracker 在此時段內的傳輸量。點擊一列可開啟詳細資料。",
+    "descriptionCategory": "每個分類在此時段內的傳輸量，依位元組傳輸時種子所在的分類統計。點擊一列可開啟詳細資料。",
+    "descriptionRelease": "qui 從種子名稱讀取的每個值在此時段內的傳輸量。點擊一列可開啟詳細資料。",
+    "groupBy": "分組依據",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "分類",
+      "releaseGroup": "發布組",
+      "resolution": "解析度",
+      "source": "來源",
+      "contentType": "內容類型"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "uploaded": "已上傳",
+      "downloaded": "已下載",
+      "ratio": "分享率",
+      "buffer": "緩衝",
+      "torrents": "種子數",
+      "size": "大小",
+      "seeded": "做種量"
+    },
+    "seededValue": "{{value}}x",
+    "total": "合計",
+    "noCategory": "無分類",
+    "none": "無",
+    "liveError": "無法載入 qBittorrent 中目前的種子：{{message}}",
+    "liveNote": "種子數、大小和做種量描述的是 qBittorrent 中目前的種子，而不是此時段。做種量是它們的總上傳量除以大小。",
+    "categoryNote": "qui 依 UTC 日儲存分類合計。在 UTC 日中間開始或結束的時段會計入整天，因此分類合計可能與頂部的數字不同。",
+    "releaseNote": "qui 從種子名稱讀取這些值，並依 UTC 日儲存每個種子的位元組數。在 UTC 日中間開始或結束的時段會計入整天，因此各列的合計可能與頂部的數字不同。",
+    "baselineNote": "全部時間中，每一列都包含其種子的基準。"
+  },
+  "detail": {
+    "share": "上傳佔比",
+    "shareOf": "共 {{total}}",
+    "crossSeed": "來自輔種",
+    "crossSeedShare": "佔其上傳的 {{percent}}",
+    "bestHour": "最佳小時",
+    "bestDay": "最佳日",
+    "averageHour": "每小時平均",
+    "averageDay": "每日平均",
+    "chartHour": "{{group}} 每小時",
+    "chartDay": "{{group}} 每日",
+    "chartLegend": "線上方為上傳，下方為下載",
+    "topTorrents": "{{group}} 的熱門種子",
+    "topTorrentsCategoryNote": "分類的熱門種子依每個種子目前的分類統計。"
+  },
+  "topTorrents": {
+    "title": "熱門種子",
+    "description": "該期間內上傳最多的種子。點擊一列可查看其每天的上傳量。",
+    "columns": {
+      "torrent": "種子",
+      "first24h": "前 24 小時"
+    },
+    "deleted": "已刪除",
+    "crossSeed": "輔種",
+    "note": "已刪除的種子保留其位置和名稱。種子計入其目前的 Tracker。前 24 小時是新增後 24 小時內的上傳量。如果 qui 在此之後才首次看到該種子，則為空。",
+    "utcNote": "每個長條代表一個 UTC 日。",
+    "yearNote": "每個長條代表一個 UTC 日，年份長條除外：超過詳細資料保留期後，qui 為每個種子每年只保留一個數值。"
+  }
+}

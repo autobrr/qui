@@ -28,6 +28,8 @@
     "groupForConditionPlaceholder": "此条件所属的组",
     "aboutGroupSelectionAriaLabel": "关于分组条件的组选择",
     "groupTooltip": "此组仅应用于此条件行。如需在其他 GROUP_SIZE/IS_GROUPED 行上使用不同的组。",
+    "aboutHardlinkScopeAriaLabel": "关于硬链接范围",
+    "hardlinkScopeTooltip": "qBittorrent 外部指不属于任何种子的硬链接。媒体库导入算在内，下载文件夹内的残留链接也算。",
     "min": "最小",
     "max": "最大",
     "wrappingRangeHint": "范围跨越循环：匹配 {{min}} 及以上，然后匹配 {{max}} 以下的所有值。",
@@ -230,7 +232,8 @@
       "qbittorrent50": "需要 qBittorrent 5.0+",
       "qbittorrent52": "需要 qBittorrent 5.2+",
       "localFilesystemAccess": "需要本地文件系统访问权限",
-      "remoteInstance": "远程实例不可用"
+      "remoteInstance": "远程实例不可用",
+      "filesystemAccess": "需要文件系统访问权限。请在实例设置中启用“本地文件系统访问”或设置 SSH 访问。"
     },
     "ruleSkip": "不在此实例上运行：{{field}} 需要 {{requires}}。"
   }

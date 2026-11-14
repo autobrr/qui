@@ -100,7 +100,7 @@ func TestHardlinkIndexBuildRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 	createFile(t, filepath.Join(dir, "movie.mkv"))
 	service, spy := newLocalGateService(t, instanceID, &switchableRow{row: remoteRow}, fakeFilesReader{files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
 
-	index := service.GetHardlinkIndex(t.Context(), instanceID, []qbt.Torrent{{Hash: "hash", SavePath: dir}})
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs([]qbt.Torrent{{Hash: "hash", SavePath: dir}}))
 
 	require.NotNil(t, index)
 	require.Empty(t, index.ScopeByHash, "every scope stays unknown")
@@ -125,13 +125,13 @@ func TestHardlinkIndexUpdateRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 		{Hash: "h7", SavePath: dir}, {Hash: "h8", SavePath: dir}, {Hash: "h9", SavePath: dir},
 		{Hash: "h10", SavePath: dir}, {Hash: "h11", SavePath: dir}, {Hash: "h12", SavePath: dir},
 	}
-	require.NotEmpty(t, service.GetHardlinkIndex(t.Context(), instanceID, torrents).ScopeByHash)
+	require.NotEmpty(t, service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents)).ScopeByHash)
 
 	rows.set(remoteRow)
 	// One new torrent keeps the change inside the incremental budget, so the
 	// update reads only that torrent rather than falling back to a full build.
 	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "h13", SavePath: dir})
-	service.GetHardlinkIndex(t.Context(), instanceID, grown)
+	service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(grown))
 
 	require.Zero(t, spy.lstats.Load(), "the update must not read the SSH host")
 }
@@ -146,7 +146,7 @@ func TestVerifyDeleteCandidatesHoldsAnInstanceThatLeftLocalMode(t *testing.T) {
 	index := &HardlinkIndex{ScopeByHash: map[string]string{"hash": HardlinkScopeNone}}
 
 	blocked := service.verifyDeleteCandidates(t.Context(), instanceID, index,
-		map[string]qbt.Torrent{"hash": {Hash: "hash", SavePath: dir}}, map[string]hardlinkUse{"hash": {single: true}})
+		torrentRefMap(map[string]qbt.Torrent{"hash": {Hash: "hash", SavePath: dir}}), map[string]hardlinkUse{"hash": {single: true}})
 
 	require.Equal(t, map[string]string{"hash": "filesystem backend unavailable"}, blocked)
 	require.Zero(t, spy.lstats.Load(), "the re-read must not reach the SSH host")

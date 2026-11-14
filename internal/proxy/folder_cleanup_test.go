@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -50,6 +51,7 @@ func (noIgnores) IgnoredPathMatcher(context.Context, int, fsops.PathDialect) (fu
 type proxyRig struct {
 	t          *testing.T
 	root       string
+	db         *database.DB
 	stub       *qbtstub.Server
 	handler    *Handler
 	instanceID int
@@ -73,6 +75,7 @@ func newProxyRigWorker(t *testing.T, start bool) *proxyRig {
 	}
 
 	db := testdb.NewMigratedSQLite(t, "proxy-folder-cleanup")
+	r.db = db
 	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
 	require.NoError(t, err)
 	instance, err := instanceStore.Create(t.Context(), "test", r.stub.URL, "", "", nil, nil, false, new(true))
@@ -106,7 +109,7 @@ func (r *proxyRig) add(torrents ...qbtstub.Torrent) {
 	for _, t := range torrents {
 		r.stub.Add(t)
 	}
-	require.NoError(r.t, r.client.GetSyncManager().Sync(r.t.Context()))
+	require.NoError(r.t, r.client.SyncOwner().Sync(r.t.Context()))
 }
 
 // post sends a form to an intercepted endpoint the way a proxy client does.

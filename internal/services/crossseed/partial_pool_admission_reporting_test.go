@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -53,13 +54,13 @@ func (m *partialPoolAdmissionSync) HasTorrentByAnyHash(context.Context, int, []s
 	return m.resolved, m.resolved != nil, nil
 }
 
-func (m *partialPoolAdmissionSync) GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *partialPoolAdmissionSync) GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(m.torrentSnapshots) == 0 {
-		return m.rootlessSavePathSyncManager.GetTorrents(ctx, instanceID, filter)
+		return m.rootlessSavePathSyncManager.GetTorrentRefs(ctx, instanceID, filter)
 	}
 	index := min(m.torrentSnapshotCalls, len(m.torrentSnapshots)-1)
 	m.torrentSnapshotCalls++
-	return append([]qbt.Torrent(nil), m.torrentSnapshots[index]...), nil
+	return testTorrentRefs(append([]qbt.Torrent(nil), m.torrentSnapshots[index]...)), nil
 }
 
 func (m *partialPoolAdmissionSync) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -442,6 +443,7 @@ func TestPartialPoolWakePreservesNewAdmissionUntilInventoryVisible(t *testing.T)
 		},
 	}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     sync,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -630,8 +632,8 @@ func TestBoundAnnouncementStopsAfterPartialPoolRegistrationFailure(t *testing.T)
 	}
 
 	response, err := service.invokeBoundAnnouncementMatches(t.Context(), []boundAnnouncementMatch{
-		{instanceID: 1, instanceName: "synthetic", torrent: qbt.Torrent{Hash: "source-one"}},
-		{instanceID: 1, instanceName: "synthetic", torrent: qbt.Torrent{Hash: "source-two"}},
+		{instanceID: 1, instanceName: "synthetic", torrent: &qbt.Torrent{Hash: "source-one"}},
+		{instanceID: 1, instanceName: "synthetic", torrent: &qbt.Torrent{Hash: "source-two"}},
 	}, func(boundAnnouncementMatch) *CrossSeedRequest {
 		return &CrossSeedRequest{}
 	})
