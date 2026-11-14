@@ -29,12 +29,11 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { refreshCustomThemes } from "@/hooks/useCustomThemes"
 import { APIError, api } from "@/lib/api"
-import { findOutsideFile } from "@/lib/css-outside-files"
 import { readThemeName, themeIdFromName, writeThemeName } from "@/lib/custom-theme-editor"
 import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
 import { isDefaultThemeVisit } from "@/lib/theme-storage"
-import { endCustomThemePreview, previewCustomTheme, setTheme } from "@/utils/theme"
-import { findThemeCssProblem } from "@/utils/themeParser"
+import { endCustomThemePreview, findPreviewProblem, findThemeProblem, previewCustomTheme } from "@/lib/custom-theme-preview"
+import { setTheme } from "@/utils/theme"
 
 const PREVIEW_DELAY_MS = 300
 
@@ -96,22 +95,6 @@ function initialState(target: CustomThemeEditorTarget): EditorState {
   return { name: readThemeName(css) ?? "", css, phase: { kind: "editing", error: null } }
 }
 
-type CssProblem = "empty" | "missing-root" | "missing-dark"
-
-function cssProblem(css: string): CssProblem | null {
-  return css.trim() === "" ? "empty" : findThemeCssProblem(css)
-}
-
-type PreviewProblem =
-  | { kind: CssProblem }
-  | { kind: "outside-file" | "unreadable"; line: number }
-
-// The preview refuses an outside file too, so the browser never loads one; Save leaves that refusal to the server.
-function previewProblemOf(css: string): PreviewProblem | null {
-  const problem = cssProblem(css)
-  return problem ? { kind: problem } : findOutsideFile(css)
-}
-
 const PROBLEM_KEYS = {
   "missing-root": "themes.custom.editor.problems.missingRoot",
   "missing-dark": "themes.custom.editor.problems.missingDark",
@@ -138,16 +121,16 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
   const [state, dispatch] = useReducer(editorReducer, target, initialState)
 
   const previewCss = useDebounce(state.css, PREVIEW_DELAY_MS)
-  const previewProblem = useMemo(() => previewProblemOf(previewCss), [previewCss])
+  const previewProblem = useMemo(() => findPreviewProblem(previewCss), [previewCss])
   const [openedCss] = useState(state.css)
   // A default theme visit is for repair, and the saved CSS can hide the page, so only a change previews.
   const waitsForChange = isDefaultThemeVisit() && previewCss === openedCss
 
+  // CSS with a problem leaves the last good preview on the page.
   useEffect(() => {
-    if (previewProblem) return
     if (waitsForChange) void endCustomThemePreview()
     else previewCustomTheme(previewCss)
-  }, [previewCss, previewProblem, waitsForChange])
+  }, [previewCss, waitsForChange])
 
   useEffect(() => () => void endCustomThemePreview(), [])
 
@@ -155,7 +138,7 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
   const id = target.kind === "edit" ? target.id : themeIdFromName(name)
   const filename = target.kind === "edit" ? target.filename : id && `${id}.css`
   const saving = state.phase.kind === "saving"
-  const canSave = !saving && id !== "" && name !== "" && cssProblem(state.css) === null
+  const canSave = !saving && id !== "" && name !== "" && findThemeProblem(state.css) === null
 
   const save = async (replace: boolean) => {
     const css = writeThemeName(state.css, name)

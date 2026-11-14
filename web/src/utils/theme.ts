@@ -14,6 +14,7 @@ import {
   storeThemeId
 } from "@/lib/theme-storage";
 import { isSpreadsheetDocumentTitle, SPREADSHEET_THEME_IDS, spreadsheetDocumentTitle } from "@/lib/spreadsheet-disguise";
+import type { PreviewableThemeCss } from "@/lib/custom-theme-preview";
 import { loadThemeFonts } from "./fontLoader";
 import { parseThemeCSS } from "./themeParser";
 import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
@@ -349,12 +350,11 @@ export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
 };
 
 /**
- * Shows css as the page theme in this browser only, until
- * endCustomThemePreview. A later theme, mode, or variation change keeps the
- * preview on the page. It writes no stored theme or boot cache, so a reload
- * also ends it. CSS that does not parse as a theme leaves the page as it is.
+ * Paints css over the active theme until endCustomThemePreview, and keeps it
+ * there through later theme, mode, and variation changes. Callers use
+ * previewCustomTheme in lib/custom-theme-preview, which checks the css first.
  */
-export const previewCustomTheme = (css: string): void => {
+export const paintCustomThemePreview = (css: PreviewableThemeCss): void => {
   const parsed = parseThemeCSS(css);
   if (!parsed) return;
   preview = { css, cssVars: parsed.cssVars, lightOnly: parsed.metadata.lightOnly === true };

@@ -4,7 +4,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { endCustomThemePreview, getAppliedCustomThemeCss, previewCustomTheme, setTheme, setThemeMode } from "./theme"
+import { endCustomThemePreview, previewCustomTheme } from "@/lib/custom-theme-preview"
+import { getAppliedCustomThemeCss, setTheme, setThemeMode } from "./theme"
 import { parseCachedTheme, registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 
@@ -203,10 +204,23 @@ describe("custom theme preview", () => {
   it("leaves the page as it is for css that does not parse as a theme", async () => {
     await setTheme("minimal")
 
-    previewCustomTheme("body { color: red; }")
+    expect(previewCustomTheme("body { color: red; }")).toEqual({ kind: "missing-root" })
 
     expect(customStyle()).toBeNull()
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
+  })
+
+  // regression: #4124
+  it("keeps css that loads an outside file off the page, and keeps the last good preview", async () => {
+    const good = ":root { --background: red; } .dark { --background: maroon; }"
+    await setTheme("minimal")
+    expect(previewCustomTheme(good)).toBeNull()
+
+    const outside = `${good}
+body { background: url(https://example.invalid/a.png); }`
+    expect(previewCustomTheme(outside)).toEqual({ kind: "outside-file", line: 2 })
+
+    expect(customStyle()).toBe(good)
   })
 })
 

@@ -48,7 +48,7 @@ const fixture = vi.hoisted(() => {
 
 const license = vi.hoisted(() => ({ hasPremiumAccess: true }))
 const themeUtils = vi.hoisted(() => ({
-  previewCustomTheme: vi.fn(),
+  paintCustomThemePreview: vi.fn(),
   endCustomThemePreview: vi.fn(() => Promise.resolve()),
   setTheme: vi.fn(() => Promise.resolve()),
 }))
@@ -292,7 +292,7 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: RED_THEME } })
 
     expect(nameField().value).toBe("Red Alert")
-    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(RED_THEME)
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenLastCalledWith(RED_THEME)
 
     fireEvent.click(saveButton())
 
@@ -361,8 +361,8 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: ":root { --background: blue; }" } })
 
     expect(screen.getByRole("status").textContent).toContain("themes.custom.editor.problems.missingDark")
-    expect(themeUtils.previewCustomTheme).toHaveBeenCalledTimes(1)
-    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(RED_THEME)
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenCalledTimes(1)
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenLastCalledWith(RED_THEME)
     expect(saveButton().disabled).toBe(true)
   })
 
@@ -378,8 +378,8 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: outside } })
 
     expect(screen.getByText("themes.custom.editor.problems.outsideFile")).toBeTruthy()
-    expect(themeUtils.previewCustomTheme).toHaveBeenCalledTimes(1)
-    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(RED_THEME)
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenCalledTimes(1)
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenLastCalledWith(RED_THEME)
 
     fireEvent.click(saveButton())
     expect((await screen.findByRole("alert")).textContent).toContain(refusal)
