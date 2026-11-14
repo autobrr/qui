@@ -68,13 +68,15 @@ describe("SystemNoticeMenuItems", () => {
     expect(screen.queryByRole("menu")).toBeNull()
   })
 
+  // regression: #4110
   it("keeps the age in an open dialog up to date", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "Date"] })
     try {
       const justOpened: SystemNotice = { ...open[0], openedAt: new Date().toISOString() }
       render(<Menu notices={[justOpened]} />)
-      fireEvent.click(await screen.findByRole("menuitem", { name: /Recording stopped/ }))
-      const dialog = await screen.findByRole("dialog", { name: "Recording stopped" })
+      // The fake setInterval stops the polling of findBy, so the test queries at once.
+      fireEvent.click(screen.getByRole("menuitem", { name: /Recording stopped/ }))
+      const dialog = screen.getByRole("dialog", { name: "Recording stopped" })
       expect(dialog.textContent).toContain("1 minute ago")
 
       act(() => vi.advanceTimersByTime(3 * 60 * 1000))
@@ -85,6 +87,7 @@ describe("SystemNoticeMenuItems", () => {
     }
   })
 
+  // regression: #4110
   it("gives focus back to the menu button when the dialog closes", async () => {
     render(<Menu notices={open} />)
     fireEvent.click(await screen.findByRole("menuitem", { name: /Recording stopped/ }))
@@ -98,6 +101,7 @@ describe("SystemNoticeMenuItems", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "menu" }))
   })
 
+  // regression: #4110
   it("keeps the dialog closed when a notice that closed while open comes back", async () => {
     const { rerender } = render(<Menu notices={open} />)
     fireEvent.click(await screen.findByRole("menuitem", { name: /Recording stopped/ }))
