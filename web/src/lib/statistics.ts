@@ -461,9 +461,9 @@ export function barBytes(bar: StatisticsBar): Record<Metric, number> {
  * Returns the number of units of the chart that its bars cover after the first recording, so that an average leaves
  * out the time before it. A folded day of an hourly chart is a UTC day of 24 hours. With utcDays, each day bar stands
  * for the UTC day of its date, as the bars of buildCategoryBars do, and a year bar of buildTorrentBars for the days up
- * to the next bar.
+ * to the next bar, or to the last day of the period that ends at to.
  */
-export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, unit: ChartUnit, utcDays = false): number {
+export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, unit: ChartUnit, utcDays = false, to?: Date): number {
   const first = since?.getTime() ?? -Infinity
   const utcDayOf = (time: number) => {
     const date = new Date(time)
@@ -473,7 +473,8 @@ export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, un
   for (const [index, bar] of bars.entries()) {
     if (bar.width === "year") {
       const next = bars[index + 1]
-      const end = next ? utcDayOf(next.start) : Date.UTC(new Date(bar.start).getFullYear() + 1, 0, 1)
+      const yearEnd = Date.UTC(new Date(bar.start).getFullYear() + 1, 0, 1)
+      const end = next ? utcDayOf(next.start) : Math.min(yearEnd, to ? utcDayStart(new Date(to.getTime() - 1)) + 24 * HOUR : yearEnd)
       const from = Math.max(utcDayOf(bar.start), since ? utcDayStart(since) : -Infinity)
       units += Math.max(0, (end - from) / (24 * HOUR))
       continue

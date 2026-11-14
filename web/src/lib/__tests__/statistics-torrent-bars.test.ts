@@ -47,4 +47,14 @@ describe("recordedUnits", () => {
     // From 2025-12-01 on, the year bar stands for the 31 days of December.
     expect(recordedUnits(bars, new Date(Date.UTC(2025, 11, 1, 6)), "day", true)).toBe(31 + 2)
   })
+
+  it("ends a year bar with no bar after it at the end of the period", () => {
+    // The days of the period hold no bytes, so the year bar stands in for all of them.
+    const bars = buildTorrentBars([torrentRow(Date.UTC(2025, 0, 1), "year", 500)], { ...period, to: new Date(Date.UTC(2025, 11, 31, 12)) }, undefined)!
+
+    expect(bars.map(bar => bar.width)).toEqual(["year"])
+    // 2025-01-01 to 2025-12-31, the last day of the period.
+    expect(recordedUnits(bars, undefined, "day", true, new Date(Date.UTC(2025, 11, 31, 12)))).toBe(365)
+    expect(recordedUnits(bars, undefined, "day", true, new Date(Date.UTC(2025, 5, 30, 12)))).toBe(181)
+  })
 })

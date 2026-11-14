@@ -256,24 +256,25 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   if (transfer.rows && last?.rows !== transfer.rows) {
     setLast({ key, rows: transfer.rows, period })
   }
-  const bars = useMemo(() => {
+  const shownBars = useMemo(() => {
     const shown = transfer.rows ? { rows: transfer.rows, period } : last?.key === key ? last : undefined
     if (!shown) {
       return undefined
     }
     if (grouping === "category") {
-      return buildCategoryBars(shown.rows, shown.period, since)
+      return { bars: buildCategoryBars(shown.rows, shown.period, since), to: shown.period.to }
     }
     if (grouping !== "tracker") {
       // A release attribute reads the torrent rows, which hold a year row for each year that qui folded.
-      return buildTorrentBars(shown.rows.flat(), shown.period, since)
+      return { bars: buildTorrentBars(shown.rows.flat(), shown.period, since), to: shown.period.to }
     }
     const range = chartRange(shown.period, since)
-    return range && buildBars(shown.rows, range, unit)
+    return { bars: range && buildBars(shown.rows, range, unit), to: shown.period.to }
   }, [transfer.rows, period, last, key, since, unit, grouping])
+  const bars = shownBars?.bars
   const best = bars && bestBar(bars, unit)
   const uploaded = bars?.reduce((sum, bar) => sum + barBytes(bar).uploaded, 0) ?? 0
-  const recordedBars = bars && recordedUnits(bars, since, unit, grouping !== "tracker")
+  const recordedBars = bars && recordedUnits(bars, since, unit, grouping !== "tracker", shownBars?.to)
 
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 })
   const formatStart = (start: number, width: BarWidth) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
