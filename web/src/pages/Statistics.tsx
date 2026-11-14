@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/layout/PageHeader"
 import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
+import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,7 +31,8 @@ import {
   sumBytes,
   topGroups,
   type Metric,
-  type StatisticsPeriod
+  type StatisticsPeriod,
+  type TopTorrent
 } from "@/lib/statistics"
 import { formatBytes } from "@/lib/utils"
 import type { LiveTrackerGroup, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryRow } from "@/types"
@@ -76,7 +78,11 @@ interface PageRows {
   compared?: TransferHistoryRow[][]
   before?: TransferHistoryRow[][]
   categories?: TransferHistoryRow[][]
+  torrents?: TopTorrent[]
 }
+
+// The number of torrents of the Top torrents card.
+const TOP_TORRENTS = 10
 
 function relativeChange(now: number, before: number): number | undefined {
   return before > 0 ? (now - before) / before : undefined
@@ -133,6 +139,7 @@ export function Statistics() {
   const before = useTransferHistoryRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
   const byCategory = grouping === "category"
   const categories = useTransferHistoryRows(selected, ready && byCategory ? { from: period.from, to: period.to, bucket: "total", groupBy: "category" } : undefined)
+  const top = useTopTorrents(selected, period, TOP_TORRENTS)
 
   // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
   const liveIds = useMemo(() => {
@@ -153,13 +160,13 @@ export function Statistics() {
   // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
   // so that the numbers never mix two periods or two selections.
   const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}`
-  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (!byCategory || categories.rows !== undefined)
+  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (!byCategory || categories.rows !== undefined) && top.torrents !== undefined
   const [lastComplete, setLastComplete] = useState<PageRows>()
-  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.categories !== categories.rows)) {
-    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, categories: categories.rows })
+  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.categories !== categories.rows || lastComplete?.torrents !== top.torrents)) {
+    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, categories: categories.rows, torrents: top.torrents })
   }
-  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? categories.error) && lastComplete?.series === series
-  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, categories: categories.rows }
+  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? categories.error ?? top.error) && lastComplete?.series === series
+  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, categories: categories.rows, torrents: top.torrents }
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
@@ -302,7 +309,7 @@ export function Statistics() {
         {statusQuery.error ? (
           <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
         ) : ready ? (
-          <TopTorrents instances={selected} period={period} since={since} series={series} displayGroup={displayName} />
+          <TopTorrents torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
         ) : (
           <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
         )}

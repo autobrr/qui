@@ -26,7 +26,8 @@ import {
   sumBytes,
   type ChartUnit,
   type GroupTotals,
-  type StatisticsPeriod
+  type StatisticsPeriod,
+  type TopTorrent
 } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryInstance, TransferHistoryRow } from "@/types"
@@ -300,7 +301,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
           <GroupChart bars={bars} unit={unit} color={seriesIndex >= 0 ? { light: SERIES_COLORS.light[seriesIndex], dark: SERIES_COLORS.dark[seriesIndex] } : undefined} />
         )}
       </div>
-      <GroupTorrents group={group} grouping={grouping} name={name} period={period} instances={instances} />
+      <GroupTorrents group={group} grouping={grouping} name={name} period={period} series={series} instances={instances} />
     </div>
   )
 }
@@ -308,10 +309,18 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
 const GROUP_LIMIT = 5
 
 /** The torrents of a group with the most upload in the period. */
-function GroupTorrents({ group, grouping, name, period, instances }: { group: string; grouping: TransferHistoryGrouping; name: string; period: StatisticsPeriod; instances: TransferHistoryInstance[] }) {
+function GroupTorrents({ group, grouping, name, period, series, instances }: { group: string; grouping: TransferHistoryGrouping; name: string; period: StatisticsPeriod; series: string; instances: TransferHistoryInstance[] }) {
   const { t } = useTranslation("statistics")
   const torrentName = useTorrentName()
-  const { torrents, error } = useTopTorrents(instances, period, GROUP_LIMIT, { grouping, name: group })
+  const { torrents: loaded, error } = useTopTorrents(instances, period, GROUP_LIMIT, { grouping, name: group })
+
+  // After the period moves, the list keeps its torrents until the torrents of the new period load, as the chart does.
+  const key = `${series}:${grouping}:${group}`
+  const [last, setLast] = useState<{ key: string; torrents: TopTorrent[] }>()
+  if (loaded && last?.torrents !== loaded) {
+    setLast({ key, torrents: loaded })
+  }
+  const torrents = loaded ?? (last?.key === key ? last.torrents : undefined)
 
   return (
     <div>
