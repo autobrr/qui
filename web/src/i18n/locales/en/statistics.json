@@ -52,7 +52,23 @@
     "gap": "Includes a recording gap of {{duration}}",
     "gapLabel": "gap {{duration}}",
     "foldedDay": "(whole day, UTC)",
+    "weekOf": "Week of {{date}}",
     "empty": "No transfer in this period."
+  },
+  "yearView": {
+    "title": "Upload over the period",
+    "description": "Upload only, per day for the last 53 weeks, then per month by tracker",
+    "calendar": "Upload per day, last 53 weeks",
+    "less": "Less",
+    "more": "More",
+    "day": "{{date}}: {{uploaded}} uploaded",
+    "dayNotRecorded": "{{date}}: not recorded",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "Best day",
+    "bestMonth": "Best month",
+    "weekends": "Weekends",
+    "weekendsDetail": "of the upload moved on a Saturday or a Sunday",
+    "months": "Upload per month, by tracker"
   },
   "groups": {
     "public": "Public",
@@ -144,6 +160,7 @@
     "averageDay": "Average per day",
     "chartHour": "{{group}} per hour",
     "chartDay": "{{group}} per day",
+    "chartWeek": "{{group}} per week",
     "chartLegend": "Upload above the line, download below it",
     "topTorrents": "Top torrents of {{group}}",
     "topTorrentsCategoryNote": "The top torrents of a category follow the category that each torrent has now."

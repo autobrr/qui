@@ -21,6 +21,8 @@ import {
   buildCategoryBars,
   buildTorrentBars,
   chartRange,
+  showsYearView,
+  weekBars,
   type BarWidth,
   formatBuffer,
   formatRatio,
@@ -275,6 +277,9 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
     return { bars: range && buildBars(shown.rows, range, unit), to: shown.period.to }
   }, [transfer.rows, period, last, key, since, unit, grouping])
   const bars = shownBars?.bars
+  // Daily bars of a long period are too thin to read, so its chart shows weeks.
+  const weekly = showsYearView(period, since)
+  const chartBars = useMemo(() => bars && weekly ? weekBars(bars) : bars, [bars, weekly])
   const best = bars && bestBar(bars, unit)
   const uploaded = bars?.reduce((sum, bar) => sum + barBytes(bar).uploaded, 0) ?? 0
   const recordedBars = bars && recordedUnits(bars, since, unit, grouping !== "tracker", shownBars?.to)
@@ -307,15 +312,15 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
       </dl>
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{unit === "hour" ? t("detail.chartHour", { group: name }) : t("detail.chartDay", { group: name })}</span>
+          <span className="font-medium text-foreground">{weekly ? t("detail.chartWeek", { group: name }) : unit === "hour" ? t("detail.chartHour", { group: name }) : t("detail.chartDay", { group: name })}</span>
           <span>{t("detail.chartLegend")}</span>
         </div>
         {transfer.error ? (
           <div className="flex h-[200px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: transfer.error.message })}</div>
-        ) : !bars ? (
+        ) : !chartBars ? (
           <div className="flex h-[200px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
         ) : (
-          <GroupChart bars={bars} unit={unit} color={seriesIndex >= 0 ? { light: colors.light[seriesIndex], dark: colors.dark[seriesIndex] } : undefined} />
+          <GroupChart bars={chartBars} unit={unit} color={seriesIndex >= 0 ? { light: colors.light[seriesIndex], dark: colors.dark[seriesIndex] } : undefined} />
         )}
       </div>
       <GroupTorrents group={group} grouping={grouping} name={name} period={period} series={series} instances={instances} />

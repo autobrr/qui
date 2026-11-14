@@ -28,9 +28,9 @@ Select the period at the top of the page:
 | 24 hours | One bar for each hour |
 | 7 days | One bar for each hour |
 | 30 days | One bar for each day |
-| Year | One bar for each day |
-| All time | One bar for each day, from the first recording |
-| Custom | One bar for each hour for 7 days or less, and one bar for each day for a longer range |
+| Year | The [year view](#year-view) |
+| All time | One bar for each day, from the first recording. The year view if the range covers more than 120 days |
+| Custom | One bar for each hour for 7 days or less, and one bar for each day for a longer range. The year view for a range of more than 120 days |
 
 A day starts at midnight in the timezone of your browser.
 
@@ -59,6 +59,20 @@ If qui recorded the period before in full, Uploaded and Downloaded also show the
 The chart shows the upload or the download of each bar. Use the switch above the chart to select **Upload** or **Download**. The bars stack by tracker. The five trackers with the most bytes in the period each get a color. The other trackers are in the gray series Other.
 
 The page counts each torrent toward one tracker. Thus, the tracker series of the chart add up to the Uploaded or Downloaded number of the period. All time is the exception, because its numbers also hold the Baseline. A torrent that is not private counts toward Public. A torrent with no tracker counts toward No tracker. Tracker customizations apply: a merged tracker is one series under its display name. A rename or a merge also changes the past.
+
+## Year view
+
+If a chart covers more than 120 days, the bars of the days are too thin to read. For such a period, the page shows the year view in place of the chart. The page counts the days of All time from the first recording. The year view shows upload only, so the switch for **Upload** or **Download** is not there.
+
+The year view has these parts:
+
+- A calendar with one cell for each day of the period, for the last 53 weeks at most. Each column is one week, from Monday to Sunday. A cell with a stronger color has more upload. A cell with a dashed border is a day before the first recording. A cell with a yellow ring is a day that a [recording gap](#recording-gap) covers, or the day after the gap that holds its bytes. To see the date and the upload of a day, hold the pointer on its cell or tap it. The line above the calendar then shows them. On a phone, the calendar scrolls sideways and opens at the latest weeks.
+- **Best day**: the day of the period with the most upload.
+- **Best month**: the month of the period with the most upload.
+- **Weekends**: the share of the upload of the period that moved on a Saturday or a Sunday.
+- The upload of each month, as bars that stack by tracker. The colors and the gray series Other are the same as in the chart.
+
+The best day, the best month, and the weekend share count the whole period, also the days before the 53 weeks of the calendar. In a period that qui folded, a day is a UTC day. See [Keep daily detail for](#keep-daily-detail-for).
 
 ## Table
 
@@ -114,6 +128,8 @@ The detail shows:
 - **Top torrents**: the five torrents of the row with the most upload in the period. A torrent counts toward the tracker and the category that it has now. Thus, a torrent that you moved to another category shows under its new category with all its upload of the period.
 
 The chart of a tracker has the bars of the main chart: hours for a period of 7 days or less, and days for a longer period. The chart of a category or a release attribute shows days, because qui stores those bytes for each UTC day. In the chart of a release attribute, a year that qui folded is one bar. That bar is never the best day, and the average counts each day that it stands for.
+
+For a period of more than 120 days, the chart of the row shows one bar for each week, from Monday on. The best day and the average per day still count days.
 
 For All time, the rows, the share, and the upload from cross-seeds include the Baseline. The chart, the best bar, and the average do not, because the Baseline has no date.
 

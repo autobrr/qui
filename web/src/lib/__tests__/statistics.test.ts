@@ -75,6 +75,27 @@ describe("buildBars", () => {
     }
   })
 
+  // regression: #4133
+  it("keeps a folded UTC day on its own date at UTC+13", () => {
+    process.env.TZ = "Pacific/Auckland"
+    try {
+      // A folded Friday, January 31, and the local day of Saturday, February 1, which starts at 11:00 UTC on January 31.
+      const rows: TransferHistoryRow[] = [
+        { group: "a.test", start: "2025-01-31T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 100, downloaded: 0, statisticsCrossSeedUploaded: 0 },
+        { group: "a.test", start: "2025-01-31T11:00:00Z", width: "day", gapSeconds: 0, uploaded: 7, downloaded: 0, statisticsCrossSeedUploaded: 0 },
+      ]
+      const bars = buildBars([rows], { from: new Date(2025, 0, 30), to: new Date(2025, 1, 2) }, "day")
+
+      expect(bars.map(bar => [new Date(bar.start).toDateString(), bar.bytes.get("a.test")?.uploaded])).toEqual([
+        ["Thu Jan 30 2025", undefined],
+        ["Fri Jan 31 2025", 100],
+        ["Sat Feb 01 2025", 7],
+      ])
+    } finally {
+      process.env.TZ = "America/New_York"
+    }
+  })
+
   it("draws a folded day as one day bar in an hourly chart", () => {
     const rows: TransferHistoryRow[] = [
       { group: "a.test", start: "2026-01-10T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 500, downloaded: 0, statisticsCrossSeedUploaded: 0 },

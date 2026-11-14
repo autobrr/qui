@@ -53,7 +53,23 @@
     "gap": "Inclut une interruption d’enregistrement de {{duration}}",
     "gapLabel": "interruption {{duration}}",
     "foldedDay": "(journée entière, UTC)",
+    "weekOf": "Semaine du {{date}}",
     "empty": "Aucun transfert sur cette période."
+  },
+  "yearView": {
+    "title": "Envoi sur la période",
+    "description": "Envoi seulement, par jour sur les 53 dernières semaines, puis par mois et par tracker",
+    "calendar": "Envoi par jour, 53 dernières semaines",
+    "less": "Moins",
+    "more": "Plus",
+    "day": "{{date}} : {{uploaded}} envoyés",
+    "dayNotRecorded": "{{date}} : non enregistré",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "Meilleur jour",
+    "bestMonth": "Meilleur mois",
+    "weekends": "Week-ends",
+    "weekendsDetail": "de l'envoi a eu lieu un samedi ou un dimanche",
+    "months": "Envoi par mois, par tracker"
   },
   "groups": {
     "public": "Public",
@@ -145,6 +161,7 @@
     "averageDay": "Moyenne par jour",
     "chartHour": "{{group}} par heure",
     "chartDay": "{{group}} par jour",
+    "chartWeek": "{{group}} par semaine",
     "chartLegend": "Envoi au-dessus de la ligne, réception en dessous",
     "topTorrents": "Meilleurs torrents de {{group}}",
     "topTorrentsCategoryNote": "Les meilleurs torrents d'une catégorie suivent la catégorie actuelle de chaque torrent."

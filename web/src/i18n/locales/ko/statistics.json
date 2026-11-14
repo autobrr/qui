@@ -51,7 +51,23 @@
     "gap": "{{duration}}의 기록 공백 포함",
     "gapLabel": "공백 {{duration}}",
     "foldedDay": "(하루 전체, UTC)",
+    "weekOf": "{{date}} 시작 주",
     "empty": "이 기간에는 전송이 없습니다."
+  },
+  "yearView": {
+    "title": "기간 업로드",
+    "description": "업로드만, 최근 53주는 일별, 그 다음 트래커별 월별",
+    "calendar": "일별 업로드, 최근 53주",
+    "less": "적음",
+    "more": "많음",
+    "day": "{{date}}: {{uploaded}} 업로드",
+    "dayNotRecorded": "{{date}}: 기록 없음",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "최고 날짜",
+    "bestMonth": "최고 월",
+    "weekends": "주말",
+    "weekendsDetail": "토요일 또는 일요일에 이루어진 업로드 비율",
+    "months": "월별 업로드, 트래커별"
   },
   "groups": {
     "public": "공개",
@@ -143,6 +159,7 @@
     "averageDay": "일별 평균",
     "chartHour": "시간별 {{group}}",
     "chartDay": "일별 {{group}}",
+    "chartWeek": "주별 {{group}}",
     "chartLegend": "선 위는 업로드, 아래는 다운로드",
     "topTorrents": "{{group}}의 상위 토렌트",
     "topTorrentsCategoryNote": "카테고리의 상위 토렌트는 각 토렌트의 현재 카테고리를 따릅니다."

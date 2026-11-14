@@ -53,7 +53,23 @@
     "gap": "Obsahuje mezeru v záznamu {{duration}}",
     "gapLabel": "mezera {{duration}}",
     "foldedDay": "(celý den, UTC)",
+    "weekOf": "Týden od {{date}}",
     "empty": "V tomto období žádný přenos."
+  },
+  "yearView": {
+    "title": "Odesílání za období",
+    "description": "Pouze odesílání, po dnech za posledních 53 týdnů a po měsících podle trackeru",
+    "calendar": "Odesílání po dnech, posledních 53 týdnů",
+    "less": "Méně",
+    "more": "Více",
+    "day": "{{date}}: odesláno {{uploaded}}",
+    "dayNotRecorded": "{{date}}: nezaznamenáno",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "Nejlepší den",
+    "bestMonth": "Nejlepší měsíc",
+    "weekends": "Víkendy",
+    "weekendsDetail": "odesílání proběhlo v sobotu nebo v neděli",
+    "months": "Odesílání po měsících, podle trackeru"
   },
   "groups": {
     "public": "Veřejné",
@@ -145,6 +161,7 @@
     "averageDay": "Průměr za den",
     "chartHour": "{{group}} za hodinu",
     "chartDay": "{{group}} za den",
+    "chartWeek": "{{group}} za týden",
     "chartLegend": "Odesílání nad čarou, stahování pod ní",
     "topTorrents": "Nejlepší torrenty skupiny {{group}}",
     "topTorrentsCategoryNote": "Nejlepší torrenty kategorie se řídí kategorií, kterou má každý torrent nyní."

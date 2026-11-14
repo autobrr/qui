@@ -51,7 +51,23 @@
     "gap": "包含 {{duration}} 的记录空缺",
     "gapLabel": "空缺 {{duration}}",
     "foldedDay": "（整天，UTC）",
+    "weekOf": "{{date}} 起的一周",
     "empty": "此时段内没有传输。"
+  },
+  "yearView": {
+    "title": "期间上传",
+    "description": "仅上传：最近 53 周按天，再按月和 Tracker",
+    "calendar": "每日上传，最近 53 周",
+    "less": "少",
+    "more": "多",
+    "day": "{{date}}：上传 {{uploaded}}",
+    "dayNotRecorded": "{{date}}：未记录",
+    "dayGap": "{{day}}。{{gap}}",
+    "bestDay": "最佳日",
+    "bestMonth": "最佳月",
+    "weekends": "周末",
+    "weekendsDetail": "的上传发生在周六或周日",
+    "months": "每月上传，按 Tracker"
   },
   "groups": {
     "public": "公开",
@@ -143,6 +159,7 @@
     "averageDay": "每日平均",
     "chartHour": "{{group}} 每小时",
     "chartDay": "{{group}} 每日",
+    "chartWeek": "{{group}} 每周",
     "chartLegend": "线上方为上传，下方为下载",
     "topTorrents": "{{group}} 的热门种子",
     "topTorrentsCategoryNote": "分类的热门种子按每个种子当前的分类统计。"

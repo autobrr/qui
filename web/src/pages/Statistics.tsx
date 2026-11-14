@@ -12,6 +12,7 @@ import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
+import { YearView } from "@/components/statistics/YearView"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -32,6 +33,7 @@ import {
   previousPeriod,
   recordedFrom,
   recordingSince,
+  showsYearView,
   sumBytes,
   topGroups,
   type Metric,
@@ -183,7 +185,10 @@ export function Statistics() {
   )
   const previousTotals = useMemo(() => shown.before && sumBytes(shown.before.flat(), false), [shown.before])
   const comparedTotals = useMemo(() => shown.compared && sumBytes(shown.compared.flat(), false), [shown.compared])
-  const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], metric), [shown.chart, metric])
+  // The year view shows upload only, and the table takes its series colors from it.
+  const yearView = showsYearView(shown.period, since)
+  const chartMetric: Metric = yearView ? "uploaded" : metric
+  const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], chartMetric), [shown.chart, chartMetric])
   const bars = useMemo(() => {
     const range = chartRange(shown.period, since)
     return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
@@ -293,23 +298,25 @@ export function Statistics() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("chart.title")}</CardTitle>
-          <CardDescription>{period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
-          <CardAction>
+          <CardTitle>{yearView ? t("yearView.title") : t("chart.title")}</CardTitle>
+          <CardDescription>{yearView ? t("yearView.description") : period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
+          {!yearView && <CardAction>
             <Tabs value={metric} onValueChange={value => setMetric(value as Metric)}>
               <TabsList>
                 <TabsTrigger value="uploaded" className="px-3">{t("chart.upload")}</TabsTrigger>
                 <TabsTrigger value="downloaded" className="px-3">{t("chart.download")}</TabsTrigger>
               </TabsList>
             </Tabs>
-          </CardAction>
+          </CardAction>}
         </CardHeader>
         <CardContent>
           {chart.error ? (
             <div className="flex h-[300px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: chart.error.message })}</div>
           ) : loading ? (
             <div className="flex h-[300px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-          ) : bars.some(bar => bar.bytes.size > 0) ? (
+          ) : bars.some(bar => bar.bytes.size > 0) ? yearView ? (
+            <YearView bars={bars} groups={groups} to={shown.period.to} since={since} displayName={displayName} />
+          ) : (
             <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
           ) : (
             <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">{t("chart.empty")}</div>
