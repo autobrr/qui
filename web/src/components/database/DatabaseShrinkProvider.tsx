@@ -4,7 +4,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useRef, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -28,15 +28,21 @@ export function DatabaseShrinkProvider({ children }: { children: ReactNode }) {
     mutationFn: () => api.dismissDatabaseShrinkResult(),
     onSettled: () => queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey }),
   })
-  const { mutate: dismiss, isIdle } = dismissResult
+  const { mutate: dismiss } = dismissResult
+  // The last result that a toast showed, so that a second render does not show it again.
+  const shownResult = useRef<typeof result>(undefined)
   useEffect(() => {
-    // isIdle keeps a second render from showing the result two times.
-    if (!result || !isIdle) {
+    if (!result) {
+      shownResult.current = undefined
       return
     }
+    if (result === shownResult.current) {
+      return
+    }
+    shownResult.current = result
     toast.success(t("databaseShrink.done", { before: formatBytes(result.beforeBytes), after: formatBytes(result.afterBytes) }), { duration: 15_000 })
     dismiss()
-  }, [result, isIdle, dismiss, t])
+  }, [result, dismiss, t])
 
   const value: DatabaseShrinkContextValue = {
     pending,

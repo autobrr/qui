@@ -197,10 +197,10 @@ Only the web UI can request a shrink. An API key cannot request one, because the
 Use these steps if the disk of the database has too little free space for a shrink. You need the `sqlite3` command-line program on the host of the database file. Replace `/config/qui.db` with the path of your database file.
 
 1. Stop qui.
-2. Make a copy of `qui.db` as a backup.
+2. Make a backup with `sqlite3 /config/qui.db ".backup '/backup/qui.db'"`. The backup also reads the WAL, so it holds each change.
 3. Do one of these steps:
    - To shrink the file on its own disk, run `sqlite3 /config/qui.db 'VACUUM;'`. The disk needs free space of up to the size of the file. The temp directory of the system, for example `/tmp`, also needs free space of up to the size of the file.
-   - To write a small copy on another disk, run `sqlite3 /config/qui.db "VACUUM INTO '/mnt/other/qui.db';"`. Only the other disk needs free space, for the small copy. Move the old `qui.db` out of the data directory. If `qui.db-wal` or `qui.db-shm` exist, move them out too. Then move the small copy into the data directory as `qui.db`, and give it the owner of the old file.
+   - To write a small copy on another disk, run `sqlite3 /config/qui.db "VACUUM INTO '/mnt/other/qui.db';"`. The other disk needs free space for the small copy. Copy the small copy into the data directory as `qui.db.new`. The disk of the database needs free space for this copy. If the copy fails, the old file is still in place. Then move `qui.db` out of the data directory. If `qui.db-wal` or `qui.db-shm` exist, move them out too. Rename `qui.db.new` to `qui.db`, and give it the owner of the old file.
 4. Start qui.
 
 Do not leave an old `qui.db-wal` file next to the small copy. SQLite applies it to the new file and damages the database.

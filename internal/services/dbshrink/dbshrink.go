@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/autobrr/qui/internal/database"
@@ -99,7 +98,11 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	}
 	status.FileBytes = info.Size()
 	status.NeedBytes = needFactor * status.FileBytes
-	if status.FreeBytes, err = s.freeBytes(ctx, filepath.Dir(path)); err != nil {
+	dataDir, err := s.db.SQLiteFileDir()
+	if err != nil {
+		return Status{}, fmt.Errorf("resolve the database directory: %w", err)
+	}
+	if status.FreeBytes, err = s.freeBytes(ctx, dataDir); err != nil {
 		return Status{}, fmt.Errorf("read free disk space: %w", err)
 	}
 	if status.Pending, err = s.db.ShrinkPending(ctx); err != nil {

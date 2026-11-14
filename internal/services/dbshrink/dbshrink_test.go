@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -102,6 +104,35 @@ func TestAShrinkThatAnotherProgramBlocksOpensShrinkFailed(t *testing.T) {
 	status, err := service.Status(t.Context())
 	require.NoError(t, err)
 	require.Nil(t, status.Result)
+}
+
+func TestStatusReadsTheFreeSpaceOfTheDiskThatHoldsTheData(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "data")
+	linkDir := filepath.Join(root, "link")
+	require.NoError(t, os.Mkdir(dataDir, 0o750))
+	require.NoError(t, os.Mkdir(linkDir, 0o750))
+	db, err := database.New(filepath.Join(dataDir, "qui.db"))
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	linkPath := filepath.Join(linkDir, "qui.db")
+	require.NoError(t, os.Symlink(filepath.Join(dataDir, "qui.db"), linkPath))
+	db, err = database.New(linkPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	service := New(db, systemnotice.New(nil), nil)
+	var checked string
+	service.freeBytes = func(_ context.Context, dir string) (int64, error) {
+		checked = dir
+		return plenty, nil
+	}
+
+	_, err = service.Status(t.Context())
+
+	require.NoError(t, err)
+	wantDir, err := filepath.EvalSymlinks(dataDir)
+	require.NoError(t, err)
+	require.Equal(t, wantDir, checked)
 }
 
 func TestRequest(t *testing.T) {

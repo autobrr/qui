@@ -55,6 +55,16 @@ func (db *DB) SQLitePath() string {
 	return db.sqlitePath
 }
 
+// SQLiteFileDir returns the directory that holds the SQLite database file,
+// after symlinks, so that a shrink uses the disk of the data.
+func (db *DB) SQLiteFileDir() (string, error) {
+	resolved, err := filepath.EvalSymlinks(db.sqlitePath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(resolved), nil
+}
+
 // RequestShrink stores the "shrink pending" mark. The next RunPendingShrink,
 // normally at the next start of qui, shrinks the file.
 func (db *DB) RequestShrink(ctx context.Context) error {
@@ -114,11 +124,19 @@ func (db *DB) shrink(ctx context.Context) ShrinkResult {
 	if err != nil {
 		return failedShrink(0, err)
 	}
+	// Windows cannot make a file smaller while another connection maps it,
+	// and an idle reader keeps its map of the file.
+	db.readerPool.SetMaxIdleConns(0)
+	defer db.readerPool.SetMaxIdleConns(sqliteReaderPoolSize())
 	// VACUUM builds its temporary copy in the temp directory of the system.
 	// Build it next to the database, so that the free space check of one disk
 	// holds. The setting is global to the process, and at startup nothing else
 	// uses SQLite.
-	tempDir := strings.ReplaceAll(filepath.Dir(db.sqlitePath), "'", "''")
+	dataDir, err := db.SQLiteFileDir()
+	if err != nil {
+		return failedShrink(before, err)
+	}
+	tempDir := strings.ReplaceAll(dataDir, "'", "''")
 	if _, err := db.writerConn.ExecContext(ctx, "PRAGMA temp_store_directory = '"+tempDir+"'"); err != nil {
 		return failedShrink(before, fmt.Errorf("set the temp directory of the shrink: %w", err))
 	}
