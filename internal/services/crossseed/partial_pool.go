@@ -440,6 +440,8 @@ func (s *partialPoolCoordinator) pausePartialPoolMemberForReview(ctx context.Con
 	}
 	persisted := s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{
 		ReviewPausePending: &pending,
+		ResumeAttempts:     models.NullableInt64Update{Set: true},
+		RecoveryAttempts:   models.NullableInt64Update{Set: true},
 		LastError:          &reason,
 	})
 	return persisted && settled
