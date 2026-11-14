@@ -302,7 +302,7 @@ func TestFileIDIndexSkippedWithoutIdentity(t *testing.T) {
 				slashEntry("/data/torrents/Film", "Film", fs.ModeDir),
 				slashEntry("/data/torrents/Film/film.mkv", "Film/film.mkv", 0),
 			)
-			svc := &Service{torrentFiles: torrents, backendPool: rowPool(tt.row)}
+			svc := &Service{parser: NewParser(nil), torrentFiles: torrents, backendPool: rowPool(tt.row)}
 			l := zerolog.Nop()
 
 			result, index, ok := svc.runScanPhase(ctx, &models.DirScanDirectory{TargetInstanceID: tt.row.ID}, &scanTarget{backend: backend, instance: tt.row}, "/data/torrents", 1, &l)

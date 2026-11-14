@@ -61,7 +61,7 @@ func TestScanLogsFilesWithoutIdentity(t *testing.T) {
 			t.Parallel()
 			walk := append([]fsops.WalkEntry{slashEntry("/data/scan", ".", fs.ModeDir), slashEntry("/data/scan/Film", "Film", fs.ModeDir)}, tt.walk...)
 			row := remoteInstance(tt.tier)
-			svc := &Service{torrentFiles: stubTorrentFiles{empty: true}, backendPool: rowPool(row)}
+			svc := &Service{parser: NewParser(nil), torrentFiles: stubTorrentFiles{empty: true}, backendPool: rowPool(row)}
 			var buf bytes.Buffer
 			l := zerolog.New(&buf)
 

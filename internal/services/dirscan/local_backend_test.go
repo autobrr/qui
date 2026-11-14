@@ -178,7 +178,7 @@ func TestScanWalksTheBackendOfTheReadThatAdmittedIt(t *testing.T) {
 	instances := &flippingStore{}
 	spy := &remoteSpy{}
 	pool := fsops.NewPoolWithRemote(instances, local.NewBackend(), func(*models.Instance) fsops.Backend { return spy })
-	svc := &Service{store: store, backendPool: pool, torrentFiles: stubTorrentFiles{empty: true}}
+	svc := &Service{parser: NewParser(nil), store: store, backendPool: pool, torrentFiles: stubTorrentFiles{empty: true}}
 	logger := zerolog.Nop()
 
 	validated, target, ok := svc.validateDirectory(ctx, dir.ID, runID, &logger)
