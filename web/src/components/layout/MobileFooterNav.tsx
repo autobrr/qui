@@ -43,7 +43,7 @@ import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
-import { systemNoticeStyles } from "@/lib/system-notice"
+import { systemNoticeDot } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
@@ -437,7 +437,7 @@ export function MobileFooterNav() {
                   location.pathname === "/settings" && "text-primary"
                 )} />
                 {systemNotices.length > 0 && (
-                  <span className={cn("absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full", systemNoticeStyles.error.dot)} />
+                  <span className={cn("absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full", systemNoticeDot(systemNotices))} />
                 )}
                 {updateInfo && (
                   <Badge

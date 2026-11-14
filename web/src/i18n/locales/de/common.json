@@ -172,13 +172,31 @@
       "recording_stopped": {
         "title": "Aufzeichnung gestoppt",
         "fix": "qui versucht es beim nächsten Schreiben erneut. Stelle sicher, dass der Datenträger freien Speicher hat und qui die Datenbankdatei schreiben kann."
+      },
+      "shrink_failed": {
+        "title": "Verkleinern fehlgeschlagen",
+        "fix": "qui konnte die Datenbankdatei nicht verkleinern. Die Datenbank ist unverändert, und qui läuft normal weiter. Details stehen im qui-Log.",
+        "fixes": {
+          "disk_full": "Auf dem Datenträger ist zu wenig Platz frei. Das Verkleinern braucht bis zum Doppelten der Größe der Datenbankdatei. Gib Platz frei und versuche es erneut. Die Datenbank ist unverändert.",
+          "locked": "Ein anderes Programm hielt die Datenbankdatei. Beende dieses Programm, zum Beispiel ein Backup-Tool oder einen Datenbank-Viewer, und versuche es erneut. Die Datenbank ist unverändert."
+        }
       }
+    },
+    "actions": {
+      "tryAgain": "Erneut versuchen",
+      "dismiss": "Ausblenden",
+      "openLog": "Log öffnen"
     },
     "unknown": {
       "title": "Systemhinweis",
       "fix": "qui benötigt eine Aktion von dir. Details stehen im qui-Log."
     },
     "cause": "Ursache: {{cause}}"
+  },
+  "databaseShrink": {
+    "done": "Datenbankdatei von {{before}} auf {{after}} verkleinert",
+    "nextStart": "Das Verkleinern läuft beim nächsten Start von qui",
+    "failed": "Verkleinern konnte nicht angefordert werden"
   },
   "pwaUpdate": {
     "reload": "Neu laden",

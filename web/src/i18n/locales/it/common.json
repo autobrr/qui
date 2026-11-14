@@ -172,13 +172,31 @@
       "recording_stopped": {
         "title": "Registrazione interrotta",
         "fix": "qui riprova alla prossima scrittura. Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database."
+      },
+      "shrink_failed": {
+        "title": "Riduzione non riuscita",
+        "fix": "qui non è riuscito a ridurre il file del database. Il database non è cambiato e qui funziona normalmente. Il log di qui contiene i dettagli.",
+        "fixes": {
+          "disk_full": "Il disco ha troppo poco spazio libero. Una riduzione richiede fino a due volte la dimensione del file del database. Libera spazio sul disco, poi riprova. Il database non è cambiato.",
+          "locked": "Un altro programma teneva aperto il file del database. Chiudi quel programma, ad esempio uno strumento di backup o un visualizzatore di database, poi riprova. Il database non è cambiato."
+        }
       }
+    },
+    "actions": {
+      "tryAgain": "Riprova",
+      "dismiss": "Ignora",
+      "openLog": "Apri il log"
     },
     "unknown": {
       "title": "Avviso di sistema",
       "fix": "qui richiede un tuo intervento. Il log di qui contiene i dettagli."
     },
     "cause": "Causa: {{cause}}"
+  },
+  "databaseShrink": {
+    "done": "File del database ridotto da {{before}} a {{after}}",
+    "nextStart": "La riduzione verrà eseguita al prossimo avvio di qui",
+    "failed": "Impossibile richiedere la riduzione"
   },
   "pwaUpdate": {
     "reload": "Ricarica",

@@ -432,7 +432,14 @@
       "cancel": "Abbrechen",
       "confirm": "Löschen",
       "deleted": "Verlauf gelöscht",
-      "failed": "Verlauf konnte nicht gelöscht werden"
+      "failed": "Verlauf konnte nicht gelöscht werden",
+      "shrink": {
+        "label": "Auch die Datenbankdatei verkleinern",
+        "restart": "qui startet neu und verkleinert die Datei, sodass du den Speicherplatz zurückbekommst. qui ist kurz nicht erreichbar.",
+        "nextStart": "qui kann sich in dieser Installation nicht selbst neu starten. Das Verkleinern läuft beim nächsten Start von qui.",
+        "tooLittleSpace": "Auf dem Datenträger sind {{free}} frei, das Verkleinern braucht bis zu {{need}}. Du kannst das gefahrlos auslassen: SQLite nutzt den freien Platz wieder für neuen Verlauf.",
+        "manualDocs": "Datei von Hand verkleinern"
+      }
     },
     "loadFailed": "Statistik-Einstellungen konnten nicht geladen werden",
     "toasts": {

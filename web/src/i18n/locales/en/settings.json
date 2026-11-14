@@ -432,7 +432,14 @@
       "cancel": "Cancel",
       "confirm": "Delete",
       "deleted": "History deleted",
-      "failed": "Failed to delete the history"
+      "failed": "Failed to delete the history",
+      "shrink": {
+        "label": "Also shrink the database file",
+        "restart": "qui restarts and makes the file smaller, so you get the disk space back. qui is unavailable for a short time.",
+        "nextStart": "qui cannot restart itself on this install. The shrink runs at the next start of qui.",
+        "tooLittleSpace": "The disk has {{free}} free, and a shrink needs up to {{need}}. It is safe to leave this off: SQLite uses the free space again for new history.",
+        "manualDocs": "Shrink the file by hand"
+      }
     },
     "loadFailed": "Failed to load the Statistics settings",
     "toasts": {

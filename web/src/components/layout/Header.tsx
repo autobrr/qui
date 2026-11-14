@@ -63,7 +63,7 @@ import {
 } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { hasSelection } from "@/lib/torrent-selection"
-import { systemNoticeStyles } from "@/lib/system-notice"
+import { systemNoticeDot } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
@@ -713,7 +713,7 @@ export function Header({
               <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors relative">
                 <Menu className="h-4 w-4" />
                 {systemNotices.length > 0 && (
-                  <span className={cn("absolute top-1 left-1 h-2 w-2 rounded-full", systemNoticeStyles.error.dot)} />
+                  <span className={cn("absolute top-1 left-1 h-2 w-2 rounded-full", systemNoticeDot(systemNotices))} />
                 )}
                 {updateInfo && (
                   <span className="absolute top-1 right-1 h-2 w-2 bg-green-500 rounded-full" />

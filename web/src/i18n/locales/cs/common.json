@@ -172,13 +172,31 @@
       "recording_stopped": {
         "title": "Záznam zastaven",
         "fix": "qui to zkusí znovu při dalším zápisu. Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze."
+      },
+      "shrink_failed": {
+        "title": "Zmenšení selhalo",
+        "fix": "qui nemohl zmenšit soubor databáze. Databáze se nezměnila a qui běží jako obvykle. Podrobnosti jsou v logu qui.",
+        "fixes": {
+          "disk_full": "Na disku je málo volného místa. Zmenšení potřebuje až dvojnásobek velikosti souboru databáze. Uvolněte místo na disku a zkuste to znovu. Databáze se nezměnila.",
+          "locked": "Soubor databáze držel jiný program. Ukončete tento program, například nástroj pro zálohy nebo prohlížeč databází, a zkuste to znovu. Databáze se nezměnila."
+        }
       }
+    },
+    "actions": {
+      "tryAgain": "Zkusit znovu",
+      "dismiss": "Zavřít",
+      "openLog": "Otevřít log"
     },
     "unknown": {
       "title": "Systémové upozornění",
       "fix": "qui od vás potřebuje zásah. Podrobnosti najdete v logu qui."
     },
     "cause": "Příčina: {{cause}}"
+  },
+  "databaseShrink": {
+    "done": "Soubor databáze zmenšen z {{before}} na {{after}}",
+    "nextStart": "Zmenšení proběhne při příštím spuštění qui",
+    "failed": "Zmenšení se nepodařilo vyžádat"
   },
   "pwaUpdate": {
     "reload": "Znovu načíst",

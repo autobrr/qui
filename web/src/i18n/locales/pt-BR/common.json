@@ -172,13 +172,31 @@
       "recording_stopped": {
         "title": "Gravação parada",
         "fix": "O qui tenta novamente na próxima gravação. Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados."
+      },
+      "shrink_failed": {
+        "title": "Falha ao reduzir",
+        "fix": "O qui não conseguiu reduzir o arquivo do banco de dados. O banco de dados não mudou e o qui funciona normalmente. O log do qui tem os detalhes.",
+        "fixes": {
+          "disk_full": "O disco tem pouco espaço livre. Uma redução precisa de até duas vezes o tamanho do arquivo do banco de dados. Libere espaço no disco e tente novamente. O banco de dados não mudou.",
+          "locked": "Outro programa estava usando o arquivo do banco de dados. Feche esse programa, por exemplo uma ferramenta de backup ou um visualizador de banco de dados, e tente novamente. O banco de dados não mudou."
+        }
       }
+    },
+    "actions": {
+      "tryAgain": "Tentar novamente",
+      "dismiss": "Dispensar",
+      "openLog": "Abrir o log"
     },
     "unknown": {
       "title": "Aviso do sistema",
       "fix": "O qui precisa de uma ação sua. O log do qui tem os detalhes."
     },
     "cause": "Causa: {{cause}}"
+  },
+  "databaseShrink": {
+    "done": "Arquivo do banco de dados reduzido de {{before}} para {{after}}",
+    "nextStart": "A redução será executada na próxima inicialização do qui",
+    "failed": "Falha ao solicitar a redução"
   },
   "pwaUpdate": {
     "reload": "Recarregar",

@@ -432,7 +432,14 @@
       "cancel": "Annulla",
       "confirm": "Elimina",
       "deleted": "Cronologia eliminata",
-      "failed": "Impossibile eliminare la cronologia"
+      "failed": "Impossibile eliminare la cronologia",
+      "shrink": {
+        "label": "Riduci anche il file del database",
+        "restart": "qui si riavvia e riduce il file, così recuperi lo spazio su disco. qui non è disponibile per un breve momento.",
+        "nextStart": "qui non può riavviarsi da solo in questa installazione. La riduzione verrà eseguita al prossimo avvio di qui.",
+        "tooLittleSpace": "Il disco ha {{free}} liberi e una riduzione richiede fino a {{need}}. Puoi lasciare questa opzione disattivata senza rischi: SQLite riutilizza lo spazio libero per la nuova cronologia.",
+        "manualDocs": "Riduci il file a mano"
+      }
     },
     "loadFailed": "Impossibile caricare le impostazioni delle statistiche",
     "toasts": {

@@ -432,7 +432,14 @@
       "cancel": "Zrušit",
       "confirm": "Smazat",
       "deleted": "Historie smazána",
-      "failed": "Historii se nepodařilo smazat"
+      "failed": "Historii se nepodařilo smazat",
+      "shrink": {
+        "label": "Zmenšit také soubor databáze",
+        "restart": "qui se restartuje a zmenší soubor, takže získáte místo na disku zpět. qui bude krátce nedostupný.",
+        "nextStart": "qui se v této instalaci nemůže restartovat sám. Zmenšení proběhne při příštím spuštění qui.",
+        "tooLittleSpace": "Na disku je volných {{free}} a zmenšení potřebuje až {{need}}. Můžete to bezpečně nechat vypnuté: SQLite volné místo znovu použije pro novou historii.",
+        "manualDocs": "Zmenšit soubor ručně"
+      }
     },
     "loadFailed": "Nastavení statistik se nepodařilo načíst",
     "toasts": {
