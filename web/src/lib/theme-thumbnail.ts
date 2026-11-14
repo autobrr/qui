@@ -33,7 +33,8 @@ export function themeThumbnailPalette(theme: Theme, dark: boolean, variation: st
   const lookup = (name: string): string | undefined => {
     if (name === "--variation-color") {
       const id = variation && theme.variations?.includes(variation) ? variation : theme.variations?.[0]
-      return id ? token(`--variation-${id}`) : undefined
+      // Like applyTheme, a missing variation color keeps the own --variation-color of the theme.
+      return (id ? token(`--variation-${id}`) : undefined) ?? token("--variation-color")
     }
     return token(name)
   }

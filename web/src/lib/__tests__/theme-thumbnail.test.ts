@@ -68,6 +68,14 @@ describe("themeThumbnailPalette", () => {
     expect(palette.primary).toBe("teal")
   })
 
+  it("uses the own variation color of a theme without variations, as the app does", () => {
+    const palette = themeThumbnailPalette(theme(
+      { light: { "--primary": "var(--variation-color)", "--variation-color": "teal" }, dark: {} }
+    ), false, null)
+
+    expect(palette.primary).toBe("teal")
+  })
+
   it("leaves out a token in a reference cycle", () => {
     const palette = themeThumbnailPalette(theme({
       light: { "--primary": "var(--accent)", "--accent": "var(--primary)", "--background": "white" },
