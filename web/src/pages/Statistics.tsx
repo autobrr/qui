@@ -74,7 +74,7 @@ function combineLiveGroups(results: UseQueryResult<LiveTrackerGroup[]>[]): LiveG
   }
 }
 
-/** The rows of the five queries of the page, for one period and one selection. */
+/** The rows of the queries of the page, for one period and one selection. */
 interface PageRows {
   // The period choice and the selected instances.
   series: string
@@ -151,10 +151,8 @@ export function Statistics() {
   const library = useTransferHistoryLibrary(selected, ready ? { from: period.from, to: period.to } : undefined)
 
   // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
-  const liveIds = useMemo(() => {
-    const active = new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id))
-    return selected.map(status => status.instanceId).filter(id => active.has(id))
-  }, [instancesQuery.data, selected])
+  const activeIds = useMemo(() => new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id)), [instancesQuery.data])
+  const liveIds = useMemo(() => selected.map(status => status.instanceId).filter(id => activeIds.has(id)), [activeIds, selected])
   const live = useQueries({
     queries: liveIds.map(instanceId => ({
       queryKey: ["tracker-groups", instanceId],
@@ -191,7 +189,14 @@ export function Statistics() {
     return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
   }, [shown.chart, shown.period, since])
 
-  const libraryPoints = useMemo(() => shown.library && buildLibraryPoints(shown.library, shown.period), [shown.library, shown.period])
+  const libraryPoints = useMemo(
+    () => shown.library && buildLibraryPoints(shown.library, shown.period, selected.map(status => ({
+      firstRecordedAt: status.firstRecordedAt,
+      // Until the instances load, each instance counts as recorded, so that a sum never leaves one out.
+      recording: instancesQuery.data === undefined || activeIds.has(status.instanceId),
+    }))),
+    [shown.library, shown.period, selected, activeIds, instancesQuery.data]
+  )
   const unique = libraryPoints && newestUniqueSize(libraryPoints)
   const newestCount = [...libraryPoints ?? []].reverse().find(point => point.torrents !== null)?.torrents ?? undefined
   const growthError = statusQuery.error ?? library.error
