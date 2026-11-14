@@ -14,12 +14,11 @@ import (
 )
 
 type TrackerCustomization struct {
-	ID              int       `json:"id"`
-	DisplayName     string    `json:"displayName"`
-	Domains         []string  `json:"domains"`
-	IncludedInStats []string  `json:"includedInStats,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID          int       `json:"id"`
+	DisplayName string    `json:"displayName"`
+	Domains     []string  `json:"domains"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type TrackerCustomizationStore struct {
@@ -32,7 +31,7 @@ func NewTrackerCustomizationStore(db dbinterface.Querier) *TrackerCustomizationS
 
 func (s *TrackerCustomizationStore) List(ctx context.Context) ([]*TrackerCustomization, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, display_name, domains, included_in_stats, created_at, updated_at
+		SELECT id, display_name, domains, created_at, updated_at
 		FROM tracker_customizations
 		ORDER BY display_name ASC
 	`)
@@ -45,14 +44,12 @@ func (s *TrackerCustomizationStore) List(ctx context.Context) ([]*TrackerCustomi
 	for rows.Next() {
 		var c TrackerCustomization
 		var domainsStr string
-		var includedStr string
 
-		if err := rows.Scan(&c.ID, &c.DisplayName, &domainsStr, &includedStr, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.DisplayName, &domainsStr, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 
 		c.Domains = splitDomains(domainsStr)
-		c.IncludedInStats = splitDomains(includedStr)
 		customizations = append(customizations, &c)
 	}
 
@@ -65,21 +62,19 @@ func (s *TrackerCustomizationStore) List(ctx context.Context) ([]*TrackerCustomi
 
 func (s *TrackerCustomizationStore) Get(ctx context.Context, id int) (*TrackerCustomization, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, display_name, domains, included_in_stats, created_at, updated_at
+		SELECT id, display_name, domains, created_at, updated_at
 		FROM tracker_customizations
 		WHERE id = ?
 	`, id)
 
 	var c TrackerCustomization
 	var domainsStr string
-	var includedStr string
 
-	if err := row.Scan(&c.ID, &c.DisplayName, &domainsStr, &includedStr, &c.CreatedAt, &c.UpdatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.DisplayName, &domainsStr, &c.CreatedAt, &c.UpdatedAt); err != nil {
 		return nil, err
 	}
 
 	c.Domains = splitDomains(domainsStr)
-	c.IncludedInStats = splitDomains(includedStr)
 	return &c, nil
 }
 
@@ -88,15 +83,12 @@ func (s *TrackerCustomizationStore) Create(ctx context.Context, c *TrackerCustom
 		return nil, errors.New("customization is nil")
 	}
 
-	domainsStr := joinDomains(c.Domains)
-	includedStr := joinDomains(c.IncludedInStats)
-
 	var id int
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO tracker_customizations (display_name, domains, included_in_stats)
-		VALUES (?, ?, ?)
+		INSERT INTO tracker_customizations (display_name, domains)
+		VALUES (?, ?)
 		RETURNING id
-	`, c.DisplayName, domainsStr, includedStr).Scan(&id)
+	`, c.DisplayName, joinDomains(c.Domains)).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
@@ -109,14 +101,11 @@ func (s *TrackerCustomizationStore) Update(ctx context.Context, c *TrackerCustom
 		return nil, errors.New("customization is nil")
 	}
 
-	domainsStr := joinDomains(c.Domains)
-	includedStr := joinDomains(c.IncludedInStats)
-
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE tracker_customizations
-		SET display_name = ?, domains = ?, included_in_stats = ?
+		SET display_name = ?, domains = ?
 		WHERE id = ?
-	`, c.DisplayName, domainsStr, includedStr, c.ID)
+	`, c.DisplayName, joinDomains(c.Domains), c.ID)
 	if err != nil {
 		return nil, err
 	}

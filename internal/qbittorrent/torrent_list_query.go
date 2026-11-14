@@ -449,14 +449,13 @@ var countedStatuses = func() []string {
 func countTorrents(in torrentCountsInput) torrentCountsResult {
 	torrents := in.torrents
 	counts := &TorrentCounts{
-		Status:           make(map[string]int, len(countedStatuses)),
-		Categories:       make(map[string]int),
-		CategorySizes:    make(map[string]int64),
-		Tags:             make(map[string]int),
-		TagSizes:         make(map[string]int64),
-		Trackers:         make(map[string]int),
-		TrackerTransfers: make(map[string]TrackerTransferStats),
-		Total:            len(torrents),
+		Status:        make(map[string]int, len(countedStatuses)),
+		Categories:    make(map[string]int),
+		CategorySizes: make(map[string]int64),
+		Tags:          make(map[string]int),
+		TagSizes:      make(map[string]int64),
+		Trackers:      make(map[string]int),
+		Total:         len(torrents),
 	}
 	sharedContentPaths := findSharedContentPaths(torrents)
 
@@ -508,7 +507,7 @@ func countTorrents(in torrentCountsInput) torrentCountsResult {
 	}
 
 	result := torrentCountsResult{counts: counts}
-	countTrackers(in, sharedContentPaths, &result)
+	countTrackers(in, &result)
 	return result
 }
 
@@ -529,16 +528,9 @@ func addSubcategoriesToParents(counts *TorrentCounts) {
 }
 
 // countTrackers adds the tracker counts with the steps of trackerResolver.
-func countTrackers(in torrentCountsInput, sharedContentPaths []bool, result *torrentCountsResult) {
-	torrents := in.torrents
-	stats := make(map[string]*trackerDomainStats)
-	resolveTrackers(in, func(i int, domain, url string) {
-		s := stats[domain]
-		if s == nil {
-			s = &trackerDomainStats{}
-			stats[domain] = s
-		}
-		s.add(torrents[i], sharedContentPaths[i])
+func countTrackers(in torrentCountsInput, result *torrentCountsResult) {
+	resolveTrackers(in, func(_ int, domain, url string) {
+		result.counts.Trackers[domain]++
 		if url == "" {
 			return
 		}
@@ -552,11 +544,7 @@ func countTrackers(in torrentCountsInput, sharedContentPaths []bool, result *tor
 		result.counts.Trackers[""]++
 	})
 
-	for domain, s := range stats {
-		result.counts.Trackers[domain] = s.sum.Count
-		result.counts.TrackerTransfers[domain] = s.totals()
-	}
-	reportEmptiedDomains(in, stats, result)
+	reportEmptiedDomains(in, result)
 }
 
 // resolveTrackers runs the steps of trackerResolver for each torrent. Step 1
@@ -621,9 +609,9 @@ func placeMappedTorrents(in torrentCountsInput, add func(domain string, i int)) 
 
 // reportEmptiedDomains lists the domains whose exclusions no longer hide a
 // torrent, with the excluded hashes to drop from the mapping.
-func reportEmptiedDomains(in torrentCountsInput, stats map[string]*trackerDomainStats, result *torrentCountsResult) {
+func reportEmptiedDomains(in torrentCountsInput, result *torrentCountsResult) {
 	for domain, hashes := range in.trackers.exclusions {
-		if _, ok := stats[domain]; ok {
+		if _, ok := result.counts.Trackers[domain]; ok {
 			continue
 		}
 		result.emptiedDomains = append(result.emptiedDomains, domain)

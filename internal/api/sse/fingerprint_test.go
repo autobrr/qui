@@ -153,17 +153,6 @@ func TestCountsEqualCoversEveryField(t *testing.T) {
 	}
 }
 
-func TestCountsEqualCoversTransferFields(t *testing.T) {
-	base := &qbittorrent.TorrentCounts{TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": {}}}
-	typ := reflect.TypeFor[qbittorrent.TrackerTransferStats]()
-	for i := range typ.NumField() {
-		var stats qbittorrent.TrackerTransferStats
-		setSampleValue(t, reflect.ValueOf(&stats).Elem().Field(i))
-		changed := &qbittorrent.TorrentCounts{TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": stats}}
-		require.False(t, countsEqual(base, changed), "%s must affect countsEqual", typ.Field(i).Name)
-	}
-}
-
 func BenchmarkSingleRowFingerprint(b *testing.B) {
 	row := qbittorrent.TorrentView{
 		Torrent: &qbt.Torrent{

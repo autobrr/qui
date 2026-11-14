@@ -21,6 +21,7 @@ import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } f
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
+import { TrackerCustomizationsManager } from "@/components/settings/TrackerCustomizationsManager"
 import { InstallUpdateButton } from "@/components/settings/InstallUpdateButton"
 import { RestartButton } from "@/components/settings/RestartButton"
 import { RestartOverlay } from "@/components/settings/RestartOverlay"
@@ -905,6 +906,10 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <IndexersPage withContainer={false} />
             <GazelleSettingsCard />
           </>
+        )}
+
+        {activeTab === "trackers" && (
+          <TrackerCustomizationsManager />
         )}
 
         {activeTab === "search-cache" && (

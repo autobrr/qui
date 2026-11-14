@@ -355,9 +355,9 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 	}
 	counts := countTorrents(in).counts
 
-	// The per-domain numbers that the Dashboard reads still count h1 twice.
-	require.Equal(t, 2, counts.TrackerTransfers["a.example.invalid"].Count)
-	require.Equal(t, 1, counts.TrackerTransfers["b.example.invalid"].Count)
+	// The sidebar counts still count h1 under each of its domains.
+	require.Equal(t, 2, counts.Trackers["a.example.invalid"])
+	require.Equal(t, 1, counts.Trackers["b.example.invalid"])
 
 	groupOf := func(name string, kind trackergroup.Kind) trackergroup.Group {
 		return trackergroup.Group{Kind: kind, Name: name}
@@ -405,6 +405,28 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 		stats := groupTrackers(in, mapper)[groupOf("Example", trackergroup.Customization)]
 		require.Equal(t, TrackerTransferStats{Count: 2, Uploaded: 30, Downloaded: 2, TotalSize: 100}, stats)
 	})
+}
+
+// An empty content path is an unknown identity, not proof of shared data, so
+// two torrents of one group with no content path count their sizes apart.
+func TestTrackerGroupsDoNotDeduplicateEmptyContentPath(t *testing.T) {
+	t.Parallel()
+
+	torrents := []qbt.Torrent{
+		{Hash: "h1", Tracker: "https://a.example.invalid/announce", TrackersCount: 1, Size: 30, Uploaded: 10},
+		{Hash: "h2", Tracker: "https://a.example.invalid/announce", TrackersCount: 1, Size: 300, Uploaded: 100},
+	}
+	in := torrentCountsInput{
+		torrents:       torrentRefs(torrents),
+		domainToHashes: map[string]map[string]struct{}{"a.example.invalid": {"h1": {}, "h2": {}}},
+		trackers:       trackerSources{extractDomain: ExtractDomainFromURL},
+	}
+
+	groups := groupTrackers(in, trackergroup.New(nil))
+
+	require.Equal(t, map[trackergroup.Group]TrackerTransferStats{
+		{Kind: trackergroup.Domain, Name: "a.example.invalid"}: {Count: 2, Uploaded: 110, TotalSize: 330},
+	}, groups)
 }
 
 // regression: #4100
