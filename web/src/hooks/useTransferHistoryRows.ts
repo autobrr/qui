@@ -4,8 +4,9 @@
  */
 
 import { api } from "@/lib/api"
+import { HISTORY_WRITE_MS } from "@/lib/statistics"
 import type { TransferHistoryInstance, TransferHistoryQuery, TransferHistoryRow } from "@/types"
-import { useQueries, type UseQueryResult } from "@tanstack/react-query"
+import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { useCallback } from "react"
 
 export interface InstanceRows {
@@ -30,4 +31,9 @@ export function useTransferHistoryRows(instances: TransferHistoryInstance[], que
     })),
     combine,
   })
+}
+
+/** Reads the instances that have Transfer history, again each time qui writes the history. */
+export function useTransferHistoryStatus() {
+  return useQuery({ queryKey: ["transfer-history", "status"], queryFn: () => api.getTransferHistoryStatus(), refetchInterval: HISTORY_WRITE_MS })
 }

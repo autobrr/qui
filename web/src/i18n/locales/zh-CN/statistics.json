@@ -113,7 +113,6 @@
     "final": "分享率 {{ratio}} · 做种时间 {{seeded}}"
   },
   "allTimeNote": "全部时间包含基线：qui 首次记录时种子已有的字节数。基线没有日期，因此图表不显示基线。",
-  "serverStatisticsNote": "这些数字是每个种子传输量的总和。仪表板上的服务器统计读取 qBittorrent 的计数器，其中也包含协议流量，因此数字会不同。",
   "table": {
     "title": "按分组",
     "descriptionTracker": "每个 Tracker 在此时段内的传输量。点击一行可打开详情。",

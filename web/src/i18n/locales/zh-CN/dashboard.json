@@ -1,97 +1,122 @@
 {
   "title": "仪表盘",
   "description": "所有 qBittorrent 实例的概览",
-  "settingsDialog": {
-    "button": "布局设置",
-    "title": "仪表盘设置",
-    "description": "自定义可见板块及其排列顺序。",
-    "sections": "板块",
-    "sectionLabels": {
-      "server-stats": "服务器统计",
-      "global-stats": "全局统计卡片",
-      "instances": "实例卡片"
-    }
+  "incognito": {
+    "turnOn": "开启隐身模式",
+    "turnOff": "关闭隐身模式"
   },
-  "instanceCard": {
-    "loadingStats": "正在加载统计信息……",
-    "failedToLoadStats": "加载统计信息失败",
-    "downloading": "下载中",
-    "active": "活跃",
-    "total": "总计",
-    "download": "下载",
+  "stream": {
+    "day": "24 小时",
+    "live": "实时",
+    "noHistory": "过去 24 小时内没有实例记录任何传输。实时视图会在此页面打开期间显示速度。",
+    "uploadSpeed": "上传速度",
+    "downloadSpeed": "下载速度",
+    "dayUploaded": "24 小时内上传 {{size}}，{{percent}} 来自辅种",
+    "dayDownloaded": "24 小时内下载 {{size}}",
+    "liveSeeding": "做种：{{seeding}} · 节点：{{peers}}",
+    "liveDownloading": "下载中：{{downloading}} · 剩余：{{size}}",
+    "peakHour": "最忙时段：{{size}}",
+    "peakSpeed": "峰值：{{speed}}",
+    "hourTitle": "{{time}}：上传 {{uploaded}}，下载 {{downloaded}}",
+    "dayLabel": "所有实例在过去 24 小时内每小时的上传和下载",
+    "liveLabel": "所有实例在过去 3 分钟内的上传和下载速度",
+    "liveStart": "3 分钟前",
+    "now": "现在",
+    "loadError": "无法加载历史数据：{{message}}"
+  },
+  "instances": {
+    "title": "实例",
+    "instance": "实例",
+    "uploaded24h": "已上传（24 小时）",
     "upload": "上传",
-    "totalSize": "总大小",
-    "totalSizeTooltip": "所有种子的总大小。同一发布的副本只计算一次。",
-    "freeSpace": "可用空间（默认路径）",
-    "showMore": "展开更多",
-    "showLess": "收起",
-    "uptime": "运行时间",
-    "peerConnections": "节点连接数",
-    "queuedIOJobs": "I/O 队列任务",
-    "bufferSize": "缓冲区大小",
-    "totalQueued": "总排队数",
-    "avgQueueTime": "平均排队时间",
-    "externalIPv4": "外部 IPv4",
-    "externalIPv6": "外部 IPv6",
-    "unregisteredTorrents": "未注册的种子",
-    "trackerDown": "Tracker 离线",
-    "trackerError": "Tracker 错误",
-    "errors": "错误",
-    "reannounceTooltip": "已启用自动 Tracker 重新汇报",
-    "altSpeedLimits": "备用速度限制：{{status}}",
-    "connectable": "可连接",
-    "portInfo": "。端口：{{port}}",
-    "connectionStatus": "qBittorrent 连接状态：{{status}}",
+    "download": "下载",
+    "torrents": "种子",
+    "issues": "问题",
+    "noIssues": "无",
+    "loading": "加载中",
     "streamStatus": {
       "cached": "刷新时显示缓存的仪表盘快照",
       "fallback": "正在刷新仪表盘统计信息",
       "error": "流出现问题；正在使用备用刷新"
-    },
-    "altSpeedDialog": {
-      "enableTitle": "启用备用速度限制？",
-      "disableTitle": "禁用备用速度限制？",
-      "enableDescription": "这将为 {{name}} 启用备用速度限制，传输速度将根据您配置的限制值降低。",
-      "disableDescription": "这将为 {{name}} 禁用备用速度限制，并恢复到正常速度限制。",
-      "enable": "启用",
-      "disable": "禁用",
-      "cancel": "取消"
     }
+  },
+  "offline": {
+    "password": "离线：qui 需要重新输入实例的密码",
+    "cause": "离线：{{cause}}",
+    "noAnswer": "离线：qBittorrent 无响应",
+    "hidden": "离线。隐身模式隐藏了原因。"
+  },
+  "issues": {
+    "unregistered_other": "{{count}} 个未注册",
+    "tracker_down_other": "{{count}} 个 Tracker 离线",
+    "tracker_error_other": "{{count}} 个 Tracker 错误",
+    "errored_other": "{{count}} 个错误"
+  },
+  "details": {
+    "host": "主机",
+    "torrents": "种子",
+    "active": "活跃",
+    "downloading": "下载中",
+    "seeding": "做种中",
+    "size": "大小",
+    "freeSpace": "可用空间（默认路径）",
+    "peers": "节点",
+    "uptime": "运行时间",
+    "version": "qBittorrent",
+    "connection": "连接",
+    "externalAddresses": "外部地址",
+    "unknown": "未知",
+    "day": "过去 24 小时：上传 {{uploaded}}，下载 {{downloaded}}",
+    "uploadSpeed": "上传速度",
+    "downloadSpeed": "下载速度",
+    "chartLabel": "{{name}} 在过去 24 小时内每小时的上传和下载",
+    "altSpeed": "备用速度限制",
+    "altSpeedOn": "备用速度限制已开启",
+    "addTorrent": "添加种子",
+    "openTorrents": "打开种子",
+    "openSettings": "打开实例设置"
+  },
+  "connection": {
+    "connected": "可连接",
+    "firewalled": "受防火墙限制",
+    "disconnected": "已断开",
+    "other": "其他"
+  },
+  "altSpeedDialog": {
+    "enableTitle": "启用备用速度限制？",
+    "disableTitle": "禁用备用速度限制？",
+    "enableDescription": "这将为 {{name}} 启用备用速度限制，传输速度将根据您配置的限制值降低。",
+    "disableDescription": "这将为 {{name}} 禁用备用速度限制，并恢复到正常速度限制。",
+    "enable": "启用",
+    "disable": "禁用",
+    "cancel": "取消"
+  },
+  "trackers": {
+    "title": "热门 Tracker（过去 24 小时）",
+    "statistics": "统计",
+    "empty": "过去 24 小时内没有上传。"
+  },
+  "attention": {
+    "title": "需要注意",
+    "none": "无。所有实例均有响应，且没有种子报告问题。",
+    "offline": "{{name}} 已离线",
+    "lowDisk": "{{name}}：剩余 {{free}}",
+    "firewalled": "{{name}} 受防火墙限制"
+  },
+  "storage": {
+    "title": "存储",
+    "free": "剩余 {{size}}"
+  },
+  "library": {
+    "title": "媒体库",
+    "torrents": "种子",
+    "totalSize": "总大小",
+    "seedingSize": "做种大小",
+    "instances": "已连接实例"
   },
   "uniqueSize": {
     "calculating": "计算中",
     "calculatingTooltip": "qui 正在读取文件列表以查找每个发布的副本。在完成之前，此大小会完整计算每个链接的辅种。"
-  },
-  "mobileOverview": {
-    "instances": "实例",
-    "connected": "已连接",
-    "torrents": "种子",
-    "activeCount": "{{count}} 个活跃",
-    "download": "下载",
-    "upload": "上传"
-  },
-  "globalStats": {
-    "instances": "实例",
-    "connectedInstances": "已连接实例",
-    "totalTorrents": "种子总数",
-    "activeTotal": "{{active}} 个活跃 - 总大小 {{size}}",
-    "totalDownload": "总下载",
-    "downloadingActive": "{{count}} 个活跃 - 剩余 {{size}}",
-    "totalUpload": "总上传",
-    "seedingActive": "{{count}} 个活跃 - {{size}} 做种中"
-  },
-  "serverStats": {
-    "title": "服务器统计",
-    "ratio": "分享率：",
-    "peers": "节点：",
-    "tableHeaders": {
-      "instance": "实例",
-      "downloaded": "已下载",
-      "downloadedSession": "已下载（本次）",
-      "uploadedSession": "已上传（本次）",
-      "uploaded": "已上传",
-      "ratio": "分享率",
-      "peers": "节点"
-    }
   },
   "quickActions": {
     "addTorrent": "添加种子",

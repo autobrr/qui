@@ -325,10 +325,6 @@ Each time the notice opens, qui sends it one time to each [notification target](
 
 On Postgres, qui does not read the disk, and the notice never opens.
 
-## Why the numbers differ from Server Statistics
-
-Server Statistics on the [Dashboard](./dashboard.md) reads the all-time counters of qBittorrent. These counters also count protocol traffic. The Statistics page adds up the transfer of each torrent. Thus, the two pages show different numbers.
-
 ## Incognito mode
 
 If [incognito mode](./incognito.md) is on, the page replaces the torrent names, the tracker names, the category names, and the release groups with fake names. Resolution, source, and content type stay visible.

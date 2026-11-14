@@ -1,97 +1,122 @@
 {
   "title": "儀表板",
   "description": "所有 qBittorrent 實例的概覽",
-  "settingsDialog": {
-    "button": "佈局設定",
-    "title": "儀表板設定",
-    "description": "自訂可見區塊及其排列順序。",
-    "sections": "區塊",
-    "sectionLabels": {
-      "server-stats": "伺服器統計",
-      "global-stats": "全域統計卡片",
-      "instances": "實例卡片"
-    }
+  "incognito": {
+    "turnOn": "開啟隱身模式",
+    "turnOff": "關閉隱身模式"
   },
-  "instanceCard": {
-    "loadingStats": "正在載入統計資訊……",
-    "failedToLoadStats": "載入統計資訊失敗",
-    "downloading": "下載中",
-    "active": "活躍",
-    "total": "總計",
-    "download": "下載",
+  "stream": {
+    "day": "24 小時",
+    "live": "即時",
+    "noHistory": "過去 24 小時內沒有實例記錄任何傳輸。即時檢視會在此頁面開啟期間顯示速度。",
+    "uploadSpeed": "上傳速度",
+    "downloadSpeed": "下載速度",
+    "dayUploaded": "24 小時內上傳 {{size}}，{{percent}} 來自輔種",
+    "dayDownloaded": "24 小時內下載 {{size}}",
+    "liveSeeding": "做種：{{seeding}} · 節點：{{peers}}",
+    "liveDownloading": "下載中：{{downloading}} · 剩餘：{{size}}",
+    "peakHour": "最忙時段：{{size}}",
+    "peakSpeed": "峰值：{{speed}}",
+    "hourTitle": "{{time}}：上傳 {{uploaded}}，下載 {{downloaded}}",
+    "dayLabel": "所有實例在過去 24 小時內每小時的上傳和下載",
+    "liveLabel": "所有實例在過去 3 分鐘內的上傳和下載速度",
+    "liveStart": "3 分鐘前",
+    "now": "現在",
+    "loadError": "無法載入歷史資料：{{message}}"
+  },
+  "instances": {
+    "title": "實例",
+    "instance": "實例",
+    "uploaded24h": "已上傳（24 小時）",
     "upload": "上傳",
-    "totalSize": "總大小",
-    "totalSizeTooltip": "所有種子的總大小。同一發佈的副本只計算一次。",
-    "freeSpace": "可用空間（預設路徑）",
-    "showMore": "展開更多",
-    "showLess": "收起",
-    "uptime": "執行時間",
-    "peerConnections": "節點連線數",
-    "queuedIOJobs": "I/O 佇列任務",
-    "bufferSize": "緩衝區大小",
-    "totalQueued": "總排隊數",
-    "avgQueueTime": "平均排隊時間",
-    "externalIPv4": "外部 IPv4",
-    "externalIPv6": "外部 IPv6",
-    "unregisteredTorrents": "未註冊的種子",
-    "trackerDown": "Tracker 離線",
-    "trackerError": "Tracker 錯誤",
-    "errors": "錯誤",
-    "reannounceTooltip": "已啟用自動 Tracker 重新通報",
-    "altSpeedLimits": "備用速度限制：{{status}}",
-    "connectable": "可連線",
-    "portInfo": "。連接埠：{{port}}",
-    "connectionStatus": "qBittorrent 連線狀態：{{status}}",
+    "download": "下載",
+    "torrents": "種子",
+    "issues": "問題",
+    "noIssues": "無",
+    "loading": "載入中",
     "streamStatus": {
       "cached": "重新整理時顯示快取的儀表板快照",
       "fallback": "正在重新整理儀表板統計資訊",
       "error": "流出現問題；正在使用備用重新整理"
-    },
-    "altSpeedDialog": {
-      "enableTitle": "啟用備用速度限制？",
-      "disableTitle": "停用備用速度限制？",
-      "enableDescription": "這將為 {{name}} 啟用備用速度限制，傳輸速度將根據您配置的限制值降低。",
-      "disableDescription": "這將為 {{name}} 停用備用速度限制，並恢復到正常速度限制。",
-      "enable": "啟用",
-      "disable": "停用",
-      "cancel": "取消"
     }
+  },
+  "offline": {
+    "password": "離線：qui 需要重新輸入實例的密碼",
+    "cause": "離線：{{cause}}",
+    "noAnswer": "離線：qBittorrent 無回應",
+    "hidden": "離線。隱身模式隱藏了原因。"
+  },
+  "issues": {
+    "unregistered_other": "{{count}} 個未註冊",
+    "tracker_down_other": "{{count}} 個 Tracker 離線",
+    "tracker_error_other": "{{count}} 個 Tracker 錯誤",
+    "errored_other": "{{count}} 個錯誤"
+  },
+  "details": {
+    "host": "主機",
+    "torrents": "種子",
+    "active": "活躍",
+    "downloading": "下載中",
+    "seeding": "做種中",
+    "size": "大小",
+    "freeSpace": "可用空間（預設路徑）",
+    "peers": "節點",
+    "uptime": "執行時間",
+    "version": "qBittorrent",
+    "connection": "連線",
+    "externalAddresses": "外部位址",
+    "unknown": "未知",
+    "day": "過去 24 小時：上傳 {{uploaded}}，下載 {{downloaded}}",
+    "uploadSpeed": "上傳速度",
+    "downloadSpeed": "下載速度",
+    "chartLabel": "{{name}} 在過去 24 小時內每小時的上傳和下載",
+    "altSpeed": "備用速度限制",
+    "altSpeedOn": "備用速度限制已開啟",
+    "addTorrent": "新增種子",
+    "openTorrents": "開啟種子",
+    "openSettings": "開啟實例設定"
+  },
+  "connection": {
+    "connected": "可連線",
+    "firewalled": "受防火牆限制",
+    "disconnected": "已斷開",
+    "other": "其他"
+  },
+  "altSpeedDialog": {
+    "enableTitle": "啟用備用速度限制？",
+    "disableTitle": "停用備用速度限制？",
+    "enableDescription": "這將為 {{name}} 啟用備用速度限制，傳輸速度將根據您配置的限制值降低。",
+    "disableDescription": "這將為 {{name}} 停用備用速度限制，並恢復到正常速度限制。",
+    "enable": "啟用",
+    "disable": "停用",
+    "cancel": "取消"
+  },
+  "trackers": {
+    "title": "熱門 Tracker（過去 24 小時）",
+    "statistics": "統計",
+    "empty": "過去 24 小時內沒有上傳。"
+  },
+  "attention": {
+    "title": "需要注意",
+    "none": "無。所有實例均有回應，且沒有種子回報問題。",
+    "offline": "{{name}} 已離線",
+    "lowDisk": "{{name}}：剩餘 {{free}}",
+    "firewalled": "{{name}} 受防火牆限制"
+  },
+  "storage": {
+    "title": "儲存空間",
+    "free": "剩餘 {{size}}"
+  },
+  "library": {
+    "title": "媒體庫",
+    "torrents": "種子",
+    "totalSize": "總大小",
+    "seedingSize": "做種大小",
+    "instances": "已連線實例"
   },
   "uniqueSize": {
     "calculating": "計算中",
     "calculatingTooltip": "qui 正在讀取檔案清單以尋找每個發佈的副本。在完成之前，此大小會完整計算每個連結的輔種。"
-  },
-  "mobileOverview": {
-    "instances": "實例",
-    "connected": "已連線",
-    "torrents": "種子",
-    "activeCount": "{{count}} 個活躍",
-    "download": "下載",
-    "upload": "上傳"
-  },
-  "globalStats": {
-    "instances": "實例",
-    "connectedInstances": "已連線實例",
-    "totalTorrents": "種子總數",
-    "activeTotal": "{{active}} 個活躍 - 總大小 {{size}}",
-    "totalDownload": "總下載",
-    "downloadingActive": "{{count}} 個活躍 - 剩餘 {{size}}",
-    "totalUpload": "總上傳",
-    "seedingActive": "{{count}} 個活躍 - {{size}} 做種中"
-  },
-  "serverStats": {
-    "title": "伺服器統計",
-    "ratio": "分享率：",
-    "peers": "節點：",
-    "tableHeaders": {
-      "instance": "實例",
-      "downloaded": "已下載",
-      "downloadedSession": "已下載（本次）",
-      "uploadedSession": "已上傳（本次）",
-      "uploaded": "已上傳",
-      "ratio": "分享率",
-      "peers": "節點"
-    }
   },
   "quickActions": {
     "addTorrent": "新增種子",

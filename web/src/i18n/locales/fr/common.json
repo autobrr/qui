@@ -125,7 +125,9 @@
     "httpStatus": "Erreur HTTP ! Statut : {{status}}",
     "httpStatusHtml": "Erreur HTTP ! Statut : {{status}} (le serveur a renvoyé une page d'erreur HTML)",
     "ssoHtmlResponse": "L'API a renvoyé une réponse HTML au lieu de JSON. Si vous êtes derrière un proxy SSO (Cloudflare Access, Pangolin, etc.), essayez d'actualiser la page ou de rouvrir l'URL dans un nouvel onglet.",
-    "torrentFileDownloadFailed": "Échec du téléchargement du fichier torrent : {{status}}"
+    "torrentFileDownloadFailed": "Échec du téléchargement du fichier torrent : {{status}}",
+    "altSpeedToggle": "Impossible de modifier les limites de vitesse alternatives : {{message}}",
+    "altSpeedToggleHidden": "Impossible de modifier les limites de vitesse alternatives. Le mode incognito masque la cause."
   },
   "status": {
     "disabled": "Désactivé",

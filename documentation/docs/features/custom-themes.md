@@ -83,7 +83,7 @@ A theme area is a part of qui with a fixed name. A theme styles an area with a s
 | `torrent-row` | One row of the torrent table |
 | `torrent-card` | One torrent card in the torrent list of the mobile layout |
 | `details-panel` | The panel that shows the details of the selected torrent |
-| `dashboard-card` | One card on the dashboard, for example the card of one instance |
+| `dashboard-card` | One card on the dashboard, for example the chart or the list of instances |
 | `login` | The login page |
 
 qui keeps these names across releases. A later release can add a name. If a release renames or removes a name, the release notes say so. Class names and the structure inside an area can change in any release, so do not use them in a theme.

@@ -17,10 +17,7 @@ Add and configure the qBittorrent instances that qui connects to. Each instance 
 
 ## Edit an instance
 
-Two paths open the instance settings dialog:
-
-- On the Dashboard, click the gear icon next to the instance name.
-- In **Settings → Instances**, open the three-dot menu on the instance card and select **Edit**.
+To open the instance settings dialog, go to **Settings → Instances**, open the three-dot menu on the instance card, and select **Edit**.
 
 ### Connection settings
 

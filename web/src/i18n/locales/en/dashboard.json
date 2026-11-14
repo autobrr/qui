@@ -1,97 +1,126 @@
 {
   "title": "Dashboard",
   "description": "Overview of all your qBittorrent instances",
-  "settingsDialog": {
-    "button": "Layout Settings",
-    "title": "Dashboard Settings",
-    "description": "Customize which sections are visible and their order.",
-    "sections": "Sections",
-    "sectionLabels": {
-      "server-stats": "Server Statistics",
-      "global-stats": "Global Stats Cards",
-      "instances": "Instance Cards"
-    }
+  "incognito": {
+    "turnOn": "Turn on incognito mode",
+    "turnOff": "Turn off incognito mode"
   },
-  "instanceCard": {
-    "loadingStats": "Loading stats...",
-    "failedToLoadStats": "Failed to load stats",
-    "downloading": "Downloading",
-    "active": "Active",
-    "total": "Total",
-    "download": "Download",
+  "stream": {
+    "day": "24 h",
+    "live": "Live",
+    "noHistory": "No instance recorded any transfer in the last 24 hours. Live shows the speed while this page is open.",
+    "uploadSpeed": "Upload speed",
+    "downloadSpeed": "Download speed",
+    "dayUploaded": "{{size}} uploaded in 24 h, {{percent}} from cross-seeds",
+    "dayDownloaded": "{{size}} downloaded in 24 h",
+    "liveSeeding": "Seeding: {{seeding}} · Peers: {{peers}}",
+    "liveDownloading": "Downloading: {{downloading}} · Left: {{size}}",
+    "peakHour": "Busiest hour: {{size}}",
+    "peakSpeed": "Peak: {{speed}}",
+    "hourTitle": "{{time}}: {{uploaded}} up, {{downloaded}} down",
+    "dayLabel": "Upload and download of all instances in each of the last 24 hours",
+    "liveLabel": "Upload and download speed of all instances in the last 3 minutes",
+    "liveStart": "3 min ago",
+    "now": "Now",
+    "loadError": "Could not load the history: {{message}}"
+  },
+  "instances": {
+    "title": "Instances",
+    "instance": "Instance",
+    "uploaded24h": "Uploaded, 24 h",
     "upload": "Upload",
-    "totalSize": "Total Size",
-    "totalSizeTooltip": "Total size of all torrents. The copies of a release count one time.",
-    "freeSpace": "Free space (default path)",
-    "showMore": "Show more",
-    "showLess": "Show less",
-    "uptime": "Uptime",
-    "peerConnections": "Peer Connections",
-    "queuedIOJobs": "Queued I/O Jobs",
-    "bufferSize": "Buffer Size",
-    "totalQueued": "Total Queued",
-    "avgQueueTime": "Avg Queue Time",
-    "externalIPv4": "External IPv4",
-    "externalIPv6": "External IPv6",
-    "unregisteredTorrents": "Unregistered torrents",
-    "trackerDown": "Tracker Down",
-    "trackerError": "Tracker Error",
-    "errors": "Errors",
-    "reannounceTooltip": "Automatic tracker reannounce enabled",
-    "altSpeedLimits": "Alternative speed limits: {{status}}",
-    "connectable": "Connectable",
-    "portInfo": ". Port: {{port}}",
-    "connectionStatus": "qBittorrent connection status: {{status}}",
+    "download": "Download",
+    "torrents": "Torrents",
+    "issues": "Issues",
+    "noIssues": "None",
+    "loading": "Loading",
     "streamStatus": {
       "cached": "Showing cached dashboard snapshot while refreshing",
       "fallback": "Refreshing dashboard stats",
       "error": "Stream issue; using fallback refresh"
-    },
-    "altSpeedDialog": {
-      "enableTitle": "Enable Alternative Speed Limits?",
-      "disableTitle": "Disable Alternative Speed Limits?",
-      "enableDescription": "This will enable alternative speed limits for {{name}}, which will reduce transfer speeds based on your configured limits.",
-      "disableDescription": "This will disable alternative speed limits for {{name}} and return to normal speed limits.",
-      "enable": "Enable",
-      "disable": "Disable",
-      "cancel": "Cancel"
     }
+  },
+  "offline": {
+    "password": "Offline: qui needs the password of the instance again",
+    "cause": "Offline: {{cause}}",
+    "noAnswer": "Offline: qBittorrent does not answer",
+    "hidden": "Offline. Incognito mode hides the cause."
+  },
+  "issues": {
+    "unregistered_one": "{{count}} unregistered",
+    "unregistered_other": "{{count}} unregistered",
+    "tracker_down_one": "{{count}} tracker down",
+    "tracker_down_other": "{{count}} tracker down",
+    "tracker_error_one": "{{count}} tracker error",
+    "tracker_error_other": "{{count}} tracker errors",
+    "errored_one": "{{count}} error",
+    "errored_other": "{{count}} errors"
+  },
+  "details": {
+    "host": "Host",
+    "torrents": "Torrents",
+    "active": "Active",
+    "downloading": "Downloading",
+    "seeding": "Seeding",
+    "size": "Size",
+    "freeSpace": "Free space (default path)",
+    "peers": "Peers",
+    "uptime": "Uptime",
+    "version": "qBittorrent",
+    "connection": "Connection",
+    "externalAddresses": "External addresses",
+    "unknown": "Unknown",
+    "day": "Last 24 h: {{uploaded}} uploaded, {{downloaded}} downloaded",
+    "uploadSpeed": "Upload speed",
+    "downloadSpeed": "Download speed",
+    "chartLabel": "Upload and download of {{name}} in each of the last 24 hours",
+    "altSpeed": "Alternative speed limits",
+    "altSpeedOn": "Alternative speed limits are on",
+    "addTorrent": "Add torrent",
+    "openTorrents": "Open torrents",
+    "openSettings": "Open instance settings"
+  },
+  "connection": {
+    "connected": "Connectable",
+    "firewalled": "Firewalled",
+    "disconnected": "Disconnected",
+    "other": "Other"
+  },
+  "altSpeedDialog": {
+    "enableTitle": "Enable Alternative Speed Limits?",
+    "disableTitle": "Disable Alternative Speed Limits?",
+    "enableDescription": "This will enable alternative speed limits for {{name}}, which will reduce transfer speeds based on your configured limits.",
+    "disableDescription": "This will disable alternative speed limits for {{name}} and return to normal speed limits.",
+    "enable": "Enable",
+    "disable": "Disable",
+    "cancel": "Cancel"
+  },
+  "trackers": {
+    "title": "Top trackers, last 24 h",
+    "statistics": "Statistics",
+    "empty": "No upload in the last 24 hours."
+  },
+  "attention": {
+    "title": "Needs attention",
+    "none": "Nothing. Each instance answers, and no torrent reports a problem.",
+    "offline": "{{name}} is offline",
+    "lowDisk": "{{name}}: {{free}} free",
+    "firewalled": "{{name}} is firewalled"
+  },
+  "storage": {
+    "title": "Storage",
+    "free": "{{size}} free"
+  },
+  "library": {
+    "title": "Library",
+    "torrents": "Torrents",
+    "totalSize": "Total size",
+    "seedingSize": "Seeding size",
+    "instances": "Connected instances"
   },
   "uniqueSize": {
     "calculating": "calculating",
     "calculatingTooltip": "qui is reading the file lists to find the copies of each release. Until it ends, this size counts each linked cross-seed in full."
-  },
-  "mobileOverview": {
-    "instances": "Instances",
-    "connected": "Connected",
-    "torrents": "Torrents",
-    "activeCount": "{{count}} active",
-    "download": "Download",
-    "upload": "Upload"
-  },
-  "globalStats": {
-    "instances": "Instances",
-    "connectedInstances": "Connected instances",
-    "totalTorrents": "Total Torrents",
-    "activeTotal": "{{active}} active - {{size}} total size",
-    "totalDownload": "Total Download",
-    "downloadingActive": "{{count}} active - {{size}} remaining",
-    "totalUpload": "Total Upload",
-    "seedingActive": "{{count}} active - {{size}} seeding"
-  },
-  "serverStats": {
-    "title": "Server Statistics",
-    "ratio": "Ratio:",
-    "peers": "Peers:",
-    "tableHeaders": {
-      "instance": "Instance",
-      "downloaded": "Downloaded",
-      "uploaded": "Uploaded",
-      "downloadedSession": "Downloaded (Session)",
-      "uploadedSession": "Uploaded (Session)",
-      "ratio": "Ratio",
-      "peers": "Peers"
-    }
   },
   "quickActions": {
     "addTorrent": "Add Torrent",
@@ -102,7 +131,7 @@
     "noInstances": "No instances configured",
     "getStarted": "Get started by adding your first qBittorrent instance",
     "allDisabled": "All instances are disabled",
-    "enableInstance": "Enable an instance from Settings \u2192 Instances to see dashboard stats.",
+    "enableInstance": "Enable an instance from Settings → Instances to see dashboard stats.",
     "manageInstances": "Manage Instances"
   }
 }

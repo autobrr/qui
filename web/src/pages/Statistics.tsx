@@ -17,9 +17,10 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
-import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
+import { useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
-import { getLinuxCategoryName, getLinuxReleaseGroup, getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
+import { useTrackerGroupName } from "@/hooks/useTrackerGroupName"
+import { getLinuxCategoryName, getLinuxReleaseGroup, useIncognitoMode } from "@/lib/incognito"
 import {
   BROWSER_TIME_ZONE,
   buildBars,
@@ -29,6 +30,7 @@ import {
   formatBuffer,
   formatRatio,
   groupTotals,
+  HISTORY_WRITE_MS,
   presetPeriod,
   previousPeriod,
   recordedFrom,
@@ -37,6 +39,7 @@ import {
   sumBytes,
   topGroups,
   type Metric,
+  type PeriodPreset,
   type StatisticsPeriod,
   type TopTorrent
 } from "@/lib/statistics"
@@ -45,13 +48,10 @@ import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
 import { cn, formatBytes } from "@/lib/utils"
 import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
 import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
+import { getRouteApi } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-
-// Names that the backend gives to the Tracker groups without a tracker domain.
-const PUBLIC_GROUP = "Public"
-const NO_TRACKER_GROUP = "No tracker"
 
 interface PeriodState {
   choice: PeriodChoice
@@ -60,8 +60,6 @@ interface PeriodState {
   moved: boolean
 }
 
-// qui writes the history each 5 minutes, so a faster move shows nothing new.
-const MOVE_AFTER = 5 * 60_000
 
 interface LiveGroups {
   groups?: LiveTrackerGroup[][]
@@ -98,11 +96,18 @@ function relativeChange(now: number, before: number): number | undefined {
   return before > 0 ? (now - before) / before : undefined
 }
 
-export function Statistics() {
+const statisticsRoute = getRouteApi("/_authenticated/statistics")
+
+export function StatisticsRoute() {
+  const { period } = statisticsRoute.useSearch()
+  return <Statistics initialPreset={period} />
+}
+
+export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPreset }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
-  const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: "30d", period: presetPeriod("30d", new Date()), moved: false }))
+  const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: initialPreset, period: presetPeriod(initialPreset, new Date()), moved: false }))
   const { choice } = periodState
 
   useEffect(() => {
@@ -113,7 +118,7 @@ export function Statistics() {
       if (document.visibilityState !== "visible") {
         return
       }
-      setPeriodState(state => Date.now() - state.period.to.getTime() < MOVE_AFTER ? state : { choice, period: presetPeriod(choice, new Date()), moved: true })
+      setPeriodState(state => Date.now() - state.period.to.getTime() < HISTORY_WRITE_MS ? state : { choice, period: presetPeriod(choice, new Date()), moved: true })
     }
     const timer = setInterval(move, 60_000)
     document.addEventListener("visibilitychange", move)
@@ -128,7 +133,7 @@ export function Statistics() {
   const { period } = periodState
 
   // An instance that starts recording while the page is open joins at the next move of the period.
-  const statusQuery = useQuery({ queryKey: ["transfer-history", "status"], queryFn: () => api.getTransferHistoryStatus(), refetchInterval: MOVE_AFTER })
+  const statusQuery = useTransferHistoryStatus()
   const instancesQuery = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances() })
   const statuses = useMemo(() => statusQuery.data ?? [], [statusQuery.data])
   const selected = useMemo(
@@ -160,7 +165,7 @@ export function Statistics() {
       queryKey: ["tracker-groups", instanceId],
       queryFn: () => api.getTrackerGroups(instanceId),
       enabled: byTracker,
-      refetchInterval: MOVE_AFTER,
+      refetchInterval: HISTORY_WRITE_MS,
     })),
     combine: combineLiveGroups,
   })
@@ -213,11 +218,7 @@ export function Statistics() {
     return rows && groupTotals(rows, !shown.period.from, byTracker ? live.groups : undefined)
   }, [byTracker, shown.grouped, shown.chart, shown.allTime, shown.period.from, live.groups])
 
-  const displayName = useCallback((group: string) => {
-    if (group === PUBLIC_GROUP) return t("groups.public")
-    if (group === NO_TRACKER_GROUP) return t("groups.noTracker")
-    return incognitoMode ? getLinuxTrackerDomain(group) : group
-  }, [incognitoMode, t])
+  const displayName = useTrackerGroupName()
   const tableName = useCallback((group: string, by: TransferHistoryGrouping) => {
     switch (by) {
       case "tracker":
@@ -424,7 +425,6 @@ export function Statistics() {
 
       <div className="space-y-1 text-xs text-muted-foreground">
         {!period.from && <p>{t("allTimeNote")}</p>}
-        <p>{t("serverStatisticsNote")}</p>
       </div>
     </div>
   )

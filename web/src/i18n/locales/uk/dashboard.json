@@ -1,97 +1,134 @@
 {
   "title": "Панель керування",
   "description": "Огляд всіх ваших екземплярів qBittorrent",
-  "settingsDialog": {
-    "button": "Налаштування макету",
-    "title": "Налаштування панелі керування",
-    "description": "Налаштуйте, які розділи відображаються та їх порядок.",
-    "sections": "Розділи",
-    "sectionLabels": {
-      "server-stats": "Статистика сервера",
-      "global-stats": "Загальна статистика",
-      "instances": "Картки екземплярів"
-    }
+  "incognito": {
+    "turnOn": "Увімкнути режим інкогніто",
+    "turnOff": "Вимкнути режим інкогніто"
   },
-  "instanceCard": {
-    "loadingStats": "Завантаження статистики...",
-    "failedToLoadStats": "Не вдалося завантажити статистику",
-    "downloading": "Завантажується",
-    "active": "Активних",
-    "total": "Всього",
-    "download": "Завантаження",
+  "stream": {
+    "day": "24 год",
+    "live": "Наживо",
+    "noHistory": "Жоден екземпляр не записав жодної передачі за останні 24 години. Наживо показує швидкість, поки ця сторінка відкрита.",
+    "uploadSpeed": "Швидкість вивантаження",
+    "downloadSpeed": "Швидкість завантаження",
+    "dayUploaded": "За 24 год віддано {{size}}, {{percent}} з крос-сідів",
+    "dayDownloaded": "За 24 год завантажено {{size}}",
+    "liveSeeding": "Роздаються: {{seeding}} · Піри: {{peers}}",
+    "liveDownloading": "Завантажуються: {{downloading}} · Залишилось: {{size}}",
+    "peakHour": "Найактивніша година: {{size}}",
+    "peakSpeed": "Пік: {{speed}}",
+    "hourTitle": "{{time}}: віддано {{uploaded}}, завантажено {{downloaded}}",
+    "dayLabel": "Віддача й завантаження всіх екземплярів за кожну з останніх 24 годин",
+    "liveLabel": "Швидкість віддачі й завантаження всіх екземплярів за останні 3 хвилини",
+    "liveStart": "3 хв тому",
+    "now": "Зараз",
+    "loadError": "Не вдалося завантажити історію: {{message}}"
+  },
+  "instances": {
+    "title": "Екземпляри",
+    "instance": "Екземпляр",
+    "uploaded24h": "Віддано, 24 год",
     "upload": "Вивантаження",
-    "totalSize": "Загальний розмір",
-    "totalSizeTooltip": "Загальний розмір усіх торентів. Копії одного релізу враховуються один раз.",
-    "freeSpace": "Вільне місце (типовий шлях)",
-    "showMore": "Показати більше",
-    "showLess": "Показати менше",
-    "uptime": "Час роботи",
-    "peerConnections": "З'єднання з пірами",
-    "queuedIOJobs": "Завдань I/O у черзі",
-    "bufferSize": "Розмір буфера",
-    "totalQueued": "Всього в черзі",
-    "avgQueueTime": "Середній час черги",
-    "externalIPv4": "Зовнішній IPv4",
-    "externalIPv6": "Зовнішній IPv6",
-    "unregisteredTorrents": "Незареєстровані торенти",
-    "trackerDown": "Трекер недоступний",
-    "trackerError": "Помилка трекера",
-    "errors": "Помилки",
-    "reannounceTooltip": "Автоматичне повторне оголошення трекера увімкнено",
-    "altSpeedLimits": "Альтернативні ліміти швидкості: {{status}}",
-    "connectable": "Підключення можливе",
-    "portInfo": ". Порт: {{port}}",
-    "connectionStatus": "Статус з'єднання qBittorrent: {{status}}",
+    "download": "Завантаження",
+    "torrents": "Торенти",
+    "issues": "Проблеми",
+    "noIssues": "Немає",
+    "loading": "Завантаження",
     "streamStatus": {
       "cached": "Показується кешований знімок панелі під час оновлення",
       "fallback": "Оновлення статистики панелі",
       "error": "Проблема з потоком; використовується резервне оновлення"
-    },
-    "altSpeedDialog": {
-      "enableTitle": "Увімкнути альтернативні ліміти швидкості?",
-      "disableTitle": "Вимкнути альтернативні ліміти швидкості?",
-      "enableDescription": "Це увімкне альтернативні ліміти швидкості для {{name}}, що зменшить швидкість передачі відповідно до ваших налаштувань.",
-      "disableDescription": "Це вимкне альтернативні ліміти швидкості для {{name}} і поверне нормальні ліміти.",
-      "enable": "Увімкнути",
-      "disable": "Вимкнути",
-      "cancel": "Скасувати"
     }
+  },
+  "offline": {
+    "password": "Не в мережі: qui знову потрібен пароль екземпляра",
+    "cause": "Не в мережі: {{cause}}",
+    "noAnswer": "Не в мережі: qBittorrent не відповідає",
+    "hidden": "Не в мережі. Режим інкогніто приховує причину."
+  },
+  "issues": {
+    "unregistered_one": "{{count}} незареєстрований",
+    "unregistered_few": "{{count}} незареєстровані",
+    "unregistered_many": "{{count}} незареєстрованих",
+    "unregistered_other": "{{count}} незареєстрованих",
+    "tracker_down_one": "{{count}} з недоступним трекером",
+    "tracker_down_few": "{{count}} з недоступним трекером",
+    "tracker_down_many": "{{count}} з недоступним трекером",
+    "tracker_down_other": "{{count}} з недоступним трекером",
+    "tracker_error_one": "{{count}} помилка трекера",
+    "tracker_error_few": "{{count}} помилки трекера",
+    "tracker_error_many": "{{count}} помилок трекера",
+    "tracker_error_other": "{{count}} помилки трекера",
+    "errored_one": "{{count}} помилка",
+    "errored_few": "{{count}} помилки",
+    "errored_many": "{{count}} помилок",
+    "errored_other": "{{count}} помилки"
+  },
+  "details": {
+    "host": "Хост",
+    "torrents": "Торенти",
+    "active": "Активних",
+    "downloading": "Завантажується",
+    "seeding": "Роздаються",
+    "size": "Розмір",
+    "freeSpace": "Вільне місце (типовий шлях)",
+    "peers": "Піри",
+    "uptime": "Час роботи",
+    "version": "qBittorrent",
+    "connection": "З'єднання",
+    "externalAddresses": "Зовнішні адреси",
+    "unknown": "Невідомо",
+    "day": "Останні 24 год: віддано {{uploaded}}, завантажено {{downloaded}}",
+    "uploadSpeed": "Швидкість вивантаження",
+    "downloadSpeed": "Швидкість завантаження",
+    "chartLabel": "Віддача й завантаження {{name}} за кожну з останніх 24 годин",
+    "altSpeed": "Альтернативні ліміти швидкості",
+    "altSpeedOn": "Альтернативні ліміти швидкості увімкнено",
+    "addTorrent": "Додати торент",
+    "openTorrents": "Відкрити торенти",
+    "openSettings": "Відкрити налаштування екземпляра"
+  },
+  "connection": {
+    "connected": "Підключення можливе",
+    "firewalled": "За брандмауером",
+    "disconnected": "Від'єднано",
+    "other": "Інше"
+  },
+  "altSpeedDialog": {
+    "enableTitle": "Увімкнути альтернативні ліміти швидкості?",
+    "disableTitle": "Вимкнути альтернативні ліміти швидкості?",
+    "enableDescription": "Це увімкне альтернативні ліміти швидкості для {{name}}, що зменшить швидкість передачі відповідно до ваших налаштувань.",
+    "disableDescription": "Це вимкне альтернативні ліміти швидкості для {{name}} і поверне нормальні ліміти.",
+    "enable": "Увімкнути",
+    "disable": "Вимкнути",
+    "cancel": "Скасувати"
+  },
+  "trackers": {
+    "title": "Топ трекерів, останні 24 год",
+    "statistics": "Статистика",
+    "empty": "За останні 24 години віддачі не було."
+  },
+  "attention": {
+    "title": "Потребує уваги",
+    "none": "Нічого. Кожен екземпляр відповідає, і жоден торент не повідомляє про проблему.",
+    "offline": "{{name}} не в мережі",
+    "lowDisk": "{{name}}: вільно {{free}}",
+    "firewalled": "{{name}} за брандмауером"
+  },
+  "storage": {
+    "title": "Сховище",
+    "free": "Вільно {{size}}"
+  },
+  "library": {
+    "title": "Бібліотека",
+    "torrents": "Торенти",
+    "totalSize": "Загальний розмір",
+    "seedingSize": "Розмір роздач",
+    "instances": "Підключені екземпляри"
   },
   "uniqueSize": {
     "calculating": "обчислюється",
     "calculatingTooltip": "qui читає списки файлів, щоб знайти копії кожного релізу. Доки це не завершиться, цей розмір враховує кожен пов'язаний крос-сід повністю."
-  },
-  "mobileOverview": {
-    "instances": "Екземпляри",
-    "connected": "Підключено",
-    "torrents": "Торенти",
-    "activeCount": "{{count}} активних",
-    "download": "Завантаження",
-    "upload": "Вивантаження"
-  },
-  "globalStats": {
-    "instances": "Екземпляри",
-    "connectedInstances": "Підключені екземпляри",
-    "totalTorrents": "Всього торентів",
-    "activeTotal": "{{active}} активних — загальний розмір {{size}}",
-    "totalDownload": "Всього завантажено",
-    "downloadingActive": "{{count}} активних — залишилось {{size}}",
-    "totalUpload": "Всього вивантажено",
-    "seedingActive": "{{count}} активних — роздається {{size}}"
-  },
-  "serverStats": {
-    "title": "Статистика сервера",
-    "ratio": "Співвідношення:",
-    "peers": "Піри:",
-    "tableHeaders": {
-      "instance": "Екземпляр",
-      "downloaded": "Завантажено",
-      "downloadedSession": "Завантажено (сесія)",
-      "uploadedSession": "Вивантажено (сесія)",
-      "uploaded": "Вивантажено",
-      "ratio": "Співвідношення",
-      "peers": "Піри"
-    }
   },
   "quickActions": {
     "addTorrent": "Додати торент",

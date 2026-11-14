@@ -1,97 +1,126 @@
 {
   "title": "Tauler",
   "description": "Visió general de totes les teves instàncies de qBittorrent",
-  "settingsDialog": {
-    "button": "Configuració de la disposició",
-    "title": "Configuració del tauler",
-    "description": "Personalitza quines seccions són visibles i el seu ordre.",
-    "sections": "Seccions",
-    "sectionLabels": {
-      "server-stats": "Estadístiques del servidor",
-      "global-stats": "Targetes d'estadístiques globals",
-      "instances": "Targetes d'instància"
-    }
+  "incognito": {
+    "turnOn": "Activa el mode incògnit",
+    "turnOff": "Desactiva el mode incògnit"
   },
-  "instanceCard": {
-    "loadingStats": "S'estan carregant les estadístiques...",
-    "failedToLoadStats": "No s'han pogut carregar les estadístiques",
-    "downloading": "Baixant",
-    "active": "Actius",
-    "total": "Total",
-    "download": "Baixada",
+  "stream": {
+    "day": "24 h",
+    "live": "En directe",
+    "noHistory": "Cap instància no ha enregistrat cap transferència en les últimes 24 hores. En directe mostra la velocitat mentre aquesta pàgina és oberta.",
+    "uploadSpeed": "Velocitat de pujada",
+    "downloadSpeed": "Velocitat de baixada",
+    "dayUploaded": "{{size}} pujats en 24 h, {{percent}} de cross-seeds",
+    "dayDownloaded": "{{size}} baixats en 24 h",
+    "liveSeeding": "Sembrant: {{seeding}} · Parells: {{peers}}",
+    "liveDownloading": "Baixant: {{downloading}} · Queden: {{size}}",
+    "peakHour": "Hora amb més activitat: {{size}}",
+    "peakSpeed": "Màxim: {{speed}}",
+    "hourTitle": "{{time}}: {{uploaded}} pujats, {{downloaded}} baixats",
+    "dayLabel": "Pujada i baixada de totes les instàncies en cadascuna de les últimes 24 hores",
+    "liveLabel": "Velocitat de pujada i baixada de totes les instàncies en els últims 3 minuts",
+    "liveStart": "fa 3 min",
+    "now": "Ara",
+    "loadError": "No s’ha pogut carregar l’historial: {{message}}"
+  },
+  "instances": {
+    "title": "Instàncies",
+    "instance": "Instància",
+    "uploaded24h": "Pujat, 24 h",
     "upload": "Pujada",
-    "totalSize": "Mida total",
-    "totalSizeTooltip": "Mida total de tots els torrents. Les còpies d'una publicació compten una sola vegada.",
-    "freeSpace": "Espai lliure (camí predeterminat)",
-    "showMore": "Mostra'n més",
-    "showLess": "Mostra'n menys",
-    "uptime": "Temps actiu",
-    "peerConnections": "Connexions de parells",
-    "queuedIOJobs": "Tasques d'I/O en cua",
-    "bufferSize": "Mida del buffer",
-    "totalQueued": "Total en cua",
-    "avgQueueTime": "Temps mitjà en cua",
-    "externalIPv4": "IPv4 externa",
-    "externalIPv6": "IPv6 externa",
-    "unregisteredTorrents": "Torrents no registrats",
-    "trackerDown": "Tracker caigut",
-    "trackerError": "Error del tracker",
-    "errors": "Errors",
-    "reannounceTooltip": "Reanunci automàtic al tracker activat",
-    "altSpeedLimits": "Límits de velocitat alternatius: {{status}}",
-    "connectable": "Connectable",
-    "portInfo": ". Port: {{port}}",
-    "connectionStatus": "Estat de la connexió a qBittorrent: {{status}}",
+    "download": "Baixada",
+    "torrents": "Torrents",
+    "issues": "Problemes",
+    "noIssues": "Cap",
+    "loading": "Carregant",
     "streamStatus": {
       "cached": "Es mostra una instantània del tauler desada a la memòria cau mentre s'actualitza",
       "fallback": "S'estan actualitzant les estadístiques del tauler",
       "error": "Problema amb el flux; es fa servir l'actualització alternativa"
-    },
-    "altSpeedDialog": {
-      "enableTitle": "Vols activar els límits de velocitat alternatius?",
-      "disableTitle": "Vols desactivar els límits de velocitat alternatius?",
-      "enableDescription": "Això activarà els límits de velocitat alternatius per a {{name}}, cosa que reduirà les velocitats de transferència segons els límits que has configurat.",
-      "disableDescription": "Això desactivarà els límits de velocitat alternatius per a {{name}} i tornarà als límits de velocitat normals.",
-      "enable": "Activa",
-      "disable": "Desactiva",
-      "cancel": "Cancel·la"
     }
+  },
+  "offline": {
+    "password": "Fora de línia: qui torna a necessitar la contrasenya de la instància",
+    "cause": "Fora de línia: {{cause}}",
+    "noAnswer": "Fora de línia: qBittorrent no respon",
+    "hidden": "Fora de línia. El mode incògnit n’amaga la causa."
+  },
+  "issues": {
+    "unregistered_one": "{{count}} no registrat",
+    "unregistered_other": "{{count}} no registrats",
+    "tracker_down_one": "{{count}} amb el tracker caigut",
+    "tracker_down_other": "{{count}} amb el tracker caigut",
+    "tracker_error_one": "{{count}} error del tracker",
+    "tracker_error_other": "{{count}} errors del tracker",
+    "errored_one": "{{count}} error",
+    "errored_other": "{{count}} errors"
+  },
+  "details": {
+    "host": "Amfitrió",
+    "torrents": "Torrents",
+    "active": "Actius",
+    "downloading": "Baixant",
+    "seeding": "Sembrant",
+    "size": "Mida",
+    "freeSpace": "Espai lliure (camí predeterminat)",
+    "peers": "Parells",
+    "uptime": "Temps actiu",
+    "version": "qBittorrent",
+    "connection": "Connexió",
+    "externalAddresses": "Adreces externes",
+    "unknown": "Desconegut",
+    "day": "Últimes 24 h: {{uploaded}} pujats, {{downloaded}} baixats",
+    "uploadSpeed": "Velocitat de pujada",
+    "downloadSpeed": "Velocitat de baixada",
+    "chartLabel": "Pujada i baixada de {{name}} en cadascuna de les últimes 24 hores",
+    "altSpeed": "Límits de velocitat alternatius",
+    "altSpeedOn": "Els límits de velocitat alternatius estan activats",
+    "addTorrent": "Afegeix un torrent",
+    "openTorrents": "Obre els torrents",
+    "openSettings": "Obre la configuració de la instància"
+  },
+  "connection": {
+    "connected": "Connectable",
+    "firewalled": "Darrere d’un tallafoc",
+    "disconnected": "Desconnectat",
+    "other": "Altres"
+  },
+  "altSpeedDialog": {
+    "enableTitle": "Vols activar els límits de velocitat alternatius?",
+    "disableTitle": "Vols desactivar els límits de velocitat alternatius?",
+    "enableDescription": "Això activarà els límits de velocitat alternatius per a {{name}}, cosa que reduirà les velocitats de transferència segons els límits que has configurat.",
+    "disableDescription": "Això desactivarà els límits de velocitat alternatius per a {{name}} i tornarà als límits de velocitat normals.",
+    "enable": "Activa",
+    "disable": "Desactiva",
+    "cancel": "Cancel·la"
+  },
+  "trackers": {
+    "title": "Trackers principals, últimes 24 h",
+    "statistics": "Estadístiques",
+    "empty": "Cap pujada en les últimes 24 hores."
+  },
+  "attention": {
+    "title": "Requereix atenció",
+    "none": "Res. Totes les instàncies responen i cap torrent no informa d’un problema.",
+    "offline": "{{name}} és fora de línia",
+    "lowDisk": "{{name}}: {{free}} lliures",
+    "firewalled": "{{name}} és darrere d’un tallafoc"
+  },
+  "storage": {
+    "title": "Emmagatzematge",
+    "free": "{{size}} lliures"
+  },
+  "library": {
+    "title": "Biblioteca",
+    "torrents": "Torrents",
+    "totalSize": "Mida total",
+    "seedingSize": "Mida en sembra",
+    "instances": "Instàncies connectades"
   },
   "uniqueSize": {
     "calculating": "calculant",
     "calculatingTooltip": "qui està llegint les llistes de fitxers per trobar les còpies de cada publicació. Fins que acabi, aquesta mida compta cada cross-seed enllaçat sencer."
-  },
-  "mobileOverview": {
-    "instances": "Instàncies",
-    "connected": "Connectat",
-    "torrents": "Torrents",
-    "activeCount": "{{count}} actius",
-    "download": "Baixada",
-    "upload": "Pujada"
-  },
-  "globalStats": {
-    "instances": "Instàncies",
-    "connectedInstances": "Instàncies connectades",
-    "totalTorrents": "Torrents totals",
-    "activeTotal": "{{active}} actius - {{size}} de mida total",
-    "totalDownload": "Baixada total",
-    "downloadingActive": "{{count}} actius - {{size}} restants",
-    "totalUpload": "Pujada total",
-    "seedingActive": "{{count}} actius - {{size}} sembrant"
-  },
-  "serverStats": {
-    "title": "Estadístiques del servidor",
-    "ratio": "Ràtio:",
-    "peers": "Parells:",
-    "tableHeaders": {
-      "instance": "Instància",
-      "downloaded": "Baixat",
-      "uploaded": "Pujat",
-      "downloadedSession": "Baixat (sessió)",
-      "uploadedSession": "Pujat (sessió)",
-      "ratio": "Ràtio",
-      "peers": "Parells"
-    }
   },
   "quickActions": {
     "addTorrent": "Afegeix un torrent",

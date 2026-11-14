@@ -1,97 +1,130 @@
 {
   "title": "Domů",
   "description": "Přehled všech vašich qBittorrent instancí",
-  "settingsDialog": {
-    "button": "Nastavení rozvržení",
-    "title": "Domů",
-    "description": "Nastavte které sekce jsou viditelné a jejich pořadí.",
-    "sections": "Sekce",
-    "sectionLabels": {
-      "server-stats": "Statistiky serverů",
-      "global-stats": "Globální statistiky",
-      "instances": "Karty instancí"
-    }
+  "incognito": {
+    "turnOn": "Zapnout anonymní režim",
+    "turnOff": "Vypnout anonymní režim"
   },
-  "instanceCard": {
-    "loadingStats": "Načítám statistiky...",
-    "failedToLoadStats": "Selhalo načítání statistik",
-    "downloading": "Stahování",
-    "active": "Aktivní",
-    "total": "Celkem",
-    "download": "Stahování",
+  "stream": {
+    "day": "24 h",
+    "live": "Živě",
+    "noHistory": "Žádná instance za posledních 24 hodin nezaznamenala žádný přenos. Živě ukazuje rychlost, dokud je tato stránka otevřená.",
+    "uploadSpeed": "Rychlost odesílání",
+    "downloadSpeed": "Rychlost stahování",
+    "dayUploaded": "Za 24 h odesláno {{size}}, {{percent}} z cross-seedů",
+    "dayDownloaded": "Za 24 h staženo {{size}}",
+    "liveSeeding": "Sdílení: {{seeding}} · Peer připojení: {{peers}}",
+    "liveDownloading": "Stahování: {{downloading}} · Zbývá: {{size}}",
+    "peakHour": "Nejvytíženější hodina: {{size}}",
+    "peakSpeed": "Špička: {{speed}}",
+    "hourTitle": "{{time}}: odesláno {{uploaded}}, staženo {{downloaded}}",
+    "dayLabel": "Odesílání a stahování všech instancí v každé z posledních 24 hodin",
+    "liveLabel": "Rychlost odesílání a stahování všech instancí za poslední 3 minuty",
+    "liveStart": "před 3 min",
+    "now": "Nyní",
+    "loadError": "Historii se nepodařilo načíst: {{message}}"
+  },
+  "instances": {
+    "title": "Instance",
+    "instance": "Instance",
+    "uploaded24h": "Odesláno, 24 h",
     "upload": "Nahrávání",
-    "totalSize": "Celková velikost",
-    "totalSizeTooltip": "Celková velikost všech torrentů. Kopie jednoho vydání se počítají jednou.",
-    "freeSpace": "Volné místo (výchozí složka)",
-    "showMore": "Zobrazit více",
-    "showLess": "Zobrazit méně",
-    "uptime": "Doba provozu",
-    "peerConnections": "Peer připojení",
-    "queuedIOJobs": "Vyrovnávací paměť",
-    "bufferSize": "Vyrovnávací paměť",
-    "totalQueued": "Celkem ve frontě",
-    "avgQueueTime": "Průměrný čas ve frontě",
-    "externalIPv4": "External IPv4",
-    "externalIPv6": "External IPv6",
-    "unregisteredTorrents": "Neregistrované torrenty",
-    "trackerDown": "Tracker offline",
-    "trackerError": "Chyba trackeru",
-    "errors": "Chyby",
-    "reannounceTooltip": "Automatické opětovné ohlášení trackeru povoleno",
-    "altSpeedLimits": "Alternativní rychlostní limity: {{status}}",
-    "connectable": "Připojitelné",
-    "portInfo": ". Port: {{port}}",
-    "connectionStatus": "Stav připojení qBittorrentu: {{status}}",
-    "altSpeedDialog": {
-      "enableTitle": "Povolit alternativní rychlostní limity?",
-      "disableTitle": "Zakázat alternativní rychlostní limity?",
-      "enableDescription": "Toto povolí alternativní rychlostní limity pro {{name}}, které sníží rychlost přenosu na základě vašich nastavených limitů.",
-      "disableDescription": "Toto zakáže alternativní rychlostní limity pro {{name}} a vrátí se k normálním rychlostním limitům.",
-      "enable": "Povolit",
-      "disable": "Zakázat",
-      "cancel": "Zrušit"
-    },
+    "download": "Stahování",
+    "torrents": "Torrenty",
+    "issues": "Problémy",
+    "noIssues": "Žádné",
+    "loading": "Načítání",
     "streamStatus": {
       "cached": "Zobrazuje se uložený snímek přehledu během obnovování",
       "fallback": "Obnovování statistik přehledu",
       "error": "Problém se streamem; používá se záložní obnovování"
     }
   },
+  "offline": {
+    "password": "Offline: qui znovu potřebuje heslo instance",
+    "cause": "Offline: {{cause}}",
+    "noAnswer": "Offline: qBittorrent neodpovídá",
+    "hidden": "Offline. Anonymní režim skrývá příčinu."
+  },
+  "issues": {
+    "unregistered_one": "{{count}} neregistrovaný",
+    "unregistered_few": "{{count}} neregistrované",
+    "unregistered_other": "{{count}} neregistrovaných",
+    "tracker_down_one": "{{count}} s nedostupným trackerem",
+    "tracker_down_few": "{{count}} s nedostupným trackerem",
+    "tracker_down_other": "{{count}} s nedostupným trackerem",
+    "tracker_error_one": "{{count}} chyba trackeru",
+    "tracker_error_few": "{{count}} chyby trackeru",
+    "tracker_error_other": "{{count}} chyb trackeru",
+    "errored_one": "{{count}} chyba",
+    "errored_few": "{{count}} chyby",
+    "errored_other": "{{count}} chyb"
+  },
+  "details": {
+    "host": "Hostitel",
+    "torrents": "Torrenty",
+    "active": "Aktivní",
+    "downloading": "Stahování",
+    "seeding": "Sdílení",
+    "size": "Velikost",
+    "freeSpace": "Volné místo (výchozí složka)",
+    "peers": "Peer připojení",
+    "uptime": "Doba provozu",
+    "version": "qBittorrent",
+    "connection": "Připojení",
+    "externalAddresses": "Externí adresy",
+    "unknown": "Neznámé",
+    "day": "Posledních 24 h: odesláno {{uploaded}}, staženo {{downloaded}}",
+    "uploadSpeed": "Rychlost odesílání",
+    "downloadSpeed": "Rychlost stahování",
+    "chartLabel": "Odesílání a stahování instance {{name}} v každé z posledních 24 hodin",
+    "altSpeed": "Alternativní rychlostní limity",
+    "altSpeedOn": "Alternativní rychlostní limity jsou zapnuté",
+    "addTorrent": "Přidat torrent",
+    "openTorrents": "Otevřít torrenty",
+    "openSettings": "Otevřít nastavení instance"
+  },
+  "connection": {
+    "connected": "Připojitelné",
+    "firewalled": "Za firewallem",
+    "disconnected": "Odpojeno",
+    "other": "Jiné"
+  },
+  "altSpeedDialog": {
+    "enableTitle": "Povolit alternativní rychlostní limity?",
+    "disableTitle": "Zakázat alternativní rychlostní limity?",
+    "enableDescription": "Toto povolí alternativní rychlostní limity pro {{name}}, které sníží rychlost přenosu na základě vašich nastavených limitů.",
+    "disableDescription": "Toto zakáže alternativní rychlostní limity pro {{name}} a vrátí se k normálním rychlostním limitům.",
+    "enable": "Povolit",
+    "disable": "Zakázat",
+    "cancel": "Zrušit"
+  },
+  "trackers": {
+    "title": "Hlavní trackery, posledních 24 h",
+    "statistics": "Statistiky",
+    "empty": "Za posledních 24 hodin žádné odesílání."
+  },
+  "attention": {
+    "title": "Vyžaduje pozornost",
+    "none": "Nic. Každá instance odpovídá a žádný torrent nehlásí problém.",
+    "offline": "{{name}} je offline",
+    "lowDisk": "{{name}}: volno {{free}}",
+    "firewalled": "{{name}} je za firewallem"
+  },
+  "storage": {
+    "title": "Úložiště",
+    "free": "Volno {{size}}"
+  },
+  "library": {
+    "title": "Knihovna",
+    "torrents": "Torrenty",
+    "totalSize": "Celková velikost",
+    "seedingSize": "Velikost sdílených",
+    "instances": "Připojené instance"
+  },
   "uniqueSize": {
     "calculating": "počítá se",
     "calculatingTooltip": "qui čte seznamy souborů, aby našel kopie každého vydání. Dokud neskončí, tato velikost počítá každý propojený křížově sdílený torrent celý."
-  },
-  "mobileOverview": {
-    "instances": "Instance",
-    "connected": "Připojené",
-    "torrents": "Torrenty",
-    "activeCount": "{{count}} aktivních",
-    "download": "Stahování",
-    "upload": "Uploadování"
-  },
-  "globalStats": {
-    "instances": "Instance",
-    "connectedInstances": "Připojené instance",
-    "totalTorrents": "Celkem torrentů",
-    "activeTotal": "{{active}} aktivních - {{size}} celková velikost",
-    "totalDownload": "Celkem stahování",
-    "downloadingActive": "{{count}} aktivních - {{size}} zbývající",
-    "totalUpload": "Celkem uploadování",
-    "seedingActive": "{{count}} aktivních - {{size}} sdílení"
-  },
-  "serverStats": {
-    "title": "Statistiky serveru",
-    "ratio": "Poměr:",
-    "peers": "Peer připojení:",
-    "tableHeaders": {
-      "instance": "Instance",
-      "downloaded": "Stáhnuto",
-      "downloadedSession": "Stáhnuto (relace)",
-      "uploadedSession": "Nahráno (relace)",
-      "uploaded": "Nahráno",
-      "ratio": "Poměr",
-      "peers": "Peer připojení"
-    }
   },
   "quickActions": {
     "addTorrent": "Přidat torrent",
@@ -102,7 +135,7 @@
     "noInstances": "Žádné instance jsou nastaveny",
     "getStarted": "Začněte přidáním své první instance qBittorrent",
     "allDisabled": "Všechny instance jsou zakázány",
-    "enableInstance": "Povolit instanci z Nastavení \u2192 Instance pro zobrazení statistik dashboardu.",
+    "enableInstance": "Povolit instanci z Nastavení → Instance pro zobrazení statistik dashboardu.",
     "manageInstances": "Spravovat instance"
   }
 }
