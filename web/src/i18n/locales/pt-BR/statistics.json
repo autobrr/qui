@@ -57,17 +57,21 @@
   "allTimeNote": "Desde o início inclui a base inicial: os bytes que os torrents tinham quando o qui os gravou pela primeira vez. O gráfico não mostra a base inicial, porque ela não tem data.",
   "serverStatisticsNote": "Estes números somam a transferência de cada torrent. As estatísticas do servidor no painel leem os contadores do qBittorrent, que também contam o tráfego do protocolo, por isso os números são diferentes.",
   "table": {
-    "title": "Por tracker ou categoria",
+    "title": "Por grupo",
     "descriptionTracker": "A transferência do período para cada tracker. Clique em uma linha para abrir o detalhe.",
     "descriptionCategory": "A transferência do período para cada categoria, sob a categoria que cada torrent tinha quando os bytes foram transferidos. Clique em uma linha para abrir o detalhe.",
+    "descriptionRelease": "A transferência do período para cada valor que o qui lê dos nomes dos torrents. Clique em uma linha para abrir o detalhe.",
     "groupBy": "Agrupar por",
     "groupings": {
       "tracker": "Tracker",
-      "category": "Categoria"
+      "category": "Categoria",
+      "releaseGroup": "Grupo de release",
+      "resolution": "Resolução",
+      "source": "Fonte",
+      "contentType": "Tipo de conteúdo"
     },
     "columns": {
       "tracker": "Tracker",
-      "category": "Categoria",
       "uploaded": "Enviado",
       "downloaded": "Baixado",
       "ratio": "Ratio",
@@ -79,9 +83,11 @@
     "seededValue": "{{value}}x",
     "total": "Total",
     "noCategory": "Nenhuma categoria",
+    "none": "Nenhum",
     "liveError": "Não foi possível carregar os torrents que estão no qBittorrent agora: {{message}}",
     "liveNote": "Torrents, Tamanho e Semeados descrevem os torrents que estão no qBittorrent agora, não o período. Semeados é o envio total deles dividido pelo tamanho.",
     "categoryNote": "O qui grava os totais das categorias para cada dia UTC. Um período que começa ou termina dentro de um dia UTC conta o dia inteiro, então o total das categorias pode ser diferente dos números no topo.",
+    "releaseNote": "O qui lê esses valores dos nomes dos torrents e salva os bytes de cada torrent para cada dia UTC. Um período que começa ou termina no meio de um dia UTC conta o dia inteiro, então o total das linhas pode diferir dos números no topo.",
     "baselineNote": "Desde o início, cada linha inclui a base inicial dos seus torrents."
   },
   "detail": {

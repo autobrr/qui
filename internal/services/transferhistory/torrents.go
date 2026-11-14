@@ -12,16 +12,28 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/trackergroup"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 // torrentGroup returns the group of a torrent in a grouping, from the record
-// of the torrent now.
+// of the torrent now. A release attribute that the name does not hold is "".
 func torrentGroup(mapper *trackergroup.Mapper, f *models.TransferHistoryTorrentFacts, grouping Grouping) string {
 	switch grouping {
 	case GroupByTracker:
 		return groupOf(mapper, f.TrackerDomain, f.Private != nil && !*f.Private)
 	case GroupByCategory:
 		return f.Category
+	case GroupByReleaseGroup:
+		return f.ReleaseGroup
+	case GroupByResolution:
+		return f.Resolution
+	case GroupBySource:
+		return f.Source
+	case GroupByContentType:
+		if f.ContentType == string(releases.ContentTypeUnknown) {
+			return ""
+		}
+		return f.ContentType
 	default:
 		return f.Hash
 	}
@@ -124,21 +136,23 @@ func yearStart(year int64) time.Time {
 	return time.Date(int(year), time.January, 1, 0, 0, 0, 0, time.UTC)
 }
 
-// byTorrent reads the rows of each torrent. A day row is a UTC day, and a
+// byTorrent reads the rows of each torrent, and adds them up by the group of
+// each torrent in the grouping of the query. A day row is a UTC day, and a
 // query for hours gets day rows. A total covers each whole stored bucket that
 // overlaps the period, UTC days and the years that qui folded, and starts at
 // the first of them.
 func (a *answer) byTorrent(ctx context.Context, store *models.TransferHistoryStore) error {
-	if a.query.Group == nil && a.query.Bucket == BucketTotal && a.query.Limit > 0 {
+	if a.query.GroupBy == GroupByTorrent && a.query.Group == nil && a.query.Bucket == BucketTotal && a.query.Limit > 0 {
 		return a.topTorrents(ctx, store)
 	}
 	total := a.query.Bucket == BucketTotal
 	noStart := a.query.From.IsZero()
 	facts, err := a.torrentRows(ctx, store, func(b torrentBucket) {
-		key := rowKey{group: b.facts.Hash, width: b.width, bucket: b.bucket}
+		group := torrentGroup(a.mapper, b.facts, a.query.GroupBy)
+		key := rowKey{group: group, width: b.width, bucket: b.bucket}
 		start := b.start
 		if total {
-			key = rowKey{group: b.facts.Hash, width: BucketTotal}
+			key = rowKey{group: group, width: BucketTotal}
 			if noStart {
 				start = time.Time{}
 			}
@@ -152,12 +166,18 @@ func (a *answer) byTorrent(ctx context.Context, store *models.TransferHistorySto
 	if err != nil {
 		return err
 	}
-	a.torrents = make(map[string]*models.TransferHistoryTorrentFacts, len(facts))
+	if a.query.GroupBy == GroupByTorrent {
+		a.torrents = make(map[string]*models.TransferHistoryTorrentFacts, len(facts))
+	}
 	for _, f := range facts {
-		a.torrents[f.Hash] = f
+		if a.torrents != nil {
+			a.torrents[f.Hash] = f
+		}
 		if total && noStart && (f.BaselineUploaded != 0 || f.BaselineDownloaded != 0) {
-			r := a.rowOf(rowKey{group: f.Hash, width: BucketTotal}, time.Time{})
-			r.Baseline = &Bytes{}
+			r := a.rowOf(rowKey{group: torrentGroup(a.mapper, f, a.query.GroupBy), width: BucketTotal}, time.Time{})
+			if r.Baseline == nil {
+				r.Baseline = &Bytes{}
+			}
 			addBytes(r.Baseline, f.BaselineUploaded, f.BaselineDownloaded, f.BaselineStatisticsCrossSeed)
 		}
 	}

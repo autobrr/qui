@@ -2,7 +2,7 @@
 sidebar_position: 15.5
 title: qBittorrent transfer statistics in qui
 sidebar_label: Statistics
-description: "The Statistics page of qui: upload and download for each period, by tracker or category, from the transfer history that qui records. Turn the recording on or off, and select how long qui keeps the detail."
+description: "The Statistics page of qui: upload and download for each period, by tracker, category, or release attribute, from the transfer history that qui records. Turn the recording on or off, and select how long qui keeps the detail."
 ---
 
 # Statistics
@@ -61,7 +61,7 @@ The page counts each torrent toward one tracker. Thus, the tracker series of the
 
 ## Table
 
-The table below the chart shows the numbers of the period for each tracker or each category. Use the **Group by** switch above the table to select **Tracker** or **Category**.
+The table below the chart shows the numbers of the period for each tracker, each category, or each value of a release attribute. Use the **Group by** switch above the table to select **Tracker**, **Category**, **Release group**, **Resolution**, **Source**, or **Content type**.
 
 ### By tracker
 
@@ -87,6 +87,18 @@ The table has one row for each category, with Uploaded, Downloaded, Ratio, and B
 
 qui stores the totals of each category for each UTC day. A period that starts or ends inside a UTC day counts that whole day. Thus, the Total row of the categories can be larger than the numbers at the top of the page, for example for the period 24 hours. For All time, the two totals agree.
 
+### By release attribute
+
+**Release group**, **Resolution**, **Source**, and **Content type** group the torrents by a value that qui reads from the torrent name. The table has one row for each value, with Uploaded, Downloaded, Ratio, and Buffer. A torrent whose name has no value for the attribute is in the row **None**.
+
+qui reads the name when it first sees a torrent, and again when the name changes. A row holds all the bytes of each torrent under the values of its name now. If you rename a torrent, its older bytes move to the new values.
+
+qui stores the bytes of each torrent for each UTC day. As for a category, a period that starts or ends inside a UTC day counts that whole day. In a year that qui folded, a torrent has one row for the whole year. Thus, a period that overlaps a folded year counts the whole year. See [Keep daily detail for](#keep-daily-detail-for).
+
+The upload from cross-seeds of a row holds all the upload of each cross-seed. This includes the upload from before qui marked the torrent as a cross-seed. Thus, the number can be larger than the same number in the tracker table.
+
+To answer, qui reads the bytes of each torrent in the period. For a year, this can take a few seconds, and the table shows a spinner until the answer is ready. qui keeps the answer until the history changes, so a second look at the same period is fast. While qui records, it writes the history each 5 minutes.
+
 ### Detail of a row
 
 Click a row to open its detail below that row. Click the row again to close it. One row is open at a time, and the table keeps all its columns. On a phone, the table scrolls sideways, and the detail stays in view at the full width of the screen.
@@ -96,11 +108,11 @@ The detail shows:
 - **Share of the upload**: the part of the upload of the period that the row holds.
 - **From cross-seeds**: the upload of the row from torrents that completed with less than 1% of their size downloaded, and its part of the upload of the row.
 - **Best hour** or **Best day**: the bar with the most upload, and its time.
-- **Average per hour** or **Average per day**: the upload of the row divided by the number of bars.
+- **Average per hour** or **Average per day**: the upload of the row divided by the number of hours or days that the bars cover after the first recording.
 - A chart of the row, with the upload above the zero line and the download below it.
 - **Top torrents**: the five torrents of the row with the most upload in the period. A torrent counts toward the tracker and the category that it has now. Thus, a torrent that you moved to another category shows under its new category with all its upload of the period.
 
-The chart of a tracker has the bars of the main chart: hours for a period of 7 days or less, and days for a longer period. The chart of a category always shows days, because qui stores the category totals for each day.
+The chart of a tracker has the bars of the main chart: hours for a period of 7 days or less, and days for a longer period. The chart of a category or a release attribute shows days, because qui stores those bytes for each UTC day. In the chart of a release attribute, a year that qui folded is one bar. That bar is never the best day, and the average counts each day that it stands for.
 
 For All time, the rows, the share, and the upload from cross-seeds include the Baseline. The chart, the best bar, and the average do not, because the Baseline has no date.
 
@@ -231,4 +243,4 @@ Server Statistics on the [Dashboard](./dashboard.md) reads the all-time counters
 
 ## Incognito mode
 
-If [incognito mode](./incognito.md) is on, the page replaces the torrent names, the tracker names, and the category names with fake names.
+If [incognito mode](./incognito.md) is on, the page replaces the torrent names, the tracker names, the category names, and the release groups with fake names. Resolution, source, and content type stay visible.

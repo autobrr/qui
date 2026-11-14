@@ -3539,9 +3539,10 @@ paths:
         - Transfer History
       summary: Get the transfer history of an instance
       description: >-
-        Returns the upload and download that qui recorded for each torrent of the instance, added up by Tracker group or by
-        category, or for each torrent. A row can be wider than the bucket that the query asks for: qui stores the category totals
-        and the bytes of each torrent for each UTC day, so a query for categories or torrents by hour returns day rows. After the
+        Returns the upload and download that qui recorded for each torrent of the instance, added up by Tracker group, by
+        category, or by a release attribute, or for each torrent. A row can be wider than the bucket that the query asks for: qui
+        stores the category totals and the bytes of each torrent for each UTC day, so a query for categories, release attributes,
+        or torrents by hour returns day rows. After the
         Detail retention, qui folds the hourly totals into days, so a query for hours in a folded period also returns day rows, and
         it folds the days of each torrent into one row for each year, so a query for the days of a torrent in a folded year returns
         one year row. The width field of each row tells its bucket. Without a start, the period has no start, and each total row
@@ -3573,15 +3574,18 @@ paths:
           description: >-
             What the rows group by. A torrent row has the hash of the torrent as its group, counts toward the Tracker group and
             the category of the torrent now, and counts all its upload as upload from Statistics cross-seeds when the torrent has
-            that flag.
+            that flag. releaseGroup, resolution, source, and contentType add up the torrent rows by a value that qui read from
+            the name of each torrent when it first saw the torrent or saw a new name. A torrent whose name holds no value of the
+            attribute is in the group with an empty name. qui keeps the answer of a release attribute until it writes the history
+            of the instance again.
           schema:
             type: string
-            enum: [tracker, category, torrent]
+            enum: [tracker, category, torrent, releaseGroup, resolution, source, contentType]
         - name: group
           in: query
           description: >-
             Limits the answer to the rows of one group of the grouping groupOf, by the group name of a row. An empty value
-            selects the torrents with no category. Leave it out for each group.
+            selects the torrents with no category, or with no value of the release attribute. Leave it out for each group.
           schema:
             type: string
         - name: groupOf
@@ -3591,7 +3595,7 @@ paths:
             with groupOf=tracker and a group gives the torrents of one Tracker group.
           schema:
             type: string
-            enum: [tracker, category, torrent]
+            enum: [tracker, category, torrent, releaseGroup, resolution, source, contentType]
         - name: limit
           in: query
           description: >-
@@ -11031,11 +11035,11 @@ components:
       properties:
         group:
           type: string
-          description: The Tracker group, the category, or the hash of the torrent.
+          description: The Tracker group, the category, the value of the release attribute, or the hash of the torrent.
         start:
           type: string
           format: date-time
-          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups, UTC days for categories, torrents, and the folded hours, and the folded years of a torrent, and starts at the first of them. Absent for a total row of a period with no start.
+          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups, UTC days for categories, release attributes, torrents, and the folded hours, and the folded years of a torrent, and starts at the first of them. Absent for a total row of a period with no start.
         width:
           type: string
           enum: [hour, day, year, total]

@@ -33,14 +33,17 @@ export interface TransferHistoryTorrent {
   uploadFirst24h: number | null
 }
 
-export type TransferHistoryGrouping = "tracker" | "category" | "torrent"
+export type TransferHistoryGrouping = "tracker" | "category" | "torrent" | "releaseGroup" | "resolution" | "source" | "contentType"
+
+/** A grouping of the table of the Statistics page. */
+export type TableGrouping = Exclude<TransferHistoryGrouping, "torrent">
 
 export interface TransferHistoryQuery {
   from?: Date
   to: Date
   bucket: TransferHistoryBucket
   groupBy: TransferHistoryGrouping
-  /** Limits the rows to one group of groupOf. "" is the group of the torrents with no category. */
+  /** Limits the rows to one group of groupOf. "" is the group of the torrents with no category, or with no value of the release attribute. */
   group?: string
   /** The grouping of group. The default is groupBy. Only the grouping by torrent takes another one. */
   groupOf?: TransferHistoryGrouping
