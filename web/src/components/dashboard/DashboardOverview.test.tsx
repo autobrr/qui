@@ -187,6 +187,7 @@ describe("DashboardOverview, 24 h", () => {
     expect(gapTitles).toHaveLength(1)
   })
 
+  // regression: #4141
   it("labels the hours in the timezone of the date and time preferences", async () => {
     localStorage.setItem("qui-datetime-preferences", JSON.stringify({ timezone: "Asia/Kolkata", timeFormat: "24h", dateFormat: "iso" }))
     answer = () => [hourRow("a.test", 2, GiB, 0)]
@@ -196,6 +197,16 @@ describe("DashboardOverview, 24 h", () => {
     const times = [...document.querySelectorAll("rect > title")].map(title => /time=(\S+)/.exec(title.textContent ?? "")?.[1])
     expect(times.length).toBeGreaterThan(0)
     expect(times.every(time => time?.endsWith(":30"))).toBe(true)
+  })
+
+  // regression: #4141
+  it("opens with a saved timezone that the browser does not know, and labels the hours in the browser zone", async () => {
+    localStorage.setItem("qui-datetime-preferences", JSON.stringify({ timezone: "Bogus/Zone", timeFormat: "24h", dateFormat: "iso" }))
+    answer = () => [hourRow("a.test", 2, GiB, 0)]
+    renderOverview([stats(1)])
+
+    await screen.findByRole("region", { name: "trackers.title" })
+    expect(document.querySelectorAll("rect > title").length).toBeGreaterThan(0)
   })
 
   it("has no partial label and no gap mark for a full day without a gap", async () => {
@@ -292,6 +303,7 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
+  // regression: #4141
   it("shows a free space that qBittorrent cannot read as unknown, not as an amount", async () => {
     renderOverview([stats(1, {}, {}, { free_space_on_disk: -1 })])
 

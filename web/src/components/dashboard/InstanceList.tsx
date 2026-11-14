@@ -481,8 +481,8 @@ function AltSpeedSwitch({ d }: { d: DashboardInstanceStats }) {
   return (
     <>
       <label htmlFor={id} className="flex min-h-9 items-center gap-2 text-sm">
-        <Switch id={id} checked={enabled} disabled={isPending} onCheckedChange={() => setConfirming(true)} />
         {t("details.altSpeed")}
+        <Switch id={id} checked={enabled} disabled={isPending} onCheckedChange={() => setConfirming(true)} />
       </label>
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>

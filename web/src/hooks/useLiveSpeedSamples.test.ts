@@ -44,6 +44,7 @@ describe("useLiveSpeedSamples", () => {
   })
 
 
+  // regression: #4141
   it("samples the instances that answer, and starts again while the page is hidden", () => {
     vi.useFakeTimers()
     setVisibility("visible")
@@ -65,6 +66,7 @@ describe("useLiveSpeedSamples", () => {
     expect(result.current).toEqual([])
   })
 
+  // regression: #4141
   it("drops the samples that are older than 3 minutes after the browser paused the timer", () => {
     vi.useFakeTimers()
     setVisibility("visible")

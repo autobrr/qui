@@ -121,7 +121,15 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   const peers = statsData.reduce((sum, d) => sum + (d.serverState?.total_peer_connections ?? 0), 0)
   const remaining = statsData.reduce((sum, d) => sum + (d.stats?.totalRemainingSize ?? 0), 0)
   const percent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
-  const timeFormat = useMemo(() => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12, timeZone: preferences.timezone }), [locale, hour12, preferences.timezone])
+  const timeFormat = useMemo(() => {
+    const options: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hour12 }
+    try {
+      return new Intl.DateTimeFormat(locale, { ...options, timeZone: preferences.timezone })
+    } catch {
+      // The picker offers zones that some browsers do not know. The date helpers of the app fall back the same way.
+      return new Intl.DateTimeFormat(locale, options)
+    }
+  }, [locale, hour12, preferences.timezone])
   const clock = (time: number) => timeFormat.format(time)
 
   const totals = dayData?.totals
