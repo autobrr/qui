@@ -38,7 +38,7 @@ export function SystemNoticeList() {
 }
 
 function SystemNoticeRow({ notice, now }: { notice: SystemNotice; now: number }) {
-  const { short } = useSystemNoticeDescription(notice.kind)
+  const { short } = useSystemNoticeDescription(notice.kind, notice.reason)
   const [open, setOpen] = useState(false)
   const titleId = useId()
 
@@ -46,7 +46,7 @@ function SystemNoticeRow({ notice, now }: { notice: SystemNotice; now: number })
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
         <span className="flex h-4 w-4 items-center justify-center">
-          <SystemNoticeDot fresh={isFreshSystemNotice(notice.openedAt, now)} />
+          <SystemNoticeDot severity={notice.severity} fresh={isFreshSystemNotice(notice.openedAt, now)} />
         </span>
         <span className="min-w-0 flex-1 truncate">{short}</span>
         <span className="text-xs font-normal tabular-nums text-sidebar-foreground/50 group-hover:hidden group-data-[state=open]:hidden">

@@ -433,7 +433,14 @@
       "cancel": "Cancelar",
       "confirm": "Excluir",
       "deleted": "Histórico excluído",
-      "failed": "Falha ao excluir o histórico"
+      "failed": "Falha ao excluir o histórico",
+      "shrink": {
+        "label": "Reduzir também o arquivo do banco de dados",
+        "restart": "O qui reinicia e reduz o arquivo, para você recuperar o espaço em disco. O qui fica indisponível por um curto período.",
+        "nextStart": "O qui não consegue reiniciar sozinho nesta instalação. A redução será executada na próxima inicialização do qui.",
+        "tooLittleSpace": "O disco tem {{free}} livres e uma redução precisa de até {{need}}. É seguro deixar desativado: o SQLite reutiliza o espaço livre para o novo histórico.",
+        "manualDocs": "Reduzir o arquivo manualmente"
+      }
     },
     "loadFailed": "Falha ao carregar as configurações de estatísticas",
     "toasts": {

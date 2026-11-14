@@ -433,7 +433,14 @@
       "cancel": "Cancel·la",
       "confirm": "Elimina",
       "deleted": "Historial eliminat",
-      "failed": "No s'ha pogut eliminar l'historial"
+      "failed": "No s'ha pogut eliminar l'historial",
+      "shrink": {
+        "label": "Redueix també el fitxer de la base de dades",
+        "restart": "qui es reinicia i redueix el fitxer, de manera que recuperes l'espai de disc. qui no està disponible durant una estona curta.",
+        "nextStart": "qui no es pot reiniciar sol en aquesta instal·lació. La reducció s'executa en el proper inici de qui.",
+        "tooLittleSpace": "El disc té {{free}} lliures i una reducció necessita fins a {{need}}. Pots deixar-ho desactivat sense risc: SQLite torna a fer servir l'espai lliure per a l'historial nou.",
+        "manualDocs": "Redueix el fitxer a mà"
+      }
     },
     "loadFailed": "No s'ha pogut carregar la configuració de les estadístiques",
     "toasts": {

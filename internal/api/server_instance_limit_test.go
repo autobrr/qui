@@ -187,6 +187,8 @@ func TestRoutesThatSpanInstancesRefuseInstanceLimit(t *testing.T) {
 		{http.MethodGet, "/api/transfer-history/status"}:                             {},
 		{http.MethodPut, "/api/transfer-history/settings"}:                           {},
 		{http.MethodDelete, "/api/transfer-history"}:                                 {},
+		{http.MethodGet, "/api/database/shrink"}:                                     {},
+		{http.MethodDelete, "/api/database/shrink/result"}:                           {},
 	}
 	var refused int
 	walkAPIRoutes(t, rig.permissionRig, func(route routeKey, path string) {

@@ -179,7 +179,29 @@
         "effect": "qui non può scrivere lo storico dei trasferimenti. Riprova alla prossima scrittura.",
         "fix": "Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database.",
         "menuFix": "Libera spazio su disco per il database"
+      },
+      "shrink_failed": {
+        "short": "Riduzione non riuscita",
+        "title": "Riduzione non riuscita",
+        "effect": "qui non è riuscito a ridurre il file del database. Il database non è cambiato e qui funziona normalmente.",
+        "fix": "Il log di qui contiene i dettagli.",
+        "menuFix": "Leggi il log di qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Il disco ha troppo poco spazio libero. Una riduzione richiede fino a due volte la dimensione del file del database. Libera spazio sul disco, poi riprova.",
+            "menuFix": "Libera spazio, poi riprova"
+          },
+          "locked": {
+            "fix": "Un altro programma teneva aperto il file del database. Chiudi quel programma, ad esempio uno strumento di backup o un visualizzatore di database, poi riprova.",
+            "menuFix": "Chiudi l'altro programma, poi riprova"
+          }
+        }
       }
+    },
+    "actions": {
+      "tryAgain": "Riprova",
+      "dismiss": "Ignora",
+      "openLog": "Apri il log"
     },
     "unknown": {
       "short": "Avviso di sistema",
@@ -188,6 +210,11 @@
       "fix": "Il log di qui contiene i dettagli.",
       "menuFix": "Leggi il log di qui"
     }
+  },
+  "databaseShrink": {
+    "done": "File del database ridotto da {{before}} a {{after}}",
+    "nextStart": "La riduzione verrà eseguita al prossimo avvio di qui",
+    "failed": "Impossibile richiedere la riduzione"
   },
   "pwaUpdate": {
     "reload": "Ricarica",

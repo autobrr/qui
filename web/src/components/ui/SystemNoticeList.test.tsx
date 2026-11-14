@@ -27,6 +27,9 @@ vi.mock("@/lib/system-notice", async (importOriginal) => ({
   systemNoticeRoutes: { key_rejected: { to: "/settings", search: { tab: "indexers" } } },
 }))
 
+const shrink = vi.hoisted(() => ({ requestShrink: vi.fn(async () => {}), pending: false }))
+vi.mock("@/hooks/useDatabaseShrink", () => ({ useDatabaseShrink: () => shrink }))
+
 const minute = 60 * 1000
 
 function notice(kind: string, cause: string, openedMinutesAgo: number): SystemNotice {
@@ -57,7 +60,10 @@ beforeAll(() => {
   })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 describe("SystemNoticeList", () => {
   it("shows one row for each open notice under a count", async () => {
@@ -118,5 +124,34 @@ describe("SystemNoticeList", () => {
 
     await waitFor(() => expect(queryClient.getQueryState(systemNoticesQueryKey)?.status).toBe("success"))
     expect(screen.queryByText("Needs attention")).toBeNull()
+  })
+
+  it("gives Shrink failed the fix of its reason, Try again, and Dismiss", async () => {
+    const dismissed: string[] = []
+    server.use(http.delete("*/api/system-notices/:kind", ({ params }) => {
+      dismissed.push(String(params.kind))
+      return new HttpResponse(null, { status: 204 })
+    }))
+    renderList([{ ...notice("shrink_failed", "database or disk is full (13)", 3), severity: "warning", reason: "disk_full" }])
+
+    fireEvent.click(await screen.findByRole("button", { name: /Shrink failed/ }))
+
+    const detail = await screen.findByRole("dialog", { name: "Shrink failed" })
+    expect(detail.textContent).toContain("Free space on the disk, then try again.")
+    expect(within(detail).queryByRole("link")).toBeNull()
+    fireEvent.click(within(detail).getByRole("button", { name: "Try again" }))
+    expect(shrink.requestShrink).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(detail).getByRole("button", { name: "Dismiss" }))
+    await waitFor(() => expect(dismissed).toEqual(["shrink_failed"]))
+  })
+
+  it("links an unknown shrink failure to the log", async () => {
+    renderList([{ ...notice("shrink_failed", "disk I/O error", 3), severity: "warning", reason: "unknown" }])
+
+    fireEvent.click(await screen.findByRole("button", { name: /Shrink failed/ }))
+
+    const detail = await screen.findByRole("dialog", { name: "Shrink failed" })
+    expect(detail.textContent).toContain("The qui log has the details.")
+    expect(within(detail).getByRole("link", { name: "Open the log" }).getAttribute("href")).toBe("/settings?tab=logs")
   })
 })

@@ -19,10 +19,15 @@ export type SystemNoticeDescription = {
 type TextField = Exclude<keyof SystemNoticeDescription, "action">
 
 // useSystemNoticeDescription returns the texts of one kind of System notice.
-// A kind that this frontend does not know gets the generic texts.
-export function useSystemNoticeDescription(kind: string): SystemNoticeDescription {
+// A reason replaces the texts that it has, such as the fix. A kind that this
+// frontend does not know gets the generic texts.
+export function useSystemNoticeDescription(kind: string, reason?: string): SystemNoticeDescription {
   const { t } = useTranslation("common")
-  const text = (field: TextField) => t([`systemNotice.kinds.${kind}.${field}`, `systemNotice.unknown.${field}`])
+  const text = (field: TextField) => t([
+    ...(reason ? [`systemNotice.kinds.${kind}.reasons.${reason}.${field}`] : []),
+    `systemNotice.kinds.${kind}.${field}`,
+    `systemNotice.unknown.${field}`,
+  ])
   const route = systemNoticeRoutes[kind]
 
   return {

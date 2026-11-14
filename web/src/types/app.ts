@@ -44,9 +44,23 @@ export interface VersionInfo {
 
 export interface SystemNotice {
   kind: string
-  severity: "error"
+  severity: "error" | "warning"
+  /** Selects the fix that the notice shows. */
+  reason?: string
   cause: string
   openedAt: string
+}
+
+export interface DatabaseShrinkStatus {
+  /** False on Postgres, which has no file to shrink. */
+  available: boolean
+  fileBytes: number
+  freeBytes: number
+  needBytes: number
+  restartAvailable: boolean
+  pending: boolean
+  /** The outcome of the shrink at the last start, until the web UI dismisses it. */
+  result?: { beforeBytes: number; afterBytes: number }
 }
 
 export interface SelfUpdateResult {

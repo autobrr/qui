@@ -34,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/dbshrink"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -192,6 +193,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	require.NoError(t, err)
 	discScanStore := models.NewDiscScanStore(db)
 	systemNotices := systemnotice.New(nil)
+	databaseShrink := dbshrink.New(db, systemNotices, nil)
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
 	jackettService := jackett.NewService(torznabIndexerStore)
@@ -244,6 +246,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		DiscScanService:           discscan.NewService(discScanStore),
 		TransferHistory:           transferHistory,
 		SystemNotices:             systemNotices,
+		DatabaseShrink:            databaseShrink,
 		DirScanService:            dirScanService,
 		CrossSeedService:          crossSeedService,
 		CrossSeedRoutes:           crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, nil),

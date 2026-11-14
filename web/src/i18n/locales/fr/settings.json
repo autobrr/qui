@@ -433,7 +433,14 @@
       "cancel": "Annuler",
       "confirm": "Supprimer",
       "deleted": "Historique supprimé",
-      "failed": "Échec de la suppression de l'historique"
+      "failed": "Échec de la suppression de l'historique",
+      "shrink": {
+        "label": "Réduire aussi le fichier de base de données",
+        "restart": "qui redémarre et réduit le fichier, pour vous rendre l’espace disque. qui est indisponible pendant un court moment.",
+        "nextStart": "qui ne peut pas redémarrer seul sur cette installation. La réduction aura lieu au prochain démarrage de qui.",
+        "tooLittleSpace": "Le disque a {{free}} libres, et une réduction demande jusqu’à {{need}}. Vous pouvez laisser cette option désactivée sans risque : SQLite réutilise l’espace libre pour le nouvel historique.",
+        "manualDocs": "Réduire le fichier à la main"
+      }
     },
     "loadFailed": "Impossible de charger les paramètres des statistiques",
     "toasts": {

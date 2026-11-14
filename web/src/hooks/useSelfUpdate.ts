@@ -30,6 +30,8 @@ interface ActionTarget {
 
 export type SelfUpdate = ReturnType<typeof useSelfUpdate>
 
+type SystemAction = { kind: "restart" } | { kind: "update"; tag: string } | { kind: "shrink" }
+
 export function useVersionInfo() {
   return useQuery({
     queryKey: ["version"],
@@ -38,31 +40,44 @@ export function useVersionInfo() {
   })
 }
 
-// Holds the Restart and Self-update actions: the confirmation dialog, the
-// request, and the overlay that waits for qui to answer again.
+// Holds the Restart, Self-update, and database shrink actions: the confirmation
+// dialog, the request, and the overlay that waits for qui to answer again.
 export function useSelfUpdate() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [overlay, setOverlay] = useState<RestartOverlay>("hidden")
 
   const versionQuery = useVersionInfo()
 
-  // updateTag is null for a plain Restart.
+  // A target of null means that qui does not restart: a shrink then waits
+  // for the next start.
   const actionMutation = useMutation({
-    mutationFn: async (updateTag: string | null): Promise<ActionTarget> => {
+    mutationFn: async (action: SystemAction): Promise<ActionTarget | null> => {
       const { startedAt } = await api.getApplicationInfo()
       // qui can close its listener before the response arrives, so pause
       // before the request, not when the overlay shows.
       setSSORecoveryPaused(true)
-      if (updateTag === null) {
-        await api.restartQui()
-        return { startedAt }
+      switch (action.kind) {
+        case "restart":
+          await api.restartQui()
+          return { startedAt }
+        case "shrink": {
+          const { restarting } = await api.requestDatabaseShrink()
+          if (!restarting) {
+            setSSORecoveryPaused(false)
+            return null
+          }
+          return { startedAt }
+        }
+        case "update":
+          return { startedAt, update: await api.selfUpdateQui(action.tag) }
       }
-      return { startedAt, update: await api.selfUpdateQui(updateTag) }
     },
     onError: () => setSSORecoveryPaused(false),
-    onSuccess: () => {
+    onSuccess: (target) => {
       setConfirmOpen(false)
-      setOverlay("restarting")
+      if (target) {
+        setOverlay("restarting")
+      }
     },
   })
 
@@ -74,7 +89,7 @@ export function useSelfUpdate() {
     disabled: !overlayActive && !actionMutation.isPending,
     enableBeforeUnload: false,
   })
-  const target = actionMutation.data
+  const target = actionMutation.data ?? undefined
   useEffect(() => {
     if (!overlayActive || !target) {
       return
@@ -154,8 +169,10 @@ export function useSelfUpdate() {
         actionMutation.reset()
       }
     },
-    restart: () => actionMutation.mutate(null),
-    install: (tag: string) => actionMutation.mutate(tag),
+    restart: () => actionMutation.mutate({ kind: "restart" }),
+    install: (tag: string) => actionMutation.mutate({ kind: "update", tag }),
+    /** Requests a shrink of the database file. It resolves to false when the shrink waits for the next start. */
+    shrink: async () => (await actionMutation.mutateAsync({ kind: "shrink" })) !== null,
     pending: actionMutation.isPending,
     error: actionMutation.error,
     overlay,

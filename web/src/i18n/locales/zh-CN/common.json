@@ -179,7 +179,29 @@
         "effect": "qui 无法写入传输历史。它会在下次写入时重试。",
         "fix": "请确认磁盘有可用空间，并且 qui 可以写入数据库文件。",
         "menuFix": "为数据库释放磁盘空间"
+      },
+      "shrink_failed": {
+        "short": "压缩失败",
+        "title": "压缩失败",
+        "effect": "qui 无法缩小数据库文件。数据库没有变化，qui 照常运行。",
+        "fix": "详情请查看 qui 日志。",
+        "menuFix": "查看 qui 日志",
+        "reasons": {
+          "disk_full": {
+            "fix": "磁盘可用空间不足。压缩最多需要数据库文件大小的两倍空间。请释放磁盘空间后重试。",
+            "menuFix": "释放空间后重试"
+          },
+          "locked": {
+            "fix": "另一个程序占用了数据库文件。请关闭该程序（例如备份工具或数据库查看器）后重试。",
+            "menuFix": "关闭其他程序后重试"
+          }
+        }
       }
+    },
+    "actions": {
+      "tryAgain": "重试",
+      "dismiss": "忽略",
+      "openLog": "打开日志"
     },
     "unknown": {
       "short": "系统通知",
@@ -188,6 +210,11 @@
       "fix": "详情请查看 qui 日志。",
       "menuFix": "查看 qui 日志"
     }
+  },
+  "databaseShrink": {
+    "done": "数据库文件已从 {{before}} 压缩到 {{after}}",
+    "nextStart": "压缩将在 qui 下次启动时执行",
+    "failed": "无法请求压缩"
   },
   "pwaUpdate": {
     "reload": "重新加载",

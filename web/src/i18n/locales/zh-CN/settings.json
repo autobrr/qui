@@ -433,7 +433,14 @@
       "cancel": "取消",
       "confirm": "删除",
       "deleted": "历史已删除",
-      "failed": "删除历史失败"
+      "failed": "删除历史失败",
+      "shrink": {
+        "label": "同时压缩数据库文件",
+        "restart": "qui 会重启并缩小文件，以便收回磁盘空间。qui 会短暂不可用。",
+        "nextStart": "在此安装方式下，qui 无法自行重启。压缩将在 qui 下次启动时执行。",
+        "tooLittleSpace": "磁盘可用空间为 {{free}}，压缩最多需要 {{need}}。不勾选此项是安全的：SQLite 会将空闲空间重新用于新的历史记录。",
+        "manualDocs": "手动压缩文件"
+      }
     },
     "loadFailed": "无法加载统计设置",
     "toasts": {
