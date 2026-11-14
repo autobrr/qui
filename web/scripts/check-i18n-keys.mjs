@@ -162,20 +162,6 @@ const hardcodedStringChecks = [
     ],
   },
   {
-    file: "src/components/dashboard-settings-dialog.tsx",
-    literals: [
-      "\"Layout Settings\"",
-      "\"Dashboard Settings\"",
-      "\"Sections\"",
-      "\"Tracker Breakdown Defaults\"",
-      "\"Default Sort\"",
-      "\"Direction\"",
-      "\"Descending\"",
-      "\"Ascending\"",
-      "\"Items Per Page\"",
-    ],
-  },
-  {
     file: "src/components/settings/DateTimePreferencesForm.tsx",
     literals: [
       "\"Select your local timezone for accurate time display\"",

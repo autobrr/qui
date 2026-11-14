@@ -4,7 +4,7 @@
  */
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import { byteTicks, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
+import { byteTicks, foldOther, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { formatBytes } from "@/lib/utils"
@@ -63,7 +63,15 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const widths = useMemo(() => new Map(rows.map(row => [row.start, row.width])), [rows])
   const gapLabels = useMemo(() => labelledGaps(rows.flatMap((row, index) => row.gapSeconds > 0 ? [index] : []), rows.length), [rows])
   const ticks = useMemo(() => byteTicks(Math.max(0, ...rows.map(row => row.total))), [rows])
-  const otherGroups = useMemo(() => new Set(bars.flatMap(bar => [...bar.bytes].filter(([group, bytes]) => bytes[metric] > 0 && !groups.includes(group)).map(([group]) => group))).size, [bars, groups, metric])
+  const otherGroups = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const bar of bars) {
+      for (const [group, bytes] of bar.bytes) {
+        totals.set(group, (totals.get(group) ?? 0) + bytes[metric])
+      }
+    }
+    return foldOther(totals, groups)?.groups ?? 0
+  }, [bars, groups, metric])
   const hasOther = otherGroups > 0
   const keys = [...groups.map((_, index) => `s${index}`), ...(hasOther ? [OTHER] : [])]
 

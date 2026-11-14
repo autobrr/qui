@@ -3,10 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { PERIOD_PRESETS, type PeriodPreset } from "@/lib/statistics"
 import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
+import { z } from "zod"
+
+const statisticsSearchSchema = z.object({
+  period: z.enum(PERIOD_PRESETS as [PeriodPreset, ...PeriodPreset[]]).optional().catch(undefined),
+})
 
 export const Route = createFileRoute("/_authenticated/statistics")({
-  component: lazyRouteComponent(() => import("@/pages/Statistics"), "Statistics"),
+  validateSearch: statisticsSearchSchema,
+  component: lazyRouteComponent(() => import("@/pages/Statistics"), "StatisticsRoute"),
   staticData: {
     titleKey: "nav.statistics",
     titleNs: "common",

@@ -17,7 +17,7 @@ Incognito mode is one global toggle:
 
 - On the torrent list, click the eye icon in the status bar at the bottom. The label reads **Incognito off** or **Incognito on**.
 - On mobile, tap the **Incognito** button in the torrent view.
-- The eye icons next to instance URLs on the Dashboard and under **Settings > Instances** toggle the same setting.
+- The eye button in the header of the Dashboard and the eye icons next to instance URLs under **Settings > Instances** toggle the same setting.
 
 qui saves the toggle with your client settings and syncs it to the server. The setting applies across tabs and browsers, and it is off by default.
 
@@ -34,12 +34,13 @@ qui saves the toggle with your client settings and syncs it to the server. The s
 | Torrent metadata | Fake "Created by", comment, and info hash |
 | Release groups on the Statistics page | Linux release teams, for example `Debian CD Images Team` |
 | Peer addresses | `192.168.x.x` with masked ports |
+| Instance hosts and external IP addresses on the Dashboard | `••••••` |
 | Ratios and sidebar filter counts | Deterministic fake numbers |
 
 qui blurs some values instead of replacing them:
 
-- Instance URLs and usernames on instance cards
-- External IP addresses in the status bar and on the Dashboard
+- Instance URLs and usernames on the instance cards under **Settings > Instances**
+- External IP addresses in the status bar
 - Instance hosts and proxy URLs under **Settings > Client Proxy**
 
 ## What it does not hide

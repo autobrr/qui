@@ -113,7 +113,6 @@
     "final": "分享率 {{ratio}} · 做種時間 {{seeded}}"
   },
   "allTimeNote": "全部時間包含基準：qui 首次記錄時種子已有的位元組數。基準沒有日期，因此圖表不顯示基準。",
-  "serverStatisticsNote": "這些數字是每個種子傳輸量的總和。儀表板上的伺服器統計讀取 qBittorrent 的計數器，其中也包含協定流量，因此數字會不同。",
   "table": {
     "title": "依分組",
     "descriptionTracker": "每個 Tracker 在此時段內的傳輸量。點擊一列可開啟詳細資料。",

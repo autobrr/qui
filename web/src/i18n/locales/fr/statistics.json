@@ -115,7 +115,6 @@
     "final": "Ratio {{ratio}} · Durée de partage {{seeded}}"
   },
   "allTimeNote": "Depuis le début inclut la base de départ : les octets que les torrents avaient quand qui les a enregistrés pour la première fois. Le graphique ne montre pas la base de départ, car elle n’a pas de date.",
-  "serverStatisticsNote": "Ces chiffres additionnent le transfert de chaque torrent. Les statistiques du serveur sur le tableau de bord lisent les compteurs de qBittorrent, qui comptent aussi le trafic du protocole : les chiffres diffèrent donc.",
   "table": {
     "title": "Par groupe",
     "descriptionTracker": "Le transfert de la période pour chaque tracker. Cliquez sur une ligne pour ouvrir son détail.",

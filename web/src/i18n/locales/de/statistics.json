@@ -114,7 +114,6 @@
     "final": "Ratio {{ratio}} · Seed-Dauer {{seeded}}"
   },
   "allTimeNote": "Gesamt enthält die Ausgangsbasis: die Bytes, die die Torrents hatten, als qui sie zuerst aufgezeichnet hat. Das Diagramm zeigt die Ausgangsbasis nicht, da sie kein Datum hat.",
-  "serverStatisticsNote": "Diese Zahlen addieren den Transfer jedes Torrents. Die Serverstatistik im Dashboard liest die Zähler von qBittorrent, die auch Protokollverkehr zählen, daher weichen die Zahlen ab.",
   "table": {
     "title": "Nach Gruppe",
     "descriptionTracker": "Der Transfer des Zeitraums für jeden Tracker. Klicke auf eine Zeile, um ihre Details zu öffnen.",

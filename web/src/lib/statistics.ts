@@ -146,6 +146,22 @@ export function formatBuffer(bytes: TransferHistoryBytes): string | undefined {
   return `${bytes.uploaded >= bytes.downloaded ? "+" : "-"}${formatBytes(Math.abs(bytes.uploaded - bytes.downloaded))}`
 }
 
+/** qui writes the Transfer history each 5 minutes, so a page reads it again at that pace. */
+export const HISTORY_WRITE_MS = 5 * 60_000
+
+/** Folds the groups outside top into Other: their bytes, and the count of them that hold bytes. Undefined when none holds bytes. */
+export function foldOther(bytesByGroup: Map<string, number>, top: string[]): { bytes: number; groups: number } | undefined {
+  let bytes = 0
+  let groups = 0
+  for (const [group, value] of bytesByGroup) {
+    if (value > 0 && !top.includes(group)) {
+      bytes += value
+      groups++
+    }
+  }
+  return groups > 0 ? { bytes, groups } : undefined
+}
+
 /** Returns the Tracker groups with the most bytes of the metric, at most SERIES_COUNT of them. */
 export function topGroups(rows: TransferHistoryRow[], metric: Metric): string[] {
   const totals = new Map<string, number>()

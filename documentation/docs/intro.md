@@ -32,7 +32,7 @@ If you have one server, run qui on that server. Some seedbox providers install q
 - **Backups & Restore**: [Scheduled snapshots](./features/backups.md) with incremental, overwrite, and complete restore modes
 - **Cross-Seed**: [Find and add matching torrents](./features/cross-seed/overview.md) across trackers, with autobrr webhook integration
 - **Torrent Management**: [Tags, categories, saved filter views, torrent creation, and export](./features/torrent-management.md)
-- **Dashboard**: [Per-instance statistics](./features/dashboard.md) with live updates over SSE
+- **Dashboard**: [The transfer of the last 24 hours](./features/dashboard.md), the live speed, and each instance, with live updates over SSE
 - **Search**: [Search your Torznab indexers](./features/search.md) and send results to an instance
 - **RSS**: [qBittorrent RSS feeds and auto-download rules](./features/rss.md)
 - **Magnet Links**: Register qui as your browser's handler for magnet links from **Settings → Security**

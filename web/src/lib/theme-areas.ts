@@ -19,7 +19,7 @@ export const THEME_AREAS = [
   { name: "torrent-row", purpose: "One row of the torrent table. Do not change its height." },
   { name: "torrent-card", purpose: "One torrent card in the torrent list of the mobile layout." },
   { name: "details-panel", purpose: "The panel that shows the details of the selected torrent." },
-  { name: "dashboard-card", purpose: "One card on the dashboard, for example the card of one instance." },
+  { name: "dashboard-card", purpose: "One card on the dashboard, for example the chart or the list of instances." },
   { name: "login", purpose: "The login page." },
 ] as const
 
