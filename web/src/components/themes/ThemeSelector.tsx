@@ -67,7 +67,7 @@ function CustomThemeActions({ file, onEdit, onRemove }: CustomThemeActionsProps)
         <Button
           variant="ghost"
           size="icon"
-          className="size-6 shrink-0 max-sm:size-11"
+          className="size-6 shrink-0 max-sm:-my-2.5 max-sm:size-11"
           aria-label={t("themes.custom.actionsFor", { theme: file.label })}
           onClick={(e) => e.stopPropagation()}
         >
