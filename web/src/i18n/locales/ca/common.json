@@ -196,6 +196,14 @@
             "menuFix": "Atura l'altre programa i torna-ho a provar"
           }
         }
+      },
+      "low_disk": {
+        "short": "Poc espai al disc",
+        "title": "Poc espai al disc",
+        "effect": "El disc de la base de dades de qui té poc espai lliure. Quan el disc és ple, totes les escriptures de qui fallen.",
+        "fix": "Allibera espai al disc, redueix «Conserva el detall diari durant» o elimina l'historial antic a la configuració d'Estadístiques.",
+        "menuFix": "Allibera espai de disc per a la base de dades",
+        "action": "Obre la configuració d'Estadístiques"
       }
     },
     "actions": {

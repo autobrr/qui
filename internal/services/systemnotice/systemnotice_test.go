@@ -73,8 +73,8 @@ func TestDismiss(t *testing.T) {
 	notices.Open(systemnotice.RecordingStopped, "disk I/O error")
 	notices.Open(systemnotice.ShrinkFailed, "database or disk is full")
 
-	require.ErrorIs(t, notices.Dismiss(systemnotice.RecordingStopped), systemnotice.ErrNotDismissible)
-	require.NoError(t, notices.Dismiss(systemnotice.ShrinkFailed))
+	require.ErrorIs(t, notices.Dismiss(t.Context(), systemnotice.RecordingStopped), systemnotice.ErrNotDismissible)
+	require.NoError(t, notices.Dismiss(t.Context(), systemnotice.ShrinkFailed))
 
 	open := notices.List()
 	require.Len(t, open, 1)
