@@ -168,17 +168,26 @@
     "dismiss": "닫기"
   },
   "systemNotice": {
+    "needsAttention": "확인 필요",
+    "since": "{{time}}부터, {{age}}",
+    "causeLabel": "원인",
+    "actionFallback": "해결하러 가기",
     "kinds": {
       "recording_stopped": {
+        "short": "기록 중지됨",
         "title": "기록 중지됨",
-        "fix": "qui는 다음 쓰기 때 다시 시도합니다. 디스크에 여유 공간이 있는지, qui가 데이터베이스 파일에 쓸 수 있는지 확인하세요."
+        "effect": "qui가 전송 기록을 쓸 수 없습니다. 다음 쓰기 때 다시 시도합니다.",
+        "fix": "디스크에 여유 공간이 있는지, qui가 데이터베이스 파일에 쓸 수 있는지 확인하세요.",
+        "menuFix": "데이터베이스용 디스크 공간 확보"
       }
     },
     "unknown": {
+      "short": "시스템 알림",
       "title": "시스템 알림",
-      "fix": "qui에 사용자의 조치가 필요합니다. 자세한 내용은 qui 로그를 확인하세요."
-    },
-    "cause": "원인: {{cause}}"
+      "effect": "qui가 사용자의 조치가 필요한 오류를 발견했습니다.",
+      "fix": "자세한 내용은 qui 로그를 확인하세요.",
+      "menuFix": "qui 로그 확인"
+    }
   },
   "pwaUpdate": {
     "reload": "새로고침",

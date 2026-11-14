@@ -168,17 +168,26 @@
     "dismiss": "Fermer"
   },
   "systemNotice": {
+    "needsAttention": "Requiert votre attention",
+    "since": "Depuis {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Aller à la correction",
     "kinds": {
       "recording_stopped": {
+        "short": "Enregistrement arrêté",
         "title": "Enregistrement arrêté",
-        "fix": "qui réessaie à la prochaine écriture. Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données."
+        "effect": "qui ne peut pas écrire l'historique des transferts. Il réessaie à la prochaine écriture.",
+        "fix": "Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données.",
+        "menuFix": "Libérez de l'espace disque pour la base"
       }
     },
     "unknown": {
+      "short": "Avis système",
       "title": "Avis système",
-      "fix": "qui a besoin d'une action de votre part. Le journal de qui contient les détails."
-    },
-    "cause": "Cause : {{cause}}"
+      "effect": "qui a trouvé une erreur qui demande une action de votre part.",
+      "fix": "Le journal de qui contient les détails.",
+      "menuFix": "Lisez le journal de qui"
+    }
   },
   "pwaUpdate": {
     "reload": "Recharger",

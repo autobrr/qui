@@ -168,17 +168,26 @@
     "dismiss": "Dispensar"
   },
   "systemNotice": {
+    "needsAttention": "Requer atenção",
+    "since": "Desde {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Ir para a correção",
     "kinds": {
       "recording_stopped": {
+        "short": "Gravação parada",
         "title": "Gravação parada",
-        "fix": "O qui tenta novamente na próxima gravação. Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados."
+        "effect": "O qui não consegue gravar o histórico de transferências. Ele tenta novamente na próxima gravação.",
+        "fix": "Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados.",
+        "menuFix": "Libere espaço em disco para o banco"
       }
     },
     "unknown": {
+      "short": "Aviso do sistema",
       "title": "Aviso do sistema",
-      "fix": "O qui precisa de uma ação sua. O log do qui tem os detalhes."
-    },
-    "cause": "Causa: {{cause}}"
+      "effect": "O qui encontrou uma falha que precisa de uma ação sua.",
+      "fix": "O log do qui tem os detalhes.",
+      "menuFix": "Leia o log do qui"
+    }
   },
   "pwaUpdate": {
     "reload": "Recarregar",
