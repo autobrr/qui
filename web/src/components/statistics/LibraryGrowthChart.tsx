@@ -5,8 +5,9 @@
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
+import { useSeriesColors } from "@/hooks/useSeriesColors"
 import type { LibraryPoint } from "@/lib/statistics-library"
-import { byteTicks, SERIES_COLORS } from "@/lib/statistics"
+import { byteTicks } from "@/lib/statistics"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -26,11 +27,12 @@ export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatStart, formatTick } = useBucketFormat("day")
+  const colors = useSeriesColors()
 
   const config = useMemo<ChartConfig>(() => {
     const labels = { totalSize: t("growth.totalSize"), uniqueSize: t("growth.uniqueSize") }
-    return Object.fromEntries(SERIES.map(({ key, color }) => [key, { label: labels[key], theme: { light: SERIES_COLORS.light[color], dark: SERIES_COLORS.dark[color] } }]))
-  }, [t])
+    return Object.fromEntries(SERIES.map(({ key, color }) => [key, { label: labels[key], theme: { light: colors.light[color], dark: colors.dark[color] } }]))
+  }, [t, colors])
   const ticks = useMemo(() => byteTicks(Math.max(0, ...points.map(point => point.totalSize ?? 0))), [points])
 
   return (
