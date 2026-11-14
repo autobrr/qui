@@ -49,7 +49,7 @@ function SystemNoticeMenuRow({ notice, now, onOpen }: { notice: SystemNotice; no
   return (
     <DropdownMenuItem className="cursor-pointer items-start" onSelect={(event) => onOpen(notice.kind, menuButtonOf(event.currentTarget))}>
       <span className="mt-1.5 flex h-2 w-4 items-center justify-center">
-        <SystemNoticeDot fresh={isFreshSystemNotice(notice.openedAt, now)} />
+        <SystemNoticeDot severity={notice.severity} fresh={isFreshSystemNotice(notice.openedAt, now)} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{short}</span>

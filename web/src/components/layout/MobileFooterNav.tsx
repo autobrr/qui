@@ -44,6 +44,7 @@ import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
+import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
@@ -438,7 +439,7 @@ export function MobileFooterNav() {
                   location.pathname === "/settings" && "text-primary"
                 )} />
                 {systemNotices.length > 0 && (
-                  <span className="absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full bg-destructive" />
+                  <span className={cn("absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
                 )}
                 {updateInfo && (
                   <Badge

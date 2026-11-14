@@ -15,16 +15,20 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useNow } from "@/hooks/useNow"
 import { useSystemNoticeDescription } from "@/hooks/useSystemNoticeDescription"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { systemNoticeDotColor } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import type { SystemNotice } from "@/types"
 
-export function SystemNoticeDot({ fresh = false, className }: { fresh?: boolean; className?: string }) {
+type SystemNoticeDotProps = { severity: SystemNotice["severity"]; fresh?: boolean; className?: string }
+
+export function SystemNoticeDot({ severity, fresh = false, className }: SystemNoticeDotProps) {
+  const color = systemNoticeDotColor[severity] ?? systemNoticeDotColor.error
   return (
     <span className={cn("relative flex h-2 w-2 shrink-0", className)}>
       {fresh && (
-        <span className="absolute inline-flex h-full w-full rounded-full bg-destructive opacity-70 motion-safe:animate-ping [animation-iteration-count:3]!" />
+        <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-70 motion-safe:animate-ping [animation-iteration-count:3]!", color.fill)} />
       )}
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive ring-[3px] ring-destructive/20" />
+      <span className={cn("relative inline-flex h-2 w-2 rounded-full ring-[3px]", color.fill, color.ring)} />
     </span>
   )
 }
@@ -58,7 +62,7 @@ export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNa
   return (
     <div>
       <div className="flex items-start gap-3 px-4 pr-10 pt-4">
-        <SystemNoticeDot className="mt-1.5" />
+        <SystemNoticeDot severity={notice.severity} className="mt-1.5" />
         <div className="min-w-0">
           <Title {...(titleId && { id: titleId })} className="text-sm font-semibold leading-snug">{description.title}</Title>
           <p className="mt-0.5 text-xs text-muted-foreground">
