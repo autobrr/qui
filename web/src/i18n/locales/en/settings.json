@@ -704,23 +704,28 @@
       "editor": {
         "newTitle": "New theme",
         "editTitle": "Edit theme",
-        "description": "Paste or write the CSS of a theme. This browser shows the theme while you edit. Save stores the theme on the server.",
+        "description": "Preview changes in this browser. Save stores the theme on the server.",
         "name": "Name",
+        "namePlaceholder": "Theme name",
+        "savedAs": "Saved as {{filename}}",
         "css": "CSS",
+        "cssHelp": "Paste or write the CSS of a theme. It needs a :root block for light mode and a .dark block for dark mode, each with at least one design token. Copy prompt for your AI gives an AI assistant the full rules.",
+        "cssPlaceholder": "/* @name: My theme */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
         "nameInvalid": "Enter a name with a letter or a digit.",
         "save": "Save",
+        "saveFailed": "Could not save the theme.",
         "saved": "Theme saved",
         "savedNotLoaded": "The theme is saved, but qui could not load the theme list. Click Refresh in the Custom Themes box.",
         "replaceTitle": "Replace the theme?",
         "replaceDescription": "A custom theme with the file name {{filename}} exists. Replace it with this theme?",
         "replace": "Replace",
         "problems": {
-          "empty": "Paste the CSS of a theme to see a preview.",
           "missingRoot": "qui cannot use this CSS: it has no :root block with a design token. The preview shows the last CSS that qui could use.",
           "missingDark": "qui cannot use this CSS: it has no .dark block with a design token. The preview shows the last CSS that qui could use.",
           "outsideFile": "Line {{line}} can make the browser load a file from another website, so the preview leaves it out and Save refuses it. Use url() only with a data: address or a #fragment, and no @import, image-set(), or backslash escape.",
           "unreadable": "qui cannot read line {{line}}: a quoted string or a url() is not closed. The preview shows the last CSS that qui could use."
-        }
+        },
+        "previewing": "Previewing in this browser"
       }
     },
     "layout": {

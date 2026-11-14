@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { _resetClientSettingsForTests, seedAndMarkReady } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { _setDefaultThemeVisitForTests } from "@/lib/default-theme-visit"
 
 const fixture = vi.hoisted(() => {
@@ -144,7 +145,7 @@ afterEach(() => {
 
 function render(ui: ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+  return rtlRender(<QueryClientProvider client={queryClient}><TooltipProvider>{ui}</TooltipProvider></QueryClientProvider>)
 }
 
 function themeCards(): HTMLElement[] {
@@ -374,7 +375,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
 
     fireEvent.click(saveButton())
-    expect((await screen.findByRole("alert")).textContent).toBe(refusal)
+    expect((await screen.findByRole("alert")).textContent).toContain(refusal)
     expect(requests).toHaveLength(1)
   })
 
@@ -527,7 +528,7 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: RED_THEME } })
     fireEvent.click(saveButton())
 
-    expect((await screen.findByRole("alert")).textContent).toBe(refusal)
+    expect((await screen.findByRole("alert")).textContent).toContain(refusal)
     expect(cssField().value).toBe(RED_THEME)
     expect(themeUtils.setTheme).not.toHaveBeenCalled()
   })

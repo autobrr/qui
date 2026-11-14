@@ -4,6 +4,7 @@
  */
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { themes, getThemeById, type Theme } from "@/config/themes"
@@ -375,10 +376,10 @@ export function ThemeSelector() {
       </CardHeader>
       <CardContent className="space-y-4 px-4">
         {defaultThemeVisit && (
-          <p className="flex items-center gap-2 rounded-md border p-3 text-sm">
-            <Info className="h-4 w-4 shrink-0 text-muted-foreground" />
-            {t("themes.selector.defaultThemeVisit")}
-          </p>
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>{t("themes.selector.defaultThemeVisit")}</AlertDescription>
+          </Alert>
         )}
 
         {isError && !hasPremiumAccess && (

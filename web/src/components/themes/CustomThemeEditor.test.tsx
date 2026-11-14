@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
 import { setTheme, setThemeMode } from "@/utils/theme"
 
@@ -46,7 +47,9 @@ describe("CustomThemeEditor", () => {
     const client = new QueryClient()
     const { unmount } = render(
       <QueryClientProvider client={client}>
-        <CustomThemeEditor target={{ kind: "new" }} onClose={() => {}} />
+        <TooltipProvider>
+          <CustomThemeEditor target={{ kind: "new" }} onClose={() => {}} />
+        </TooltipProvider>
       </QueryClientProvider>
     )
 

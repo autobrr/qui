@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useId, useMemo, useReducer, useRef } from "react"
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle, Eye, Loader2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -20,6 +20,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -103,7 +104,6 @@ function previewProblemOf(css: string): PreviewProblem | null {
 }
 
 const PROBLEM_KEYS = {
-  "empty": "themes.custom.editor.problems.empty",
   "missing-root": "themes.custom.editor.problems.missingRoot",
   "missing-dark": "themes.custom.editor.problems.missingDark",
   "outside-file": "themes.custom.editor.problems.outsideFile",
@@ -131,12 +131,13 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
   const previewCss = useDebounce(state.css, PREVIEW_DELAY_MS)
   const previewProblem = useMemo(() => previewProblemOf(previewCss), [previewCss])
   const shown = useRef<{ css: string; cssVars: Theme["cssVars"]; lightOnly: boolean } | null>(null)
-  const openedCss = useRef(state.css)
+  const [openedCss] = useState(state.css)
+  // A default theme visit is for repair, and the saved CSS can hide the page, so only a change previews.
+  const waitsForChange = isDefaultThemeVisit() && previewCss === openedCss
 
   useEffect(() => {
     if (previewProblem) return
-    // A default theme visit is for repair, and the saved CSS can hide the page, so only a change previews.
-    if (isDefaultThemeVisit() && previewCss === openedCss.current) {
+    if (waitsForChange) {
       if (shown.current) {
         shown.current = null
         void endCustomThemePreview()
@@ -147,7 +148,7 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
     if (!parsed) return
     shown.current = { css: previewCss, cssVars: parsed.cssVars, lightOnly: parsed.metadata.lightOnly === true }
     previewCustomThemeCss(previewCss, parsed.cssVars, parsed.metadata.lightOnly === true)
-  }, [previewCss, previewProblem])
+  }, [previewCss, previewProblem, waitsForChange])
 
   // A mode change or a re-applied theme repaints the page, so the preview paints itself again.
   useEffect(() => {
@@ -208,7 +209,7 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
       >
         <SheetContent
           side={isMobile ? "bottom" : "right"}
-          className={isMobile ? "h-[75dvh] gap-3" : "w-full gap-3 sm:max-w-xl"}
+          className={isMobile ? "h-[85dvh] gap-3" : "w-full gap-3 sm:max-w-xl"}
           onInteractOutside={(event) => event.preventDefault()}
         >
           <SheetHeader className="pb-0">
@@ -224,45 +225,62 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
               <Input
                 id={nameId}
                 value={state.name}
+                placeholder={t("themes.custom.editor.namePlaceholder")}
                 onChange={(event) => dispatch({ type: "name", name: event.target.value })}
                 disabled={saving}
               />
               {target.kind === "new" && name !== "" && id === "" && (
                 <p className="text-xs text-destructive">{t("themes.custom.editor.nameInvalid")}</p>
               )}
+              {target.kind === "new" && id !== "" && (
+                <p className="text-xs text-muted-foreground">
+                  {t("themes.custom.editor.savedAs", { filename: `${id}.css` })}
+                </p>
+              )}
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-              <Label htmlFor={cssId}>{t("themes.custom.editor.css")}</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor={cssId}>{t("themes.custom.editor.css")}</Label>
+                <FieldHelp>{t("themes.custom.editor.cssHelp")}</FieldHelp>
+              </div>
               <Textarea
                 id={cssId}
                 value={state.css}
                 onChange={(event) => dispatch({ type: "css", css: event.target.value })}
                 disabled={saving}
+                placeholder={t("themes.custom.editor.cssPlaceholder")}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"
-                className="min-h-40 flex-1 resize-none font-mono text-xs field-sizing-fixed md:text-xs"
+                className="min-h-40 flex-1 resize-none font-mono text-base field-sizing-fixed md:text-xs"
               />
-              {previewProblem && (
-                <p className="text-xs text-muted-foreground">
-                  {t(PROBLEM_KEYS[previewProblem.kind], "line" in previewProblem ? { line: previewProblem.line } : undefined)}
+              {state.phase.kind === "editing" && state.phase.error ? (
+                <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span className="break-words">
+                    <span className="font-medium">{t("themes.custom.editor.saveFailed")}</span> {state.phase.error}
+                  </span>
                 </p>
-              )}
-              {state.phase.kind === "editing" && state.phase.error && (
-                <p role="alert" className="flex items-start gap-1 text-xs font-medium text-destructive">
-                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                  <span className="break-words">{state.phase.error}</span>
+              ) : previewProblem && previewProblem.kind !== "empty" ? (
+                <p className="flex items-start gap-1.5 text-xs text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>{t(PROBLEM_KEYS[previewProblem.kind], "line" in previewProblem ? { line: previewProblem.line } : undefined)}</span>
                 </p>
-              )}
+              ) : !previewProblem && !waitsForChange ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Eye className="h-3.5 w-3.5 shrink-0" />
+                  {t("themes.custom.editor.previewing")}
+                </p>
+              ) : null}
             </div>
           </div>
 
-          <SheetFooter className="flex-row justify-end gap-2 pt-0">
-            <Button variant="outline" onClick={onClose} disabled={saving}>
+          <SheetFooter className="flex-row justify-end gap-2 pt-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <Button variant="outline" className="flex-1 sm:flex-none" onClick={onClose} disabled={saving}>
               {t("common:actions.cancel")}
             </Button>
-            <Button onClick={() => void save(false)} disabled={!canSave}>
+            <Button className="flex-1 sm:flex-none" onClick={() => void save(false)} disabled={!canSave}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {t("themes.custom.editor.save")}
             </Button>
