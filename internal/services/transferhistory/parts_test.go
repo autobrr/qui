@@ -309,6 +309,7 @@ func TestAStopBetweenTwoPartsStoresNoRecordingGapForReadTimePostgresIntegration(
 	})
 }
 
+// regression: #4120
 func TestAStopBetweenTwoPartsCountsTheBytesOfAMagnetThatGotItsHashBackOncePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
@@ -342,6 +343,7 @@ func TestAStopBetweenTwoPartsCountsTheBytesOfAMagnetThatGotItsHashBackOncePostgr
 	})
 }
 
+// regression: #4120
 func TestAStopBetweenTwoPartsAfterAnOutageKeepsTheTransferOfTorrentsAddedInItPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
@@ -374,6 +376,7 @@ func TestAStopBetweenTwoPartsAfterAnOutageKeepsTheTransferOfTorrentsAddedInItPos
 	})
 }
 
+// regression: #4120
 func TestAStopBetweenTwoPartsCountsTheBytesOfATorrentLeftOutOfOneReadingOncePostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
