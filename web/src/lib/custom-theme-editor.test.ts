@@ -54,6 +54,7 @@ describe("writeThemeName", () => {
     expect(readThemeName(css)).toBe("a body { display: none }")
   })
 
+  // regression: #4124
   it("replaces the value, not the marker, when the name is the word name", () => {
     expect(writeThemeName("/* @name: name */\n:root{}", "Ocean")).toBe("/* @name: Ocean */\n:root{}")
   })

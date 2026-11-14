@@ -22,6 +22,7 @@ describe("findOutsideFile", () => {
     ["line break in a string", "body::after { content: \"a\n@import 'x.css'; b\"; }", 1, "unreadable"],
     ["url without an end", "body { background: url(data:x", 1, "unreadable"],
     ["url after a comment", "/* one\n two */ body { background: url(http://example.invalid); }", 2, "outside-file"],
+    // regression: #4124
     ["url with a no-break space before data:", "body { background: url(\"\u00a0data:image/png;base64,AAAA\"); }", 1, "outside-file"],
     ["url after a non-ASCII letter", "/* İstanbul */ body { background: url(http://example.invalid); }", 1, "outside-file"],
   ])("refuses %s", (_name, css, line, kind) => {

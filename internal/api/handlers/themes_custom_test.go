@@ -223,6 +223,7 @@ func TestCustomTheme_EditsAndRemovesNameThatCreateRefuses(t *testing.T) {
 	require.Equal(t, []string{"My Theme.css"}, rig.fileNames(t))
 }
 
+// regression: #4124
 func TestCustomTheme_EscapedIDReachesFile(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	rig.write(t, "My Theme (dark).css", "hand made")
@@ -237,6 +238,7 @@ func TestCustomTheme_EscapedIDReachesFile(t *testing.T) {
 	require.Equal(t, []string{"My Theme (dark).css"}, rig.fileNames(t))
 }
 
+// regression: #4124
 func TestCustomTheme_PercentInFileNameIsNotDecodedTwice(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	rig.write(t, "100%.css", "hundred")
@@ -253,6 +255,7 @@ func TestCustomTheme_PercentInFileNameIsNotDecodedTwice(t *testing.T) {
 	require.Equal(t, "space name", rig.read(t, "a b.css"))
 }
 
+// regression: #4124
 func TestCustomTheme_ConcurrentCreatesOfOneID(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	const callers = 8
@@ -388,6 +391,7 @@ func TestCustomTheme_OutsideFileRule(t *testing.T) {
 		{"escaped import", "@\\69mport 'x.css';", 1, "backslash"},
 		{"line break in a string", "body::after { content: \"a\n@import 'x.css'; b\"; }", 1, "line break"},
 		{"url after a comment", "/* one\n two */ body { background: url(http://example.invalid); }", 2, "url()"},
+		// regression: #4124
 		{"no-break space before data:", "body { background: url(\"\u00a0data:image/png;base64,AAAA\"); }", 1, "url()"},
 	}
 	for _, tt := range refused {

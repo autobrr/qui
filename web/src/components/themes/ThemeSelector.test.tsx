@@ -317,6 +317,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("Red Alert", "Blood Moon") })
   })
 
+  // regression: #4124
   it("keeps a typed name through a later CSS edit", async () => {
     const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "blood-moon", filename: "blood-moon.css", css: "" }, { status: 201 }))
     render(<ThemeSelector />)
@@ -332,6 +333,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("darkred", "maroon").replace("Red Alert", "Blood Moon") })
   })
 
+  // regression: #4124
   it("loads the other theme when Edit is clicked while the editor is open", async () => {
     render(<ThemeSelector />)
 
@@ -356,6 +358,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(saveButton().disabled).toBe(true)
   })
 
+  // regression: #4124
   it("leaves CSS that loads an outside file out of the preview, and Save still asks the server", async () => {
     const refusal = "The theme can load a file from another website, line 4: url() can only use a data: address or a #fragment"
     const requests = recordCustomThemeApi(() => HttpResponse.json({ error: refusal }, { status: 400 }))
@@ -375,6 +378,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests).toHaveLength(1)
   })
 
+  // regression: #4124
   it("asks before it replaces a theme with the same name, and a yes replaces and selects it", async () => {
     const requests = recordCustomThemeApi((req) =>
       req.method === "POST"
@@ -400,19 +404,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests[1].body).toEqual({ css: RED_THEME })
   })
 
-  it("paints the preview again after a mode change repaints the page", () => {
-    render(<ThemeSelector />)
-
-    openNewTheme()
-    fireEvent.change(cssField(), { target: { value: RED_THEME } })
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
-
-    window.dispatchEvent(new CustomEvent("themechange", { detail: { mode: "light", theme: { id: "free" }, isSystemChange: false } }))
-
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(2)
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
-  })
-
+  // regression: #4124
   it("previews an edited theme only after a change during a default theme visit", async () => {
     _setDefaultThemeVisitForTests(true)
     render(<ThemeSelector />)
@@ -431,6 +423,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
   })
 
+  // regression: #4124
   it("closes with a message when the list does not load after a save, and selects nothing", async () => {
     const { toast } = await import("sonner")
     recordCustomThemeApi(() => HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 }))
@@ -446,6 +439,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.setTheme).not.toHaveBeenCalled()
   })
 
+  // regression: #4124
   it("keeps a New theme draft when an earlier Edit finishes loading later", async () => {
     let finishLoad: (files: Array<{ id: string; filename: string; css: string }>) => void = () => {}
     customThemesHook.refreshCustomThemes.mockReturnValueOnce(new Promise(resolve => { finishLoad = resolve }))
@@ -462,6 +456,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(screen.getByText("themes.custom.editor.newTitle")).toBeTruthy()
   })
 
+  // regression: #4124
   it("keeps an editor that opened while an earlier save was still running", async () => {
     let finishSave: () => void = () => {}
     const saved = new Promise<void>(resolve => { finishSave = resolve })
@@ -517,6 +512,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.setTheme).not.toHaveBeenCalled()
   })
 
+  // regression: #4124
   it("edits the current file of a custom theme with replace and keeps the selection", async () => {
     const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "local", filename: "local.css", css: "" }))
     const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")

@@ -177,6 +177,7 @@ describe("custom theme preview", () => {
 })
 
 describe("custom theme preview mode", () => {
+  // regression: #4124
   it("shows a light-only theme in light mode and an ordinary theme in the selected mode", async () => {
     await setTheme("minimal", "dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
