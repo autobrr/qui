@@ -14,7 +14,7 @@ export type PeriodPreset = "24h" | "7d" | "30d" | "1y" | "all"
 export type ChartUnit = "hour" | "day"
 
 /** The width of a bar. A year bar stands for the days of a torrent in a UTC year that qui folded. */
-export type BarWidth = ChartUnit | "year"
+export type BarWidth = ChartUnit | "week" | "month" | "year"
 
 /** A period of the Statistics page. Without from, the period has no start. */
 export interface StatisticsPeriod {
@@ -73,9 +73,12 @@ export function customPeriod(firstDay: Date, lastDay: Date, now: Date): Statisti
   const to = end < now ? end : now
   // The bars cover the range up to now, so a future last day counts as today.
   const shownLastDay = end < now ? lastDay : startOfLocalDay(now)
-  // Count dates, not hours: a week with a change of the clock has 167 or 169 hours.
-  const days = Math.round((Date.UTC(shownLastDay.getFullYear(), shownLastDay.getMonth(), shownLastDay.getDate()) - Date.UTC(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate())) / (24 * HOUR)) + 1
-  return { from, to, unit: unitOf(days) }
+  return { from, to, unit: unitOf(localDates(firstDay, shownLastDay)) }
+}
+
+/** Counts the local dates from first to last, both included. Count dates, not hours: a week with a change of the clock has 167 or 169 hours. */
+function localDates(first: Date, last: Date): number {
+  return Math.round((Date.UTC(last.getFullYear(), last.getMonth(), last.getDate()) - Date.UTC(first.getFullYear(), first.getMonth(), first.getDate())) / (24 * HOUR)) + 1
 }
 
 /**
@@ -491,10 +494,10 @@ export function recordedUnits(bars: StatisticsBar[], since: Date | undefined, un
 }
 
 /**
- * Returns the bar of the chart unit with the most upload, or undefined when no such bar has upload. A folded day of
- * an hourly chart is not an hour, so it is never the best hour.
+ * Returns the bar of the width with the most upload, or undefined when no such bar has upload. A folded day of an
+ * hourly chart is not an hour, so it is never the best hour.
  */
-export function bestBar(bars: StatisticsBar[], unit: ChartUnit): { bar: StatisticsBar; uploaded: number } | undefined {
+export function bestBar(bars: StatisticsBar[], unit: BarWidth): { bar: StatisticsBar; uploaded: number } | undefined {
   let best: { bar: StatisticsBar; uploaded: number } | undefined
   for (const bar of bars) {
     if (bar.width !== unit) {
@@ -506,4 +509,122 @@ export function bestBar(bars: StatisticsBar[], unit: ChartUnit): { bar: Statisti
     }
   }
   return best
+}
+
+/** A chart of a period that covers more days than this shows the year view in place of the daily bars. */
+const YEAR_VIEW_DAYS = 120
+
+/** Reports whether the chart of a period covers more than 120 local dates. All time counts from the first recording. */
+export function showsYearView(period: StatisticsPeriod, since: Date | undefined): boolean {
+  const range = chartRange(period, since)
+  return range !== undefined && localDates(range.from, new Date(range.to.getTime() - 1)) > YEAR_VIEW_DAYS
+}
+
+/** Adds the bytes and the Recording gaps of the day bars into one bar for each start that startOf gives. A bar that is not a day stays as it is. */
+function joinDays(bars: StatisticsBar[], width: BarWidth, startOf: (day: Date) => Date): StatisticsBar[] {
+  const joined = new Map<number, StatisticsBar>()
+  const result: StatisticsBar[] = []
+  for (const bar of bars) {
+    if (bar.width !== "day") {
+      result.push(bar)
+      continue
+    }
+    const start = startOf(new Date(bar.start)).getTime()
+    let into = joined.get(start)
+    if (!into) {
+      into = { start, width, bytes: new Map(), gapSeconds: 0 }
+      joined.set(start, into)
+      result.push(into)
+    }
+    for (const [group, bytes] of bar.bytes) {
+      const sum = into.bytes.get(group) ?? { uploaded: 0, downloaded: 0 }
+      sum.uploaded += bytes.uploaded
+      sum.downloaded += bytes.downloaded
+      into.bytes.set(group, sum)
+    }
+    into.gapSeconds += bar.gapSeconds
+  }
+  return result
+}
+
+/** Joins the day bars into one bar for each week from Monday on. A year bar stays one bar. */
+export function weekBars(bars: StatisticsBar[]): StatisticsBar[] {
+  return joinDays(bars, "week", day => addLocalDays(day, -daysSinceMonday(day)))
+}
+
+/** Returns 0 for a Monday and 6 for a Sunday, so that weeks start on Monday. */
+export function daysSinceMonday(day: Date): number {
+  return (day.getDay() + 6) % 7
+}
+
+/** Joins the day bars into one bar for each local month. */
+export function monthBars(bars: StatisticsBar[]): StatisticsBar[] {
+  return joinDays(bars, "month", day => new Date(day.getFullYear(), day.getMonth(), 1))
+}
+
+export interface YearSummary {
+  bestDay?: { start: number; uploaded: number }
+  bestMonth?: { start: number; uploaded: number }
+  // The share of the upload that moved on a Saturday or a Sunday, from 0 to 1.
+  weekendShare?: number
+}
+
+/** Returns the day and the month with the most upload, and the share of the upload on weekends, or undefined parts when no day has upload. */
+export function yearSummary(bars: StatisticsBar[]): YearSummary {
+  const day = bestBar(bars, "day")
+  const month = bestBar(monthBars(bars), "month")
+  let uploaded = 0
+  let weekend = 0
+  for (const bar of bars) {
+    if (bar.width !== "day") {
+      continue
+    }
+    const bytes = barBytes(bar).uploaded
+    uploaded += bytes
+    const weekday = new Date(bar.start).getDay()
+    if (weekday === 0 || weekday === 6) {
+      weekend += bytes
+    }
+  }
+  return {
+    bestDay: day && { start: day.bar.start, uploaded: day.uploaded },
+    bestMonth: month && { start: month.bar.start, uploaded: month.uploaded },
+    weekendShare: uploaded > 0 ? weekend / uploaded : undefined,
+  }
+}
+
+/** A day of the calendar of the year view. Without uploaded, qui did not record the day. */
+export interface CalendarDay {
+  start: number
+  uploaded?: number
+  gapSeconds: number
+}
+
+const CALENDAR_DAYS = 53 * 7
+
+/**
+ * Returns one day for each local date of the period in the last 53 weeks up to the day of to, with the upload of its
+ * day bar. The bytes of a Recording gap land after the gap, so each day that the gap reaches back into gets its length too.
+ */
+export function calendarDays(bars: StatisticsBar[], to: Date, since: Date | undefined): CalendarDay[] {
+  const byStart = new Map(bars.filter(bar => bar.width === "day").map(bar => [bar.start, bar]))
+  const last = startOfLocalDay(new Date(to.getTime() - 1))
+  const first = since?.getTime() ?? -Infinity
+  const days: CalendarDay[] = []
+  for (let index = 1 - CALENDAR_DAYS; index <= 0; index++) {
+    const day = addLocalDays(last, index)
+    const bar = byStart.get(day.getTime())
+    // The bars cover the period with no hole, so a day without a bar is before the period.
+    if (!bar) {
+      continue
+    }
+    const recorded = addLocalDays(day, 1).getTime() > first
+    days.push({ start: day.getTime(), uploaded: recorded ? barBytes(bar).uploaded : undefined, gapSeconds: bar.gapSeconds })
+  }
+  for (const [index, day] of days.entries()) {
+    for (let before = index - 1; before >= 0 && days[before].start >= day.start - day.gapSeconds * 1000; before--) {
+      days[before].gapSeconds = Math.max(days[before].gapSeconds, day.gapSeconds)
+    }
+  }
+  return days
 }

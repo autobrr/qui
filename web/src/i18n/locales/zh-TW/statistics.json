@@ -43,7 +43,23 @@
     "gap": "包含 {{duration}} 的記錄空缺",
     "gapLabel": "空缺 {{duration}}",
     "foldedDay": "（整天，UTC）",
+    "weekOf": "{{date}} 起的一週",
     "empty": "此時段內沒有傳輸。"
+  },
+  "yearView": {
+    "title": "期間上傳",
+    "description": "僅上傳：最近 53 週按天，再按月和 Tracker",
+    "calendar": "每日上傳，最近 53 週",
+    "less": "少",
+    "more": "多",
+    "day": "{{date}}：上傳 {{uploaded}}",
+    "dayNotRecorded": "{{date}}：未記錄",
+    "dayGap": "{{day}}。{{gap}}",
+    "bestDay": "最佳日",
+    "bestMonth": "最佳月",
+    "weekends": "週末",
+    "weekendsDetail": "的上傳發生在週六或週日",
+    "months": "每月上傳，依 Tracker"
   },
   "groups": {
     "public": "公開",
@@ -99,6 +115,7 @@
     "averageDay": "每日平均",
     "chartHour": "{{group}} 每小時",
     "chartDay": "{{group}} 每日",
+    "chartWeek": "{{group}} 每週",
     "chartLegend": "線上方為上傳，下方為下載",
     "topTorrents": "{{group}} 的熱門種子",
     "topTorrentsCategoryNote": "分類的熱門種子依每個種子目前的分類統計。"

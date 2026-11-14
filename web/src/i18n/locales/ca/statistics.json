@@ -45,7 +45,23 @@
     "gap": "Inclou un buit d’enregistrament de {{duration}}",
     "gapLabel": "buit {{duration}}",
     "foldedDay": "(dia sencer, UTC)",
+    "weekOf": "Setmana del {{date}}",
     "empty": "No hi ha transferència en aquest període."
+  },
+  "yearView": {
+    "title": "Pujada del període",
+    "description": "Només pujada, per dia de les últimes 53 setmanes i per mes per tracker",
+    "calendar": "Pujada per dia, últimes 53 setmanes",
+    "less": "Menys",
+    "more": "Més",
+    "day": "{{date}}: {{uploaded}} pujats",
+    "dayNotRecorded": "{{date}}: no enregistrat",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "Millor dia",
+    "bestMonth": "Millor mes",
+    "weekends": "Caps de setmana",
+    "weekendsDetail": "de la pujada es va moure un dissabte o un diumenge",
+    "months": "Pujada per mes, per tracker"
   },
   "groups": {
     "public": "Públic",
@@ -101,6 +117,7 @@
     "averageDay": "Mitjana per dia",
     "chartHour": "{{group}} per hora",
     "chartDay": "{{group}} per dia",
+    "chartWeek": "{{group}} per setmana",
     "chartLegend": "Pujada damunt de la línia, baixada a sota",
     "topTorrents": "Torrents principals de {{group}}",
     "topTorrentsCategoryNote": "Els torrents principals d'una categoria segueixen la categoria actual de cada torrent."

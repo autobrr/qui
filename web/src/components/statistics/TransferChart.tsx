@@ -58,6 +58,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
     return row
   }), [bars, groups, metric])
 
+  const widths = useMemo(() => new Map(rows.map(row => [row.start, row.width])), [rows])
   const gapLabels = useMemo(() => labelledGaps(rows.flatMap((row, index) => row.gapSeconds > 0 ? [index] : []), rows.length), [rows])
   const ticks = useMemo(() => byteTicks(Math.max(0, ...rows.map(row => row.total))), [rows])
   const otherGroups = useMemo(() => new Set(bars.flatMap(bar => [...bar.bytes].filter(([group, bytes]) => bytes[metric] > 0 && !groups.includes(group)).map(([group]) => group))).size, [bars, groups, metric])
@@ -68,7 +69,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
     <ChartContainer config={config} className="aspect-auto h-[300px] w-full">
       <BarChart data={rows} margin={{ top: 16, right: 24, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value))} />
+        <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />
         <YAxis tickLine={false} axisLine={false} width={72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
         {rows.map((row, index) => row.gapSeconds > 0 && (
           <ReferenceLine

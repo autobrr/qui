@@ -45,7 +45,23 @@
     "gap": "Inclui uma lacuna de gravação de {{duration}}",
     "gapLabel": "lacuna {{duration}}",
     "foldedDay": "(dia inteiro, UTC)",
+    "weekOf": "Semana de {{date}}",
     "empty": "Nenhuma transferência neste período."
+  },
+  "yearView": {
+    "title": "Envio no período",
+    "description": "Somente envio, por dia nas últimas 53 semanas, depois por mês e por tracker",
+    "calendar": "Envio por dia, últimas 53 semanas",
+    "less": "Menos",
+    "more": "Mais",
+    "day": "{{date}}: {{uploaded}} enviados",
+    "dayNotRecorded": "{{date}}: não registrado",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "Melhor dia",
+    "bestMonth": "Melhor mês",
+    "weekends": "Fins de semana",
+    "weekendsDetail": "do envio ocorreu em um sábado ou domingo",
+    "months": "Envio por mês, por tracker"
   },
   "groups": {
     "public": "Público",
@@ -101,6 +117,7 @@
     "averageDay": "Média por dia",
     "chartHour": "{{group}} por hora",
     "chartDay": "{{group}} por dia",
+    "chartWeek": "{{group}} por semana",
     "chartLegend": "Envio acima da linha, download abaixo dela",
     "topTorrents": "Principais torrents de {{group}}",
     "topTorrentsCategoryNote": "Os principais torrents de uma categoria seguem a categoria atual de cada torrent."

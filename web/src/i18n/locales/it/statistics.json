@@ -45,7 +45,23 @@
     "gap": "Include un’interruzione della registrazione di {{duration}}",
     "gapLabel": "interruzione {{duration}}",
     "foldedDay": "(giorno intero, UTC)",
+    "weekOf": "Settimana dal {{date}}",
     "empty": "Nessun trasferimento in questo periodo."
+  },
+  "yearView": {
+    "title": "Upload del periodo",
+    "description": "Solo upload, per giorno nelle ultime 53 settimane, poi per mese e per tracker",
+    "calendar": "Upload per giorno, ultime 53 settimane",
+    "less": "Meno",
+    "more": "Più",
+    "day": "{{date}}: {{uploaded}} caricati",
+    "dayNotRecorded": "{{date}}: non registrato",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "Giorno migliore",
+    "bestMonth": "Mese migliore",
+    "weekends": "Fine settimana",
+    "weekendsDetail": "dell'upload è avvenuto di sabato o di domenica",
+    "months": "Upload per mese, per tracker"
   },
   "groups": {
     "public": "Pubblico",
@@ -101,6 +117,7 @@
     "averageDay": "Media per giorno",
     "chartHour": "{{group}} per ora",
     "chartDay": "{{group}} per giorno",
+    "chartWeek": "{{group}} per settimana",
     "chartLegend": "Upload sopra la linea, download sotto",
     "topTorrents": "Torrent migliori di {{group}}",
     "topTorrentsCategoryNote": "I torrent migliori di una categoria seguono la categoria attuale di ogni torrent."

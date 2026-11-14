@@ -791,3 +791,112 @@ describe("Statistics", () => {
     expect(table.textContent).not.toContain("a.test")
   })
 })
+
+describe("Statistics year view", () => {
+  const KiB = 1024
+
+  function daysAgo(days: number): Date {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - days)
+  }
+
+  function dayRow(group: string, day: Date, uploaded: number, gapSeconds = 0): TransferHistoryRow {
+    return row(group, uploaded, 0, { start: day.toISOString(), width: "day", gapSeconds })
+  }
+
+  function inputDate(day: Date): string {
+    return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`
+  }
+
+  async function applyRange(first: Date, last: Date) {
+    // After a custom range, the button of the picker shows that range.
+    fireEvent.click(await screen.findByText(/^(periods\.custom|customRange\.range from=.*)$/))
+    fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: inputDate(first) } })
+    fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: inputDate(last) } })
+    fireEvent.click(screen.getByText("customRange.apply"))
+  }
+
+  function calendarCells(): HTMLElement[] {
+    return [...screen.getByRole("list", { name: "yearView.calendar" }).querySelectorAll<HTMLElement>("li[aria-label]")]
+  }
+
+  async function expectRecord(label: string, expected: string) {
+    await vi.waitFor(() => {
+      const value = screen.getByText(label).nextElementSibling
+      expect(`${value?.textContent} | ${value?.nextElementSibling?.textContent ?? ""}`).toBe(expected)
+    })
+  }
+
+  it("shows the year view for a range of 121 days and the stacked bars for 120 days", async () => {
+    answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day" ? [dayRow("a.test", daysAgo(150), KiB)] : []
+    renderPage()
+    await applyRange(daysAgo(200), daysAgo(80))
+
+    expect(await screen.findByRole("list", { name: "yearView.calendar" })).toBeTruthy()
+    expect(screen.getByText("yearView.title")).toBeTruthy()
+    expect(screen.queryByText("chart.download")).toBeNull()
+
+    await applyRange(daysAgo(200), daysAgo(81))
+
+    await vi.waitFor(() => expect(screen.getByText("chart.title")).toBeTruthy())
+    expect(screen.queryByRole("list", { name: "yearView.calendar" })).toBeNull()
+    expect(screen.getByText("chart.download")).toBeTruthy()
+  })
+
+  it("takes the best day, the best month, and the weekend share from the rows of the transfer query, and marks a Recording gap", async () => {
+    // A Saturday early in a month at least 80 days ago, the Monday after it, and a Wednesday of the next month.
+    let saturday = daysAgo(80)
+    while (saturday.getDay() !== 6 || saturday.getDate() > 20) {
+      saturday = new Date(saturday.getFullYear(), saturday.getMonth(), saturday.getDate() - 1)
+    }
+    const monday = new Date(saturday.getFullYear(), saturday.getMonth(), saturday.getDate() + 2)
+    let other = new Date(saturday.getFullYear(), saturday.getMonth() + 1, 15)
+    while (other.getDay() !== 3) {
+      other = new Date(other.getFullYear(), other.getMonth(), other.getDate() + 1)
+    }
+    answer = ({ instanceId, bucket }) => instanceId === 1 && bucket === "day"
+      ? [dayRow("a.test", saturday, 300 * KiB), dayRow("b.test", monday, 100 * KiB, 5400), dayRow("a.test", other, 600 * KiB)]
+      : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("periods.1y"), { button: 0 })
+
+    await expectRecord("yearView.bestDay", `600 KiB | ${other.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" })}`)
+    await expectRecord("yearView.bestMonth", `${other.toLocaleDateString("en", { month: "long", year: "numeric" })} | 600 KiB`)
+    await expectRecord("yearView.weekends", "30% | yearView.weekendsDetail")
+    expect(screen.getByTestId("chart").getAttribute("data-uploaded")).toBe(String(1000 * KiB))
+
+    const gaps = calendarCells().filter(cell => cell.dataset.gap)
+    expect(gaps).toHaveLength(1)
+    expect(gaps[0].getAttribute("aria-label")).toContain("uploaded=100 KiB")
+    expect(gaps[0].getAttribute("aria-label")).toContain("chart.gap duration=1h 30m")
+  })
+
+  it("shows the last 53 weeks of all time on a history of more than two years", async () => {
+    statuses = [recordedDaysAgo(1, "Seedbox", 800)]
+    configuredIds = [1]
+    answer = ({ bucket }) => bucket === "day" ? [dayRow("a.test", daysAgo(790), 900 * KiB), dayRow("a.test", daysAgo(1), 100 * KiB)] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("periods.all"), { button: 0 })
+
+    await expectRecord("yearView.bestDay", `900 KiB | ${daysAgo(790).toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" })}`)
+    const cells = calendarCells()
+    expect(cells).toHaveLength(53 * 7)
+    const date = (day: Date) => day.toLocaleDateString("en", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+    expect(cells[0].getAttribute("aria-label")).toBe(`yearView.day date=${date(daysAgo(370))} uploaded=0 B`)
+    expect(cells[cells.length - 2].getAttribute("aria-label")).toBe(`yearView.day date=${date(daysAgo(1))} uploaded=100 KiB`)
+    // The monthly bars cover the whole period.
+    expect(screen.getByTestId("chart").getAttribute("data-uploaded")).toBe(String(1000 * KiB))
+  })
+
+  it("shows weeks in the chart of the detail band of a long period", async () => {
+    answer = ({ bucket }) => bucket === "day" ? [dayRow("a.test", daysAgo(1), KiB)] : []
+    renderPage()
+    fireEvent.mouseDown(await screen.findByText("periods.1y"), { button: 0 })
+    await screen.findByRole("list", { name: "yearView.calendar" })
+    fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
+
+    expect(await screen.findByText("detail.chartWeek group=a.test")).toBeTruthy()
+    // 365 days touch 53 or 54 weeks from Monday on.
+    await vi.waitFor(() => expect([53, 54]).toContain(Number(screen.getByTestId("group-chart").getAttribute("data-bars"))))
+  })
+})
