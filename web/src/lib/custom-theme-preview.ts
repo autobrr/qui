@@ -22,14 +22,20 @@ export function findThemeProblem(css: string): ThemeCssProblem | null {
   return css.trim() === "" ? "empty" : findThemeCssProblem(css)
 }
 
+let lastCheck: { css: string; problem: PreviewProblem | null } | null = null
+
 /**
  * Why css cannot show in the preview, or null. The preview also refuses CSS
  * that can load a file from another website, with the same rule as the
  * server, so the browser never loads that file while the user edits.
  */
 export function findPreviewProblem(css: string): PreviewProblem | null {
-  const problem = findThemeProblem(css)
-  return problem ? { kind: problem } : findOutsideFile(css)
+  // The editor asks for the status line and then previews the same css, so the last answer is kept.
+  if (lastCheck?.css === css) return lastCheck.problem
+  const theme = findThemeProblem(css)
+  const problem = theme ? { kind: theme } : findOutsideFile(css)
+  lastCheck = { css, problem }
+  return problem
 }
 
 /**
