@@ -27,13 +27,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { CopyButton } from "@/components/ui/copy-button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
 import { useDefaultThemeVisit } from "@/lib/default-theme-visit"
 import { buildThemePrompt } from "@/lib/theme-prompt"
 import { copyTextToClipboard } from "@/lib/utils"
 import { refreshCustomThemes } from "@/hooks/useCustomThemes"
-import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff, Plus, Sparkles, Pencil, Trash2, Info } from "lucide-react"
+import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff, Plus, Sparkles, Pencil, Trash2, Info, MoreVertical } from "lucide-react"
 import { useId, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -47,42 +56,37 @@ interface CustomThemeFileRef {
 
 interface CustomThemeActionsProps {
   file: CustomThemeFileRef
-  describedBy?: string
   onEdit: (file: CustomThemeFileRef) => void
   onRemove: (file: CustomThemeFileRef) => void
 }
 
-function CustomThemeActions({ file, describedBy, onEdit, onRemove }: CustomThemeActionsProps) {
+function CustomThemeActions({ file, onEdit, onRemove }: CustomThemeActionsProps) {
   const { t } = useTranslation("settings")
   return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="xs"
-        className="h-6"
-        aria-describedby={describedBy}
-        onClick={(e) => {
-          e.stopPropagation()
-          onEdit(file)
-        }}
-      >
-        <Pencil />
-        {t("themes.custom.edit")}
-      </Button>
-      <Button
-        variant="ghost"
-        size="xs"
-        className="h-6 text-destructive hover:text-destructive"
-        aria-describedby={describedBy}
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove(file)
-        }}
-      >
-        <Trash2 />
-        {t("themes.custom.remove")}
-      </Button>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          aria-label={t("themes.custom.actionsFor", { theme: file.label })}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreVertical />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={() => onEdit(file)}>
+          <Pencil />
+          {t("themes.custom.edit")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={() => onRemove(file)}>
+          <Trash2 />
+          {t("themes.custom.remove")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -228,11 +232,10 @@ function ThemeCard({ theme, isSelected, isLocked, isShown, onSelect, onVariation
               {isShown ? <EyeOff /> : <Eye />}
               {t(isShown ? "themes.selector.hideTheme" : "themes.selector.showTheme")}
             </Button>
+            {customFile && (
+              <CustomThemeActions file={customFile} onEdit={onEdit} onRemove={onRemove} />
+            )}
           </div>
-
-          {customFile && (
-            <CustomThemeActions file={customFile} describedBy={titleId} onEdit={onEdit} onRemove={onRemove} />
-          )}
         </CardContent>
       </Card>
     </div>
@@ -429,90 +432,96 @@ export function ThemeSelector() {
         <ThemeLayoutSettings />
 
         {/* Custom Themes (sideloaded CSS, premium feature) */}
-        <div className="rounded-md border bg-muted/20 p-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 space-y-1">
-              <h4 className="flex items-center gap-2 text-sm font-medium">
-                <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                {t("themes.custom.title")}
-                <Badge variant="secondary" className="text-[10px]">
-                  {t("themes.custom.badge")}
-                </Badge>
-              </h4>
-
-              {!hasPremiumAccess ? (
-                <>
-                  <p className="text-sm font-medium">{t("themes.custom.lockedTitle")}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("themes.custom.lockedDescription")}
-                  </p>
-                </>
-              ) : (
-                <>
-                  {customThemesDirectory && (
-                    <code className="block break-all rounded bg-muted px-2 py-1 text-xs">
-                      {customThemesDirectory}
-                    </code>
-                  )}
-                  {customThemesError ? (
-                    <p className="flex items-center gap-1 text-xs font-medium text-destructive">
-                      <AlertTriangle className="h-3 w-3" />
-                      {t("themes.custom.loadError")}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      {customThemes.length === 0 && !customThemesFetching
-                        ? t("themes.custom.noneFound")
-                        : t("themes.custom.detectedCount", { total: customThemes.length })}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-
+        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="flex items-center gap-2 whitespace-nowrap text-sm font-medium">
+              <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+              {t("themes.custom.title")}
+            </h4>
             {!hasPremiumAccess ? (
               <Button variant="outline" size="sm" onClick={scrollToLicenseManager}>
-                <Lock className="mr-1 h-3 w-3" />
+                <Lock className="h-3 w-3" />
                 {t("themes.custom.unlockCta")}
               </Button>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={newTheme}>
-                  <Plus className="mr-1 h-3 w-3" />
-                  {t("themes.custom.newTheme")}
-                </Button>
+              <div className="grid w-full gap-2 sm:ml-auto sm:flex sm:w-auto">
                 <Button variant="outline" size="sm" onClick={() => void copyPrompt()}>
-                  <Sparkles className="mr-1 h-3 w-3" />
+                  <Sparkles className="h-3 w-3" />
                   {t("themes.custom.copyPrompt")}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetchCustomThemes()}
-                  disabled={customThemesFetching}
-                >
-                  <RefreshCw className={`mr-1 h-3 w-3 ${customThemesFetching ? "animate-spin" : ""}`} />
-                  {t("themes.custom.refresh")}
+                <Button size="sm" className="max-sm:order-first" onClick={newTheme}>
+                  <Plus className="h-3 w-3" />
+                  {t("themes.custom.newTheme")}
                 </Button>
               </div>
             )}
           </div>
 
-          {hasPremiumAccess && customThemeErrors.length > 0 && (
-            <div className="mt-2 space-y-1 border-t pt-2">
-              <p className="flex items-center gap-1 text-xs font-medium text-destructive">
-                <AlertTriangle className="h-3 w-3" />
-                {t("themes.custom.parseErrorsTitle")}
-              </p>
-              <ul className="space-y-0.5 text-xs text-destructive">
-                {customThemeErrors.map((error) => (
-                  <li key={error.filename} className="flex flex-wrap items-center justify-between gap-1">
-                    <span className="break-all">{error.filename}</span>
-                    <CustomThemeActions file={{ id: error.id, label: error.filename, css: error.css }} onEdit={editTheme} onRemove={setRemoveTarget} />
-                  </li>
-                ))}
-              </ul>
+          {!hasPremiumAccess ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{t("themes.custom.lockedTitle")}</p>
+              <p className="text-xs text-muted-foreground">{t("themes.custom.lockedDescription")}</p>
             </div>
+          ) : (
+            <>
+              <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                {customThemesError ? (
+                  <p className="flex min-w-0 items-center gap-1 font-medium text-destructive">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    {t("themes.custom.loadError")}
+                  </p>
+                ) : (
+                  <span className="shrink-0">{t("themes.custom.themeCount", { count: customThemes.length })}</span>
+                )}
+                {customThemesDirectory && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="min-w-0 flex-1 truncate font-mono" title={customThemesDirectory}>
+                      {customThemesDirectory}
+                    </span>
+                    <CopyButton value={customThemesDirectory} label={t("themes.custom.folderLabel")} className="size-6" />
+                  </>
+                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto size-6 shrink-0"
+                      aria-label={t("themes.custom.refreshHint")}
+                      onClick={() => refetchCustomThemes()}
+                      disabled={customThemesFetching}
+                    >
+                      <RefreshCw className={`size-3.5 ${customThemesFetching ? "animate-spin" : ""}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("themes.custom.refreshHint")}</TooltipContent>
+                </Tooltip>
+              </div>
+
+              {!customThemesError && !customThemesFetching && customThemes.length === 0 && customThemeErrors.length === 0 && (
+                <p className="text-xs text-muted-foreground">{t("themes.custom.noneFound")}</p>
+              )}
+
+              {customThemeErrors.length > 0 && (
+                <div className="space-y-1 border-t pt-2">
+                  <p className="flex items-center gap-1 text-xs font-medium text-destructive">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    {t("themes.custom.parseErrorsTitle")}
+                  </p>
+                  <ul className="space-y-0.5 text-xs">
+                    {customThemeErrors.map((error) => (
+                      <li key={error.filename} className="flex min-w-0 items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-mono text-foreground" title={error.filename}>
+                          {error.filename}
+                        </span>
+                        <CustomThemeActions file={{ id: error.id, label: error.filename, css: error.css }} onEdit={editTheme} onRemove={setRemoveTarget} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
         </div>
       </CardContent>

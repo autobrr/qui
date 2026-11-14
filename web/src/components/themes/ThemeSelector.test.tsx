@@ -56,6 +56,7 @@ const themeUtils = vi.hoisted(() => ({
 const customThemesHook = vi.hoisted(() => ({
   refreshCustomThemes: vi.fn<() => Promise<Array<{ id: string; filename: string; css: string }>>>(() => Promise.resolve([])),
 }))
+const themeHook = vi.hoisted(() => ({ theme: "free", setTheme: vi.fn(), setVariation: vi.fn() }))
 const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()) }))
 
 vi.mock("@/config/themes", () => ({
@@ -97,11 +98,7 @@ vi.mock("@/lib/utils", async (importOriginal) => ({
 }))
 
 vi.mock("@/hooks/useTheme", () => ({
-  useTheme: () => ({
-    theme: "free",
-    setTheme: vi.fn(),
-    setVariation: vi.fn(),
-  }),
+  useTheme: () => themeHook,
 }))
 
 vi.mock("@/utils/theme", () => ({
@@ -156,6 +153,11 @@ function card(name: string): HTMLElement {
   const match = themeCards().find((item) => item.textContent?.includes(name))
   if (!match) throw new Error(`Theme card not found: ${name}`)
   return match
+}
+
+async function chooseCardAction(name: string, action: "themes.custom.edit" | "themes.custom.remove") {
+  fireEvent.pointerDown(within(card(name)).getByRole("button", { name: "themes.custom.actionsFor" }), { button: 0, ctrlKey: false })
+  fireEvent.click(await screen.findByRole("menuitem", { name: action }))
 }
 
 // Opens the client settings push and resolves with the body of the next PUT.
@@ -280,7 +282,7 @@ describe("ThemeSelector custom theme editor", () => {
 
     expect(screen.queryByRole("button", { name: "themes.custom.newTheme" })).toBeNull()
     expect(screen.queryByRole("button", { name: "themes.custom.copyPrompt" })).toBeNull()
-    expect(screen.queryByRole("button", { name: "themes.custom.edit" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "themes.custom.actionsFor" })).toBeNull()
     expect(screen.getByText("themes.custom.lockedDescription")).toBeTruthy()
   })
 
@@ -340,7 +342,7 @@ describe("ThemeSelector custom theme editor", () => {
 
     openNewTheme()
     fireEvent.change(cssField(), { target: { value: RED_THEME } })
-    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await chooseCardAction("Custom theme", "themes.custom.edit")
 
     await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
     expect(nameField().value).toBe("Custom theme")
@@ -410,7 +412,7 @@ describe("ThemeSelector custom theme editor", () => {
     _setDefaultThemeVisitForTests(true)
     render(<ThemeSelector />)
 
-    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await chooseCardAction("Custom theme", "themes.custom.edit")
     await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
     expect(themeUtils.previewCustomThemeCss).not.toHaveBeenCalled()
 
@@ -446,7 +448,7 @@ describe("ThemeSelector custom theme editor", () => {
     customThemesHook.refreshCustomThemes.mockReturnValueOnce(new Promise(resolve => { finishLoad = resolve }))
     render(<ThemeSelector />)
 
-    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await chooseCardAction("Custom theme", "themes.custom.edit")
     openNewTheme()
     fireEvent.change(cssField(), { target: { value: RED_THEME } })
     await act(async () => {
@@ -487,7 +489,7 @@ describe("ThemeSelector custom theme editor", () => {
     }))
     render(<ThemeSelector />)
 
-    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await chooseCardAction("Custom theme", "themes.custom.edit")
     await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
     fireEvent.click(saveButton())
     openNewTheme()
@@ -540,7 +542,7 @@ describe("ThemeSelector custom theme editor", () => {
     customThemesHook.refreshCustomThemes.mockResolvedValueOnce([{ id: "local", filename: "local.css", css: onDisk }])
     render(<ThemeSelector />)
 
-    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await chooseCardAction("Custom theme", "themes.custom.edit")
     await waitFor(() => expect(cssField().value).toBe(onDisk))
     expect(nameField().value).toBe("Custom theme")
 
@@ -558,7 +560,7 @@ describe("ThemeSelector custom theme editor", () => {
     const requests = recordCustomThemeApi(() => new HttpResponse(null, { status: 204 }))
     render(<ThemeSelector />)
 
-    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.remove" }))
+    await chooseCardAction("Custom theme", "themes.custom.remove")
     const question = await screen.findByRole("alertdialog")
     expect(requests).toEqual([])
 
@@ -566,6 +568,18 @@ describe("ThemeSelector custom theme editor", () => {
 
     await waitFor(() => expect(requests).toEqual([{ method: "DELETE", path: "/api/themes/custom/local", body: null }]))
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+  })
+
+  it("opens the actions menu of a card and uses an item without selecting the card", async () => {
+    render(<ThemeSelector />)
+
+    const trigger = within(card("Custom theme")).getByRole("button", { name: "themes.custom.actionsFor" })
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole("menuitem", { name: "themes.custom.edit" }))
+
+    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
+    expect(themeHook.setTheme).not.toHaveBeenCalled()
   })
 
   it("copies the AI prompt with the theme areas", async () => {
