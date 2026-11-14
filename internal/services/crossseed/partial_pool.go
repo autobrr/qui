@@ -47,6 +47,7 @@ const (
 	partialPoolPropagationPause  = "partial pool propagation pause pending"
 	partialPoolBudgetPause       = "partial pool budget pause pending"
 	partialPoolModePause         = "partial pool mode pause pending"
+	partialPoolLocalAccessLost   = "link mode or local filesystem access was disabled"
 	partialPoolSafetyPause       = "partial pool safety pause pending"
 	partialPoolResumeExhausted   = "partial pool resume attempts exhausted"
 	partialPoolRecoveryExhausted = "partial pool error recovery attempts exhausted"
@@ -1463,6 +1464,10 @@ func (s *partialPoolCoordinator) reconcilePartialPool(
 		snapshot := snapshots[member.ID]
 		if snapshot == nil {
 			continue
+		}
+		if member.Status == models.CrossSeedPartialPoolMemberStatusManual && member.LastError == partialPoolLocalAccessLost {
+			// A restart or a failed write can stop the file updates after the member update.
+			s.markPartialPoolLinkWorkManual(ctx, member, snapshot)
 		}
 		if snapshot.noLocalAccess && s.pausePartialPoolMemberWithoutLocalAccess(ctx, member, snapshot) {
 			continue
@@ -3087,32 +3092,25 @@ func (s *partialPoolCoordinator) partialPoolMemberLocalAccess(ctx context.Contex
 
 // pausePartialPoolMemberWithoutLocalAccess reports false for a complete, manual, or removed member, whose handlers touch no files.
 func (s *partialPoolCoordinator) pausePartialPoolMemberWithoutLocalAccess(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) bool {
-	const reason = "link mode or local filesystem access was disabled"
 	switch member.Status {
-	case models.CrossSeedPartialPoolMemberStatusComplete, models.CrossSeedPartialPoolMemberStatusRemoved:
-		return false
-	case models.CrossSeedPartialPoolMemberStatusManual:
-		// A restart or a failed write can stop the file updates after the member update.
-		if member.LastError == reason {
-			s.markPartialPoolLinkWorkManual(ctx, member, snapshot, reason)
-		}
+	case models.CrossSeedPartialPoolMemberStatusComplete, models.CrossSeedPartialPoolMemberStatusManual, models.CrossSeedPartialPoolMemberStatusRemoved:
 		return false
 	}
-	if !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, reason) {
+	if !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, partialPoolLocalAccessLost) {
 		snapshot.stateRetryPending = true
 	}
 	if member.Status == models.CrossSeedPartialPoolMemberStatusManual {
-		s.markPartialPoolLinkWorkManual(ctx, member, snapshot, reason)
+		s.markPartialPoolLinkWorkManual(ctx, member, snapshot)
 	}
 	return true
 }
 
-func (s *partialPoolCoordinator) markPartialPoolLinkWorkManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, reason string) {
+func (s *partialPoolCoordinator) markPartialPoolLinkWorkManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) {
 	for _, file := range member.Files {
 		if file.Status != models.CrossSeedPartialPoolFileStatusPropagating && file.Status != models.CrossSeedPartialPoolFileStatusVerifying {
 			continue
 		}
-		if !s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason}) {
+		if !s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: new(partialPoolLocalAccessLost)}) {
 			snapshot.stateRetryPending = true
 			continue
 		}
