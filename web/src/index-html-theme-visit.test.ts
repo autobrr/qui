@@ -8,7 +8,7 @@ import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { asksForDefaultTheme } from "@/lib/default-theme-visit"
+import { asksForDefaultTheme } from "@/lib/theme-storage"
 
 const html = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.html"), "utf8")
 const inlineScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ""

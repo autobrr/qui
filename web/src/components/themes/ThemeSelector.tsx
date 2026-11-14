@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api"
 import { CUSTOM_THEME_PREFIX, type CustomThemeFile } from "@/lib/custom-themes"
-import { useDefaultThemeVisit } from "@/lib/default-theme-visit"
+import { useDefaultThemeVisit } from "@/lib/theme-storage"
 import { buildThemePrompt } from "@/lib/theme-prompt"
 import { copyTextToClipboard } from "@/lib/utils"
 import { refreshCustomThemes } from "@/hooks/useCustomThemes"
@@ -274,7 +274,8 @@ export function ThemeSelector() {
     onSuccess: async () => {
       setRemoveTarget(null)
       toast.success(t("themes.custom.removed"))
-      await queryClient.invalidateQueries({ queryKey: ["custom-themes"] })
+      // A failed reload shows as the load error of the box.
+      await refreshCustomThemes(queryClient).catch(() => undefined)
     },
     onError: (error) => {
       toast.error(t("themes.custom.removeFailed", { message: error.message }))

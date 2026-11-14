@@ -4,8 +4,15 @@
  */
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
-import { endDefaultThemeVisit, isDefaultThemeVisit } from "@/lib/default-theme-visit";
-import { cacheAppliedTheme, storedMode, storedThemeId, storeMode, storeThemeId } from "@/lib/theme-storage";
+import {
+  cacheAppliedTheme,
+  endDefaultThemeVisit,
+  isDefaultThemeVisit,
+  storedMode,
+  storedThemeId,
+  storeMode,
+  storeThemeId
+} from "@/lib/theme-storage";
 import { isSpreadsheetDocumentTitle, SPREADSHEET_THEME_IDS, spreadsheetDocumentTitle } from "@/lib/spreadsheet-disguise";
 import { loadThemeFonts } from "./fontLoader";
 import { parseThemeCSS } from "./themeParser";
@@ -88,18 +95,26 @@ let preview: { css: string; cssVars: Theme["cssVars"]; lightOnly: boolean } | nu
 // Used to detect when an active custom theme's file changed on refresh.
 export const getAppliedCustomThemeCss = (): string | null => appliedCustomCss;
 
+// Paints raw theme CSS through the custom theme style element. Inline custom
+// properties (set by a previous built-in theme) outrank any stylesheet rule,
+// so they MUST be cleared for the injected :root/.dark blocks to take effect.
+const paintCustomCss = (css: string): void => {
+  const root = document.documentElement;
+  Array.from(root.style)
+    .filter(prop => prop.startsWith("--"))
+    .forEach(prop => root.style.removeProperty(prop));
+  applyCustomThemeStyle(css);
+};
+
 // Paints the preview over the theme that applyTheme painted.
 const paintPreview = (isDark: boolean): void => {
   if (!preview) return;
   const root = document.documentElement;
   void loadThemeFonts({ cssVars: preview.cssVars });
   root.classList.toggle(THEME_DARK, !preview.lightOnly && isDark);
-  Array.from(root.style)
-    .filter(prop => prop.startsWith("--"))
-    .forEach(prop => root.style.removeProperty(prop));
+  paintCustomCss(preview.css);
   root.style.removeProperty("background-color");
   document.body?.style.removeProperty("background-color");
-  applyCustomThemeStyle(preview.css);
 };
 
 // Sync the html/body background to the theme.
@@ -141,14 +156,7 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
   const cssVars = effectiveIsDark ? theme.cssVars.dark : theme.cssVars.light;
 
   if (theme.isCustom && theme.rawCss) {
-    // Raw stylesheet injection. Inline custom properties (set by a previous
-    // built-in theme) outrank any stylesheet rule, so they MUST be cleared for
-    // the injected :root/.dark blocks to take effect.
-    Array.from(root.style)
-      .filter(prop => prop.startsWith("--"))
-      .forEach(prop => root.style.removeProperty(prop));
-
-    applyCustomThemeStyle(theme.rawCss);
+    paintCustomCss(theme.rawCss);
     appliedCustomCss = theme.rawCss;
   } else {
     // Built-in theme: drop any injected custom stylesheet and apply vars inline.

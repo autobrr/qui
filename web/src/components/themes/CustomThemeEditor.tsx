@@ -32,7 +32,7 @@ import { APIError, api } from "@/lib/api"
 import { findOutsideFile } from "@/lib/css-outside-files"
 import { readThemeName, themeIdFromName, writeThemeName } from "@/lib/custom-theme-editor"
 import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
-import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
+import { isDefaultThemeVisit } from "@/lib/theme-storage"
 import { endCustomThemePreview, previewCustomTheme, setTheme } from "@/utils/theme"
 import { findThemeCssProblem } from "@/utils/themeParser"
 

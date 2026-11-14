@@ -13,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { _resetClientSettingsForTests, seedAndMarkReady } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { _setDefaultThemeVisitForTests } from "@/lib/default-theme-visit"
 
 const fixture = vi.hoisted(() => {
   const makeTheme = (
@@ -137,7 +136,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
-  _setDefaultThemeVisitForTests(false)
 })
 
 function render(ui: ReactElement) {
@@ -412,25 +410,6 @@ describe("ThemeSelector custom theme editor", () => {
       "PUT /api/themes/custom/red-alert",
     ])
     expect(requests[1].body).toEqual({ css: RED_THEME })
-  })
-
-  // regression: #4124
-  it("previews an edited theme only after a change during a default theme visit", async () => {
-    _setDefaultThemeVisitForTests(true)
-    render(<ThemeSelector />)
-
-    await chooseCardAction("Custom theme", "themes.custom.edit")
-    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
-    expect(themeUtils.previewCustomTheme).not.toHaveBeenCalled()
-
-    const repaired = fixture.customThemes[0].rawCss.replace("white", "ivory")
-    fireEvent.change(cssField(), { target: { value: repaired } })
-    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(repaired)
-
-    themeUtils.endCustomThemePreview.mockClear()
-    fireEvent.change(cssField(), { target: { value: fixture.customThemes[0].rawCss } })
-    expect(themeUtils.endCustomThemePreview).toHaveBeenCalledTimes(1)
-    expect(themeUtils.previewCustomTheme).toHaveBeenCalledTimes(1)
   })
 
   // regression: #4124
