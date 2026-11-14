@@ -80,6 +80,7 @@ describe("resolveDestinationPath", () => {
   })
 
   // qBittorrent: a subcategory with no path saves under its parent's folder, and a relative path counts from the default folder.
+  // regression: #4129
   it.each([
     ["tv/anime", { tv: { name: "tv", savePath: "/media/tv" }, "tv/anime": { name: "tv/anime", savePath: "" } }, "/data", "/media/tv/anime"],
     ["tv/anime/new", { tv: { name: "tv", savePath: "" } }, "/data", "/data/tv/anime/new"],
@@ -97,7 +98,8 @@ describe("resolveDestinationPath", () => {
     })).toBe(expected)
   })
 
-  it("keeps the qBittorrent 4.x rule of <default save path>/<category> for a subcategory", () => {
+  // regression: #4129
+  it("uses <default save path>/<category> without parent paths (qBittorrent 4.x, or subcategories off before 5.2)", () => {
     expect(resolveDestinationPath({
       autoTMM: true,
       savePath: "",

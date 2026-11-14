@@ -150,6 +150,7 @@ describe("useAddTorrentPreferences", () => {
         excluded_file_names_enabled: true,
         excluded_file_names: "*.nfo",
         add_stopped_enabled: true,
+        use_subcategories: true,
       }),
     })
     expect(result.current).toEqual({
@@ -165,6 +166,7 @@ describe("useAddTorrentPreferences", () => {
       autoAddTrackers: true,
       excludedFileNamesEnabled: true,
       excludedFileNames: "*.nfo",
+      useSubcategories: true,
     })
   })
 
@@ -190,6 +192,7 @@ describe("useAddTorrentPreferences", () => {
       autoAddTrackers: false,
       excludedFileNamesEnabled: false,
       excludedFileNames: "",
+      useSubcategories: false,
     })
   })
 

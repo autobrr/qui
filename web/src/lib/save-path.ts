@@ -15,7 +15,7 @@ export interface DestinationPathInput {
   category: string
   categories: Record<string, Category> | undefined
   defaultSavePath: string | undefined
-  /** qBittorrent 5.0 and newer save a category without a path under its parent category's folder. */
+  /** True when qBittorrent saves a category without a path under its parent's folder: 5.0+ with subcategories on. */
   parentCategoryPaths: boolean
 }
 
@@ -24,7 +24,7 @@ export interface DestinationPathInput {
  * management off it is the entered save path. Otherwise it follows qBittorrent's
  * category rule: a category's own path, relative paths counted from the default
  * save path, and a category without a path saved as <parent category path>/<leaf name>
- * (qBittorrent 5.0+) or <default save path>/<category> (4.x).
+ * (qBittorrent 5.0+ with subcategories on) or <default save path>/<category>.
  * Returns "" when the destination cannot be resolved.
  */
 export function resolveDestinationPath({ autoTMM, savePath, category, categories, defaultSavePath, parentCategoryPaths }: DestinationPathInput): string {

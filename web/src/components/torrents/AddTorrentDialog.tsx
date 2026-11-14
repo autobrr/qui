@@ -192,8 +192,10 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
-  // Web API 2.11.2 is qBittorrent 5.0, the first release that saves a category without a path under its parent.
-  const parentCategoryPaths = capabilities?.supportsTorrentCreation ?? true
+  // qBittorrent saves a category without a path under its parent's folder since 5.0 (Web API 2.11.2, the
+  // torrent creation capability), and before 5.2 only while subcategories are on.
+  const parentCategoryPaths = (capabilities?.supportsTorrentCreation ?? true) &&
+    ((capabilities?.subcategoriesAlwaysEnabled ?? false) || addTorrentPreferences.useSubcategories)
 
   if (open !== wasOpen) {
     setWasOpen(open)
