@@ -585,6 +585,7 @@ describe("Statistics", () => {
     await expectFact("detail.averageDay", "1 KiB | ")
   })
 
+  // regression: #4114
   it("masks the release groups of the table in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     answer = ({ bucket, groupBy }) => groupBy === "releaseGroup" && bucket === "total" ? [row("PRIVATEGRP", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []

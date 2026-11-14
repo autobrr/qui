@@ -45,18 +45,20 @@ const (
 	GroupByContentType  Grouping = "contentType"
 )
 
-// groupings are the values of Grouping.
 var groupings = []Grouping{GroupByTracker, GroupByCategory, GroupByTorrent, GroupByReleaseGroup, GroupByResolution, GroupBySource, GroupByContentType}
 
 // readsTorrentRows reports whether a grouping reads the daily bytes of each
 // torrent.
 func (g Grouping) readsTorrentRows() bool {
-	return g != GroupByTracker && g != GroupByCategory
+	return g == GroupByTorrent || g.releaseAttribute()
 }
 
-// releaseAttribute reports whether a grouping is a release attribute.
 func (g Grouping) releaseAttribute() bool {
-	return g.readsTorrentRows() && g != GroupByTorrent
+	switch g {
+	case GroupByReleaseGroup, GroupByResolution, GroupBySource, GroupByContentType:
+		return true
+	}
+	return false
 }
 
 // TransferQuery asks for the transfer of one instance in the period
@@ -153,30 +155,30 @@ func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, 
 	if err := m.settle(ctx); err != nil {
 		return nil, err
 	}
+	if !q.GroupBy.releaseAttribute() {
+		return m.read(ctx, q)
+	}
+	key := keyOf(q)
+	rows, version, ok := m.answers.get(key)
+	if ok {
+		return rows, nil
+	}
+	rows, err := m.read(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	m.answers.put(key, version, rows)
+	return rows, nil
+}
+
+func (m *Module) read(ctx context.Context, q TransferQuery) ([]TransferRow, error) {
 	customizations, err := m.customizations.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read tracker customizations: %w", err)
 	}
-	if !q.GroupBy.releaseAttribute() {
-		return m.read(ctx, q, customizations)
-	}
-	key := keyOf(q)
-	rows, version, ok := m.answers.get(key, customizations)
-	if ok {
-		return rows, nil
-	}
-	if rows, err = m.read(ctx, q, customizations); err != nil {
-		return nil, err
-	}
-	m.answers.put(key, version, customizations, rows)
-	return rows, nil
-}
-
-func (m *Module) read(ctx context.Context, q TransferQuery, customizations []*models.TrackerCustomization) ([]TransferRow, error) {
 	m.foldMu.RLock()
 	defer m.foldMu.RUnlock()
 	a := answer{query: q, mapper: trackergroup.New(customizations), rows: make(map[rowKey]*TransferRow)}
-	var err error
 	switch {
 	case q.GroupBy == GroupByCategory:
 		err = a.byCategory(ctx, m.store)

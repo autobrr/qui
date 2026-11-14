@@ -108,11 +108,11 @@ The detail shows:
 - **Share of the upload**: the part of the upload of the period that the row holds.
 - **From cross-seeds**: the upload of the row from torrents that completed with less than 1% of their size downloaded, and its part of the upload of the row.
 - **Best hour** or **Best day**: the bar with the most upload, and its time.
-- **Average per hour** or **Average per day**: the upload of the row divided by the number of bars.
+- **Average per hour** or **Average per day**: the upload of the row divided by the number of hours or days that the bars cover after the first recording.
 - A chart of the row, with the upload above the zero line and the download below it.
 - **Top torrents**: the five torrents of the row with the most upload in the period. A torrent counts toward the tracker and the category that it has now. Thus, a torrent that you moved to another category shows under its new category with all its upload of the period.
 
-The chart of a tracker has the bars of the main chart: hours for a period of 7 days or less, and days for a longer period. The chart of a category or a release attribute always shows days, because qui stores those bytes for each UTC day.
+The chart of a tracker has the bars of the main chart: hours for a period of 7 days or less, and days for a longer period. The chart of a category or a release attribute shows days, because qui stores those bytes for each UTC day. In the chart of a release attribute, a year that qui folded is one bar. That bar is never the best day, and the average counts each day that it stands for.
 
 For All time, the rows, the share, and the upload from cross-seeds include the Baseline. The chart, the best bar, and the average do not, because the Baseline has no date.
 

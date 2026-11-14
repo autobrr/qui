@@ -7,8 +7,6 @@ import (
 	"maps"
 	"slices"
 	"sync"
-
-	"github.com/autobrr/qui/internal/models"
 )
 
 // maxCachedAnswers is the number of answers that the cache keeps. Without a
@@ -26,7 +24,7 @@ type answerCache struct {
 	// folds is the number of folds that move torrent days now. A query can
 	// read a part of a fold, so no answer is kept while one runs.
 	folds   int
-	answers map[answerKey]cachedAnswer
+	answers map[answerKey][]TransferRow
 }
 
 // answerKey holds what the answer of a query by a release attribute depends
@@ -40,13 +38,6 @@ type answerKey struct {
 	group          string
 	hasGroup       bool
 	limit          int
-}
-
-type cachedAnswer struct {
-	rows []TransferRow
-	// customizations name the Tracker groups. A rename or a merge can change
-	// the answer without a change of the history.
-	customizations []*models.TrackerCustomization
 }
 
 func keyOf(q TransferQuery) answerKey {
@@ -66,27 +57,25 @@ func keyOf(q TransferQuery) answerKey {
 
 // get returns a kept answer, and the version of the history that a new
 // answer must be read at to be kept.
-func (c *answerCache) get(key answerKey, customizations []*models.TrackerCustomization) (rows []TransferRow, version uint64, ok bool) {
+func (c *answerCache) get(key answerKey) (rows []TransferRow, version uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	cached, ok := c.answers[key]
-	if !ok || !slices.EqualFunc(cached.customizations, customizations, sameCustomization) {
-		return nil, c.version, false
-	}
-	return slices.Clone(cached.rows), c.version, true
+	rows, ok = c.answers[key]
+	return slices.Clone(rows), c.version, ok
 }
 
-// put keeps an answer that a query read at version.
-func (c *answerCache) put(key answerKey, version uint64, customizations []*models.TrackerCustomization, rows []TransferRow) {
+// put keeps rows that a query read at version, unless the history changed
+// since then or a fold runs.
+func (c *answerCache) put(key answerKey, version uint64, rows []TransferRow) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if version != c.version || c.folds > 0 {
 		return
 	}
 	if c.answers == nil || len(c.answers) >= maxCachedAnswers {
-		c.answers = make(map[answerKey]cachedAnswer)
+		c.answers = make(map[answerKey][]TransferRow)
 	}
-	c.answers[key] = cachedAnswer{rows: slices.Clone(rows), customizations: customizations}
+	c.answers[key] = slices.Clone(rows)
 }
 
 // changed drops the answers of an instance. Call it after each change of the
@@ -96,7 +85,7 @@ func (c *answerCache) changed(instanceID int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.version++
-	maps.DeleteFunc(c.answers, func(key answerKey, _ cachedAnswer) bool { return key.instanceID == instanceID })
+	maps.DeleteFunc(c.answers, func(key answerKey, _ []TransferRow) bool { return key.instanceID == instanceID })
 }
 
 // changedAll drops each answer, after a change of the history of each instance.
@@ -120,8 +109,4 @@ func (c *answerCache) foldEnded() {
 	c.folds--
 	c.mu.Unlock()
 	c.changedAll()
-}
-
-func sameCustomization(a, b *models.TrackerCustomization) bool {
-	return a.ID == b.ID && a.DisplayName == b.DisplayName && slices.Equal(a.Domains, b.Domains)
 }

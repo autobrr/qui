@@ -48,6 +48,7 @@ describe("recordedUnits", () => {
     expect(recordedUnits(bars, new Date(Date.UTC(2025, 11, 1, 6)), "day", true)).toBe(31 + 2)
   })
 
+  // regression: #4114
   it("ends a year bar with no bar after it at the end of the period", () => {
     // The days of the period hold no bytes, so the year bar stands in for all of them.
     const bars = buildTorrentBars([torrentRow(Date.UTC(2025, 0, 1), "year", 500)], { ...period, to: new Date(Date.UTC(2025, 11, 31, 12)) }, undefined)!

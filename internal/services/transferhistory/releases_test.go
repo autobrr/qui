@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 const (
@@ -216,4 +217,39 @@ func TestTheAnswerOfAReleaseAttributeStaysUntilTheNextWritePostgresIntegration(t
 		require.NoError(t, module.DeleteHistory(t.Context(), transferhistory.HistoryDelete{InstanceID: instanceID}))
 		require.Zero(t, uploadOf("GRP"))
 	})
+}
+
+// No answer is kept while a fold moves the days of the torrents, because a
+// query can read a part of the fold.
+func TestNoAnswerOfAReleaseAttributeIsKeptWhileAFoldRuns(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	q, folding := newBlockedFold(db)
+	module := transferhistory.New(q, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
+	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+	t.Cleanup(q.release)
+
+	// The first reading after a start folds, and the fold waits in the move
+	// of the torrent days.
+	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(0), Torrents: releaseTorrents(0, 0, 0, 0)})
+	<-folding
+	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(5 * time.Minute), Torrents: releaseTorrents(100, 200, 300, 30)})
+	upload := func() int64 {
+		rows, err := module.Transfer(t.Context(), transferhistory.TransferQuery{
+			InstanceID: instanceID, From: day10, To: day12, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByReleaseGroup,
+		})
+		require.NoError(t, err)
+		for _, r := range rows {
+			if r.Group == "GRP" {
+				return r.Uploaded
+			}
+		}
+		return 0
+	}
+	require.Equal(t, int64(130), upload())
+
+	// A change that no write of the module made shows in the next answer, so
+	// the module did not keep the first one.
+	_, err := db.ExecContext(t.Context(), `UPDATE transfer_history_torrent_days SET uploaded = uploaded + 1000`)
+	require.NoError(t, err)
+	require.Equal(t, int64(2130), upload())
 }
