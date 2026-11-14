@@ -89,8 +89,6 @@ type Notice struct {
 	Reason   string    `json:"reason,omitempty"`
 	Cause    string    `json:"cause"`
 	OpenedAt time.Time `json:"openedAt"`
-
-	opening uint64
 }
 
 type Module struct {
@@ -99,13 +97,14 @@ type Module struct {
 	mu        sync.Mutex
 	open      map[Kind]Notice
 	openings  uint64
+	opened    map[Kind]uint64
 	onDismiss map[Kind]func(context.Context) error
 }
 
 // New returns a module with no open notice. It sends each notice that opens
 // to notifier.
 func New(notifier notifications.Notifier) *Module {
-	return &Module{notifier: notifier, open: make(map[Kind]Notice), onDismiss: make(map[Kind]func(context.Context) error)}
+	return &Module{notifier: notifier, open: make(map[Kind]Notice), opened: make(map[Kind]uint64), onDismiss: make(map[Kind]func(context.Context) error)}
 }
 
 // Open opens the notice of kind with its cause. A notice that is already open
@@ -121,7 +120,8 @@ func (m *Module) OpenWithReason(kind Kind, reason, cause string) {
 	notice, isOpen := m.open[kind]
 	if !isOpen {
 		m.openings++
-		notice = Notice{Kind: kind, Severity: definitions[kind].severity, OpenedAt: time.Now().UTC(), opening: m.openings}
+		m.opened[kind] = m.openings
+		notice = Notice{Kind: kind, Severity: definitions[kind].severity, OpenedAt: time.Now().UTC()}
 	}
 	notice.Reason = reason
 	notice.Cause = cause
@@ -139,13 +139,14 @@ func (m *Module) Close(kind Kind) {
 	delete(m.open, kind)
 }
 
-// Opening reports whether the notice of kind is open, with a number that
-// differs for each time it opened.
+// Opening returns a number that changes each time the notice of kind opens,
+// also after it closed again, or 0 when it never opened. It also reports
+// whether the notice is open now.
 func (m *Module) Opening(kind Kind) (opening uint64, isOpen bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	notice, isOpen := m.open[kind]
-	return notice.opening, isOpen
+	_, isOpen = m.open[kind]
+	return m.opened[kind], isOpen
 }
 
 // OnDismiss sets fn to run in place of the close when the user dismisses the

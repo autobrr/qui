@@ -125,8 +125,8 @@ func (m *Monitor) Check(ctx context.Context) error {
 	case d.freeBytes >= limit+limit/10:
 		m.low = false
 	}
-	failure, failed := m.notices.Opening(systemnotice.RecordingStopped)
-	if !m.low || (failed && failure != m.failureSeen) {
+	failure, _ := m.notices.Opening(systemnotice.RecordingStopped)
+	if !m.low || failure != m.failureSeen {
 		m.dismissed = false
 	}
 	m.failureSeen = failure

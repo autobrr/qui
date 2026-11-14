@@ -239,6 +239,15 @@ func TestTheDismissRule(t *testing.T) {
 			wantOpen: true,
 		},
 		{
+			name: "opens again after a failed write that opened and closed between two checks",
+			after: func(t *testing.T, monitor *Monitor, notices *systemnotice.Module, _ *fakeDisk) {
+				notices.Open(systemnotice.RecordingStopped, "database or disk is full")
+				notices.Close(systemnotice.RecordingStopped)
+				require.NoError(t, monitor.Check(t.Context()))
+			},
+			wantOpen: true,
+		},
+		{
 			name: "opens again after the next failed write",
 			after: func(t *testing.T, monitor *Monitor, notices *systemnotice.Module, _ *fakeDisk) {
 				notices.Open(systemnotice.RecordingStopped, "database or disk is full")
