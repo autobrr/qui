@@ -268,30 +268,34 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
                 autoCorrect="off"
                 className="min-h-40 flex-1 resize-none font-mono text-base field-sizing-fixed md:text-xs"
               />
-              {state.phase.kind === "editing" && state.phase.error ? (
+              {state.phase.kind === "editing" && state.phase.error && (
                 <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span className="break-words">
                     <span className="font-medium">{t("themes.custom.editor.saveFailed")}</span> {state.phase.error}
                   </span>
                 </p>
-              ) : previewProblem && previewProblem.kind !== "empty" ? (
-                <p className="flex items-start gap-1.5 text-xs text-yellow-700 dark:text-yellow-400">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{t(PROBLEM_KEYS[previewProblem.kind], "line" in previewProblem ? { line: previewProblem.line } : undefined)}</span>
-                </p>
-              ) : (
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Eye className="h-3.5 w-3.5 shrink-0" />
-                  {t(
-                    previewProblem
-                      ? "themes.custom.editor.emptyStatus"
-                      : waitsForChange
-                        ? "themes.custom.editor.previewWaits"
-                        : "themes.custom.editor.previewing"
-                  )}
-                </p>
               )}
+              {/* Stays mounted so that a screen reader hears each change of the status. */}
+              <div role="status">
+                {state.phase.kind === "editing" && state.phase.error ? null : previewProblem && previewProblem.kind !== "empty" ? (
+                  <p className="flex items-start gap-1.5 text-xs text-yellow-700 dark:text-yellow-400">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{t(PROBLEM_KEYS[previewProblem.kind], "line" in previewProblem ? { line: previewProblem.line } : undefined)}</span>
+                  </p>
+                ) : (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Eye className="h-3.5 w-3.5 shrink-0" />
+                    {t(
+                      previewProblem
+                        ? "themes.custom.editor.emptyStatus"
+                        : waitsForChange
+                          ? "themes.custom.editor.previewWaits"
+                          : "themes.custom.editor.previewing"
+                    )}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 

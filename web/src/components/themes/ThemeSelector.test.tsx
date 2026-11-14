@@ -365,7 +365,7 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: RED_THEME } })
     fireEvent.change(cssField(), { target: { value: ":root { --background: blue; }" } })
 
-    expect(screen.getByText("themes.custom.editor.problems.missingDark")).toBeTruthy()
+    expect(screen.getByRole("status").textContent).toContain("themes.custom.editor.problems.missingDark")
     expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
     expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
     expect(saveButton().disabled).toBe(true)
