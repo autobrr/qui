@@ -57,8 +57,9 @@ func (g Grouping) releaseAttribute() bool {
 	switch g {
 	case GroupByReleaseGroup, GroupByResolution, GroupBySource, GroupByContentType:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 // TransferQuery asks for the transfer of one instance in the period
