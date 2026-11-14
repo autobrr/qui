@@ -196,7 +196,7 @@ export function Statistics() {
         return incognitoMode ? getLinuxCategoryName(group) : group
       default:
         if (group === "") return t("table.none")
-        return by === "contentType" ? t(`common:contentTypeLabels.${group}`) : group
+        return by === "contentType" ? t([`common:contentTypeLabels.${group}`, "common:contentTypeLabels.unknown"]) : group
     }
   }, [displayName, incognitoMode, t])
 
