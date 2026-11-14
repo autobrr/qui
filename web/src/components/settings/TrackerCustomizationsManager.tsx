@@ -86,6 +86,7 @@ export function TrackerCustomizationsManager() {
   }
 
   const handleMergeIntoGroup = (targetGroupId: number, domain?: string) => {
+    if (updateCustomization.isPending) return
     const group = customizations?.find(c => c.id === targetGroupId)
     if (!group) return
 
@@ -99,6 +100,12 @@ export function TrackerCustomizationsManager() {
       data: { displayName: group.displayName, domains: [...new Set([...group.domains, ...domainsToMerge])] },
     }, {
       onSuccess: clearSelection,
+    })
+  }
+
+  const handleDelete = (customizationId: number) => {
+    deleteCustomization.mutate(customizationId, {
+      onSuccess: () => setSelectedGroupId(prev => prev === customizationId ? null : prev),
     })
   }
 
@@ -256,7 +263,7 @@ export function TrackerCustomizationsManager() {
                   <div className="flex shrink-0 items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
                     {hasCustomization ? (
                       canMergeIntoGroup ? (
-                        <IconAction label={t("trackerCustomizations.mergeTooltip")} onClick={() => handleMergeIntoGroup(customizationId)}>
+                        <IconAction label={t("trackerCustomizations.mergeTooltip")} onClick={() => handleMergeIntoGroup(customizationId)} disabled={saving}>
                           <Link2 className="h-3.5 w-3.5 text-primary" />
                         </IconAction>
                       ) : (
@@ -264,7 +271,7 @@ export function TrackerCustomizationsManager() {
                           <IconAction label={t("trackerCustomizations.edit")} onClick={() => openEditDialog(customizationId, displayName, domains)}>
                             <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                           </IconAction>
-                          <IconAction label={t("trackerCustomizations.delete")} onClick={() => deleteCustomization.mutate(customizationId)}>
+                          <IconAction label={t("trackerCustomizations.delete")} onClick={() => handleDelete(customizationId)}>
                             <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                           </IconAction>
                         </>
@@ -273,6 +280,7 @@ export function TrackerCustomizationsManager() {
                       <IconAction
                         label={selectedGroupId !== null ? t("trackerCustomizations.mergeIntoGroup") : selectedDomains.size > 0 ? t("trackerCustomizations.addToMerge") : t("trackerCustomizations.rename")}
                         onClick={() => selectedGroupId !== null ? handleMergeIntoGroup(selectedGroupId, domain) : openRenameDialog(domain)}
+                        disabled={saving && (selectedGroupId !== null || selectedDomains.size > 0)}
                       >
                         {selectedGroupId !== null || selectedDomains.size > 0 ? <Link2 className="h-3.5 w-3.5 text-primary" /> : <Pencil className="h-3.5 w-3.5 text-muted-foreground" />}
                       </IconAction>
@@ -452,7 +460,10 @@ function ImportDialogContent({ customizations, onDone }: { customizations: Track
           <Textarea
             id="import-json"
             value={importJson}
-            onChange={(e) => setImportJson(e.target.value)}
+            onChange={(e) => {
+              setImportJson(e.target.value)
+              setConflictChoices(new Map())
+            }}
             placeholder={"{\n  \"trackerCustomizations\": [\n    { \"displayName\": \"Name\", \"domains\": [\"domain.com\"] }\n  ]\n}"}
             className="font-mono text-xs h-32"
           />

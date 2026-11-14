@@ -52,7 +52,9 @@ export function useUpdateTrackerCustomization() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: TrackerCustomizationInput }) =>
       api.updateTrackerCustomization(id, data),
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      // A merge that follows reads the new domains before the refetch lands.
+      queryClient.setQueryData<TrackerCustomization[]>(QUERY_KEY, old => old?.map(c => c.id === updated.id ? updated : c))
       queryClient.invalidateQueries({ queryKey: QUERY_KEY })
     },
     onError: (error) => {
