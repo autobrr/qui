@@ -125,14 +125,14 @@
     "yearNote": "每个柱子代表一个 UTC 日，年份柱子除外：超过详细数据保留期后，qui 为每个种子每年只保留一个数值。"
   },
   "growth": {
-    "title": "资料库增长",
+    "title": "媒体库增长",
     "description": "种子：{{torrents}}。每个 UTC 日的总大小和唯一大小。",
     "descriptionEmpty": "每个 UTC 日的总大小和唯一大小。",
     "totalSize": "总大小",
     "uniqueSize": "唯一大小",
     "torrents": "种子",
     "noValue": "无值",
-    "empty": "qui 在此期间没有保存资料库大小。",
+    "empty": "qui 在此期间没有保存媒体库大小。",
     "gapNote": "唯一大小线上的空缺表示当天没有完成的副本组计算。"
   }
 }
