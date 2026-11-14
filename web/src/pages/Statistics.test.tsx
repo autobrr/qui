@@ -230,6 +230,7 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
   })
 
+  // regression: #4132
   it("does not keep the deleted torrents of a custom range when only its last day changes", async () => {
     let releaseSecond = () => {}
     const second = new Promise<void>(resolve => {

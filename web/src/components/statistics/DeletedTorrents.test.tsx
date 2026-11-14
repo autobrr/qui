@@ -164,6 +164,7 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("deletes.more")).toBeNull()
   })
 
+  // regression: #4132
   it("shows a delete once when a new delete moves it onto the next page", async () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
@@ -176,6 +177,7 @@ describe("DeletedTorrents", () => {
     expect(new Set(shownNames()).size).toBe(60)
   })
 
+  // regression: #4132
   it("keeps the rows while the rows of a moved period load", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     const { moveTo } = renderTable([instance(1, "Seedbox")])
@@ -194,6 +196,7 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.1-GRP", "Built.Name.1.0-GRP"]))
   })
 
+  // regression: #4132
   it("lets the user load a page again after it failed", async () => {
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     let failNext = true
