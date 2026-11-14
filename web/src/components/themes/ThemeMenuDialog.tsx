@@ -132,14 +132,15 @@ export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, 
             const groupState = chosen === toggleable.length ? true : chosen === 0 ? false : "indeterminate"
             return (
               <section key={group} aria-labelledby={groupId} className="pb-3">
-                <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background py-2">
+                <div className="sticky top-0 z-10 flex items-stretch gap-3 border-b bg-background">
                   <Checkbox
+                    className="self-center"
                     id={`${groupId}-all`}
                     checked={groupState}
                     disabled={searching || toggleable.length === 0}
                     onCheckedChange={() => setShown(toggleable, groupState !== true)}
                   />
-                  <label id={groupId} htmlFor={`${groupId}-all`} className="flex flex-1 cursor-pointer items-baseline justify-between gap-2 text-sm font-medium">
+                  <label id={groupId} htmlFor={`${groupId}-all`} className="flex min-h-10 flex-1 cursor-pointer items-center justify-between gap-2 py-2 text-sm font-medium max-sm:min-h-11">
                     {groupLabels[group]}{" "}
                     <span className="text-xs font-normal text-muted-foreground tabular-nums">
                       {t("themes.menu.groupCount", { shown, total: groupThemes.length })}
@@ -152,7 +153,7 @@ export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, 
                     const inUse = theme.id === currentThemeId
                     return (
                       <li key={theme.id}>
-                        <label htmlFor={rowId} className={cn("flex items-center gap-3 rounded-md py-1.5", inUse ? "cursor-default" : "cursor-pointer hover:bg-muted/50")}>
+                        <label htmlFor={rowId} className={cn("flex items-center gap-3 rounded-md py-1.5 max-sm:min-h-11", inUse ? "cursor-default" : "cursor-pointer hover:bg-muted/50")}>
                           <Checkbox
                             id={rowId}
                             checked={inMenu(theme)}
