@@ -527,18 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Theme Selection",
+      "title": "Themes",
       "loadingDescription": "Loading available themes...",
-      "description": "Choose from available themes. Some themes need a valid license.",
+      "description": "Click a theme to use it.",
       "verificationUnavailable": "License verification unavailable. Switching to a licensed theme is temporarily disabled.",
       "notLoaded": "Licensed themes not loaded",
       "notLoadedDescription": "Run",
+      "defaultThemeVisit": "qui shows the default theme for this visit, because the address has ?theme=default. Select a theme to end it.",
+      "search": "Search themes",
+      "filterLabel": "Filter themes",
+      "noMatch": "No theme matches “{{query}}”.",
+      "needsLicense": "Needs a license",
+      "lockedCount_one": "{{count}} theme needs a license.",
+      "lockedCount_other": "{{count}} themes need a license.",
+      "showAll_one": "Show {{count}} theme",
+      "showAll_other": "Show all {{count}} themes",
+      "showFewer": "Show fewer themes",
+      "variationCount_one": "{{count}} color variation",
+      "variationCount_other": "{{count}} color variations"
+    },
+    "current": {
+      "label": "In use",
+      "colors": "Color variations"
+    },
+    "groups": {
+      "all": "All",
       "free": "Free",
-      "locked": "Locked",
-      "lock": "Lock",
-      "showTheme": "Show",
-      "hideTheme": "Hide",
-      "defaultThemeVisit": "qui shows the default theme for this visit, because the address has ?theme=default. Select a theme to end it."
+      "licensed": "Licensed",
+      "custom": "Custom"
+    },
+    "menu": {
+      "button": "Choose menu themes",
+      "title": "Choose menu themes",
+      "description": "Choose the themes that the theme menu lists, in the top bar and in the phone footer. The theme in use is always in the menu.",
+      "groupCount": "{{shown}} of {{total}}",
+      "groupsLocked": "Clear the search to use the group check boxes.",
+      "inUse": "In use",
+      "summary": "{{shown}} of {{total}} themes in the menu",
+      "reset": "Reset to defaults",
+      "undo": "Undo reset",
+      "done": "Done"
     },
     "toasts": {
       "premiumRequired": "License required",
@@ -680,9 +708,8 @@
       }
     },
     "custom": {
-      "badge": "Custom",
       "title": "Custom themes",
-      "lockedTitle": "Custom themes need a license",
+      "description": "Write or paste a theme in the theme editor, or put theme CSS files into the theme folder on the server.",
       "lockedDescription": "Get a license to add your own themes: write or paste a theme in the theme editor, or put theme CSS files into the theme folder on the server.",
       "unlockCta": "Get a license",
       "refresh": "Refresh",
@@ -737,13 +764,15 @@
       }
     },
     "layout": {
+      "title": "Theme sync",
       "mobileSplit": "Separate theme for mobile layout",
       "mobileSplitHelp": "The mobile layout (a window less than 768 px wide) and the desktop layout each keep their own theme, mode, and variation. This setting applies to every browser.",
       "localOnly": "Keep this browser's theme local",
       "localOnlyHelp": "This browser does not take the theme from the server and does not send its theme changes to the server. This setting applies only to this browser.",
       "changesMobile": "Changes the mobile theme",
       "changesDesktop": "Changes the desktop theme",
-      "changesLocal": "Changes the theme of this browser only. To change the mobile layout setting, turn off the local setting.",
+      "changesLocal": "Changes the theme of this browser only.",
+      "splitNeedsSync": "To change the mobile layout setting, turn off the local setting.",
       "saveError": "Failed to save the theme setting",
       "mobileSplitOffWarning": "Turning this off deletes the mobile theme."
     }

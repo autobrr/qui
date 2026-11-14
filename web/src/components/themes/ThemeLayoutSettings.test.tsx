@@ -81,5 +81,6 @@ describe("ThemeLayoutSettings", () => {
     const split = screen.getByRole("switch", { name: "themes.layout.mobileSplit" })
     await act(async () => {})
     expect(split.hasAttribute("disabled")).toBe(true)
+    expect(screen.getByText("themes.layout.splitNeedsSync")).toBeTruthy()
   })
 })

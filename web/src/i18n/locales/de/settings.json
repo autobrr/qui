@@ -527,18 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Design-Auswahl",
+      "title": "Themes",
       "loadingDescription": "Verfügbare Designs werden geladen...",
-      "description": "Wähle aus den verfügbaren Designs. Einige Designs erfordern eine gültige Lizenz.",
+      "description": "Klicke auf ein Theme, um es zu verwenden.",
       "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu lizenzierten Designs ist vorübergehend deaktiviert.",
       "notLoaded": "Lizenzierte Designs nicht geladen",
       "notLoadedDescription": "Führe aus:",
+      "defaultThemeVisit": "qui zeigt für diesen Besuch das Standard-Theme, weil die Adresse ?theme=default enthält. Wähle ein Theme, um das zu beenden.",
+      "search": "Themes suchen",
+      "filterLabel": "Themes filtern",
+      "noMatch": "Kein Theme passt zu „{{query}}“.",
+      "needsLicense": "Benötigt eine Lizenz",
+      "lockedCount_one": "{{count}} Theme benötigt eine Lizenz.",
+      "lockedCount_other": "{{count}} Themes benötigen eine Lizenz.",
+      "showAll_one": "{{count}} Theme anzeigen",
+      "showAll_other": "Alle {{count}} Themes anzeigen",
+      "showFewer": "Weniger Themes anzeigen",
+      "variationCount_one": "{{count}} Farbvariante",
+      "variationCount_other": "{{count}} Farbvarianten"
+    },
+    "current": {
+      "label": "Aktiv",
+      "colors": "Farbvarianten"
+    },
+    "groups": {
+      "all": "Alle",
       "free": "Kostenlos",
-      "locked": "Gesperrt",
-      "lock": "Sperren",
-      "showTheme": "Anzeigen",
-      "hideTheme": "Ausblenden",
-      "defaultThemeVisit": "qui zeigt für diesen Besuch das Standard-Theme, weil die Adresse ?theme=default enthält. Wähle ein Theme, um das zu beenden."
+      "licensed": "Lizenziert",
+      "custom": "Eigene"
+    },
+    "menu": {
+      "button": "Themes fürs Menü wählen",
+      "title": "Themes fürs Menü wählen",
+      "description": "Wähle die Themes, die das Theme-Menü in der oberen Leiste und in der Fußleiste auf dem Handy zeigt. Das aktive Theme ist immer im Menü.",
+      "groupCount": "{{shown}} von {{total}}",
+      "groupsLocked": "Leere die Suche, um die Kontrollkästchen der Gruppen zu verwenden.",
+      "inUse": "Aktiv",
+      "summary": "{{shown}} von {{total}} Themes im Menü",
+      "reset": "Auf Standard zurücksetzen",
+      "undo": "Zurücksetzen rückgängig machen",
+      "done": "Fertig"
     },
     "toasts": {
       "premiumRequired": "Lizenz erforderlich",
@@ -680,9 +708,8 @@
       }
     },
     "custom": {
-      "badge": "Eigene",
       "title": "Eigene Themes",
-      "lockedTitle": "Eigene Themes erfordern eine Lizenz",
+      "description": "Schreibe oder füge ein Theme im Theme-Editor ein, oder lege Theme-CSS-Dateien in den Theme-Ordner auf dem Server.",
       "lockedDescription": "Hol dir eine Lizenz, um eigene Themes hinzuzufügen: Schreibe oder füge ein Theme im Theme-Editor ein, oder lege Theme-CSS-Dateien in den Theme-Ordner auf dem Server.",
       "unlockCta": "Lizenz holen",
       "refresh": "Aktualisieren",
@@ -737,13 +764,15 @@
       }
     },
     "layout": {
+      "title": "Theme-Synchronisierung",
       "mobileSplit": "Eigenes Theme für das mobile Layout",
       "mobileSplitHelp": "Das mobile Layout (ein Fenster unter 768 px Breite) und das Desktop-Layout behalten jeweils ihr eigenes Theme, ihren Modus und ihre Variante. Diese Einstellung gilt für jeden Browser.",
       "localOnly": "Theme dieses Browsers lokal halten",
       "localOnlyHelp": "Dieser Browser übernimmt das Theme nicht vom Server und sendet seine Theme-Änderungen nicht an den Server. Diese Einstellung gilt nur für diesen Browser.",
       "changesMobile": "Ändert das mobile Theme",
       "changesDesktop": "Ändert das Desktop-Theme",
-      "changesLocal": "Ändert nur das Theme dieses Browsers. Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
+      "changesLocal": "Ändert nur das Theme dieses Browsers.",
+      "splitNeedsSync": "Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
       "saveError": "Theme-Einstellung konnte nicht gespeichert werden",
       "mobileSplitOffWarning": "Beim Ausschalten wird das mobile Theme gelöscht."
     }

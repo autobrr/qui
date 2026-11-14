@@ -41,6 +41,8 @@ import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { themeThumbnailPalette, themeVariationColors } from "@/lib/theme-thumbnail"
+import { QuickThemeRow, QuickThemeVariations } from "@/components/themes/QuickThemeRow"
 import { useThemeVisibility } from "@/hooks/useThemeVisibility"
 import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
@@ -49,8 +51,8 @@ import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
   getCurrentThemeMode,
-  getThemeColors,
   getThemeVariation,
+  isDarkMode,
   setTheme,
   setThemeMode,
   setThemeVariation,
@@ -67,15 +69,14 @@ import {
   Check,
   Code,
   Copyright,
-  CornerDownRight,
   Download,
   FileText,
   GitBranch,
   HardDrive,
   Home,
+  ListChecks,
   Loader2,
   Globe,
-  Lock,
   LogOut,
   Monitor,
   Moon,
@@ -95,10 +96,14 @@ import { useTranslation } from "react-i18next"
 const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme())
+  // A system switch in auto mode keeps the mode and the theme, so the resolved
+  // light or dark is state of its own, to render again on that switch.
+  const [dark, setDark] = useState(() => isDarkMode(getCurrentThemeMode()))
 
   const checkTheme = useCallback(() => {
     setCurrentMode(getCurrentThemeMode())
     setCurrentTheme(getCurrentTheme())
+    setDark(isDarkMode(getCurrentThemeMode()))
   }, [])
 
   useEffect(() => {
@@ -116,7 +121,7 @@ const useThemeChange = (customThemes: readonly Theme[]) => {
   // useCustomThemes, so that a stored custom theme resolves here.
   useEffect(checkTheme, [checkTheme, customThemes])
 
-  return { currentMode, currentTheme }
+  return { currentMode, currentTheme, dark }
 }
 
 export function MobileFooterNav() {
@@ -131,7 +136,7 @@ export function MobileFooterNav() {
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
   const { customThemes } = useCustomThemes()
-  const { currentMode, currentTheme } = useThemeChange(customThemes)
+  const { currentMode, currentTheme, dark } = useThemeChange(customThemes)
   const [themeVisibility] = useThemeVisibility()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
@@ -618,58 +623,40 @@ export function MobileFooterNav() {
 
       {/* Theme selection dialog */}
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
+        {/* Only the theme list scrolls: the mode rows above it and the link below it stay in view.
+            A screen under 35rem tall has no room for that, so there the whole dialog scrolls. */}
+        <DialogContent className="flex max-h-[85dvh] max-w-md flex-col gap-4 overflow-hidden [@media(max-height:35rem)]:overflow-y-auto">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{t("themeToggle.appearance")}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="shrink-0 space-y-4">
             {/* Mode Selection */}
             <div>
               <div className="text-sm font-medium mb-2">{t("themeToggle.mode")}</div>
-              <div className="space-y-1">
-                <button
-                  onClick={() => {
-                    handleModeSelect("light")
-                    setShowThemeDialog(false)
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                    currentMode === "light" ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                >
-                  <Sun className="h-4 w-4" />
-                  <span className="flex-1 text-left">{t("themeToggle.light")}</span>
-                  {currentMode === "light" && <Check className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => {
-                    handleModeSelect("dark")
-                    setShowThemeDialog(false)
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                    currentMode === "dark" ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                >
-                  <Moon className="h-4 w-4" />
-                  <span className="flex-1 text-left">{t("themeToggle.dark")}</span>
-                  {currentMode === "dark" && <Check className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => {
-                    handleModeSelect("auto")
-                    setShowThemeDialog(false)
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                    currentMode === "auto" ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                >
-                  <Monitor className="h-4 w-4" />
-                  <span className="flex-1 text-left">{t("themeToggle.system")}</span>
-                  {currentMode === "auto" && <Check className="h-4 w-4" />}
-                </button>
+              <div role="group" aria-label={t("themeToggle.mode")} className="grid grid-cols-3 gap-1">
+                {([
+                  { mode: "light", icon: Sun, label: t("themeToggle.light") },
+                  { mode: "dark", icon: Moon, label: t("themeToggle.dark") },
+                  { mode: "auto", icon: Monitor, label: t("themeToggle.system") },
+                ] as const).map(({ mode, icon: Icon, label }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={currentMode === mode}
+                    onClick={() => {
+                      handleModeSelect(mode)
+                      setShowThemeDialog(false)
+                    }}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm transition-colors",
+                      currentMode === mode ? "border-primary/50 bg-primary/10 font-medium" : "border-transparent text-muted-foreground hover:bg-accent/50"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -680,10 +667,11 @@ export function MobileFooterNav() {
                 {viewModes.map((mode) => (
                   <button
                     key={mode}
+                    aria-pressed={viewMode === mode}
                     onClick={() => setViewMode(mode)}
                     className={cn(
-                      "px-3 py-2 rounded-md text-sm transition-colors",
-                      viewMode === mode ? "bg-accent" : "hover:bg-accent/50"
+                      "px-3 py-2 rounded-md border text-sm transition-colors",
+                      viewMode === mode ? "border-primary/50 bg-primary/10 font-medium" : "border-transparent text-muted-foreground hover:bg-accent/50"
                     )}
                   >
                     {isMobile
@@ -694,91 +682,67 @@ export function MobileFooterNav() {
               </div>
             </div>
 
-            {/* Theme Selection */}
-            <div>
-              <div className="text-sm font-medium mb-2">{t("themeToggle.theme")}</div>
-              <div className="space-y-1">
-                {themeCatalog.map((theme) => {
-                  const isLocked = !!theme.locked
-                  const colors = getThemeColors(theme)
-                  const currentVariation = getThemeVariation(theme.id)
+            <div className="text-sm font-medium">{t("themeToggle.theme")}</div>
+          </div>
 
-                  return (
+          {/* Theme Selection */}
+          <div className="-mx-6 -mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 [@media(max-height:35rem)]:flex-none [@media(max-height:35rem)]:overflow-visible">
+            <div className="space-y-1">
+              {themeCatalog.map((theme) => {
+                const isLocked = !!theme.locked
+                const isCurrent = currentTheme.id === theme.id
+                const variation = getThemeVariation(theme.id)
+                const variations = themeVariationColors(theme, dark)
+
+                return (
+                  <div key={theme.id} className={cn("rounded-md", isCurrent && "bg-accent")}>
                     <button
-                      key={theme.id}
+                      type="button"
+                      aria-current={isCurrent ? "true" : undefined}
                       onClick={() => {
-                        if (!isLocked) {
-                          handleThemeSelect(theme.id)
-                          setShowThemeDialog(false)
-                        }
+                        handleThemeSelect(theme.id)
+                        setShowThemeDialog(false)
                       }}
                       disabled={isLocked}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                        currentTheme.id === theme.id ? "bg-accent" : "hover:bg-accent/50",
-                        isLocked && "opacity-60 cursor-not-allowed"
+                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                        !isCurrent && "hover:bg-accent/50",
+                        isLocked && "cursor-not-allowed opacity-60"
                       )}
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 flex-shrink-0"
-                            style={{
-                              backgroundColor: colors.primary,
-                              backgroundImage: "none",
-                              background: colors.primary + " !important",
-                            }}
-                          />
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="truncate">{theme.name}</span>
-                            {isLocked && (
-                              <>
-                                <Lock aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                                <span className="sr-only">{t("settings:themes.selector.locked")}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Variation pills */}
-                        {colors.variations && colors.variations.length > 0 && (
-                          <div className="flex items-center gap-2 pl-1.5 mt-2">
-                            <CornerDownRight className="h-4 w-4 text-muted-foreground" />
-                            <div className="flex gap-2">
-                              {colors.variations.map((variation) => {
-                                const isSelected = currentVariation === variation.id
-                                return (
-                                  <div
-                                    key={variation.id}
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      const success = await handleVariationSelect(theme.id, variation.id)
-                                      if (success) {
-                                        setShowThemeDialog(false)
-                                      }
-                                    }}
-                                    className={cn(
-                                      "w-8 h-8 rounded-full transition-all cursor-pointer",
-                                      isSelected? "ring-2 ring-black dark:ring-white": "ring-1 ring-black/10 dark:ring-white/10"
-                                    )}
-                                    style={{
-                                      backgroundColor: variation.color,
-                                      backgroundImage: "none",
-                                      background: variation.color + " !important",
-                                    }}
-                                  />
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      {currentTheme.id === theme.id && <Check className="h-4 w-4 flex-shrink-0 self-center" />}
+                      <QuickThemeRow
+                        theme={theme}
+                        palette={themeThumbnailPalette(theme, dark, variation)}
+                        variations={variations}
+                        isCurrent={isCurrent}
+                      />
                     </button>
-                  )
-                })}
-              </div>
+                    {isCurrent && variations.length > 0 && (
+                      <QuickThemeVariations
+                        variations={variations}
+                        selected={variation}
+                        onSelect={async (variationId) => {
+                          if (await handleVariationSelect(theme.id, variationId)) setShowThemeDialog(false)
+                        }}
+                        className="gap-0 px-3 pb-2 [&_button]:size-11 [&_button>span]:size-7"
+                      />
+                    )}
+                  </div>
+                )
+              })}
             </div>
+          </div>
+
+          <div className="-mx-6 -mb-4 shrink-0 border-t px-6 pt-2">
+            <Link
+              to="/settings"
+              search={{ tab: "themes", modal: "theme-menu" }}
+              onClick={() => setShowThemeDialog(false)}
+              className="flex min-h-11 items-center gap-2 rounded-md px-3 text-sm hover:bg-accent/50"
+            >
+              <ListChecks className="h-4 w-4" />
+              {t("settings:themes.menu.button")}
+            </Link>
           </div>
         </DialogContent>
       </Dialog>

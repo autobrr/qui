@@ -1033,7 +1033,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
 
         {activeTab === "themes" && (
           <>
-            <ThemeSelector />
+            <ThemeSelector openMenu={search.modal === "theme-menu"} onMenuOpened={() => onSearchChange({ ...search, modal: undefined })} />
             <div id="license-manager">
               <LicenseManager
                 checkoutStatus={search.checkout}

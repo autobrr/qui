@@ -527,18 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Sélection de thème",
+      "title": "Thèmes",
       "loadingDescription": "Chargement des thèmes disponibles...",
-      "description": "Choisissez parmi les thèmes. Certains thèmes nécessitent une licence valide.",
+      "description": "Cliquez sur un thème pour l'utiliser.",
       "verificationUnavailable": "Vérification de licence indisponible. Le passage à un thème sous licence est temporairement désactivé.",
       "notLoaded": "Thèmes sous licence non chargés",
       "notLoadedDescription": "Exécutez",
-      "free": "Gratuit",
-      "locked": "Verrouillé",
-      "lock": "Verrouillé",
-      "showTheme": "Afficher",
-      "hideTheme": "Masquer",
-      "defaultThemeVisit": "qui affiche le thème par défaut pour cette visite, car l'adresse contient ?theme=default. Sélectionnez un thème pour y mettre fin."
+      "defaultThemeVisit": "qui affiche le thème par défaut pour cette visite, car l'adresse contient ?theme=default. Sélectionnez un thème pour y mettre fin.",
+      "search": "Rechercher des thèmes",
+      "filterLabel": "Filtrer les thèmes",
+      "noMatch": "Aucun thème ne correspond à « {{query}} ».",
+      "needsLicense": "Nécessite une licence",
+      "lockedCount_one": "{{count}} thème nécessite une licence.",
+      "lockedCount_other": "{{count}} thèmes nécessitent une licence.",
+      "showAll_one": "Afficher {{count}} thème",
+      "showAll_other": "Afficher les {{count}} thèmes",
+      "showFewer": "Afficher moins de thèmes",
+      "variationCount_one": "{{count}} variante de couleur",
+      "variationCount_other": "{{count}} variantes de couleur"
+    },
+    "current": {
+      "label": "Actif",
+      "colors": "Variantes de couleur"
+    },
+    "groups": {
+      "all": "Tous",
+      "free": "Gratuits",
+      "licensed": "Sous licence",
+      "custom": "Personnalisés"
+    },
+    "menu": {
+      "button": "Choisir les thèmes du menu",
+      "title": "Choisir les thèmes du menu",
+      "description": "Choisissez les thèmes que le menu des thèmes affiche, dans la barre supérieure et dans le pied de page sur téléphone. Le thème actif est toujours dans le menu.",
+      "groupCount": "{{shown}} sur {{total}}",
+      "groupsLocked": "Effacez la recherche pour utiliser les cases des groupes.",
+      "inUse": "Actif",
+      "summary": "{{shown}} thèmes sur {{total}} dans le menu",
+      "reset": "Rétablir les valeurs par défaut",
+      "undo": "Annuler la réinitialisation",
+      "done": "Terminé"
     },
     "toasts": {
       "premiumRequired": "Licence requise",
@@ -680,9 +708,8 @@
       }
     },
     "custom": {
-      "badge": "Personnalisé",
       "title": "Thèmes personnalisés",
-      "lockedTitle": "Les thèmes personnalisés nécessitent une licence",
+      "description": "Écrivez ou collez un thème dans l'éditeur de thèmes, ou placez des fichiers CSS de thème dans le dossier des thèmes sur le serveur.",
       "lockedDescription": "Obtenez une licence pour ajouter vos propres thèmes : écrivez ou collez un thème dans l'éditeur de thèmes, ou placez des fichiers CSS de thème dans le dossier des thèmes sur le serveur.",
       "unlockCta": "Obtenir une licence",
       "refresh": "Actualiser",
@@ -737,13 +764,15 @@
       }
     },
     "layout": {
+      "title": "Synchronisation du thème",
       "mobileSplit": "Thème distinct pour la disposition mobile",
       "mobileSplitHelp": "La disposition mobile (une fenêtre de moins de 768 px de large) et la disposition bureau gardent chacune leur thème, leur mode et leur variante. Ce paramètre s'applique à tous les navigateurs.",
       "localOnly": "Garder le thème de ce navigateur en local",
       "localOnlyHelp": "Ce navigateur ne récupère pas le thème depuis le serveur et n'envoie pas ses changements de thème au serveur. Ce paramètre s'applique uniquement à ce navigateur.",
       "changesMobile": "Modifie le thème mobile",
       "changesDesktop": "Modifie le thème bureau",
-      "changesLocal": "Modifie uniquement le thème de ce navigateur. Pour modifier le réglage de la disposition mobile, désactivez le réglage local.",
+      "changesLocal": "Modifie uniquement le thème de ce navigateur.",
+      "splitNeedsSync": "Pour modifier le réglage de la disposition mobile, désactivez le réglage local.",
       "saveError": "Impossible d'enregistrer le paramètre de thème",
       "mobileSplitOffWarning": "La désactivation supprime le thème mobile."
     }

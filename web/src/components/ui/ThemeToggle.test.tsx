@@ -31,8 +31,8 @@ const fixture = vi.hoisted(() => {
         "--primary": `${id}-primary`,
         "--secondary": `${id}-secondary`,
         "--accent": `${id}-accent`,
-        "--variation-blue": "blue",
-        "--variation-green": "green",
+        "--variation-blue": "navy",
+        "--variation-green": "darkgreen",
         "--variation-amber": "orange",
       },
     },
@@ -71,14 +71,25 @@ vi.mock("@/config/themes", () => ({
     [...fixture.builtInThemes, ...fixture.customThemes].find((theme) => theme.id === id),
 }))
 
+const appearance = vi.hoisted(() => ({ dark: true }))
+
 vi.mock("@/utils/theme", () => ({
   getCurrentThemeMode: () => "dark",
   getCurrentTheme: () => fixture.selectedTheme,
   getThemeVariation: (id?: string) => id === "other" ? "amber" : "blue",
+  isDarkMode: () => appearance.dark,
   setTheme: vi.fn(),
   setThemeMode: vi.fn(),
   setThemeVariation: vi.fn(),
 }))
+
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react")
+  return {
+    Link: ({ to, search: _search, children, ...props }: { to: string; search?: unknown; children?: React.ReactNode }) =>
+      createElement("a", { href: to, ...props }, children),
+  }
+})
 
 vi.mock("@/hooks/useLicense.ts", () => ({
   useHasPremiumAccess: () => ({
@@ -113,6 +124,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle"
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  appearance.dark = true
 })
 
 afterEach(cleanup)
@@ -136,12 +148,14 @@ function themeItem(name: string): HTMLElement {
   return item
 }
 
-function swatchCount(item: HTMLElement): number {
-  return item.querySelectorAll("[style]").length
+function variationColor(name: string): string {
+  const swatch = screen.getByRole("menuitemradio", { name }).querySelector("span")
+  if (!swatch) throw new Error(`Variation swatch not found: ${name}`)
+  return swatch.style.backgroundColor
 }
 
 describe("ThemeToggle", () => {
-  it("shows the complete catalog and every variation without repeated badges", async () => {
+  it("shows the complete catalog, with color buttons only for the theme in use", async () => {
     render(<ThemeToggle />)
 
     fireEvent.pointerDown(
@@ -162,13 +176,12 @@ describe("ThemeToggle", () => {
     expect(items.indexOf(premiumItem)).toBeLessThan(items.indexOf(customItem))
     expect(premiumItem.hasAttribute("data-disabled")).toBe(true)
 
-    await waitFor(() => expect(swatchCount(selectedItem)).toBe(3))
-    expect(swatchCount(otherItem)).toBe(2)
+    // Menu items of their own, so the arrow keys reach them.
+    expect(screen.getByRole("menuitemradio", { name: "blue" }).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByRole("menuitemradio", { name: "green" }).getAttribute("aria-checked")).toBe("false")
+    expect(screen.queryByRole("menuitemradio", { name: "amber" })).toBeNull()
+    expect(selectedItem.querySelector("button")).toBeNull()
     expect(otherName.classList.contains("truncate")).toBe(false)
-
-    const variationRow = otherItem.querySelector("[data-slot=\"theme-variations\"]")
-    expect(variationRow).not.toBeNull()
-    expect(variationRow?.querySelectorAll("[style]")).toHaveLength(1)
     expect(screen.queryByText("themeToggle.custom")).toBeNull()
   })
 
@@ -187,11 +200,39 @@ describe("ThemeToggle", () => {
       expect(screen.queryByText("Other theme")).not.toBeNull()
     })
 
-    fireEvent.click(screen.getByTitle("amber"))
+    fireEvent.click(screen.getByTitle("green"))
 
     await waitFor(() => {
       expect(screen.queryByText("Other theme")).not.toBeNull()
     })
+  })
+
+  it("repaints its pictures when the system switches between light and dark", async () => {
+    render(<ThemeToggle />)
+    openMenu()
+    await screen.findByText("Selected theme")
+    expect(variationColor("blue")).toBe("navy")
+
+    appearance.dark = false
+    act(() => {
+      window.dispatchEvent(new Event("themechange"))
+    })
+
+    expect(variationColor("blue")).toBe("blue")
+  })
+
+  it("picks the mode from one row and links to Choose menu themes", async () => {
+    const { setThemeMode } = await import("@/utils/theme")
+    render(<ThemeToggle />)
+    openMenu()
+
+    const dark = await screen.findByRole("menuitemradio", { name: "themeToggle.dark" })
+    expect(dark.getAttribute("aria-checked")).toBe("true")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "themeToggle.light" }))
+    await waitFor(() => expect(setThemeMode).toHaveBeenCalledWith("light"))
+
+    const link = screen.getByRole("menuitem", { name: "settings:themes.menu.button" })
+    expect(link.getAttribute("href")).toBe("/settings")
   })
 
   it("shows a hidden theme that the user showed and hides a free theme that the user hid", async () => {
