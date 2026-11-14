@@ -98,10 +98,28 @@ The detail shows:
 - **Best hour** or **Best day**: the bar with the most upload, and its time.
 - **Average per hour** or **Average per day**: the upload of the row divided by the number of bars.
 - A chart of the row, with the upload above the zero line and the download below it.
+- **Top torrents**: the five torrents of the row with the most upload in the period. A torrent counts toward the tracker and the category that it has now. Thus, a torrent that you moved to another category shows under its new category with all its upload of the period.
 
 The chart of a tracker has the bars of the main chart: hours for a period of 7 days or less, and days for a longer period. The chart of a category always shows days, because qui stores the category totals for each day.
 
 For All time, the rows, the share, and the upload from cross-seeds include the Baseline. The chart, the best bar, and the average do not, because the Baseline has no date.
+
+## Top torrents
+
+The table below the table of trackers shows the ten torrents with the most upload in the period. It includes each selected instance. Each row has these columns:
+
+| Column | Content |
+|--------|---------|
+| Torrent | The name of the torrent. The mark "Deleted" shows that the torrent is not in qBittorrent now. The mark "Cross-seed" shows that the torrent completed with less than 1% of its size downloaded |
+| Tracker | The tracker that the torrent has now |
+| Uploaded | The upload of the torrent in the period |
+| Downloaded | The download of the torrent in the period |
+| Ratio | Uploaded divided by Downloaded |
+| First 24 hours | The upload of the torrent in the 24 hours after you added it. The cell is empty when qui first saw the torrent after those 24 hours |
+
+A deleted torrent stays in the list with its name. Thus, the list of a long period is complete. The table counts all the upload of a cross-seed, also the upload from before the torrent completed. For All time, the upload includes the Baseline of each torrent. On a phone, the table hides some columns and shows the tracker below the name.
+
+Click a row to see the upload and download of that torrent for each day of the period. qui stores the bytes of a torrent for each UTC day, so each bar is a UTC day.
 
 ## Baseline
 
@@ -139,7 +157,7 @@ The detail is the upload and download of each tracker for each hour, the upload 
 - The days of a torrent become one row for each year.
 - qui deletes the state of each instance for each hour: the torrent counts by state, the free disk space, and the highest speeds.
 
-A fold does not change the total of a whole UTC day. A folded day is a UTC day, so its bar starts at midnight UTC, not at midnight in the timezone of your browser. A period that starts or ends inside a folded day counts the whole day. A chart of hours shows one bar for each day in a folded period. qui folds at the first reading of each new UTC day and at the first reading after qui starts. When you select a shorter time, the next reading folds. You cannot get folded detail back.
+After a fold, the top torrents of an old period count the upload of each torrent in the whole folded year. For example, the top torrents of one month in a folded year show the upload of the full year. The chart of one torrent shows that year as one bar. A fold does not change the total of a whole UTC day. A folded day is a UTC day, so its bar starts at midnight UTC, not at midnight in the timezone of your browser. A period that starts or ends inside a folded day counts the whole day. A chart of hours shows one bar for each day in a folded period. qui folds at the first reading of each new UTC day and at the first reading after qui starts. When you select a shorter time, the next reading folds. You cannot get folded detail back.
 
 qui keeps these rows forever: the daily totals of each tracker and category, the yearly rows of each torrent, the record of each torrent, the events for adds, completions, and deletes, and the library of each day.
 
@@ -178,4 +196,4 @@ Server Statistics on the [Dashboard](./dashboard.md) reads the all-time counters
 
 ## Incognito mode
 
-If [incognito mode](./incognito.md) is on, the page replaces the tracker names and the category names with fake names.
+If [incognito mode](./incognito.md) is on, the page replaces the torrent names, the tracker names, and the category names with fake names.

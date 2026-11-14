@@ -6,6 +6,7 @@
 import { PageHeader } from "@/components/layout/PageHeader"
 import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
+import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -291,6 +292,24 @@ export function Statistics() {
           seriesGroups={groups}
           displayName={tableName}
         />
+      </Card>
+
+      <Card className="gap-0 overflow-hidden pb-4">
+        <CardHeader className="pb-4">
+          <CardTitle>{t("topTorrents.title")}</CardTitle>
+          <CardDescription>{t("topTorrents.description")}</CardDescription>
+        </CardHeader>
+        {statusQuery.error ? (
+          <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
+        ) : ready ? (
+          <TopTorrents instances={selected} period={period} since={since} series={series} displayGroup={displayName} />
+        ) : (
+          <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+        )}
+        <div className="space-y-1 px-6 pt-3 text-xs text-muted-foreground">
+          <p>{t("topTorrents.note")}</p>
+          {!period.from && <p>{t("table.baselineNote")}</p>}
+        </div>
       </Card>
 
       <div className="space-y-1 text-xs text-muted-foreground">

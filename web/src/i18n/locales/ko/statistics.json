@@ -93,6 +93,21 @@
     "averageDay": "일별 평균",
     "chartHour": "시간별 {{group}}",
     "chartDay": "일별 {{group}}",
-    "chartLegend": "선 위는 업로드, 아래는 다운로드"
+    "chartLegend": "선 위는 업로드, 아래는 다운로드",
+    "topTorrents": "{{group}}의 상위 토렌트",
+    "topTorrentsCategoryNote": "카테고리의 상위 토렌트는 각 토렌트의 현재 카테고리를 따릅니다."
+  },
+  "topTorrents": {
+    "title": "상위 토렌트",
+    "description": "기간 동안 업로드가 가장 많은 토렌트입니다. 행을 클릭하면 일별 업로드를 볼 수 있습니다.",
+    "columns": {
+      "torrent": "토렌트",
+      "first24h": "처음 24시간"
+    },
+    "deleted": "삭제됨",
+    "crossSeed": "크로스시드",
+    "note": "삭제된 토렌트는 이름과 함께 자리를 유지합니다. 토렌트는 현재 트래커에 포함됩니다. 처음 24시간은 추가 후 24시간 동안의 업로드입니다. qui가 그 이후에 토렌트를 처음 본 경우 비어 있습니다.",
+    "utcNote": "각 막대는 UTC 하루입니다.",
+    "yearNote": "각 막대는 UTC 하루이며, 연도 막대는 예외입니다. 세부 정보 보존 기간이 지나면 qui는 토렌트와 연도마다 하나의 값만 보관합니다."
   }
 }

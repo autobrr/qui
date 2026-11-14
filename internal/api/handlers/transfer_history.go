@@ -28,7 +28,7 @@ type transferHistoryResponse struct {
 }
 
 // Transfer returns the transfer of one instance in a period.
-// GET /api/instances/{instanceID}/transfer-history?from=&to=&bucket=&groupBy=&group=&timeZone=
+// GET /api/instances/{instanceID}/transfer-history?from=&to=&bucket=&groupBy=&group=&groupOf=&limit=&timeZone=
 func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -39,9 +39,16 @@ func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request
 		InstanceID: instanceID,
 		Bucket:     transferhistory.Bucket(params.Get("bucket")),
 		GroupBy:    transferhistory.Grouping(params.Get("groupBy")),
+		GroupOf:    transferhistory.Grouping(params.Get("groupOf")),
 	}
 	if params.Has("group") {
 		query.Group = new(params.Get("group"))
+	}
+	if raw := params.Get("limit"); raw != "" {
+		if query.Limit, err = strconv.Atoi(raw); err != nil {
+			RespondError(w, http.StatusBadRequest, "Invalid limit: use a whole number")
+			return
+		}
 	}
 	if name := params.Get("timeZone"); name != "" {
 		if query.Location, err = time.LoadLocation(name); err != nil {

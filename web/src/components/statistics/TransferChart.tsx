@@ -4,7 +4,7 @@
  */
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import { byteTicks, formatGapLength, labelledGaps, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
+import { byteTicks, formatGapLength, labelledGaps, SERIES_COLORS, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
@@ -15,7 +15,7 @@ const OTHER = "other"
 
 interface ChartRow {
   start: number
-  width: ChartUnit
+  width: BarWidth
   gapSeconds: number
   total: number
   [series: string]: number | string

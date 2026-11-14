@@ -93,6 +93,21 @@
     "averageDay": "每日平均",
     "chartHour": "{{group}} 每小時",
     "chartDay": "{{group}} 每日",
-    "chartLegend": "線上方為上傳，下方為下載"
+    "chartLegend": "線上方為上傳，下方為下載",
+    "topTorrents": "{{group}} 的熱門種子",
+    "topTorrentsCategoryNote": "分類的熱門種子依每個種子目前的分類統計。"
+  },
+  "topTorrents": {
+    "title": "熱門種子",
+    "description": "該期間內上傳最多的種子。點擊一列可查看其每天的上傳量。",
+    "columns": {
+      "torrent": "種子",
+      "first24h": "前 24 小時"
+    },
+    "deleted": "已刪除",
+    "crossSeed": "輔種",
+    "note": "已刪除的種子保留其位置和名稱。種子計入其目前的 Tracker。前 24 小時是新增後 24 小時內的上傳量。如果 qui 在此之後才首次看到該種子，則為空。",
+    "utcNote": "每個長條代表一個 UTC 日。",
+    "yearNote": "每個長條代表一個 UTC 日，年份長條除外：超過詳細資料保留期後，qui 為每個種子每年只保留一個數值。"
   }
 }

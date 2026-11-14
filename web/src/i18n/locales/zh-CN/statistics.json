@@ -93,6 +93,21 @@
     "averageDay": "每日平均",
     "chartHour": "{{group}} 每小时",
     "chartDay": "{{group}} 每日",
-    "chartLegend": "线上方为上传，下方为下载"
+    "chartLegend": "线上方为上传，下方为下载",
+    "topTorrents": "{{group}} 的热门种子",
+    "topTorrentsCategoryNote": "分类的热门种子按每个种子当前的分类统计。"
+  },
+  "topTorrents": {
+    "title": "热门种子",
+    "description": "该时段内上传最多的种子。点击一行可查看其每天的上传量。",
+    "columns": {
+      "torrent": "种子",
+      "first24h": "前 24 小时"
+    },
+    "deleted": "已删除",
+    "crossSeed": "辅种",
+    "note": "已删除的种子保留其位置和名称。种子计入其当前的 Tracker。前 24 小时是添加后 24 小时内的上传量。如果 qui 在此之后才首次看到该种子，则为空。",
+    "utcNote": "每个柱子代表一个 UTC 日。",
+    "yearNote": "每个柱子代表一个 UTC 日，年份柱子除外：超过详细数据保留期后，qui 为每个种子每年只保留一个数值。"
   }
 }

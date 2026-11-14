@@ -3540,11 +3540,13 @@ paths:
       summary: Get the transfer history of an instance
       description: >-
         Returns the upload and download that qui recorded for each torrent of the instance, added up by Tracker group or by
-        category. A row can be wider than the bucket that the query asks for: qui stores the category totals for each UTC day,
-        so a query for categories by hour returns day rows. After the Detail retention, qui folds the hourly totals into days, so a
-        query for hours in a folded period also returns day rows. The width field of each row tells its bucket. Without a start, the
-        period has no start, and each total row also holds the Baseline: the bytes that the torrents had when qui first recorded
-        the instance. A removed instance keeps its history.
+        category, or for each torrent. A row can be wider than the bucket that the query asks for: qui stores the category totals
+        and the bytes of each torrent for each UTC day, so a query for categories or torrents by hour returns day rows. After the
+        Detail retention, qui folds the hourly totals into days, so a query for hours in a folded period also returns day rows, and
+        it folds the days of each torrent into one row for each year, so a query for the days of a torrent in a folded year returns
+        one year row. The width field of each row tells its bucket. Without a start, the period has no start, and each total row
+        also holds the Baseline: the bytes that the torrents had when qui first recorded the instance. A removed instance keeps
+        its history, and a deleted torrent keeps its rows.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: from
@@ -3568,16 +3570,36 @@ paths:
         - name: groupBy
           in: query
           required: true
+          description: >-
+            What the rows group by. A torrent row has the hash of the torrent as its group, counts toward the Tracker group and
+            the category of the torrent now, and counts all its upload as upload from Statistics cross-seeds when the torrent has
+            that flag.
           schema:
             type: string
-            enum: [tracker, category]
+            enum: [tracker, category, torrent]
         - name: group
           in: query
           description: >-
-            Limits the answer to the rows of one Tracker group or one category, by the group name of a row. An empty value
+            Limits the answer to the rows of one group of the grouping groupOf, by the group name of a row. An empty value
             selects the torrents with no category. Leave it out for each group.
           schema:
             type: string
+        - name: groupOf
+          in: query
+          description: >-
+            The grouping of group. The default is groupBy. Only groupBy=torrent takes another grouping, so that groupBy=torrent
+            with groupOf=tracker and a group gives the torrents of one Tracker group.
+          schema:
+            type: string
+            enum: [tracker, category, torrent]
+        - name: limit
+          in: query
+          description: >-
+            Keeps the rows of the groups with the most upload, the Baseline included, and orders the rows by that upload. Leave
+            it out, or give 0, for each group.
+          schema:
+            type: integer
+            minimum: 0
         - name: timeZone
           in: query
           description: >-
@@ -3588,7 +3610,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Transfer rows, ordered by bucket start and group
+          description: Transfer rows, ordered by bucket start and group, or by upload when the query has a limit
           content:
             application/json:
               schema:
@@ -10871,14 +10893,15 @@ components:
       properties:
         group:
           type: string
-          description: The Tracker group or the category.
+          description: The Tracker group, the category, or the hash of the torrent.
         start:
           type: string
           format: date-time
-          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups and UTC days for categories and for the folded hours, and starts at the first of them. Absent for a total row of a period with no start.
+          description: Start of the bucket. A total row covers each whole stored bucket that overlaps the period, hours for Tracker groups, UTC days for categories, torrents, and the folded hours, and the folded years of a torrent, and starts at the first of them. Absent for a total row of a period with no start.
         width:
           type: string
-          enum: [hour, day, total]
+          enum: [hour, day, year, total]
+          description: The bucket of the row. A year row is a UTC year of a torrent that qui folded.
         gapSeconds:
           type: integer
           format: int64
@@ -10894,6 +10917,29 @@ components:
           format: int64
         baseline:
           $ref: '#/components/schemas/TransferHistoryBytes'
+        torrent:
+          $ref: '#/components/schemas/TransferHistoryTorrent'
+
+    TransferHistoryTorrent:
+      type: object
+      description: The torrent of a row of the grouping by torrent.
+      properties:
+        name:
+          type: string
+        trackerGroup:
+          type: string
+          description: The Tracker group of the torrent now.
+        deleted:
+          type: boolean
+          description: True while the torrent is not in qBittorrent.
+        statisticsCrossSeed:
+          type: boolean
+          description: True when the torrent completed with less than 1% of its size downloaded.
+        uploadFirst24h:
+          type: integer
+          format: int64
+          nullable: true
+          description: The upload of the first 24 hours after the add. Null when qui first saw the torrent after them.
 
     LiveTrackerGroup:
       type: object

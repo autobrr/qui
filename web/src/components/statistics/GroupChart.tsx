@@ -5,7 +5,7 @@
 
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
-import { barBytes, byteTicks, formatGapLength, type ChartUnit, type StatisticsBar } from "@/lib/statistics"
+import { barBytes, byteTicks, formatGapLength, type BarWidth, type ChartUnit, type StatisticsBar } from "@/lib/statistics"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -13,7 +13,7 @@ import { Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from "recha
 
 interface ChartRow {
   start: number
-  width: ChartUnit
+  width: BarWidth
   gapSeconds: number
   uploaded: number
   // Negative, so that the bar hangs below the zero line.

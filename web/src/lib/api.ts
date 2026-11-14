@@ -867,6 +867,12 @@ class ApiClient {
     if (query.group !== undefined) {
       params.set("group", query.group)
     }
+    if (query.groupOf) {
+      params.set("groupOf", query.groupOf)
+    }
+    if (query.limit) {
+      params.set("limit", String(query.limit))
+    }
     if (query.timeZone) {
       params.set("timeZone", query.timeZone)
     }
