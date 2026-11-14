@@ -7,17 +7,8 @@ package pathutil
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
-
-// windowsReservedNames contains device names that are reserved on Windows.
-// These cannot be used as filenames regardless of extension.
-var windowsReservedNames = map[string]bool{
-	"CON": true, "PRN": true, "AUX": true, "NUL": true,
-	"COM1": true, "COM2": true, "COM3": true, "COM4": true,
-	"COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true,
-	"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true,
-	"LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
-}
 
 // illegalCharsRegex matches characters that are illegal in Windows filenames.
 // These are: < > : " / \ | ? *
@@ -54,18 +45,32 @@ func SanitizePathSegment(name string) string {
 		return "_"
 	}
 
-	// Check for Windows reserved names (case-insensitive)
-	// Check both with and without extension (e.g., "CON.txt" is also reserved)
-	upper := strings.ToUpper(result)
-	baseName := upper
-	if idx := strings.Index(upper, "."); idx > 0 {
-		baseName = upper[:idx]
-	}
-	if windowsReservedNames[baseName] {
+	if IsWindowsDeviceName(result) {
 		result = "_" + result
 	}
 
 	return result
+}
+
+// IsWindowsDeviceName reports whether a path component is a reserved Windows
+// device name, ignoring its extension and trailing spaces.
+func IsWindowsDeviceName(component string) bool {
+	base, _, _ := strings.Cut(component, ".")
+	base = strings.TrimRight(base, " ")
+	for _, name := range []string{"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} {
+		if strings.EqualFold(base, name) {
+			return true
+		}
+	}
+	if len(base) < 4 || (!strings.EqualFold(base[:3], "COM") && !strings.EqualFold(base[:3], "LPT")) {
+		return false
+	}
+	switch n := base[3:]; n {
+	case "\u00b9", "\u00b2", "\u00b3":
+		return true
+	default:
+		return len(n) == 1 && n[0] >= '1' && n[0] <= '9'
+	}
 }
 
 // TorrentPathComponent maps one component of a torrent's file path to the name
@@ -84,36 +89,33 @@ func TorrentPathComponent(component string) string {
 	return component
 }
 
-// IsolationFolderName generates a human-readable isolation folder name for
-// hardlink cross-seeding. Format: <sanitized-name>--<shortHash>
-//
-// This is used when torrents need isolation (e.g., rootless torrents with
-// Original layout, or NoSubfolder layout) to prevent file conflicts while
-// keeping the folder name readable and unique.
-//
-// Example: "My.Movie.2024.1080p.BluRay--abcdef12"
-func IsolationFolderName(infohash, name string) string {
-	sanitizedName := SanitizePathSegment(name)
+// maxIsolationNameBytes keeps room for "--<shortHash>" in a folder name of
+// 255 bytes, the per-name limit of ext4, Btrfs, ZFS, and NTFS. 255 UTF-8 bytes
+// are never more than 255 UTF-16 units, so the limit also holds on NTFS.
+const maxIsolationNameBytes = 255 - len("--") - 8
 
-	// Truncate very long names to keep folder name reasonable
-	const maxNameLen = 80
-	if len(sanitizedName) > maxNameLen {
-		sanitizedName = sanitizedName[:maxNameLen]
-		// Remove trailing dots/spaces after truncation
-		sanitizedName = strings.TrimRight(sanitizedName, ". ")
+// IsolationFolder returns the name of the isolation folder for a torrent: the
+// sanitized torrent name, cut at a full character to fit 255 bytes with room
+// for the hash of HashedIsolationFolder.
+func IsolationFolder(name string) string {
+	result := SanitizePathSegment(name)
+	if len(result) <= maxIsolationNameBytes {
+		return result
 	}
-
-	// Use first 8 chars of infohash as short hash
-	shortHash := ""
-	if len(infohash) >= 8 {
-		shortHash = strings.ToLower(infohash[:8])
-	} else if infohash != "" {
-		shortHash = strings.ToLower(infohash)
+	cut := maxIsolationNameBytes
+	for cut > 0 && !utf8.RuneStart(result[cut]) {
+		cut--
 	}
-
-	if shortHash == "" {
-		return sanitizedName
+	if result = strings.TrimRight(result[:cut], ". "); result == "" {
+		return "_"
 	}
+	return result
+}
 
-	return sanitizedName + "--" + shortHash
+// HashedIsolationFolder returns <IsolationFolder>--<shortHash>, where shortHash
+// is the first 8 characters of infohash, lowercased. It is the isolation
+// folder for a torrent whose plain name is taken. It is also the automations
+// template variable {{.IsolationFolderName}}.
+func HashedIsolationFolder(infohash, name string) string {
+	return IsolationFolder(name) + "--" + strings.ToLower(infohash[:min(len(infohash), 8)])
 }

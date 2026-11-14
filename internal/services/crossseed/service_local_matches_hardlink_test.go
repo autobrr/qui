@@ -8,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -90,35 +89,26 @@ func hardlinkTestMatchCtx(svc *Service, sourceDir string) *localMatchContext {
 	}
 }
 
-func TestMatchTorrentsInInstance_HardlinkedCandidate_UpgradedToHardlink(t *testing.T) {
+func TestFindCrossSeeds_HardlinkedCandidate_UpgradedToHardlink(t *testing.T) {
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
 
 	torrentFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
-	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash):    torrentFiles,
-		normalizeHash(hlCandidateHash): torrentFiles,
-	})
-
-	source := &qbt.Torrent{
+	source := qbt.Torrent{
 		Hash:        hlSourceHash,
 		Name:        "Movie.2023.1080p.WEB-GROUP",
 		SavePath:    sourceDir,
 		ContentPath: filepath.Join(sourceDir, fileName),
 	}
-	instance := &models.Instance{ID: 1, Name: "local", HasLocalFilesystemAccess: true}
-	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+	svc := pairService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    torrentFiles,
+		normalizeHash(hlCandidateHash): torrentFiles,
+	}, source, *hardlinkTestCandidate(candidateDir))
 
-	matches := svc.matchTorrentsInInstance(
-		context.Background(), nil, instance,
-		[]qbittorrent.CrossInstanceTorrentView{*hardlinkTestCandidate(candidateDir)},
-		1, normalizeHash(hlSourceHash),
-		source, svc.releaseCache.Parse(source.Name),
-		strings.ToLower(normalizePath(source.ContentPath)), matchCtx,
-	)
-
-	require.Len(t, matches, 1)
-	require.Equal(t, matchTypeHardlink, matches[0].MatchType)
+	response, err := svc.FindCrossSeeds(t.Context(), 1, hlSourceHash)
+	require.NoError(t, err)
+	require.Len(t, response.Matches, 1)
+	require.Equal(t, matchTypeHardlink, response.Matches[0].MatchType)
 }
 
 func TestLocalLinkedMatchType_SeparateCopy_NoUpgrade(t *testing.T) {
@@ -213,37 +203,26 @@ func TestLocalLinkedMatchType_EmptyCandidateFileList_RecordedForStrictMode(t *te
 	require.ErrorContains(t, matchCtx.candidateFilesErr, "empty file list")
 }
 
-func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
+func TestFindCrossSeeds_MagnetSource_NoError(t *testing.T) {
 	// A metadata-less magnet source (empty content path, empty file list) holds no
-	// data, so it has no cross-seeds. Its empty file list must not be fetched and
-	// stamped as sourceFilesErr, which would fail strict delete dialogs.
+	// data, so it has no cross-seeds. Its empty file list must not be read as a
+	// failed file list, which would fail the tab.
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
 
-	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash):    {},
-		normalizeHash(hlCandidateHash): {{Name: fileName, Size: 4}},
-	})
-	source := &qbt.Torrent{
+	source := qbt.Torrent{
 		Hash:     hlSourceHash,
 		Name:     "Movie.2023.1080p.WEB-GROUP",
 		SavePath: sourceDir,
 	}
-	instance := &models.Instance{ID: 1, Name: "local", HasLocalFilesystemAccess: true}
-	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
-	matchCtx.sourceContentPath = ""
+	svc := pairService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    {},
+		normalizeHash(hlCandidateHash): {{Name: fileName, Size: 4}},
+	}, source, *hardlinkTestCandidate(candidateDir))
 
-	matches := svc.matchTorrentsInInstance(
-		context.Background(), nil, instance,
-		[]qbittorrent.CrossInstanceTorrentView{*hardlinkTestCandidate(candidateDir)},
-		1, normalizeHash(hlSourceHash),
-		source, svc.releaseCache.Parse(source.Name),
-		"", matchCtx,
-	)
-
-	require.Empty(t, matches)
-	require.NoError(t, matchCtx.sourceFilesErr)
-	require.NoError(t, matchCtx.candidateFilesErr)
+	response, err := svc.FindCrossSeeds(t.Context(), 1, hlSourceHash)
+	require.NoError(t, err)
+	require.Empty(t, response.Matches)
 }
 
 func TestLocalLinkedMatchType_MagnetCandidate_SkippedSilently(t *testing.T) {
@@ -368,9 +347,9 @@ func TestLocalLinkedMatchType_SourceBackendReresolveFailure_RecordedForStrictMod
 	require.ErrorContains(t, matchCtx.verificationErr, "resolve filesystem backend for instance 1")
 }
 
-func TestFindLocalMatches_BackendFailure_FailsStrictMode(t *testing.T) {
-	// The recorded backend error has to reach the strict-mode caller (delete
-	// dialogs), which is the whole reason the fail-closed sites record it.
+func TestFindCrossSeeds_BackendFailure_FailsTheCall(t *testing.T) {
+	// The recorded backend error has to reach the caller, which is the whole
+	// reason the fail-closed sites record it.
 	fileName := "shared.mkv"
 	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
 	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
@@ -380,29 +359,20 @@ func TestFindLocalMatches_BackendFailure_FailsStrictMode(t *testing.T) {
 		SavePath:    sourceDir,
 		ContentPath: filepath.Join(sourceDir, fileName),
 	}
-	syncManager := &reflinkFindLocalMatchesSyncManager{
-		files: map[string]qbt.TorrentFiles{
-			normalizeHash(hlSourceHash):    files,
-			normalizeHash(hlCandidateHash): files,
-		},
-		source:    source,
-		candidate: *hardlinkTestCandidate(candidateDir),
-	}
+	svc := pairService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    files,
+		normalizeHash(hlCandidateHash): files,
+	}, source, *hardlinkTestCandidate(candidateDir))
 	backendErr := errors.New("backend pool offline")
-	svc := &Service{
-		instanceStore: newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true}),
-		syncManager:   syncManager,
-		releaseCache:  NewReleaseCache(),
-	}
 	// The pool's store fails every resolution, so the very first backend lookup
 	// (getSourceFileIDs) records the error.
 	svc.SetBackendPool(fsops.NewPool(&countingInstanceStore{err: backendErr}, local.NewBackend()))
 
-	response, err := svc.FindLocalMatches(context.Background(), 1, source.Hash, true)
+	response, err := svc.FindCrossSeeds(t.Context(), 1, source.Hash)
 
 	require.Nil(t, response)
 	require.ErrorIs(t, err, backendErr)
-	require.ErrorContains(t, err, "failed to verify local file relationship")
+	require.ErrorContains(t, err, "check the links of torrent "+hlCandidateHash)
 }
 
 func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {

@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -18,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -66,7 +69,8 @@ type completionPollingSyncMock struct {
 	mu        sync.Mutex
 	sequences map[string][]qbt.Torrent
 	hits      map[string]int
-	delay     time.Duration
+	// lookups, when set, receives the hash of each lookup.
+	lookups chan string
 }
 
 func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completionPollingSyncMock {
@@ -81,16 +85,15 @@ func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completio
 	}
 }
 
-func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *completionPollingSyncMock) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if len(filter.Hashes) == 0 {
 		return nil, nil
 	}
 
-	if m.delay > 0 {
-		time.Sleep(m.delay)
-	}
-
 	hash := normalizeHash(filter.Hashes[0])
+	if m.lookups != nil {
+		m.lookups <- hash
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -107,7 +110,7 @@ func (m *completionPollingSyncMock) GetTorrents(_ context.Context, _ int, filter
 	m.hits[hash]++
 
 	torrent := sequence[index]
-	return []qbt.Torrent{torrent}, nil
+	return testTorrentRefs([]qbt.Torrent{torrent}), nil
 }
 
 func (m *completionPollingSyncMock) hitCount(hash string) int {
@@ -153,7 +156,7 @@ func (*completionPollingSyncMock) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (*completionPollingSyncMock) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*completionPollingSyncMock) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -179,6 +182,21 @@ func (*completionPollingSyncMock) GetCategories(context.Context, int) (map[strin
 
 func (*completionPollingSyncMock) CreateCategory(context.Context, int, string, string) error {
 	return nil
+}
+
+// awaitLookup waits until the fake looks up hash.
+func awaitLookup(t *testing.T, lookups <-chan string, hash string) {
+	t.Helper()
+	for {
+		select {
+		case got := <-lookups:
+			if got == hash {
+				return
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("no lookup of %s", hash)
+		}
+	}
 }
 
 func setCompletionCheckingTimings(svc *Service, pollInterval time.Duration, timeout time.Duration) {
@@ -212,6 +230,7 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 			CompletionOn: 124,
 		}},
 	})
+	syncMock.lookups = make(chan string, 16)
 	firstStarted := make(chan struct{})
 	secondStarted := make(chan struct{})
 	releaseFirst := make(chan struct{})
@@ -270,10 +289,12 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 		})
 	}()
 
+	// The second torrent is ready, so the second search goes on to the lock.
+	awaitLookup(t, syncMock.lookups, secondHash)
 	select {
 	case <-secondStarted:
 		t.Fatal("second completion search started before first released")
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	close(releaseFirst)
@@ -321,6 +342,7 @@ func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *test
 		},
 	})
 
+	syncMock.lookups = make(chan string, 16)
 	firstStarted := make(chan struct{})
 	secondStarted := make(chan struct{})
 	releaseFirst := make(chan struct{})
@@ -374,14 +396,14 @@ func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *test
 		})
 	}()
 
-	require.Eventually(t, func() bool {
-		return syncMock.hitCount(secondHash) >= 2
-	}, time.Second, 10*time.Millisecond, "second wait was not polled while first search held the serialization lock")
-
+	// The second wait polls while the first search holds the lock: the first
+	// poll sees checking, the second sees it ready.
+	awaitLookup(t, syncMock.lookups, secondHash)
+	awaitLookup(t, syncMock.lookups, secondHash)
 	select {
 	case <-secondStarted:
 		t.Fatal("second completion search started before first released")
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	close(releaseFirst)
@@ -679,7 +701,7 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 		},
 	})
 
-	invoked := make(chan struct{}, 1)
+	invoked := false
 	svc := &Service{
 		completionStore: completionStore,
 		syncManager:     syncMock,
@@ -687,7 +709,7 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 		completionSearchInvoker: func(_ context.Context, _ int, _ *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
-			invoked <- struct{}{}
+			invoked = true
 			return nil
 		},
 	}
@@ -701,17 +723,17 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 		CompletionOn: 300,
 	})
 
-	select {
-	case <-invoked:
-		t.Fatal("completion search should be skipped after refreshed torrent gains cross-seed tag")
-	case <-time.After(100 * time.Millisecond):
-	}
+	require.False(t, invoked, "completion search should be skipped after refreshed torrent gains cross-seed tag")
 }
 
+// completionLookupsPerAttempt counts the lookups of a torrent that stays
+// checking for one attempt: one at the start and one at each poll.
+const completionLookupsPerAttempt = int(defaultCompletionCheckingTimeout/defaultCompletionCheckingPollInterval) + 1
+
 func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testing.T) {
-	hash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-	svc := &Service{
-		syncManager: newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+	synctest.Test(t, func(t *testing.T) {
+		hash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
 			hash: {
 				{
 					Hash:     hash,
@@ -726,171 +748,184 @@ func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testin
 					State:    qbt.TorrentStatePausedUp,
 				},
 			},
-		}),
-	}
-	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
+		})
+		svc := &Service{syncManager: syncMock}
 
-	_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
-		Hash: hash,
-		Name: "partial",
+		_, err := svc.waitForCompletionTorrentReady(t.Context(), 1, qbt.Torrent{
+			Hash: hash,
+			Name: "partial",
+		})
+		require.ErrorIs(t, err, ErrTorrentNotComplete)
+		require.Contains(t, err.Error(), "progress 0.27")
+		require.Equal(t, 2, syncMock.hitCount(hash))
 	})
-	require.ErrorIs(t, err, ErrTorrentNotComplete)
-	require.Contains(t, err.Error(), "progress 0.27")
+}
+
+// regression: #3707
+func TestWaitForCompletionTorrentReady_ErroredSourceGoesOnToItsRefusal(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		hash := "abababababababababababababababababababab"
+		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+			hash: {
+				{
+					Hash:     hash,
+					Name:     "partial",
+					Progress: 0.27,
+					State:    qbt.TorrentStateCheckingResumeData,
+				},
+				{
+					Hash:     hash,
+					Name:     "partial",
+					Progress: 0.27,
+					State:    qbt.TorrentStateMissingFiles,
+				},
+			},
+		})
+		svc := &Service{syncManager: syncMock}
+
+		ready, err := svc.waitForCompletionTorrentReady(t.Context(), 1, qbt.Torrent{
+			Hash: hash,
+			Name: "partial",
+		})
+		require.NoError(t, err)
+		require.Equal(t, qbt.TorrentStateMissingFiles, ready.State)
+	})
 }
 
 func TestWaitForCompletionTorrentReady_TimesOutWhileChecking(t *testing.T) {
-	hash := "ffffffffffffffffffffffffffffffffffffffff"
-	svc := &Service{
-		syncManager: newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+	synctest.Test(t, func(t *testing.T) {
+		hash := "ffffffffffffffffffffffffffffffffffffffff"
+		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
 			hash: {{
 				Hash:     hash,
 				Name:     "stuck-checking",
 				Progress: 0.27,
 				State:    qbt.TorrentStateCheckingResumeData,
 			}},
-		}),
-	}
-	setCompletionCheckingTimings(svc, 5*time.Millisecond, 20*time.Millisecond)
-	setCompletionCheckingRetryPolicy(svc, 5*time.Millisecond, 1)
+		})
+		svc := &Service{syncManager: syncMock, completionMaxAttempts: 1}
 
-	_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
-		Hash: hash,
-		Name: "stuck-checking",
+		start := time.Now()
+		_, err := svc.waitForCompletionTorrentReady(t.Context(), 1, qbt.Torrent{
+			Hash: hash,
+			Name: "stuck-checking",
+		})
+		require.EqualError(t, err, "completion torrent stuck-checking still checking after 5m0s")
+		require.Equal(t, defaultCompletionCheckingTimeout, time.Since(start))
+		require.Equal(t, completionLookupsPerAttempt, syncMock.hitCount(hash))
 	})
-	require.EqualError(t, err, "completion torrent stuck-checking still checking after 20ms")
 }
 
 func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaiters(t *testing.T) {
-	hash := "9999999999999999999999999999999999999999"
-	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
-		hash: {
-			{
-				Hash:     hash,
-				Name:     "shared-wait",
-				Progress: 0.27,
-				State:    qbt.TorrentStateCheckingResumeData,
+	synctest.Test(t, func(t *testing.T) {
+		hash := "9999999999999999999999999999999999999999"
+		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+			hash: {
+				{
+					Hash:     hash,
+					Name:     "shared-wait",
+					Progress: 0.27,
+					State:    qbt.TorrentStateCheckingResumeData,
+				},
+				{
+					Hash:     hash,
+					Name:     "shared-wait",
+					Progress: 1.0,
+					State:    qbt.TorrentStateUploading,
+				},
 			},
-			{
-				Hash:     hash,
-				Name:     "shared-wait",
-				Progress: 1.0,
-				State:    qbt.TorrentStateUploading,
-			},
-		},
+		})
+		svc := &Service{syncManager: syncMock}
+
+		start := make(chan struct{})
+		errs := make(chan error, 2)
+
+		for range 2 {
+			go func() {
+				<-start
+				_, err := svc.waitForCompletionTorrentReady(t.Context(), 1, qbt.Torrent{
+					Hash: hash,
+					Name: "shared-wait",
+				})
+				errs <- err
+			}()
+		}
+
+		close(start)
+
+		for range 2 {
+			require.NoError(t, <-errs)
+		}
+
+		require.Equal(t, 2, syncMock.hitCount(hash))
 	})
-	syncMock.delay = 2 * time.Millisecond
-
-	svc := &Service{
-		syncManager: syncMock,
-	}
-	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
-
-	start := make(chan struct{})
-	errs := make(chan error, 2)
-
-	for range 2 {
-		go func() {
-			<-start
-			_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
-				Hash: hash,
-				Name: "shared-wait",
-			})
-			errs <- err
-		}()
-	}
-
-	close(start)
-
-	for range 2 {
-		require.NoError(t, <-errs)
-	}
-
-	require.Equal(t, 2, syncMock.hitCount(hash))
 }
 
 func TestWaitForCompletionTorrentReady_TimesOutAfterCheckingRetries(t *testing.T) {
-	hash := "1212121212121212121212121212121212121212"
-	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
-		hash: {{
-			Hash:     hash,
-			Name:     "retry-timeout",
-			Progress: 0.27,
-			State:    qbt.TorrentStateCheckingResumeData,
-		}},
-	})
+	synctest.Test(t, func(t *testing.T) {
+		hash := "1212121212121212121212121212121212121212"
+		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+			hash: {{
+				Hash:     hash,
+				Name:     "retry-timeout",
+				Progress: 0.27,
+				State:    qbt.TorrentStateCheckingResumeData,
+			}},
+		})
+		svc := &Service{syncManager: syncMock}
 
-	svc := &Service{
-		syncManager: syncMock,
-	}
-	setCompletionCheckingTimings(svc, 5*time.Millisecond, 10*time.Millisecond)
-	setCompletionCheckingRetryPolicy(svc, 8*time.Millisecond, 3)
-
-	_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
-		Hash: hash,
-		Name: "retry-timeout",
+		start := time.Now()
+		_, err := svc.waitForCompletionTorrentReady(t.Context(), 1, qbt.Torrent{
+			Hash: hash,
+			Name: "retry-timeout",
+		})
+		require.EqualError(t, err, "completion torrent retry-timeout still checking after 5m0s")
+		require.Equal(t, 3*defaultCompletionCheckingTimeout+2*defaultCompletionCheckingRetryDelay, time.Since(start))
+		require.Equal(t, 3*completionLookupsPerAttempt, syncMock.hitCount(hash))
 	})
-	require.EqualError(t, err, "completion torrent retry-timeout still checking after 10ms")
-	require.GreaterOrEqual(t, syncMock.hitCount(hash), 5)
 }
 
 func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaitersDuringRetryBackoff(t *testing.T) {
-	hash := "3434343434343434343434343434343434343434"
-	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
-		hash: {
-			{
-				Hash:     hash,
-				Name:     "shared-retry-wait",
-				Progress: 0.27,
-				State:    qbt.TorrentStateCheckingResumeData,
-			},
-			{
-				Hash:     hash,
-				Name:     "shared-retry-wait",
-				Progress: 0.27,
-				State:    qbt.TorrentStateCheckingResumeData,
-			},
-			{
-				Hash:     hash,
-				Name:     "shared-retry-wait",
-				Progress: 0.27,
-				State:    qbt.TorrentStateCheckingResumeData,
-			},
-			{
-				Hash:     hash,
-				Name:     "shared-retry-wait",
-				Progress: 1.0,
-				State:    qbt.TorrentStateUploading,
-			},
-		},
+	synctest.Test(t, func(t *testing.T) {
+		hash := "3434343434343434343434343434343434343434"
+		checking := qbt.Torrent{
+			Hash:     hash,
+			Name:     "shared-retry-wait",
+			Progress: 0.27,
+			State:    qbt.TorrentStateCheckingResumeData,
+		}
+		ready := checking
+		ready.Progress = 1.0
+		ready.State = qbt.TorrentStateUploading
+		// The first attempt times out, and the torrent is ready at the first
+		// lookup after the retry delay.
+		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+			hash: append(slices.Repeat([]qbt.Torrent{checking}, completionLookupsPerAttempt), ready),
+		})
+		svc := &Service{syncManager: syncMock}
+
+		start := make(chan struct{})
+		errs := make(chan error, 2)
+
+		for range 2 {
+			go func() {
+				<-start
+				_, err := svc.waitForCompletionTorrentReady(t.Context(), 1, qbt.Torrent{
+					Hash: hash,
+					Name: "shared-retry-wait",
+				})
+				errs <- err
+			}()
+		}
+
+		close(start)
+
+		for range 2 {
+			require.NoError(t, <-errs)
+		}
+
+		require.Equal(t, completionLookupsPerAttempt+1, syncMock.hitCount(hash))
 	})
-
-	svc := &Service{
-		syncManager: syncMock,
-	}
-	setCompletionCheckingTimings(svc, 5*time.Millisecond, 10*time.Millisecond)
-	setCompletionCheckingRetryPolicy(svc, 8*time.Millisecond, 3)
-
-	start := make(chan struct{})
-	errs := make(chan error, 2)
-
-	for range 2 {
-		go func() {
-			<-start
-			_, err := svc.waitForCompletionTorrentReady(context.Background(), 1, qbt.Torrent{
-				Hash: hash,
-				Name: "shared-retry-wait",
-			})
-			errs <- err
-		}()
-	}
-
-	close(start)
-
-	for range 2 {
-		require.NoError(t, <-errs)
-	}
-
-	require.Equal(t, 4, syncMock.hitCount(hash))
 }
 
 type countingCompletionQuerier struct {
@@ -921,4 +956,8 @@ func TestHandleTorrentCompletion_BurstReadsSettingsOncePerInstance(t *testing.T)
 	wg.Wait()
 
 	assert.Equal(t, int64(2), q.settingsReads.Load())
+}
+
+func (*completionPollingSyncMock) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

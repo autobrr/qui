@@ -40,11 +40,12 @@
     "enableSwitch": "Activa l'automatització d'RSS",
     "intervalLabel": "Interval d'execució de l'RSS (minuts)",
     "intervalTooltip": "A cada execució, l'automatització processa el canal sencer de cada indexador de Torznab activat. L'interval mínim és de {{min}} minuts per no castigar els indexadors.",
-    "targetInstances": "Instàncies de destinació",
+    "instancesToSearch": "Instàncies on cercar",
+    "instancesToSearchHelp": "L'automatització d'RSS cerca coincidències als torrents d'aquestes instàncies. Quan una instància té una instància de cross-seed, qui afegeix a aquesta instància de cross-seed els cross-seed que hi troba.",
     "selectInstances": "Selecciona instàncies de qBittorrent",
     "noActiveInstances": "No hi ha cap instància activa disponible",
     "noInstancesAvailable": "No hi ha cap instància disponible.",
-    "pickInstance": "Tria com a mínim una instància per rebre els cross-seed.",
+    "pickInstance": "Tria com a mínim una instància on cercar.",
     "instancesSelected": "{{count}} instància/es seleccionada/es.",
     "targetIndexers": "Indexadors de destinació",
     "allEnabledIndexers": "Tots els indexadors activats (deixa-ho buit per a tots)",
@@ -55,13 +56,13 @@
     "includeCategories": "Inclou aquestes categories",
     "allCategories": "Totes les categories (deixa-ho buit per a totes)",
     "typeToAddCategories": "Escriu per afegir categories",
-    "selectInstancesToLoadCategories": "Selecciona les instàncies de destinació per carregar les categories",
+    "selectInstancesToLoadCategories": "Selecciona les instàncies on cercar per carregar les categories",
     "allCategoriesIncluded": "S'hi inclouran totes les categories.",
     "selectedCategoriesMatched": "Només es tindran en compte {{count}} categoria/es seleccionada/es.",
     "includeTags": "Inclou aquestes etiquetes",
     "allTags": "Totes les etiquetes (deixa-ho buit per a totes)",
     "typeToAddTags": "Escriu per afegir etiquetes",
-    "selectInstancesToLoadTags": "Selecciona les instàncies de destinació per carregar les etiquetes",
+    "selectInstancesToLoadTags": "Selecciona les instàncies on cercar per carregar les etiquetes",
     "allTagsIncluded": "S'hi inclouran totes les etiquetes.",
     "selectedTagsMatched": "Només es tindran en compte {{count}} etiqueta/es seleccionada/es.",
     "excludeCategories": "Exclou aquestes categories",
@@ -82,14 +83,12 @@
     "cancel": "Cancel·la",
     "runNow": "Executa ara",
     "saveSettings": "Desa la configuració de l'automatització d'RSS",
-    "reset": "Restableix",
     "requiresTorznabIndexer": "Les execucions de l'automatització d'RSS necessiten com a mínim un indexador de Torznab.",
     "items": "{{count}} elements",
     "failedCount": "{{count}} fallits",
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} execucions • +{{added}}",
     "runSummaryWithFailures": "{{runs}} execucions • +{{added}} • {{failed}} fallits",
-    "runDisabledAlreadyRunning": "Ja hi ha una execució de l'automatització en curs.",
     "runDisabledCooldown": "Les execucions manuals estan limitades a un interval de {{minutes}} minuts. Torna-ho a provar d'aquí a {{remaining}}."
   },
   "webhook": {
@@ -193,7 +192,11 @@
       "enabledRedMissingOps": "Gazelle: activat (clau de RED definida, falta la d'OPS)",
       "enabledKeysMissing": "Gazelle: activat (falten les claus)"
     },
-    "noMessageProvided": "No s'ha proporcionat cap missatge"
+    "noMessageProvided": "No s'ha proporcionat cap missatge",
+    "cancelDialog": {
+      "title": "Vols cancel·lar l'exploració de la biblioteca?",
+      "description": "Això atura l'exploració actual de la biblioteca. Els cross-seeds ja afegits es mantenen, però no se cerquen més torrents."
+    }
   },
   "rules": {
     "hardlinkReflink": "Mode hardlink / reflink",
@@ -201,7 +204,7 @@
     "hardlinkDescription": "Crea arbres de fitxers amb hardlinks o reflinks (còpia en escriure) per als cross-seed. Cada instància es pot configurar de manera independent. El directori base ha de ser al mateix sistema de fitxers que els camins de baixada de la instància.",
     "reflinkNote": "El mode reflink permet fer cross-seeding segur de torrents amb fitxers de més o que en falten. Quan hi ha fitxers de més, qui inicia una recomprovació; si queda per sota del llindar, el torrent es manté aturat per revisar-lo manualment.",
     "crossSeedMode": "Mode de cross-seed",
-    "enableLocalFilesystem": "Activa «Accés al sistema de fitxers local» a la configuració de la instància per fer servir els modes hardlink o reflink.",
+    "enableLocalFilesystem": "El mode hardlink necessita accés d'escriptura al sistema de fitxers: activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància. El mode reflink necessita «Accés al sistema de fitxers local».",
     "regular": "Normal",
     "regularDescription": "Reutilitza els fitxers existents al lloc on són. Ràpid i sense espai de disc addicional.",
     "hardlink": "Hardlink",
@@ -218,7 +221,7 @@
     "fallbackToRegular": "Recorre al mode normal si hi ha un error",
     "fallbackDescription": "Si el mode {{mode}} falla (per exemple, per sistemes de fitxers diferents), recorre al mode normal fent servir els fitxers existents.",
     "saveChanges": "Desa els canvis",
-    "noLocalAccess": "Sense accés local",
+    "noLocalAccess": "Sense accés d'escriptura al sistema de fitxers",
     "seasonPack": {
       "title": "Packs de temporada",
       "description": "Quan autobrr captura un pack de temporada, qui comprova si ja tens prou dades locals per injectar-lo i, després, deixa que qBittorrent baixi tot el que hi falti.",
@@ -360,6 +363,9 @@
       "categories": "La categoria i les etiquetes que qui assigna a cada nou cross-seed."
     }
   },
+  "run": {
+    "starting": "L'execució s'està iniciant."
+  },
   "seasonPackRuns": {
     "title": "Execucions recents de packs de temporada",
     "noRunsYet": "Encara no hi ha cap execució",
@@ -370,14 +376,18 @@
     "failedCount_one": "{{count}} fallit",
     "failedCount_other": "{{count}} fallits",
     "filterByName": "Filtra per nom…",
-    "showSkipped": "Mostra els omesos",
     "refresh": "Actualitza",
     "loadError": "No s'han pogut carregar les execucions de packs de temporada.",
     "loading": "S'estan carregant les execucions de packs de temporada...",
     "noActivity": "Encara no hi ha cap activitat del webhook de packs de temporada.",
     "noMatches": "Cap execució coincideix amb els teus filtres.",
-    "showSkippedCount_one": "Mostra {{count}} omès",
-    "showSkippedCount_other": "Mostra {{count}} omesos",
+    "statusFilter": "Filtre d'estat",
+    "showStatus": {
+      "applied": "Mostra els aplicats ({{total}})",
+      "ready": "Mostra els a punt ({{total}})",
+      "skipped": "Mostra els omesos ({{total}})",
+      "failed": "Mostra els fallits ({{total}})"
+    },
     "coverage": "Cobertura",
     "episodes": "Episodis",
     "instance": "Instància",
@@ -412,13 +422,13 @@
     "settingsSaved": "S'ha desat la configuració",
     "failedToSaveSettings": "No s'ha pogut desar la configuració",
     "cannotEnableMode": "No es pot activar el mode {{mode}}",
-    "noLocalFilesystemAccess": "La instància \"{{name}}\" no té activat l'accés al sistema de fitxers local.",
+    "noLocalFilesystemAccess": "La instància \"{{name}}\" no pot fer servir aquest mode. El mode hardlink necessita accés d'escriptura al sistema de fitxers, local o per SSH; el mode reflink necessita «Accés al sistema de fitxers local».",
     "baseDirRequired": "Primer cal definir el directori base.",
     "unknownError": "Error desconegut",
     "noIndexersConfigured": "No hi ha cap indexador de Torznab configurat",
-    "pickInstanceBeforeRunning": "Tria com a mínim una instància per rebre els cross-seed abans d'executar l'automatització d'RSS.",
+    "pickInstanceBeforeRunning": "Tria com a mínim una instància on cercar abans d'executar l'automatització d'RSS.",
     "enableAutomationAfterIndexers": "Activa l'automatització d'RSS només després d'haver configurat els indexadors de Torznab.",
-    "saveSettingsFirst": "Desa la configuració de l'automatització d'RSS per aplicar les instàncies de destinació actualitzades abans d'executar-la.",
+    "saveSettingsFirst": "Desa la configuració de l'automatització d'RSS per aplicar les instàncies on cercar actualitzades abans d'executar-la.",
     "selectInstanceToRun": "Selecciona una instància sobre la qual executar-ho",
     "seededSearchNeedsGazelle": "La cerca de torrents sembrats necessita Gazelle",
     "enableGazelleDescription": "Activa la coincidència amb Gazelle (OPS/RED) abans d'executar-ho amb Torznab desactivat.",
@@ -462,6 +472,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} han fallat: mira'n els resultats per als detalls",
       "applyCompletedUnavailable": "La sol·licitud de cross-seed s'ha completat (detalls no disponibles)",
       "applyNoChanges": "No s'ha afegit cap cross-seed",
+      "applyAlreadyInClient": "Ja és al client",
       "applyCompletedPart": ", {{count}} completats",
       "applyCompletedPrefix": "{{count}} completats, "
     }
@@ -496,13 +507,28 @@
       "invalidInfohash": "L'infohash ha de tenir 40 o 64 caràcters hexadecimals"
     }
   },
+  "routeConfirm": {
+    "title": "Deixar de protegir els fitxers encaminats?",
+    "counting": "S'estan comptant els torrents encaminats…",
+    "count_one": "{{count}} torrent encaminat a {{crossSeed}} fa servir fitxers de les carpetes base afectades de {{source}}.",
+    "count_other": "{{count}} torrents encaminats a {{crossSeed}} fan servir fitxers de les carpetes base afectades de {{source}}.",
+    "countUnknown": "{{crossSeed}} no està disponible, per tant el nombre de torrents encaminats a les carpetes base afectades de {{source}} és desconegut.",
+    "orphanScan": "L'escaneig d'orfes de {{source}} deixa de protegir els fitxers d'aquests torrents.",
+    "clear": "{{crossSeed}} conserva els torrents encaminats, i els seus fitxers es queden a les carpetes base de {{source}}. Moveu o suprimiu aquests torrents abans d'esborrar la ruta.",
+    "deleteSource": "Després d'aquesta supressió, {{source}} torna a afegir els cross-seeds a si mateixa.",
+    "routesUnknown": "qui no ha pogut llegir les rutes de cross-seed, així que no pot indicar quines instàncies d'origen perden la protecció després d'aquesta eliminació.",
+    "routeReadFailed": "qui no ha pogut llegir la ruta de cross-seed de {{source}}, així que no ha desat el canvi.",
+    "routeChanged": "La ruta de cross-seed de {{source}} ha canviat en una altra pestanya, per tant qui no ha desat el formulari. Reviseu la ruta i torneu a desar.",
+    "confirm": "Continua",
+    "cancel": "Cancel·la"
+  },
   "dirScan": {
     "title": "Explorador de directoris",
     "description": "Explora directoris locals a la recerca de baixades completades i en fa cross-seed automàticament.",
     "settings": "Configuració",
     "enabled": "Activat",
     "disabled": "Desactivat",
-    "noLocalAccessWarning": "Cap instància de qBittorrent té activat l'accés al sistema de fitxers local. Activa'l a la configuració de la instància per fer servir l'explorador de directoris.",
+    "noLocalAccessWarning": "Cap instància de qBittorrent té accés al sistema de fitxers. Activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància per fer servir l'explorador de directoris.",
     "scanDirectories": "Directoris a explorar",
     "scanDirectoriesDescription": "Configura els directoris que s'han d'explorar a la recerca de contingut apte per a cross-seed.",
     "addDirectory": "Afegeix un directori",
@@ -615,7 +641,7 @@
       "defaultCategory": "Categoria predeterminada",
       "defaultCategoryHelp": "Categoria dels torrents injectats quan el directori explorat no la substitueix.",
       "tags": "Etiquetes",
-      "noLocalInstances": "No hi ha cap instància de qBittorrent amb accés local",
+      "noLocalInstances": "No hi ha cap instància de qBittorrent amb accés al sistema de fitxers",
       "typeToAddCategory": "Escriu per afegir una categoria",
       "noCategory": "Cap categoria",
       "typeToAddTags": "Escriu per afegir etiquetes",
@@ -636,6 +662,7 @@
       "enabledLabel": "Activat",
       "instanceLabel": "Instància de qBittorrent de destinació",
       "selectInstance": "Selecciona una instància",
+      "remoteNoIdentityNote": "qui no pot saber quins fitxers ja s'estan sembrant en aquesta instància remota, així que els cerca una vegada cadascun.",
       "intervalLabel": "Interval d'exploració (minuts)",
       "intervalHelp": "Mínim: 60 minuts (1 hora). Predeterminat: 1440 minuts (24 hores).",
       "skipIndividualEpisodesLabel": "Omet els episodis individuals",
@@ -650,7 +677,7 @@
       "typeToAddTags": "Escriu per afegir etiquetes",
       "tagsLoadError": "No s'han pogut carregar les etiquetes de qBittorrent. Igualment pots escriure valors personalitzats.",
       "regularModeTitle": "El mode normal està activat per a aquesta instància",
-      "regularModeHelp": "Selecciona <hardlink>hardlink</hardlink> o <reflink>reflink</reflink> a Cross-Seed > Regles > Mode hardlink / reflink per evitar aquest risc. Primer activa «Accés al sistema de fitxers local» a la configuració de la instància.",
+      "regularModeHelp": "Selecciona <hardlink>hardlink</hardlink> o <reflink>reflink</reflink> a Cross-Seed > Després de la injecció > Mode hardlink / reflink per evitar aquest risc. El mode hardlink necessita accés d'escriptura al sistema de fitxers: activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància. El mode reflink necessita «Accés al sistema de fitxers local».",
       "regularModeAcknowledge": "Entenc els riscos de fer servir el mode normal amb directoris multimèdia",
       "cancel": "Cancel·la",
       "addButton": "Afegeix el directori",
@@ -665,5 +692,41 @@
       "cancel": "Cancel·la",
       "delete": "Elimina"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "Trobat a {{source}}, afegit a {{crossSeed}}",
+    "foundOnRoutedTo": "Trobat a {{source}}, redirigit a {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "Instància de cross-seed no disponible",
+    "cannotSeeData": "La instància de cross-seed no veu les dades"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Instància de cross-seed",
+    "crossSeedInstanceDescription": "Els cross-seeds que qui troba en aquesta instància van només a la instància de cross-seed. Aquesta instància no els rep mai. qui fa hardlinks o reflinks dels fitxers als directoris base d'aquesta instància.",
+    "noCrossSeedInstance": "Cap instància de cross-seed",
+    "receivesCrossSeeds": "Aquesta instància és la instància de cross-seed de {{names}}, de manera que no pot enviar els seus propis cross-seeds a una instància de cross-seed.",
+    "needsLinkMode": "Una instància de cross-seed necessita el mode hardlink o reflink. Selecciona'n un i desa'l primer.",
+    "brokenRule": "Aquesta ruta ja no compleix les regles de ruta: {{reason}}",
+    "mappedPaths": "Camins a la instància de cross-seed",
+    "mappedPathsDescription": "Per a cada directori base, escriu el camí on la instància de cross-seed el veu. Deixa una fila buida quan les dues instàncies fan servir el mateix camí.",
+    "samePathPlaceholder": "Mateix camí",
+    "overlap": "{{first}} i {{second}} apunten a la mateixa carpeta o a carpetes niades a la instància de cross-seed.",
+    "testRoute": "Prova la ruta",
+    "saveRoute": "Desa la ruta",
+    "clearRoute": "Esborra la ruta",
+    "saved": "Ruta desada",
+    "cleared": "Ruta esborrada",
+    "saveFailed": "No s'ha pogut desar la ruta",
+    "clearFailed": "No s'ha pogut esborrar la ruta",
+    "testFailed": "No s'ha pogut provar la ruta",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "la instància de cross-seed la veu",
+      "seesFolderNotMarker": "la instància de cross-seed veu la carpeta però no el marcador",
+      "cannotSeeFolder": "la instància de cross-seed no veu la carpeta",
+      "cannotWrite": "qui no pot escriure a la carpeta d'aquesta instància"
+    },
+    "markerHint": "Un muntatge de xarxa (NFS) pot mostrar una llista de carpetes antiga fins a 60 segons. Espera un minut i torna a provar."
   }
 }

@@ -4,6 +4,7 @@
  */
 
 import type { TorrentStreamPayload } from "@/types"
+import { STREAM_ERROR_DISCONNECTED } from "@/lib/sync-stream-state"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
     connected: true,
     initialized: true,
     dataStalled: false,
-    error: null,
+    error: null as string | null,
     retrying: false,
     retryAttempt: 0,
   },
@@ -60,6 +61,29 @@ describe("useActiveTaskCount", () => {
     expect(result.current).toBe(3)
     unmount()
     client.clear()
+  })
+
+  it.each([
+    ["a stalled view", { dataStalled: true }, 3],
+    ["a server stream-error", { connected: false, error: "instance unreachable: connection refused" }, 1],
+    ["a client-side connection error", { connected: false, error: STREAM_ERROR_DISCONNECTED }, 3],
+  ] as const)("polls the count at the stream fallback interval for %s", async (_name, state, callsAt60s) => {
+    vi.useFakeTimers()
+    try {
+      mocks.state = { ...mocks.state, ...state }
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      )
+      const { unmount } = renderHook(() => useActiveTaskCount(1, true), { wrapper })
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60000) })
+      expect(mocks.getActiveTaskCount).toHaveBeenCalledTimes(callsAt60s)
+      unmount()
+      client.clear()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("does not show another instance's streamed count while the next instance loads", async () => {

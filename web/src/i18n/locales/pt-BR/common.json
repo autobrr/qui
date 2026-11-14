@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Painel",
+    "statistics": "Estatísticas",
     "search": "Busca",
     "crossSeed": "Cross-Seed",
     "automations": "Automações",
@@ -46,7 +47,7 @@
     "tasksForInstance": "Tarefas para a instância",
     "settingsForInstance": "Configurações para a instância",
     "clearSearch": "Limpar busca",
-    "searchTorrents": "Buscar torrents... ({{shortcutKey}})",
+    "searchTorrents": "Buscar torrents...",
     "globPattern": "Padrão Glob...",
     "smartSearchTitle": "Recursos de Busca Inteligente:",
     "smartSearchGlob": "Padrões Glob:",
@@ -57,6 +58,7 @@
     "smartSearchFields": "Busca no nome, categoria e tags",
     "smartSearchEnter": "Pressione Enter para busca instantânea",
     "smartSearchAuto": "Busca automaticamente após pausa de 500ms",
+    "smartSearchShortcut": "Pressione {{shortcutKey}} para ir à busca",
     "torrentCreationTasksTitle": "Tarefas de Criação de Torrent",
     "updateAvailable": "Atualização Disponível",
     "updateVersion": "Versão {{version}}",
@@ -77,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Painel",
+    "statistics": "Estatísticas",
     "clients": "Clientes",
     "settings": "Configurações",
     "qbittorrentClients": "Clientes qBittorrent",
@@ -100,17 +103,22 @@
     "cancel": "Cancelar",
     "close": "Fechar",
     "create": "Criar",
-    "copyPath": "Copiar caminho",
     "scrollToTop": "Rolar para o topo",
     "search": "Buscar",
-    "select": "Selecionar"
+    "select": "Selecionar",
+    "copyValue": "Copiar {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Entendi"
   },
   "placeholders": {
     "search": "Buscar...",
     "selectItems": "Selecionar itens..."
   },
   "feedback": {
-    "noResultsFound": "Nenhum resultado encontrado."
+    "noResultsFound": "Nenhum resultado encontrado.",
+    "copied": "{{label}} copiado para a área de transferência",
+    "copyFailed": "Falha ao copiar para a área de transferência"
   },
   "errors": {
     "unknown": "Erro desconhecido",
@@ -149,16 +157,72 @@
     "dark": "Escuro",
     "system": "Sistema",
     "theme": "Tema",
-    "premium": "Premium",
     "switchedToMode": "Alterado para o modo {{mode}}",
     "switchedToTheme": "Alterado para o tema {{theme}}",
     "switchedToThemeVariation": "Alterado para o tema {{theme}} ({{variation}})",
-    "premiumThemeError": "Este é um tema premium. Abra Configurações → Temas para ativar uma licença."
+    "premiumThemeError": "Este tema precisa de uma licença. Abra Configurações → Temas para ativar uma licença."
   },
   "updateBanner": {
     "updateAvailable": "Atualização Disponível",
     "versionAvailable": "A versão {{version}} já está disponível",
     "dismiss": "Dispensar"
+  },
+  "systemNotice": {
+    "needsAttention": "Requer atenção",
+    "since": "Desde {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Ir para a correção",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Gravação parada",
+        "title": "Gravação parada",
+        "effect": "O qui não consegue gravar o histórico de transferências. Ele tenta novamente na próxima gravação.",
+        "fix": "Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados.",
+        "menuFix": "Libere espaço em disco para o banco"
+      },
+      "shrink_failed": {
+        "short": "Falha ao reduzir",
+        "title": "Falha ao reduzir",
+        "effect": "O qui não conseguiu reduzir o arquivo do banco de dados. O banco de dados não mudou e o qui funciona normalmente.",
+        "fix": "O log do qui tem os detalhes.",
+        "menuFix": "Ler o log do qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "O disco tem pouco espaço livre. Uma redução precisa de até duas vezes o tamanho do arquivo do banco de dados. Libere espaço no disco e tente novamente.",
+            "menuFix": "Libere espaço e tente novamente"
+          },
+          "locked": {
+            "fix": "Outro programa estava usando o arquivo do banco de dados. Feche esse programa, por exemplo uma ferramenta de backup ou um visualizador de banco de dados, e tente novamente.",
+            "menuFix": "Feche o outro programa e tente novamente"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Pouco espaço em disco",
+        "title": "Pouco espaço em disco",
+        "effect": "O disco do banco de dados do qui tem pouco espaço livre. Quando o disco fica cheio, toda gravação do qui falha.",
+        "fix": "Libere espaço no disco, reduza “Manter detalhes diários por” ou exclua o histórico antigo nas configurações de Estatísticas.",
+        "menuFix": "Libere espaço em disco para o banco",
+        "action": "Abrir as configurações de Estatísticas"
+      }
+    },
+    "actions": {
+      "tryAgain": "Tentar novamente",
+      "dismiss": "Dispensar",
+      "openLog": "Abrir o log"
+    },
+    "unknown": {
+      "short": "Aviso do sistema",
+      "title": "Aviso do sistema",
+      "effect": "O qui encontrou uma falha que precisa de uma ação sua.",
+      "fix": "O log do qui tem os detalhes.",
+      "menuFix": "Leia o log do qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Arquivo do banco de dados reduzido de {{before}} para {{after}}",
+    "nextStart": "A redução será executada na próxima inicialização do qui",
+    "failed": "Falha ao solicitar a redução"
   },
   "pwaUpdate": {
     "reload": "Recarregar",
@@ -243,6 +307,9 @@
     "perkSuffix": "no Discord e nossa eterna gratidão.",
     "yearly": "{{price}} / ano",
     "monthly": "{{price}} / mês",
-    "notLicense": "Os temas premium são uma compra única à parte."
+    "notLicense": "A licença dos temas é uma compra única à parte."
+  },
+  "labels": {
+    "path": "Caminho"
   }
 }

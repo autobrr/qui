@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/gzip"
@@ -20,14 +21,42 @@ var (
 	ClientTypeDeluge       ClientType = "deluge"
 	ClientTypeRTorrent     ClientType = "rtorrent"
 	ClientTypeTransmission ClientType = "transmission"
+	ClientTypeUTorrent     ClientType = "utorrent"
 )
 
 type Options struct {
-	Source     ClientType
-	SourceDir  string
-	QbitDir    string
-	DryRun     bool
-	SkipBackup bool
+	Source       ClientType
+	SourceDir    string
+	QbitDir      string
+	DryRun       bool
+	SkipBackup   bool
+	PathReplaces []PathReplace
+}
+
+// PathReplace rewrites save paths that start with From to start with To
+type PathReplace struct {
+	From string
+	To   string
+}
+
+// ParsePathReplace parses a from=to rule. To must be an absolute path on
+// this host; From is a path as the source client stored it
+func ParsePathReplace(rule string) (PathReplace, error) {
+	from, to, ok := strings.Cut(rule, "=")
+	if !ok || from == "" || to == "" {
+		return PathReplace{}, errors.Errorf("invalid replace path %q, expected from=to", rule)
+	}
+
+	if !filepath.IsAbs(to) {
+		return PathReplace{}, errors.Errorf("invalid replace path %q, %s is not an absolute path on this OS", rule, to)
+	}
+
+	// only / may match every path, \\ or // would rewrite them all
+	if from != "/" && strings.Trim(from, `/\`) == "" {
+		return PathReplace{}, errors.Errorf("invalid replace path %q, %s is not a usable source path", rule, from)
+	}
+
+	return PathReplace{From: from, To: to}, nil
 }
 
 type ClientMigrater interface {
@@ -49,6 +78,8 @@ func New(opts Options) Migrater {
 		m.imp = NewRTorrentImporter(m.opts)
 	case ClientTypeTransmission:
 		m.imp = NewTransmissionImporter(m.opts)
+	case ClientTypeUTorrent:
+		m.imp = NewUTorrentImporter(m.opts)
 	default:
 		log.Fatal().Str("source", string(m.opts.Source)).Msg("unsupported source client")
 	}
@@ -218,6 +249,65 @@ func archiveDir(dir, archiveName string) error {
 	return out.Close()
 }
 
+// replacePath rewrites the prefix of a source client path with the first
+// matching rule and returns it in host form, or returns p unchanged. Matches
+// end at a path separator, so /data does not match /database. Windows-style
+// rules (drive letters and UNC shares) match case-insensitively with either
+// slash, which lets a library move between Windows and Unix hosts
+func replacePath(p string, rules []PathReplace) string {
+	for _, r := range rules {
+		// convert slashes by the rule's style, so a POSIX rule keeps
+		// literal backslashes and does not match a \\nas\share path
+		posix := strings.HasPrefix(r.From, "/") && !strings.HasPrefix(r.From, "//")
+		src, from := p, r.From
+		if !posix {
+			src, from = strings.ReplaceAll(p, `\`, "/"), strings.ReplaceAll(r.From, `\`, "/")
+		}
+		from = strings.TrimRight(from, "/")
+		if len(src) < len(from) {
+			continue
+		}
+
+		prefix, rest := src[:len(from)], src[len(from):]
+		if rest != "" && rest[0] != '/' {
+			continue
+		}
+		if prefix != from && (posix || !strings.EqualFold(prefix, from)) {
+			continue
+		}
+
+		return filepath.Join(r.To, filepath.FromSlash(rest))
+	}
+
+	return p
+}
+
+// foreignAbs reports whether p is absolute on another OS but not on this
+// host: a Windows drive or UNC path on Unix, a POSIX path on Windows. libtorrent
+// would resolve such a path against the save path
+func foreignAbs(p string) bool {
+	if filepath.IsAbs(p) {
+		return false
+	}
+
+	// a single leading backslash is a valid POSIX file name character
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\\`) {
+		return true
+	}
+
+	return len(p) >= 3 && p[1] == ':' && (p[2] == '/' || p[2] == '\\') && ('a' <= p[0]|0x20 && p[0]|0x20 <= 'z')
+}
+
+// sourceSlash turns the backslashes of a Windows-style path into slashes.
+// POSIX paths keep theirs, a backslash is a valid file name character there;
+// a leading // is a UNC share written with forward slashes
+func sourceSlash(p string) string {
+	if strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") {
+		return p
+	}
+	return strings.ReplaceAll(p, `\`, "/")
+}
+
 // logImportSummary logs the per-importer end result with accurate counts
 func logImportSummary(dryRun bool, imported, failed, skipped, total int) {
 	switch {
@@ -261,46 +351,48 @@ func firstNonZero(values ...int64) int64 {
 	return 0
 }
 
-// CopyFile copies the contents of the file named src to the file named
-// by dst. The file will be created if it does not already exist. If the
-// destination file exists, all it's contents will be replaced by the contents
-// of the source file. The file mode will be copied from the source and
-// the copied data is synced/flushed to stable storage.
+// CopyFile copies the file named src to dst with the mode of src. It writes
+// a temp file next to dst and renames it into place after the data is synced,
+// so a failed copy never leaves a partial dst: the importers treat an existing
+// dst as already imported and would skip it on the next run
 func CopyFile(src, dst string) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
-		return
+		return err
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	si, err := in.Stat()
 	if err != nil {
-		return
+		return err
+	}
+
+	out, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".tmp-*")
+	if err != nil {
+		return err
 	}
 	defer func() {
-		if e := out.Close(); e != nil {
-			err = e
+		if err != nil {
+			out.Close()
+			os.Remove(out.Name())
 		}
 	}()
 
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return
+	if _, err = io.Copy(out, in); err != nil {
+		return err
 	}
 
-	err = out.Sync()
-	if err != nil {
-		return
+	if err = out.Sync(); err != nil {
+		return err
 	}
 
-	si, err := os.Stat(src)
-	if err != nil {
-		return
-	}
-	err = os.Chmod(dst, si.Mode())
-	if err != nil {
-		return
+	if err = out.Chmod(si.Mode()); err != nil {
+		return err
 	}
 
-	return
+	if err = out.Close(); err != nil {
+		return err
+	}
+
+	return os.Rename(out.Name(), dst)
 }

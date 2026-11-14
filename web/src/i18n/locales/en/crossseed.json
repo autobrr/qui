@@ -40,11 +40,12 @@
     "enableSwitch": "Enable RSS automation",
     "intervalLabel": "RSS run interval (minutes)",
     "intervalTooltip": "Automation processes the full feed from every enabled Torznab indexer on each run. Minimum interval is {{min}} minutes to avoid hammering indexers.",
-    "targetInstances": "Target instances",
+    "instancesToSearch": "Instances to search",
+    "instancesToSearchHelp": "RSS automation searches the torrents on these instances for matches. If an instance has a Cross-seed instance, qui adds the cross-seeds that it finds there to that Cross-seed instance.",
     "selectInstances": "Select qBittorrent instances",
     "noActiveInstances": "No active instances available",
     "noInstancesAvailable": "No instances available.",
-    "pickInstance": "Pick at least one instance to receive cross-seeds.",
+    "pickInstance": "Pick at least one instance to search.",
     "instancesSelected": "{{count}} instance(s) selected.",
     "targetIndexers": "Target indexers",
     "allEnabledIndexers": "All enabled indexers (leave empty for all)",
@@ -55,13 +56,13 @@
     "includeCategories": "Include categories",
     "allCategories": "All categories (leave empty for all)",
     "typeToAddCategories": "Type to add categories",
-    "selectInstancesToLoadCategories": "Select target instances to load categories",
+    "selectInstancesToLoadCategories": "Select instances to search to load categories",
     "allCategoriesIncluded": "All categories will be included.",
     "selectedCategoriesMatched": "Only {{count}} selected category/categories will be matched.",
     "includeTags": "Include tags",
     "allTags": "All tags (leave empty for all)",
     "typeToAddTags": "Type to add tags",
-    "selectInstancesToLoadTags": "Select target instances to load tags",
+    "selectInstancesToLoadTags": "Select instances to search to load tags",
     "allTagsIncluded": "All tags will be included.",
     "selectedTagsMatched": "Only {{count}} selected tag(s) will be matched.",
     "excludeCategories": "Exclude categories",
@@ -82,14 +83,12 @@
     "cancel": "Cancel",
     "runNow": "Run now",
     "saveSettings": "Save RSS automation settings",
-    "reset": "Reset",
     "requiresTorznabIndexer": "RSS automation runs require at least one Torznab indexer.",
     "items": "{{count}} items",
     "failedCount": "{{count}} failed",
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} runs • +{{added}}",
     "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed",
-    "runDisabledAlreadyRunning": "Automation run is already in progress.",
     "runDisabledCooldown": "Manual runs are limited to every {{minutes}}-minute interval. Try again in {{remaining}}."
   },
   "webhook": {
@@ -193,7 +192,11 @@
       "enabledRedMissingOps": "Gazelle: enabled (RED key set, OPS missing)",
       "enabledKeysMissing": "Gazelle: enabled (keys missing)"
     },
-    "noMessageProvided": "No message provided"
+    "noMessageProvided": "No message provided",
+    "cancelDialog": {
+      "title": "Cancel Library Scan?",
+      "description": "This stops the current library scan. Cross-seeds that were already added stay, but no more torrents are searched."
+    }
   },
   "rules": {
     "hardlinkReflink": "Hardlink / Reflink Mode",
@@ -201,7 +204,7 @@
     "hardlinkDescription": "Create hardlinked or reflinked (copy-on-write) file trees for cross-seeds. Each instance can be configured independently. The base directory must be on the same filesystem as the instance's download paths.",
     "reflinkNote": "Reflink mode allows safe cross-seeding of torrents with extra/missing files. When extra files are present, qui triggers a recheck; if below threshold, the torrent stays paused for manual review.",
     "crossSeedMode": "Cross-seed mode",
-    "enableLocalFilesystem": "Enable \"Local filesystem access\" in Instance Settings to use hardlink or reflink modes.",
+    "enableLocalFilesystem": "Hardlink mode needs filesystem write access: enable Local Filesystem Access, or set up SSH access, in Instance Settings. Reflink mode needs Local Filesystem Access.",
     "regular": "Regular",
     "regularDescription": "Reuse existing files in place. Fast, no extra disk space.",
     "hardlink": "Hardlink",
@@ -218,7 +221,7 @@
     "fallbackToRegular": "Fallback to regular mode on error",
     "fallbackDescription": "If {{mode}} fails (e.g., different filesystems), fall back to regular mode using existing files.",
     "saveChanges": "Save Changes",
-    "noLocalAccess": "No local access",
+    "noLocalAccess": "No filesystem write access",
     "seasonPack": {
       "title": "Season packs",
       "description": "When autobrr grabs a season pack, qui checks whether you already have enough local data to inject it, then lets qBittorrent download anything still missing.",
@@ -360,6 +363,9 @@
       "categories": "The category and the tags qui gives to every new cross-seed."
     }
   },
+  "run": {
+    "starting": "The run is starting."
+  },
   "seasonPackRuns": {
     "title": "Recent season pack runs",
     "noRunsYet": "No runs yet",
@@ -370,14 +376,18 @@
     "failedCount_one": "{{count}} failed",
     "failedCount_other": "{{count}} failed",
     "filterByName": "Filter by name…",
-    "showSkipped": "Show skipped",
     "refresh": "Refresh",
     "loadError": "Failed to load season pack runs.",
     "loading": "Loading season pack runs...",
     "noActivity": "No season pack webhook activity yet.",
     "noMatches": "No runs match your filters.",
-    "showSkippedCount_one": "Show {{count}} skipped",
-    "showSkippedCount_other": "Show {{count}} skipped",
+    "statusFilter": "Status filter",
+    "showStatus": {
+      "applied": "Show applied ({{total}})",
+      "ready": "Show ready ({{total}})",
+      "skipped": "Show skipped ({{total}})",
+      "failed": "Show failed ({{total}})"
+    },
     "coverage": "Coverage",
     "episodes": "Episodes",
     "instance": "Instance",
@@ -412,13 +422,13 @@
     "settingsSaved": "Settings saved",
     "failedToSaveSettings": "Failed to save settings",
     "cannotEnableMode": "Cannot enable {{mode}} mode",
-    "noLocalFilesystemAccess": "Instance \"{{name}}\" does not have local filesystem access enabled.",
+    "noLocalFilesystemAccess": "Instance \"{{name}}\" cannot use this mode. Hardlink mode needs filesystem write access, local or over SSH; reflink mode needs Local Filesystem Access.",
     "baseDirRequired": "Base directory must be set first.",
     "unknownError": "Unknown error",
     "noIndexersConfigured": "No Torznab indexers configured",
-    "pickInstanceBeforeRunning": "Pick at least one instance to receive cross-seeds before running RSS automation.",
+    "pickInstanceBeforeRunning": "Pick at least one instance to search before running RSS automation.",
     "enableAutomationAfterIndexers": "Enable RSS automation only after configuring Torznab indexers.",
-    "saveSettingsFirst": "Save RSS automation settings to apply the updated target instances before running.",
+    "saveSettingsFirst": "Save RSS automation settings to apply the updated instances to search before running.",
     "selectInstanceToRun": "Select an instance to run against",
     "seededSearchNeedsGazelle": "Seeded Torrent Search needs Gazelle",
     "enableGazelleDescription": "Enable Gazelle matching (OPS/RED) before running with Torznab disabled.",
@@ -462,6 +472,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} failed - check results for details",
       "applyCompletedUnavailable": "Cross-seed request completed (details unavailable)",
       "applyNoChanges": "No cross-seeds were added",
+      "applyAlreadyInClient": "Already in the client",
       "applyCompletedPart": ", {{count}} completed",
       "applyCompletedPrefix": "{{count}} completed, "
     }
@@ -496,13 +507,28 @@
       "invalidInfohash": "Infohash must be 40 or 64 hex characters"
     }
   },
+  "routeConfirm": {
+    "title": "Stop protecting routed files?",
+    "counting": "Counting routed torrents…",
+    "count_one": "{{count}} routed torrent on {{crossSeed}} uses files in the affected base folders of {{source}}.",
+    "count_other": "{{count}} routed torrents on {{crossSeed}} use files in the affected base folders of {{source}}.",
+    "countUnknown": "{{crossSeed}} is unavailable, so the number of routed torrents in the affected base folders of {{source}} is unknown.",
+    "orphanScan": "The orphan scan of {{source}} stops protecting the files of these torrents.",
+    "clear": "{{crossSeed}} keeps the routed torrents, and their files stay in the base folders of {{source}}. Move or delete those torrents before you clear the route.",
+    "deleteSource": "{{source}} adds cross-seeds to itself again after this delete.",
+    "routesUnknown": "qui could not read the cross-seed routes, so it cannot name the Source instances that lose protection after this delete.",
+    "routeReadFailed": "qui could not read the cross-seed route of {{source}}, so it did not save the change.",
+    "routeChanged": "The cross-seed route of {{source}} changed in another tab, so qui did not save the form. Check the route, then save again.",
+    "confirm": "Continue",
+    "cancel": "Cancel"
+  },
   "dirScan": {
     "title": "Directory Scanner",
     "description": "Scan local directories for completed downloads and automatically cross-seed them.",
     "settings": "Settings",
     "enabled": "Enabled",
     "disabled": "Disabled",
-    "noLocalAccessWarning": "No qBittorrent instances have local filesystem access enabled. Enable it in instance settings to use the Directory Scanner.",
+    "noLocalAccessWarning": "No qBittorrent instance has filesystem access. Enable Local Filesystem Access, or set up SSH access, in instance settings to use the Directory Scanner.",
     "scanDirectories": "Scan Directories",
     "scanDirectoriesDescription": "Configure directories to scan for cross-seedable content.",
     "addDirectory": "Add Directory",
@@ -615,7 +641,7 @@
       "defaultCategory": "Default Category",
       "defaultCategoryHelp": "Category for injected torrents when the scan directory doesn’t override it.",
       "tags": "Tags",
-      "noLocalInstances": "No qBittorrent instances with local access",
+      "noLocalInstances": "No qBittorrent instances with filesystem access",
       "typeToAddCategory": "Type to add a category",
       "noCategory": "No category",
       "typeToAddTags": "Type to add tags",
@@ -636,6 +662,7 @@
       "enabledLabel": "Enabled",
       "instanceLabel": "Target qBittorrent Instance",
       "selectInstance": "Select instance",
+      "remoteNoIdentityNote": "qui can't tell which files are already seeding on this remote instance, so it searches each one once.",
       "intervalLabel": "Scan Interval (minutes)",
       "intervalHelp": "Minimum: 60 minutes (1 hour). Default: 1440 minutes (24 hours).",
       "skipIndividualEpisodesLabel": "Skip individual episodes",
@@ -650,7 +677,7 @@
       "typeToAddTags": "Type to add tags",
       "tagsLoadError": "Could not load tags from qBittorrent. You can still type custom values.",
       "regularModeTitle": "Regular mode is enabled for this instance",
-      "regularModeHelp": "Select <hardlink>hardlink</hardlink> or <reflink>reflink</reflink> under Cross-Seed > Rules > Hardlink / Reflink Mode to avoid this risk. First enable \"Local filesystem access\" in Instance Settings.",
+      "regularModeHelp": "Select <hardlink>hardlink</hardlink> or <reflink>reflink</reflink> under Cross-Seed > After injection > Hardlink / Reflink Mode to avoid this risk. Hardlink mode needs filesystem write access: enable Local Filesystem Access, or set up SSH access, in Instance Settings. Reflink mode needs Local Filesystem Access.",
       "regularModeAcknowledge": "I understand the risks of using regular mode with media directories",
       "cancel": "Cancel",
       "addButton": "Add Directory",
@@ -665,5 +692,41 @@
       "cancel": "Cancel",
       "delete": "Delete"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "Found on {{source}}, added to {{crossSeed}}",
+    "foundOnRoutedTo": "Found on {{source}}, routed to {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "Cross-seed instance unavailable",
+    "cannotSeeData": "Cross-seed instance cannot see the data"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Cross-seed instance",
+    "crossSeedInstanceDescription": "Cross-seeds that qui finds on this instance go to the Cross-seed instance only. This instance never gets them. qui hardlinks or reflinks the files into the base folders of this instance.",
+    "noCrossSeedInstance": "No Cross-seed instance",
+    "receivesCrossSeeds": "This instance is the Cross-seed instance of {{names}}, so it cannot send its own cross-seeds to a Cross-seed instance.",
+    "needsLinkMode": "A Cross-seed instance needs hardlink or reflink mode. Select one and save it first.",
+    "brokenRule": "This route no longer passes the route rules: {{reason}}",
+    "mappedPaths": "Paths on the Cross-seed instance",
+    "mappedPathsDescription": "For each base folder, type the path where the Cross-seed instance sees it. Leave a row empty when both instances use the same path.",
+    "samePathPlaceholder": "Same path",
+    "overlap": "{{first}} and {{second}} map to the same folder or to nested folders on the Cross-seed instance.",
+    "testRoute": "Test route",
+    "saveRoute": "Save route",
+    "clearRoute": "Clear route",
+    "saved": "Route saved",
+    "cleared": "Route cleared",
+    "saveFailed": "Failed to save the route",
+    "clearFailed": "Failed to clear the route",
+    "testFailed": "Failed to test the route",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "the Cross-seed instance sees it",
+      "seesFolderNotMarker": "the Cross-seed instance sees the folder but not the marker",
+      "cannotSeeFolder": "the Cross-seed instance cannot see the folder",
+      "cannotWrite": "qui cannot write to the folder on this instance"
+    },
+    "markerHint": "A network mount (NFS) can show an old folder listing for up to 60 seconds. Wait a minute, then test again."
   }
 }

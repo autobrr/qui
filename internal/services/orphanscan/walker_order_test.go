@@ -204,7 +204,7 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 
 	scan := func(t *testing.T, root string, backend fsops.Backend) (orphans, dirs []string) {
 		t.Helper()
-		files, abandoned, err := walkScanRootCollectingDirs(t.Context(), root, tfm, nil, 0, backend, nil)
+		files, abandoned, err := walkScanRootCollectingDirs(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, backend, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

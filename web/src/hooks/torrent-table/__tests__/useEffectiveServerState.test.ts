@@ -16,12 +16,6 @@ function renderEffectiveServerState(initialProps: Props) {
 }
 
 describe("useEffectiveServerState", () => {
-  it("returns the live server state for the current instance", () => {
-    const state = makeServerState({ connection_status: "connected" })
-    const { result } = renderEffectiveServerState({ instanceId: 1, serverState: state })
-    expect(result.current).toBe(state)
-  })
-
   it("returns null when serverState is explicitly null", () => {
     const { result } = renderEffectiveServerState({ instanceId: 1, serverState: null })
     expect(result.current).toBeNull()

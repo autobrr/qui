@@ -22,7 +22,7 @@ func TestDropFeedItemsLastRunIDMigrationSQLite(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	// PRAGMA foreign_keys is per connection.
 	conn.SetMaxOpenConns(1)
-	checkDropFeedItemsLastRunIDMigration(t.Context(), t, conn, migrationsFS, "migrations/103_drop_cross_seed_feed_items_last_run_id.sql", true)
+	checkDropFeedItemsLastRunIDMigration(t.Context(), t, conn, migrationsFS, "migrations/122_drop_cross_seed_feed_items_last_run_id.sql", true)
 }
 
 func TestDropFeedItemsLastRunIDMigrationPostgresIntegration(t *testing.T) {
@@ -32,7 +32,7 @@ func TestDropFeedItemsLastRunIDMigrationPostgresIntegration(t *testing.T) {
 	conn, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	checkDropFeedItemsLastRunIDMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/104_drop_cross_seed_feed_items_last_run_id.sql", false)
+	checkDropFeedItemsLastRunIDMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/122_drop_cross_seed_feed_items_last_run_id.sql", false)
 }
 
 func checkDropFeedItemsLastRunIDMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadFileFS, migration string, sqlite bool) {

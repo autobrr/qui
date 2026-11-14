@@ -4,13 +4,12 @@
 package crossseed
 
 import (
+	"path"
 	"slices"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/rls"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -18,16 +17,32 @@ import (
 // torrent holds the same data. Files that search ignores (nfo, srt, samples,
 // and the rest of the ignore list) are left out, as contentFiles describes.
 type sameDataFiles struct {
-	paths map[string]struct{} // save path joined with the file name, normalized
-	sizes []int64             // sorted
+	paths     map[string]struct{} // save path joined with the file name, normalized
+	sizes     []int64             // sorted
+	filePaths []string            // the normalized path of each file, ignored files too; nil without a save path or withFilePaths
 }
 
-func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) sameDataFiles {
-	files = contentFiles(files, normalizer)
-	data := sameDataFiles{paths: make(map[string]struct{}, len(files))}
-	for _, file := range files {
-		if savePath != "" {
-			data.paths[normalizePathForComparison(savePath+"/"+file.Name)] = struct{}{}
+func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string], withFilePaths bool) sameDataFiles {
+	var data sameDataFiles
+	// These calls skip the shared cache: it would keep one entry per file for 5 min.
+	if savePath != "" && withFilePaths {
+		data.filePaths = make([]string, len(files))
+		for i, file := range files {
+			data.filePaths[i] = normalizePathForComparisonInner(savePath + "/" + file.Name)
+		}
+	}
+	content := contentFiles(files, normalizer)
+	data.paths = make(map[string]struct{}, len(content))
+	i := 0
+	for _, file := range content {
+		for files[i].Name != file.Name {
+			i++
+		}
+		switch {
+		case data.filePaths != nil:
+			data.paths[data.filePaths[i]] = struct{}{}
+		case savePath != "":
+			data.paths[normalizePathForComparisonInner(savePath+"/"+file.Name)] = struct{}{}
 		}
 		data.sizes = append(data.sizes, file.Size)
 	}
@@ -35,20 +50,19 @@ func newSameDataFiles(savePath string, files qbt.TorrentFiles, normalizer *strin
 	return data
 }
 
-// contentFiles removes the files that search ignores. A file with an ignored
-// extension (nfo, srt) is always a sidecar. An ignored path keyword (proof,
-// extras) that every file has is part of the title, as for a movie named
-// Proof, so only the other keywords mark a sidecar. When every remaining file
-// has one, those files stay. A torrent of sidecars only keeps all its files.
+// contentFiles removes the files that search ignores. When every file without
+// an ignored extension (nfo, srt) is ignored, an ignore word that every file
+// has is part of the title, so only the other words mark a sidecar. When every
+// file still has one, those files stay. A torrent of sidecars only keeps all
+// its files.
 func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) qbt.TorrentFiles {
 	var noSidecars, content qbt.TorrentFiles
 	for _, file := range files {
-		name := normalizer.Normalize(file.Name)
-		if slices.ContainsFunc(DefaultIgnoredExtensions, func(ext string) bool { return strings.HasSuffix(name, ext) }) {
+		if slices.Contains(DefaultIgnoredExtensions, path.Ext(normalizer.Normalize(file.Name))) {
 			continue
 		}
 		noSidecars = append(noSidecars, file)
-		if !slices.ContainsFunc(DefaultIgnoredPathKeywords, func(keyword string) bool { return strings.Contains(name, keyword) }) {
+		if !shouldIgnoreFile(file.Name, normalizer) {
 			content = append(content, file)
 		}
 	}
@@ -59,7 +73,8 @@ func contentFiles(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[str
 		return files
 	}
 
-	// Every file has a keyword. Drop the keywords that every file has.
+	// Every file has a keyword. Drop the keywords that every file has, as
+	// for a show named Extras in an Extras/ folder.
 	names := make([]string, len(noSidecars))
 	for i, file := range noSidecars {
 		names[i] = normalizer.Normalize(file.Name)
@@ -90,8 +105,8 @@ func (d sameDataFiles) sharesPath(other sameDataFiles) bool {
 	return false
 }
 
-// localMatchTier decides the match type of a candidate that passed
-// localMatchPrefilter, in this order:
+// localMatchTier decides the match type of a candidate that the batch
+// matcher selected, in this order:
 //
 //  1. Content: on the same instance, a source file has the same path on disk.
 //  2. Hardlink or Reflink: linked returns the tier. Only a Name or Release
@@ -117,59 +132,9 @@ func localMatchTier(sameInstance bool, nameOrRelease string, source, candidate s
 	return ""
 }
 
-// localMatchPrefilter selects the candidates whose file lists are worth a
-// fetch, from the cached torrent fields alone. nameOrRelease is the tier the
-// candidate gets if its file sizes pair with the source. ok is false for a
-// candidate that cannot be a cross-seed.
-func (s *Service) localMatchPrefilter(
-	sameInstance bool,
-	source *qbt.Torrent,
-	sourceRelease *rls.Release,
-	candidate *qbittorrent.CrossInstanceTorrentView,
-	normalizedContentPath string,
-) (nameOrRelease string, ok bool) {
-	sourceName := normalizeLowerTrim(source.Name)
-	if sourceName != "" && sourceName == normalizeLowerTrim(candidate.Name) {
-		return matchTypeName, true
-	}
-
-	candidateRelease := s.releaseCache.Parse(candidate.Name)
-	matched, mismatchReason := s.matcher().releasesMatchWithReasonAndNames(sourceRelease, candidateRelease, source.Name, candidate.Name, false)
-	if matched {
-		return matchTypeRelease, true
-	}
-	// A retitled upload of the same data keeps its own name, so it fails the
-	// release match on the title alone.
-	if mismatchReason == titleMismatchReason {
-		if ok, _ := s.matcher().releasesMatchExceptTitleWithReason(
-			namedRelease{release: sourceRelease, rawName: source.Name},
-			namedRelease{release: candidateRelease, rawName: candidate.Name},
-			false,
-		); ok {
-			return matchTypeRelease, true
-		}
-	}
-
-	if !sameInstance {
-		return "", false
-	}
-	candidateContentPath := normalizePathForComparison(candidate.ContentPath)
-	if normalizedContentPath != "" && normalizedContentPath == candidateContentPath {
-		return "", true
-	}
-	// qui adds an episode cross-seed inside the folder of its season pack.
-	if normalizedContentPath != "" && candidateContentPath != "" &&
-		(strings.HasPrefix(candidateContentPath, normalizedContentPath+"/") ||
-			strings.HasPrefix(normalizedContentPath, candidateContentPath+"/")) {
-		return "", true
-	}
-	// qBittorrent reports the save path as the content path of a multi-file
-	// torrent without a subfolder, so its files can sit next to the other
-	// torrent's files.
-	sourceSavePath := normalizePathForComparison(source.SavePath)
-	if sourceSavePath != "" && sourceSavePath == normalizePathForComparison(candidate.SavePath) &&
-		(normalizedContentPath == sourceSavePath || candidateContentPath == sourceSavePath) {
-		return "", true
-	}
-	return "", false
-}
+// localMatchPolicy is the Match policy of the paths that compare two local
+// torrents and then pair their file sizes in localMatchTier. That file check
+// compares exact sizes, so the verdict skips its own size check. These paths
+// add nothing to qBittorrent, so equal file sizes or a link decide, and they
+// rescue a title at any title rescue setting of searches.
+var localMatchPolicy = matchPolicy{TitleRescue: true, SizeTolerancePercent: defaultSizeMismatchTolerancePercent, SkipSizeCheck: true}

@@ -112,6 +112,11 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	s.startOnce.Do(func() {
+		// The store keeps the targets after the first read, so an event that
+		// a database fault causes, such as a System notice, still finds them.
+		if _, err := s.store.ListEnabled(ctx); err != nil {
+			s.logger.Warn().Err(err).Msg("notifications: failed to read the targets at start")
+		}
 		for range defaultWorkers {
 			go s.worker(ctx)
 		}
@@ -449,6 +454,9 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 	case EventAutomationsRunFailed:
 		title := "Automations run failed"
 		return formatAutomationsEvent(instanceLabel, title, event.Title, customMessage, humanReadableMetrics)
+	case EventSystemNotice:
+		// A System notice is about qui, not about one instance.
+		return formatCustomEvent("", "System notice", event.Title, customMessage)
 	default:
 		return "", ""
 	}
@@ -473,9 +481,11 @@ func (s *Service) resolveInstanceLabel(ctx context.Context, event Event) string 
 	return instance.Name
 }
 
+// allowsEvent reports whether a target with eventTypes gets eventType. An
+// empty list means each event type, except the ones a target must pick.
 func allowsEvent(eventTypes []string, eventType EventType) bool {
 	if len(eventTypes) == 0 {
-		return true
+		return !optIn(eventType)
 	}
 
 	return slices.Contains(eventTypes, string(eventType))
@@ -923,7 +933,8 @@ func discordEventColor(eventType EventType) int {
 		EventCrossSeedSearchFailed,
 		EventCrossSeedCompletionFailed,
 		EventCrossSeedWebhookFailed,
-		EventAutomationsRunFailed:
+		EventAutomationsRunFailed,
+		EventSystemNotice:
 		return discordColorError
 	case EventTorrentCompleted,
 		EventBackupSucceeded,

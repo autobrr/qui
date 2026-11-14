@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -50,6 +51,7 @@ func blocklistWithPack(t *testing.T, torrentData string) *models.CrossSeedBlockl
 type blockedPackFixture struct {
 	svc         *Service
 	sm          *seasonPackSyncManager
+	adds        *adderFake
 	runs        *stubSeasonPackRunStore
 	packName    string
 	torrentData string
@@ -117,6 +119,7 @@ func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 	if blocked {
 		f.svc.blocklistStore = blocklistWithPack(t, torrentData)
 	}
+	f.adds = withLinkAdder(f.svc)
 	f.svc.SetBackendPool(fsops.NewPool(f.svc.instanceStore, local.NewBackend()))
 	return f
 }
@@ -133,13 +136,13 @@ func TestApplySeasonPackWebhook_SkipsBlocklistedPack(t *testing.T) {
 
 			if !blocked {
 				require.True(t, resp.Applied, "%+v", resp)
-				require.Len(t, f.sm.addCalls, 1)
+				require.Len(t, f.adds.added, 1)
 				return
 			}
 			require.False(t, resp.Applied)
 			require.Equal(t, "blocked", resp.Reason)
 			require.Zero(t, f.treeCalls, "a blocked pack must not build a link tree")
-			require.Empty(t, f.sm.addCalls)
+			require.Empty(t, f.adds.added)
 			require.Len(t, f.runs.runs, 1)
 			require.Equal(t, "blocked", f.runs.runs[0].Reason)
 			require.Equal(t, "skipped", f.runs.runs[0].Status)
@@ -162,9 +165,9 @@ func TestCrossSeed_SeasonPackDiversionHonorsBlocklist(t *testing.T) {
 			require.Equal(t, !blocked, resp.Success)
 			if blocked {
 				require.Zero(t, f.treeCalls, "a blocked pack must not build a link tree")
-				require.Empty(t, f.sm.addCalls)
+				require.Empty(t, f.adds.added)
 			} else {
-				require.Len(t, f.sm.addCalls, 1)
+				require.Len(t, f.adds.added, 1)
 			}
 		})
 	}
@@ -196,8 +199,8 @@ func TestApplySeasonPackWebhook_BlockedOnOneInstanceAppliesOnAnother(t *testing.
 	})
 	require.NoError(t, err)
 	require.True(t, resp.Applied, "%+v", resp)
-	require.Len(t, f.sm.addCalls, 1)
-	require.Equal(t, 2, f.sm.addCalls[0].instanceID)
+	require.Len(t, f.adds.added, 1)
+	require.Equal(t, 2, f.adds.instanceIDs[0])
 }
 
 func TestApplySeasonPackWebhook_BlockedAndSeededIsAlreadyExists(t *testing.T) {
@@ -207,13 +210,81 @@ func TestApplySeasonPackWebhook_BlockedAndSeededIsAlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	require.NoError(t, err)
-	fsm := f.sm.fakeSyncManager
-	fsm.all[1] = append(fsm.all[1], qbt.Torrent{Hash: meta.HashV1, Name: f.packName, Progress: 1})
+	f.adds.existing = &qbt.Torrent{Hash: meta.HashV1, Name: f.packName, Progress: 1}
+	f.adds.existingOn = 1
 
 	resp, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
 		TorrentName: f.packName, TorrentData: f.torrentData, InstanceIDs: []int{1, 2},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "already_exists", resp.Reason, "%+v", resp)
-	require.Empty(t, f.sm.addCalls)
+	require.Empty(t, f.adds.added)
+}
+
+func TestSeasonPackAdds_RunExternalProgramOnSuccessOnly(t *testing.T) {
+	add := func(f *blockedPackFixture) error {
+		_, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+			TorrentName: f.packName, TorrentData: f.torrentData, InstanceIDs: []int{1},
+		})
+		return err
+	}
+	assemble := func(f *blockedPackFixture) error {
+		_, err := f.svc.CrossSeed(t.Context(), &CrossSeedRequest{
+			TorrentData: f.torrentData, TargetInstanceIDs: []int{1}, FindIndividualEpisodes: true,
+		})
+		return err
+	}
+	tests := []struct {
+		name    string
+		run     func(*blockedPackFixture) error
+		blocked bool
+		addErr  error
+		ran     bool
+	}{
+		{name: "apply webhook", run: add, ran: true},
+		{name: "automatic assembly", run: assemble, ran: true},
+		{name: "apply webhook refused", run: add, blocked: true},
+		{name: "automatic assembly refused", run: assemble, blocked: true},
+		{name: "apply webhook add failed", run: add, addErr: errors.New("add failed")},
+		{name: "automatic assembly add failed", run: assemble, addErr: errors.New("add failed")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newBlockedPackFixture(t, tt.blocked)
+			f.adds.addErr = tt.addErr
+			torrentBytes, err := base64.StdEncoding.DecodeString(f.torrentData)
+			require.NoError(t, err)
+			meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+			require.NoError(t, err)
+			var runs []string
+			f.svc.postInjectionHook = func(_ context.Context, instanceID int, hashes []string) {
+				runs = append(runs, fmt.Sprintf("%d/%s", instanceID, strings.Join(hashes, ",")))
+			}
+
+			require.NoError(t, tt.run(f))
+
+			want := []string(nil)
+			if tt.ran {
+				want = []string{"1/" + meta.HashV1}
+			}
+			require.Equal(t, want, runs)
+		})
+	}
+}
+
+func TestApplySeasonPackWebhook_BlocklistReadFails(t *testing.T) {
+	f := newBlockedPackFixture(t, false)
+	f.svc.blocklistStore = models.NewCrossSeedBlocklistStore(closedDB(t))
+	f.adds = withLinkAdder(f.svc)
+
+	resp, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+		TorrentName: f.packName, TorrentData: f.torrentData, InstanceIDs: []int{1},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "blocklist_check_failed", resp.Reason)
+	require.Equal(t, "failed to check cross-seed blocklist on instance 1: sql: database is closed", resp.Message)
+	require.Zero(t, f.treeCalls, "a failed check must not build a link tree")
+	require.Empty(t, f.adds.added)
+	require.Len(t, f.runs.runs, 1)
+	require.Equal(t, "blocklist_check_failed", f.runs.runs[0].Reason)
 }

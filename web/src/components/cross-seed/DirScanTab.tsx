@@ -160,8 +160,8 @@ export function DirScanTab({ instances }: DirScanTabProps) {
   const updateSettings = useUpdateDirScanSettings()
 
   // Get status for each directory
-  const directoryWithLocalFs = useMemo(
-    () => instances.filter((i) => i.hasLocalFilesystemAccess),
+  const scanTargets = useMemo(
+    () => instances.filter((i) => i.capabilities.read),
     [instances]
   )
 
@@ -225,13 +225,13 @@ export function DirScanTab({ instances }: DirScanTabProps) {
                 {t("dirScan.settings")}
               </Button>
               <Label htmlFor="dir-scan-enabled" className="flex items-center gap-2">
+                {settings?.enabled ? t("dirScan.enabled") : t("dirScan.disabled")}
                 <Switch
                   id="dir-scan-enabled"
                   checked={settings?.enabled ?? false}
                   onCheckedChange={handleToggleEnabled}
                   disabled={updateSettings.isPending}
                 />
-                {settings?.enabled ? t("dirScan.enabled") : t("dirScan.disabled")}
               </Label>
             </div>
           </div>
@@ -239,7 +239,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
       </Card>
 
       {/* No Local Access Warning */}
-      {directoryWithLocalFs.length === 0 && (
+      {scanTargets.length === 0 && (
         <Card className="border-yellow-500/50 bg-yellow-500/5">
           <CardContent className="flex items-center gap-3 py-4">
             <AlertTriangle className="size-5 text-yellow-500" />
@@ -261,7 +261,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
           </div>
           <Button
             onClick={handleAddDirectory}
-            disabled={directoryWithLocalFs.length === 0}
+            disabled={scanTargets.length === 0}
           >
             <Plus className="size-4 mr-2" />
             {t("dirScan.addDirectory")}
@@ -307,7 +307,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         open={showSettingsDialog}
         onOpenChange={setShowSettingsDialog}
         settings={settings}
-        instances={directoryWithLocalFs}
+        instances={scanTargets}
       />
 
       {/* Directory Dialog */}
@@ -315,7 +315,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         open={showDirectoryDialog}
         onOpenChange={setShowDirectoryDialog}
         directory={editingDirectory}
-        instances={directoryWithLocalFs}
+        instances={scanTargets}
       />
 
       {/* Delete Confirmation */}
@@ -1393,6 +1393,11 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 ))}
               </SelectContent>
             </Select>
+            {targetInstance && !targetInstance.capabilities.identity && (
+              <p className="text-xs text-muted-foreground">
+                {t("dirScan.directoryDialog.remoteNoIdentityNote")}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

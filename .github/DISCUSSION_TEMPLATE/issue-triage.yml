@@ -52,6 +52,8 @@ body:
       label: Log link
       description: |
         For long logs, sign in with GitHub at https://bin.getqui.com, add the logs, select a Lifetime of 90 days, and paste the Paste link here. Only qui maintainers can read a Paste. Before you upload the logs, make sure that they contain no passkeys or API keys.
+
+        For a cross-seed match problem, add the log lines from the cross-seed search for that torrent. In the same Paste, also add the name of your torrent, the name of the torrent that qui rejected or did not find, and the rejection reason from the search results.
       placeholder: https://bin.getqui.com/p/...
 
   - type: textarea

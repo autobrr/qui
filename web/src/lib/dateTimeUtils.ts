@@ -112,6 +112,20 @@ function formatRelativeToNow(date: Date, addSuffix = true): string {
   return formatRelativeUnit(value, unit, addSuffix, isFuture)
 }
 
+// A new Intl.DateTimeFormat is slow to build, and the torrent table formats
+// every date cell on each render, so keep one formatter per locale and options.
+const formatterCache = new Map<string, Intl.DateTimeFormat>()
+
+function getFormatter(locales: string[], options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = JSON.stringify([locales, options])
+  let formatter = formatterCache.get(key)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locales, options)
+    formatterCache.set(key, formatter)
+  }
+  return formatter
+}
+
 function formatDateAndTime(date: Date, preferences: DateTimePreferences, includeSeconds = false): string {
   const timeZone = preferences.timezone
   const hour12 = preferences.timeFormat === "12h"
@@ -119,13 +133,13 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences, include
 
   switch (preferences.dateFormat) {
     case "iso": {
-      const dateFormatter = new Intl.DateTimeFormat(getDateLocales("iso"), {
+      const dateFormatter = getFormatter(getDateLocales("iso"), {
         timeZone,
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
       })
-      const timeFormatter = new Intl.DateTimeFormat(getDisplayLocales(), {
+      const timeFormatter = getFormatter(getDisplayLocales(), {
         timeZone,
         hour: "2-digit",
         minute: "2-digit",
@@ -135,7 +149,7 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences, include
       return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
     }
     case "us":
-      return date.toLocaleString(getDateLocales("us"), {
+      return getFormatter(getDateLocales("us"), {
         timeZone,
         month: "2-digit",
         day: "2-digit",
@@ -144,9 +158,9 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences, include
         minute: "2-digit",
         ...secondOption,
         hour12,
-      })
+      }).format(date)
     case "eu":
-      return date.toLocaleString(getDateLocales("eu"), {
+      return getFormatter(getDateLocales("eu"), {
         timeZone,
         day: "2-digit",
         month: "2-digit",
@@ -155,15 +169,15 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences, include
         minute: "2-digit",
         ...secondOption,
         hour12,
-      })
+      }).format(date)
     default:
-      return date.toLocaleString(getDisplayLocales(), {
+      return getFormatter(getDisplayLocales(), {
         timeZone,
         hour: "2-digit",
         minute: "2-digit",
         ...secondOption,
         hour12,
-      })
+      }).format(date)
   }
 }
 
@@ -172,28 +186,28 @@ function formatDateOnlyAbsolute(date: Date, preferences: DateTimePreferences): s
 
   switch (preferences.dateFormat) {
     case "iso":
-      return new Intl.DateTimeFormat(getDateLocales("iso"), {
+      return getFormatter(getDateLocales("iso"), {
         timeZone,
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
       }).format(date)
     case "us":
-      return date.toLocaleDateString(getDateLocales("us"), {
+      return getFormatter(getDateLocales("us"), {
         timeZone,
         month: "2-digit",
         day: "2-digit",
         year: "numeric",
-      })
+      }).format(date)
     case "eu":
-      return date.toLocaleDateString(getDateLocales("eu"), {
+      return getFormatter(getDateLocales("eu"), {
         timeZone,
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
-      })
+      }).format(date)
     default:
-      return date.toLocaleDateString(getDisplayLocales(), { timeZone })
+      return getFormatter(getDisplayLocales(), { timeZone }).format(date)
   }
 }
 
@@ -278,6 +292,45 @@ export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferen
     console.error("Error formatting time:", error)
     return new Date(timestamp * 1000).toLocaleTimeString(getDisplayLocales())
   }
+}
+
+/**
+ * Format an age as one narrow unit in the active language: minutes below one
+ * hour, hours below one day, and days above that ("4m", "6h", "2d" in English).
+ * An age below one minute shows as one minute.
+ */
+export function formatNarrowAge(ageMs: number): string {
+  const minutes = Math.max(1, Math.floor(ageMs / 60000))
+  const [value, unit] = minutes < 60 ? [minutes, "minute"] : minutes < 24 * 60 ? [Math.floor(minutes / 60), "hour"] : [Math.floor(minutes / (24 * 60)), "day"]
+  return new Intl.NumberFormat(getDisplayLocales(), { style: "unit", unit, unitDisplay: "narrow" }).format(value)
+}
+
+/**
+ * Format the clock time of a moment in the last days: the time alone for a
+ * moment from today, and the weekday with the time for an older one.
+ */
+export function formatClockTime(date: Date, preferences?: DateTimePreferences, now = new Date()): string {
+  const prefs = preferences || getStoredPreferences()
+  const hour12 = prefs.timeFormat === "12h"
+  try {
+    return formatClockTimeIn(date, now, prefs.timezone, hour12)
+  } catch (error) {
+    console.error("Error formatting time:", error)
+    return formatClockTimeIn(date, now, undefined, hour12)
+  }
+}
+
+function formatClockTimeIn(date: Date, now: Date, timeZone: string | undefined, hour12: boolean): string {
+  const day = getFormatter(["en-CA"], { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+  const today = day.format(date) === day.format(now)
+
+  return getFormatter(getDisplayLocales(), {
+    timeZone,
+    ...(today ? {} : { weekday: "short" as const }),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12,
+  }).format(date)
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
+import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,6 +35,7 @@ import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { SupportDialog } from "@/components/support/SupportDialog"
+import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
   Tooltip,
@@ -41,12 +43,15 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
+import { useOpenSystemNotice, useSystemNotices } from "@/hooks/useSystemNotices"
 import { useDebounce } from "@/hooks/useDebounce"
+import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
@@ -58,6 +63,8 @@ import {
   normalizeUnifiedInstanceIds
 } from "@/lib/instances"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
+import { hasSelection } from "@/lib/torrent-selection"
+import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
@@ -137,18 +144,10 @@ export function Header({
   const { state: layoutRouteState } = useLayoutRoute()
   const spreadsheetDisguise = useSpreadsheetDisguise()
 
-  // Get selection state from context
-  const {
-    selectedHashes,
-    selectedTorrents,
-    isAllSelected,
-    totalSelectionCount,
-    selectedTotalSize,
-    excludeHashes,
-    excludeTargets,
-    filters,
-    clearSelection,
-  } = useTorrentSelection()
+  const { selection } = useTorrentSelectionContext()
+  const selectionSummary = useTorrentSelectionSummary()
+  // CSS hides the header on the phone layout, so the management bar does not mount there.
+  const isMobile = useIsMobile()
 
   const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
@@ -184,9 +183,7 @@ export function Header({
   )
   const unifiedCapabilitiesResults = useQueries({
     queries: unifiedManageableInstances.map((instance) => ({
-      queryKey: ["instance-capabilities", instance.id],
-      queryFn: () => api.getInstanceCapabilities(instance.id),
-      staleTime: 60_000,
+      ...instanceCapabilitiesQuery(instance.id),
       enabled: isAllInstancesRoute,
     })),
   })
@@ -249,7 +246,7 @@ export function Header({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, shouldShowInstanceControls])
 
-  const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
+  const isGlobSearch = !!searchValue && /[*?]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [showSupport, setShowSupport] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -295,6 +292,8 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
+  const systemNotices = useSystemNotices()
+  const openSystemNotice = useOpenSystemNotice(systemNotices)
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
   const updateItemLabel = updateInfo && (
     <>
@@ -589,21 +588,11 @@ export function Header({
             )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
-          {(selectedHashes.length > 0 || isAllSelected) && (
+          {!isMobile && selectionSummary && hasSelection(selection) && (
             <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}
-                instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
-                selectedHashes={selectedHashes}
-                selectedTorrents={selectedTorrents}
-                isAllSelected={isAllSelected}
-                totalSelectionCount={totalSelectionCount}
-                totalSelectionSize={selectedTotalSize}
-                filters={filters}
-                search={routeSearch?.q}
-                excludeHashes={excludeHashes}
-                excludeTargets={excludeTargets}
-                onComplete={clearSelection}
+                actionTarget={selectionSummary.actionTarget}
               />
             </div>
           )}
@@ -620,7 +609,7 @@ export function Header({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300" />
               <Input
                 ref={searchInputRef}
-                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents", { shortcutKey })}
+                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents")}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -643,7 +632,7 @@ export function Header({
                     }, 100)
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
+                className={`w-full pl-9 ${searchValue ? "pr-16" : "pr-9"} transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
                 } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -688,6 +677,7 @@ export function Header({
                         <li>• {t("header.smartSearchFields")}</li>
                         <li>• {t("header.smartSearchEnter")}</li>
                         <li>• {t("header.smartSearchAuto")}</li>
+                        <li>• {t("header.smartSearchShortcut", { shortcutKey })}</li>
                       </ul>
                     </div>
                   </TooltipContent>
@@ -724,12 +714,16 @@ export function Header({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors relative">
                 <Menu className="h-4 w-4" />
+                {systemNotices.length > 0 && (
+                  <span className={cn("absolute top-1 left-1 h-2 w-2 rounded-full", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
+                )}
                 {updateInfo && (
                   <span className="absolute top-1 right-1 h-2 w-2 bg-green-500 rounded-full" />
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent align="end" className={cn(systemNotices.length > 0 ? "w-72" : "w-52")}>
+              <SystemNoticeMenuItems notices={systemNotices} onOpen={openSystemNotice.open} />
               {updateInfo && (
                 <>
                   <DropdownMenuItem asChild>
@@ -995,6 +989,7 @@ export function Header({
       })()}
 
       <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
+      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </header>
   )
 

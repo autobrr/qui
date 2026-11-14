@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isTopRow } from "@/lib/copy-groups"
+import type { Torrent } from "@/types"
+
 /**
  * Merge a freshly streamed first page into the currently displayed torrent list.
  *
@@ -28,13 +31,18 @@
  *     row lingers until the user re-paginates or the page is refetched, which is far
  *     less harmful than hiding a row that still exists.
  *
+ * A grouped page holds top rows and the members of their groups, so its length changes
+ * between frames. The page-0 window of `prev` ends after as many top rows as the fresh
+ * page holds. In `prev`, a group counts once, at its first row, as the list shows it, so
+ * members whose representative left them still count. On a flat list every row counts.
+ *
  * Generic over any record carrying a stable `hash` so it can be unit tested without
  * constructing full torrent objects. `keyOf` selects the identity used for the page-0
  * window dedup; it defaults to `hash` for single-instance rows, but aggregated
  * (cross-instance) views pass `instanceId+hash` so cross-seeded copies of one torrent
  * living on different instances stay distinct rows instead of collapsing into one.
  */
-export function mergeStreamedFirstPage<T extends { hash: string }>(
+export function mergeStreamedFirstPage<T extends { hash: string } & Pick<Torrent, "copy_group">>(
   prev: T[],
   nextTorrents: T[],
   total?: number,
@@ -59,9 +67,25 @@ export function mergeStreamedFirstPage<T extends { hash: string }>(
 
   // Rows past the streamed page-0 window are pagination-loaded pages we want to keep.
   // De-duping against the fresh page drops any that reflowed up into page 0.
-  const trailing = prev.slice(nextTorrents.length).filter(torrent => !seen.has(keyOf(torrent)))
+  const trailing = prev.slice(windowEnd(prev, nextTorrents.filter(isTopRow).length)).filter(torrent => !seen.has(keyOf(torrent)))
 
   return [...nextTorrents, ...trailing]
+}
+
+function windowEnd(rows: Pick<Torrent, "copy_group">[], topRows: number): number {
+  const groups = new Set<string>()
+  let seen = 0
+  for (let index = 0; index < rows.length; index++) {
+    const id = rows[index].copy_group?.id
+    if (id !== undefined) {
+      if (groups.has(id)) continue
+      groups.add(id)
+    }
+    if (seen++ === topRows) {
+      return index
+    }
+  }
+  return rows.length
 }
 
 /**

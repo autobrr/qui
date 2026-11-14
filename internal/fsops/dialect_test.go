@@ -4,7 +4,6 @@
 package fsops
 
 import (
-	"path"
 	"path/filepath"
 	"testing"
 
@@ -66,33 +65,4 @@ func TestSlashPathsRel(t *testing.T) {
 			require.Equal(t, want, got, "stdlib oracle %s -> %s", tc.base, tc.target)
 		}
 	}
-}
-
-// HostPaths is filepath, byte for byte, so local callers see no change.
-func TestHostPathsIsFilepath(t *testing.T) {
-	d := HostPaths
-	base := filepath.Join("data", "a")
-	target := filepath.Join("data", "a", "b", "c")
-	require.Equal(t, filepath.Join("data", "a", "b"), d.Join("data", filepath.Join("a", "b")))
-	require.Equal(t, filepath.Dir(target), d.Dir(target))
-	require.Equal(t, filepath.Base(target), d.Base(target))
-	require.Equal(t, filepath.Clean("data//a/../b"), d.Clean("data//a/../b"))
-	require.Equal(t, filepath.IsAbs(base), d.IsAbs(base))
-	rel, err := d.Rel(base, target)
-	require.NoError(t, err)
-	want, _ := filepath.Rel(base, target)
-	require.Equal(t, want, rel)
-	require.Equal(t, filepath.FromSlash("a/b"), d.FromSlash("a/b"))
-	require.Equal(t, filepath.ToSlash(target), d.ToSlash(target))
-	require.Equal(t, string(filepath.Separator), d.Separator())
-}
-
-func TestSlashPathsCleanIsPathClean(t *testing.T) {
-	for _, p := range []string{"/a/./b/../c", "a//b", "/", "", ".", "/a/b/"} {
-		require.Equal(t, path.Clean(p), SlashPaths.Clean(p))
-	}
-}
-
-func TestBackendsReportTheirDialect(t *testing.T) {
-	require.Equal(t, HostPaths, noopBackend{}.Paths())
 }

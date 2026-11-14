@@ -40,11 +40,12 @@
     "enableSwitch": "RSS-Automatisierung aktivieren",
     "intervalLabel": "RSS-Lauf-Intervall (Minuten)",
     "intervalTooltip": "Die Automatisierung verarbeitet bei jedem Lauf den gesamten Feed jedes aktivierten Torznab-Indexers. Das Mindestintervall beträgt {{min}} Minuten, um die Indexer nicht zu überlasten.",
-    "targetInstances": "Ziel-Instanzen",
+    "instancesToSearch": "Zu durchsuchende Instanzen",
+    "instancesToSearchHelp": "Die RSS-Automatisierung durchsucht die Torrents dieser Instanzen nach Treffern. Wenn eine Instanz eine Cross-Seed-Instanz hat, fügt qui die dort gefundenen Cross-Seeds dieser Cross-Seed-Instanz hinzu.",
     "selectInstances": "qBittorrent-Instanzen auswählen",
     "noActiveInstances": "Keine aktiven Instanzen verfügbar",
     "noInstancesAvailable": "Keine Instanzen verfügbar.",
-    "pickInstance": "Wähle mindestens eine Instanz aus, die Cross-Seeds erhalten soll.",
+    "pickInstance": "Wähle mindestens eine zu durchsuchende Instanz aus.",
     "instancesSelected": "{{count}} Instanz(en) ausgewählt.",
     "targetIndexers": "Ziel-Indexer",
     "allEnabledIndexers": "Alle aktivierten Indexer (leer lassen für alle)",
@@ -55,13 +56,13 @@
     "includeCategories": "Kategorien einschließen",
     "allCategories": "Alle Kategorien (leer lassen für alle)",
     "typeToAddCategories": "Tippen, um Kategorien hinzuzufügen",
-    "selectInstancesToLoadCategories": "Wähle Ziel-Instanzen aus, um Kategorien zu laden",
+    "selectInstancesToLoadCategories": "Wähle zu durchsuchende Instanzen aus, um Kategorien zu laden",
     "allCategoriesIncluded": "Alle Kategorien werden einbezogen.",
     "selectedCategoriesMatched": "Nur {{count}} ausgewählte Kategorie(n) wird/werden abgeglichen.",
     "includeTags": "Tags einschließen",
     "allTags": "Alle Tags (leer lassen für alle)",
     "typeToAddTags": "Tippen, um Tags hinzuzufügen",
-    "selectInstancesToLoadTags": "Wähle Ziel-Instanzen aus, um Tags zu laden",
+    "selectInstancesToLoadTags": "Wähle zu durchsuchende Instanzen aus, um Tags zu laden",
     "allTagsIncluded": "Alle Tags werden einbezogen.",
     "selectedTagsMatched": "Nur {{count}} ausgewählte(r) Tag(s) wird/werden abgeglichen.",
     "excludeCategories": "Kategorien ausschließen",
@@ -82,14 +83,12 @@
     "cancel": "Abbrechen",
     "runNow": "Jetzt ausführen",
     "saveSettings": "RSS-Automatisierungseinstellungen speichern",
-    "reset": "Zurücksetzen",
     "requiresTorznabIndexer": "RSS-Automatisierungsläufe benötigen mindestens einen Torznab-Indexer.",
     "items": "{{count}} Einträge",
     "failedCount": "{{count}} fehlgeschlagen",
     "runError": "Fehler: {{message}}",
     "runSummary": "{{runs}} Läufe • +{{added}}",
     "runSummaryWithFailures": "{{runs}} Läufe • +{{added}} • {{failed}} fehlgeschlagen",
-    "runDisabledAlreadyRunning": "Es läuft bereits ein Automatisierungslauf.",
     "runDisabledCooldown": "Manuelle Läufe sind auf ein Intervall von {{minutes}} Minuten begrenzt. Versuche es in {{remaining}} erneut."
   },
   "webhook": {
@@ -193,7 +192,11 @@
       "enabledRedMissingOps": "Gazelle: aktiviert (RED-Schlüssel gesetzt, OPS fehlt)",
       "enabledKeysMissing": "Gazelle: aktiviert (Schlüssel fehlen)"
     },
-    "noMessageProvided": "Keine Meldung vorhanden"
+    "noMessageProvided": "Keine Meldung vorhanden",
+    "cancelDialog": {
+      "title": "Bibliotheks-Scan abbrechen?",
+      "description": "Dies stoppt den aktuellen Bibliotheks-Scan. Bereits hinzugefügte Cross-Seeds bleiben erhalten, aber es werden keine weiteren Torrents gesucht."
+    }
   },
   "rules": {
     "hardlinkReflink": "Hardlink-/Reflink-Modus",
@@ -201,7 +204,7 @@
     "hardlinkDescription": "Erstelle hardlinked oder reflinked (Copy-on-Write) Dateibäume für Cross-Seeds. Jede Instanz kann unabhängig konfiguriert werden. Das Basisverzeichnis muss auf demselben Dateisystem liegen wie die Download-Pfade der Instanz.",
     "reflinkNote": " Der Reflink-Modus ermöglicht sicheres Cross-Seeding von Torrents mit zusätzlichen/fehlenden Dateien. Wenn zusätzliche Dateien vorhanden sind, löst qui eine Neuprüfung aus; liegt sie unter dem Schwellenwert, bleibt der Torrent für die manuelle Prüfung pausiert.",
     "crossSeedMode": "Cross-Seed-Modus",
-    "enableLocalFilesystem": "Aktiviere „Local filesystem access“ in den Instanz-Einstellungen, um den Hardlink- oder Reflink-Modus zu nutzen.",
+    "enableLocalFilesystem": "Der Hardlink-Modus braucht Schreibzugriff auf das Dateisystem: aktiviere in den Instanzeinstellungen „Lokaler Dateisystemzugriff“ oder richte dort SSH-Zugriff ein. Der Reflink-Modus braucht „Lokaler Dateisystemzugriff“.",
     "regular": "Regulär",
     "regularDescription": "Vorhandene Dateien an Ort und Stelle wiederverwenden. Schnell, kein zusätzlicher Speicherplatz.",
     "hardlink": "Hardlink",
@@ -218,7 +221,7 @@
     "fallbackToRegular": "Bei Fehler auf regulären Modus zurückfallen",
     "fallbackDescription": "Wenn {{mode}} fehlschlägt (z. B. bei unterschiedlichen Dateisystemen), auf den regulären Modus mit vorhandenen Dateien zurückfallen.",
     "saveChanges": "Änderungen speichern",
-    "noLocalAccess": "Kein lokaler Zugriff",
+    "noLocalAccess": "Kein Schreibzugriff auf das Dateisystem",
     "seasonPack": {
       "title": "Season Packs",
       "description": "Wenn autobrr ein Season Pack greift, prüft qui, ob du bereits genug lokale Daten zum Injizieren hast, und lässt qBittorrent dann alles noch Fehlende herunterladen.",
@@ -360,6 +363,9 @@
       "categories": "Die Kategorie und die Tags, die qui jedem neuen Cross-Seed gibt."
     }
   },
+  "run": {
+    "starting": "Der Lauf wird gestartet."
+  },
   "seasonPackRuns": {
     "title": "Letzte Season-Pack-Durchläufe",
     "noRunsYet": "Noch keine Durchläufe",
@@ -370,14 +376,18 @@
     "failedCount_one": "{{count}} fehlgeschlagen",
     "failedCount_other": "{{count}} fehlgeschlagen",
     "filterByName": "Nach Name filtern …",
-    "showSkipped": "Übersprungene anzeigen",
     "refresh": "Aktualisieren",
     "loadError": "Season-Pack-Durchläufe konnten nicht geladen werden.",
     "loading": "Season-Pack-Durchläufe werden geladen …",
     "noActivity": "Noch keine Season-Pack-Webhook-Aktivität.",
     "noMatches": "Keine Durchläufe entsprechen deinen Filtern.",
-    "showSkippedCount_one": "{{count}} übersprungene anzeigen",
-    "showSkippedCount_other": "{{count}} übersprungene anzeigen",
+    "statusFilter": "Statusfilter",
+    "showStatus": {
+      "applied": "Angewendete anzeigen ({{total}})",
+      "ready": "Bereite anzeigen ({{total}})",
+      "skipped": "Übersprungene anzeigen ({{total}})",
+      "failed": "Fehlgeschlagene anzeigen ({{total}})"
+    },
     "coverage": "Abdeckung",
     "episodes": "Episoden",
     "instance": "Instanz",
@@ -412,13 +422,13 @@
     "settingsSaved": "Einstellungen gespeichert",
     "failedToSaveSettings": "Speichern der Einstellungen fehlgeschlagen",
     "cannotEnableMode": "Modus {{mode}} kann nicht aktiviert werden",
-    "noLocalFilesystemAccess": "Instanz \"{{name}}\" hat keinen lokalen Dateisystemzugriff aktiviert.",
+    "noLocalFilesystemAccess": "Instanz \"{{name}}\" kann diesen Modus nicht nutzen. Der Hardlink-Modus braucht Schreibzugriff auf das Dateisystem, lokal oder über SSH; der Reflink-Modus braucht „Lokaler Dateisystemzugriff“.",
     "baseDirRequired": "Das Basisverzeichnis muss zuerst festgelegt werden.",
     "unknownError": "Unbekannter Fehler",
     "noIndexersConfigured": "Keine Torznab-Indexer konfiguriert",
-    "pickInstanceBeforeRunning": "Wähle mindestens eine Instanz aus, die Cross-Seeds erhalten soll, bevor du die RSS-Automatisierung startest.",
+    "pickInstanceBeforeRunning": "Wähle mindestens eine zu durchsuchende Instanz aus, bevor du die RSS-Automatisierung startest.",
     "enableAutomationAfterIndexers": "Aktiviere die RSS-Automatisierung erst, nachdem du Torznab-Indexer konfiguriert hast.",
-    "saveSettingsFirst": "Speichere die RSS-Automatisierungseinstellungen, um die aktualisierten Ziel-Instanzen vor dem Lauf anzuwenden.",
+    "saveSettingsFirst": "Speichere die RSS-Automatisierungseinstellungen, um die aktualisierten zu durchsuchenden Instanzen vor dem Lauf anzuwenden.",
     "selectInstanceToRun": "Wähle eine Instanz aus, gegen die ausgeführt werden soll",
     "seededSearchNeedsGazelle": "Die Suche in geseedeten Torrents benötigt Gazelle",
     "enableGazelleDescription": "Aktiviere den Gazelle-Abgleich (OPS/RED), bevor du mit deaktiviertem Torznab startest.",
@@ -462,6 +472,7 @@
       "applyFailed": "{{completedPrefix}}{{failed}} fehlgeschlagen - Ergebnisse für Details prüfen",
       "applyCompletedUnavailable": "Cross-Seed-Anfrage abgeschlossen (Details nicht verfügbar)",
       "applyNoChanges": "Es wurden keine Cross-Seeds hinzugefügt",
+      "applyAlreadyInClient": "Bereits im Client",
       "applyCompletedPart": ", {{count}} abgeschlossen",
       "applyCompletedPrefix": "{{count}} abgeschlossen, "
     }
@@ -496,13 +507,28 @@
       "invalidInfohash": "Infohash muss 40 oder 64 Hex-Zeichen lang sein"
     }
   },
+  "routeConfirm": {
+    "title": "Geroutete Dateien nicht mehr schützen?",
+    "counting": "Geroutete Torrents werden gezählt…",
+    "count_one": "{{count}} gerouteter Torrent auf {{crossSeed}} nutzt Dateien in den betroffenen Basisordnern von {{source}}.",
+    "count_other": "{{count}} geroutete Torrents auf {{crossSeed}} nutzen Dateien in den betroffenen Basisordnern von {{source}}.",
+    "countUnknown": "{{crossSeed}} ist nicht verfügbar, daher ist die Zahl der gerouteten Torrents in den betroffenen Basisordnern von {{source}} unbekannt.",
+    "orphanScan": "Der Orphan-Scan von {{source}} schützt die Dateien dieser Torrents nicht mehr.",
+    "clear": "{{crossSeed}} behält die gerouteten Torrents, und ihre Dateien bleiben in den Basisordnern von {{source}}. Verschiebe oder lösche diese Torrents, bevor du die Route entfernst.",
+    "deleteSource": "{{source}} fügt Cross-Seeds nach dem Löschen wieder sich selbst hinzu.",
+    "routesUnknown": "qui konnte die Cross-Seed-Routen nicht lesen und kann daher nicht angeben, welche Quellinstanzen nach dem Löschen ihren Schutz verlieren.",
+    "routeReadFailed": "qui konnte die Cross-Seed-Route von {{source}} nicht lesen und hat die Änderung daher nicht gespeichert.",
+    "routeChanged": "Die Cross-Seed-Route von {{source}} wurde in einem anderen Tab geändert, daher hat qui das Formular nicht gespeichert. Prüfe die Route und speichere erneut.",
+    "confirm": "Fortfahren",
+    "cancel": "Abbrechen"
+  },
   "dirScan": {
     "title": "Verzeichnis-Scanner",
     "description": "Durchsuche lokale Verzeichnisse nach abgeschlossenen Downloads und führe automatisch Cross-Seed für sie durch.",
     "settings": "Einstellungen",
     "enabled": "Aktiviert",
     "disabled": "Deaktiviert",
-    "noLocalAccessWarning": "Für keine qBittorrent-Instanz ist der Zugriff auf das lokale Dateisystem aktiviert. Aktiviere ihn in den Instanz-Einstellungen, um den Verzeichnis-Scanner zu nutzen.",
+    "noLocalAccessWarning": "Keine qBittorrent-Instanz hat Dateisystemzugriff. Um den Verzeichnis-Scanner zu nutzen, aktiviere in den Instanzeinstellungen „Lokaler Dateisystemzugriff“ oder richte dort SSH-Zugriff ein.",
     "scanDirectories": "Scan-Verzeichnisse",
     "scanDirectoriesDescription": "Konfiguriere Verzeichnisse, die nach Cross-Seed-fähigem Inhalt durchsucht werden.",
     "addDirectory": "Verzeichnis hinzufügen",
@@ -615,7 +641,7 @@
       "defaultCategory": "Standard-Kategorie",
       "defaultCategoryHelp": "Kategorie für injizierte Torrents, wenn das Scan-Verzeichnis sie nicht überschreibt.",
       "tags": "Tags",
-      "noLocalInstances": "Keine qBittorrent-Instanzen mit lokalem Zugriff",
+      "noLocalInstances": "Keine qBittorrent-Instanzen mit Dateisystemzugriff",
       "typeToAddCategory": "Tippen, um eine Kategorie hinzuzufügen",
       "noCategory": "Keine Kategorie",
       "typeToAddTags": "Tippen, um Tags hinzuzufügen",
@@ -636,6 +662,7 @@
       "enabledLabel": "Aktiviert",
       "instanceLabel": "qBittorrent-Ziel-Instanz",
       "selectInstance": "Instanz auswählen",
+      "remoteNoIdentityNote": "qui kann nicht erkennen, welche Dateien auf dieser Remote-Instanz bereits geseedet werden, und sucht deshalb jede einmal.",
       "intervalLabel": "Scan-Intervall (Minuten)",
       "intervalHelp": "Minimum: 60 Minuten (1 Stunde). Standard: 1440 Minuten (24 Stunden).",
       "skipIndividualEpisodesLabel": "Einzelepisoden überspringen",
@@ -650,7 +677,7 @@
       "typeToAddTags": "Tippen, um Tags hinzuzufügen",
       "tagsLoadError": "Tags konnten nicht aus qBittorrent geladen werden. Du kannst trotzdem eigene Werte eingeben.",
       "regularModeTitle": "Für diese Instanz ist der reguläre Modus aktiviert",
-      "regularModeHelp": "Wähle <hardlink>Hardlink</hardlink> oder <reflink>Reflink</reflink> unter Cross-Seed > Regeln > Hardlink-/Reflink-Modus, um dieses Risiko zu vermeiden. Aktiviere zuerst „Local filesystem access“ in den Instanz-Einstellungen.",
+      "regularModeHelp": "Wähle <hardlink>Hardlink</hardlink> oder <reflink>Reflink</reflink> unter Cross-Seed > Nach der Injektion > Hardlink-/Reflink-Modus, um dieses Risiko zu vermeiden. Der Hardlink-Modus braucht Schreibzugriff auf das Dateisystem: aktiviere in den Instanzeinstellungen „Lokaler Dateisystemzugriff“ oder richte dort SSH-Zugriff ein. Der Reflink-Modus braucht „Lokaler Dateisystemzugriff“.",
       "regularModeAcknowledge": "Ich verstehe die Risiken, den regulären Modus mit Medienverzeichnissen zu verwenden",
       "cancel": "Abbrechen",
       "addButton": "Verzeichnis hinzufügen",
@@ -665,5 +692,41 @@
       "cancel": "Abbrechen",
       "delete": "Löschen"
     }
+  },
+  "route": {
+    "foundOnAddedTo": "Gefunden auf {{source}}, hinzugefügt zu {{crossSeed}}",
+    "foundOnRoutedTo": "Gefunden auf {{source}}, weitergeleitet an {{crossSeed}}"
+  },
+  "routeStatus": {
+    "unavailable": "Cross-Seed-Instanz nicht verfügbar",
+    "cannotSeeData": "Cross-Seed-Instanz sieht die Daten nicht"
+  },
+  "routeForm": {
+    "crossSeedInstance": "Cross-Seed-Instanz",
+    "crossSeedInstanceDescription": "Cross-Seeds, die qui auf dieser Instanz findet, gehen nur an die Cross-Seed-Instanz. Diese Instanz erhält sie nie. qui legt die Dateien als Hardlinks oder Reflinks in den Basisverzeichnissen dieser Instanz an.",
+    "noCrossSeedInstance": "Keine Cross-Seed-Instanz",
+    "receivesCrossSeeds": "Diese Instanz ist die Cross-Seed-Instanz von {{names}} und kann deshalb ihre eigenen Cross-Seeds nicht an eine Cross-Seed-Instanz senden.",
+    "needsLinkMode": "Eine Cross-Seed-Instanz benötigt den Hardlink- oder Reflink-Modus. Wähle zuerst einen aus und speichere ihn.",
+    "brokenRule": "Diese Route erfüllt die Routenregeln nicht mehr: {{reason}}",
+    "mappedPaths": "Pfade auf der Cross-Seed-Instanz",
+    "mappedPathsDescription": "Gib für jedes Basisverzeichnis den Pfad ein, unter dem die Cross-Seed-Instanz es sieht. Lass eine Zeile leer, wenn beide Instanzen denselben Pfad verwenden.",
+    "samePathPlaceholder": "Gleicher Pfad",
+    "overlap": "{{first}} und {{second}} zeigen auf der Cross-Seed-Instanz auf denselben Ordner oder auf verschachtelte Ordner.",
+    "testRoute": "Route testen",
+    "saveRoute": "Route speichern",
+    "clearRoute": "Route entfernen",
+    "saved": "Route gespeichert",
+    "cleared": "Route entfernt",
+    "saveFailed": "Route konnte nicht gespeichert werden",
+    "clearFailed": "Route konnte nicht entfernt werden",
+    "testFailed": "Route konnte nicht getestet werden",
+    "testResultRow": "{{baseDir}} → {{listedPath}}: {{result}}",
+    "testResult": {
+      "sees": "die Cross-Seed-Instanz sieht ihn",
+      "seesFolderNotMarker": "die Cross-Seed-Instanz sieht den Ordner, aber nicht die Markierung",
+      "cannotSeeFolder": "die Cross-Seed-Instanz sieht den Ordner nicht",
+      "cannotWrite": "qui kann nicht in den Ordner auf dieser Instanz schreiben"
+    },
+    "markerHint": "Ein Netzwerk-Mount (NFS) kann bis zu 60 Sekunden lang eine alte Ordnerliste zeigen. Warte eine Minute und teste dann erneut."
   }
 }

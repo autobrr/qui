@@ -13,7 +13,7 @@ import {
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, getThemeById } from "@/config/themes";
+import { themes, getThemeById, type Theme } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Lock, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -30,12 +30,13 @@ import { cn } from "@/lib/utils";
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
+import { useThemeVisibility } from "@/hooks/useThemeVisibility";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
 
 // Custom hook for theme change detection
-const useThemeChange = () => {
+const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode());
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme());
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
@@ -57,19 +58,24 @@ const useThemeChange = () => {
     };
   }, [checkTheme]);
 
+  // Custom theme registration sends no themechange. Call this hook after
+  // useCustomThemes, so that a stored custom theme resolves here.
+  useEffect(checkTheme, [checkTheme, customThemes]);
+
   return { currentMode, currentTheme, isDark };
 };
 
 export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
-  const { currentMode, currentTheme, isDark } = useThemeChange();
   const { customThemes } = useCustomThemes();
+  const { currentMode, currentTheme, isDark } = useThemeChange(customThemes);
   const [open, setOpen] = useState(false);
+  const [visibility] = useThemeVisibility();
 
   // Subscribe so the list re-renders when the async theme registry lands;
   // the registry array mutates in place, so it must not be a memo dep.
   useBuiltinThemes();
-  const sortedThemes = buildThemeCatalog(themes, customThemes);
+  const sortedThemes = buildThemeCatalog(themes, customThemes, { visibility, currentThemeId: currentTheme.id });
 
   // Pure property reads over ~two dozen themes: cheap enough to recompute per
   // render, and a cache would go stale when the registry swaps an entry

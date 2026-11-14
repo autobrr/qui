@@ -12,9 +12,16 @@
     "externalPrograms": "外部程式",
     "notifications": "通知",
     "dateTime": "時間與語言",
-    "premiumThemes": "進階主題",
+    "statistics": "統計",
+    "trackers": "Tracker 自訂",
+    "premiumThemes": "主題",
     "security": "安全",
     "logs": "日誌"
+  },
+  "nav": {
+    "general": "一般",
+    "connections": "連線",
+    "access": "存取"
   },
   "language": {
     "cardTitle": "語言",
@@ -97,7 +104,6 @@
       "proxyUrl": "代理 URL",
       "showProxyUrl": "顯示代理 URL",
       "hideProxyUrl": "隱藏代理 URL",
-      "copyProxyUrl": "複製代理 URL",
       "done": "完成"
     },
     "deleteDialog": {
@@ -113,9 +119,7 @@
       "deleted": "用戶端 API 金鑰已刪除",
       "deleteFailed": "刪除用戶端 API 金鑰失敗：{{error}}",
       "clientNameRequired": "用戶端名稱為必填項",
-      "selectInstance": "請選擇一個 qBittorrent 實例",
-      "proxyCopied": "代理 URL 已複製到剪貼簿",
-      "copyFailed": "複製到剪貼簿失敗"
+      "selectInstance": "請選擇一個 qBittorrent 實例"
     }
   },
   "apiKeys": {
@@ -127,21 +131,77 @@
     "apiDocs": "API 文件",
     "description": "API 金鑰允許外部應用程式存取您的 qBittorrent 實例。",
     "createButton": "建立 API 金鑰",
+    "editButton": "編輯 {{name}}",
+    "deleteButton": "刪除 {{name}}",
     "loading": "正在載入 API 金鑰...",
     "empty": "尚未建立任何 API 金鑰",
     "createDialog": {
       "title": "建立 API 金鑰",
-      "description": "為您的 API 金鑰取一個描述性名稱，以便記住其用途。",
+      "description": "為金鑰命名，並只選擇它需要的存取權限。",
       "nameLabel": "名稱",
       "namePlaceholder": "例如：自動化指令碼",
       "nameRequired": "名稱為必填項",
       "submit": "建立 API 金鑰",
       "creating": "建立中..."
     },
+    "editDialog": {
+      "title": "編輯 API 金鑰",
+      "description": "變更從此金鑰的下一個請求起生效。qui 不會再次顯示金鑰本身。",
+      "submit": "儲存變更",
+      "saving": "正在儲存..."
+    },
+    "permissions": {
+      "title": "權限",
+      "help": "寫入包含讀取和執行。執行不包含讀取，因為設定中保存著憑證。",
+      "required": "請至少選擇一項權限。",
+      "access": "存取",
+      "allAreas": "全部區域",
+      "allAreasExcept": "除{{areas}}外的全部區域",
+      "refusedByLimit": "輔種和目錄掃描器拒絕帶實例限制的金鑰，因此 qui 不會儲存這些權限。",
+      "entry": "{{area}}：{{level}}",
+      "showByArea": "依區域顯示 {{name}} 的存取權限",
+      "partialArea": "{{area}}（僅{{levels}}）",
+      "legend": {
+        "title": "每個權限區域一個方塊：",
+        "none": "無權限"
+      },
+      "levels": {
+        "read": "讀取",
+        "run": "執行",
+        "write": "寫入"
+      },
+      "areas": {
+        "instances": "實例",
+        "torrents": "種子",
+        "crossSeed": "輔種",
+        "dirScan": "目錄掃描器",
+        "automations": "自動化",
+        "rss": "RSS",
+        "backups": "備份",
+        "orphanScan": "孤立項目掃描",
+        "externalPrograms": "外部程式",
+        "indexers": "索引器",
+        "arr": "Arr",
+        "notifications": "通知",
+        "settings": "設定",
+        "logs": "日誌",
+        "system": "系統"
+      }
+    },
+    "instanceLimit": {
+      "title": "實例限制",
+      "help": "選擇此金鑰可以存取的實例。不選擇表示所有實例，包括之後新增的實例。",
+      "reaches": "可存取",
+      "all": "所有實例",
+      "only": "僅 {{instances}}",
+      "none": "無實例。此限制只包含已刪除的實例。",
+      "deleted": "已刪除的實例 {{id}}"
+    },
     "newKey": {
       "label": "您的新 API 金鑰",
       "warning": "請立即儲存此金鑰。之後將無法再次檢視。",
-      "done": "完成"
+      "done": "完成",
+      "apiKey": "API 金鑰"
     },
     "deleteDialog": {
       "title": "刪除 API 金鑰？",
@@ -154,8 +214,8 @@
       "createFailed": "建立 API 金鑰失敗",
       "deleted": "API 金鑰已刪除",
       "deleteFailed": "刪除 API 金鑰失敗",
-      "copied": "API 金鑰已複製到剪貼簿",
-      "copyFailed": "複製到剪貼簿失敗"
+      "updated": "API 金鑰更新成功",
+      "updateFailed": "更新 API 金鑰失敗"
     }
   },
   "externalPrograms": {
@@ -239,7 +299,7 @@
     "loading": "正在載入通知目標…",
     "loadFailed": "載入通知目標失敗",
     "empty": "尚未配置通知目標。新增一個以開始接收警報。",
-    "allEvents": "全部事件",
+    "allEvents": "除系統通知外的全部事件",
     "showList": "顯示清單",
     "hideList": "隱藏清單",
     "badges": {
@@ -338,6 +398,56 @@
       "error": "儲存日期和時間偏好失敗"
     }
   },
+  "statistics": {
+    "cardTitle": "統計",
+    "cardDescription": "qui 會在資料庫中記錄每個種子的上傳與下載。這些設定適用於所有實例。",
+    "recording": {
+      "label": "記錄傳輸歷史",
+      "description": "關閉時，qui 不記錄任何內容，並保留已儲存的歷史。關閉的期間會成為記錄空缺。"
+    },
+    "retention": {
+      "label": "保留每日詳情",
+      "description": "超過此時間後，qui 會將每小時的合計合併為天，並將每個種子的每日位元組合併為每年一列。合計維持不變。選擇較短的時間後，qui 會在下一次讀取時合併較早的詳情，且無法復原。",
+      "days90": "90 天",
+      "days400": "400 天",
+      "forever": "永久"
+    },
+    "size": {
+      "label": "歷史大小"
+    },
+    "deleteHistory": {
+      "label": "刪除歷史",
+      "description": "刪除一個實例或所有實例的傳輸歷史。刪除後無法復原。",
+      "instance": "實例",
+      "allInstances": "所有實例",
+      "unnamedInstance": "實例 {{id}}",
+      "everything": "全部",
+      "before": "某日期之前的全部",
+      "date": "日期",
+      "button": "刪除歷史",
+      "confirmTitle": "刪除歷史？",
+      "confirmEverything": "qui 將刪除 {{name}} 的全部歷史。記錄將以新的基準重新開始。此操作無法復原。",
+      "confirmBefore": "qui 將刪除 {{name}} 在 {{date}} 之前的歷史。如果記錄在該日期之前開始，首次記錄之前的位元組也會刪除，「自…起記錄」會改為該日期。此操作無法復原。",
+      "sqliteSpace": "資料庫檔案大小不變。SQLite 會將可用空間重新用於新的歷史。",
+      "postgresSpace": "刪除所有實例的全部歷史會立即將空間歸還給磁碟。其他刪除之後，Postgres 會將可用空間重新用於新的歷史。",
+      "cancel": "取消",
+      "confirm": "刪除",
+      "deleted": "歷史已刪除",
+      "failed": "刪除歷史失敗",
+      "shrink": {
+        "label": "同時壓縮資料庫檔案",
+        "restart": "qui 會重新啟動並縮小檔案，以便取回磁碟空間。qui 會短暫無法使用。",
+        "nextStart": "在此安裝方式下，qui 無法自行重新啟動。壓縮將在 qui 下次啟動時執行。",
+        "tooLittleSpace": "磁碟可用空間為 {{free}}，壓縮最多需要 {{need}}。不勾選此項是安全的：SQLite 會將閒置空間重新用於新的歷史記錄。",
+        "manualDocs": "手動壓縮檔案"
+      }
+    },
+    "loadFailed": "無法載入統計設定",
+    "toasts": {
+      "saved": "統計設定已儲存",
+      "saveFailed": "無法儲存統計設定"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "修改密碼",
@@ -417,36 +527,37 @@
     "selector": {
       "title": "主題選擇",
       "loadingDescription": "正在載入可用主題...",
-      "description": "從可用主題中選擇。進階主題需要有效的授權。",
-      "verificationUnavailable": "授權驗證不可用。進階主題切換暫時停用。",
-      "notLoaded": "進階主題未載入",
-      "notLoadedDescription": "配置",
-      "notLoadedAnd": "並執行",
-      "premium": "進階",
-      "pro": "Pro",
+      "description": "從可用主題中選擇。部分主題需要有效的授權。",
+      "verificationUnavailable": "授權驗證不可用。切換到需要授權的主題暫時停用。",
+      "notLoaded": "需要授權的主題未載入",
+      "notLoadedDescription": "執行",
       "free": "免費",
       "locked": "已鎖定",
-      "lock": "鎖定"
+      "lock": "鎖定",
+      "showTheme": "顯示",
+      "hideTheme": "隱藏"
     },
     "toasts": {
-      "premiumRequired": "需要進階授權",
-      "premiumRequiredDescription": "新增有效的進階授權以解鎖進階主題。"
+      "premiumRequired": "需要授權",
+      "premiumRequiredDescription": "新增有效的授權以解鎖所有主題。"
     },
     "license": {
       "loadingTitle": "授權管理",
       "loadingDescription": "正在載入主題授權...",
       "managementTitle": "授權管理",
-      "managementDescription": "管理您的主題授權和進階存取權限",
+      "managementDescription": "管理您的主題授權",
       "providers": {
         "licensePortal": "授權門戶"
       },
       "status": {
-        "unlockTitle": "解鎖進階主題",
+        "unlockTitle": "解鎖所有主題",
         "unlockDescription": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
-        "activeTitle": "進階存取已啟用",
-        "activeDescription": "您可以存取所有目前和未來的進階主題",
+        "activeTitle": "授權已啟用",
+        "activeDescription": "您可以使用所有目前和未來的主題",
         "activationRequiredTitle": "需要啟用授權",
-        "activationRequiredDescription": "您的授權需要在此裝置上啟用"
+        "activationRequiredDescription": "您的授權需要在此裝置上啟用",
+        "offlineTitle": "無法連線至授權服務",
+        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此需要授權的主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 購買，然後在此輸入您的授權金鑰。如果丟失了金鑰，可透過",
@@ -468,7 +579,12 @@
       },
       "details": {
         "productAdded": "{{productName}} · 新增於 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
+        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}",
+        "statusLabels": {
+          "invalid": "無效",
+          "offline": "離線",
+          "unknown": "未知"
+        }
       },
       "invalid": {
         "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入，然後在 Machine Instances 中停用一臺不再使用的裝置。"
@@ -493,7 +609,7 @@
         "addLicense": "新增授權",
         "remove": "移除",
         "removing": "移除中...",
-        "getPremium": "獲取進階版",
+        "getPremium": "取得授權",
         "reactivate": "重新啟用授權",
         "activating": "啟用中...",
         "copyLicenseKey": "複製授權金鑰",
@@ -509,17 +625,17 @@
         "recoverPrefix": "如有需要，您可以稍後從"
       },
       "addDialog": {
-        "title": "新增進階授權",
-        "description": "輸入您的進階主題授權金鑰以解鎖所有進階主題。",
+        "title": "新增授權",
+        "description": "輸入您的授權金鑰以解鎖所有主題。",
         "label": "授權金鑰",
-        "placeholder": "輸入您的進階主題授權金鑰",
+        "placeholder": "輸入您的授權金鑰",
         "recoverKey": "找回金鑰？",
         "validation": {
           "required": "授權金鑰為必填項"
         }
       },
       "paymentDialog": {
-        "title": "獲取進階授權",
+        "title": "取得授權",
         "description": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
         "steps": {
           "choosePaymentMethod": {
@@ -551,10 +667,10 @@
       "copiedVerify": "驗證命令已複製",
       "failedCopyVerify": "複製驗證命令失敗",
       "toasts": {
-        "activationSuccessPremium": "進階存取已啟用！感謝您的支援！",
-        "paymentCompleted": "支付完成。請新增您的進階授權金鑰以完成設定。",
+        "activationSuccessPremium": "授權已啟用！感謝您的支援！",
+        "paymentCompleted": "支付完成。請新增您的授權金鑰以完成設定。",
         "paymentNotCompleted": "支付未成功完成。",
-        "returnedFromCheckout": "已從結帳返回。準備好後請新增您的進階授權金鑰。",
+        "returnedFromCheckout": "已從結帳返回。準備好後請新增您的授權金鑰。",
         "keyCopied": "授權金鑰已複製到剪貼簿",
         "copyFailed": "複製授權金鑰失敗",
         "removedFromMachine": "授權已從此裝置移除"
@@ -563,9 +679,9 @@
     "custom": {
       "badge": "自訂",
       "title": "自訂主題",
-      "lockedTitle": "自訂主題是進階功能",
-      "lockedDescription": "解鎖進階版即可從磁碟目錄載入您自己的主題 CSS 檔案。",
-      "unlockCta": "解鎖進階版",
+      "lockedTitle": "自訂主題需要授權",
+      "lockedDescription": "取得授權即可從磁碟目錄載入您自己的主題 CSS 檔案。",
+      "unlockCta": "取得授權",
       "refresh": "重新整理",
       "detectedCount": "找到的主題：{{total}}",
       "parseErrorsTitle": "無法解析以下檔案：",
@@ -1092,11 +1208,72 @@
       "bind": "繫結位址",
       "configDir": "配置目錄",
       "dataDir": "資料目錄"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker 自訂",
+    "cardDescription": "重新命名 Tracker，並將同一 Tracker 的多個網域合併為一個項目。qui 會在所有顯示該 Tracker 的地方使用顯示名稱。",
+    "loading": "正在載入 Tracker…",
+    "empty": "尚無 Tracker。實例中有種子後，Tracker 會顯示在這裡。",
+    "importTooltip": "匯入自訂配置",
+    "exportTooltip": "匯出自訂配置",
+    "mergedFrom": "合併自：{{domains}}",
+    "original": "原始：{{domain}}",
+    "mergeTooltip": "將選取的 Tracker 合併到此分組",
+    "mergeIntoGroup": "合併到分組",
+    "addToMerge": "新增到合併",
+    "rename": "重新命名",
+    "edit": "編輯",
+    "delete": "刪除",
+    "customizeDialog": {
+      "editTitle": "編輯 Tracker 名稱",
+      "renameTitle": "重新命名 Tracker",
+      "mergeTitle": "合併 Tracker",
+      "editDescription": "更新此 Tracker 的顯示名稱。",
+      "renameDescription": "為此 Tracker 指定自訂顯示名稱。",
+      "mergeDescription": "將這些 Tracker 合併為一個條目並設定自訂名稱。",
+      "displayName": "顯示名稱",
+      "displayNamePlaceholder": "例如 TorrentLeech",
+      "domains": "域名",
+      "selectedTrackers": "已選 Tracker",
+      "primary": "主要",
+      "removeDomain": "移除 {{domain}}",
+      "cancel": "取消",
+      "saving": "儲存中……",
+      "save": "儲存",
+      "renameAction": "重新命名",
+      "mergeAction": "合併"
     },
-    "copyTitle": "複製 {{label}}",
+    "importDialog": {
+      "title": "匯入 Tracker 自訂配置",
+      "description": "貼上 JSON 以匯入 Tracker 自訂配置（重新命名與合併）。",
+      "jsonData": "JSON 資料",
+      "invalidFormat": "格式無效：需要 trackerCustomizations 陣列",
+      "missingDisplayName": "條目無效：缺少 displayName",
+      "invalidDomains": "條目無效：domains 必須是非空陣列",
+      "invalidJson": "JSON 格式無效",
+      "newCount": "{{count}} 個新增",
+      "conflictCount_other": "{{count}} 個衝突",
+      "unchangedCount": "{{count}} 個未變更",
+      "resolveConflicts": "解決衝突",
+      "conflictsWith": "與以下條目衝突：{{name}}",
+      "skip": "跳過",
+      "overwrite": "覆蓋",
+      "cancel": "取消",
+      "importing": "匯入中……",
+      "import": "匯入"
+    },
     "toasts": {
-      "copied": "{{label}} 已複製到剪貼簿",
-      "copyFailed": "複製 {{label}} 失敗"
+      "noCustomizationsToExport": "沒有可匯出的自訂配置",
+      "copiedToClipboard": "已複製到剪貼簿",
+      "failedToCopy": "複製到剪貼簿失敗",
+      "createFailed": "建立 Tracker 自訂配置失敗",
+      "updateFailed": "更新 Tracker 自訂配置失敗",
+      "deleteFailed": "刪除 Tracker 自訂配置失敗",
+      "failedToImport": "匯入失敗：{{names}}",
+      "importedAndSkipped": "已匯入 {{imported}} 項，跳過 {{skipped}} 項",
+      "importedCount_other": "已匯入 {{count}} 項自訂配置",
+      "noCustomizationsImported": "未匯入任何自訂配置"
     }
   }
 }

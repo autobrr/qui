@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -134,10 +135,9 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		GUID:        "guid-2",
 		Size:        2048,
 		SearchDecision: searchDecisionProvenance{
-			Class:                searchCandidateClassExactSizeFallback,
-			StrictMismatchReason: "collection mismatch",
-			RelaxedDifferences:   []string{"collection"},
-			SourceTitles:         []string{"ARR Alias"},
+			Class:        searchCandidateClassExactSizeFallback,
+			Relaxed:      differencesOf(differenceCollection),
+			SourceTitles: []string{"ARR Alias"},
 		},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
@@ -172,6 +172,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		FindIndividualEpisodes: true,
 	}
 
+	withAdder(service)
 	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
@@ -179,8 +180,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
 	require.Equal(t, sourceTorrent.Hash, captured.SearchDecision.SourceHash)
-	require.Equal(t, cached.SearchDecision.StrictMismatchReason, captured.SearchDecision.StrictMismatchReason)
-	require.Equal(t, cached.SearchDecision.RelaxedDifferences, captured.SearchDecision.RelaxedDifferences)
+	require.Equal(t, cached.SearchDecision.Relaxed, captured.SearchDecision.Relaxed)
 	require.Equal(t, cached.SearchDecision.SourceTitles, captured.SearchDecision.SourceTitles)
 }
 
@@ -244,14 +244,14 @@ func newEpisodeSyncManager() *episodeSyncManager {
 	}
 }
 
-func (f *episodeSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (f *episodeSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	list := f.torrents[instanceID]
 	if list == nil {
 		return nil, fmt.Errorf("instance %d has no torrents", instanceID)
 	}
 	copied := make([]qbt.Torrent, len(list))
 	copy(copied, list)
-	return copied, nil
+	return testTorrentRefs(copied), nil
 }
 
 func (f *episodeSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -310,7 +310,7 @@ func (f *episodeSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (f *episodeSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (f *episodeSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, nil
 }
 
@@ -332,4 +332,8 @@ func (f *episodeSyncManager) GetCategories(_ context.Context, _ int) (map[string
 
 func (f *episodeSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
 	return nil
+}
+
+func (*episodeSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

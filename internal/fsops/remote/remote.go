@@ -119,6 +119,7 @@ func (b *Backend) ReadDir(ctx context.Context, p string) ([]fsops.DirEntry, erro
 			Name:      fi.Name(),
 			IsDir:     fi.IsDir(),
 			IsSymlink: fi.Mode()&fs.ModeSymlink != 0,
+			Mode:      fi.Mode().Type(),
 		})
 	}
 	return result, nil
@@ -131,7 +132,11 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	}
 	// A missing root errors before the goroutine, so the caller sees
 	// fs.ErrNotExist from the call rather than as a lone channel entry.
-	fi, err := lstat(ctx, client, root)
+	rootStat := lstat
+	if opts.FollowRoot {
+		rootStat = stat
+	}
+	fi, err := rootStat(ctx, client, root)
 	if err != nil {
 		return nil, err
 	}
@@ -503,6 +508,22 @@ func mkdirAll(ctx context.Context, client *sftp.Client, p string) ([]string, err
 		return created, requestError("mkdir", p, err)
 	}
 	return append(created, p), ctx.Err()
+}
+
+// Mkdir ignores perm, as MkdirAll does. The server answers SSH_FX_FAILURE for
+// an existing path, so an lstat names that cause as fs.ErrExist.
+func (b *Backend) Mkdir(ctx context.Context, p string, _ fs.FileMode) error {
+	client, err := b.client(ctx)
+	if err != nil {
+		return err
+	}
+	if err := awaitMutation(ctx, func() error { return client.Mkdir(p) }); err != nil {
+		if _, statErr := lstat(ctx, client, p); statErr == nil {
+			return pathError("mkdir", p, fs.ErrExist)
+		}
+		return requestError("mkdir", p, err)
+	}
+	return nil
 }
 
 func (b *Backend) Remove(ctx context.Context, p string, opts fsops.RemoveOptions) error {

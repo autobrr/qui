@@ -382,7 +382,7 @@ func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState
 		return nil, fmt.Errorf("load tags: %w", err)
 	}
 
-	torrents, err := s.reader.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.reader.GetAllTorrentRefs(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}

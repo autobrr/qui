@@ -180,3 +180,19 @@ func TestValidatePartialPoolPathInsideRootRejectsExistingSymlinkTarget(t *testin
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "escapes through symlink or reparse point")
 }
+
+func TestValidatePartialPoolPathInsideRootMissingRootThroughAlias(t *testing.T) {
+	parent := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(parent, alias); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+	root := filepath.Join(alias, "missing root")
+	require.NoError(t, validatePartialPoolPathInsideRoot(root, filepath.Join(root, "nested", "video.mkv")))
+
+	require.NoError(t, os.Mkdir(root, 0o750))
+	outside := t.TempDir()
+	link := filepath.Join(root, "escape")
+	require.NoError(t, os.Symlink(outside, link))
+	require.Error(t, validatePartialPoolPathInsideRoot(root, filepath.Join(link, "missing.mkv")))
+}

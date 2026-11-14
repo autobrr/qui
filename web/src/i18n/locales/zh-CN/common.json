@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "仪表盘",
+    "statistics": "统计",
     "search": "搜索",
     "crossSeed": "辅种",
     "automations": "自动化",
@@ -46,7 +47,7 @@
     "tasksForInstance": "实例任务",
     "settingsForInstance": "实例设置",
     "clearSearch": "清除搜索",
-    "searchTorrents": "搜索种子... ({{shortcutKey}})",
+    "searchTorrents": "搜索种子...",
     "globPattern": "Glob 模式...",
     "smartSearchTitle": "智能搜索功能：",
     "smartSearchGlob": "Glob 模式：",
@@ -57,6 +58,7 @@
     "smartSearchFields": "搜索名称、分类和标签",
     "smartSearchEnter": "按回车键立即搜索",
     "smartSearchAuto": "暂停输入 500 毫秒后自动搜索",
+    "smartSearchShortcut": "按 {{shortcutKey}} 跳转到搜索框",
     "torrentCreationTasksTitle": "种子创建任务",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
@@ -77,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "仪表盘",
+    "statistics": "统计",
     "clients": "客户端",
     "settings": "设置",
     "qbittorrentClients": "qBittorrent 客户端",
@@ -100,17 +103,22 @@
     "cancel": "取消",
     "close": "关闭",
     "create": "创建",
-    "copyPath": "复制路径",
     "scrollToTop": "回到顶部",
     "search": "搜索",
-    "select": "选择"
+    "select": "选择",
+    "copyValue": "复制 {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "知道了"
   },
   "placeholders": {
     "search": "搜索...",
     "selectItems": "选择项目..."
   },
   "feedback": {
-    "noResultsFound": "未找到结果。"
+    "noResultsFound": "未找到结果。",
+    "copied": "{{label}} 已复制到剪贴板",
+    "copyFailed": "复制到剪贴板失败"
   },
   "errors": {
     "unknown": "未知错误",
@@ -149,16 +157,72 @@
     "dark": "深色",
     "system": "跟随系统",
     "theme": "主题",
-    "premium": "高级",
     "switchedToMode": "已切换到{{mode}}模式",
     "switchedToTheme": "已切换到{{theme}}主题",
     "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",
-    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。"
+    "premiumThemeError": "此主题需要许可证。请前往设置 > 主题激活许可证。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 现已可用",
     "dismiss": "关闭"
+  },
+  "systemNotice": {
+    "needsAttention": "需要处理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修复",
+    "kinds": {
+      "recording_stopped": {
+        "short": "记录已停止",
+        "title": "记录已停止",
+        "effect": "qui 无法写入传输历史。它会在下次写入时重试。",
+        "fix": "请确认磁盘有可用空间，并且 qui 可以写入数据库文件。",
+        "menuFix": "为数据库释放磁盘空间"
+      },
+      "shrink_failed": {
+        "short": "压缩失败",
+        "title": "压缩失败",
+        "effect": "qui 无法缩小数据库文件。数据库没有变化，qui 照常运行。",
+        "fix": "详情请查看 qui 日志。",
+        "menuFix": "查看 qui 日志",
+        "reasons": {
+          "disk_full": {
+            "fix": "磁盘可用空间不足。压缩最多需要数据库文件大小的两倍空间。请释放磁盘空间后重试。",
+            "menuFix": "释放空间后重试"
+          },
+          "locked": {
+            "fix": "另一个程序占用了数据库文件。请关闭该程序（例如备份工具或数据库查看器）后重试。",
+            "menuFix": "关闭其他程序后重试"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "磁盘空间不足",
+        "title": "磁盘空间不足",
+        "effect": "qui 数据库所在磁盘的可用空间很少。磁盘写满后，qui 的每次写入都会失败。",
+        "fix": "请释放磁盘空间，或在统计设置中缩短“保留每日详情”，或删除较早的历史。",
+        "menuFix": "为数据库释放磁盘空间",
+        "action": "打开统计设置"
+      }
+    },
+    "actions": {
+      "tryAgain": "重试",
+      "dismiss": "忽略",
+      "openLog": "打开日志"
+    },
+    "unknown": {
+      "short": "系统通知",
+      "title": "系统通知",
+      "effect": "qui 发现了一个需要你处理的故障。",
+      "fix": "详情请查看 qui 日志。",
+      "menuFix": "查看 qui 日志"
+    }
+  },
+  "databaseShrink": {
+    "done": "数据库文件已从 {{before}} 压缩到 {{after}}",
+    "nextStart": "压缩将在 qui 下次启动时执行",
+    "failed": "无法请求压缩"
   },
   "pwaUpdate": {
     "reload": "重新加载",
@@ -236,6 +300,9 @@
     "perkSuffix": "身份组，以及我们永远的感谢。",
     "yearly": "{{price}} / 年",
     "monthly": "{{price}} / 月",
-    "notLicense": "高级主题是单独的一次性购买。"
+    "notLicense": "主题许可证是单独的一次性购买。"
+  },
+  "labels": {
+    "path": "路径"
   }
 }

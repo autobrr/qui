@@ -35,8 +35,8 @@ func sourceClass(release *rls.Release) string {
 		}
 	}
 
-	// normalizeSource yields values like "WEBDL", "BLURAY", "UHD.BLURAY", "HDTV".
-	// 2160p discs parse as "UHD.BluRay", so match BluRay as a substring.
+	// normalizeSource yields values like "WEBDL", "BLURAY", "HDTV". It drops the
+	// UHD prefix, so a UHD.WEB pack routes as WEB and a UHD.BluRay pack as BluRay.
 	source := normalizeSource(release.Source)
 	switch {
 	case isWebSource(source):
@@ -106,7 +106,13 @@ func (s *Service) contentTypeFromCategoryRule(ctx context.Context, category stri
 	if err != nil || settings == nil {
 		return ContentTypeInfo{}, false
 	}
-	contentType, matched := matchCategoryMappingRule(settings.CategoryMappingRules, category)
+	return categoryRuleContentType(settings.CategoryMappingRules, category)
+}
+
+// categoryRuleContentType returns the content classification of the rule that
+// matches category. Returns false when no rule matches.
+func categoryRuleContentType(rules []models.CategoryMappingRule, category string) (ContentTypeInfo, bool) {
+	contentType, matched := matchCategoryMappingRule(rules, category)
 	if !matched {
 		return ContentTypeInfo{}, false
 	}

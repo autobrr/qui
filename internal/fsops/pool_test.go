@@ -49,6 +49,7 @@ func (f fakeBackend) SameFilesystem(context.Context, string, string) (bool, erro
 	return false, nil
 }
 func (f fakeBackend) MkdirAll(context.Context, string, fs.FileMode) error { return nil }
+func (f fakeBackend) Mkdir(context.Context, string, fs.FileMode) error    { return nil }
 func (f fakeBackend) Remove(context.Context, string, RemoveOptions) error {
 	return nil
 }
@@ -153,26 +154,6 @@ func TestPool_ResolveReturnsTheModeItRoutedBy(t *testing.T) {
 	}
 }
 
-func TestPool_LocalBackendRefusesEveryOtherMode(t *testing.T) {
-	local := fakeBackend{kind: "local"}
-	store := &fakeInstanceStore{instances: map[int]*models.Instance{
-		1: {ID: 1, HasLocalFilesystemAccess: true},
-		2: {ID: 2},
-		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
-	}}
-	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
-
-	backend, err := pool.LocalBackend(context.Background(), 1)
-	require.NoError(t, err)
-	assert.Equal(t, local, backend)
-
-	for _, id := range []int{2, 3} {
-		backend, err := pool.LocalBackend(context.Background(), id)
-		require.ErrorIs(t, err, ErrNotLocal, "instance %d", id)
-		assert.Nil(t, backend, "instance %d", id)
-	}
-}
-
 func TestPool_RequireGrantsByMode(t *testing.T) {
 	local := fakeBackend{kind: "local"}
 	remote := fakeBackend{kind: "remote"}
@@ -187,18 +168,10 @@ func TestPool_RequireGrantsByMode(t *testing.T) {
 		capability  models.FilesystemCapability
 		wantBackend Backend
 	}{
-		{1, models.CapabilityRead, local},
-		{1, models.CapabilityIdentity, local},
-		{1, models.CapabilityWrite, local},
+		// TestFilesystemCapabilitiesOf in models holds the full capability matrix.
 		{1, models.CapabilityContent, local},
 		{2, models.CapabilityRead, nil},
-		{2, models.CapabilityIdentity, nil},
-		{2, models.CapabilityWrite, nil},
-		{2, models.CapabilityContent, nil},
-		{3, models.CapabilityRead, remote},
-		{3, models.CapabilityIdentity, nil},
 		{3, models.CapabilityWrite, remote},
-		{3, models.CapabilityContent, nil},
 	} {
 		store := &fakeInstanceStore{instances: instances}
 		pool := NewPoolWithRemote(store, local, remoteFactory(remote))

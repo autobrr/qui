@@ -38,7 +38,8 @@ tier being assumed to include it. SFTP v3 attrs carry no inode or
 nlink, so file identity is unavailable: `Lstat`/`WalkDir` set `FileIDErr`
 when identity is requested. Consumers already degrade on zero FileID —
 orphan-scan alias dedup switches off, hardlinked-copy detection reports
-no-evidence, dirscan's FileID index skips the files. Reflinks are
+no-evidence, dirscan builds no FileID index and searches each file once.
+Reflinks are
 unsupported (no SFTP equivalent of FICLONE; `copy-data` is a byte copy, not
 CoW). Missing identity also changes hardlink-tree conflict handling: the
 local backend proves an existing target is the same link (`os.SameFile`)
@@ -90,7 +91,8 @@ their identity in two round trips. `StatBatch` adds `-L`. A single `Stat` or
 `Lstat` answers each path that `find` did not print, such as a missing path,
 so the errors are the same as for one path. `find -L` prints a broken link as
 the link itself, so `StatBatch` sends that path to `Stat` too. On the sftp
-tier, a single call answers each path.
+tier, a single call answers each path. An orphan scan delete reads the
+identity of every torrent file through `StatBatch` on the exec tier.
 
 The single calls of a batch run 32 at a time on the one sftp client, so they
 share round trips. In the tests, 64 paths at 25 ms of delay take about 50 ms,
@@ -135,7 +137,8 @@ persists it as `dir_scan_files.file_id` under a partial index on
 `(directory_id, file_id)` matched by rename detection, so the encoding
 change ships with a migration that sets `dir_scan_files.file_id` to
 NULL; there is no legacy read path, the next scan fills the column
-again. `IsZero()` survives unchanged; `==` and bare map keys give way
+again. A remote identity is stored with a tag of the endpoint that read it,
+so a file on a new SSH host, port or key never inherits a verdict by inode. `IsZero()` survives unchanged; `==` and bare map keys give way
 to the helper below, and the rest of the churn is per-platform
 constructors and test literals.
 
@@ -206,7 +209,8 @@ ignore paths are validated at save time in the dialect of the instance's
 backend, which is the one the scan reads them in. Cross-seed moved in #2943:
 link mode, season packs, the Manual match preview and local-match evidence
 take the dialect from the backend each function holds, and a season pack
-plans and creates its tree on one backend read. `hardlinktree`'s plan
+plans and creates its tree on one backend read. Dirscan moved in #2919.
+`hardlinktree`'s plan
 builders take the dialect as a leading parameter, through a four-method
 `hardlinktree.PathDialect` that `fsops.PathDialect` satisfies (`fsops`
 imports `hardlinktree`, so the dependency cannot point the other way), and
@@ -218,8 +222,7 @@ reserved characters, control characters, a trailing dot or space, and the
 reserved device names. The partial pool,
 `hardlinktree.Create`, reflink creation and the shared-allocation check are
 host code and run only for local instances. Managed-delete cleanup (#2947),
-the sync manager and dirscan's `buildLinkDestDir` (#2919) still use host
-`filepath`.
+and the sync manager still use host `filepath`.
 
 ## Path and Command Safety
 
@@ -508,12 +511,11 @@ scratch directories and a temporarily added, uniquely tagged
      the ssh client for bounded exec sessions, and batch lstat for
      cross-seed matching. The rest of batch stat is #2971.
 4. Frontend. Lands last. It is the only UI path that sets up SSH access,
-   so it gates the rollout for users. Until #2917 ships, no UI text names
-   SSH. `web/scripts/no-ssh-in-locales.test.mjs` enforces this for the
-   locales. Text that only a remote instance renders says "remote
-   instance" and stays. Text a local user also sees keeps its develop
-   wording, and the slice adds it to the reverse list in #2917's body.
-   (#2916 Decisions)
+   so it gates the rollout for users. Until the SSH setup screen (#2917,
+   PR for #3714) shipped, no UI text named SSH; text that only a remote
+   instance renders says "remote instance" and stays. The screen is a
+   tab of the instance preferences dialog that drives the five SSH
+   routes. (#2916 Decisions)
 5. Feature rollout per service, degraded-mode UX. Consumers admit an
    instance on a filesystem capability (`Pool.Require`,
    `models.FilesystemCapabilitiesOf`): automations
@@ -532,12 +534,16 @@ scratch directories and a temporarily added, uniquely tagged
    already reports remote free space, and that is the intended figure. A gate
    reads the instance before the work starts, so the reads after it
    resolve backend and mode from one later read and refuse every mode but
-   local. Dirscan does that through
-   `Pool.LocalBackend`, and missing files through
+   local. Missing files does that through
    `Pool.Resolve`. An instance whose local access was turned off after the
-   gate is then refused rather than read over SSH at a local path. Orphan
+   gate is then refused rather than read over SSH at a local path. Dirscan
+   admits an instance on Read and walks the backend `Pool.Require` returns.
+   It fails a remote walk whose SSH endpoint changed under it, and refuses
+   each add whose row left the mode or endpoint the run walked (#2919). Orphan
    scan admits an instance on Read, walks the backend `Pool.Require`
-   returns for Read, and refuses to delete from a run scanned over SSH.
+   returns for Read, and deletes from a run scanned over SSH only on the exec
+   tier, when the walk read every file's identity and the SSH endpoint has not
+   changed since the scan (#3236).
    Each remaining gate lifts in its own slice, with the degraded-mode
    handling that service needs, and the API-driven checks
    (missing files, orphan scan) become the field test of that slice. Every

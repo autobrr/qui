@@ -95,7 +95,7 @@ func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 				},
 			}
 
-			_, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}, Query: tt.query}, nil)
+			_, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{Query: tt.query}, searchScope{torznabIndexerIDs: []int{1, 2}}, nil)
 			require.NoError(t, err)
 
 			mu.Lock()

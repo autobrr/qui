@@ -3,8 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { CopyButton } from "@/components/ui/copy-button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ReannounceEnableWarningDialog } from "@/components/instances/preferences/ReannounceEnableWarning"
+import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,18 +18,16 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
+import { cn, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
-import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
+import { ChevronDown, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface ReannounceOverviewProps {
   onConfigureInstance?: (instanceId: number) => void
-  expandedInstances?: string[]
-  onExpandedInstancesChange?: (values: string[]) => void
 }
 
 interface InstanceStats {
@@ -63,8 +63,6 @@ function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
 
 export function ReannounceOverview({
   onConfigureInstance,
-  expandedInstances: controlledExpanded,
-  onExpandedInstancesChange,
 }: ReannounceOverviewProps) {
   const { t } = useTranslation("instances")
   const { instances, updateInstance, isUpdating } = useInstances()
@@ -87,12 +85,7 @@ export function ReannounceOverview({
     return reason
   }
 
-  // Internal state for standalone usage
-  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
-
-  // Use controlled props if provided, otherwise internal state
-  const expandedInstances = controlledExpanded ?? internalExpanded
-  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
   const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
   const [searchMap, setSearchMap] = useState<Record<number, string>>({})
   const [pendingEnableInstance, setPendingEnableInstance] = useState<Instance | null>(null)
@@ -171,21 +164,20 @@ export function ReannounceOverview({
     started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   }
 
-  const getSettingsSummary = (settings: InstanceReannounceSettings | undefined): string => {
-    if (!settings) return t("preferences.reannounceOverview.notConfigured")
+  const getSettingsSummaryParts = (settings: InstanceReannounceSettings): string[] => {
     const parts: string[] = []
     parts.push(t("preferences.reannounceOverview.summaryWait", { seconds: settings.initialWaitSeconds }))
     parts.push(t("preferences.reannounceOverview.summaryRetry", { seconds: settings.reannounceIntervalSeconds }))
     parts.push(t("preferences.reannounceOverview.summaryMax", { count: settings.maxRetries }))
     if (settings.aggressive) parts.push(t("preferences.reannounceOverview.summaryQuick"))
-    return parts.join(" · ")
+    return parts
   }
 
   if (!instances || instances.length === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.reannounceOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.reannounceOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.reannounceOverview.noInstancesDescription")}
           </CardDescription>
@@ -199,7 +191,7 @@ export function ReannounceOverview({
       <Card>
         <CardHeader className="space-y-2">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-lg font-semibold">{t("preferences.reannounceOverview.title")}</CardTitle>
+            <CardTitle>{t("preferences.reannounceOverview.title")}</CardTitle>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -251,11 +243,11 @@ export function ReannounceOverview({
 
               return (
                 <AccordionItem key={instance.id} value={String(instance.id)} className="group/item">
-                  <div className="grid grid-cols-[1fr_auto] items-center px-6">
-                    <AccordionTrigger className="py-4 pr-4 hover:no-underline [&>svg]:hidden">
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="font-medium truncate">{instance.name}</span>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center px-6">
+                    <AccordionTrigger className="min-w-0 py-4 pr-4 hover:no-underline [&>svg]:hidden">
+                      <div className="flex items-center justify-between gap-3 w-full min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                          <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
                           {isEnabled && stats.successToday > 0 && (
                             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
                               {t("preferences.reannounceOverview.today", { count: stats.successToday })}
@@ -269,7 +261,7 @@ export function ReannounceOverview({
                         </div>
 
                         {isEnabled && stats.lastActivity && (
-                          <span className="text-xs text-muted-foreground hidden sm:block">
+                          <span className="text-xs text-muted-foreground hidden sm:block shrink-0 whitespace-nowrap">
                             {formatRelativeTime(stats.lastActivity)}
                           </span>
                         )}
@@ -314,10 +306,11 @@ export function ReannounceOverview({
                   <AccordionContent className="px-6 pb-4">
                     <div className="space-y-4">
                       {/* Settings summary */}
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
-                        <div className="space-y-0.5">
+                      <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
+                        {/* A zero basis without min-w-0 moves the button down only once the widest summary pair stops fitting beside it. */}
+                        <div className="space-y-0.5 flex-1">
                           <p className="text-sm text-muted-foreground">
-                            {getSettingsSummary(settings)}
+                            {settings ? <SettingsSummary parts={getSettingsSummaryParts(settings)} /> : t("preferences.reannounceOverview.notConfigured")}
                           </p>
                           {settings?.monitorAll ? (
                             <p className="text-xs text-muted-foreground/70">{t("preferences.reannounceOverview.monitoringAllStalled")}</p>
@@ -460,17 +453,7 @@ export function ReannounceOverview({
                                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                           <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
                                             <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                            <button
-                                              type="button"
-                                              className="hover:text-foreground transition-colors"
-                                              onClick={() => {
-                                                copyTextToClipboard(event.hash)
-                                                toast.success(t("preferences.reannounceOverview.hashCopied"))
-                                              }}
-                                              title={t("preferences.reannounceOverview.copyHash")}
-                                            >
-                                              <Copy className="h-3 w-3" />
-                                            </button>
+                                            <CopyButton value={event.hash} label={t("preferences.activityRunDialog.hash")} className="size-5 text-muted-foreground hover:text-foreground" iconClassName="h-3 w-3" />
                                           </div>
                                           <span className="text-muted-foreground/40">·</span>
                                           <span>{formatISOTimestamp(event.timestamp)}</span>

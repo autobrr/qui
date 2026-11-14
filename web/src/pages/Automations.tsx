@@ -3,78 +3,50 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { AUTOMATIONS_NAV_GROUPS, type AutomationsTab } from "@/components/automations/tabs"
 import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
 import { OrphanScanSettingsDialog } from "@/components/instances/preferences/OrphanScanSettingsDialog"
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 import { ReannounceSettingsDialog } from "@/components/instances/preferences/ReannounceSettingsDialog"
 import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
+import { PageHeader } from "@/components/layout/PageHeader"
+import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
-export function Automations() {
+interface AutomationsProps {
+  activeTab: AutomationsTab
+  onTabChange: (tab: AutomationsTab) => void
+}
+
+export function Automations({ activeTab, onTabChange }: AutomationsProps) {
   const { t } = useTranslation("automations")
   const { instances } = useInstances()
   const [configureInstanceId, setConfigureInstanceId] = useState<number | null>(null)
   const [configureOrphanScanId, setConfigureOrphanScanId] = useState<number | null>(null)
-  const [expandedAccordion, setExpandedAccordion] = useState<string | null>(null)
-
-  // Handler for coordinated accordion state across all cards
-  const handleAccordionChange = (cardPrefix: string) => (values: string[]) => {
-    if (values.length === 0) {
-      setExpandedAccordion(null)
-    } else {
-      // Take the last item - Radix appends new items to the array
-      setExpandedAccordion(`${cardPrefix}:${values[values.length - 1]}`)
-    }
-  }
-
-  // Extract expanded instances for a specific card
-  const getExpandedForCard = (cardPrefix: string): string[] => {
-    if (!expandedAccordion) return []
-    const [prefix, instanceId] = expandedAccordion.split(":")
-    return prefix === cardPrefix ? [instanceId] : []
-  }
+  const navGroups: SectionNavGroup<AutomationsTab>[] = AUTOMATIONS_NAV_GROUPS.map(group => ({
+    sections: group.tabs.map(entry => ({ value: entry.tab, label: t(entry.labelKey) })),
+  }))
 
   const configureReannounceInstance = instances?.find((inst) => inst.id === configureInstanceId)
   const configureOrphanScanInstance = instances?.find((inst) => inst.id === configureOrphanScanId)
 
   return (
-    <div className="container mx-auto px-6 space-y-6 py-6 overflow-x-hidden">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex-1 space-y-2">
-          <h1 className="text-2xl font-semibold">{t("page.title")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("page.description")}
-          </p>
-        </div>
-      </div>
-
-      {/* Workflows full width, then Reannounce + Orphan Scan side by side */}
-      <div className="space-y-6">
-        <WorkflowsOverview
-          expandedInstances={getExpandedForCard("workflows")}
-          onExpandedInstancesChange={handleAccordionChange("workflows")}
-        />
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-          <ReannounceOverview
-            expandedInstances={getExpandedForCard("reannounce")}
-            onExpandedInstancesChange={handleAccordionChange("reannounce")}
-            onConfigureInstance={setConfigureInstanceId}
-          />
-          <OrphanScanOverview
-            expandedInstances={getExpandedForCard("orphan")}
-            onExpandedInstancesChange={handleAccordionChange("orphan")}
-            onConfigureInstance={setConfigureOrphanScanId}
-          />
-        </div>
-      </div>
+    <div className="space-y-6 p-4 lg:p-6 pb-16">
+      <PageHeader title={t("page.title")} description={t("page.description")} />
 
       {instances && instances.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {t("page.noInstances")}
         </p>
       )}
+
+      <SectionedPage navLabel={t("page.title")} groups={navGroups} activeSection={activeTab} onSectionChange={onTabChange}>
+        {activeTab === "workflows" && <WorkflowsOverview />}
+        {activeTab === "reannounce" && <ReannounceOverview onConfigureInstance={setConfigureInstanceId} />}
+        {activeTab === "orphan-scan" && <OrphanScanOverview onConfigureInstance={setConfigureOrphanScanId} />}
+      </SectionedPage>
 
       <ReannounceSettingsDialog
         open={configureInstanceId !== null}

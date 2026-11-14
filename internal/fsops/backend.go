@@ -69,6 +69,11 @@ type Backend interface {
 	// fsutil.LinkTreeBaseDirMode rather than a hand-typed mode (#1704, #2086).
 	MkdirAll(ctx context.Context, path string, perm fs.FileMode) error
 
+	// Mkdir creates one directory, like os.Mkdir. The error wraps fs.ErrExist
+	// when path already exists, so of two calls for one path only one
+	// succeeds. Link trees use it to reserve a folder name.
+	Mkdir(ctx context.Context, path string, perm fs.FileMode) error
+
 	// Remove removes a file or directory. If opts.Recursive is true, removes
 	// the entire tree (like os.RemoveAll).
 	Remove(ctx context.Context, path string, opts RemoveOptions) error

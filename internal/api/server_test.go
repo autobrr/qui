@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 	"unsafe"
 
@@ -26,14 +27,23 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/dbshrink"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
@@ -100,27 +110,29 @@ func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
 
 	require.NotNil(t, server.streamManager, "expected stream manager to be initialized")
 
-	sink := getClientPoolSyncEventSink(t, clientPool)
-	require.NotNil(t, sink, "expected client pool to have a sync sink registered")
-	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
+	sinks := getClientPoolSyncEventSinks(t, clientPool)
+	require.Len(t, sinks, 1, "expected client pool to have one sync sink registered")
+	require.Same(t, server.streamManager, sinks[0], "stream manager should be registered as sync sink")
 }
 
 func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
-	server := NewServer(&Dependencies{
-		Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+	synctest.Test(t, func(t *testing.T) {
+		server := NewServer(&Dependencies{
+			Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+		})
+
+		// http.Server.Shutdown starts the registered callbacks on every call.
+		require.NoError(t, server.Shutdown(t.Context()))
+		require.NoError(t, server.Shutdown(t.Context()))
+
+		// Each callback runs in its own goroutine; wait for both so a double close panics here.
+		synctest.Wait()
+		select {
+		case <-server.shuttingDown:
+		default:
+			t.Fatal("shutdown signal was not sent")
+		}
 	})
-
-	// http.Server.Shutdown starts the registered callbacks on every call.
-	require.NoError(t, server.Shutdown(t.Context()))
-	require.NoError(t, server.Shutdown(t.Context()))
-
-	select {
-	case <-server.shuttingDown:
-	case <-time.After(time.Second):
-		t.Fatal("shutdown signal was not sent")
-	}
-	// The second callback runs in its own goroutine; let it run so a double close panics here.
-	time.Sleep(50 * time.Millisecond)
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -151,6 +163,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	sessionManager := scs.New()
 
 	db := testdb.NewMigratedSQLite(t, "api-server")
+	encryptionKey := []byte("01234567890123456789012345678901")
+	dataDir := t.TempDir()
 
 	authService := auth.NewService(db)
 	_, err := authService.SetupUser(context.Background(), "test-user", "password123")
@@ -158,20 +172,39 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		require.NoError(t, err)
 	}
 
-	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
+	instanceStore, err := models.NewInstanceStore(db, encryptionKey)
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, clientPool.Close()) })
+
+	trackerIconService, err := trackericons.NewService(dataDir, "qui-test")
+	require.NoError(t, err)
+	peerClientIconService, err := peerclienticons.NewService(dataDir, "qui-test", nil)
 	require.NoError(t, err)
 
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 	notificationTargetStore := models.NewNotificationTargetStore(db)
-	notificationService := notifications.NewService(notificationTargetStore, &models.InstanceStore{}, log.Logger)
-	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, []byte("01234567890123456789012345678901"))
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger)
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, encryptionKey)
 	require.NoError(t, err)
+	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey)
+	require.NoError(t, err)
+	discScanStore := models.NewDiscScanStore(db)
+	systemNotices := systemnotice.New(nil)
+	databaseShrink := dbshrink.New(db, systemNotices, nil)
+	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
+	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
+	jackettService := jackett.NewService(torznabIndexerStore)
+	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
+	require.NoError(t, err)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
 		nil,
-		&models.InstanceStore{},
-		&qbittorrent.SyncManager{},
+		syncManager,
 		nil,
 		nil,
 		trackerCustomizationStore,
@@ -189,24 +222,38 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Version:                   "test",
 		AuthService:               authService,
 		SessionManager:            sessionManager,
-		InstanceStore:             &models.InstanceStore{},
-		ClientAPIKeyStore:         &models.ClientAPIKeyStore{},
-		ClientPool:                &qbittorrent.ClientPool{},
-		SyncManager:               qbittorrent.NewSyncManager(nil, trackerCustomizationStore),
+		InstanceStore:             instanceStore,
+		ClientAPIKeyStore:         models.NewClientAPIKeyStore(db),
+		ExternalProgramStore:      models.NewExternalProgramStore(db),
+		ClientPool:                clientPool,
+		SyncManager:               syncManager,
 		WebHandler:                &web.Handler{},
-		LicenseService:            &license.Service{},
+		LicenseService:            license.NewLicenseService(database.NewLicenseRepo(db), nil, dataDir),
 		UpdateService:             &update.Service{},
 		TrackerIconService:        trackerIconService,
-		BackupService:             &backups.Service{},
+		PeerClientIconService:     peerClientIconService,
+		BackupService:             backups.NewService(models.NewBackupStore(db), syncManager, backups.Config{}, notificationService),
 		AutomationStore:           models.NewAutomationStore(db),
 		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		ClientSettingsStore:       models.NewClientSettingsStore(db),
+		ThemeSettingsStore:        models.NewThemeSettingsStore(db),
 		FilterViewStore:           models.NewFilterViewStore(db),
+		LogExclusionsStore:        models.NewLogExclusionsStore(db),
 		NotificationTargetStore:   notificationTargetStore,
 		NotificationService:       notificationService,
+		DiscScanStore:             discScanStore,
+		DiscScanService:           discscan.NewService(discScanStore),
+		TransferHistory:           transferHistory,
+		SystemNotices:             systemNotices,
+		DatabaseShrink:            databaseShrink,
 		DirScanService:            dirScanService,
-		JackettService:            jackett.NewService(torznabIndexerStore),
+		CrossSeedService:          crossSeedService,
+		CrossSeedRoutes:           crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, nil),
+		JackettService:            jackettService,
 		TorznabIndexerStore:       torznabIndexerStore,
+		ArrInstanceStore:          arrInstanceStore,
+		ArrService:                arr.NewService(arrInstanceStore, models.NewArrIDCacheStore(db)),
 	}
 }
 
@@ -339,22 +386,22 @@ func formatRoutes(routes []routeKey) string {
 	return strings.Join(lines, "\n")
 }
 
-func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbittorrent.SyncEventSink {
+func getClientPoolSyncEventSinks(t *testing.T, pool *qbittorrent.ClientPool) []qbittorrent.SyncEventSink {
 	t.Helper()
 
-	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSink")
+	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSinks")
 	if !value.IsValid() {
-		t.Fatalf("client pool does not expose syncEventSink field")
+		t.Fatalf("client pool does not expose syncEventSinks field")
 	}
 
 	exposed := reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr())).Elem()
-	if exposed.IsNil() {
-		return nil
+	sinks := make([]qbittorrent.SyncEventSink, exposed.Len())
+	for i := range sinks {
+		sink, ok := exposed.Index(i).Interface().(qbittorrent.SyncEventSink)
+		require.True(t, ok, "unexpected sink type stored on client pool")
+		sinks[i] = sink
 	}
-
-	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
-	require.True(t, ok, "unexpected sink type stored on client pool")
-	return sink
+	return sinks
 }
 
 func TestOpenStopsWhenPortIsInUse(t *testing.T) {

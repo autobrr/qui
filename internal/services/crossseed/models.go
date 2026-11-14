@@ -60,19 +60,8 @@ type CrossSeedRequest struct {
 	// arbiter of a wrong pick.
 	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
-	// SourceFilterCategories filters candidate torrents to only those in these categories.
-	// Used by RSS automation to respect RSSSourceCategories setting.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterCategories []string `json:"-"`
-	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterTags []string `json:"-"`
-	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterExcludeCategories []string `json:"-"`
-	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
-	// Internal-only, not exposed via JSON API.
-	SourceFilterExcludeTags []string `json:"-"`
+	// sourceFilter limits which local torrents can be the source of this add.
+	sourceFilter sourceFilter
 	// SearchDecision is private provenance carried only by cached search results.
 	// It binds apply to the source torrent and every relaxation search admitted.
 	SearchDecision searchDecisionProvenance `json:"-"`
@@ -102,6 +91,11 @@ type InstanceCrossSeedResult struct {
 	// MatchedTorrent is the existing torrent that matched (if any).
 	// For a season pack assembled from local episodes, it holds only the name of the added pack.
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
+	// CrossSeedInstanceID and CrossSeedInstanceName name the Cross-seed
+	// instance of a routed add (ADR 0035). InstanceID stays the instance that
+	// holds the match. Both are empty for an add that is not routed.
+	CrossSeedInstanceID   int    `json:"cross_seed_instance_id,omitzero"`
+	CrossSeedInstanceName string `json:"cross_seed_instance_name,omitempty"`
 	// partialPoolPending keeps pool-only reporting out of ordinary search results.
 	partialPoolPending bool
 }
@@ -136,8 +130,6 @@ type TorrentInfo struct {
 	FilteredIndexers  []int          `json:"filtered_indexers,omitempty"`  // Indexers available after content filtering
 	ExcludedIndexers  map[int]string `json:"excluded_indexers,omitempty"`  // Indexers excluded by content filtering with reasons
 	ContentMatches    []string       `json:"content_matches,omitempty"`    // Existing torrents that match this content
-	// Async filtering status
-	ContentFilteringCompleted bool `json:"content_filtering_completed,omitempty"` // Whether async content filtering has finished
 	// Disc layout detection
 	DiscLayout bool   `json:"disc_layout,omitempty"` // True if this torrent contains disc-based media (Blu-ray/DVD)
 	DiscMarker string `json:"disc_marker,omitempty"` // The marker directory name (e.g., "BDMV" or "VIDEO_TS") if DiscLayout is true
@@ -174,20 +166,11 @@ type FindCandidatesRequest struct {
 	// (Manual match). Requires exactly one target instance.
 	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
-	// Source filters - used to restrict which existing torrents are considered as candidates.
-	// These are applied when fetching torrents (if no pre-built snapshot is provided).
-	// Internal-only, not exposed via JSON API.
-
-	// SourceFilterCategories filters candidate torrents to only those in these categories.
-	SourceFilterCategories []string `json:"-"`
-	// SourceFilterTags filters candidate torrents to only those with at least one of these tags.
-	SourceFilterTags []string `json:"-"`
-	// SourceFilterExcludeCategories excludes candidate torrents in these categories.
-	SourceFilterExcludeCategories []string `json:"-"`
-	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
-	SourceFilterExcludeTags []string `json:"-"`
-	// SearchDecision binds a cached decision to the source torrent and limits
-	// apply replay to exactly the relaxations search admitted.
+	// sourceFilter limits which existing torrents count as candidates when no
+	// pre-built snapshot is provided.
+	sourceFilter sourceFilter
+	// SearchDecision binds a cached decision to the source torrent. Apply keeps
+	// that verdict for the source torrent and does not decide the pair again.
 	SearchDecision searchDecisionProvenance `json:"-"`
 }
 
@@ -223,7 +206,7 @@ type CrossSeedCandidate struct {
 	InstanceName string `json:"instance_name"`
 	// Torrents: The EXISTING torrents in this instance that have matching files
 	// Multiple torrents may be listed because they can collectively or individually provide the needed data
-	Torrents []qbt.Torrent `json:"torrents"`
+	Torrents []*qbt.Torrent `json:"torrents"`
 	// MatchType indicates the type of match:
 	//   "exact" - 100% duplicate files (same paths and sizes)
 	//   "partial-in-pack" - new torrent's files are found within existing season pack
@@ -232,6 +215,9 @@ type CrossSeedCandidate struct {
 	MatchType string `json:"match_type"`
 	// titleRescue binds the title bypass to the exact local source torrent.
 	titleRescue bool
+	// route is set when InstanceID routes its cross-seeds. InstanceID stays the
+	// instance that holds the match, so that the Match verdict keeps comparing it.
+	route *candidateRoute
 }
 
 // TorrentSearchOptions controls how the service searches for cross-seed matches for an existing torrent.
@@ -308,6 +294,15 @@ type TorrentSearchResponse struct {
 	// QueryDegraded is set when the ARR external-ID lookup could not supply IDs
 	// and the Torznab search fell back to a title-only text query.
 	QueryDegraded string `json:"query_degraded,omitempty"`
+	// GazelleTimedOut is set when a RED/OPS lookup did not answer within
+	// gazelleSearchTimeout. The results hold the Torznab matches and the matches
+	// of each RED/OPS site that answered.
+	GazelleTimedOut bool `json:"gazelle_timed_out,omitzero"`
+	// TorznabFailed is set when the Torznab search failed and the results come
+	// only from RED/OPS.
+	TorznabFailed bool `json:"torznab_failed,omitzero"`
+	// torznabErr is the cause of TorznabFailed, for the run result and the log.
+	torznabErr error
 	// JobID identifies this search for outcome tracking (cross-seed)
 	JobID uint64 `json:"jobId,omitempty"`
 	// CoveredIndexerIDs lists the Torznab indexers that answered every search
@@ -364,6 +359,28 @@ type LocalMatchesResponse struct {
 	Matches []LocalMatch `json:"matches"`
 }
 
+// Reasons of an UncheckedInstance.
+const (
+	UncheckedOffline  = "offline"
+	UncheckedDisabled = "disabled"
+)
+
+// DeleteMatchesResponse holds the torrents that a delete with files affects,
+// and the instances with local filesystem access that the check could not
+// read, so that the list never reads as complete when it is not.
+type DeleteMatchesResponse struct {
+	Matches   []LocalMatch        `json:"matches"`
+	Unchecked []UncheckedInstance `json:"unchecked_instances"`
+}
+
+// UncheckedInstance is an instance that the delete check did not check.
+// Reason is UncheckedOffline or UncheckedDisabled.
+type UncheckedInstance struct {
+	InstanceID   int    `json:"instance_id"`
+	InstanceName string `json:"instance_name"`
+	Reason       string `json:"reason"`
+}
+
 // LocalMatch represents a torrent that matches the source across instances.
 type LocalMatch struct {
 	InstanceID    int     `json:"instance_id"`
@@ -396,8 +413,9 @@ type AsyncIndexerFilteringState struct {
 	// contentType records which content type this filtering run was computed
 	// for; category mapping rules can change a torrent's type at runtime, so
 	// readers must not reuse a run computed for a different type (#2313).
-	// Unexported to stay out of the /async-status API payload.
 	contentType string
+	// torznabErr reports that the analysis could not list the Torznab indexers.
+	torznabErr error
 
 	rejectedContentCandidates map[string]contentPrefilterRejectedTorrent
 }
@@ -412,6 +430,7 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 		ContentCompleted:      s.ContentCompleted,
 		Error:                 s.Error,
 		contentType:           s.contentType,
+		torznabErr:            s.torznabErr,
 	}
 	if len(s.CapabilityIndexers) > 0 {
 		clone.CapabilityIndexers = append([]int(nil), s.CapabilityIndexers...)
@@ -488,7 +507,7 @@ type WebhookCheckResponse struct {
 type AutobrrApplyRequest struct {
 	TorrentData string `json:"torrentData"`
 	// TorrentName is the original announcement name. It is distinct from the
-	// downloaded metainfo info.name used for replay validation.
+	// downloaded metainfo info.name that apply checks against the stored verdict.
 	TorrentName string `json:"torrentName,omitempty"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
 	InstanceIDs []int    `json:"instanceIds,omitempty"`
@@ -550,6 +569,7 @@ type SeasonPackApplyResponse struct {
 	Reason          string  `json:"reason,omitempty"`
 	Message         string  `json:"message,omitempty"`
 	InstanceID      int     `json:"instanceId,omitempty"`
+	AddedInstanceID int     `json:"addedInstanceId,omitzero"`
 	MatchedEpisodes int     `json:"matchedEpisodes,omitempty"`
 	TotalEpisodes   int     `json:"totalEpisodes,omitempty"`
 	Coverage        float64 `json:"coverage,omitempty"`

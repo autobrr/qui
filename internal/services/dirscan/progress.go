@@ -4,7 +4,9 @@
 package dirscan
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	"github.com/rs/zerolog"
@@ -17,19 +19,55 @@ import (
 type trackedFilesIndex struct {
 	byPath   map[string]*models.DirScanFile
 	byFileID map[fsops.FileKey]*models.DirScanFile
+	instance *models.Instance
+	// endpoint ends every stored remote identity, see endpointTag.
+	endpoint []byte
+}
+
+// endpointTag names the endpoint a stored identity was read through, since the
+// same device and inode on another server is another file. It lives in the row
+// so a run that overlaps an SSH edit, which still writes the old identity, needs
+// no cleanup. A new tag costs a row its rename detection until its next walk. On a
+// host with no identity, an already_seeding row stays so until Reset Scan Progress.
+func endpointTag(instance *models.Instance) []byte {
+	if instance == nil {
+		return nil
+	}
+	endpoint := fsops.WalkedEndpoint(instance)
+	if endpoint == "" {
+		return nil
+	}
+	sum := sha256.Sum256([]byte(endpoint))
+	return sum[:8]
+}
+
+// storedFileID is the dir_scan_files.file_id value for id.
+func (idx *trackedFilesIndex) storedFileID(id hardlink.FileID) []byte {
+	if id.IsZero() {
+		return nil
+	}
+	stored := id.Bytes()
+	if idx != nil {
+		stored = append(stored, idx.endpoint...)
+	}
+	return stored
 }
 
 func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) (fsops.FileKey, bool) {
-	return fsops.FileKeyOf(id, nil)
+	return fsops.FileKeyOf(id, idx.instance)
 }
 
 // keyOfStored decodes a dir_scan_files.file_id value. A row from before the
-// tagged form decodes to no identity and is never indexed.
+// tagged form or from another endpoint decodes to no identity and is never indexed.
 func (idx *trackedFilesIndex) keyOfStored(stored []byte) (fsops.FileKey, bool) {
-	return idx.keyOf(hardlink.FileIDFromBytes(stored))
+	raw, ok := bytes.CutSuffix(stored, idx.endpoint)
+	if !ok {
+		return fsops.FileKey{}, false
+	}
+	return idx.keyOf(hardlink.FileIDFromBytes(raw))
 }
 
-func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*trackedFilesIndex, error) {
+func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int, instance *models.Instance) (*trackedFilesIndex, error) {
 	if s == nil || s.store == nil {
 		return nil, nil
 	}
@@ -39,6 +77,8 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 	idx := &trackedFilesIndex{
 		byPath:   make(map[string]*models.DirScanFile),
 		byFileID: make(map[fsops.FileKey]*models.DirScanFile),
+		instance: instance,
+		endpoint: endpointTag(instance),
 	}
 
 	offset := 0
@@ -72,6 +112,7 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int) (*
 func (s *Service) refreshTrackedFilesFromScan(
 	ctx context.Context,
 	directoryID int,
+	instance *models.Instance,
 	scanResult *ScanResult,
 	fileIDIndex *seedingIndex,
 	l *zerolog.Logger,
@@ -80,7 +121,7 @@ func (s *Service) refreshTrackedFilesFromScan(
 		return nil, nil
 	}
 
-	idx, err := s.loadTrackedFilesIndex(ctx, directoryID)
+	idx, err := s.loadTrackedFilesIndex(ctx, directoryID, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -94,8 +135,7 @@ func (s *Service) refreshTrackedFilesFromScan(
 				continue
 			}
 
-			alreadySeeding := isFileAlreadySeedingByFileID(scanned, fileIDIndex)
-			fileModel, err := buildTrackedFileUpsert(directoryID, scanned, idx, alreadySeeding, l)
+			fileModel, err := buildTrackedFileUpsert(directoryID, scanned, idx, fileIDIndex, l)
 			if err != nil {
 				return nil, err
 			}
@@ -129,17 +169,15 @@ func buildTrackedFileUpsert(
 	directoryID int,
 	scanned *ScannedFile,
 	idx *trackedFilesIndex,
-	alreadySeeding bool,
+	seeding *seedingIndex,
 	l *zerolog.Logger,
 ) (*models.DirScanFile, error) {
 	if directoryID <= 0 || scanned == nil {
 		return nil, nil
 	}
+	alreadySeeding := isFileAlreadySeedingByFileID(scanned, seeding)
 
-	var fileID []byte
-	if !scanned.FileID.IsZero() {
-		fileID = scanned.FileID.Bytes()
-	}
+	fileID := idx.storedFileID(scanned.FileID)
 
 	existing, matchedBy := lookupTrackedFile(scanned, idx)
 
@@ -150,7 +188,8 @@ func buildTrackedFileUpsert(
 	unchanged := false
 
 	if existing != nil {
-		unchanged = existing.FileSize == scanned.Size && existing.FileModTime.Equal(scanned.ModTime)
+		// Whole seconds, because the database column and the filesystem keep different precision.
+		unchanged = existing.FileSize == scanned.Size && existing.FileModTime.Unix() == scanned.ModTime.Unix()
 		if unchanged {
 			status = existing.Status
 			matchedTorrentHash = existing.MatchedTorrentHash
@@ -168,12 +207,17 @@ func buildTrackedFileUpsert(
 		searchedIndexerIDs = nil
 	}
 
-	// If the torrent disappeared since the last scan, clear already_seeding so the file becomes eligible again.
-	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding && !alreadySeeding {
-		status = models.DirScanFileStatusPending
-		matchedTorrentHash = ""
-		matchedIndexerID = nil
-		searchedIndexerIDs = nil
+	// A file already seeding stays so, even when it changed on disk, until the
+	// index shows the torrent is gone. Only an index that built in full,
+	// checked against the file's identity, shows that. Then the file becomes
+	// eligible again. The match fields are empty here: a changed file never
+	// copied them, and every already_seeding row is stored without them.
+	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding {
+		if alreadySeeding || !seeding.knowsNotSeeding(scanned.FileID) {
+			status = models.DirScanFileStatusAlreadySeeding
+		} else {
+			status = models.DirScanFileStatusPending
+		}
 	}
 
 	// If the file changed on disk, clear any prior match and reprocess.

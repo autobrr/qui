@@ -144,7 +144,7 @@ type DirScanFile struct {
 	FilePath           string            `json:"filePath"`
 	FileSize           int64             `json:"fileSize"`
 	FileModTime        time.Time         `json:"fileModTime"`
-	FileID             []byte            `json:"-"` // hardlink.FileID.Bytes(): one kind byte plus 24 identity bytes
+	FileID             []byte            `json:"-"` // hardlink.FileID.Bytes(): one kind byte plus 24 identity bytes, and for a remote file a tag of the endpoint that read it
 	Status             DirScanFileStatus `json:"status"`
 	MatchedTorrentHash string            `json:"matchedTorrentHash,omitempty"`
 	MatchedIndexerID   *int              `json:"matchedIndexerId,omitempty"`
@@ -624,7 +624,9 @@ func (s *DirScanStore) ensureUniqueDirectoryPath(ctx context.Context, path strin
 		if dir.ID == excludeID {
 			continue
 		}
-		if filepath.Clean(dir.Path) == cleanPath {
+		// Match webhook routing, which uses filepath.Rel. On Windows it ignores
+		// case, even when a case-sensitive volume stores distinct directories.
+		if rel, err := filepath.Rel(dir.Path, cleanPath); err == nil && rel == "." {
 			return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
 		}
 	}
@@ -1351,7 +1353,7 @@ func marshalSearchedIndexerIDs(ids []int) any {
 	if ids == nil {
 		return nil
 	}
-	raw, _ := json.Marshal(ids)
+	raw, _ := json.Marshal(ids) //nolint:errchkjson // json.Marshal cannot fail for a plain int slice
 	return string(raw)
 }
 
@@ -1384,6 +1386,8 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 
 	searchedIndexerIDs := marshalSearchedIndexerIDs(file.SearchedIndexerIDs)
 
+	fileModTime := file.FileModTime.UTC()
+
 	// Handle renames via FileID where possible: if we have a platform-neutral FileID
 	// and a tracked row exists for it, update its file_path instead of creating a new row.
 	if len(file.FileID) > 0 {
@@ -1399,7 +1403,7 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 			    searched_indexer_ids = ?,
 			    last_processed_at = CURRENT_TIMESTAMP
 			WHERE directory_id = ? AND file_id = ?
-		`, file.FilePath, file.FileSize, file.FileModTime, file.FileID, file.Status,
+		`, file.FilePath, file.FileSize, fileModTime, file.FileID, file.Status,
 			matchedTorrentHash, matchedIndexerID, searchedIndexerIDs, file.DirectoryID, file.FileID)
 		if err != nil {
 			// If the target path is already tracked, fall back to the path-upsert which will merge state.
@@ -1434,7 +1438,7 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 			matched_indexer_id = excluded.matched_indexer_id,
 			searched_indexer_ids = excluded.searched_indexer_ids,
 			last_processed_at = CURRENT_TIMESTAMP
-	`, file.DirectoryID, file.FilePath, file.FileSize, file.FileModTime, file.FileID,
+	`, file.DirectoryID, file.FilePath, file.FileSize, fileModTime, file.FileID,
 		file.Status, matchedTorrentHash, matchedIndexerID, searchedIndexerIDs)
 	if err != nil {
 		return fmt.Errorf("upsert file: %w", err)
@@ -1693,8 +1697,9 @@ func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (
 //
 // It stays a subquery rather than a value read into Go on purpose. Both engines write
 // these columns with CURRENT_TIMESTAMP, and SQLite compares timestamps as text: a
-// value read out and rebound arrives as time.Time.String(), which no longer matches
-// the stored 19-character form, and comparisons against it quietly fail.
+// value read out and rebound ends in "+00:00", so it sorts after the stored
+// 19-character form of the same second, and a row of that second lands on the wrong
+// side of the boundary.
 const fullScanStartedAtQuery = `
 		SELECT run.started_at
 		FROM dir_scan_runs run

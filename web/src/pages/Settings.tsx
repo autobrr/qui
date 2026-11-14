@@ -10,28 +10,25 @@ import { MigrationHint } from "@/components/instances/MigrationHint"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
+import { ApiKeysManager } from "@/components/settings/ApiKeysManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { GazelleSettingsCard } from "@/components/settings/GazelleSettingsCard"
+import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_GROUPS, type SettingsTab } from "@/components/settings/tabs"
+import { PageHeader } from "@/components/layout/PageHeader"
+import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
+import { TrackerCustomizationsManager } from "@/components/settings/TrackerCustomizationsManager"
 import { InstallUpdateButton } from "@/components/settings/InstallUpdateButton"
 import { RestartButton } from "@/components/settings/RestartButton"
 import { RestartOverlay } from "@/components/settings/RestartOverlay"
+import { StatisticsSettingsCard } from "@/components/settings/StatisticsSettingsCard"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,8 +38,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
-  DialogTrigger
+  DialogTitle
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -59,22 +55,20 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useSelfUpdate } from "@/hooks/useSelfUpdate"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 
 import { withBasePath } from "@/lib/base-url"
 import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
-import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
+import { formatBytes, formatDuration } from "@/lib/utils"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
-import type { ApplicationInfo, Instance, TorznabSearchCacheStats, User } from "@/types"
+import type { Instance, TorznabSearchCacheStats, User } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, Globe, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react"
 import type { FormEvent, ReactNode } from "react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-
-type SettingsTab = NonNullable<SettingsSearch["tab"]>
 
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
 
@@ -100,18 +94,6 @@ function LanguageSelector() {
       </Select>
     </div>
   )
-}
-
-function getApiErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof APIError && error.message) {
-    return error.message
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
 }
 
 function ChangePasswordForm() {
@@ -245,276 +227,6 @@ function ChangePasswordForm() {
         )}
       </form.Subscribe>
     </form>
-  )
-}
-
-interface ApiKeysManagerProps {
-  authMode?: ApplicationInfo["authMode"]
-  authModeLoading: boolean
-}
-
-function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
-  const { t } = useTranslation("settings")
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
-  const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
-  const queryClient = useQueryClient()
-  const { formatDate } = useDateTimeFormatters()
-  const authDisabled = authMode === "disabled"
-
-  // Fetch API keys from backend
-  const { data: apiKeys, isLoading } = useQuery({
-    queryKey: ["apiKeys"],
-    queryFn: () => api.getApiKeys(),
-    enabled: !authModeLoading && !authDisabled,
-    staleTime: 30 * 1000, // 30 seconds
-  })
-
-  // Ensure apiKeys is always an array
-  const keys = apiKeys || []
-
-  const createMutation = useMutation({
-    mutationFn: async (name: string) => {
-      return api.createApiKey(name)
-    },
-    onSuccess: (data) => {
-      setNewKey(data)
-      queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
-      toast.success(t("apiKeys.toasts.created"))
-    },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.createFailed")))
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return api.deleteApiKey(id)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
-      setDeleteKeyId(null)
-      toast.success(t("apiKeys.toasts.deleted"))
-    },
-    onError: (error) => {
-      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.deleteFailed")))
-    },
-  })
-
-  const form = useForm({
-    defaultValues: {
-      name: "",
-    },
-    onSubmit: async ({ value }) => {
-      await createMutation.mutateAsync(value.name)
-      form.reset()
-    },
-  })
-
-  if (authModeLoading) {
-    return (
-      <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        {t("apiKeys.loadingAuthMode")}
-      </div>
-    )
-  }
-
-  if (authDisabled) {
-    return (
-      <div className="rounded-md border border-border bg-muted/30 p-4">
-        <h3 className="text-sm font-medium">{t("apiKeys.authDisabledTitle")}</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("apiKeys.authDisabledDescription")}
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("apiKeys.description")}
-        </p>
-        <Dialog
-          open={showCreateDialog}
-          onOpenChange={(open) => {
-            setShowCreateDialog(open)
-            if (!open) {
-              setNewKey(null)
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("apiKeys.createButton")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle>{t("apiKeys.createDialog.title")}</DialogTitle>
-              <DialogDescription>
-                {t("apiKeys.createDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex-1 overflow-y-auto min-h-0">
-              {newKey ? (
-                <div className="space-y-4">
-                  <div>
-                    <Label>{t("apiKeys.newKey.label")}</Label>
-                    <div className="mt-2 flex items-center gap-2">
-                      <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
-                        {newKey.key}
-                      </code>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={async () => {
-                          try {
-                            await copyTextToClipboard(newKey.key)
-                            toast.success(t("apiKeys.toasts.copied"))
-                          } catch {
-                            toast.error(t("apiKeys.toasts.copyFailed"))
-                          }
-                        }}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <p className="mt-2 text-sm text-destructive">
-                      {t("apiKeys.newKey.warning")}
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => {
-                      setNewKey(null)
-                      setShowCreateDialog(false)
-                    }}
-                    className="w-full"
-                  >
-                    {t("apiKeys.newKey.done")}
-                  </Button>
-                </div>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    form.handleSubmit()
-                  }}
-                  className="space-y-4"
-                >
-                  <form.Field
-                    name="name"
-                    validators={{
-                      onChange: ({ value }) => !value ? t("apiKeys.createDialog.nameRequired") : undefined,
-                    }}
-                  >
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="name">{t("apiKeys.createDialog.nameLabel")}</Label>
-                        <Input
-                          id="name"
-                          placeholder={t("apiKeys.createDialog.namePlaceholder")}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                          data-1p-ignore
-                          autoComplete="off"
-                        />
-                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                        )}
-                      </div>
-                    )}
-                  </form.Field>
-
-                  <form.Subscribe
-                    selector={(state) => [state.canSubmit, state.isSubmitting]}
-                  >
-                    {([canSubmit, isSubmitting]) => (
-                      <Button
-                        type="submit"
-                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                        className="w-full"
-                      >
-                        {isSubmitting || createMutation.isPending ? t("apiKeys.createDialog.creating") : t("apiKeys.createDialog.submit")}
-                      </Button>
-                    )}
-                  </form.Subscribe>
-                </form>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="space-y-2">
-        {isLoading ? (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            {t("apiKeys.loading")}
-          </p>
-        ) : (
-          <>
-            {keys.map((key) => (
-              <div
-                key={key.id}
-                className="flex items-center bg-muted/40 justify-between rounded-lg border p-4"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{key.name}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {t("clientApiKeys.idLabel", { id: key.id })}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}
-                    {key.lastUsedAt && (
-                      <> • {t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</>
-                    )}
-                  </p>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setDeleteKeyId(key.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-
-            {keys.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                {t("apiKeys.empty")}
-              </p>
-            )}
-          </>
-        )}
-      </div>
-
-      <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("apiKeys.deleteDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("apiKeys.deleteDialog.description")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("apiKeys.deleteDialog.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("apiKeys.deleteDialog.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
   )
 }
 
@@ -894,12 +606,10 @@ interface ApplicationSectionProps {
   title: string
   description: string
   fields: ApplicationField[]
-  onCopy: (value: string, label: string) => Promise<void> | void
   headerAction?: ReactNode
 }
 
-function ApplicationSection({ title, description, fields, onCopy, headerAction }: ApplicationSectionProps) {
-  const { t } = useTranslation("settings")
+function ApplicationSection({ title, description, fields, headerAction }: ApplicationSectionProps) {
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -930,17 +640,11 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
                     </div>
                     {field.action}
                     {field.copyValue && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                        onClick={() => {
-                          void onCopy(field.copyValue || "", field.label)
-                        }}
-                        title={t("application.copyTitle", { label: field.label })}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
+                      <CopyButton
+                        value={field.copyValue}
+                        label={field.label}
+                        className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      />
                     )}
                   </div>
                 </dd>
@@ -1079,18 +783,6 @@ function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: bool
     { label: t("application.storage.dataDir"), value: info.dataDir || "—", copyValue: info.dataDir || "", monospace: true },
   ] : []
 
-  const handleCopy = useCallback(async (value: string, label: string) => {
-    if (!value) {
-      return
-    }
-
-    try {
-      await copyTextToClipboard(value)
-      toast.success(t("application.toasts.copied", { label }))
-    } catch {
-      toast.error(t("application.toasts.copyFailed", { label: label.toLowerCase() }))
-    }
-  }, [t])
 
   return (
     <div className="space-y-4">
@@ -1123,7 +815,6 @@ function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: bool
             title={t("application.build.title")}
             description={t("application.build.description")}
             fields={buildFields}
-            onCopy={handleCopy}
             headerAction={(
               <div className="flex gap-2">
                 <RestartButton />
@@ -1147,19 +838,16 @@ function ApplicationInfoPanel({ openUpdate, onUpdateOpened }: { openUpdate: bool
             title={t("application.runtime.title")}
             description={t("application.runtime.description")}
             fields={runtimeFields}
-            onCopy={handleCopy}
           />
           <ApplicationSection
             title={t("application.auth.title")}
             description={t("application.auth.description")}
             fields={authFields}
-            onCopy={handleCopy}
           />
           <ApplicationSection
             title={t("application.storage.title")}
             description={t("application.storage.description")}
             fields={storageFields}
-            onCopy={handleCopy}
           />
         </>
       )}
@@ -1173,71 +861,13 @@ interface SettingsProps {
   onSearchChange: (search: SettingsSearch) => void
 }
 
-interface SettingsScrollPanelProps {
-  children: ReactNode
-  contentClassName?: string
-}
-
-function SettingsScrollPanel({ children, contentClassName }: SettingsScrollPanelProps) {
-  const scrollRef = useRef<HTMLDivElement | null>(null)
-  const contentRef = useRef<HTMLDivElement | null>(null)
-  const [showTopFade, setShowTopFade] = useState(false)
-  const [showBottomFade, setShowBottomFade] = useState(false)
-
-  useEffect(() => {
-    const scrollElement = scrollRef.current
-    const contentElement = contentRef.current
-
-    if (!scrollElement) {
-      return
-    }
-
-    const updateFades = () => {
-      setShowTopFade(scrollElement.scrollTop > 4)
-      setShowBottomFade(scrollElement.scrollTop + scrollElement.clientHeight < scrollElement.scrollHeight - 4)
-    }
-
-    updateFades()
-
-    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
-      updateFades()
-    })
-
-    scrollElement.addEventListener("scroll", updateFades, { passive: true })
-    window.addEventListener("resize", updateFades)
-    resizeObserver?.observe(scrollElement)
-    if (contentElement) {
-      resizeObserver?.observe(contentElement)
-    }
-
-    return () => {
-      scrollElement.removeEventListener("scroll", updateFades)
-      window.removeEventListener("resize", updateFades)
-      resizeObserver?.disconnect()
-    }
-  }, [children])
-
-  return (
-    <div className="relative flex h-full min-h-0 flex-col">
-      <div
-        className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-linear-to-b from-background via-background/50 to-transparent transition-opacity duration-150 ${showTopFade ? "opacity-100" : "opacity-0"}`}
-      />
-      <div
-        className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-linear-to-t from-background via-background/50 to-transparent transition-opacity duration-150 ${showBottomFade ? "opacity-100" : "opacity-0"}`}
-      />
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto md:pr-4">
-        <div ref={contentRef} className={contentClassName}>
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export function Settings({ search, onSearchChange }: SettingsProps) {
   const { t } = useTranslation("settings")
-  const activeTab: SettingsTab = search.tab ?? "application"
-  const scrollPanelContentClassName = "space-y-4"
+  const activeTab: SettingsTab = search.tab ?? DEFAULT_SETTINGS_TAB
+  const navGroups: SectionNavGroup<SettingsTab>[] = SETTINGS_NAV_GROUPS.map(group => ({
+    label: "labelKey" in group ? t(group.labelKey) : undefined,
+    sections: group.tabs.map(entry => ({ value: entry.tab, label: t(entry.labelKey) })),
+  }))
   const appInfoQuery = useQuery({
     queryKey: ["application-info"],
     queryFn: () => api.getApplicationInfo(),
@@ -1249,458 +879,225 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   }
 
   return (
-    <div className="container mx-auto flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6">
-      <div className="mb-4 shrink-0 md:mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">{t("title")}</h1>
-        <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">
-          {t("description")}
-        </p>
-      </div>
+    <div className="space-y-6 p-4 lg:p-6 pb-16">
+      <PageHeader title={t("title")} description={t("description")} />
 
-      {/* Mobile Dropdown Navigation */}
-      <div className="mb-4 shrink-0 md:hidden">
-        <Select
-          value={activeTab}
-          onValueChange={(value) => handleTabChange(value as SettingsTab)}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="application">
-              <div className="flex items-center">
-                <Info className="w-4 h-4 mr-2" />
-                {t("tabs.application")}
-              </div>
-            </SelectItem>
-            <SelectItem value="instances">
-              <div className="flex items-center">
-                <Server className="w-4 h-4 mr-2" />
-                {t("tabs.instances")}
-              </div>
-            </SelectItem>
-            <SelectItem value="indexers">
-              <div className="flex items-center">
-                <Database className="w-4 h-4 mr-2" />
-                {t("tabs.indexers")}
-              </div>
-            </SelectItem>
-            <SelectItem value="search-cache">
-              <div className="flex items-center">
-                <Layers className="w-4 h-4 mr-2" />
-                {t("tabs.searchCache")}
-              </div>
-            </SelectItem>
-            <SelectItem value="integrations">
-              <div className="flex items-center">
-                <Link2 className="w-4 h-4 mr-2" />
-                {t("tabs.integrations")}
-              </div>
-            </SelectItem>
-            <SelectItem value="client-api">
-              <div className="flex items-center">
-                <Share2 className="w-4 h-4 mr-2" />
-                {t("tabs.clientProxy")}
-              </div>
-            </SelectItem>
-            <SelectItem value="api">
-              <div className="flex items-center">
-                <Key className="w-4 h-4 mr-2" />
-                {t("tabs.apiKeys")}
-              </div>
-            </SelectItem>
-            <SelectItem value="external-programs">
-              <div className="flex items-center">
-                <Terminal className="w-4 h-4 mr-2" />
-                {t("tabs.externalPrograms")}
-              </div>
-            </SelectItem>
-            <SelectItem value="notifications">
-              <div className="flex items-center">
-                <Bell className="w-4 h-4 mr-2" />
-                {t("tabs.notifications")}
-              </div>
-            </SelectItem>
-            <SelectItem value="datetime">
-              <div className="flex items-center">
-                <Globe className="w-4 h-4 mr-2" />
-                {t("tabs.dateTime")}
-              </div>
-            </SelectItem>
-            <SelectItem value="themes">
-              <div className="flex items-center">
-                <Palette className="w-4 h-4 mr-2" />
-                {t("tabs.premiumThemes")}
-              </div>
-            </SelectItem>
-            <SelectItem value="security">
-              <div className="flex items-center">
-                <Shield className="w-4 h-4 mr-2" />
-                {t("tabs.security")}
-              </div>
-            </SelectItem>
-            <SelectItem value="logs">
-              <div className="flex items-center">
-                <FileText className="w-4 h-4 mr-2" />
-                {t("tabs.logs")}
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <SectionedPage navLabel={t("title")} groups={navGroups} activeSection={activeTab} onSectionChange={handleTabChange}>
+        {activeTab === "application" && (
+          <ApplicationInfoPanel openUpdate={search.modal === "install-update"} onUpdateOpened={() => onSearchChange({ ...search, modal: undefined })} />
+        )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 md:flex-row">
-        {/* Desktop Sidebar Navigation */}
-        <div className="hidden w-64 shrink-0 overflow-y-auto md:block">
-          <nav className="space-y-1">
-            <button
-              onClick={() => handleTabChange("application")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "application" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Info className="w-4 h-4 mr-2" />
-              {t("tabs.application")}
-            </button>
-            <button
-              onClick={() => handleTabChange("instances")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "instances" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Server className="w-4 h-4 mr-2" />
-              {t("tabs.instances")}
-            </button>
-            <button
-              onClick={() => handleTabChange("indexers")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "indexers" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Database className="w-4 h-4 mr-2" />
-              {t("tabs.indexers")}
-            </button>
-            <button
-              onClick={() => handleTabChange("search-cache")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "search-cache" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Layers className="w-4 h-4 mr-2" />
-              {t("tabs.searchCache")}
-            </button>
-            <button
-              onClick={() => handleTabChange("integrations")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "integrations" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Link2 className="w-4 h-4 mr-2" />
-              {t("tabs.integrations")}
-            </button>
-            <button
-              onClick={() => handleTabChange("client-api")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "client-api" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Share2 className="w-4 h-4 mr-2" />
-              {t("tabs.clientProxy")}
-            </button>
-            <button
-              onClick={() => handleTabChange("api")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "api" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Key className="w-4 h-4 mr-2" />
-              {t("tabs.apiKeys")}
-            </button>
-            <button
-              onClick={() => handleTabChange("external-programs")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "external-programs" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Terminal className="w-4 h-4 mr-2" />
-              {t("tabs.externalPrograms")}
-            </button>
-            <button
-              onClick={() => handleTabChange("notifications")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "notifications" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Bell className="w-4 h-4 mr-2" />
-              {t("tabs.notifications")}
-            </button>
-            <button
-              onClick={() => handleTabChange("datetime")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "datetime" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Globe className="w-4 h-4 mr-2" />
-              {t("tabs.dateTime")}
-            </button>
-            <button
-              onClick={() => handleTabChange("themes")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "themes" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Palette className="w-4 h-4 mr-2" />
-              {t("tabs.premiumThemes")}
-            </button>
-            <button
-              onClick={() => handleTabChange("security")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "security" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Shield className="w-4 h-4 mr-2" />
-              {t("tabs.security")}
-            </button>
-            <button
-              onClick={() => handleTabChange("logs")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "logs" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              {t("tabs.logs")}
-            </button>
-          </nav>
-        </div>
+        {activeTab === "instances" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("instances.title")}</CardTitle>
+              <CardDescription>
+                {t("instances.description")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <InstancesManager search={search} onSearchChange={onSearchChange} />
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Main Content Area */}
-        <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
-          {activeTab === "application" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <ApplicationInfoPanel openUpdate={search.modal === "install-update"} onUpdateOpened={() => onSearchChange({ ...search, modal: undefined })} />
-            </SettingsScrollPanel>
-          )}
+        {activeTab === "indexers" && (
+          <>
+            <IndexersPage withContainer={false} />
+            <GazelleSettingsCard />
+          </>
+        )}
 
-          {activeTab === "instances" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <Card className="flex min-h-full flex-col">
-                <CardHeader>
-                  <CardTitle>{t("instances.title")}</CardTitle>
+        {activeTab === "trackers" && (
+          <TrackerCustomizationsManager />
+        )}
+
+        {activeTab === "search-cache" && (
+          <TorznabSearchCachePanel />
+        )}
+
+        {activeTab === "integrations" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("integrations.title")}</CardTitle>
+              <CardDescription>
+                {t("integrations.description")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ArrInstancesManager />
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === "client-api" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("clientApiKeys.cardTitle")}</CardTitle>
+              <CardDescription>
+                {t("clientApiKeys.cardDescription")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ClientApiKeysManager />
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === "api" && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div className="space-y-1.5">
+                  <CardTitle>{t("apiKeys.cardTitle")}</CardTitle>
                   <CardDescription>
-                    {t("instances.description")}
+                    {t("apiKeys.cardDescription")}
                   </CardDescription>
-                </CardHeader>
-                <CardContent className="min-h-0 flex-1">
-                  <InstancesManager search={search} onSearchChange={onSearchChange} />
-                </CardContent>
-              </Card>
-            </SettingsScrollPanel>
-          )}
+                </div>
+                <a
+                  href={withBasePath("api/docs")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  title={t("apiKeys.apiDocs")}
+                >
+                  <span className="hidden sm:inline">{t("apiKeys.apiDocs")}</span>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ApiKeysManager authMode={appInfoQuery.data?.authMode} authModeLoading={appInfoQuery.isLoading} />
+            </CardContent>
+          </Card>
+        )}
 
-          {activeTab === "indexers" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <IndexersPage withContainer={false} />
-              <GazelleSettingsCard />
-            </SettingsScrollPanel>
-          )}
+        {activeTab === "external-programs" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("externalPrograms.cardTitle")}</CardTitle>
+              <CardDescription>
+                {t("externalPrograms.cardDescription")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ExternalProgramsManager />
+            </CardContent>
+          </Card>
+        )}
 
-          {activeTab === "search-cache" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <TorznabSearchCachePanel />
-            </SettingsScrollPanel>
-          )}
+        {activeTab === "notifications" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("notifications.cardTitle")}</CardTitle>
+              <CardDescription>
+                {t("notifications.cardDescription")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <NotificationsManager />
+            </CardContent>
+          </Card>
+        )}
 
-          {activeTab === "integrations" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
+        {activeTab === "datetime" && (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("language.cardTitle")}</CardTitle>
+                <CardDescription>
+                  {t("language.cardDescription")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <LanguageSelector />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("dateTime.cardTitle")}</CardTitle>
+                <CardDescription>
+                  {t("dateTime.cardDescription")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <DateTimePreferencesForm />
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {activeTab === "statistics" && (
+          <StatisticsSettingsCard />
+        )}
+
+        {activeTab === "themes" && (
+          <>
+            <ThemeSelector />
+            <div id="license-manager">
+              <LicenseManager
+                checkoutStatus={search.checkout}
+                checkoutPaymentStatus={search.status}
+                onCheckoutConsumed={() => onSearchChange({ tab: "themes" })}
+              />
+            </div>
+          </>
+        )}
+
+        {activeTab === "security" && (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("security.changePassword.title")}</CardTitle>
+                <CardDescription>
+                  {t("security.changePassword.description")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChangePasswordForm />
+              </CardContent>
+            </Card>
+
+            {canRegisterProtocolHandler() && (
               <Card>
                 <CardHeader>
-                  <CardTitle>{t("integrations.title")}</CardTitle>
+                  <CardTitle>{t("security.browserIntegration.title")}</CardTitle>
                   <CardDescription>
-                    {t("integrations.description")}
+                    {t("security.browserIntegration.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ArrInstancesManager />
-                </CardContent>
-              </Card>
-            </SettingsScrollPanel>
-          )}
-
-          {activeTab === "client-api" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("clientApiKeys.cardTitle")}</CardTitle>
-                  <CardDescription>
-                    {t("clientApiKeys.cardDescription")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ClientApiKeysManager />
-                </CardContent>
-              </Card>
-            </SettingsScrollPanel>
-          )}
-
-          {activeTab === "api" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <Card>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1.5">
-                      <CardTitle>{t("apiKeys.cardTitle")}</CardTitle>
-                      <CardDescription>
-                        {t("apiKeys.cardDescription")}
-                      </CardDescription>
-                    </div>
-                    <a
-                      href={withBasePath("api/docs")}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                      title={t("apiKeys.apiDocs")}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      {t("security.browserIntegration.registerDescription")}
+                    </p>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        const success = registerMagnetHandler()
+                        if (success) {
+                          toast.success(t("security.browserIntegration.toasts.requested"), {
+                            description: getMagnetHandlerRegistrationGuidance(),
+                          })
+                        } else {
+                          toast.error(t("security.browserIntegration.toasts.failed"))
+                        }
+                      }}
+                      className="w-fit"
                     >
-                      <span className="hidden sm:inline">{t("apiKeys.apiDocs")}</span>
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+                      {t("security.browserIntegration.registerButton")}
+                    </Button>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <ApiKeysManager authMode={appInfoQuery.data?.authMode} authModeLoading={appInfoQuery.isLoading} />
                 </CardContent>
               </Card>
-            </SettingsScrollPanel>
-          )}
+            )}
+          </>
+        )}
 
-          {activeTab === "external-programs" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("externalPrograms.cardTitle")}</CardTitle>
-                  <CardDescription>
-                    {t("externalPrograms.cardDescription")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ExternalProgramsManager />
-                </CardContent>
-              </Card>
-            </SettingsScrollPanel>
-          )}
-
-          {activeTab === "notifications" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("notifications.cardTitle")}</CardTitle>
-                  <CardDescription>
-                    {t("notifications.cardDescription")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <NotificationsManager />
-                </CardContent>
-              </Card>
-            </SettingsScrollPanel>
-          )}
-
-          {activeTab === "datetime" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("language.cardTitle")}</CardTitle>
-                  <CardDescription>
-                    {t("language.cardDescription")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <LanguageSelector />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("dateTime.cardTitle")}</CardTitle>
-                  <CardDescription>
-                    {t("dateTime.cardDescription")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <DateTimePreferencesForm />
-                </CardContent>
-              </Card>
-            </SettingsScrollPanel>
-          )}
-
-          {activeTab === "themes" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <ThemeSelector />
-              <div id="license-manager">
-                <LicenseManager
-                  checkoutStatus={search.checkout}
-                  checkoutPaymentStatus={search.status}
-                  onCheckoutConsumed={() => onSearchChange({ tab: "themes" })}
-                />
-              </div>
-            </SettingsScrollPanel>
-          )}
-
-          {activeTab === "security" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t("security.changePassword.title")}</CardTitle>
-                  <CardDescription>
-                    {t("security.changePassword.description")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChangePasswordForm />
-                </CardContent>
-              </Card>
-
-              {canRegisterProtocolHandler() && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{t("security.browserIntegration.title")}</CardTitle>
-                    <CardDescription>
-                      {t("security.browserIntegration.description")}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="text-sm text-muted-foreground">
-                        {t("security.browserIntegration.registerDescription")}
-                      </p>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          const success = registerMagnetHandler()
-                          if (success) {
-                            toast.success(t("security.browserIntegration.toasts.requested"), {
-                              description: getMagnetHandlerRegistrationGuidance(),
-                            })
-                          } else {
-                            toast.error(t("security.browserIntegration.toasts.failed"))
-                          }
-                        }}
-                        className="w-fit"
-                      >
-                        {t("security.browserIntegration.registerButton")}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </SettingsScrollPanel>
-          )}
-
-          {activeTab === "logs" && (
-            <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
-              <LogSettingsPanel />
-            </SettingsScrollPanel>
-          )}
-        </div>
-      </div>
+        {activeTab === "logs" && (
+          <LogSettingsPanel />
+        )}
+      </SectionedPage>
     </div>
   )
 }

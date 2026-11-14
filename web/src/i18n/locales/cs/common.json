@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Domů",
+    "statistics": "Statistiky",
     "search": "Hledat",
     "crossSeed": "Křížové sdílení",
     "automations": "Automatizace",
@@ -46,7 +47,7 @@
     "tasksForInstance": "Úlohy pro instanci",
     "settingsForInstance": "Nastavení pro instanci",
     "clearSearch": "Vymazat hledání",
-    "searchTorrents": "Hledat torrenty... ({{shortcutKey}})",
+    "searchTorrents": "Hledat torrenty...",
     "globPattern": "Vzorové hledání...",
     "smartSearchTitle": "Inteligentní hledání:",
     "smartSearchGlob": "Vzorové hledání:",
@@ -57,6 +58,7 @@
     "smartSearchFields": "Hledá název, kategorii a tagy",
     "smartSearchEnter": "Stiskněte Enter pro okamžité hledání",
     "smartSearchAuto": "Automaticky hledá po 500ms pauze",
+    "smartSearchShortcut": "Stiskněte {{shortcutKey}} pro přechod do hledání",
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
@@ -77,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Domů",
+    "statistics": "Statistiky",
     "clients": "Klienti",
     "settings": "Nastavení",
     "qbittorrentClients": "qBittorrent klienti",
@@ -100,17 +103,22 @@
     "cancel": "Zrušit",
     "close": "Zavřít",
     "create": "Vytvořit",
-    "copyPath": "Kopírovat cestu",
     "scrollToTop": "Posunout na začátek",
     "search": "Hledat",
-    "select": "Vybrat"
+    "select": "Vybrat",
+    "copyValue": "Kopírovat {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Rozumím"
   },
   "placeholders": {
     "search": "Hledat...",
     "selectItems": "Vybrat položky..."
   },
   "feedback": {
-    "noResultsFound": "Žádné výsledky."
+    "noResultsFound": "Žádné výsledky.",
+    "copied": "{{label}} byl zkopírován do schránky",
+    "copyFailed": "Nepodařilo se zkopírovat do schránky"
   },
   "errors": {
     "unknown": "Neznámá chyba",
@@ -149,16 +157,72 @@
     "dark": "Tmavý",
     "system": "Systém",
     "theme": "Vzhled",
-    "premium": "Premiové",
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
-    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence."
+    "premiumThemeError": "Tento vzhled vyžaduje licenci. Otevřete Nastavení → Motivy pro aktivaci licence."
   },
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",
     "versionAvailable": "Verze {{version}} je nyní dostupná",
     "dismiss": "Zavřít"
+  },
+  "systemNotice": {
+    "needsAttention": "Vyžaduje pozornost",
+    "since": "Od {{time}}, {{age}}",
+    "causeLabel": "Příčina",
+    "actionFallback": "Přejít k opravě",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Záznam zastaven",
+        "title": "Záznam zastaven",
+        "effect": "qui nemůže zapisovat historii přenosů. Zkusí to znovu při dalším zápisu.",
+        "fix": "Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze.",
+        "menuFix": "Uvolněte místo na disku pro databázi"
+      },
+      "shrink_failed": {
+        "short": "Zmenšení selhalo",
+        "title": "Zmenšení selhalo",
+        "effect": "qui nemohl zmenšit soubor databáze. Databáze se nezměnila a qui běží jako obvykle.",
+        "fix": "Podrobnosti jsou v logu qui.",
+        "menuFix": "Přečíst log qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Na disku je málo volného místa. Zmenšení potřebuje až dvojnásobek velikosti souboru databáze. Uvolněte místo na disku a zkuste to znovu.",
+            "menuFix": "Uvolněte místo a zkuste to znovu"
+          },
+          "locked": {
+            "fix": "Soubor databáze držel jiný program. Ukončete tento program, například nástroj pro zálohy nebo prohlížeč databází, a zkuste to znovu.",
+            "menuFix": "Ukončete jiný program a zkuste to znovu"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Málo místa na disku",
+        "title": "Málo místa na disku",
+        "effect": "Disk s databází qui má málo volného místa. Když je disk plný, každý zápis qui selže.",
+        "fix": "Uvolněte místo na disku, zkraťte „Uchovávat denní podrobnosti po dobu“ nebo smažte starší historii v nastavení Statistik.",
+        "menuFix": "Uvolněte místo na disku pro databázi",
+        "action": "Otevřít nastavení Statistik"
+      }
+    },
+    "actions": {
+      "tryAgain": "Zkusit znovu",
+      "dismiss": "Zavřít",
+      "openLog": "Otevřít log"
+    },
+    "unknown": {
+      "short": "Systémové upozornění",
+      "title": "Systémové upozornění",
+      "effect": "qui našel chybu, která od vás vyžaduje zásah.",
+      "fix": "Podrobnosti najdete v logu qui.",
+      "menuFix": "Přečtěte si log qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Soubor databáze zmenšen z {{before}} na {{after}}",
+    "nextStart": "Zmenšení proběhne při příštím spuštění qui",
+    "failed": "Zmenšení se nepodařilo vyžádat"
   },
   "pwaUpdate": {
     "reload": "Znovu načíst",
@@ -250,6 +314,9 @@
     "perkSuffix": "na Discordu a naši věčnou vděčnost.",
     "yearly": "{{price}} / rok",
     "monthly": "{{price}} / měsíc",
-    "notLicense": "Prémiové motivy jsou samostatný jednorázový nákup."
+    "notLicense": "Licence k motivům je samostatný jednorázový nákup."
+  },
+  "labels": {
+    "path": "Cesta"
   }
 }

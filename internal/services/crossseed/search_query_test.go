@@ -32,7 +32,7 @@ func TestBuildTorznabQueryKeepsParsedSeasonAndEpisode(t *testing.T) {
 			// Resolution must never be appended to the query: indexers whose free-text
 			// search only matches the series name (e.g. BTN, IPT) return zero results
 			// when a bare resolution token is present. Resolution is enforced post-search
-			// in releasesMatch instead.
+			// in the Match verdict instead.
 			name:      "KeepsParsedTitleWithoutResolution",
 			inputName: "Some.Show.S01E02.mkv",
 			release: rls.Release{

@@ -218,9 +218,9 @@ func TestReleasesMatch_UnknownSeasonTV(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			match, reason := s.releasesMatchWithReason(&tt.source, &tt.candidate, tt.findIndividualEpisodes)
-			require.Equal(t, tt.wantMatch, match)
-			require.Equal(t, tt.wantReason, reason)
+			comparison := s.strictCompare(&tt.source, &tt.candidate, tt.findIndividualEpisodes)
+			require.Equal(t, tt.wantMatch, comparison.matched())
+			require.Equal(t, tt.wantReason, comparison.reason())
 		})
 	}
 }

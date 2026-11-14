@@ -83,6 +83,26 @@ func TestMkdirAll_FileInTheWay(t *testing.T) {
 	require.ErrorIs(t, err, syscall.ENOTDIR)
 }
 
+func TestMkdir_SecondCallSeesExist(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	target := remotePath(dir, "Movie")
+
+	require.NoError(t, b.Mkdir(t.Context(), target, fsutil.ContentDirMode))
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	// The server answers SSH_FX_FAILURE for an existing path. A caller that
+	// reserves a folder name needs fs.ErrExist.
+	require.ErrorIs(t, b.Mkdir(t.Context(), target, fsutil.ContentDirMode), fs.ErrExist)
+
+	require.NoError(t, os.WriteFile(remotePath(dir, "file"), nil, 0o600))
+	require.ErrorIs(t, b.Mkdir(t.Context(), remotePath(dir, "file"), fsutil.ContentDirMode), fs.ErrExist)
+}
+
 func TestRemove_File(t *testing.T) {
 	t.Parallel()
 
@@ -331,17 +351,17 @@ func TestRemove_RefusedUnlinkNeverReportsMissing(t *testing.T) {
 	require.NoError(t, err, "the link is still there")
 }
 
-// cancelHeldWrite cancels once the server holds a write, then checks the
-// call is still waiting for it before the server answers.
+// cancelHeldWrite cancels once the server holds a write, then lets the server
+// answer it. The caller checks that the held write landed before the call
+// returned.
 func cancelHeldWrite(t *testing.T, server *sshtest.Server, cancel context.CancelFunc, done <-chan error) error {
 	t.Helper()
-	require.Eventually(t, func() bool { return server.HeldMutations() == 1 }, 5*time.Second, 10*time.Millisecond)
-	cancel()
 	select {
-	case err := <-done:
-		t.Fatalf("returned before its held write was answered: %v", err)
-	case <-time.After(100 * time.Millisecond):
+	case <-server.Stalled():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server never held the write")
 	}
+	cancel()
 	server.ReleaseStall()
 	return <-done
 }
@@ -417,12 +437,18 @@ func TestRemove_CancelledRemoveCompletes(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(t.Context())
 			done := make(chan error, 1)
-			go func() { done <- b.Remove(ctx, remotePath(dir, tc.remove), tc.opts) }()
+			var held error
+			go func() {
+				err := b.Remove(ctx, remotePath(dir, tc.remove), tc.opts)
+				// Read as the call returns: a call that does not wait for
+				// its held remove returns before the remove lands.
+				_, held = os.Lstat(remotePath(dir, tc.held))
+				done <- err
+			}()
 
 			err := cancelHeldWrite(t, server, cancel, done)
 			require.ErrorIs(t, err, context.Canceled)
-			_, err = os.Lstat(remotePath(dir, tc.held))
-			require.ErrorIs(t, err, fs.ErrNotExist, "the held remove landed before the call returned")
+			require.ErrorIs(t, held, fs.ErrNotExist, "the held remove landed before the call returned")
 		})
 	}
 }
@@ -568,10 +594,8 @@ func TestTargetIsSource_JobStoppedDuringStatIsAnError(t *testing.T) {
 	require.NoError(t, err)
 	server.SetExec(sshtest.ExecHang)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
-	defer cancel()
-	same, err := b.targetIsSource(ctx, plan.Files[0])
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	same, err := b.targetIsSource(cancelOnStall(t, server), plan.Files[0])
+	require.ErrorIs(t, err, context.Canceled)
 	assert.False(t, same)
 }
 
@@ -617,20 +641,20 @@ func TestHardlinkTree_StaleStoredTierStillReusesOnExecHost(t *testing.T) {
 // than an absent target, that reason is the error, not the Link failure.
 func TestHardlinkTree_LstatFailureAfterLinkIsReported(t *testing.T) {
 	t.Parallel()
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory modes")
+	// Host directory modes cannot inject this failure on Windows or as root.
+	b, server := newBackend(t)
+	server.SetSFTP(sshtest.SFTPRefuseLinkAndLstat)
+	client, err := b.client(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, client.Mkdir("/links"))
+	plan := &hardlinktree.TreePlan{
+		RootDir: "/links",
+		Files:   []hardlinktree.FilePlan{{SourcePath: "/source.mkv", TargetPath: "/links/one.mkv"}},
 	}
 
-	b, _ := newBackend(t)
-	dir := t.TempDir()
-	plan := linkPlan(t, dir)
-	plan.Files = plan.Files[:1]
-	require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
-	require.NoError(t, os.Chmod(plan.RootDir, 0o000))
-	t.Cleanup(func() { _ = os.Chmod(plan.RootDir, 0o755) })
-
-	_, err := b.HardlinkTree(t.Context(), plan)
+	_, err = b.HardlinkTree(t.Context(), plan)
 	require.Error(t, err)
+	require.ErrorIs(t, err, fs.ErrPermission)
 	assert.NotContains(t, err.Error(), "hardlink ", "the lstat failure is the cause, not the link")
 	assert.Contains(t, err.Error(), "lstat")
 }

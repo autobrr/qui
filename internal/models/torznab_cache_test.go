@@ -7,9 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
-	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -20,9 +18,8 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// expiredCacheAt is before the synctest bubble clock (2000-01-01) and older
-// than the cleanup ages below, so an expired read is an expired read on both
-// clocks and both engines.
+// expiredCacheAt is older than the max age and the cleanup age below, so an
+// expired read is an expired read on both engines.
 var expiredCacheAt = time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func TestTorznabTorrentCacheStoreSQLite(t *testing.T) {
@@ -51,51 +48,48 @@ func runTorznabTorrentCacheStoreTests(t *testing.T, open func(t *testing.T) *dat
 	})
 }
 
+// regression: #3100
 func checkRefreshedEntrySurvivesExpiredFetch(t *testing.T, db *database.DB) {
 	indexerID := insertTestTorznabIndexer(t, db, "Cache Indexer", "http://indexer.example")
 	const cacheKey = "cache-key-refresh"
 	stale := []byte("stale-payload")
 	fresh := []byte("fresh-payload")
 
-	store := models.NewTorznabTorrentCacheStore(db)
-	require.NoError(t, store.Store(context.Background(), torrentCacheEntry(indexerID, cacheKey, stale)))
+	// The old Fetch deleted the expired row by id on a goroutine after it
+	// returned the miss. When that delete ran after the refresh, it removed the
+	// new payload. Fetch must leave the row to Cleanup.
+	signals := newCacheSignals(db)
+	store := models.NewTorznabTorrentCacheStore(signals)
+	ctx := t.Context()
+	require.NoError(t, store.Store(ctx, torrentCacheEntry(indexerID, cacheKey, stale)))
 	backdateTorrentCache(t, db, indexerID, cacheKey)
 
-	synctest.Test(t, func(t *testing.T) {
-		// Hold a delete-by-id until the refresh is stored. The old Fetch parked
-		// that delete on a goroutine after returning the miss; releasing it
-		// afterwards removed the new payload. With the goroutine gone, nothing
-		// receives on hold.
-		hold := make(chan struct{})
-		var releaseOnce sync.Once
-		release := func() { releaseOnce.Do(func() { close(hold) }) }
-		defer release()
+	_, ok, err := store.Fetch(ctx, indexerID, cacheKey, time.Hour)
+	require.NoError(t, err)
+	require.False(t, ok)
 
-		gated := &evictionGate{db: db, hold: hold}
-		gatedStore := models.NewTorznabTorrentCacheStore(gated)
-		ctx := t.Context()
+	require.NoError(t, store.Store(ctx, torrentCacheEntry(indexerID, cacheKey, fresh)))
+	got, ok, err := store.Fetch(ctx, indexerID, cacheKey, 0)
+	require.NoError(t, err)
+	require.True(t, ok, "refreshed payload missing after an expired fetch")
+	require.Equal(t, fresh, got)
 
-		_, ok, err := gatedStore.Fetch(ctx, indexerID, cacheKey, time.Hour)
-		require.NoError(t, err)
-		require.False(t, ok)
-
-		// Park the old eviction if Fetch started one, then refresh.
-		synctest.Wait()
-		require.NoError(t, gatedStore.Store(ctx, torrentCacheEntry(indexerID, cacheKey, fresh)))
-		release()
-		synctest.Wait()
-
-		got, ok, err := gatedStore.Fetch(ctx, indexerID, cacheKey, 0)
-		require.NoError(t, err)
-		require.True(t, ok, "refreshed payload missing after an expired fetch")
-		require.Equal(t, fresh, got)
-		synctest.Wait()
-	})
+	// The touch from the hit runs on a goroutine that Fetch started after an
+	// eviction goroutine would have started. Go does not run them in that
+	// order, so with one CPU this check on SQLite can miss a delete that has
+	// not run yet. The Postgres run catches it.
+	awaitTorrentCacheTouch(t, db, signals, indexerID, cacheKey)
+	select {
+	case <-signals.evicted:
+		t.Fatal("an expired fetch deleted the cache row")
+	default:
+	}
 }
 
 func checkFetchMissesExpiredAndHitsLive(t *testing.T, db *database.DB) {
 	indexerID := insertTestTorznabIndexer(t, db, "Cache Indexer", "http://indexer.example")
-	store := models.NewTorznabTorrentCacheStore(db)
+	signals := newCacheSignals(db)
+	store := models.NewTorznabTorrentCacheStore(signals)
 	ctx := t.Context()
 
 	stale := []byte("stale-payload")
@@ -109,18 +103,19 @@ func checkFetchMissesExpiredAndHitsLive(t *testing.T, db *database.DB) {
 	require.False(t, ok)
 
 	// A hit touches last_used_at after it returns. Age that column first so the
-	// test can see the write finish before the database is closed.
+	// test can see that the touch wrote it.
 	ageTorrentCacheLastUsed(t, db, indexerID, "cache-key-live")
 	got, ok, err := store.Fetch(ctx, indexerID, "cache-key-live", time.Hour)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, live, got)
-	awaitTorrentCacheTouch(t, db, indexerID, "cache-key-live")
+	awaitTorrentCacheTouch(t, db, signals, indexerID, "cache-key-live")
 }
 
 func checkCleanupDeletesOldRows(t *testing.T, db *database.DB) {
 	indexerID := insertTestTorznabIndexer(t, db, "Cache Indexer", "http://indexer.example")
-	store := models.NewTorznabTorrentCacheStore(db)
+	signals := newCacheSignals(db)
+	store := models.NewTorznabTorrentCacheStore(signals)
 	ctx := t.Context()
 
 	oldPayload := []byte("old-payload")
@@ -146,7 +141,7 @@ func checkCleanupDeletesOldRows(t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, newPayload, got)
-	awaitTorrentCacheTouch(t, db, indexerID, "cache-key-new")
+	awaitTorrentCacheTouch(t, db, signals, indexerID, "cache-key-new")
 }
 
 func torrentCacheEntry(indexerID int, cacheKey string, payload []byte) *models.TorznabTorrentCacheEntry {
@@ -180,25 +175,52 @@ func ageTorrentCacheLastUsed(t *testing.T, db *database.DB, indexerID int, cache
 	require.NoError(t, err)
 }
 
-func awaitTorrentCacheTouch(t *testing.T, db *database.DB, indexerID int, cacheKey string) {
+func awaitTorrentCacheTouch(t *testing.T, db *database.DB, signals *cacheSignals, indexerID int, cacheKey string) {
 	t.Helper()
-	require.Eventually(t, func() bool {
-		var lastUsed time.Time
-		err := db.QueryRowContext(context.Background(), `
-			SELECT last_used_at
-			FROM torznab_torrent_cache
-			WHERE indexer_id = ? AND cache_key = ?`,
-			indexerID, cacheKey).Scan(&lastUsed)
-		return err == nil && lastUsed.After(expiredCacheAt)
-	}, 5*time.Second, 10*time.Millisecond)
+	select {
+	case <-signals.touched:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cache hit did not touch last_used_at")
+	}
+
+	var lastUsed time.Time
+	require.NoError(t, db.QueryRowContext(t.Context(), `
+		SELECT last_used_at
+		FROM torznab_torrent_cache
+		WHERE indexer_id = ? AND cache_key = ?`,
+		indexerID, cacheKey).Scan(&lastUsed))
+	require.True(t, lastUsed.After(expiredCacheAt), "touch did not update last_used_at")
 }
 
-// evictionGate reproduces the pre-fix race: it holds any delete on
-// torznab_torrent_cache until hold is closed, so a reintroduced per-miss
-// eviction in Fetch fails the test whatever shape its SQL takes.
-type evictionGate struct {
-	db   dbinterface.Querier
-	hold chan struct{}
+// cacheSignals sends on evicted when a delete on torznab_torrent_cache
+// arrives, whatever shape its SQL takes, and on touched after the async cache
+// touch has written last_used_at.
+type cacheSignals struct {
+	dbinterface.Querier
+	evicted chan struct{}
+	touched chan struct{}
+}
+
+func newCacheSignals(db dbinterface.Querier) *cacheSignals {
+	return &cacheSignals{Querier: db, evicted: make(chan struct{}, 1), touched: make(chan struct{}, 1)}
+}
+
+func (s *cacheSignals) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if isTorznabTorrentCacheDelete(query) {
+		notify(s.evicted)
+	}
+	result, err := s.Querier.ExecContext(ctx, query, args...)
+	if strings.HasPrefix(normalizedSQL(query), "UPDATE TORZNAB_TORRENT_CACHE SET LAST_USED_AT") {
+		notify(s.touched)
+	}
+	return result, err
+}
+
+func notify(ch chan struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
 }
 
 const torznabTorrentCacheDeletePrefix = "DELETE FROM TORZNAB_TORRENT_CACHE"
@@ -209,70 +231,4 @@ func normalizedSQL(query string) string {
 
 func isTorznabTorrentCacheDelete(query string) bool {
 	return strings.Contains(normalizedSQL(query), torznabTorrentCacheDeletePrefix)
-}
-
-func TestEvictionGateTorrentCacheDeleteMatcher(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name  string
-		query string
-		want  bool
-	}{
-		{
-			name:  "canonical",
-			query: "DELETE FROM torznab_torrent_cache WHERE last_used_at < ?",
-			want:  true,
-		},
-		{
-			name:  "lowercase",
-			query: "delete from torznab_torrent_cache where id = ?",
-			want:  true,
-		},
-		{
-			name:  "extra whitespace",
-			query: "DELETE   FROM   torznab_torrent_cache WHERE id = ?",
-			want:  true,
-		},
-		{
-			name: "multiline",
-			query: `DELETE
-				FROM torznab_torrent_cache
-				WHERE id = ?`,
-			want: true,
-		},
-		{
-			name:  "other table",
-			query: "DELETE FROM torznab_search_cache WHERE id = ?",
-			want:  false,
-		},
-		{
-			name:  "update",
-			query: "UPDATE torznab_torrent_cache SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
-			want:  false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, isTorznabTorrentCacheDelete(tt.query))
-		})
-	}
-}
-
-func (g *evictionGate) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	if isTorznabTorrentCacheDelete(query) {
-		<-g.hold
-	}
-	return g.db.ExecContext(ctx, query, args...)
-}
-
-func (g *evictionGate) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return g.db.QueryContext(ctx, query, args...)
-}
-
-func (g *evictionGate) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return g.db.QueryRowContext(ctx, query, args...)
-}
-
-func (g *evictionGate) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
-	return g.db.BeginTx(ctx, opts)
 }

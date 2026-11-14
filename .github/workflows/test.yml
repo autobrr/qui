@@ -87,8 +87,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # The runner image ships both clients. apt runs only when one is missing,
+      # so a DNS failure on the Ubuntu mirrors does not fail the job.
       - name: Install sqlite3 + psql clients
         run: |
+          if command -v sqlite3 >/dev/null && command -v psql >/dev/null; then
+            sqlite3 --version
+            psql --version
+            exit 0
+          fi
           sudo apt-get update
           sudo apt-get install -y sqlite3 postgresql-client
 

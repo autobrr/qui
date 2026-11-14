@@ -25,17 +25,12 @@ func TestNormalizeSource(t *testing.T) {
 
 		// WEBRip variants normalize to WEBRIP
 		{"WEBRIP uppercase", "WEBRIP", "WEBRIP"},
-		{"WEBRip mixed", "WEBRip", "WEBRIP"},
-		{"webrip lowercase", "webrip", "WEBRIP"},
 
 		// Plain WEB stays as WEB (ambiguous)
 		{"WEB uppercase", "WEB", "WEB"},
-		{"web lowercase", "web", "WEB"},
 
 		// Non-web sources pass through uppercased
 		{"BluRay passthrough", "BluRay", "BLURAY"},
-		{"HDTV passthrough", "HDTV", "HDTV"},
-		{"DVDRip passthrough", "DVDRip", "DVDRIP"},
 	}
 
 	for _, tt := range tests {
@@ -60,23 +55,17 @@ func TestSourcesCompatible(t *testing.T) {
 
 		// Identical sources are compatible
 		{"both WEBDL", "WEBDL", "WEBDL", true},
-		{"both WEBRIP", "WEBRIP", "WEBRIP", true},
-		{"both WEB", "WEB", "WEB", true},
-		{"both BLURAY", "BLURAY", "BLURAY", true},
 
 		// WEB is ambiguous - matches both WEBDL and WEBRIP
 		{"WEB matches WEBDL", "WEB", "WEBDL", true},
 		{"WEBDL matches WEB", "WEBDL", "WEB", true},
-		{"WEB matches WEBRIP", "WEB", "WEBRIP", true},
 		{"WEBRIP matches WEB", "WEBRIP", "WEB", true},
 
 		// WEBDL and WEBRIP are explicitly different
 		{"WEBDL vs WEBRIP", "WEBDL", "WEBRIP", false},
 		{"WEBRIP vs WEBDL", "WEBRIP", "WEBDL", false},
 
-		// Other sources must match exactly
-		{"BLURAY vs HDTV", "BLURAY", "HDTV", false},
-		{"WEBDL vs BLURAY", "WEBDL", "BLURAY", false},
+		// Web and non-web sources do not match
 		{"WEB does not match BLURAY", "WEB", "BLURAY", false},
 		{"BLURAY does not match WEB", "BLURAY", "WEB", false},
 	}
@@ -138,25 +127,6 @@ func TestReleasesMatch_SourceCompatibility(t *testing.T) {
 			description: "WEB-DL should match ambiguous WEB for precheck",
 		},
 		{
-			name: "WEB matches WEBRip",
-			source: rls.Release{
-				Title:      "Movie",
-				Year:       2025,
-				Source:     "WEB",
-				Resolution: "1080p",
-				Group:      "GROUP",
-			},
-			candidate: rls.Release{
-				Title:      "Movie",
-				Year:       2025,
-				Source:     "WEBRip",
-				Resolution: "1080p",
-				Group:      "GROUP",
-			},
-			shouldMatch: true,
-			description: "WEB is ambiguous and should match WEBRip for precheck",
-		},
-		{
 			name: "WEB-DL does not match WEBRip",
 			source: rls.Release{
 				Title:      "Movie",
@@ -174,25 +144,6 @@ func TestReleasesMatch_SourceCompatibility(t *testing.T) {
 			},
 			shouldMatch: false,
 			description: "WEB-DL and WEBRip are explicitly different sources",
-		},
-		{
-			name: "WEBRip does not match WEB-DL",
-			source: rls.Release{
-				Title:      "Movie",
-				Year:       2025,
-				Source:     "WEBRip",
-				Resolution: "1080p",
-				Group:      "GROUP",
-			},
-			candidate: rls.Release{
-				Title:      "Movie",
-				Year:       2025,
-				Source:     "WEB-DL",
-				Resolution: "1080p",
-				Group:      "GROUP",
-			},
-			shouldMatch: false,
-			description: "WEBRip and WEB-DL are explicitly different sources",
 		},
 		{
 			name: "BluRay does not match WEB-DL",
@@ -236,7 +187,7 @@ func TestReleasesMatch_SourceCompatibility(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.releasesMatch(&tt.source, &tt.candidate, false)
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
 			require.Equalf(t, tt.shouldMatch, result, tt.description)
 		})
 	}

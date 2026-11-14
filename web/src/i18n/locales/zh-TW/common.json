@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "儀表板",
+    "statistics": "統計",
     "search": "搜尋",
     "crossSeed": "輔種",
     "automations": "自動化",
@@ -46,7 +47,7 @@
     "tasksForInstance": "實例任務",
     "settingsForInstance": "實例設定",
     "clearSearch": "清除搜尋",
-    "searchTorrents": "搜尋種子... ({{shortcutKey}})",
+    "searchTorrents": "搜尋種子...",
     "globPattern": "Glob 模式...",
     "smartSearchTitle": "智慧搜尋功能：",
     "smartSearchGlob": "Glob 模式：",
@@ -57,6 +58,7 @@
     "smartSearchFields": "搜尋名稱、分類和標籤",
     "smartSearchEnter": "按Enter 鍵立即搜尋",
     "smartSearchAuto": "暫停輸入 500 毫秒後自動搜尋",
+    "smartSearchShortcut": "按 {{shortcutKey}} 跳至搜尋框",
     "torrentCreationTasksTitle": "種子建立任務",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
@@ -77,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "儀表板",
+    "statistics": "統計",
     "clients": "用戶端",
     "settings": "設定",
     "qbittorrentClients": "qBittorrent 用戶端",
@@ -100,17 +103,22 @@
     "cancel": "取消",
     "close": "關閉",
     "create": "建立",
-    "copyPath": "複製路徑",
     "scrollToTop": "回到頂部",
     "search": "搜尋",
-    "select": "選擇"
+    "select": "選擇",
+    "copyValue": "複製 {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "知道了"
   },
   "placeholders": {
     "search": "搜尋...",
     "selectItems": "選擇項目..."
   },
   "feedback": {
-    "noResultsFound": "未找到結果。"
+    "noResultsFound": "未找到結果。",
+    "copied": "{{label}} 已複製到剪貼簿",
+    "copyFailed": "複製到剪貼簿失敗"
   },
   "errors": {
     "unknown": "未知錯誤",
@@ -149,16 +157,72 @@
     "dark": "深色",
     "system": "跟隨系統",
     "theme": "主題",
-    "premium": "進階",
     "switchedToMode": "已切換到{{mode}}模式",
     "switchedToTheme": "已切換到{{theme}}主題",
     "switchedToThemeVariation": "已切換到{{theme}}主題（{{variation}}）",
-    "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。"
+    "premiumThemeError": "此主題需要授權。請前往設定 > 主題啟用授權。"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 現已可用",
     "dismiss": "關閉"
+  },
+  "systemNotice": {
+    "needsAttention": "需要處理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修復",
+    "kinds": {
+      "recording_stopped": {
+        "short": "記錄已停止",
+        "title": "記錄已停止",
+        "effect": "qui 無法寫入傳輸歷史。它會在下次寫入時重試。",
+        "fix": "請確認磁碟有可用空間，且 qui 可以寫入資料庫檔案。",
+        "menuFix": "為資料庫釋放磁碟空間"
+      },
+      "shrink_failed": {
+        "short": "壓縮失敗",
+        "title": "壓縮失敗",
+        "effect": "qui 無法縮小資料庫檔案。資料庫沒有變更，qui 照常執行。",
+        "fix": "詳情請查看 qui 日誌。",
+        "menuFix": "查看 qui 日誌",
+        "reasons": {
+          "disk_full": {
+            "fix": "磁碟可用空間不足。壓縮最多需要資料庫檔案大小的兩倍空間。請釋放磁碟空間後重試。",
+            "menuFix": "釋放空間後重試"
+          },
+          "locked": {
+            "fix": "另一個程式佔用了資料庫檔案。請關閉該程式（例如備份工具或資料庫檢視器）後重試。",
+            "menuFix": "關閉其他程式後重試"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "磁碟空間不足",
+        "title": "磁碟空間不足",
+        "effect": "qui 資料庫所在磁碟的可用空間很少。磁碟寫滿後，qui 的每次寫入都會失敗。",
+        "fix": "請釋放磁碟空間，或在統計設定中縮短「保留每日詳情」，或刪除較早的歷史。",
+        "menuFix": "為資料庫釋放磁碟空間",
+        "action": "開啟統計設定"
+      }
+    },
+    "actions": {
+      "tryAgain": "重試",
+      "dismiss": "忽略",
+      "openLog": "開啟日誌"
+    },
+    "unknown": {
+      "short": "系統通知",
+      "title": "系統通知",
+      "effect": "qui 發現了一個需要你處理的故障。",
+      "fix": "詳情請查看 qui 日誌。",
+      "menuFix": "查看 qui 日誌"
+    }
+  },
+  "databaseShrink": {
+    "done": "資料庫檔案已從 {{before}} 壓縮至 {{after}}",
+    "nextStart": "壓縮將在 qui 下次啟動時執行",
+    "failed": "無法要求壓縮"
   },
   "pwaUpdate": {
     "reload": "重新載入",
@@ -236,6 +300,9 @@
     "perkSuffix": "身分組，以及我們永遠的感謝。",
     "yearly": "{{price}} / 年",
     "monthly": "{{price}} / 月",
-    "notLicense": "進階主題是單獨的一次性購買。"
+    "notLicense": "主題授權是單獨的一次性購買。"
+  },
+  "labels": {
+    "path": "路徑"
   }
 }

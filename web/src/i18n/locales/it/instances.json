@@ -3,7 +3,6 @@
   "card": {
     "status": {
       "disabled": "Disabilitato",
-      "enabled": "Abilitato",
       "connected": "Connesso",
       "disconnected": "Disconnesso"
     },
@@ -24,8 +23,8 @@
       "tlsVerification": "Verifica TLS:",
       "tlsSkipped": "Ignorata",
       "tlsStrict": "Rigorosa",
-      "localFileAccess": "Accesso ai file locali:",
-      "testingConnection": "Prova della connessione in corso..."
+      "testingConnection": "Prova della connessione in corso...",
+      "fileAccess": "Accesso ai file:"
     },
     "deleteDialog": {
       "title": "Elimina istanza",
@@ -111,7 +110,8 @@
       "none": "Nessuno",
       "usernamePassword": "Nome utente e password",
       "apiKey": "Chiave API"
-    }
+    },
+    "sshAfterSave": "L'accesso SSH ai file dell'istanza si configura nelle impostazioni dell'istanza dopo il salvataggio."
   },
   "settingsButton": {
     "tooltip": "Impostazioni istanza"
@@ -150,7 +150,8 @@
         "downloads": "Download",
         "bittorrent": "BitTorrent",
         "rss": "RSS",
-        "webui": "WebUI"
+        "webui": "WebUI",
+        "ssh": "SSH"
       },
       "sections": {
         "instanceConfig": {
@@ -162,6 +163,10 @@
         },
         "seedingLimits": {
           "title": "Limiti di distribuzione"
+        },
+        "ssh": {
+          "title": "Accesso SSH",
+          "description": "Raggiungi i file di questa istanza via SSH quando qui e qBittorrent girano su macchine diverse"
         }
       }
     },
@@ -505,7 +510,6 @@
       "dryRun": "Dry run",
       "removed": "Rimosso",
       "executed": "Eseguito",
-      "copyHash": "Copia hash",
       "original": "Originale: {{domain}}",
       "programLabel": "Programma: {{name}}",
       "ruleLabel": "Regola: {{name}}",
@@ -556,7 +560,8 @@
         "move": "Sposta",
         "externalProgram": "Programma esterno",
         "dryRun": "Dry run",
-        "exportToInstance": "Esporta nell'istanza"
+        "exportToInstance": "Esporta nell'istanza",
+        "ruleSkipped": "Regola non eseguita"
       },
       "shareLimit": {
         "global": "Globale",
@@ -617,6 +622,7 @@
         "cancel": "Annulla",
         "delete": "Elimina"
       },
+      "enableTagRule": "Abilita regola dei tag",
       "enableDeleteRule": "Abilita regola di eliminazione",
       "enableCategoryRule": "Abilita regola di categoria → {{category}}",
       "enableRuleImmediately": "La conferma abiliterà subito questa regola.",
@@ -665,10 +671,29 @@
         "exportedTorrents": "{{count}} torrent esportati in CSV",
         "exportFailed": "Esportazione dell'anteprima non riuscita",
         "deletedActivityEntries": "{{count}} voci di attività eliminate",
-        "deleteActivityFailed": "Eliminazione dell'attività non riuscita",
-        "hashCopied": "Hash copiato"
+        "deleteActivityFailed": "Eliminazione dell'attività non riuscita"
       },
-      "exported": "Esportato"
+      "exported": "Esportato",
+      "skipped": "Saltata"
+    },
+    "runWorkflowNow": {
+      "action": "Esegui ora",
+      "title": "Eseguire \"{{name}}\" ora?",
+      "description": "qui esegue ora una volta il workflow salvato e applica le sue azioni ai torrent corrispondenti. Viene eseguito anche quando il workflow è disattivato.",
+      "dryRunDescription": "Questo workflow è impostato come simulazione, quindi qui registra solo cosa farebbe. Nessun torrent cambia.",
+      "actions": "Azioni",
+      "cancel": "Annulla",
+      "confirm": "Esegui ora",
+      "toast": {
+        "running": "Esecuzione di \"{{name}}\"…",
+        "completed": "Esecuzione completata per \"{{name}}\"",
+        "noChanges": "Esecuzione completata per \"{{name}}\". Nessun torrent richiedeva modifiche.",
+        "completedWithErrors": "Esecuzione completata per \"{{name}}\" con errori. Consulta il registro attività.",
+        "dryRunCompleted": "Simulazione completata per \"{{name}}\"",
+        "inProgress": "È in corso un'altra esecuzione. Riprova tra un momento.",
+        "failed": "Impossibile eseguire il workflow",
+        "skipped": "\"{{name}}\" non è stata eseguita. Vedi il registro attività."
+      }
     },
     "workflowPreview": {
       "loadingPreview": "Caricamento dell'anteprima. Potrebbe richiedere del tempo...",
@@ -710,12 +735,10 @@
     "orphanScanOverview": {
       "title": "Scansione orfani",
       "noInstancesDescription": "Nessuna istanza configurata. Aggiungine una nelle Impostazioni per usare questo servizio.",
-      "tooltip": "Trova i file su disco che non sono associati ad alcun torrent in qBittorrent.\nRichiede l'accesso al filesystem locale abilitato per ogni istanza.",
+      "tooltip": "Trova i file su disco che non sono associati ad alcun torrent in qBittorrent.\nRichiede l'accesso ai file di ogni istanza. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza.",
       "description": "Scansiona le cartelle di download e identifica i file orfani da rimuovere.",
-      "noLocalAccess": "Nessun accesso locale",
-      "noLocalAccessTooltip": "qui e qBittorrent devono essere eseguiti sulla stessa macchina. Abilita \"Accesso al filesystem locale\" nelle impostazioni dell'istanza per usare la scansione orfani.",
-      "remoteLimits": "L'eliminazione e la pulizia automatica non sono ancora disponibili sulle istanze remote.",
-      "remoteNoIdentity": "Inoltre qui non riconosce quando due percorsi sono lo stesso file, quindi un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa.",
+      "remoteLimits": "L'eliminazione e la pulizia automatica su un'istanza remota richiedono l'identità dei file, che qui può leggere solo se il server gli consente di eseguire GNU find e stat.",
+      "remoteNoIdentity": "Questa istanza remota non lo consente, quindi qui non riconosce quando due percorsi sono lo stesso file e un file raggiungibile da un secondo percorso, ad esempio tramite un bind mount, può comparire nell'elenco anche se un torrent lo usa. Le scansioni qui si possono visualizzare ed esportare, ma non eliminare.",
       "on": "On",
       "off": "Off",
       "summaryGrace": "Tolleranza {{grace}}min",
@@ -727,7 +750,7 @@
       "cancel": "Annulla",
       "autoCleanupEnabled": "Pulizia automatica abilitata (≤{{max}} file)",
       "autoCleanupDisabled": "Pulizia automatica disabilitata",
-      "autoCleanupRemote": "Nessuna pulizia automatica sulle istanze remote",
+      "autoCleanupRemote": "Nessuna pulizia automatica su questa istanza remota",
       "pathsIgnored_one": " · {{count}} percorso ignorato",
       "pathsIgnored_other": " · {{count}} percorsi ignorati",
       "scanNow": "Scansiona ora",
@@ -739,6 +762,8 @@
       "viewPreview": "Visualizza anteprima",
       "recentScans": "Scansioni recenti",
       "scannedPaths": "Percorsi selezionati per la scansione ({{total}})",
+      "scanPathsLoading": "Caricamento dei percorsi di scansione...",
+      "scanPathsLoadFailed": "Impossibile caricare i percorsi di scansione",
       "zeroOrphans": "0 orfani",
       "deletedStats": "{{deleted}} eliminati · {{size}}",
       "deletedFiles_one": "{{count}} file",
@@ -748,7 +773,6 @@
       "deletedSeparator": ", ",
       "partialFailure": "Errore parziale - controlla le scansioni recenti",
       "partialFailureExpand": "Errore parziale - espandi per i dettagli",
-      "copiedToClipboard": "Copiato negli appunti",
       "noScansYet": "Nessuna scansione eseguita. Fai clic su \"Scansiona ora\" per trovare gli orfani.",
       "statusClean": "Pulito",
       "statusPartial": "Scansione parziale",
@@ -768,7 +792,11 @@
         "scanStartFailed": "Avvio della scansione non riuscito",
         "scanCanceled": "Scansione annullata",
         "cancelFailed": "Annullamento non riuscito"
-      }
+      },
+      "errorMessage": "Messaggio di errore",
+      "scanPaths": "Percorsi di scansione",
+      "noFilesystemAccess": "Nessun accesso al filesystem",
+      "noFilesystemAccessTooltip": "La scansione orfani richiede l'accesso ai file di questa istanza. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza."
     },
     "orphanScanPreview": {
       "title": "Anteprima orfani",
@@ -788,7 +816,7 @@
       "exportCSV": "Esporta CSV",
       "close": "Chiudi",
       "deleteItems": "Elimina",
-      "remoteDeleteUnavailable": "Questa scansione è stata eseguita su un'istanza remota, dove l'eliminazione non è ancora supportata. Esporta l'elenco per rimuovere tu stesso i file sul server.",
+      "remoteDeleteUnavailable": "Questa scansione non può eliminare, perché l'istanza remota non fornisce l'identità dei file o la scansione non è riuscita a leggerla per ogni file. Esporta l'elenco per rimuovere tu stesso i file sul server.",
       "toast": {
         "deletionStarted": "Eliminazione avviata",
         "deletionDescription": "I file orfani e le cartelle abbandonate sono in fase di rimozione",
@@ -917,8 +945,6 @@
       "ratio": "Rapporto",
       "added": "Aggiunto",
       "original": "Originale: {{domain}}",
-      "hashCopied": "Hash copiato",
-      "copyHash": "Copia hash",
       "loading": "Caricamento...",
       "notAvailable": "Dettagli dell'esecuzione non disponibili (solo in memoria).",
       "failedToLoad": "Impossibile caricare i dettagli dell'esecuzione.",
@@ -946,7 +972,8 @@
         "external_program": "Programma esterno",
         "auto_managed": "Gestito automaticamente",
         "dry_run_no_match": "Simulazione (nessuna corrispondenza)",
-        "exported_to_instance": "Esporta verso l'istanza"
+        "exported_to_instance": "Esporta verso l'istanza",
+        "rule_skipped": "Regola non eseguita"
       }
     },
     "reannounceOverview": {
@@ -982,8 +1009,6 @@
       "tryDifferentSearch": "Prova un altro termine di ricerca o svuota il filtro.",
       "eventsWillAppear": "Gli eventi appariranno qui quando vengono rilevati torrent in stallo.",
       "enableMonitoring": "Abilita il monitoraggio per iniziare a tracciare i torrent in stallo.",
-      "hashCopied": "Hash copiato",
-      "copyHash": "Copia hash",
       "outcomes": {
         "succeeded": "Completato",
         "failed": "Fallito",
@@ -1152,6 +1177,7 @@
         "title": "Azione",
         "addAction": "Aggiungi un'azione",
         "selectAction": "Seleziona un'azione...",
+        "runOrderHelp": "Le azioni vengono eseguite nell'ordine mostrato. Ogni azione vede il torrent com'era all'inizio dell'esecuzione, quindi un programma esterno eseguito dopo uno spostamento riceve ancora il vecchio percorso di salvataggio.",
         "speedLimits": "Limiti di velocità",
         "shareLimits": "Limiti di condivisione",
         "pause": "Metti in pausa",
@@ -1204,6 +1230,7 @@
         "strategyReplace": "Sostituisci nel client",
         "replaceDescription": "La modalità Sostituisci forza una reimpostazione completa di questi tag in tutto il client prima di applicare questa regola.",
         "managedDescription": "La modalità Gestita mantiene i tag accurati con aggiornamenti basati sulle differenze; la Sincronizzazione completa aggiunge i tag alle corrispondenze e li rimuove dalle non corrispondenze.",
+        "includeAffectedCrossSeeds": "Includi i cross-seed interessati",
         "useTrackerName": "Usa il nome del tracker come tag",
         "useDisplayName": "Usa il nome visualizzato",
         "aboutDisplayNames": "Informazioni sui nomi visualizzati",
@@ -1264,14 +1291,14 @@
         "defaultSource": "Predefinito (qBittorrent)",
         "pathSource": "Percorso sul server",
         "pathSourceWindowsUnsupported": "Percorso sul server (non supportato su Windows)",
-        "pathSourceLocalAccessRequired": "Percorso sul server (richiede l'Accesso locale)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Inserisci il percorso su cui controllare lo spazio libero (es., un punto di montaggio)",
         "errors": {
           "unsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows.",
-          "localAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'Accesso al filesystem locale.",
-          "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\"."
-        }
+          "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\".",
+          "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o via SSH."
+        },
+        "pathSourceFilesystemAccessRequired": "Percorso sul server (richiede accesso locale o SSH)"
       },
       "grouping": {
         "title": "Gruppi di condizioni raggruppate",
@@ -1348,11 +1375,13 @@
       "preview": {
         "confirmDeleteRule": "Conferma regola di eliminazione",
         "previewDeleteRule": "Anteprima regola di eliminazione",
+        "confirmTagChange": "Conferma modifiche ai tag",
         "confirmCategoryChange": "Conferma cambio di categoria → {{category}}",
         "deleteEnabledSummary": "Questa regola interesserà {{count}} torrent che corrisponde attualmente.",
         "deleteEnabledSummary_other": "Questa regola interesserà {{count}} torrent che corrispondono attualmente.",
         "deleteDisabledSummary": "{{count}} torrent corrisponderebbe a questa regola se abilitata.",
         "deleteDisabledSummary_other": "{{count}} torrent corrisponderebbero a questa regola se abilitata.",
+        "tagPrefix": "Questa regola aggiornerà i tag di",
         "categoryPrefix": "Questa regola sposterà",
         "torrents": "{{count}} torrent",
         "torrents_other": "{{count}} torrent",
@@ -1364,8 +1393,7 @@
       "enableDryRunPrompt": {
         "title": "Abilitare la simulazione (dry run)?",
         "description": "La simulazione (dry run) simula tutte le azioni senza modificare nulla. Puoi rivedere i torrent interessati nel registro delle attività.",
-        "enableWithout": "Abilita senza simulazione",
-        "enableWith": "Abilita con simulazione"
+        "saveAndEnable": "Salva e abilita"
       },
       "customGroup": {
         "title": "Aggiungi gruppo personalizzato",
@@ -1414,7 +1442,8 @@
           "moved": "Sposta",
           "externalProgram": "Programma esterno",
           "noMatches": "Nessuna corrispondenza",
-          "exportedToInstance": "Esporta verso istanza"
+          "exportedToInstance": "Esporta verso istanza",
+          "ruleSkipped": "Regola non eseguita"
         },
         "actionFallback": "Azione sconosciuta ({{action}})",
         "summary": {
@@ -1460,7 +1489,6 @@
         "switchedIntervalForFreeSpace": "Passato all'intervallo di 5 minuti perché le eliminazioni per Spazio libero hanno un'attesa di circa 5 minuti",
         "pathSourceUnsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows. Passato al valore predefinito di qBittorrent.",
         "switchFreeSpaceSourceDefault": "Cambia l'origine dello spazio libero in Predefinito (qBittorrent)",
-        "enableLocalAccessOrDefault": "Abilita l'accesso al filesystem locale nelle impostazioni dell'istanza, oppure usa Predefinito (qBittorrent)",
         "enterPathOrDefault": "Inserisci un percorso o riporta l'origine dello spazio libero su Predefinito (qBittorrent)",
         "addScoreRule": "Aggiungi almeno una regola di punteggio per l'ordinamento per Punteggio",
         "fieldMultiplierInvalid": "Il moltiplicatore del campo deve essere un numero valido",
@@ -1477,7 +1505,8 @@
         "groupIdInvalid": "L'ID del gruppo può contenere solo caratteri alfanumerici e trattini bassi",
         "selectGroupKey": "Seleziona almeno una chiave",
         "groupExists": "Esiste già un gruppo con questo ID",
-        "customGroupAdded": "Gruppo personalizzato aggiunto"
+        "customGroupAdded": "Gruppo personalizzato aggiunto",
+        "setUpFilesystemAccessOrDefault": "Configura l'accesso al filesystem locale o via SSH nelle impostazioni dell'istanza, oppure usa Predefinito (qBittorrent)"
       },
       "trackerMatchInclude": "Includi",
       "trackerMatchExclude": "Escludi"
@@ -1727,6 +1756,92 @@
       "testEmailQueued": "qBittorrent ha messo in coda l'email di prova",
       "testEmailQueuedDescription": "qBittorrent usa le impostazioni salvate. Controlla la posta in arrivo e il log di qBittorrent per eventuali errori.",
       "testEmailFailed": "Impossibile inviare l'email di prova"
+    },
+    "ssh": {
+      "localWins": "L'accesso al filesystem locale è attivo, quindi qui legge i file di questa istanza in locale e non usa queste impostazioni SSH.",
+      "labels": {
+        "host": "Host SSH",
+        "hostDescription": "Nome host o indirizzo IP della macchina che contiene i file di questa istanza, senza schema né porta. Cambiare host o porta elimina la chiave host fissata, quindi la prossima prova è di nuovo un primo contatto.",
+        "port": "Porta",
+        "username": "Nome utente",
+        "privateKey": "Chiave privata",
+        "privateKeyDescription": "Una chiave privata OpenSSH senza passphrase. qui la salva cifrata e non la mostra più. Serve di nuovo quando cambiano host, porta o nome utente."
+      },
+      "placeholders": {
+        "host": "seedbox.example.com",
+        "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "privateKeyStored": "Una chiave è salvata. Incollane una nuova per sostituirla."
+      },
+      "validation": {
+        "hostRequired": "L'host SSH è obbligatorio",
+        "portRange": "La porta deve essere compresa tra 1 e 65535",
+        "usernameRequired": "Il nome utente è obbligatorio",
+        "keyRequired": "La chiave privata è necessaria quando cambiano host, porta o nome utente"
+      },
+      "buttons": {
+        "save": "Salva impostazioni SSH",
+        "clear": "Rimuovi accesso SSH",
+        "test": "Prova connessione",
+        "testing": "Prova in corso...",
+        "confirm": "Conferma chiave host",
+        "replace": "Sostituisci chiave host"
+      },
+      "test": {
+        "title": "Connessione",
+        "pinnedAtRest": "Chiave host fissata. Prova la connessione per vedere cosa consente l'host.",
+        "unpinnedAtRest": "Nessuna chiave host fissata. Prova la connessione per confermare l'impronta dell'host.",
+        "saveFirst": "Salva prima le modifiche. Il test usa le credenziali salvate."
+      },
+      "status": {
+        "unpinned": {
+          "title": "Primo contatto",
+          "text": "Confronta questa impronta con quella dell'host prima di confermarla. Le connessioni successive rifiuteranno qualsiasi altra chiave."
+        },
+        "pinned": {
+          "title": "Chiave host fissata"
+        },
+        "mismatch": {
+          "title": "Chiave host cambiata",
+          "text": "L'host ha presentato una chiave diversa da quella fissata. Sostituiscila solo se ti aspetti il cambiamento, per esempio dopo una reinstallazione del server."
+        },
+        "pinUnreadable": {
+          "title": "Chiave fissata illeggibile",
+          "text": "La chiave fissata non può essere decifrata, di solito perché la chiave di cifratura di qui è cambiata. Sostituiscila per continuare.",
+          "noKey": "L'host non ha risposto, quindi non c'è alcuna chiave con cui sostituirla."
+        },
+        "error": {
+          "title": "Connessione non riuscita"
+        }
+      },
+      "fingerprint": {
+        "label": "Impronta",
+        "pinned": "Fissata",
+        "presented": "Presentata"
+      },
+      "probes": {
+        "tier": "Livello: {{tier}}",
+        "tierSftp": "SFTP",
+        "tierExec": "SFTP + comandi",
+        "tierHint": "I comandi richiedono una shell POSIX con GNU find e stat sull'host. Senza di essi qui usa solo SFTP e non può leggere l'identità dei file.",
+        "sftp": "SFTP",
+        "statvfs": "Spazio libero (statvfs)",
+        "hardlink": "Hardlink (hardlink@openssh.com)",
+        "limits": "Estensione limits",
+        "exec": "Comandi",
+        "gnuUserland": "GNU find e stat",
+        "yes": "Disponibile",
+        "no": "Non disponibile"
+      },
+      "replaceDialog": {
+        "title": "Sostituire la chiave host fissata?",
+        "description": "D'ora in poi qui considererà attendibile la chiave presentata per questo host e rifiuterà quella fissata.",
+        "cancel": "Annulla",
+        "confirm": "Sostituisci"
+      },
+      "toast": {
+        "saved": "Impostazioni SSH salvate",
+        "cleared": "Accesso SSH rimosso"
+      }
     }
   },
   "backups": {
@@ -1766,11 +1881,9 @@
       "lastBackup": "Ultimo backup",
       "loading": "Caricamento...",
       "progress": "{{current}} di {{total}} torrent ({{percentage}}%)",
-      "status": "Stato: {{status}}",
       "noBackupsYet": "Nessun backup",
       "nextScheduledBackup": "Prossimo backup pianificato",
       "loadingSchedule": "Caricamento della pianificazione...",
-      "instance": "Istanza",
       "automaticBackupsOff": "I backup automatici sono disattivati per questa istanza.",
       "enableCadenceToSchedule": "Abilita almeno una cadenza automatica per pianificare i backup.",
       "currentlyRunning": "Il backup è attualmente in esecuzione.",
@@ -1794,6 +1907,7 @@
       "schedule": {
         "title": "Cadenze automatiche",
         "description": "Le esecuzioni orarie, giornaliere, settimanali e mensili iniziano dopo che il backup precedente è terminato e il loro intervallo è trascorso. Lasciale tutte disattivate se attivi i backup solo manualmente.",
+        "keep": "Mantieni",
         "hourly": "Ogni ora",
         "hourlyDescription": "Quanti snapshot orari conservare prima che i più vecchi vengano eliminati.",
         "hourlyTooltip": "Viene eseguito circa una volta all'ora quando i backup sono abilitati ed è trascorsa almeno un'ora dall'ultima esecuzione.",
@@ -1812,8 +1926,7 @@
         "saveChanges": "Salva modifiche",
         "saveAll": "Salva le modifiche su tutte le istanze",
         "requiresCadence": "Seleziona almeno una cadenza (oraria, giornaliera, settimanale o mensile) prima di salvare.",
-        "waitForCapabilities": "Attendi il completamento dei controlli delle capacità dell'istanza prima di salvare su tutte le istanze.",
-        "changesApplyImmediately": "Le modifiche si applicano ai backup futuri non appena salvi."
+        "waitForCapabilities": "Attendi il completamento dei controlli delle capacità dell'istanza prima di salvare su tutte le istanze."
       }
     },
     "restore": {
@@ -1978,5 +2091,21 @@
       "failed": "Non riuscito",
       "canceled": "Annullato"
     }
+  },
+  "access": {
+    "local": "Locale",
+    "remote": "Via SSH",
+    "none": "Nessuno",
+    "localFull": "qui legge e scrive i file di questa istanza su questa macchina.",
+    "limits": {
+      "noIdentity": "Nessuna identità dei file: qui non riconosce quando due percorsi sono lo stesso file. La scansione orfani non può eliminare qui e una destinazione hardlink esistente blocca un'aggiunta con hardlink.",
+      "noReflinks": "Nessun reflink su un'istanza remota.",
+      "noHardlinkExtension": "Nessun hardlink: il server non annuncia hardlink@openssh.com. Un'aggiunta cross-seed con hardlink qui fallisce, oppure aggiunge in modalità normale se «Ripiega sulla modalità normale in caso di errore» è attivo."
+    }
+  },
+  "deleteHistory": {
+    "label": "Elimina anche la cronologia dei trasferimenti",
+    "description": "Senza questa opzione, qui mantiene la cronologia con il nome dell'istanza.",
+    "failed": "L'istanza è stata eliminata, ma qui non è riuscito a eliminare tutta la sua cronologia. Controlla in Impostazioni > Statistiche ed elimina il resto da lì."
   }
 }

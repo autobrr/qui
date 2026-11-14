@@ -4,6 +4,11 @@
     "description": "qui가 관리하는 인스턴스 수준 자동화 서비스입니다.",
     "noInstances": "아직 구성된 인스턴스가 없습니다. 서비스를 사용하려면 설정에서 인스턴스를 추가하세요."
   },
+  "tabs": {
+    "workflows": "워크플로",
+    "reannounce": "재요청",
+    "orphanScan": "고아 항목 스캔"
+  },
   "queryBuilder": {
     "noConditions": "조건 없음",
     "matchesAllTorrents": "모든 토렌트와 일치합니다(트래커 선택에 따름).",
@@ -23,6 +28,8 @@
     "groupForConditionPlaceholder": "이 조건의 그룹",
     "aboutGroupSelectionAriaLabel": "그룹화된 조건의 그룹 선택 정보",
     "groupTooltip": "이 그룹은 이 조건 행에만 적용됩니다. 필요한 경우 다른 GROUP_SIZE/IS_GROUPED 행에 다른 그룹을 사용하세요.",
+    "aboutHardlinkScopeAriaLabel": "하드링크 범위 정보",
+    "hardlinkScopeTooltip": "qBittorrent 외부는 어떤 토렌트에도 속하지 않는 하드링크를 뜻합니다. 라이브러리 가져오기뿐 아니라 다운로드 폴더 안에 남은 링크도 포함됩니다.",
     "min": "최소",
     "max": "최대",
     "wrappingRangeHint": "범위가 순환합니다: {{min}} 이상에 일치하고, 이어서 {{max}} 미만의 모든 값에 일치합니다.",
@@ -123,7 +130,7 @@
       "NUM_LEECHS": "활성 리처",
       "NUM_COMPLETE": "전체 시더",
       "NUM_INCOMPLETE": "전체 리처",
-      "TRACKERS_COUNT": "트래커",
+      "TRACKERS_COUNT": "트래커 수",
       "PRIORITY": "대기열 우선순위",
       "GROUP_SIZE": "그룹 크기",
       "PRIVATE": "비공개",
@@ -222,8 +229,12 @@
     },
     "capabilityReasons": {
       "trackerHealth": "qBittorrent 5.1+ 필요",
+      "qbittorrent50": "qBittorrent 5.0+ 필요",
+      "qbittorrent52": "qBittorrent 5.2+ 필요",
       "localFilesystemAccess": "로컬 파일시스템 접근 필요",
-      "remoteInstance": "원격 인스턴스에서는 사용할 수 없음"
-    }
+      "remoteInstance": "원격 인스턴스에서는 사용할 수 없음",
+      "filesystemAccess": "파일시스템 접근이 필요합니다. 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하거나 SSH 접근을 설정하세요."
+    },
+    "ruleSkip": "이 인스턴스에서 실행되지 않습니다: {{field}}에는 {{requires}}이(가) 필요합니다."
   }
 }

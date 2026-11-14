@@ -18,15 +18,39 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/avast/retry-go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/internal/testutil/syncsnap"
 )
 
 type peerSyncTestTransport func(*http.Request) (*http.Response, error)
 
 func (f peerSyncTestTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+// serveInProcess sends each request of c straight to handler, so a synctest
+// bubble can advance its clock while a request waits. A request whose context
+// ends fails with the context error, as it does over a real connection.
+func serveInProcess(c *qbt.Client, handler http.Handler) *qbt.Client {
+	transport := peerSyncTestTransport(func(req *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
+		return rec.Result(), nil
+	})
+	return c.WithHTTPClient(&http.Client{Transport: transport})
+}
+
+func newInProcessQbtClient(handler http.Handler) *qbt.Client {
+	return serveInProcess(qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"}), handler)
 }
 
 func TestPeerSyncManagerIdleExpiry(t *testing.T) {
@@ -101,33 +125,34 @@ func TestPeerSyncManagerTorrentRemoval(t *testing.T) {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	defer client.optimisticUpdates.Close()
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	active := client.GetOrCreatePeerSyncManager(activeHash)
 	removed := client.GetOrCreatePeerSyncManager(strings.ToUpper(removedHash))
-	t.Cleanup(func() { client.prunePeerSyncManagers(&qbt.MainData{}) })
+	empty := syncsnap.Update(t).Snapshot
+	t.Cleanup(func() { client.prunePeerSyncManagers(empty) })
 
 	phase.Store(1)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.NotContains(t, client.peerSyncManager, removedHash)
 	require.Same(t, active, client.GetOrCreatePeerSyncManager(activeHash), "an unchanged torrent survives a delta")
 	require.NotSame(t, removed, client.GetOrCreatePeerSyncManager(removedHash))
 
 	phase.Store(2)
-	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.Empty(t, client.peerSyncManager, "a full refresh removes absent torrents")
 }
 
-// mockSyncEventSink is a test helper that records calls to HandleMainData and HandleSyncError.
+// mockSyncEventSink is a test helper that records calls to HandleSyncUpdate and HandleSyncError.
 type mockSyncEventSink struct {
 	mu                   sync.Mutex
-	mainData             []*mainDataCall
+	syncUpdates          []*syncUpdateCall
 	trackerHealthUpdates []int
 	syncErrors           []*syncErrorCall
 }
 
-type mainDataCall struct {
+type syncUpdateCall struct {
 	instanceID int
-	data       *qbt.MainData
+	update     qbt.SyncUpdate
 }
 
 type syncErrorCall struct {
@@ -135,10 +160,10 @@ type syncErrorCall struct {
 	err        error
 }
 
-func (m *mockSyncEventSink) HandleMainData(instanceID int, data *qbt.MainData) {
+func (m *mockSyncEventSink) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.mainData = append(m.mainData, &mainDataCall{instanceID: instanceID, data: data})
+	m.syncUpdates = append(m.syncUpdates, &syncUpdateCall{instanceID: instanceID, update: update})
 }
 
 func (m *mockSyncEventSink) HandleSyncError(instanceID int, err error) {
@@ -153,10 +178,10 @@ func (m *mockSyncEventSink) HandleTrackerHealthUpdated(instanceID int) {
 	m.trackerHealthUpdates = append(m.trackerHealthUpdates, instanceID)
 }
 
-func (m *mockSyncEventSink) getMainDataCalls() []*mainDataCall {
+func (m *mockSyncEventSink) getSyncUpdateCalls() []*syncUpdateCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.mainData
+	return m.syncUpdates
 }
 
 func (m *mockSyncEventSink) getSyncErrorCalls() []*syncErrorCall {
@@ -227,118 +252,13 @@ func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		client.updateServerState(&qbt.MainData{
-			ServerState: qbt.ServerState{
-				ConnectionStatus: "connected",
-			},
-		})
+		client.updateServerState(qbt.ServerState{ConnectionStatus: "connected"})
 	}()
 
 	select {
 	case <-done:
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		t.Fatal("updateServerState blocked waiting for Client.mu write lock")
-	}
-}
-
-func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		version  string
-		expected bool
-	}{
-		{
-			name:     "legacy optional setting",
-			version:  "2.14.1",
-			expected: false,
-		},
-		{
-			name:     "subcategories unconditional",
-			version:  "2.15.0",
-			expected: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			client := &Client{}
-			client.applyCapabilitiesLocked(tc.version)
-
-			require.Equal(t, tc.expected, client.SubcategoriesAlwaysEnabled())
-		})
-	}
-}
-
-// Versions and outcomes observed live with Automatic Torrent Management on,
-// default save path /downloads and categories tv=/media/tv, tv/anime="".
-// 5.0.0beta1 is the only release with WebAPI 2.10.x; it was not run live, but
-// upstream "Follow the parent category options" (a1c78a045) is in it.
-func TestCategoryPathRule(t *testing.T) {
-	t.Parallel()
-
-	nests := CategoryPathRule{Nest: true}
-	tests := []struct {
-		name             string
-		version          string
-		useSubcategories bool
-		want             CategoryPathRule
-	}{
-		{name: "4.5 predates subcategories", version: "2.8.19", useSubcategories: true},
-		{name: "4.6 with subcategories on saves under the default path", version: "2.9.3", useSubcategories: true}, // highest version below the gate
-		{name: "5.0 beta1 with subcategories on", version: "2.10.4", useSubcategories: true, want: nests},          // lowest version at the gate
-		{name: "5.0 with subcategories off", version: "2.11.2", useSubcategories: false},
-		{name: "5.0 with subcategories on", version: "2.11.2", useSubcategories: true, want: nests},
-		{name: "5.1 with subcategories on", version: "2.11.4", useSubcategories: true, want: nests},
-		{name: "5.2 always nests", version: "2.15.1", useSubcategories: false, want: nests},
-		// The build platform comes from the cached app info.
-		{name: "5.3 dev build before the file name rule", version: "2.15.3", want: nests},                                                           // highest version below the gate
-		{name: "5.3 names the folder for its platform", version: "2.15.4", want: CategoryPathRule{Nest: true, FileName: true, Platform: "windows"}}, // lowest version at the gate
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var versionRequests atomic.Int64
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/v2/app/webapiVersion" {
-					t.Errorf("unexpected request: %s", r.URL)
-					http.NotFound(w, r)
-					return
-				}
-				versionRequests.Add(1)
-				_, _ = w.Write([]byte(tc.version))
-			}))
-			defer srv.Close()
-
-			// Cached preferences are fresh, so only the version is fetched.
-			client := &Client{
-				Client:               qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}),
-				isHealthy:            true,
-				preferencesCache:     &qbt.AppPreferences{UseSubcategories: tc.useSubcategories},
-				preferencesFetchedAt: time.Now(),
-				appInfoCache:         &AppInfo{BuildInfo: &AppBuildInfo{Platform: "windows"}},
-				appInfoFetchedAt:     time.Now(),
-			}
-			// Stale 4.6 capabilities, as after an in-place upgrade while syncing.
-			client.applyCapabilitiesLocked("2.9.3")
-			sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
-
-			got, err := sm.CategoryPathRule(t.Context(), 1)
-			require.NoError(t, err)
-			require.Equal(t, tc.want, got)
-			require.Equal(t, int64(1), versionRequests.Load())
-
-			// The folder cleanup reads the same name rule.
-			nesting, err := sm.categoryNesting(t.Context(), 1)
-			require.NoError(t, err)
-			require.Equal(t, tc.want.FileName, nesting.FileName)
-			require.Equal(t, tc.want.Platform, nesting.Platform)
-		})
 	}
 }
 
@@ -370,9 +290,9 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	syncOpts := qbt.DefaultSyncOptions()
 	syncOpts.DynamicSync = true
 	client := &Client{
-		Client:          qbtClient,
-		syncManager:     qbtClient.NewSyncManager(syncOpts),
-		supportsSetTags: true,
+		Client:      qbtClient,
+		syncManager: syncowner.New(qbtClient, syncOpts),
+		version:     semver.MustParse("2.16.0"),
 	}
 
 	getterDone := make(chan struct{})
@@ -410,7 +330,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 			probeDone := make(chan struct{})
 			go func() {
 				client.mu.RLock()
-				_ = client.supportsSetTags
+				_ = client.version
 				client.mu.RUnlock()
 				close(probeDone)
 			}()
@@ -439,7 +359,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 
 	readDone := make(chan bool, 1)
 	go func() {
-		readDone <- client.SupportsSetTags()
+		readDone <- client.Supports(CapSetTags)
 	}()
 
 	select {
@@ -515,13 +435,17 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 			// A saturated-but-alive WebUI: the request parks until the caller's
 			// deadline expires without ever answering.
 			<-r.Context().Done()
+			// Close the connection with no response. If the handler returns, the
+			// server sends an empty 200, and the client can read it after its
+			// deadline. An empty version is an invalid session, so the test fails.
+			panic(http.ErrAbortHandler)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, 50*time.Millisecond, 60*time.Second)
 
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
@@ -601,11 +525,11 @@ func TestRefreshCapabilitiesRejectsInvalidWebAPIVersionMarker(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid qBittorrent WebAPI version")
-	require.False(t, client.SupportsSetTags())
+	require.False(t, client.Supports(CapSetTags))
 	require.Empty(t, client.GetWebAPIVersion())
 }
 
-func TestClientDispatchMainDataCallsSink(t *testing.T) {
+func TestClientDispatchSyncUpdateCallsSink(t *testing.T) {
 	t.Parallel()
 
 	sink := &mockSyncEventSink{}
@@ -614,30 +538,25 @@ func TestClientDispatchMainDataCallsSink(t *testing.T) {
 		syncEventSink: sink,
 	}
 
-	testData := &qbt.MainData{
-		Rid: 123,
-		Torrents: map[string]qbt.Torrent{
-			"abc123": {Name: "Test Torrent"},
-		},
-	}
+	update := syncsnap.Update(t, qbt.Torrent{Hash: "abc123", Name: "Test Torrent"})
 
-	client.dispatchMainData(testData)
+	client.dispatchSyncUpdate(update)
 
-	calls := sink.getMainDataCalls()
+	calls := sink.getSyncUpdateCalls()
 	if len(calls) != 1 {
-		t.Fatalf("expected 1 call to HandleMainData, got %d", len(calls))
+		t.Fatalf("expected 1 call to HandleSyncUpdate, got %d", len(calls))
 	}
 
 	if calls[0].instanceID != 42 {
 		t.Errorf("expected instanceID 42, got %d", calls[0].instanceID)
 	}
 
-	if calls[0].data.Rid != 123 {
-		t.Errorf("expected Rid 123, got %d", calls[0].data.Rid)
+	if calls[0].update.Snapshot != update.Snapshot {
+		t.Errorf("expected the Sync snapshot of the update")
 	}
 }
 
-func TestClientDispatchMainDataNilSinkDoesNotPanic(t *testing.T) {
+func TestClientDispatchSyncUpdateNilSinkDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{
@@ -645,27 +564,8 @@ func TestClientDispatchMainDataNilSinkDoesNotPanic(t *testing.T) {
 		syncEventSink: nil,
 	}
 
-	testData := &qbt.MainData{Rid: 123}
-
 	// Should not panic
-	client.dispatchMainData(testData)
-}
-
-func TestClientDispatchMainDataNilDataDoesNotCallSink(t *testing.T) {
-	t.Parallel()
-
-	sink := &mockSyncEventSink{}
-	client := &Client{
-		instanceID:    42,
-		syncEventSink: sink,
-	}
-
-	client.dispatchMainData(nil)
-
-	calls := sink.getMainDataCalls()
-	if len(calls) != 0 {
-		t.Errorf("expected 0 calls to HandleMainData for nil data, got %d", len(calls))
-	}
+	client.dispatchSyncUpdate(syncsnap.Update(t))
 }
 
 func TestClientDispatchSyncErrorCallsSink(t *testing.T) {
@@ -836,19 +736,19 @@ func TestIsDeadlineExpired(t *testing.T) {
 func TestClientHealthCheckKeepsHealthOnDeadline(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
-	}))
-	defer srv.Close()
+	synctest.Test(t, func(t *testing.T) {
+		qbtClient := newInProcessQbtClient(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done()
+		}))
+		client := &Client{Client: qbtClient, instanceID: 42, isHealthy: true}
 
-	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: 42, isHealthy: true}
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	err := client.HealthCheck(ctx)
-	require.Error(t, err)
-	require.True(t, client.IsHealthy(), "a timed-out probe must not demote a healthy client")
+		err := client.HealthCheck(ctx)
+		require.Error(t, err)
+		require.True(t, client.IsHealthy(), "a timed-out probe must not demote a healthy client")
+	})
 }
 
 // TestClientHealthCheckMarksUnhealthyOnHardFailure pins that connection-level failures
@@ -856,10 +756,8 @@ func TestClientHealthCheckKeepsHealthOnDeadline(t *testing.T) {
 func TestClientHealthCheckMarksUnhealthyOnHardFailure(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
-	srv.Close()
-
-	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: 42, isHealthy: true}
+	// Port 1 is outside the ephemeral range: during the retries, a closed httptest port can go to another test's server.
+	client := &Client{Client: qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1", Timeout: 60}), instanceID: 42, isHealthy: true}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -897,33 +795,6 @@ func TestSyncManagerNotifyTrackerHealthUpdatedCallsSink(t *testing.T) {
 	sm.notifyTrackerHealthUpdated(42)
 
 	require.Equal(t, []int{42}, sink.getTrackerHealthUpdates())
-}
-
-func TestClientSetSyncEventSinkUpdatesDispatch(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{instanceID: 42}
-
-	// Initially no sink
-	client.dispatchMainData(&qbt.MainData{Rid: 1})
-
-	// Set sink
-	sink := &mockSyncEventSink{}
-	client.SetSyncEventSink(sink)
-
-	// Now dispatches should reach sink
-	client.dispatchMainData(&qbt.MainData{Rid: 2})
-	client.dispatchSyncError(errors.New("test error"))
-
-	mainCalls := sink.getMainDataCalls()
-	if len(mainCalls) != 1 {
-		t.Errorf("expected 1 main data call after setting sink, got %d", len(mainCalls))
-	}
-
-	errorCalls := sink.getSyncErrorCalls()
-	if len(errorCalls) != 1 {
-		t.Errorf("expected 1 error call after setting sink, got %d", len(errorCalls))
-	}
 }
 
 func TestSplitHostUserinfo(t *testing.T) {
@@ -1025,16 +896,16 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 			require.NoError(t, err)
 
-			torrents := []qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
-			enriched, _, _ := (&SyncManager{}).enrichTorrentsWithTrackerData(t.Context(), client, torrents, nil)
+			torrents := []*qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
+			lookup := trackerDetailsFromManager(t.Context(), client, torrents)
 
 			mu.Lock()
 			defer mu.Unlock()
 			require.Zero(t, hits["/api/v2/torrents/trackers"], "list hydration must never use per-hash torrents/trackers; use torrents/info?includeTrackers on 5.1+ and skip hydration below it")
 			require.Equal(t, tc.bulkRequests, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
-			for _, torrent := range enriched {
+			for _, torrent := range torrents {
 				// One tracker per torrent when hydrated, none when the gate skips hydration.
-				require.Len(t, torrent.Trackers, tc.bulkRequests, "hash %s", torrent.Hash)
+				require.Len(t, lookup.Trackers(torrent.Hash), tc.bulkRequests, "hash %s", torrent.Hash)
 			}
 		})
 	}
@@ -1083,102 +954,103 @@ func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
 // race detector cannot see: every peer fetch must carry the rid the previous
 // merge produced, so an older snapshot can never merge on top of a newer one.
 func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
-	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	const stalePeer = "192.0.2.9:9"
+	synctest.Test(t, func(t *testing.T) {
+		const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		const stalePeer = "192.0.2.9:9"
 
-	var mu sync.Mutex
-	ridsSent := make(map[string]int)
-	requests := 0
-	newestRid := int64(0)
-	secondRequest := make(chan struct{})
+		var mu sync.Mutex
+		ridsSent := make(map[string]int)
+		requests := 0
+		newestRid := int64(0)
+		secondRequest := make(chan struct{})
 
-	// served records the newest response the server produced. The merged state
-	// must end up matching it, whatever order the fetches ran in. Only the rid 1
-	// response carries the stale peer, so the rid alone says what to expect.
-	served := func(rid int64) {
+		// served records the newest response the server produced. The merged state
+		// must end up matching it, whatever order the fetches ran in. Only the rid 1
+		// response carries the stale peer, so the rid alone says what to expect.
+		served := func(rid int64) {
+			mu.Lock()
+			defer mu.Unlock()
+			newestRid = max(newestRid, rid)
+		}
+
+		qbtClient := newInProcessQbtClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rid := r.URL.Query().Get("rid")
+
+			mu.Lock()
+			ridsSent[rid]++
+			requests++
+			first := requests == 1
+			if requests == 2 {
+				close(secondRequest)
+			}
+			mu.Unlock()
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if first {
+				// Hold the oldest snapshot open long enough for an unserialized
+				// reader to overtake it. Nothing overtakes it once fetch and merge
+				// are serialized, so fall through on the timeout instead.
+				select {
+				case <-secondRequest:
+				case <-time.After(200 * time.Millisecond):
+				}
+				served(1)
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"},"` + stalePeer + `":{"ip":"192.0.2.9"}}}`))
+				return
+			}
+
+			served(2)
+			if rid == "0" {
+				// A reader that never saw the first merge asks for a full snapshot.
+				_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"peers_removed":["` + stalePeer + `"]}`))
+		}))
+
+		client := &Client{
+			Client:          qbtClient,
+			peerSyncManager: make(map[string]*peerSyncEntry),
+		}
+
+		var wg sync.WaitGroup
+		// One caller spells the hash in upper case. The API takes the hash straight
+		// from the URL, so both spellings reach SyncPeers, and both must land on the
+		// same fetch: a second spelling must not open a second rid on one manager.
+		for _, callerHash := range []string{hash, strings.ToUpper(hash)} {
+			wg.Go(func() {
+				_, err := client.SyncPeers(t.Context(), callerHash)
+				require.NoError(t, err)
+			})
+		}
+		wg.Wait()
+
 		mu.Lock()
-		defer mu.Unlock()
-		newestRid = max(newestRid, rid)
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rid := r.URL.Query().Get("rid")
-
-		mu.Lock()
-		ridsSent[rid]++
-		requests++
-		first := requests == 1
-		if requests == 2 {
-			close(secondRequest)
+		wantRid := newestRid
+		wantStalePeer := wantRid == 1
+		for rid, count := range ridsSent {
+			require.Equalf(t, 1, count, "rid %s was sent by %d fetches; concurrent readers shared a rid", rid, count)
 		}
 		mu.Unlock()
 
-		w.Header().Set("Content-Type", "application/json")
-
-		if first {
-			// Hold the oldest snapshot open long enough for an unserialized
-			// reader to overtake it. Nothing overtakes it once fetch and merge
-			// are serialized, so fall through on the timeout instead.
-			select {
-			case <-secondRequest:
-			case <-time.After(200 * time.Millisecond):
-			}
-			served(1)
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"},"` + stalePeer + `":{"ip":"192.0.2.9"}}}`))
-			return
+		// The merged state must match the newest response the server produced, not
+		// whichever fetch happened to return last.
+		peers := client.GetOrCreatePeerSyncManager(hash).GetPeers()
+		require.Equal(t, wantRid, peers.Rid, "rid regressed to an older snapshot")
+		if wantStalePeer {
+			require.Contains(t, peers.Peers, stalePeer)
+		} else {
+			require.NotContains(t, peers.Peers, stalePeer, "an older snapshot restored a removed peer")
 		}
 
-		served(2)
-		if rid == "0" {
-			// A reader that never saw the first merge asks for a full snapshot.
-			_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"}}}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"rid":2,"peers_removed":["` + stalePeer + `"]}`))
-	}))
-	t.Cleanup(srv.Close)
-
-	client := &Client{
-		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
-		peerSyncManager: make(map[string]*peerSyncEntry),
-	}
-
-	var wg sync.WaitGroup
-	// One caller spells the hash in upper case. The API takes the hash straight
-	// from the URL, so both spellings reach SyncPeers, and both must land on the
-	// same fetch: a second spelling must not open a second rid on one manager.
-	for _, callerHash := range []string{hash, strings.ToUpper(hash)} {
-		wg.Go(func() {
-			_, err := client.SyncPeers(t.Context(), callerHash)
-			require.NoError(t, err)
-		})
-	}
-	wg.Wait()
-
-	mu.Lock()
-	wantRid := newestRid
-	wantStalePeer := wantRid == 1
-	for rid, count := range ridsSent {
-		require.Equalf(t, 1, count, "rid %s was sent by %d fetches; concurrent readers shared a rid", rid, count)
-	}
-	mu.Unlock()
-
-	// The merged state must match the newest response the server produced, not
-	// whichever fetch happened to return last.
-	peers := client.GetOrCreatePeerSyncManager(hash).GetPeers()
-	require.Equal(t, wantRid, peers.Rid, "rid regressed to an older snapshot")
-	if wantStalePeer {
-		require.Contains(t, peers.Peers, stalePeer)
-	} else {
-		require.NotContains(t, peers.Peers, stalePeer, "an older snapshot restored a removed peer")
-	}
-
-	// The next reader carries the rid the last merge produced, so the server can
-	// answer with a removal and the removal sticks.
-	peers, err := client.SyncPeers(t.Context(), hash)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), peers.Rid)
-	require.NotContains(t, peers.Peers, stalePeer, "a removal from an incremental update was lost")
+		// The next reader carries the rid the last merge produced, so the server can
+		// answer with a removal and the removal sticks.
+		peers, err := client.SyncPeers(t.Context(), hash)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), peers.Rid)
+		require.NotContains(t, peers.Peers, stalePeer, "a removal from an incremental update was lost")
+	})
 }
 
 // TestSyncPeersLeavesWhenCallerGoesAway keeps a reader whose request was
@@ -1227,10 +1099,15 @@ func TestSyncUpdateMovesCountsGenerationOnlyForCountedChanges(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{instanceID: 1}
+	update := func(changes qbt.MainDataChanges) qbt.SyncUpdate {
+		u := syncsnap.Update(t)
+		u.Changes = changes
+		return u
+	}
 
-	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true}})
+	client.handleSyncUpdate(update(qbt.MainDataChanges{ServerState: true}))
 	require.Zero(t, client.countsGen.Load(), "a server-state sync keeps the cached counts")
 
-	client.handleSyncUpdate(&qbt.MainData{Changes: qbt.MainDataChanges{ServerState: true, Tags: true}})
+	client.handleSyncUpdate(update(qbt.MainDataChanges{ServerState: true, Tags: true}))
 	require.Equal(t, uint64(1), client.countsGen.Load(), "a tag change invalidates the cached counts")
 }

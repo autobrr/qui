@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
 // folderCleanupStatConcurrency bounds the content checks a request waits on
@@ -137,27 +138,26 @@ func (sm *SyncManager) prepareFolderCleanup(ctx context.Context, instanceID int,
 	return batch
 }
 
-func folderCleanupCandidates(syncManager *qbt.SyncManager, d fsops.PathDialect, op FolderCleanupOp) []qbt.Torrent {
-	var torrents []qbt.Torrent
+func folderCleanupCandidates(syncManager *syncowner.Owner, d fsops.PathDialect, op FolderCleanupOp) []*qbt.Torrent {
+	snapshot := snapshotIndex(syncManager.SnapshotUnchecked())
+	mayMove := func(t *qbt.Torrent) bool { return op.mayMove(d, t) }
 	switch {
 	case op.Kind == FolderCleanupEditCategory:
 		if category, ok := syncManager.GetCategoriesUnchecked()[op.EditedCategory]; ok && d.Clean(category.SavePath) == d.Clean(op.Path) {
 			return nil
 		}
-		torrents = syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
+		return snapshot.Matching(mayMove)
 	case len(op.Hashes) == 1 && op.Hashes[0] == "all":
-		torrents = syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{})
-	default:
-		torrents = lookupTorrents(syncManager, op.Hashes)
+		return snapshot.Matching(mayMove)
 	}
-	return slices.DeleteFunc(torrents, func(t qbt.Torrent) bool { return !op.mayMove(d, &t) })
+	return slices.DeleteFunc(lookupTorrents(snapshot, op.Hashes), func(t *qbt.Torrent) bool { return !mayMove(t) })
 }
 
 // lookupTorrents resolves hashes as qBittorrent's WebAPI does: only a
 // torrent's own hash, in either case, names it. A padded or v2 hash, which
 // BulkAction accepts but qBittorrent ignores, is not a cache key.
-func lookupTorrents(syncManager *qbt.SyncManager, hashes []string) []qbt.Torrent {
-	var found []qbt.Torrent
+func lookupTorrents(snapshot torrentLookup, hashes []string) []*qbt.Torrent {
+	var found []*qbt.Torrent
 	seen := make(map[string]struct{}, len(hashes))
 	for _, hash := range hashes {
 		id := strings.ToLower(hash)
@@ -165,7 +165,7 @@ func lookupTorrents(syncManager *qbt.SyncManager, hashes []string) []qbt.Torrent
 			continue
 		}
 		seen[id] = struct{}{}
-		if t, ok := syncManager.GetTorrentUnchecked(id); ok {
+		if t, ok := snapshot.Torrent(id); ok {
 			found = append(found, t)
 		}
 	}
@@ -217,15 +217,14 @@ func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
 // snapshotFolders records each torrent's layout and whether its content
 // existed. Only a torrent without a root folder needs its file list: a root
 // folder is removed whole, and a single file has nothing below it.
-func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, backend fsops.Backend, torrents []qbt.Torrent, move bool) []folderSnapshot {
+func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, backend fsops.Backend, torrents []*qbt.Torrent, move bool) []folderSnapshot {
 	if len(torrents) == 0 {
 		return nil
 	}
 	d := backend.Paths()
 	snaps := make([]folderSnapshot, len(torrents))
 	var noRoot []string
-	for i := range torrents {
-		t := &torrents[i]
+	for i, t := range torrents {
 		snaps[i] = folderSnapshot{InstanceID: instanceID, Hash: t.Hash, SavePath: t.SavePath,
 			DownloadPath: t.DownloadPath, ContentPath: t.ContentPath, Layout: layoutRootFolder, Move: move}
 		content := fsops.NormalizePath(d, t.ContentPath)
@@ -397,7 +396,7 @@ func (s *folderSnapshot) markExisted(info *fsops.LstatInfo) {
 
 // syncedMainData reads the cache without a request. An instance that has not
 // synced yet is an error, not an empty cache, which would protect nothing.
-func (sm *SyncManager) syncedMainData(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
+func (sm *SyncManager) syncedMainData(ctx context.Context, instanceID int) (*Client, *syncowner.Owner, error) {
 	client, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataReadCached)
 	if err != nil {
 		return nil, nil, err
@@ -408,25 +407,26 @@ func (sm *SyncManager) syncedMainData(ctx context.Context, instanceID int) (*Cli
 	return client, syncManager, nil
 }
 
-func (sm *SyncManager) liveTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+func (sm *SyncManager) liveTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
 	_, syncManager, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	return syncManager.GetTorrentsUnchecked(qbt.TorrentFilterOptions{}), nil
+	return snapshotTorrents(syncManager.SnapshotUnchecked()), nil
 }
 
 // ownRows reads the cached rows of hashes, one map read each, keyed by
 // canonicalizeHash. A hash without a row is left out.
-func (sm *SyncManager) ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.Torrent, error) {
+func (sm *SyncManager) ownRows(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, error) {
 	_, syncManager, err := sm.syncedMainData(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	rows := make(map[string]qbt.Torrent, len(hashes))
+	snapshot := snapshotIndex(syncManager.SnapshotUnchecked())
+	rows := make(map[string]*qbt.Torrent, len(hashes))
 	for _, hash := range hashes {
 		hash = canonicalizeHash(hash)
-		if t, ok := syncManager.GetTorrentUnchecked(hash); ok {
+		if t, ok := snapshot.Torrent(hash); ok {
 			rows[hash] = t
 		}
 	}
@@ -445,48 +445,4 @@ func (sm *SyncManager) lastSync(ctx context.Context, instanceID int) (time.Time,
 		return time.Time{}, err
 	}
 	return client.GetLastSyncUpdate(), nil
-}
-
-// categoryNesting is the version half of CategoryPathRule, which refreshes
-// qBittorrent's capabilities with a request.
-func (sm *SyncManager) categoryNesting(ctx context.Context, instanceID int) (nestingSupport, error) {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nestingSupport{}, fmt.Errorf("failed to get client: %w", err)
-	}
-	if err := client.RefreshCapabilities(ctx); err != nil {
-		return nestingSupport{}, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
-	}
-	platform, err := categoryFolderPlatform(ctx, client)
-	if err != nil {
-		return nestingSupport{}, err
-	}
-	return nestingSupport{
-		Nests:    client.NestsCategorySavePaths(),
-		Always:   client.SubcategoriesAlwaysEnabled(),
-		FileName: client.CategoryFileNames(),
-		Platform: platform,
-	}, nil
-}
-
-// stopFolderInputs reads the preferences from qBittorrent, not from their 30 s
-// cache, so a default save path changed in its WebUI is a stop folder on the
-// next check. The categories come from the cache.
-func (sm *SyncManager) stopFolderInputs(ctx context.Context, instanceID int) (stopInputs, error) {
-	client, syncManager, err := sm.syncedMainData(ctx, instanceID)
-	if err != nil {
-		return stopInputs{}, err
-	}
-	prefs, err := client.refreshAppPreferences(ctx)
-	if err != nil {
-		return stopInputs{}, err
-	}
-	return stopInputs{
-		DefaultSavePath:  prefs.SavePath,
-		TempPath:         prefs.TempPath,
-		TempPathEnabled:  prefs.TempPathEnabled,
-		Categories:       syncManager.GetCategoriesUnchecked(),
-		UseSubcategories: prefs.UseSubcategories,
-		ScanDirs:         prefs.ScanDirs,
-	}, nil
 }

@@ -73,11 +73,12 @@ collect_input() {
 			warn "cannot read PR #${BASH_REMATCH[1]}"
 			return 1
 		}
-		# CI, test, and docs PRs change nothing in qui. Users cannot reach a
-		# "no-ui-yet" PR until its UI ships. Leave these PRs out, unless they
-		# break something. The SSH API is reachable already.
+		# CI, test, and docs PRs change nothing in qui, and a refactor changes
+		# nothing that users see. Users cannot reach a "no-ui-yet" PR until its
+		# UI ships. Leave these PRs out, unless they break something. The SSH
+		# API is reachable already.
 		if jq -e --arg subject "$subject" '
-			(any(.labels[]; .name == "no-ui-yet") or ($subject | test("^(ci|test|docs)[:(]"))) and
+			(any(.labels[]; .name == "no-ui-yet") or ($subject | test("^(ci|test|docs|refactor)[:(]"))) and
 			(any(.labels[]; .name == "BREAKING CHANGE") or ($subject | test("^\\w+(\\([^)]*\\))?!:")) | not)
 		' <<<"$json" >/dev/null; then
 			continue

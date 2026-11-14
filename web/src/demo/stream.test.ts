@@ -4,6 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { createDemoFetch } from "./api"
 import { createStore } from "./store"
 import { createDemoEventSource, DEMO_HEARTBEAT_MS, DEMO_TICK_MS } from "./stream"
 
@@ -49,5 +50,37 @@ describe("DemoEventSource", () => {
     const count = events.length
     vi.advanceTimersByTime(DEMO_HEARTBEAT_MS * 2)
     expect(events).toHaveLength(count)
+  })
+})
+
+describe("demo subscription change", () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it("adds and removes a stream on the open source, with an init for the new stream only", async () => {
+    const store = createStore({ seed: 1, counts: [20, 5] })
+    const DemoEventSource = createDemoEventSource(store)
+    const demoFetch = createDemoFetch(store, "/demo/api", () => Promise.reject(new Error("no network")))
+    const stream = (key: string, limit: number) => ({ key, instanceId: 1, instanceIds: null, page: 0, limit, sort: "added_on", order: "desc", search: "", filters: null })
+    const source = new DemoEventSource(`/demo/api/stream?streams=${encodeURIComponent(JSON.stringify([stream("main", 3)]))}`)
+
+    const events: Array<{ type: string; payload: { connectionId?: string; meta?: { streamKey?: string } } }> = []
+    for (const type of ["connection", "init", "update"]) {
+      source.addEventListener(type, e => events.push({ type, payload: JSON.parse((e as MessageEvent).data) }))
+    }
+    vi.advanceTimersByTime(0)
+    expect(events.map(e => e.type)).toEqual(["connection", "init"])
+    const connectionId = events[0].payload.connectionId
+
+    const change = (body: unknown) => demoFetch("http://localhost/demo/api/stream/subscriptions", { method: "POST", body: JSON.stringify(body) })
+    expect((await change({ connectionId, add: [stream("details", 1)] })).status).toBe(204)
+    expect(events.slice(2).map(e => [e.type, e.payload.meta?.streamKey])).toEqual([["init", "details"]])
+
+    expect((await change({ connectionId, remove: ["main"] })).status).toBe(204)
+    vi.advanceTimersByTime(DEMO_TICK_MS)
+    expect(events.slice(3).map(e => [e.type, e.payload.meta?.streamKey])).toEqual([["update", "details"]])
+
+    source.close()
+    expect((await change({ connectionId, add: [], remove: ["details"] })).status).toBe(404)
   })
 })

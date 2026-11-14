@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Tableau de bord",
+    "statistics": "Statistiques",
     "search": "Recherche",
     "crossSeed": "Cross-Seed",
     "automations": "Automatisations",
@@ -46,7 +47,7 @@
     "tasksForInstance": "Tâches pour l'instance",
     "settingsForInstance": "Paramètres pour l'instance",
     "clearSearch": "Effacer la recherche",
-    "searchTorrents": "Rechercher des torrents... ({{shortcutKey}})",
+    "searchTorrents": "Rechercher des torrents...",
     "globPattern": "Motif Glob...",
     "smartSearchTitle": "Fonctionnalités de recherche intelligente :",
     "smartSearchGlob": "Motifs Glob :",
@@ -57,6 +58,7 @@
     "smartSearchFields": "Recherche dans le nom, la catégorie et les étiquettes",
     "smartSearchEnter": "Appuyez sur Entrée pour une recherche instantanée",
     "smartSearchAuto": "Recherche auto. après une pause de 500ms",
+    "smartSearchShortcut": "Appuyez sur {{shortcutKey}} pour aller à la recherche",
     "torrentCreationTasksTitle": "Tâches de création de torrents",
     "updateAvailable": "Mise à jour disponible",
     "updateVersion": "Version {{version}}",
@@ -77,6 +79,7 @@
   },
   "mobileNav": {
     "dashboard": "Tableau de bord",
+    "statistics": "Statistiques",
     "clients": "Clients",
     "settings": "Paramètres",
     "qbittorrentClients": "Clients qBittorrent",
@@ -100,17 +103,22 @@
     "cancel": "Annuler",
     "close": "Fermer",
     "create": "Créer",
-    "copyPath": "Copier le chemin",
     "scrollToTop": "Défiler vers le haut",
     "search": "Rechercher",
-    "select": "Sélectionner"
+    "select": "Sélectionner",
+    "copyValue": "Copier {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Compris"
   },
   "placeholders": {
     "search": "Rechercher...",
     "selectItems": "Sélectionner des éléments..."
   },
   "feedback": {
-    "noResultsFound": "Aucun résultat trouvé."
+    "noResultsFound": "Aucun résultat trouvé.",
+    "copied": "{{label}} copié dans le presse-papiers",
+    "copyFailed": "Échec de la copie"
   },
   "errors": {
     "unknown": "Erreur inconnue",
@@ -149,16 +157,72 @@
     "dark": "Sombre",
     "system": "Système",
     "theme": "Thème",
-    "premium": "Premium",
     "switchedToMode": "Passé en mode {{mode}}",
     "switchedToTheme": "Passé au thème {{theme}}",
     "switchedToThemeVariation": "Passé au thème {{theme}} ({{variation}})",
-    "premiumThemeError": "Ceci est un thème premium. Ouvrez Paramètres → Thèmes pour activer une licence."
+    "premiumThemeError": "Ce thème nécessite une licence. Ouvrez Paramètres → Thèmes pour activer une licence."
   },
   "updateBanner": {
     "updateAvailable": "Mise à jour disponible",
     "versionAvailable": "La version {{version}} est maintenant disponible",
     "dismiss": "Fermer"
+  },
+  "systemNotice": {
+    "needsAttention": "Requiert votre attention",
+    "since": "Depuis {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Aller à la correction",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Enregistrement arrêté",
+        "title": "Enregistrement arrêté",
+        "effect": "qui ne peut pas écrire l'historique des transferts. Il réessaie à la prochaine écriture.",
+        "fix": "Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données.",
+        "menuFix": "Libérez de l'espace disque pour la base"
+      },
+      "shrink_failed": {
+        "short": "Échec de la réduction",
+        "title": "Échec de la réduction",
+        "effect": "qui n’a pas pu réduire le fichier de base de données. La base de données n’a pas changé et qui fonctionne normalement.",
+        "fix": "Le journal de qui contient les détails.",
+        "menuFix": "Lire le journal de qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Le disque n’a pas assez d’espace libre. Une réduction demande jusqu’à deux fois la taille du fichier de base de données. Libérez de l’espace, puis réessayez.",
+            "menuFix": "Libérez de l’espace, puis réessayez"
+          },
+          "locked": {
+            "fix": "Un autre programme utilisait le fichier de base de données. Arrêtez ce programme, par exemple un outil de sauvegarde ou un visualiseur de base de données, puis réessayez.",
+            "menuFix": "Arrêtez l’autre programme, puis réessayez"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Disque presque plein",
+        "title": "Disque presque plein",
+        "effect": "Le disque de la base de données de qui a peu d'espace libre. Quand le disque est plein, chaque écriture de qui échoue.",
+        "fix": "Libérez de l'espace sur le disque, réduisez « Conserver le détail quotidien pendant » ou supprimez l'historique ancien dans les paramètres Statistiques.",
+        "menuFix": "Libérez de l'espace disque pour la base",
+        "action": "Ouvrir les paramètres Statistiques"
+      }
+    },
+    "actions": {
+      "tryAgain": "Réessayer",
+      "dismiss": "Ignorer",
+      "openLog": "Ouvrir le journal"
+    },
+    "unknown": {
+      "short": "Avis système",
+      "title": "Avis système",
+      "effect": "qui a trouvé une erreur qui demande une action de votre part.",
+      "fix": "Le journal de qui contient les détails.",
+      "menuFix": "Lisez le journal de qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Fichier de base de données réduit de {{before}} à {{after}}",
+    "nextStart": "La réduction aura lieu au prochain démarrage de qui",
+    "failed": "Impossible de demander la réduction"
   },
   "pwaUpdate": {
     "reload": "Recharger",
@@ -243,6 +307,9 @@
     "perkSuffix": "sur Discord et notre éternelle gratitude.",
     "yearly": "{{price}} / an",
     "monthly": "{{price}} / mois",
-    "notLicense": "Les thèmes premium font l'objet d'un achat unique distinct."
+    "notLicense": "La licence des thèmes fait l'objet d'un achat unique distinct."
+  },
+  "labels": {
+    "path": "Chemin"
   }
 }

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import i18n, { changeLanguage } from "@/i18n"
 import deAutomations from "@/i18n/locales/de/automations.json"
 import { createInstance, type TFunction } from "i18next"
-import { FIELD_REQUIREMENTS, getCapabilityReason } from "./constants"
+import { FIELD_REQUIREMENTS, getCapabilityReason, getDisabledFields, type Capabilities } from "./constants"
 import * as constants from "./constants"
 
 afterEach(async () => {
@@ -19,9 +19,11 @@ describe("getCapabilityReason", () => {
   it("renders the automations translation, not the English constant", async () => {
     await changeLanguage("de")
 
-    expect(getCapabilityReason("trackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
+    expect(getCapabilityReason("supportsListFieldsV5", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.qbittorrent50)
+    expect(getCapabilityReason("supportsTrackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
+    expect(getCapabilityReason("supportsListCreatedBy", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.qbittorrent52)
     // An instance without Read has no filesystem access, local or remote.
-    expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
+    expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.filesystemAccess)
     // Trusted identity needs local access, so a remote instance can never get it.
     expect(getCapabilityReason("trustedIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
     expect(getCapabilityReason("trustedIdentity", i18n.t, true)).toBe(deAutomations.queryBuilder.capabilityReasons.remoteInstance)
@@ -29,14 +31,46 @@ describe("getCapabilityReason", () => {
 })
 
 describe("FIELD_REQUIREMENTS", () => {
-  it("maps each requirement in the Go table to a capability", () => {
+  it("takes the capability of each field from the Go table", () => {
     expect(FIELD_REQUIREMENTS).toEqual({
-      IS_UNREGISTERED: "trackerHealth",
-      TRACKER_STATUS: "trackerHealth",
-      TRACKER_MESSAGE: "trackerHealth",
+      PRIVATE: "supportsListFieldsV5",
+      POPULARITY: "supportsListFieldsV5",
+      COMMENT: "supportsListFieldsV5",
+      REANNOUNCE: "supportsLiveReannounce",
+      IS_UNREGISTERED: "supportsTrackerHealth",
+      TRACKER_STATUS: "supportsTrackerHealth",
+      TRACKER_MESSAGE: "supportsTrackerHealth",
+      CREATED_BY: "supportsListCreatedBy",
       HAS_MISSING_FILES: "read",
       HARDLINK_SCOPE: "trustedIdentity",
       HARDLINK_SCOPE_CROSS: "trustedIdentity",
+    })
+  })
+})
+
+describe("getDisabledFields", () => {
+  const en = i18n.getFixedT("en", "automations")
+  const access = { read: true, trustedIdentity: true }
+  const disabled = (capabilities: Capabilities) =>
+    Object.fromEntries(getDisabledFields(capabilities, false, en).map(({ field, reason }) => [field, reason]))
+
+  it("greys out the qBittorrent 5.0 and 5.2 fields at Web API 2.9.3", () => {
+    const v5 = "Requires qBittorrent 5.0+"
+    expect(disabled({ ...access, supportsLiveReannounce: false, supportsListFieldsV5: false, supportsTrackerHealth: false, supportsListCreatedBy: false })).toEqual({
+      PRIVATE: v5,
+      POPULARITY: v5,
+      COMMENT: v5,
+      REANNOUNCE: v5,
+      IS_UNREGISTERED: "Requires qBittorrent 5.1+",
+      TRACKER_STATUS: "Requires qBittorrent 5.1+",
+      TRACKER_MESSAGE: "Requires qBittorrent 5.1+",
+      CREATED_BY: "Requires qBittorrent 5.2+",
+    })
+  })
+
+  it("greys out only Created By at Web API 2.11.4", () => {
+    expect(disabled({ ...access, supportsLiveReannounce: true, supportsListFieldsV5: true, supportsTrackerHealth: true, supportsListCreatedBy: false })).toEqual({
+      CREATED_BY: "Requires qBittorrent 5.2+",
     })
   })
 })
@@ -106,14 +140,11 @@ describe("getFieldType", () => {
     ["HARDLINK_SCOPE", "hardlinkScope"],
     ["STATE", "state"],
     ["SAVE_PATH", "string"],
-    ["CONTENT_TYPE", "string"],
-    ["PRIVATE", "boolean"],
     ["SIZE", "bytes"],
     ["ADDED_ON", "duration"],
     ["DL_SPEED", "speed"],
     ["PROGRESS", "percentage"],
     ["RATIO", "float"],
-    ["RLS_YEAR", "integer"],
     ["NOT_A_FIELD", "string"],
     ["__proto__", "string"],
     ["constructor", "string"],
@@ -138,5 +169,24 @@ describe("getTranslatedOperatorsForField", () => {
 describe("getTranslatedHardlinkScopes", () => {
   it("leaves out the \"both\" scope", () => {
     expect(constants.getTranslatedHardlinkScopes(i18n.getFixedT("en", "automations")).map((scope) => scope.value)).toEqual(["none", "torrents_only", "inside_qbittorrent", "outside_qbittorrent"])
+  })
+})
+
+describe("SORT_FIELDS and SCORE_FIELDS", () => {
+  const scoreFields = [
+    "SIZE", "TOTAL_SIZE", "DOWNLOADED", "UPLOADED", "AMOUNT_LEFT", "FREE_SPACE",
+    "ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEDING_TIME", "TIME_ACTIVE",
+    "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE",
+    "RATIO", "PROGRESS", "AVAILABILITY", "DL_SPEED", "UP_SPEED",
+    "NUM_SEEDS", "NUM_LEECHS", "NUM_COMPLETE", "NUM_INCOMPLETE", "TRACKERS_COUNT",
+  ]
+  const textFields = ["NAME", "CATEGORY", "TAGS", "TRACKER", "STATE", "SAVE_PATH", "CONTENT_PATH", "COMMENT"]
+
+  it("offers each field with a Sort value except the clock fields for sort", () => {
+    expect([...constants.SORT_FIELDS].sort()).toEqual([...scoreFields, ...textFields].sort())
+  })
+
+  it("offers each field with a number Sort value except the clock fields for score", () => {
+    expect([...constants.SCORE_FIELDS].sort()).toEqual([...scoreFields].sort())
   })
 })

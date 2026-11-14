@@ -7,12 +7,27 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/testutil/syncsnap"
 )
+
+// syncOf returns the update of a full sync that holds the torrents of byHash.
+func syncOf(t testing.TB, src *syncsnap.Source, byHash map[string]qbt.Torrent) qbt.SyncUpdate {
+	t.Helper()
+	torrents := make([]qbt.Torrent, 0, len(byHash))
+	for hash, torrent := range byHash {
+		torrent.Hash = hash
+		torrents = append(torrents, torrent)
+	}
+	return src.Update(t, torrents...)
+}
 
 func TestIsTorrentCompleteRequiresStampAndZeroBytesLeft(t *testing.T) {
 	t.Parallel()
@@ -117,26 +132,27 @@ func TestIsTorrentCompleteRequiresStampAndZeroBytesLeft(t *testing.T) {
 func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 7}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 7}
 
-	seen := make(chan qbt.Torrent, 1)
-	wrongID := make(chan int, 1)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, instanceID int, torrent qbt.Torrent) {
-		if instanceID != 7 {
-			select {
-			case wrongID <- instanceID:
-			default:
+		seen := make(chan qbt.Torrent, 1)
+		wrongID := make(chan int, 1)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, instanceID int, torrent qbt.Torrent) {
+			if instanceID != 7 {
+				select {
+				case wrongID <- instanceID:
+				default:
+				}
 			}
-		}
-		seen <- torrent
-	})
+			seen <- torrent
+		})
 
-	// Startup snapshot: a completed torrent caught mid-recheck. Progress and
-	// amount_left carry verification fractions here, so the init baseline
-	// must key on the stamp alone or the end of the recheck looks like a
-	// fresh completion.
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		// Startup snapshot: a completed torrent caught mid-recheck. Progress and
+		// amount_left carry verification fractions here, so the init baseline
+		// must key on the stamp alone or the end of the recheck looks like a
+		// fresh completion.
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"abc": {
 				Hash:         "abc",
 				Name:         "Done",
@@ -145,15 +161,13 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 				AmountLeft:   700,
 				State:        qbt.TorrentStateCheckingResumeData,
 			},
-		},
-	})
+		}))
 
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-	requireNoIntEvent(t, wrongID)
+		requireNoTorrentEvent(t, seen)
+		requireNoIntEvent(t, wrongID)
 
-	// Post-startup: state normalizes; this must not look like a fresh completion.
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		// Post-startup: state normalizes; this must not look like a fresh completion.
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"abc": {
 				Hash:         "abc",
 				Name:         "Done",
@@ -161,32 +175,33 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 				Progress:     1.0,
 				State:        qbt.TorrentStateUploading,
 			},
-		},
-	})
+		}))
 
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-	requireNoIntEvent(t, wrongID)
+		requireNoTorrentEvent(t, seen)
+		requireNoIntEvent(t, wrongID)
+	})
 }
 
 func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 9}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 9}
 
-	seen := make(chan qbt.Torrent, 2)
-	wrongID := make(chan int, 1)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, instanceID int, torrent qbt.Torrent) {
-		if instanceID != 9 {
-			select {
-			case wrongID <- instanceID:
-			default:
+		seen := make(chan qbt.Torrent, 2)
+		wrongID := make(chan int, 1)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, instanceID int, torrent qbt.Torrent) {
+			if instanceID != 9 {
+				select {
+				case wrongID <- instanceID:
+				default:
+				}
 			}
-		}
-		seen <- torrent
-	})
+			seen <- torrent
+		})
 
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"def": {
 				Hash:         "def",
 				Name:         "Still downloading",
@@ -194,14 +209,12 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 				Progress:     0.50,
 				State:        qbt.TorrentStateDownloading,
 			},
-		},
-	})
+		}))
 
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-	requireNoIntEvent(t, wrongID)
+		requireNoTorrentEvent(t, seen)
+		requireNoIntEvent(t, wrongID)
 
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"def": {
 				Hash:         "def",
 				Name:         "Done now",
@@ -209,22 +222,15 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 				Progress:     1.0,
 				State:        qbt.TorrentStateUploading,
 			},
-		},
-	})
+		}))
 
-	select {
-	case torrent := <-seen:
-		if torrent.Hash != "def" {
+		if torrent := requireTorrentEvent(t, seen, "expected a completion event"); torrent.Hash != "def" {
 			t.Fatalf("unexpected hash: %q", torrent.Hash)
 		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected a completion event")
-	}
-	requireNoIntEvent(t, wrongID)
+		requireNoIntEvent(t, wrongID)
 
-	// Another update should not re-fire.
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		// Another update should not re-fire.
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"def": {
 				Hash:         "def",
 				Name:         "Done now",
@@ -232,62 +238,55 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 				Progress:     1.0,
 				State:        qbt.TorrentStateStalledUp,
 			},
-		},
-	})
+		}))
 
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-	requireNoIntEvent(t, wrongID)
+		requireNoTorrentEvent(t, seen)
+		requireNoIntEvent(t, wrongID)
+	})
 }
 
 func TestHandleCompletionUpdatesRearmsAfterFailedRecheck(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 3}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 3}
 
-	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
-		seen <- torrent
-	})
-
-	update := func(torrent qbt.Torrent) {
-		client.handleCompletionUpdates(&qbt.MainData{
-			Torrents: map[string]qbt.Torrent{"ghi": torrent},
+		seen := make(chan qbt.Torrent, 2)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			seen <- torrent
 		})
-	}
 
-	// Baseline: torrent still downloading.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: -1, Progress: 0.9, AmountLeft: 100, State: qbt.TorrentStateDownloading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+		update := func(torrent qbt.Torrent) {
+			client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{"ghi": torrent}))
+		}
 
-	// Finishes: completion event fires.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateUploading})
-	select {
-	case <-seen:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected first completion event")
-	}
+		// Baseline: torrent still downloading.
+		update(qbt.Torrent{Hash: "ghi", CompletionOn: -1, Progress: 0.9, AmountLeft: 100, State: qbt.TorrentStateDownloading})
+		requireNoTorrentEvent(t, seen)
 
-	// Recheck-on-completion runs; verification progress must not touch state.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.3, AmountLeft: 700, State: qbt.TorrentStateCheckingUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+		// Finishes: completion event fires.
+		update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateUploading})
+		requireTorrentEvent(t, seen, "expected first completion event")
 
-	// Recheck failed: qbit re-downloads. completion_on stays set (libtorrent
-	// never clears it on the recheck path), so amount_left is what re-arms.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.5, AmountLeft: 500, State: qbt.TorrentStateDownloading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+		// Recheck-on-completion runs; verification progress must not touch state.
+		update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.3, AmountLeft: 700, State: qbt.TorrentStateCheckingUp})
+		requireNoTorrentEvent(t, seen)
 
-	// Real completion: must fire again. The stamp does not change; finished()
-	// only re-stamps a zeroed completed_time.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateUploading})
-	select {
-	case <-seen:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected completion event after re-download finished")
-	}
+		// Recheck failed: qbit re-downloads. completion_on stays set (libtorrent
+		// never clears it on the recheck path), so amount_left is what re-arms.
+		update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.5, AmountLeft: 500, State: qbt.TorrentStateDownloading})
+		requireNoTorrentEvent(t, seen)
 
-	// Steady seeding: no re-fire.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateStalledUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+		// Real completion: must fire again. The stamp does not change; finished()
+		// only re-stamps a zeroed completed_time.
+		update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateUploading})
+		requireTorrentEvent(t, seen, "expected completion event after re-download finished")
+
+		// Steady seeding: no re-fire.
+		update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateStalledUp})
+		requireNoTorrentEvent(t, seen)
+	})
 }
 
 // qbit 4.2-4.6 on a host west of UTC: every fresh torrent is born with a
@@ -297,40 +296,35 @@ func TestHandleCompletionUpdatesRearmsAfterFailedRecheck(t *testing.T) {
 func TestHandleCompletionUpdatesIgnoresWestOfUTCSentinel(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 4}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 4}
 
-	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
-		seen <- torrent
-	})
-
-	update := func(torrent qbt.Torrent) {
-		client.handleCompletionUpdates(&qbt.MainData{
-			Torrents: map[string]qbt.Torrent{"jkl": torrent},
+		seen := make(chan qbt.Torrent, 2)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			seen <- torrent
 		})
-	}
 
-	// Init baseline with an unrelated torrent so "jkl" arrives mid-run.
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		update := func(torrent qbt.Torrent) {
+			client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{"jkl": torrent}))
+		}
+
+		// Init baseline with an unrelated torrent so "jkl" arrives mid-run.
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
-		},
+		}))
+
+		// Fresh add: positive sentinel, barely any data. Must not fire.
+		update(qbt.Torrent{Hash: "jkl", CompletionOn: 28800, Progress: 0.04, AmountLeft: 960, State: qbt.TorrentStateDownloading})
+		requireNoTorrentEvent(t, seen)
+
+		// Real completion: fires once.
+		update(qbt.Torrent{Hash: "jkl", CompletionOn: 1700002000, Progress: 1.0, State: qbt.TorrentStateUploading})
+		requireTorrentEvent(t, seen, "expected completion event when download finished")
+
+		update(qbt.Torrent{Hash: "jkl", CompletionOn: 1700002000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
+		requireNoTorrentEvent(t, seen)
 	})
-
-	// Fresh add: positive sentinel, barely any data. Must not fire.
-	update(qbt.Torrent{Hash: "jkl", CompletionOn: 28800, Progress: 0.04, AmountLeft: 960, State: qbt.TorrentStateDownloading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-
-	// Real completion: fires once.
-	update(qbt.Torrent{Hash: "jkl", CompletionOn: 1700002000, Progress: 1.0, State: qbt.TorrentStateUploading})
-	select {
-	case <-seen:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected completion event when download finished")
-	}
-
-	update(qbt.Torrent{Hash: "jkl", CompletionOn: 1700002000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 
 // A completion can land directly in a stopped state (e.g. share-ratio limit 0
@@ -340,49 +334,44 @@ func TestHandleCompletionUpdatesIgnoresWestOfUTCSentinel(t *testing.T) {
 func TestHandleCompletionUpdatesStoppedStatesAreOneWay(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 5}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 5}
 
-	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
-		seen <- torrent
-	})
-
-	update := func(torrent qbt.Torrent) {
-		client.handleCompletionUpdates(&qbt.MainData{
-			Torrents: map[string]qbt.Torrent{"mno": torrent},
+		seen := make(chan qbt.Torrent, 2)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			seen <- torrent
 		})
-	}
 
-	// Init baseline with an unrelated torrent so "mno" arrives mid-run.
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		update := func(torrent qbt.Torrent) {
+			client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{"mno": torrent}))
+		}
+
+		// Init baseline with an unrelated torrent so "mno" arrives mid-run.
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
-		},
+		}))
+
+		// Downloading, incomplete.
+		update(qbt.Torrent{Hash: "mno", CompletionOn: -1, Progress: 0.9, AmountLeft: 100, State: qbt.TorrentStateDownloading})
+		requireNoTorrentEvent(t, seen)
+
+		// Finishes straight into stoppedUP (ratio limit 0): must fire.
+		update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateStoppedUp})
+		requireTorrentEvent(t, seen, "expected completion event for completion landing in stopped state")
+
+		// Stale verification fraction while stopped must not un-mark it.
+		update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 0.4, AmountLeft: 600, State: qbt.TorrentStateStoppedUp})
+		requireNoTorrentEvent(t, seen)
+
+		// Resume: complete and already handled, no re-fire.
+		update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateUploading})
+		requireNoTorrentEvent(t, seen)
+
+		// Stop again: still handled, no re-fire.
+		update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateStoppedUp})
+		requireNoTorrentEvent(t, seen)
 	})
-
-	// Downloading, incomplete.
-	update(qbt.Torrent{Hash: "mno", CompletionOn: -1, Progress: 0.9, AmountLeft: 100, State: qbt.TorrentStateDownloading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-
-	// Finishes straight into stoppedUP (ratio limit 0): must fire.
-	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateStoppedUp})
-	select {
-	case <-seen:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected completion event for completion landing in stopped state")
-	}
-
-	// Stale verification fraction while stopped must not un-mark it.
-	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 0.4, AmountLeft: 600, State: qbt.TorrentStateStoppedUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-
-	// Resume: complete and already handled, no re-fire.
-	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateUploading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-
-	// Stop again: still handled, no re-fire.
-	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateStoppedUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 
 // A recheck of a completed torrent reports verification fractions in both
@@ -392,43 +381,38 @@ func TestHandleCompletionUpdatesStoppedStatesAreOneWay(t *testing.T) {
 func TestHandleCompletionUpdatesCheckingStatesKeepPriorState(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 6}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 6}
 
-	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
-		seen <- torrent
-	})
-
-	update := func(torrent qbt.Torrent) {
-		client.handleCompletionUpdates(&qbt.MainData{
-			Torrents: map[string]qbt.Torrent{"pqr": torrent},
+		seen := make(chan qbt.Torrent, 2)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			seen <- torrent
 		})
-	}
 
-	// Init baseline with an unrelated torrent so "pqr" arrives mid-run.
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		update := func(torrent qbt.Torrent) {
+			client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{"pqr": torrent}))
+		}
+
+		// Init baseline with an unrelated torrent so "pqr" arrives mid-run.
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
-		},
+		}))
+
+		// Downloads and completes: fires once.
+		update(qbt.Torrent{Hash: "pqr", CompletionOn: -1, Progress: 0.8, AmountLeft: 200, State: qbt.TorrentStateDownloading})
+		requireNoTorrentEvent(t, seen)
+		update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 1.0, State: qbt.TorrentStateUploading})
+		requireTorrentEvent(t, seen, "expected completion event")
+
+		// Mid-recheck snapshot: verification fraction in amount_left.
+		update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 0.3, AmountLeft: 700, State: qbt.TorrentStateCheckingUp})
+		requireNoTorrentEvent(t, seen)
+
+		// Recheck passes, back to seeding: must NOT re-fire.
+		update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 1.0, State: qbt.TorrentStateUploading})
+		requireNoTorrentEvent(t, seen)
 	})
-
-	// Downloads and completes: fires once.
-	update(qbt.Torrent{Hash: "pqr", CompletionOn: -1, Progress: 0.8, AmountLeft: 200, State: qbt.TorrentStateDownloading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-	update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 1.0, State: qbt.TorrentStateUploading})
-	select {
-	case <-seen:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected completion event")
-	}
-
-	// Mid-recheck snapshot: verification fraction in amount_left.
-	update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 0.3, AmountLeft: 700, State: qbt.TorrentStateCheckingUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-
-	// Recheck passes, back to seeding: must NOT re-fire.
-	update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 1.0, State: qbt.TorrentStateUploading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 
 // Deselecting every file makes qbit finish the torrent at zero bytes: it
@@ -440,46 +424,44 @@ func TestHandleCompletionUpdatesCheckingStatesKeepPriorState(t *testing.T) {
 func TestHandleCompletionUpdatesZeroWantedFinishFiresOnce(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 8}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 8}
 
-	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
-		seen <- torrent
-	})
-
-	update := func(torrent qbt.Torrent) {
-		client.handleCompletionUpdates(&qbt.MainData{
-			Torrents: map[string]qbt.Torrent{"stu": torrent},
+		seen := make(chan qbt.Torrent, 2)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			seen <- torrent
 		})
-	}
 
-	// Init baseline with an unrelated torrent so "stu" arrives mid-run.
-	client.handleCompletionUpdates(&qbt.MainData{
-		Torrents: map[string]qbt.Torrent{
+		update := func(torrent qbt.Torrent) {
+			client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{"stu": torrent}))
+		}
+
+		// Init baseline with an unrelated torrent so "stu" arrives mid-run.
+		client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{
 			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
-		},
+		}))
+
+		// Fresh add, downloading normally.
+		update(qbt.Torrent{Hash: "stu", CompletionOn: -1, Progress: 0.05, AmountLeft: 950, State: qbt.TorrentStateDownloading})
+		requireNoTorrentEvent(t, seen)
+
+		// User deselects every file: qbit finishes it at zero bytes.
+		update(qbt.Torrent{Hash: "stu", CompletionOn: 1700005000, Progress: 0.0, AmountLeft: 0, State: qbt.TorrentStateStalledUp})
+		requireTorrentEvent(t, seen, "expected completion event for zero-wanted finish")
+
+		// Steady state: no re-fire.
+		update(qbt.Torrent{Hash: "stu", CompletionOn: 1700005000, Progress: 0.0, AmountLeft: 0, State: qbt.TorrentStateStalledUp})
+		requireNoTorrentEvent(t, seen)
 	})
-
-	// Fresh add, downloading normally.
-	update(qbt.Torrent{Hash: "stu", CompletionOn: -1, Progress: 0.05, AmountLeft: 950, State: qbt.TorrentStateDownloading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
-
-	// User deselects every file: qbit finishes it at zero bytes.
-	update(qbt.Torrent{Hash: "stu", CompletionOn: 1700005000, Progress: 0.0, AmountLeft: 0, State: qbt.TorrentStateStalledUp})
-	select {
-	case <-seen:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected completion event for zero-wanted finish")
-	}
-
-	// Steady state: no re-fire.
-	update(qbt.Torrent{Hash: "stu", CompletionOn: 1700005000, Progress: 0.0, AmountLeft: 0, State: qbt.TorrentStateStalledUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 
-func requireNoTorrentEvent(t *testing.T, ch <-chan qbt.Torrent, d time.Duration) {
+// requireNoTorrentEvent waits until the handler goroutines block, then fails
+// on any event they sent.
+func requireNoTorrentEvent(t *testing.T, ch <-chan qbt.Torrent) {
 	t.Helper()
 
+	synctest.Wait()
 	select {
 	case torrent := <-ch:
 		t.Fatalf("unexpected completion event: hash=%q name=%q state=%q completionOn=%d",
@@ -488,7 +470,22 @@ func requireNoTorrentEvent(t *testing.T, ch <-chan qbt.Torrent, d time.Duration)
 			torrent.State,
 			torrent.CompletionOn,
 		)
-	case <-time.After(d):
+	default:
+	}
+}
+
+// requireTorrentEvent waits until the handler goroutines block, then takes the
+// event they sent.
+func requireTorrentEvent(t *testing.T, ch <-chan qbt.Torrent, msg string) qbt.Torrent {
+	t.Helper()
+
+	synctest.Wait()
+	select {
+	case torrent := <-ch:
+		return torrent
+	default:
+		t.Fatal(msg)
+		return qbt.Torrent{}
 	}
 }
 
@@ -510,51 +507,48 @@ func requireNoIntEvent(t *testing.T, ch <-chan int) {
 func TestHandleCompletionUpdatesStartupAfterFailedRecheckFires(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{instanceID: 10}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 10}
 
-	seen := make(chan qbt.Torrent, 2)
-	client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
-		seen <- torrent
-	})
-
-	update := func(torrent qbt.Torrent) {
-		client.handleCompletionUpdates(&qbt.MainData{
-			Torrents: map[string]qbt.Torrent{"vwx": torrent},
+		seen := make(chan qbt.Torrent, 2)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			seen <- torrent
 		})
-	}
 
-	// Startup snapshot: re-downloading after a failed recheck, stamp intact.
-	update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 0.5, AmountLeft: 500, State: qbt.TorrentStateDownloading})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+		update := func(torrent qbt.Torrent) {
+			client.handleCompletionUpdates(syncOf(t, src, map[string]qbt.Torrent{"vwx": torrent}))
+		}
 
-	// Finishes for real: must fire.
-	update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 1.0, State: qbt.TorrentStateUploading})
-	select {
-	case <-seen:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected completion event after startup mid-redownload baseline")
-	}
+		// Startup snapshot: re-downloading after a failed recheck, stamp intact.
+		update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 0.5, AmountLeft: 500, State: qbt.TorrentStateDownloading})
+		requireNoTorrentEvent(t, seen)
 
-	// Steady seeding: no re-fire.
-	update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
-	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+		// Finishes for real: must fire.
+		update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 1.0, State: qbt.TorrentStateUploading})
+		requireTorrentEvent(t, seen, "expected completion event after startup mid-redownload baseline")
+
+		// Steady seeding: no re-fire.
+		update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
+		requireNoTorrentEvent(t, seen)
+	})
 }
 
 func TestStateHandlersPruneRemovedTorrents(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{instanceID: 11}
+	src := syncsnap.NewSource()
 	update := func(hashes ...string) {
 		torrents := make(map[string]qbt.Torrent, len(hashes))
 		for _, hash := range hashes {
 			torrents[hash] = qbt.Torrent{Hash: hash, State: qbt.TorrentStateDownloading}
 		}
-		data := &qbt.MainData{Torrents: torrents}
-		client.handleCompletionUpdates(data)
-		client.handleAddedUpdates(data)
+		synced := syncOf(t, src, torrents)
+		client.handleCompletionUpdates(synced)
+		client.handleAddedUpdates(synced)
 	}
 
-	// The merged map OnUpdate receives drops a removed torrent; TorrentsRemoved stays empty.
 	update("abc", "def")
 	update("def")
 
@@ -566,8 +560,77 @@ func TestStateHandlersPruneRemovedTorrents(t *testing.T) {
 	}
 }
 
+// A partial update names only the torrents that changed. The handlers read
+// those, and each other torrent keeps its result.
+func TestStateHandlersReadAPartialUpdate(t *testing.T) {
+	t.Parallel()
+
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		client := &Client{instanceID: 15}
+		completed := make(chan qbt.Torrent, 4)
+		client.SetTorrentCompletionHandler(nil, func(_ context.Context, _ int, torrent qbt.Torrent) {
+			completed <- torrent
+		})
+		added := make(chan []*qbt.Torrent, 4)
+		client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []*qbt.Torrent) {
+			added <- torrents
+		})
+		handle := func(update qbt.SyncUpdate) {
+			client.handleCompletionUpdates(update)
+			client.handleAddedUpdates(update)
+		}
+		requireAdded := func(want ...string) {
+			t.Helper()
+			synctest.Wait()
+			var got []string
+			select {
+			case batch := <-added:
+				for _, torrent := range batch {
+					got = append(got, torrent.Hash)
+				}
+			default:
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("added torrents = %v, want %v", got, want)
+			}
+		}
+
+		handle(syncOf(t, src, map[string]qbt.Torrent{
+			"downloading": {CompletionOn: -1, AmountLeft: 100, State: qbt.TorrentStateDownloading},
+			"seeding":     {CompletionOn: 1700000000, State: qbt.TorrentStateUploading},
+		}))
+		requireNoTorrentEvent(t, completed)
+		requireAdded()
+
+		// One torrent completes, one is new, and the seeding torrent changes
+		// only its speed.
+		handle(src.Partial(t, `{"rid":2,"torrents":{
+			"downloading":{"completion_on":1700000999,"amount_left":0,"state":"uploading"},
+			"seeding":{"upspeed":4096},
+			"new":{"added_on":1700001000,"amount_left":50,"state":"downloading"}}}`))
+		if torrent := requireTorrentEvent(t, completed, "expected a completion event"); torrent.Hash != "downloading" {
+			t.Fatalf("completed torrent = %q, want downloading", torrent.Hash)
+		}
+		requireNoTorrentEvent(t, completed)
+		requireAdded("new")
+
+		// The update names neither the completed torrent nor the new one.
+		handle(src.Partial(t, `{"rid":3,"torrents":{"seeding":{"upspeed":0}}}`))
+		requireNoTorrentEvent(t, completed)
+		requireAdded()
+
+		// A removed torrent that comes back is new again.
+		handle(src.Partial(t, `{"rid":4,"torrents_removed":["new"]}`))
+		requireAdded()
+		handle(src.Partial(t, `{"rid":5,"torrents":{"new":{"added_on":1700002000,"amount_left":50,"state":"downloading"}}}`))
+		requireNoTorrentEvent(t, completed)
+		requireAdded("new")
+	})
+}
+
 // completeBurst sends one sync with n downloading torrents, then one with all n complete.
-func completeBurst(client *Client, n int) {
+func completeBurst(t testing.TB, src *syncsnap.Source, client *Client, n int) {
 	for _, complete := range []bool{false, true} {
 		torrents := make(map[string]qbt.Torrent, n)
 		for i := range n {
@@ -578,46 +641,47 @@ func completeBurst(client *Client, n int) {
 			}
 			torrents[hash] = torrent
 		}
-		client.handleCompletionUpdates(&qbt.MainData{Torrents: torrents})
+		client.handleCompletionUpdates(syncOf(t, src, torrents))
 	}
 }
 
 func TestHandleCompletionUpdatesBurstRunsOnBoundedGoroutines(t *testing.T) {
 	t.Parallel()
 
-	const burst = 10_000
-	client := &Client{instanceID: 12}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		const burst = 10_000
+		client := &Client{instanceID: 12}
 
-	var running, maxRunning, calls atomic.Int64
-	release := make(chan struct{})
-	client.SetTorrentCompletionHandler(nil, func(context.Context, int, qbt.Torrent) {
-		n := running.Add(1)
-		for {
-			prev := maxRunning.Load()
-			if n <= prev || maxRunning.CompareAndSwap(prev, n) {
-				break
+		var running, maxRunning, calls atomic.Int64
+		release := make(chan struct{})
+		client.SetTorrentCompletionHandler(nil, func(context.Context, int, qbt.Torrent) {
+			n := running.Add(1)
+			for {
+				prev := maxRunning.Load()
+				if n <= prev || maxRunning.CompareAndSwap(prev, n) {
+					break
+				}
 			}
+			<-release
+			running.Add(-1)
+			calls.Add(1)
+		})
+
+		completeBurst(t, src, client, burst)
+
+		synctest.Wait()
+		got := maxRunning.Load()
+		close(release)
+		if got == 0 || got > handlerQueueWorkers {
+			t.Fatalf("handlers running at once = %d, want 1..%d", got, handlerQueueWorkers)
 		}
-		<-release
-		running.Add(-1)
-		calls.Add(1)
+
+		synctest.Wait()
+		if got := calls.Load(); got != burst {
+			t.Fatalf("handler calls = %d, want %d", got, burst)
+		}
 	})
-
-	completeBurst(client, burst)
-
-	time.Sleep(100 * time.Millisecond)
-	if got := maxRunning.Load(); got == 0 || got > handlerQueueWorkers {
-		t.Fatalf("handlers running at once = %d, want 1..%d", got, handlerQueueWorkers)
-	}
-	close(release)
-
-	deadline := time.Now().Add(5 * time.Second)
-	for calls.Load() < burst && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if got := calls.Load(); got != burst {
-		t.Fatalf("handler calls = %d, want %d", got, burst)
-	}
 }
 
 func TestHandleCompletionUpdatesNotifiesWhileSearchesWait(t *testing.T) {
@@ -625,6 +689,7 @@ func TestHandleCompletionUpdatesNotifiesWhileSearchesWait(t *testing.T) {
 
 	const burst = handlerQueueWorkers + 1
 	client := &Client{instanceID: 14}
+	src := syncsnap.NewSource()
 
 	var notified atomic.Int64
 	lane := make(chan struct{})
@@ -634,7 +699,7 @@ func TestHandleCompletionUpdatesNotifiesWhileSearchesWait(t *testing.T) {
 		func(context.Context, int, qbt.Torrent) { <-lane },
 	)
 
-	completeBurst(client, burst)
+	completeBurst(t, src, client, burst)
 
 	if got := notified.Load(); got != burst {
 		t.Fatalf("notified = %d while every search worker waits, want %d", got, burst)
@@ -644,82 +709,87 @@ func TestHandleCompletionUpdatesNotifiesWhileSearchesWait(t *testing.T) {
 func TestHandleAddedUpdatesBurstCallsHandlerOncePerSync(t *testing.T) {
 	t.Parallel()
 
-	const burst = 10_000
-	client := &Client{instanceID: 13}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		const burst = 10_000
+		client := &Client{instanceID: 13}
 
-	batches := make(chan []qbt.Torrent, burst)
-	client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []qbt.Torrent) {
-		batches <- torrents
-	})
+		batches := make(chan []*qbt.Torrent, burst)
+		client.SetTorrentAddedHandler(func(_ context.Context, _ int, torrents []*qbt.Torrent) {
+			batches <- torrents
+		})
 
-	client.handleAddedUpdates(&qbt.MainData{Torrents: map[string]qbt.Torrent{"seed": {Hash: "seed"}}})
+		client.handleAddedUpdates(syncOf(t, src, map[string]qbt.Torrent{"seed": {Hash: "seed"}}))
 
-	now := time.Now().Unix()
-	torrents := map[string]qbt.Torrent{
-		"seed": {Hash: "seed"},
-		"old":  {Hash: "old", AddedOn: now - 3600},
-	}
-	for i := range burst {
-		hash := fmt.Sprintf("%040x", i)
-		torrents[hash] = qbt.Torrent{Hash: hash, AddedOn: now}
-	}
-	client.handleAddedUpdates(&qbt.MainData{Torrents: torrents})
-
-	select {
-	case batch := <-batches:
-		if len(batch) != burst {
-			t.Fatalf("batch size = %d, want %d", len(batch), burst)
+		now := time.Now().Unix()
+		torrents := map[string]qbt.Torrent{
+			"seed": {Hash: "seed"},
+			"old":  {Hash: "old", AddedOn: now - 3600},
 		}
-	case <-time.After(time.Second):
-		t.Fatal("expected one torrent-added batch")
-	}
-	select {
-	case batch := <-batches:
-		t.Fatalf("unexpected second batch of %d torrents", len(batch))
-	case <-time.After(100 * time.Millisecond):
-	}
+		for i := range burst {
+			hash := fmt.Sprintf("%040x", i)
+			torrents[hash] = qbt.Torrent{Hash: hash, AddedOn: now}
+		}
+		client.handleAddedUpdates(syncOf(t, src, torrents))
+
+		synctest.Wait()
+		select {
+		case batch := <-batches:
+			if len(batch) != burst {
+				t.Fatalf("batch size = %d, want %d", len(batch), burst)
+			}
+		default:
+			t.Fatal("expected one torrent-added batch")
+		}
+		select {
+		case batch := <-batches:
+			t.Fatalf("unexpected second batch of %d torrents", len(batch))
+		default:
+		}
+	})
 }
 
 func TestHandleAddedUpdatesRunsOnBoundedGoroutines(t *testing.T) {
 	t.Parallel()
 
-	const syncs = 40
-	client := &Client{instanceID: 14}
+	src := syncsnap.NewSource()
+	synctest.Test(t, func(t *testing.T) {
+		const syncs = 40
+		client := &Client{instanceID: 14}
 
-	var running, maxRunning, calls atomic.Int64
-	release := make(chan struct{})
-	client.SetTorrentAddedHandler(func(context.Context, int, []qbt.Torrent) {
-		n := running.Add(1)
-		for {
-			prev := maxRunning.Load()
-			if n <= prev || maxRunning.CompareAndSwap(prev, n) {
-				break
+		var running, maxRunning, calls atomic.Int64
+		release := make(chan struct{})
+		client.SetTorrentAddedHandler(func(context.Context, int, []*qbt.Torrent) {
+			n := running.Add(1)
+			for {
+				prev := maxRunning.Load()
+				if n <= prev || maxRunning.CompareAndSwap(prev, n) {
+					break
+				}
 			}
+			<-release
+			running.Add(-1)
+			calls.Add(1)
+		})
+
+		torrents := map[string]qbt.Torrent{"seed": {Hash: "seed"}}
+		client.handleAddedUpdates(syncOf(t, src, torrents))
+		for i := range syncs {
+			hash := fmt.Sprintf("%040x", i)
+			torrents[hash] = qbt.Torrent{Hash: hash, AddedOn: time.Now().Unix()}
+			client.handleAddedUpdates(syncOf(t, src, maps.Clone(torrents)))
 		}
-		<-release
-		running.Add(-1)
-		calls.Add(1)
+
+		synctest.Wait()
+		got := maxRunning.Load()
+		close(release)
+		if got == 0 || got > handlerQueueWorkers {
+			t.Fatalf("handlers running at once = %d, want 1..%d", got, handlerQueueWorkers)
+		}
+
+		synctest.Wait()
+		if got := calls.Load(); got != syncs {
+			t.Fatalf("handler calls = %d, want %d", got, syncs)
+		}
 	})
-
-	torrents := map[string]qbt.Torrent{"seed": {Hash: "seed"}}
-	client.handleAddedUpdates(&qbt.MainData{Torrents: torrents})
-	for i := range syncs {
-		hash := fmt.Sprintf("%040x", i)
-		torrents[hash] = qbt.Torrent{Hash: hash, AddedOn: time.Now().Unix()}
-		client.handleAddedUpdates(&qbt.MainData{Torrents: maps.Clone(torrents)})
-	}
-
-	time.Sleep(100 * time.Millisecond)
-	if got := maxRunning.Load(); got == 0 || got > handlerQueueWorkers {
-		t.Fatalf("handlers running at once = %d, want 1..%d", got, handlerQueueWorkers)
-	}
-	close(release)
-
-	deadline := time.Now().Add(5 * time.Second)
-	for calls.Load() < syncs && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if got := calls.Load(); got != syncs {
-		t.Fatalf("handler calls = %d, want %d", got, syncs)
-	}
 }

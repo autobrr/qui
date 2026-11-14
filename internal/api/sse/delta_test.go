@@ -45,7 +45,7 @@ func changedHashes(payload *StreamPayload) []string {
 
 func TestBuildUpdatePayloadSeedsFullThenStreamsDeltas(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
 	// First tick on an unseeded group is a full snapshot that seeds the baseline.
 	full := g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B"), tv("c", "C")), &StreamMeta{})
@@ -70,7 +70,7 @@ func TestBuildUpdatePayloadSeedsFullThenStreamsDeltas(t *testing.T) {
 
 func TestBuildUpdatePayloadAddSendsOrderAndRow(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
 	g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B")), &StreamMeta{})
 
@@ -83,7 +83,7 @@ func TestBuildUpdatePayloadAddSendsOrderAndRow(t *testing.T) {
 
 func TestBuildUpdatePayloadRemoveSendsShorterOrder(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
 	g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B"), tv("c", "C")), &StreamMeta{})
 
@@ -96,7 +96,7 @@ func TestBuildUpdatePayloadRemoveSendsShorterOrder(t *testing.T) {
 
 func TestBuildUpdatePayloadReorderSendsOrderOnly(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
 	g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B"), tv("c", "C")), &StreamMeta{})
 
@@ -113,7 +113,7 @@ func TestBuildUpdatePayloadReorderSendsOrderOnly(t *testing.T) {
 // clear from an aggregate-only tick and leaves the deleted rows on screen.
 func TestBuildUpdatePayloadEmptiedPageSendsPresentEmptyOrder(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
 	g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B")), &StreamMeta{})
 
@@ -135,7 +135,7 @@ func TestBuildUpdatePayloadEmptiedPageSendsPresentEmptyOrder(t *testing.T) {
 // other request on a shared HTTP/2 connection each time it fired.
 func TestBuildUpdatePayloadHasNoPeriodicKeyframe(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
 	first := g.buildUpdatePayload(opts, singleResp(tv("a", "A")), &StreamMeta{})
 	require.Equal(t, streamEventUpdate, first.Type, "first tick seeds with a full snapshot")
@@ -152,7 +152,7 @@ func TestBuildUpdatePayloadHasNoPeriodicKeyframe(t *testing.T) {
 // every tick and the "delta" is almost a full snapshot.
 func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
 	base := &qbt.Torrent{Hash: "a", Name: "A", Reannounce: 1800, TimeActive: 100, SeedingTime: 100, NumSeeds: 3}
 	g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: base}), &StreamMeta{})
@@ -176,9 +176,51 @@ func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 	require.Equal(t, []string{"a"}, changedHashes(sent), "a real change (speed) must re-send the row")
 }
 
+// A one-row view (the details row) resends its row when a counter that the
+// General tab shows changes. The main list keeps the volatile-field rule.
+func TestOneRowViewResendsLiveCounters(t *testing.T) {
+	counters := map[string]func(*qbt.Torrent){
+		"TimeActive":       func(tr *qbt.Torrent) { tr.TimeActive++ },
+		"SeedingTime":      func(tr *qbt.Torrent) { tr.SeedingTime++ },
+		"NumSeeds":         func(tr *qbt.Torrent) { tr.NumSeeds++ },
+		"NumLeechs":        func(tr *qbt.Torrent) { tr.NumLeechs++ },
+		"NumComplete":      func(tr *qbt.Torrent) { tr.NumComplete++ },
+		"NumIncomplete":    func(tr *qbt.Torrent) { tr.NumIncomplete++ },
+		"ConnectionsCount": func(tr *qbt.Torrent) { tr.ConnectionsCount++ },
+		"PiecesHave":       func(tr *qbt.Torrent) { tr.PiecesHave++ },
+		"Reannounce":       func(tr *qbt.Torrent) { tr.Reannounce-- },
+	}
+	for name, tick := range counters {
+		for _, tc := range []struct {
+			view   string
+			limit  int
+			resend bool
+		}{
+			{view: "details row", limit: 1, resend: true},
+			{view: "main list", limit: 300, resend: false},
+		} {
+			t.Run(name+"/"+tc.view, func(t *testing.T) {
+				g := &subscriptionGroup{}
+				opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: tc.limit}}
+				base := qbt.Torrent{Hash: "a", Name: "A"}
+				g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: &base}), &StreamMeta{})
+
+				ticked := base
+				tick(&ticked)
+				payload := g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: &ticked}), &StreamMeta{})
+				if tc.resend {
+					require.Equal(t, []string{"a"}, changedHashes(payload))
+				} else {
+					require.Empty(t, changedHashes(payload))
+				}
+			})
+		}
+	}
+}
+
 func TestBuildUpdatePayloadCrossInstance(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceIDs: []int{1, 2}}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}}}
 
 	// Seed: same hash on two instances are distinct rows keyed by instanceId:hash.
 	full := g.buildUpdatePayload(opts, crossResp(ci(1, "a", "A"), ci(2, "a", "A")), &StreamMeta{})
@@ -211,7 +253,7 @@ func TestCrossInstanceMetadataChangeIsFlaggedAsChanged(t *testing.T) {
 	require.Equal(t, []int{0}, changedIdx, "an instance_name change must be detected as a changed row")
 
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceIDs: []int{1}}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
 	g.buildUpdatePayload(opts, crossResp(rowA), &StreamMeta{})
 	delta := g.buildUpdatePayload(opts, crossResp(rowRenamed), &StreamMeta{})
 	require.Equal(t, streamEventDelta, delta.Type)
@@ -229,10 +271,7 @@ func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 			Categories: map[string]int{"tv": 2, "movies": 1},
 			Tags:       map[string]int{"cross-seed": 1},
 			Trackers:   map[string]int{"tracker.example.invalid": 3},
-			TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{
-				"tracker.example.invalid": {Uploaded: 100, Downloaded: 200, Count: 3},
-			},
-			Total: 3,
+			Total:      3,
 		}
 	}
 
@@ -243,7 +282,7 @@ func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 	}
 
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceIDs: []int{1}}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
 
 	full := g.buildUpdatePayload(opts, respWith(counts(2), tv("a", "A")), &StreamMeta{})
 	require.Equal(t, streamEventUpdate, full.Type)
@@ -266,7 +305,7 @@ func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 // diverge from it; every init identifies the exact retained frame version.
 func TestInitUsesExactVersionedBaseline(t *testing.T) {
 	counts := &qbittorrent.TorrentCounts{Status: map[string]int{"all": 1}, Total: 1}
-	opts := StreamOptions{InstanceIDs: []int{1}}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
 	g := &subscriptionGroup{version: StreamVersion{Major: 7}}
 
 	seeded := singleResp(tv("a", "A"))
@@ -342,7 +381,7 @@ func TestComputeRowDeltaFlagsNewAndChangedRows(t *testing.T) {
 
 func TestServerStatePayloadRebuildsWhenSubcategoryModeChanges(t *testing.T) {
 	g := &subscriptionGroup{}
-	opts := StreamOptions{InstanceID: 1}
+	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 	seed := singleResp(tv("a", "A"))
 	seed.ServerState = &qbt.ServerState{DlInfoSpeed: 1}
 	g.buildUpdatePayload(opts, seed, &StreamMeta{})

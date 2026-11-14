@@ -4,7 +4,6 @@
 package crossseed
 
 import (
-	"maps"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -149,20 +148,18 @@ func TestIsDiscLayoutTorrent(t *testing.T) {
 
 func TestPolicyForSourceFiles(t *testing.T) {
 	tests := []struct {
-		name            string
-		files           qbt.TorrentFiles
-		wantDiscLayout  bool
-		wantForcePaused bool
-		wantDiscMarker  string
+		name           string
+		files          qbt.TorrentFiles
+		wantDiscLayout bool
+		wantDiscMarker string
 	}{
 		{
-			name: "disc layout forces paused",
+			name: "disc layout",
 			files: qbt.TorrentFiles{
 				{Name: "Movie/BDMV/index.bdmv"},
 			},
-			wantDiscLayout:  true,
-			wantForcePaused: true,
-			wantDiscMarker:  "BDMV",
+			wantDiscLayout: true,
+			wantDiscMarker: "BDMV",
 		},
 		{
 			name: "non-disc layout returns empty policy",
@@ -177,143 +174,7 @@ func TestPolicyForSourceFiles(t *testing.T) {
 			policy := PolicyForSourceFiles(tt.files)
 
 			assert.Equal(t, tt.wantDiscLayout, policy.DiscLayout)
-			assert.Equal(t, tt.wantForcePaused, policy.ForcePaused)
 			assert.Equal(t, tt.wantDiscMarker, policy.DiscMarker)
-		})
-	}
-}
-
-func TestAddPolicy_ApplyToAddOptions(t *testing.T) {
-	tests := []struct {
-		name        string
-		policy      AddPolicy
-		wantPaused  string
-		wantStopped string
-	}{
-		{
-			name:        "ForcePaused overrides options",
-			policy:      AddPolicy{ForcePaused: true},
-			wantPaused:  "true",
-			wantStopped: "true",
-		},
-		{
-			name:        "non-forced policy preserves options",
-			policy:      AddPolicy{},
-			wantPaused:  "false",
-			wantStopped: "false",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			options := map[string]string{
-				"paused":  "false",
-				"stopped": "false",
-			}
-
-			tt.policy.ApplyToAddOptions(options)
-
-			assert.Equal(t, tt.wantPaused, options["paused"])
-			assert.Equal(t, tt.wantStopped, options["stopped"])
-		})
-	}
-}
-
-func TestAddPolicy_StatusSuffix(t *testing.T) {
-	tests := []struct {
-		name         string
-		policy       AddPolicy
-		wantContains []string
-		wantEmpty    bool
-	}{
-		{
-			name: "disc layout returns suffix",
-			policy: AddPolicy{
-				DiscLayout: true,
-				DiscMarker: "BDMV",
-			},
-			wantContains: []string{"disc layout", "BDMV", "recheck"},
-		},
-		{
-			name:      "non-disc layout returns empty",
-			policy:    AddPolicy{},
-			wantEmpty: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			suffix := tt.policy.StatusSuffix()
-			if tt.wantEmpty {
-				assert.Empty(t, suffix)
-			}
-			for _, want := range tt.wantContains {
-				assert.Contains(t, suffix, want)
-			}
-		})
-	}
-}
-
-// TestPolicyFlow_DiscLayoutForcesPaused tests the shared policy helper that all modes
-// (regular, hardlink, reflink) call: PolicyForSourceFiles -> ApplyToAddOptions.
-// This proves that disc layout torrents cannot be added "running" regardless of mode.
-func TestPolicyFlow_DiscLayoutForcesPaused(t *testing.T) {
-	tests := []struct {
-		name        string
-		files       qbt.TorrentFiles
-		initialOpts map[string]string
-		wantPaused  string
-		wantStopped string
-	}{
-		{
-			name: "BDMV disc overrides paused=false",
-			files: qbt.TorrentFiles{
-				{Name: "Movie/BDMV/index.bdmv"},
-				{Name: "Movie/BDMV/STREAM/00000.m2ts"},
-			},
-			initialOpts: map[string]string{"paused": "false", "stopped": "false"},
-			wantPaused:  "true",
-			wantStopped: "true",
-		},
-		{
-			name: "VIDEO_TS disc overrides paused=false",
-			files: qbt.TorrentFiles{
-				{Name: "DVD/VIDEO_TS/VIDEO_TS.VOB"},
-			},
-			initialOpts: map[string]string{"paused": "false", "stopped": "false"},
-			wantPaused:  "true",
-			wantStopped: "true",
-		},
-		{
-			name: "non-disc preserves paused=false",
-			files: qbt.TorrentFiles{
-				{Name: "Movie.2024.1080p.BluRay.x264-GROUP.mkv"},
-			},
-			initialOpts: map[string]string{"paused": "false", "stopped": "false"},
-			wantPaused:  "false",
-			wantStopped: "false",
-		},
-		{
-			name: "non-disc preserves paused=true",
-			files: qbt.TorrentFiles{
-				{Name: "Movie.2024.1080p.BluRay.x264-GROUP.mkv"},
-			},
-			initialOpts: map[string]string{"paused": "true", "stopped": "true"},
-			wantPaused:  "true",
-			wantStopped: "true",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// This is the exact flow used by all modes (regular, hardlink, reflink)
-			policy := PolicyForSourceFiles(tt.files)
-			opts := make(map[string]string)
-			maps.Copy(opts, tt.initialOpts)
-			policy.ApplyToAddOptions(opts)
-
-			assert.Equal(t, tt.wantPaused, opts["paused"], "paused option mismatch")
-			assert.Equal(t, tt.wantStopped, opts["stopped"], "stopped option mismatch")
 		})
 	}
 }

@@ -77,9 +77,10 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
@@ -90,7 +91,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.False(t, result.Success)
@@ -158,9 +159,10 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
@@ -171,7 +173,7 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.False(t, result.Success)
@@ -245,14 +247,16 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.settler = idleSettler(service.syncManager)
 	service.SetBackendPool(pool)
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
@@ -263,7 +267,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.True(t, result.Success)
@@ -333,9 +337,10 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test",
-		Torrents:     []qbt.Torrent{matchedTorrent},
+		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
+	withAdder(service)
 	result := service.processCrossSeedCandidate(
 		ctx,
 		candidate,
@@ -346,7 +351,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
-		nil,
+		nil, nil,
 	)
 
 	require.False(t, result.Success)

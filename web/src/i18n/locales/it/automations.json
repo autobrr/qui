@@ -4,6 +4,11 @@
     "description": "Servizi di automazione a livello di istanza gestiti da qui.",
     "noInstances": "Nessuna istanza configurata. Aggiungine una in Impostazioni per usare i servizi."
   },
+  "tabs": {
+    "workflows": "Workflow",
+    "reannounce": "Riannuncia",
+    "orphanScan": "Scansione orfani"
+  },
   "queryBuilder": {
     "noConditions": "Nessuna condizione",
     "matchesAllTorrents": "Corrisponde a tutti i torrent (in base alla selezione del tracker).",
@@ -23,6 +28,8 @@
     "groupForConditionPlaceholder": "Gruppo per questa condizione",
     "aboutGroupSelectionAriaLabel": "Informazioni sulla selezione del gruppo per condizione raggruppata",
     "groupTooltip": "Questo gruppo si applica solo a questa riga di condizione. Usa gruppi diversi su altre righe GROUP_SIZE/IS_GROUPED se necessario.",
+    "aboutHardlinkScopeAriaLabel": "Informazioni sull'ambito degli hardlink",
+    "hardlinkScopeTooltip": "Al di fuori di qBittorrent indica un hardlink che non appartiene a nessun torrent. Conta un'importazione nella libreria, e anche un link orfano nella cartella di download.",
     "min": "Min",
     "max": "Max",
     "wrappingRangeHint": "L'intervallo si avvolge: corrisponde a {{min}} e oltre, poi a tutto ciò che è sotto {{max}}.",
@@ -123,7 +130,7 @@
       "NUM_LEECHS": "Leecher attivi",
       "NUM_COMPLETE": "Seeder totali",
       "NUM_INCOMPLETE": "Leecher totali",
-      "TRACKERS_COUNT": "Tracker",
+      "TRACKERS_COUNT": "Numero di tracker",
       "PRIORITY": "Priorità in coda",
       "GROUP_SIZE": "Dimensione del gruppo",
       "PRIVATE": "Privato",
@@ -222,8 +229,12 @@
     },
     "capabilityReasons": {
       "trackerHealth": "Richiede qBittorrent 5.1+",
+      "qbittorrent50": "Richiede qBittorrent 5.0+",
+      "qbittorrent52": "Richiede qBittorrent 5.2+",
       "localFilesystemAccess": "Richiede l'accesso al filesystem locale",
-      "remoteInstance": "Non disponibile sulle istanze remote"
-    }
+      "remoteInstance": "Non disponibile sulle istanze remote",
+      "filesystemAccess": "Richiede l'accesso al filesystem. Abilita \"Accesso al filesystem locale\" o configura l'accesso SSH nelle impostazioni dell'istanza."
+    },
+    "ruleSkip": "Non viene eseguita su questa istanza: {{field}} richiede {{requires}}."
   }
 }

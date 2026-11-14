@@ -11,6 +11,7 @@
 
 import type { TorrentFilters } from "@/types/torrents"
 import { CAPABILITIES, PREFERENCE_VIEW, trackerDomain, type BulkActionBody, type DemoStore, type ListParams } from "./store"
+import { changeDemoSubscriptions, type StreamEntry } from "./stream"
 
 // The built-in themes the Go registry embeds, so the picker and the default
 // look match a real install. Name and id follow internal/themes/registry.go.
@@ -93,6 +94,11 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/auth/check-setup", () => json({ setupRequired: false }))
   on("POST", "/auth/logout", () => noContent())
 
+  on("POST", "/stream/subscriptions", async ({ request }) => {
+    const body = await bodyJSON<{ connectionId?: string; add?: StreamEntry[]; remove?: string[] }>(request)
+    return changeDemoSubscriptions(body.connectionId ?? "", body.add ?? [], body.remove ?? []) ? noContent() : json({ error: "connection not found" }, 404)
+  })
+
   on("GET", "/themes", () => json({ themes: builtinThemes }))
   on("GET", "/themes/settings", () => json({}))
   on("PUT", "/themes/settings", async ({ request }) => json(await bodyJSON(request)))
@@ -104,6 +110,8 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/license/licensed", () => json({ licensed: false }))
   on("GET", "/version", () => json({ version: "demo", updateAvailable: false, selfUpdate: false, selfUpdateUnavailableReason: "development", restart: false }))
   on("GET", "/version/latest", () => json(null))
+  on("GET", "/system-notices", () => json([]))
+  on("GET", "/database/shrink", () => json({ available: false, fileBytes: 0, freeBytes: 0, needBytes: 0, restartAvailable: false, pending: false }))
 
   on("GET", "/instances", () => json(store.instanceResponses()))
   on("GET", "/instances/:instanceId/capabilities", () => json(CAPABILITIES))
@@ -210,7 +218,9 @@ export function createRoutes(store: DemoStore): Route[] {
   on("GET", "/instances/:instanceId/torrents/:hash/pieces", detail("pieces"))
   on("GET", "/instances/:instanceId/torrents/:hash/webseeds", () => json([]))
   on("GET", "/instances/:instanceId/torrents/:hash/disc-scans", () => json([]))
+  on("GET", "/cross-seed/routes", () => json([]))
   on("GET", "/cross-seed/torrents/:instanceId/:hash/local-matches", () => json([]))
+  on("POST", "/instances/:instanceId/torrents/delete-cross-seeds", () => json({ matches: [], unchecked_instances: [] }))
 
   const upsertCategory: Handler = async ({ params, request }) => {
     const body = await bodyJSON<{ name?: string; savePath?: string }>(request)

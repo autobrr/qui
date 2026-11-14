@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -145,7 +146,7 @@ type ClientPool struct {
 	stopHealth        chan struct{}
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
-	syncEventSink     SyncEventSink
+	syncEventSinks    syncEventSinks
 	syncEventSinkSeq  uint64
 	completionNotify  TorrentCompletionHandler
 	completionHandler TorrentCompletionHandler
@@ -181,20 +182,23 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	return cp, nil
 }
 
-// SetSyncEventSink configures the sink that receives sync notifications from
-// every managed client and SyncManager-owned background refreshes.
-func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
+// AddSyncEventSink registers one more consumer of the sync notifications of
+// every managed client, present and future, and of SyncManager-owned
+// background refreshes. Each consumer gets each notification, in the order
+// the consumers were added.
+func (cp *ClientPool) AddSyncEventSink(sink SyncEventSink) {
 	cp.mu.Lock()
-	cp.syncEventSink = sink
+	sinks := append(slices.Clip(cp.syncEventSinks), sink)
+	cp.syncEventSinks = sinks
 	cp.syncEventSinkSeq++
 	sinkSeq := cp.syncEventSinkSeq
 	for _, client := range cp.clients {
-		client.SetSyncEventSink(sink)
+		client.SetSyncEventSink(sinks)
 	}
 	sm := cp.syncManager
 	cp.mu.Unlock()
 
-	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
+	cp.applySyncManagerSinkIfCurrent(sm, sinks, sinkSeq)
 }
 
 // SetTorrentCompletionHandler registers the callbacks for new and existing clients when torrents complete.
@@ -231,20 +235,20 @@ func (cp *ClientPool) SetTorrentAddedHandler(handler TorrentAddedHandler) {
 }
 
 // SetSyncManager sets the SyncManager reference used for background tasks and
-// passes through any existing sync event sink.
+// passes through the registered sync event sinks.
 func (cp *ClientPool) SetSyncManager(sm *SyncManager) {
 	cp.mu.Lock()
 	cp.syncManager = sm
-	sink := cp.syncEventSink
+	sinks := cp.syncEventSinks
 	sinkSeq := cp.syncEventSinkSeq
 	cp.mu.Unlock()
 
-	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
+	cp.applySyncManagerSinkIfCurrent(sm, sinks, sinkSeq)
 }
 
-// applySyncManagerSinkIfCurrent forwards a captured sink only if neither the
-// active SyncManager nor the pool sink changed since the caller observed them.
-func (cp *ClientPool) applySyncManagerSinkIfCurrent(sm *SyncManager, sink SyncEventSink, sinkSeq uint64) {
+// applySyncManagerSinkIfCurrent forwards captured sinks only if neither the
+// active SyncManager nor the pool sinks changed since the caller observed them.
+func (cp *ClientPool) applySyncManagerSinkIfCurrent(sm *SyncManager, sinks syncEventSinks, sinkSeq uint64) {
 	if sm == nil {
 		return
 	}
@@ -255,7 +259,7 @@ func (cp *ClientPool) applySyncManagerSinkIfCurrent(sm *SyncManager, sink SyncEv
 		return
 	}
 
-	sm.SetSyncEventSink(sink)
+	sm.SetSyncEventSink(sinks)
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
@@ -441,8 +445,8 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 	// Store in pool (need write lock for this)
 	cp.mu.Lock()
-	if cp.syncEventSink != nil {
-		client.SetSyncEventSink(cp.syncEventSink)
+	if len(cp.syncEventSinks) > 0 {
+		client.SetSyncEventSink(cp.syncEventSinks)
 	}
 	cp.clients[instanceID] = client
 	// Reset failure tracking on successful connection
@@ -724,24 +728,24 @@ func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 	if _, exists := cp.failureTracker[instanceID]; exists {
 		delete(cp.failureTracker, instanceID)
 		hadFailures = true
-		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking")
 	}
 
-	// Also reset decryption error tracking on successful connection
+	// Also reset decryption error tracking
 	if _, exists := cp.decryptionTracker[instanceID]; exists {
 		delete(cp.decryptionTracker, instanceID)
 		hadFailures = true
-		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking")
 	}
 
-	// Always clear errors from database on successful connection
+	// Always clear errors from database
 	// This ensures database cleanup even if in-memory tracking was reset (e.g., after restart)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if clearErr := cp.errorStore.ClearErrors(ctx, instanceID); clearErr != nil {
 		log.Error().Err(clearErr).Int("instanceID", instanceID).Msg("Failed to clear errors from database")
 	} else if hadFailures {
-		log.Debug().Int("instanceID", instanceID).Msg("Cleared instance errors from database after successful connection")
+		log.Debug().Int("instanceID", instanceID).Msg("Cleared instance errors from database")
 	}
 }
 

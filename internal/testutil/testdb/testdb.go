@@ -55,6 +55,20 @@ func NewMigratedSQLite(t testing.TB, name string) *database.DB {
 	return db
 }
 
+// RunSQLiteMigration runs one SQLite migration file on db again. A test uses
+// it to migrate rows that it wrote in the form of an older qui.
+func RunSQLiteMigration(t testing.TB, db *database.DB, filename string) {
+	t.Helper()
+
+	body, err := fs.ReadFile(database.SQLiteMigrations(), "migrations/"+filename)
+	if err != nil {
+		t.Fatalf("read migration %s: %v", filename, err)
+	}
+	if _, err := db.Conn().ExecContext(t.Context(), string(body)); err != nil {
+		t.Fatalf("run migration %s: %v", filename, err)
+	}
+}
+
 // NewMigratedPostgres returns an isolated migrated PostgreSQL schema when
 // QUI_TEST_POSTGRES_DSN is configured, otherwise it skips the calling test.
 func NewMigratedPostgres(t testing.TB, name string) *database.DB {
@@ -67,7 +81,7 @@ func NewMigratedPostgres(t testing.TB, name string) *database.DB {
 
 	setupCtx, cancelSetup := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelSetup()
-	adminPool, err := pgxpool.New(setupCtx, baseDSN)
+	adminPool, err := pgxpool.New(setupCtx, baseDSN) //nolint:forbidigo // the admin pool only creates and drops the test schema and stores no times
 	if err != nil {
 		t.Fatalf("open PostgreSQL test administrator: %v", err)
 	}
@@ -282,9 +296,8 @@ func cachedTemplate(dir string, migrations fs.FS, build func(dbPath string) erro
 	if err := build(tmpPath); err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmpPath, final); err != nil {
-		// Windows refuses to replace a file another builder renamed into
-		// place while a process reads it; that file is just as good.
+	if err := publishTemplate(tmpPath, final); err != nil {
+		// Another builder's completed template is just as good.
 		if _, statErr := os.Stat(final); statErr == nil {
 			return final, nil
 		}

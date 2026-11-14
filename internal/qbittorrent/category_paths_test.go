@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"fmt"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -54,4 +55,22 @@ func TestCategorySavePath_FolderName(t *testing.T) {
 			require.Equal(t, tt.want, CategorySavePath(fsops.SlashPaths, tt.category, categories, "/data", tt.rule))
 		})
 	}
+}
+
+// The parent walk has no depth cap: a deeply nested category that resolved to
+// "" would lose its folder.
+func TestCategorySavePath_DeepInheritanceIsNotDropped(t *testing.T) {
+	t.Parallel()
+
+	categories := map[string]qbt.Category{"top": {Name: "top", SavePath: "/archive"}}
+	name := "top"
+	want := "/archive"
+	for i := range 40 {
+		segment := fmt.Sprintf("s%d", i)
+		name += "/" + segment
+		want += "/" + segment
+		categories[name] = qbt.Category{Name: name}
+	}
+
+	require.Equal(t, want, CategorySavePath(fsops.SlashPaths, name, categories, "/torrents", CategoryPathRule{Nest: true}))
 }

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -133,6 +134,25 @@ func TestServerCompression(t *testing.T) {
 					}
 				})
 			}
+
+			t.Run("zstd window", func(t *testing.T) {
+				path := apiPrefix + "/openapi.json"
+				plain := httptest.NewRecorder()
+				router.ServeHTTP(plain, compressionRequest(t, path, "identity"))
+				require.Equal(t, http.StatusOK, plain.Code)
+				// A smaller body fits one block, and its frame declares a window sized to the body.
+				require.GreaterOrEqual(t, plain.Body.Len(), 128<<10)
+				res := httptest.NewRecorder()
+				router.ServeHTTP(res, compressionRequest(t, path, "zstd"))
+				require.Equal(t, http.StatusOK, res.Code)
+				require.Equal(t, "zstd", res.Header().Get("Content-Encoding"))
+				decoder, err := zstd.NewReader(res.Body, zstd.WithDecoderMaxWindow(1<<20))
+				require.NoError(t, err)
+				defer decoder.Close()
+				body, err := io.ReadAll(decoder)
+				require.NoError(t, err)
+				require.Equal(t, plain.Body.Bytes(), body)
+			})
 
 			t.Run("small JSON", func(t *testing.T) {
 				res := httptest.NewRecorder()

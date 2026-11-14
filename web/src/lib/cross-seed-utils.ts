@@ -5,6 +5,7 @@
 
 import { api } from "@/lib/api"
 import type { FilesystemCapabilities, LocalCrossSeedMatch, Torrent } from "@/types"
+import type { TFunction } from "i18next"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
@@ -16,6 +17,16 @@ export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/
  * Empty and non-numeric input becomes 0.
  */
 export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
+
+// Labels for the two statuses of a routed add (ADR 0035). Other statuses keep their current display.
+export const crossSeedRouteStatusKeys: Partial<Record<string, string>> = {
+  crossseed_instance_unavailable: "crossseed:routeStatus.unavailable",
+  crossseed_instance_cannot_see_data: "crossseed:routeStatus.cannotSeeData",
+}
+
+// Names the instance that held the match and the Cross-seed instance of a routed result (ADR 0035).
+export const crossSeedRouteText = (t: TFunction, source: string, crossSeed: string, added: boolean): string =>
+  t(added ? "crossseed:route.foundOnAddedTo" : "crossseed:route.foundOnRoutedTo", { source, crossSeed })
 
 // Omit an untouched secret: the backend shows an undecryptable key as "", and sending that "" back deletes it.
 export const changedSecret = (value: string, saved: string | undefined): string | undefined =>
@@ -54,7 +65,6 @@ export interface CrossSeedTorrent extends Torrent {
 }
 
 export interface LocalMatchTypeInfo {
-  deleteRelevant: boolean
   independentlyUsable: boolean
   breaksWhenSourceDeleted: boolean
 }
@@ -65,24 +75,53 @@ export function getLocalMatchTypeInfo(
   switch (matchType) {
     case "content_path":
       return {
-        deleteRelevant: true,
         independentlyUsable: false,
         breaksWhenSourceDeleted: true,
       }
     case "hardlink":
     case "reflink":
       return {
-        deleteRelevant: true,
         independentlyUsable: true,
         breaksWhenSourceDeleted: false,
       }
     case "name":
     case "release":
       return {
-        deleteRelevant: false,
         independentlyUsable: false,
         breaksWhenSourceDeleted: false,
       }
+  }
+}
+
+export function getMatchTypeLabel(matchType: string, t: TFunction): { label: string; description: string } {
+  switch (matchType) {
+    case "content_path":
+      return {
+        label: t("crossSeedTable.matchTypes.contentPath.label"),
+        description: t("crossSeedTable.matchTypes.contentPath.description"),
+      }
+    case "name":
+      return {
+        label: t("crossSeedTable.matchTypes.name.label"),
+        description: t("crossSeedTable.matchTypes.name.description"),
+      }
+    case "release":
+      return {
+        label: t("crossSeedTable.matchTypes.release.label"),
+        description: t("crossSeedTable.matchTypes.release.description"),
+      }
+    case "hardlink":
+      return {
+        label: t("crossSeedTable.matchTypes.hardlink.label"),
+        description: t("crossSeedTable.matchTypes.hardlink.description"),
+      }
+    case "reflink":
+      return {
+        label: t("crossSeedTable.matchTypes.reflink.label"),
+        description: t("crossSeedTable.matchTypes.reflink.description"),
+      }
+    default:
+      return { label: matchType, description: matchType }
   }
 }
 
@@ -112,10 +151,7 @@ export const useLocalCrossSeedMatches = (
   // Call the backend API to get local matches
   const { data: matches, isLoading: isLoadingMatches, error: matchesError } = useQuery({
     queryKey: ["cross-seed-local-matches", instanceId, torrent?.hash],
-    // Strict, like the delete dialogs: the tab offers a select-all delete
-    // with files, and a match whose file overlap could not be checked must
-    // not land in it.
-    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash, true),
+    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash),
     enabled: enabled && !!torrent && instanceId > 0,
     staleTime: 60000,
     gcTime: 5 * 60 * 1000,
@@ -131,7 +167,7 @@ export const useLocalCrossSeedMatches = (
 
   return {
     matchingTorrents,
-    // A strict lookup that could not finish its overlap check rejects; the
+    // A lookup that could not read a file list or a link check rejects; the
     // tab shows that rather than an empty list that reads as "no matches".
     matchesError: matchesError ?? null,
     isLoadingMatches: isLoadingInstances || isLoadingMatches,

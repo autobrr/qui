@@ -115,6 +115,10 @@ func lint() (counts, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseLint(raw)
+}
+
+func parseLint(raw []byte) (counts, error) {
 	var report struct {
 		Issues []struct {
 			FromLinter string
@@ -129,7 +133,9 @@ func lint() (counts, error) {
 		if got[issue.FromLinter] == nil {
 			got[issue.FromLinter] = map[string]int{}
 		}
-		got[issue.FromLinter][issue.Pos.Filename]++
+		// The allowlist uses slash paths, including on Windows.
+		filename := strings.ReplaceAll(issue.Pos.Filename, `\`, "/")
+		got[issue.FromLinter][filename]++
 	}
 	return got, nil
 }
@@ -160,6 +166,11 @@ func compare(got, allow, base counts) []string {
 		return problems
 	}
 	for _, linter := range slices.Sorted(maps.Keys(allow)) {
+		// A linter that the base does not list is a new rule, which starts
+		// with the count of each file.
+		if _, ok := base[linter]; !ok {
+			continue
+		}
 		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
 			if want, was := allow[linter][file], base[linter][file]; want > was {
 				problems = append(problems, fmt.Sprintf("%s: the %s entry grew from %d to %d. The allowlist only shrinks.", file, linter, was, want))

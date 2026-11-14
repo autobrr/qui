@@ -23,8 +23,8 @@ const (
 	tierMovieFile     = "Lantern.Bay.2023.1080p.BluRay.x264-GRP.mkv"
 )
 
-// tierSyncManager serves one source torrent, the candidates of each instance,
-// and file lists. A hash in failHashes fails its file fetch.
+// tierSyncManager serves one source torrent on instance 1, the candidates of
+// each instance, and file lists. A hash in failHashes fails its file fetch.
 type tierSyncManager struct {
 	localMatchSyncManager
 	source      qbt.Torrent
@@ -33,13 +33,13 @@ type tierSyncManager struct {
 	snapshotErr error
 }
 
-//nolint:gocritic // Interface requires value type for TorrentFilterOptions.
-func (m *tierSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	return []qbt.Torrent{m.source}, nil
-}
-
 func (m *tierSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
-	return m.candidates[instanceID], m.snapshotErr
+	views := m.candidates[instanceID]
+	if instanceID == 1 && m.source.Hash != "" {
+		source := m.source
+		views = append([]qbittorrent.CrossInstanceTorrentView{{TorrentView: &qbittorrent.TorrentView{Torrent: &source}, InstanceID: 1}}, views...)
+	}
+	return views, m.snapshotErr
 }
 
 func (m *tierSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -78,6 +78,12 @@ func tierService(sm *tierSyncManager) *Service {
 	}
 }
 
+// withSize sets the size that qBittorrent reports for a torrent.
+func withSize(torrent qbt.Torrent, size int64) qbt.Torrent {
+	torrent.Size = size
+	return torrent
+}
+
 func tierSingleFileSource() qbt.Torrent {
 	return qbt.Torrent{
 		Hash:        tierSourceHash,
@@ -89,7 +95,7 @@ func tierSingleFileSource() qbt.Torrent {
 
 func findTier(t *testing.T, sm *tierSyncManager) []LocalMatch {
 	t.Helper()
-	response, err := tierService(sm).FindLocalMatches(t.Context(), 1, tierSourceHash, true)
+	response, err := tierService(sm).FindCrossSeeds(t.Context(), 1, tierSourceHash)
 	require.NoError(t, err)
 	return response.Matches
 }
@@ -104,7 +110,7 @@ func requireTier(t *testing.T, matches []LocalMatch, want string) {
 	require.Equal(t, want, matches[0].MatchType)
 }
 
-func TestFindLocalMatches_Tiers(t *testing.T) {
+func TestFindCrossSeeds_Tiers(t *testing.T) {
 	sourceFiles := qbt.TorrentFiles{{Name: tierMovieFile, Size: 1000}}
 	withNfo := qbt.TorrentFiles{{Name: tierMovieFile, Size: 1000}, {Name: "Lantern.Bay.2023.1080p.BluRay.x264-GRP.nfo", Size: 3}}
 	// The candidate name differs from the source name only in its separators,
@@ -212,10 +218,14 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 			want: matchTypeName,
 		},
 		{
-			name:           "retitled upload with paired sizes is a Release copy",
-			source:         tierSingleFileSource(),
-			sourceFiles:    sourceFiles,
-			candidate:      tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv"),
+			name:        "retitled upload with paired sizes is a Release copy",
+			source:      withSize(tierSingleFileSource(), 1000),
+			sourceFiles: sourceFiles,
+			candidate: func() qbittorrent.CrossInstanceTorrentView {
+				candidate := tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv")
+				candidate.Size = 1000
+				return candidate
+			}(),
 			candidateFiles: qbt.TorrentFiles{{Name: "cdn-lanternbay.2023.1080p.bluray.x264.mkv", Size: 1000}},
 			want:           matchTypeRelease,
 		},
@@ -226,6 +236,27 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 			candidate:      tierCandidate(1, "cdn-lanternbay.2023.1080p.bluray.x264.mkv", "/data/cross", "/data/cross/cdn-lanternbay.2023.1080p.bluray.x264.mkv"),
 			candidateFiles: qbt.TorrentFiles{{Name: "cdn-lanternbay.2023.1080p.bluray.x264.mkv", Size: 999}},
 			want:           "",
+		},
+		{
+			// qBittorrent counts only the wanted files in Size, so the deselected
+			// .nfo makes the two Size values differ. The full sizes are equal, so
+			// the exact size class admits the other codec tag.
+			name:   "copy with another codec tag and a deselected nfo pairs by the full torrent size",
+			source: qbt.Torrent{Hash: tierSourceHash, Name: tierSourceName, SavePath: "/data/movies", ContentPath: "/data/movies/" + tierSourceName, Size: 1001, TotalSize: 1001},
+			sourceFiles: qbt.TorrentFiles{
+				{Name: tierSourceName + "/" + tierMovieFile, Size: 1000},
+				{Name: tierSourceName + "/a.nfo", Size: 1},
+			},
+			candidate: func() qbittorrent.CrossInstanceTorrentView {
+				candidate := tierCandidate(1, "Lantern.Bay.2023.1080p.BluRay.x265-GRP", "/data/cross", "/data/cross/Lantern.Bay.2023.1080p.BluRay.x265-GRP")
+				candidate.Size, candidate.TotalSize = 1000, 1001
+				return candidate
+			}(),
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "Lantern.Bay.2023.1080p.BluRay.x265-GRP/Lantern.Bay.2023.1080p.BluRay.x265-GRP.mkv", Size: 1000},
+				{Name: "Lantern.Bay.2023.1080p.BluRay.x265-GRP/a.nfo", Size: 1},
+			},
+			want: matchTypeRelease,
 		},
 		{
 			name:        "unrelated torrent in an ambiguous shared folder is not a cross-seed",
@@ -257,7 +288,7 @@ func TestFindLocalMatches_Tiers(t *testing.T) {
 
 // A hardlinked cross-seed keeps its Hardlink badge even when an extra file
 // stops its sizes from pairing with the source.
-func TestFindLocalMatches_HardlinkWithExtraFile(t *testing.T) {
+func TestFindCrossSeeds_HardlinkWithExtraFile(t *testing.T) {
 	sourceDir, candidateDir := writeHardlinkFixture(t, tierMovieFile, true)
 	source := qbt.Torrent{
 		Hash:        tierSourceHash,
@@ -282,12 +313,12 @@ func TestFindLocalMatches_HardlinkWithExtraFile(t *testing.T) {
 	svc.instanceStore = newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true})
 	svc.syncManager = sm
 
-	response, err := svc.FindLocalMatches(t.Context(), 1, tierSourceHash, true)
+	response, err := svc.FindCrossSeeds(t.Context(), 1, tierSourceHash)
 	require.NoError(t, err)
 	requireTier(t, response.Matches, matchTypeHardlink)
 }
 
-func TestFindLocalMatches_CrossInstancePathOnlyFetchFailure(t *testing.T) {
+func TestFindCrossSeeds_CrossInstancePathOnlyFetchFailure(t *testing.T) {
 	for _, candidatePath := range []string{"/data/movies", "/data/movies/" + tierMovieFile, "/data/movies/" + tierMovieFile + "/extra.mkv"} {
 		t.Run(candidatePath, func(t *testing.T) {
 			sm := &tierSyncManager{
@@ -305,8 +336,8 @@ func TestFindLocalMatches_CrossInstancePathOnlyFetchFailure(t *testing.T) {
 	}
 }
 
-// A failed candidate file fetch fails the delete dialog and is skipped in the tab.
-func TestFindLocalMatches_CandidateFetchFailure(t *testing.T) {
+// A failed candidate file fetch fails the tab.
+func TestFindCrossSeeds_CandidateFetchFailure(t *testing.T) {
 	sm := &tierSyncManager{
 		files: map[string]qbt.TorrentFiles{
 			normalizeHash(tierSourceHash): {{Name: tierMovieFile, Size: 1000}},
@@ -316,10 +347,6 @@ func TestFindLocalMatches_CandidateFetchFailure(t *testing.T) {
 		failHashes: map[string]bool{normalizeHash(tierCandidateHash): true},
 	}
 
-	_, err := tierService(sm).FindLocalMatches(t.Context(), 1, tierSourceHash, true)
-	require.ErrorContains(t, err, "failed to verify local file relationship")
-
-	response, err := tierService(sm).FindLocalMatches(t.Context(), 1, tierSourceHash, false)
-	require.NoError(t, err)
-	require.Empty(t, response.Matches)
+	_, err := tierService(sm).FindCrossSeeds(t.Context(), 1, tierSourceHash)
+	require.ErrorContains(t, err, "read the file list of torrent "+tierCandidateHash)
 }

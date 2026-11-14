@@ -14,7 +14,7 @@ import (
 // detectSkippedFiles reports which torrents have at least one file set to
 // "Do not download" (priority 0). Torrents whose file list could not be fetched
 // get no entry, so HAS_SKIPPED_FILES never matches them.
-func (s *Service) detectSkippedFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) (map[string]bool, error) {
+func (s *Service) detectSkippedFiles(ctx context.Context, instanceID int, torrents []*qbt.Torrent) (map[string]bool, error) {
 	hashes := make([]string, 0, len(torrents))
 	for _, t := range torrents {
 		hashes = append(hashes, t.Hash)
