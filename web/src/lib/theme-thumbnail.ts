@@ -29,12 +29,13 @@ const VAR_REFERENCE = /^var\(\s*(--[\w-]+)\s*\)$/
 export function themeThumbnailPalette(theme: Theme, dark: boolean, variation: string | null): ThemeThumbnailPalette {
   const own = dark && !theme.lightOnly ? theme.cssVars.dark : theme.cssVars.light
   const root = theme.cssVars.light
+  const token = (name: string): string | undefined => own[name] ?? root[name]
   const lookup = (name: string): string | undefined => {
     if (name === "--variation-color") {
       const id = variation && theme.variations?.includes(variation) ? variation : theme.variations?.[0]
-      return id ? lookup(`--variation-${id}`) : undefined
+      return id ? token(`--variation-${id}`) : undefined
     }
-    return own[name] ?? root[name]
+    return token(name)
   }
   const resolve = (name: string): string | undefined => {
     let value = lookup(name)

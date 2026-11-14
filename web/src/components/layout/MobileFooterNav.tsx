@@ -630,7 +630,7 @@ export function MobileFooterNav() {
             {/* Mode Selection */}
             <div>
               <div className="text-sm font-medium mb-2">{t("themeToggle.mode")}</div>
-              <div role="radiogroup" aria-label={t("themeToggle.mode")} className="grid grid-cols-3 gap-1">
+              <div role="group" aria-label={t("themeToggle.mode")} className="grid grid-cols-3 gap-1">
                 {([
                   { mode: "light", icon: Sun, label: t("themeToggle.light") },
                   { mode: "dark", icon: Moon, label: t("themeToggle.dark") },
@@ -639,15 +639,14 @@ export function MobileFooterNav() {
                   <button
                     key={mode}
                     type="button"
-                    role="radio"
-                    aria-checked={currentMode === mode}
+                    aria-pressed={currentMode === mode}
                     onClick={() => {
                       handleModeSelect(mode)
                       setShowThemeDialog(false)
                     }}
                     className={cn(
-                      "flex flex-col items-center gap-1 rounded-md px-2 py-2 text-sm transition-colors",
-                      currentMode === mode ? "bg-accent" : "hover:bg-accent/50"
+                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm transition-colors",
+                      currentMode === mode ? "border-primary/50 bg-primary/10 font-medium" : "border-transparent text-muted-foreground hover:bg-accent/50"
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -664,10 +663,11 @@ export function MobileFooterNav() {
                 {viewModes.map((mode) => (
                   <button
                     key={mode}
+                    aria-pressed={viewMode === mode}
                     onClick={() => setViewMode(mode)}
                     className={cn(
-                      "px-3 py-2 rounded-md text-sm transition-colors",
-                      viewMode === mode ? "bg-accent" : "hover:bg-accent/50"
+                      "px-3 py-2 rounded-md border text-sm transition-colors",
+                      viewMode === mode ? "border-primary/50 bg-primary/10 font-medium" : "border-transparent text-muted-foreground hover:bg-accent/50"
                     )}
                   >
                     {isMobile
@@ -701,7 +701,7 @@ export function MobileFooterNav() {
                         className={cn(
                           "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
                           !isCurrent && "hover:bg-accent/50",
-                          isLocked && "cursor-not-allowed"
+                          isLocked && "cursor-not-allowed opacity-60"
                         )}
                       >
                         <QuickThemeRow
