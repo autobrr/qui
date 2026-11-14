@@ -36,7 +36,10 @@
     "buffer": "Marge {{buffer}}",
     "crossSeed": "De cross-seeds",
     "crossSeedShare": "{{percent}} % de la pujada",
-    "change": "{{change}} respecte al període anterior"
+    "change": "{{change}} respecte al període anterior",
+    "unique": "Mida única",
+    "uniqueTotal": "{{size}} amb cada còpia sencera",
+    "uniqueNone": "Cap càlcul de grups de còpies en aquest període"
   },
   "chart": {
     "title": "Transferència al llarg del temps",
@@ -122,5 +125,16 @@
     "note": "Un torrent suprimit conserva el seu lloc amb el seu nom. Un torrent compta per al tracker que té ara. Primeres 24 hores és la pujada de les 24 hores després d'afegir-lo. El valor és buit quan qui va veure el torrent per primer cop després.",
     "utcNote": "Cada barra és un dia UTC.",
     "yearNote": "Cada barra és un dia UTC, llevat de la barra d'un any: després de la retenció del detall, qui conserva un sol nombre per torrent i any."
+  },
+  "growth": {
+    "title": "Creixement de la biblioteca",
+    "description": "Torrents: {{torrents}}. Mida total i mida única per a cada dia UTC.",
+    "descriptionEmpty": "Mida total i mida única per a cada dia UTC.",
+    "totalSize": "Mida total",
+    "uniqueSize": "Mida única",
+    "torrents": "Torrents",
+    "noValue": "Sense valor",
+    "empty": "qui no ha desat cap mida de biblioteca en aquest període.",
+    "gapNote": "Un buit a la línia de la mida única és un dia sense cap càlcul complet dels grups de còpies."
   }
 }

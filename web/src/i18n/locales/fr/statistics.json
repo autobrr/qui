@@ -36,7 +36,10 @@
     "buffer": "Marge {{buffer}}",
     "crossSeed": "Des cross-seeds",
     "crossSeedShare": "{{percent}} % de l’envoi",
-    "change": "{{change}} par rapport à la période précédente"
+    "change": "{{change}} par rapport à la période précédente",
+    "unique": "Taille unique",
+    "uniqueTotal": "{{size}} avec chaque copie en entier",
+    "uniqueNone": "Aucun calcul des groupes de copies sur cette période"
   },
   "chart": {
     "title": "Transfert dans le temps",
@@ -122,5 +125,16 @@
     "note": "Un torrent supprimé garde sa place avec son nom. Un torrent compte pour le tracker qu'il a maintenant. Premières 24 heures est l'envoi des 24 heures après l'ajout. La valeur est vide quand qui a vu le torrent pour la première fois après celles-ci.",
     "utcNote": "Chaque barre est un jour UTC.",
     "yearNote": "Chaque barre est un jour UTC, sauf la barre d'une année : après la rétention des détails, qui garde un seul nombre par torrent et par année."
+  },
+  "growth": {
+    "title": "Croissance de la bibliothèque",
+    "description": "Torrents : {{torrents}}. Taille totale et taille unique pour chaque jour UTC.",
+    "descriptionEmpty": "Taille totale et taille unique pour chaque jour UTC.",
+    "totalSize": "Taille totale",
+    "uniqueSize": "Taille unique",
+    "torrents": "Torrents",
+    "noValue": "Aucune valeur",
+    "empty": "qui n'a enregistré aucune taille de bibliothèque sur cette période.",
+    "gapNote": "Un trou dans la ligne de la taille unique est un jour sans calcul terminé des groupes de copies."
   }
 }

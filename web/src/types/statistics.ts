@@ -59,6 +59,18 @@ export interface TransferHistoryInstance {
   firstRecordedAt: string
 }
 
+/** The library of one instance on one UTC day. The sizes and the count are absent when qui stored no value for the day. */
+export interface TransferHistoryLibraryRow {
+  day: string
+  torrents?: number
+  totalSize?: number
+  /** Absent for a day without a completed Copy groups build. */
+  uniqueSize?: number
+  added: number
+  completed: number
+  deleted: number
+}
+
 /** The torrents of one Tracker group that are in qBittorrent now. uploaded is their lifetime upload. */
 export interface LiveTrackerGroup {
   group: string

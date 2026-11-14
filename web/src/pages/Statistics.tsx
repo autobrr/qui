@@ -6,12 +6,14 @@
 import { PageHeader } from "@/components/layout/PageHeader"
 import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
+import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
 import { getLinuxCategoryName, getLinuxReleaseGroup, getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
@@ -34,8 +36,9 @@ import {
   type StatisticsPeriod,
   type TopTorrent
 } from "@/lib/statistics"
-import { formatBytes } from "@/lib/utils"
-import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryRow } from "@/types"
+import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
+import { cn, formatBytes } from "@/lib/utils"
+import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
 import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
@@ -68,7 +71,7 @@ function combineLiveGroups(results: UseQueryResult<LiveTrackerGroup[]>[]): LiveG
   }
 }
 
-/** The rows of the five queries of the page, for one period and one selection. */
+/** The rows of the queries of the page, for one period and one selection. */
 interface PageRows {
   // The period choice and the selected instances.
   series: string
@@ -80,6 +83,7 @@ interface PageRows {
   // The rows of the table when it does not group by Tracker group.
   grouped?: TransferHistoryRow[][]
   torrents?: TopTorrent[]
+  library?: TransferHistoryLibraryRow[][]
 }
 
 // The number of torrents of the Top torrents card.
@@ -141,12 +145,11 @@ export function Statistics() {
   const byTracker = grouping === "tracker"
   const grouped = useTransferHistoryRows(selected, ready && !byTracker ? { from: period.from, to: period.to, bucket: "total", groupBy: grouping } : undefined)
   const top = useTopTorrents(selected, period, TOP_TORRENTS)
+  const library = useTransferHistoryLibrary(selected, ready ? { from: period.from, to: period.to } : undefined)
 
   // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
-  const liveIds = useMemo(() => {
-    const active = new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id))
-    return selected.map(status => status.instanceId).filter(id => active.has(id))
-  }, [instancesQuery.data, selected])
+  const activeIds = useMemo(() => new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id)), [instancesQuery.data])
+  const liveIds = useMemo(() => selected.map(status => status.instanceId).filter(id => activeIds.has(id)), [activeIds, selected])
   const live = useQueries({
     queries: liveIds.map(instanceId => ({
       queryKey: ["tracker-groups", instanceId],
@@ -161,13 +164,13 @@ export function Statistics() {
   // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
   // so that the numbers never mix two periods or two selections.
   const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}:${grouping}`
-  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (byTracker || grouped.rows !== undefined) && top.torrents !== undefined
+  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (byTracker || grouped.rows !== undefined) && top.torrents !== undefined && library.rows !== undefined
   const [lastComplete, setLastComplete] = useState<PageRows>()
-  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.grouped !== grouped.rows || lastComplete?.torrents !== top.torrents)) {
-    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents })
+  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.grouped !== grouped.rows || lastComplete?.torrents !== top.torrents || lastComplete?.library !== library.rows)) {
+    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents, library: library.rows })
   }
-  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? grouped.error ?? top.error) && lastComplete?.series === series
-  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents }
+  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? grouped.error ?? top.error ?? library.error) && lastComplete?.series === series
+  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents, library: library.rows }
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
@@ -182,6 +185,18 @@ export function Statistics() {
     const range = chartRange(shown.period, since)
     return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
   }, [shown.chart, shown.period, since])
+
+  const libraryPoints = useMemo(
+    () => shown.library && buildLibraryPoints(shown.library, shown.period, selected.map(status => ({
+      firstRecordedAt: status.firstRecordedAt,
+      // Until the instances load, each instance counts as recorded, so that a sum never leaves one out.
+      recording: instancesQuery.data === undefined || activeIds.has(status.instanceId),
+    }))),
+    [shown.library, shown.period, selected, activeIds, instancesQuery.data]
+  )
+  const unique = libraryPoints && newestUniqueSize(libraryPoints)
+  const newestCount = [...libraryPoints ?? []].reverse().find(point => point.torrents !== null)?.torrents ?? undefined
+  const growthError = statusQuery.error ?? library.error
 
   // The tracker rows of the table add up the rows of the chart, so that they add up to the numbers at the top.
   const tableRows = useMemo(() => {
@@ -249,7 +264,8 @@ export function Statistics() {
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* A phone shows the five numbers as lines of one card. Six tracks give rows of 3 and 2 without an empty cell. */}
+      <div className="grid max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5">
         <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
         <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
         <Tile
@@ -261,6 +277,13 @@ export function Statistics() {
           label={t("tiles.crossSeed")}
           value={totals && formatBytes(totals.statisticsCrossSeedUploaded)}
           hint={totals && totals.uploaded > 0 ? t("tiles.crossSeedShare", { percent: Math.round((totals.statisticsCrossSeedUploaded / totals.uploaded) * 100) }) : undefined}
+          wide
+        />
+        <Tile
+          label={t("tiles.unique")}
+          value={unique && formatBytes(unique.uniqueSize)}
+          hint={unique ? t("tiles.uniqueTotal", { size: formatBytes(unique.totalSize) }) : libraryPoints && libraryPoints.length > 0 && t("tiles.uniqueNone")}
+          wide
         />
       </div>
 
@@ -329,6 +352,29 @@ export function Statistics() {
         </div>
       </Card>
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("growth.title")}</CardTitle>
+            <CardDescription>{newestCount !== undefined ? t("growth.description", { torrents: newestCount.toLocaleString(locale) }) : t("growth.descriptionEmpty")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {growthError ? (
+              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
+            ) : !libraryPoints ? (
+              <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            ) : libraryPoints.length > 0 ? (
+              <>
+                <LibraryGrowthChart points={libraryPoints} />
+                {libraryPoints.some(point => point.totalSize !== null && point.uniqueSize === null) && <p className="pt-2 text-xs text-muted-foreground">{t("growth.gapNote")}</p>}
+              </>
+            ) : (
+              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("growth.empty")}</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="space-y-1 text-xs text-muted-foreground">
         {!period.from && <p>{t("allTimeNote")}</p>}
         <p>{t("serverStatisticsNote")}</p>
@@ -337,13 +383,16 @@ export function Statistics() {
   )
 }
 
-function Tile({ label, value, hint }: { label: string; value?: string; hint?: ReactNode }) {
+function Tile({ label, value, hint, wide = false }: { label: string; value?: string; hint?: ReactNode; wide?: boolean }) {
   return (
-    <Card className="gap-2 py-4">
-      <CardContent className="px-4">
+    <Card className={cn(
+      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:first:border-t-0 xl:col-span-1",
+      wide ? "sm:col-span-3" : "sm:col-span-2"
+    )}>
+      <CardContent className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 px-4 sm:block">
         <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="mt-1 whitespace-nowrap text-2xl font-semibold tabular-nums">{value ?? "–"}</div>
-        <div className="mt-1 min-h-4 text-xs text-muted-foreground">{hint}</div>
+        <div className="whitespace-nowrap text-right text-xl font-semibold tabular-nums sm:mt-1 sm:text-left sm:text-2xl">{value ?? "–"}</div>
+        <div className="col-start-2 text-right text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:text-left sm:empty:block">{hint}</div>
       </CardContent>
     </Card>
   )
