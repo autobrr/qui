@@ -428,7 +428,28 @@ func (m *Module) load(instanceID int) (*instance, error) {
 	if err := m.dropStoredCauses(ctx, instanceID); err != nil {
 		return nil, err
 	}
-	return newInstance(instanceID, row, records), nil
+	inst := newInstance(instanceID, row, records)
+	if row == nil {
+		return inst, nil
+	}
+	// A write after this time lacks parts. A delete that one of its parts
+	// stored is newer than the complete reading.
+	since := row.FirstRecordedAt
+	if row.CompleteReadingAt != nil {
+		since = *row.CompleteReadingAt
+	}
+	if !since.Before(row.LastReadingAt) {
+		return inst, nil
+	}
+	deletes, err := m.store.DeleteEventsSince(ctx, instanceID, since.Unix()+1)
+	if err != nil {
+		return nil, err
+	}
+	inst.deletedLate = make(map[string]struct{}, len(deletes))
+	for key := range deletes {
+		inst.deletedLate[key.Hash] = struct{}{}
+	}
+	return inst, nil
 }
 
 type writeOutcome int

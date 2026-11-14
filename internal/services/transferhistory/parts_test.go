@@ -57,6 +57,7 @@ func waitFor(t *testing.T, module *transferhistory.Module) {
 // write and notes whether it completed, with its error.
 type otherWriteBetweenParts struct {
 	*database.DB
+	mu         sync.Mutex
 	writes     int
 	otherDone  chan error
 	beforeLast bool
@@ -64,6 +65,8 @@ type otherWriteBetweenParts struct {
 }
 
 func (o *otherWriteBetweenParts) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.writes++
 	if o.writes == 3 {
 		select {
@@ -95,6 +98,8 @@ func TestAnotherWriteRunsBetweenThePartsOfAFirstWritePostgresIntegration(t *test
 		module.Record(*reading(at(0), onOwnTracker("a", 1000), onOwnTracker("b", 2000), onOwnTracker("c", 3000)).reading)
 		waitFor(t, module)
 
+		other.mu.Lock()
+		defer other.mu.Unlock()
 		require.GreaterOrEqual(t, other.writes, 3, "the first write needs 3 parts")
 		require.True(t, other.beforeLast, "the other write completes before the last part")
 		require.NoError(t, other.otherErr)
@@ -121,9 +126,11 @@ const (
 	passesLimit
 )
 
-// faultyPart applies fault to the write transaction with the number at.
+// faultyPart applies fault to the write transaction with the number at. A
+// fold reads beside the worker, so mu guards the counts.
 type faultyPart struct {
 	*database.DB
+	mu     sync.Mutex
 	fault  partFault
 	at     int
 	writes int
@@ -131,6 +138,8 @@ type faultyPart struct {
 }
 
 func (f *faultyPart) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.writes++
 	if f.writes == f.at {
 		switch f.fault {
@@ -150,6 +159,8 @@ func (f *faultyPart) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterf
 }
 
 func (f *faultyPart) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.writes == f.at && f.checks == 0 && strings.Contains(query, "SELECT writes") {
 		switch f.fault {
 		case landsLate:
@@ -360,5 +371,35 @@ func TestAStopBetweenTwoPartsAfterAnOutageKeepsTheTransferOfTorrentsAddedInItPos
 		answer, err := module.Transfer(t.Context(), everything)
 		require.NoError(t, err)
 		require.Equal(t, []transferhistory.TransferRow{trackerRow("a", 150, 1000, 0), trackerRow("x", 600, 0, 0), trackerRow("y", 450, 1000, 0)}, answer)
+	})
+}
+
+func TestAStopBetweenTwoPartsCountsTheBytesOfATorrentLeftOutOfOneReadingOncePostgresIntegration(t *testing.T) {
+	t.Parallel()
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		db := newDB(t)
+		customizations := models.NewTrackerCustomizationStore(db)
+		// The first write takes 2 transactions. The write at 2 hours stores
+		// the part of a, which marks a deleted, and then qui stops.
+		stopped := newSplitModule(t, &stopAfter{DB: db, stop: 3}, customizations)
+		t.Cleanup(func() { _ = stopped.Shutdown(context.Background()) })
+		a := addedAt(onOwnTracker("a", 1000), at(-30*time.Minute))
+		for _, s := range []step{
+			reading(at(0), a, onOwnTracker("b", 2000)),
+			// qBittorrent leaves a out of this reading.
+			reading(at(2*time.Hour), onOwnTracker("b", 2050)),
+		} {
+			stopped.Record(*s.reading)
+			waitFor(t, stopped)
+		}
+
+		module := newSplitModule(t, db, customizations)
+		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
+		a.Uploaded = 1100
+		module.Record(*reading(at(2*time.Hour+time.Minute), a, onOwnTracker("b", 2050)).reading)
+
+		answer, err := module.Transfer(t.Context(), everything)
+		require.NoError(t, err)
+		require.Equal(t, []transferhistory.TransferRow{trackerRow("a", 100, 1000, 0), trackerRow("b", 50, 2000, 0)}, answer)
 	})
 }

@@ -82,6 +82,10 @@ type instance struct {
 	// qui did not store can have held its record.
 	completeAt time.Time
 	loaded     bool
+	// deletedLate holds the hash of each record that a part of a write after
+	// completeAt marked deleted. Its stored state is that of the last stored
+	// reading. It is set from a load until the next reading.
+	deletedLate map[string]struct{}
 	// unsure is what the parts whose outcome qui does not know can have
 	// stored, since the last write that stored all its parts.
 	unsure unsure
@@ -143,6 +147,8 @@ func (inst *instance) reset() {
 
 // pass is one reading while apply reads it. first is set for the first
 // reading of the instance, and previous is the time of the reading before.
+// After a load, previous is the time of the complete reading, and
+// lastReading the time of the last stored reading.
 // baselineOpen is set when the stored first write lacks parts, so a torrent
 // without a record can be one that qBittorrent had at the first recording.
 type pass struct {
@@ -150,6 +156,8 @@ type pass struct {
 	first        bool
 	baselineOpen bool
 	previous     time.Time
+	lastReading  time.Time
+	deletedLate  map[string]struct{}
 	mapper       *trackergroup.Mapper
 	hashes       map[string]struct{}
 }
@@ -169,9 +177,10 @@ func (p *pass) present(hash string) bool {
 // changes. It takes each note in notes whose torrent is gone, and drops each
 // note that is too old.
 func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *releases.Parser, notes map[string][]deleteNote) {
-	p := &pass{reading: &r, first: inst.firstRecordedAt.IsZero(), previous: inst.lastReadingAt, mapper: mapper}
+	p := &pass{reading: &r, first: inst.firstRecordedAt.IsZero(), previous: inst.lastReadingAt, lastReading: inst.lastReadingAt, mapper: mapper}
 	if inst.loaded {
-		p.previous, p.baselineOpen = inst.completeAt, inst.completeAt.IsZero()
+		p.previous, p.baselineOpen, p.deletedLate = inst.completeAt, inst.completeAt.IsZero(), inst.deletedLate
+		inst.deletedLate = nil
 	}
 	if p.first {
 		inst.firstRecordedAt = r.Time
@@ -270,6 +279,9 @@ func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryReco
 			inst.changeHash(magnet, t.Hash)
 			rec = magnet
 		case returned != nil:
+			if _, late := p.deletedLate[t.Hash]; late {
+				leftOut = t.AddedAt.Before(p.lastReading.Add(-clockSkew))
+			}
 			inst.addAgain(returned, t, p.reading.Time, leftOut)
 			rec, added = returned, true
 		default:
