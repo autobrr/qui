@@ -160,7 +160,7 @@ export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, 
                             disabled={inUse}
                             onCheckedChange={(checked) => setShown([theme], checked === true)}
                           />
-                          <ThemeThumbnail palette={paletteOf(theme)} className="w-10 shrink-0 rounded-sm" />
+                          <ThemeThumbnail palette={paletteOf(theme)} detail="compact" className="w-10 shrink-0 rounded-sm" />
                           <span className="min-w-0 flex-1 truncate text-sm">{theme.name}</span>{" "}
                           {theme.locked && (
                             <>

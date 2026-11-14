@@ -26,7 +26,7 @@ export function QuickThemeRow({ theme, palette, variations, isCurrent }: QuickTh
   const { t } = useTranslation("settings")
   return (
     <span className="flex min-w-0 items-center gap-2.5">
-      <ThemeThumbnail palette={palette} className={cn("w-10 shrink-0 rounded-sm", theme.locked && "opacity-60")} />
+      <ThemeThumbnail palette={palette} detail="compact" className={cn("w-10 shrink-0 rounded-sm", theme.locked && "opacity-60")} />
       <span className="min-w-0 flex-1 whitespace-normal break-words">{theme.name}</span>
       {!isCurrent && !theme.locked && variations.length > 1 && (
         <span className="flex shrink-0 -space-x-1">
