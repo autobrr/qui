@@ -35,6 +35,9 @@ type TransferHistoryInstance struct {
 	LastReadingAt   time.Time
 	// Writes is the number of writes that stored the instance.
 	Writes int64
+	// CompleteReadingAt is the time of the last reading that a write stored
+	// with all its parts, or nil while the first write lacks parts.
+	CompleteReadingAt *time.Time
 }
 
 // TransferHistoryRecord is the stored record of one torrent. ID is 0 until a
@@ -196,17 +199,20 @@ type TransferHistoryWrite struct {
 	LastReadingAt   time.Time
 	// Number is the number of this write of the instance: one more than the
 	// stored writes.
-	Number        int64
-	Records       []*TransferHistoryRecord
-	Counters      []*TransferHistoryRecord
-	TorrentDays   []TransferHistoryTorrentDay
-	TrackerHours  []TransferHistoryTotal
-	CategoryDays  []TransferHistoryTotal
-	Gaps          []TransferHistoryGap
-	HashChanges   []TransferHistoryHashChange
-	Events        []TransferHistoryEvent
-	LibraryDays   []TransferHistoryLibraryDay
-	InstanceHours []TransferHistoryInstanceHour
+	Number int64
+	// CompleteReadingAt is the stored CompleteReadingAt of the instance after
+	// this write.
+	CompleteReadingAt *time.Time
+	Records           []*TransferHistoryRecord
+	Counters          []*TransferHistoryRecord
+	TorrentDays       []TransferHistoryTorrentDay
+	TrackerHours      []TransferHistoryTotal
+	CategoryDays      []TransferHistoryTotal
+	Gaps              []TransferHistoryGap
+	HashChanges       []TransferHistoryHashChange
+	Events            []TransferHistoryEvent
+	LibraryDays       []TransferHistoryLibraryDay
+	InstanceHours     []TransferHistoryInstanceHour
 }
 
 // TransferHistoryBaseline is the Baseline of the torrents that share a key.
@@ -234,15 +240,19 @@ var ErrTransferHistoryWriteNumber = errors.New("transfer history write number do
 // history, and its records.
 func (s *TransferHistoryStore) LoadInstance(ctx context.Context, instanceID int) (*TransferHistoryInstance, []*TransferHistoryRecord, error) {
 	inst := TransferHistoryInstance{InstanceID: instanceID}
+	var complete sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
-		SELECT name, first_recorded_at, last_reading_at, writes
+		SELECT name, first_recorded_at, last_reading_at, writes, complete_reading_at
 		FROM transfer_history_instances
-		WHERE instance_id = ?`, instanceID).Scan(&inst.Name, &inst.FirstRecordedAt, &inst.LastReadingAt, &inst.Writes)
+		WHERE instance_id = ?`, instanceID).Scan(&inst.Name, &inst.FirstRecordedAt, &inst.LastReadingAt, &inst.Writes, &complete)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, nil
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("load transfer history instance: %w", err)
+	}
+	if complete.Valid {
+		inst.CompleteReadingAt = &complete.Time
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
@@ -300,14 +310,15 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO transfer_history_instances (instance_id, name, first_recorded_at, last_reading_at, writes)
-		VALUES (?, COALESCE((SELECT name FROM instances_view WHERE id = ?), ''), ?, ?, ?)
+		INSERT INTO transfer_history_instances (instance_id, name, first_recorded_at, last_reading_at, writes, complete_reading_at)
+		VALUES (?, COALESCE((SELECT name FROM instances_view WHERE id = ?), ''), ?, ?, ?, ?)
 		ON CONFLICT (instance_id) DO UPDATE SET
 			name = COALESCE((SELECT name FROM instances_view WHERE id = excluded.instance_id), transfer_history_instances.name),
 			last_reading_at = excluded.last_reading_at,
-			writes = excluded.writes
+			writes = excluded.writes,
+			complete_reading_at = excluded.complete_reading_at
 		WHERE transfer_history_instances.writes = excluded.writes - 1`,
-		w.InstanceID, w.InstanceID, w.FirstRecordedAt, w.LastReadingAt, w.Number)
+		w.InstanceID, w.InstanceID, w.FirstRecordedAt, w.LastReadingAt, w.Number, w.CompleteReadingAt)
 	if err != nil {
 		return nil, fmt.Errorf("write transfer history instance: %w", err)
 	}

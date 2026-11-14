@@ -736,15 +736,18 @@ func TestRecordingStoppedClosesWhenAnInstanceWithAnUnknownWriteIsNoLongerRead(t 
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	notices := systemnotice.New(nil)
-	// The second write loses the answer of its commit and of the check
-	// after it, so the module drops the changes of instance 2 from memory.
-	module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), notices)
+	// The third write loses the answer of its commit and of the check after
+	// it. It holds transfer of instance 2, so the module drops the changes of
+	// instance 2 from memory.
+	module := transferhistory.New(&failedCommit{DB: db, fail: 3, failCheck: true}, models.NewTrackerCustomizationStore(db), notices)
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
-	gone := *reading(at(time.Minute), torrent("b", 0, 0)).reading
-	gone.InstanceID = instanceID + 1
-	module.Record(gone)
+	for _, r := range []step{reading(at(time.Minute), torrent("b", 0, 0)), reading(at(6*time.Minute), torrent("b", 100, 0))} {
+		gone := *r.reading
+		gone.InstanceID = instanceID + 1
+		module.Record(gone)
+	}
 	_, err := module.Status(t.Context())
 	require.NoError(t, err)
 	require.Len(t, notices.List(), 1)
