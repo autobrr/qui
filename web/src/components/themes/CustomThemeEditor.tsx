@@ -168,7 +168,6 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
     try {
       const saved = target.kind === "edit" || replace ? await api.replaceCustomTheme(id, css) : await api.createCustomTheme(id, css)
       savedId = saved.id
-      await refreshCustomThemes(queryClient)
     } catch (error) {
       if (target.kind === "new" && !replace && error instanceof APIError && error.status === 409) {
         dispatch({ type: "conflict" })
@@ -178,6 +177,13 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
       return
     }
 
+    try {
+      await refreshCustomThemes(queryClient)
+    } catch {
+      toast.error(t("themes.custom.editor.savedNotLoaded"))
+      onClose()
+      return
+    }
     if (target.kind === "new") {
       await setTheme(`${CUSTOM_THEME_PREFIX}${savedId}`)
     }

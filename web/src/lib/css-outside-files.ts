@@ -75,7 +75,7 @@ export function findOutsideFile(css: string): OutsideFile | null {
         if (/["'\\(]/.test(target)) return { line: urlLine, kind: "unreadable" }
         while (pos < end) advance()
       }
-      const t = target.trim().toLowerCase()
+      const t = target.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, "").toLowerCase()
       if (!t.startsWith("data:") && !t.startsWith("#")) return { line: urlLine, kind: "outside-file" }
     } else {
       advance()

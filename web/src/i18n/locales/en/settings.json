@@ -710,6 +710,7 @@
         "nameInvalid": "Enter a name with a letter or a digit.",
         "save": "Save",
         "saved": "Theme saved",
+        "savedNotLoaded": "The theme is saved, but qui could not load the theme list. Click Refresh in the Custom Themes box.",
         "replaceTitle": "Replace the theme?",
         "replaceDescription": "A custom theme with the file name {{filename}} exists. Replace it with this theme?",
         "replace": "Replace",

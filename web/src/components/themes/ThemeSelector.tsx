@@ -33,7 +33,7 @@ import { buildThemePrompt } from "@/lib/theme-prompt"
 import { copyTextToClipboard } from "@/lib/utils"
 import { refreshCustomThemes } from "@/hooks/useCustomThemes"
 import { Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw, Eye, EyeOff, Plus, Sparkles, Pencil, Trash2, Info } from "lucide-react"
-import { useId, useState } from "react"
+import { useId, useRef, useState } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -256,6 +256,7 @@ export function ThemeSelector() {
   const defaultThemeVisit = useDefaultThemeVisit()
   const queryClient = useQueryClient()
   const [editorTarget, setEditorTarget] = useState<CustomThemeEditorTarget | null>(null)
+  const editorRequest = useRef(0)
   const [removeTarget, setRemoveTarget] = useState<CustomThemeFileRef | null>(null)
 
   const removeTheme = useMutation({
@@ -286,8 +287,15 @@ export function ThemeSelector() {
   }
   // Edit reads the file again, because it can have changed by hand on the server. A failed read opens the copy of the picker.
   const editTheme = async (file: CustomThemeFileRef) => {
+    const request = ++editorRequest.current
     const fresh = await refreshCustomThemes(queryClient).catch(() => [])
+    // A later New theme or Edit wins over this one.
+    if (request !== editorRequest.current) return
     setEditorTarget({ kind: "edit", id: file.id, css: fresh.find(theme => theme.id === file.id)?.css ?? file.css })
+  }
+  const newTheme = () => {
+    editorRequest.current++
+    setEditorTarget({ kind: "new" })
   }
 
   // The server is the authority: a premium theme without a license arrives as
@@ -461,7 +469,7 @@ export function ThemeSelector() {
               </Button>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => setEditorTarget({ kind: "new" })}>
+                <Button size="sm" onClick={newTheme}>
                   <Plus className="mr-1 h-3 w-3" />
                   {t("themes.custom.newTheme")}
                 </Button>

@@ -710,6 +710,7 @@
         "nameInvalid": "Saisissez un nom contenant une lettre ou un chiffre.",
         "save": "Enregistrer",
         "saved": "Thème enregistré",
+        "savedNotLoaded": "Le thème est enregistré, mais qui n'a pas pu charger la liste des thèmes. Cliquez sur Actualiser dans le cadre Thèmes personnalisés.",
         "replaceTitle": "Remplacer le thème ?",
         "replaceDescription": "Un thème personnalisé avec le nom de fichier {{filename}} existe déjà. Le remplacer par ce thème ?",
         "replace": "Remplacer",

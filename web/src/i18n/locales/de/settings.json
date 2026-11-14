@@ -710,6 +710,7 @@
         "nameInvalid": "Gib einen Namen mit einem Buchstaben oder einer Ziffer ein.",
         "save": "Speichern",
         "saved": "Theme gespeichert",
+        "savedNotLoaded": "Das Theme ist gespeichert, aber qui konnte die Theme-Liste nicht laden. Klicke im Bereich Eigene Themes auf Aktualisieren.",
         "replaceTitle": "Theme ersetzen?",
         "replaceDescription": "Ein eigenes Theme mit dem Dateinamen {{filename}} existiert bereits. Durch dieses Theme ersetzen?",
         "replace": "Ersetzen",

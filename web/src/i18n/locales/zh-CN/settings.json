@@ -708,6 +708,7 @@
         "nameInvalid": "请输入包含字母或数字的名称。",
         "save": "保存",
         "saved": "主题已保存",
+        "savedNotLoaded": "主题已保存，但 qui 无法加载主题列表。请在“自定义主题”框中点击刷新。",
         "replaceTitle": "要替换此主题吗？",
         "replaceDescription": "已存在文件名为 {{filename}} 的自定义主题。要用此主题替换它吗？",
         "replace": "替换",

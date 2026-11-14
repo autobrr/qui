@@ -708,6 +708,7 @@
         "nameInvalid": "請輸入包含字母或數字的名稱。",
         "save": "儲存",
         "saved": "主題已儲存",
+        "savedNotLoaded": "主題已儲存，但 qui 無法載入主題清單。請在「自訂主題」區塊中點選重新整理。",
         "replaceTitle": "要取代此主題嗎？",
         "replaceDescription": "已存在檔名為 {{filename}} 的自訂主題。要用此主題取代它嗎？",
         "replace": "取代",

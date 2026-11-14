@@ -5,7 +5,7 @@
 
 import type { Theme } from "@/config/themes"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react"
 import type { ReactElement } from "react"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -424,6 +424,37 @@ describe("ThemeSelector custom theme editor", () => {
     const repaired = fixture.customThemes[0].rawCss.replace("white", "ivory")
     fireEvent.change(cssField(), { target: { value: repaired } })
     expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(repaired, expect.anything(), false)
+  })
+
+  it("closes with a message when the list does not load after a save, and selects nothing", async () => {
+    const { toast } = await import("sonner")
+    recordCustomThemeApi(() => HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 }))
+    customThemesHook.refreshCustomThemes.mockRejectedValueOnce(new Error("list failed"))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("themes.custom.editor.savedNotLoaded"))
+    await waitFor(() => expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull())
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  it("keeps a New theme draft when an earlier Edit finishes loading later", async () => {
+    let finishLoad: (files: Array<{ id: string; filename: string; css: string }>) => void = () => {}
+    customThemesHook.refreshCustomThemes.mockReturnValueOnce(new Promise(resolve => { finishLoad = resolve }))
+    render(<ThemeSelector />)
+
+    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    await act(async () => {
+      finishLoad([{ id: "local", filename: "local.css", css: fixture.customThemes[0].rawCss }])
+    })
+
+    expect(cssField().value).toBe(RED_THEME)
+    expect(screen.getByText("themes.custom.editor.newTitle")).toBeTruthy()
   })
 
   it("restores the active theme on Cancel and on Esc", async () => {

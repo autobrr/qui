@@ -712,6 +712,7 @@
         "nameInvalid": "Zadejte název, který obsahuje písmeno nebo číslici.",
         "save": "Uložit",
         "saved": "Motiv uložen",
+        "savedNotLoaded": "Motiv je uložen, ale qui nemohlo načíst seznam motivů. Klikněte na Obnovit v poli Vlastní motivy.",
         "replaceTitle": "Nahradit motiv?",
         "replaceDescription": "Vlastní motiv s názvem souboru {{filename}} už existuje. Nahradit ho tímto motivem?",
         "replace": "Nahradit",

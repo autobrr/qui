@@ -710,6 +710,7 @@
         "nameInvalid": "Inserisci un nome con una lettera o una cifra.",
         "save": "Salva",
         "saved": "Tema salvato",
+        "savedNotLoaded": "Il tema è salvato, ma qui non è riuscito a caricare l'elenco dei temi. Fai clic su Aggiorna nel riquadro Temi personalizzati.",
         "replaceTitle": "Sostituire il tema?",
         "replaceDescription": "Esiste già un tema personalizzato con il nome file {{filename}}. Sostituirlo con questo tema?",
         "replace": "Sostituisci",

@@ -710,6 +710,7 @@
         "nameInvalid": "Introdueix un nom amb una lletra o un dígit.",
         "save": "Desa",
         "saved": "S'ha desat el tema",
+        "savedNotLoaded": "S'ha desat el tema, però qui no ha pogut carregar la llista de temes. Fes clic a Actualitza al quadre Temes personalitzats.",
         "replaceTitle": "Vols substituir el tema?",
         "replaceDescription": "Ja existeix un tema personalitzat amb el nom de fitxer {{filename}}. Vols substituir-lo per aquest tema?",
         "replace": "Substitueix",

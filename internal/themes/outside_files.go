@@ -141,7 +141,7 @@ func (s *outsideFileScanner) checkURL() error {
 		}
 	}
 
-	lower := strings.ToLower(strings.TrimSpace(target))
+	lower := strings.ToLower(strings.Trim(target, " \t\n\r\f"))
 	if strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "#") {
 		return nil
 	}

@@ -21,6 +21,8 @@ const CUSTOM_THEMES_KEY = ["custom-themes"]
  * moment ago resolves before the next render.
  */
 export async function refreshCustomThemes(queryClient: QueryClient): Promise<CustomThemeFile[]> {
+  // A list request that started before a write can miss it, so it does not answer this one.
+  await queryClient.cancelQueries({ queryKey: CUSTOM_THEMES_KEY })
   const data = await queryClient.fetchQuery({ queryKey: CUSTOM_THEMES_KEY, queryFn: () => api.getCustomThemes(), staleTime: 0 })
   registerCustomThemes(parseCustomThemes(data.themes).themes)
   return data.themes

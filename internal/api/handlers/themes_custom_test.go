@@ -388,6 +388,7 @@ func TestCustomTheme_OutsideFileRule(t *testing.T) {
 		{"escaped import", "@\\69mport 'x.css';", 1, "backslash"},
 		{"line break in a string", "body::after { content: \"a\n@import 'x.css'; b\"; }", 1, "line break"},
 		{"url after a comment", "/* one\n two */ body { background: url(http://example.invalid); }", 2, "url()"},
+		{"no-break space before data:", "body { background: url(\"\u00a0data:image/png;base64,AAAA\"); }", 1, "url()"},
 	}
 	for _, tt := range refused {
 		t.Run(tt.name, func(t *testing.T) {

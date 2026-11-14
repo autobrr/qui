@@ -708,6 +708,7 @@
         "nameInvalid": "문자나 숫자가 포함된 이름을 입력하세요.",
         "save": "저장",
         "saved": "테마를 저장했습니다",
+        "savedNotLoaded": "테마를 저장했지만 qui가 테마 목록을 불러오지 못했습니다. 사용자 지정 테마 상자에서 새로 고침을 클릭하세요.",
         "replaceTitle": "테마를 교체할까요?",
         "replaceDescription": "파일 이름이 {{filename}}인 사용자 지정 테마가 이미 있습니다. 이 테마로 교체할까요?",
         "replace": "교체",
