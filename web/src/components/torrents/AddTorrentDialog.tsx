@@ -6,6 +6,11 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from "@/components/ui/collapsible"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -13,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -25,35 +31,30 @@ import {
 import { Switch } from "@/components/ui/switch"
 import {
   Tabs,
-  TabsContent,
   TabsList,
   TabsTrigger
 } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@/components/ui/tooltip"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
-import { resolveDestinationPath } from "@/lib/save-path"
-import { DestinationFreeSpace } from "@/components/torrents/DestinationFreeSpace"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
-import { useAddTorrentPreferences } from "@/hooks/usePreferenceValues"
+import { useAddTorrentPreferences, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
+import { resolveDestinationPath } from "@/lib/save-path"
 import { cn } from "@/lib/utils"
 import type { AddTorrentResponse, Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
+import { AlertCircle, ChevronDown, FileText, Link, Loader2, Plus, SlidersHorizontal, Upload, X } from "lucide-react"
 import type { Instance as ParsedTorrent } from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
 
+import { CategoryPicker, TagPicker } from "./AddTorrentPickers"
+import { DestinationFreeSpace } from "./DestinationFreeSpace"
 import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
 
 // Extract info hash from magnet link
@@ -164,15 +165,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const { t } = useTranslation("torrents")
   const [internalOpen, setInternalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabValue>("file")
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [newTag, setNewTag] = useState("")
-  const [showFileList, setShowFileList] = useState(false)
-  const [categorySearch, setCategorySearch] = useState("")
-  const [tagSearch, setTagSearch] = useState("")
+  const [showMoreOptions, setShowMoreOptions] = useState(false)
+  const [wasOpen, setWasOpen] = useState(false)
   const [duplicateSummary, setDuplicateSummary] = useState<DuplicateSummary>(() => createEmptyDuplicateSummary())
   const [manualCrossSeedFile, setManualCrossSeedFile] = useState<File | null>(null)
   const [duplicateCheckStatus, setDuplicateCheckStatus] = useState<"idle" | "pending" | "visible">("idle")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const moreOptionsRef = useRef<HTMLDivElement>(null)
   const duplicateCheckRequestRef = useRef(0)
   const duplicateCheckIndicatorTimeoutRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
@@ -193,14 +192,18 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTorrentTmpPath = capabilities?.supportsTorrentTmpPath ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
+  const subcategoriesEnabled = useSubcategoriesEnabled(instanceId, capabilities, false, { enabled: open })
+  // qBittorrent saves a category without a path under its parent's folder since 5.0 (Web API 2.11.2, the
+  // torrent creation capability), and before 5.2 only while subcategories are on.
+  const parentCategoryPaths = (capabilities?.supportsTorrentCreation ?? true) && subcategoriesEnabled
 
-  // Reset tag state when dialog closes
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setShowMoreOptions(false)
+  }
+
   useEffect(() => {
     if (!open) {
-      setSelectedTags([])
-      setNewTag("")
-      setTagSearch("")
-      setShowFileList(false)
       setDuplicateSummary(createEmptyDuplicateSummary())
       setDuplicateCheckStatus("idle")
       if (duplicateCheckIndicatorTimeoutRef.current !== null) {
@@ -438,7 +441,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           duplicate.hash ||
           duplicate.infohash_v1 ||
           duplicate.infohash_v2 ||
-          "Existing torrent"
+          t("addTorrentDialog.duplicate.existingTorrent")
         if (displayName) {
           duplicateNameSet.add(displayName)
         }
@@ -480,11 +483,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
     publishResults()
     finalizeCheck()
-  }, [instanceId, torrents])
+  }, [instanceId, torrents, t])
 
-
-  // Combine API tags with temporarily added new tags and sort alphabetically
-  const allAvailableTags = [...(availableTags || []), ...selectedTags.filter(tag => !availableTags?.includes(tag))].sort()
 
   const duplicateFileEntries = duplicateSummary.fileMatches
   const duplicateUrlEntries = duplicateSummary.urlMatches
@@ -511,7 +511,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         useDownloadPath: tempPathChanged ? data.tempPathEnabled : undefined,
         downloadPath: tempPathChanged && data.tempPathEnabled ? data.tempPath : undefined,
         autoTMM: autoTMM,
-        category: data.category === "__none__" ? undefined : data.category || undefined,
+        category: data.category || undefined,
         tags: data.tags.length > 0 ? data.tags : undefined,
         skipHashCheck: data.skipHashCheck,
         sequentialDownload: data.sequentialDownload,
@@ -594,9 +594,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
       setOpen(false)
       form.reset()
-      setSelectedTags([])
-      setNewTag("")
-      setTagSearch("")
     },
   })
 
@@ -618,9 +615,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       indexerId: undefined as number | undefined,
     },
     onSubmit: async ({ value }) => {
-      // Use the currently selected tags
-      const allTags = [...selectedTags]
-      await mutation.mutateAsync({ ...value, tags: allTags })
+      await mutation.mutateAsync(value)
     },
   })
 
@@ -740,7 +735,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     form.setFieldValue("urls", nextUrls)
 
     if (!nextFiles) {
-      setShowFileList(false)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
@@ -763,7 +757,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     form.setFieldValue("torrentFiles", nextFiles)
 
     if (!nextFiles) {
-      setShowFileList(false)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
@@ -782,7 +775,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       setActiveTab("file")
       form.setFieldValue("torrentFiles", files.length > 0 ? files : null)
       form.setFieldValue("urls", "")
-      setShowFileList(files.length > 0)
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
@@ -791,7 +783,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     } else if (dropPayload.type === "url") {
       const urls = dropPayload.urls.map((url) => url.trim()).filter(Boolean)
       setActiveTab("url")
-      setShowFileList(false)
       form.setFieldValue("urls", urls.join("\n"))
       form.setFieldValue("torrentFiles", null)
       form.setFieldValue("indexerId", dropPayload.indexerId)
@@ -816,6 +807,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     }
   }, [open, form])
 
+
+  const renderDuplicateMatches = (matches: string[]) => (
+    <span className="block text-[11px] text-yellow-700 dark:text-yellow-500">
+      {t("addTorrentDialog.duplicate.matchesExisting", { names: matches.slice(0, 2).join(", ") })}
+      {matches.length > 2 && ` ${t("addTorrentDialog.duplicate.more", { count: matches.length - 2 })}`}
+    </span>
+  )
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <ManualCrossSeedDialog
@@ -837,815 +836,500 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="flex flex-col w-full max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90dvh] sm:max-h-[85dvh] p-0 !translate-y-0 !top-[5dvh] sm:!top-[7.5dvh]">
-        <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
+      <DialogContent className="flex flex-col gap-0 w-full max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90dvh] sm:max-h-[85dvh] p-0 !translate-y-0 !top-[5dvh] sm:!top-[7.5dvh]">
+        <DialogHeader className="px-5 sm:px-6 pt-5 pb-3 flex-shrink-0 text-left">
           <DialogTitle>{t("addTorrentDialog.title")}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="sr-only">
             {t("addTorrentDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6">
+        <div className="flex-1 overflow-y-auto px-5 sm:px-6">
           <form
             onSubmit={(e) => {
               e.preventDefault()
               form.handleSubmit()
             }}
-            className="space-y-4 pb-2"
+            className="space-y-5 pt-1 pb-4"
           >
-            {/* Tab selection */}
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="file" className="gap-2">
-                  <Upload className="h-4 w-4" />
-                  {t("addTorrentDialog.file")}
-                </TabsTrigger>
-                <TabsTrigger value="url" className="gap-2">
-                  <Link className="h-4 w-4" />
-                  {t("addTorrentDialog.url")}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <section className="space-y-3">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="file" className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    {t("addTorrentDialog.file")}
+                  </TabsTrigger>
+                  <TabsTrigger value="url" className="gap-2">
+                    <Link className="h-4 w-4" />
+                    {t("addTorrentDialog.url")}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
 
-            {showDuplicateCheckIndicator && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                {t("addTorrentDialog.duplicate.checking")}
-              </div>
-            )}
-
-            {duplicateSelectionCount > 0 && (
-              <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-muted/60 px-3 py-2">
-                <div className="flex flex-col gap-1 text-sm">
-                  <span className="flex items-center gap-2 font-medium text-yellow-500">
-                    <AlertCircle className="h-4 w-4" />
-                    {t("addTorrentDialog.duplicate.selectionDetected", { count: duplicateSelectionCount })}
-                  </span>
-                  {duplicatePreviewNames.length > 0 ? (
-                    <span className="text-xs text-muted-foreground">
-                      {t("addTorrentDialog.duplicate.existingTorrents", { names: duplicatePreviewNames.join(", ") })}
-                      {duplicatePreviewRemaining > 0 && ` (+${duplicatePreviewRemaining} more)`}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
-                      {t("addTorrentDialog.duplicate.highlightedBelow")}
-                    </span>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="text-yellow-600 border-yellow-600/40 hover:bg-yellow-600/10 hover:text-yellow-700"
-                  onClick={handleRemoveDuplicateSelections}
+              {activeTab === "file" ? (
+                <form.Field
+                  name="torrentFiles"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if ((!value || value.length === 0) && activeTab === "file") {
+                        return t("addTorrentDialog.validation.selectTorrentFile")
+                      }
+                      return undefined
+                    },
+                  }}
                 >
-                  {t("addTorrentDialog.duplicate.remove")}
-                </Button>
-              </div>
-            )}
-
-            {/* Main Content Tabs */}
-            <Tabs defaultValue="basic" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="basic">{t("addTorrentDialog.tabs.basic")}</TabsTrigger>
-                <TabsTrigger value="advanced">{t("addTorrentDialog.tabs.advanced")}</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="basic" className="space-y-4 mt-4">
-                {/* File upload or URL input */}
-                {activeTab === "file" ? (
-                  <form.Field
-                    name="torrentFiles"
-                    validators={{
-                      onChange: ({ value }) => {
-                        if ((!value || value.length === 0) && activeTab === "file") {
-                          return t("addTorrentDialog.validation.selectTorrentFile")
-                        }
-                        return undefined
-                      },
-                    }}
-                  >
-                    {(field) => (
+                  {(field) => {
+                    const files = Array.isArray(field.state.value) ? field.state.value : []
+                    const hasFiles = files.length > 0
+                    return (
                       <div className="space-y-2">
-                        <Label htmlFor="torrentFiles">{t("addTorrentDialog.fileInput.label")}</Label>
+                        <Label htmlFor="torrentFiles" className="sr-only">{t("addTorrentDialog.fileInput.label")}</Label>
                         <div
                           {...getRootProps({
                             className: cn(
-                              "mt-2 border border-dashed rounded-md p-6 cursor-pointer transition-colors backdrop-blur-md",
-                              "data-[drag-active]:border-primary data-[drag-active]:bg-background/10",
-                              "border-border hover:border-primary/30 hover:bg-accent/30"
+                              "border border-dashed rounded-md cursor-pointer transition-colors",
+                              "data-[drag-active]:border-primary data-[drag-active]:bg-primary/5",
+                              "border-border hover:border-primary/40 hover:bg-accent/30",
+                              hasFiles ? "px-3 py-2.5" : "px-4 py-6"
                             ),
                           })}
                           data-drag-active={isDragActive ? "" : undefined}
                         >
                           <input {...getInputProps({ id: "torrentFiles" })} />
-                          <div className="flex flex-col items-center justify-center text-center space-y-2 h-22">
-                            <Upload className="h-8 w-8 text-muted-foreground" />
-                            {isDragActive ? (
-                              <p className="text-sm font-medium">{t("addTorrentDialog.fileInput.dropActive")}</p>
-                            ) : (
-                              <>
-                                <p className="text-sm font-medium">{t("addTorrentDialog.fileInput.dragDrop")}</p>
-                                <p className="text-xs text-muted-foreground">{t("addTorrentDialog.fileInput.browse")}</p>
-                              </>
-                            )}
-                          </div>
+                          {hasFiles ? (
+                            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                              <Plus className="h-4 w-4" />
+                              {isDragActive ? t("addTorrentDialog.fileInput.dropActive") : t("addTorrentDialog.fileInput.addMore")}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center text-center gap-1.5">
+                              <Upload className="h-7 w-7 text-muted-foreground" />
+                              {isDragActive ? (
+                                <p className="text-sm font-medium">{t("addTorrentDialog.fileInput.dropActive")}</p>
+                              ) : (
+                                <>
+                                  <p className="text-sm font-medium sm:hidden">{t("addTorrentDialog.fileInput.choose")}</p>
+                                  <p className="text-sm font-medium hidden sm:block">{t("addTorrentDialog.fileInput.dragDrop")}</p>
+                                  <p className="text-xs text-muted-foreground hidden sm:block">{t("addTorrentDialog.fileInput.browse")}</p>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        {field.state.value && field.state.value.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                            <span>
-                              {t("addTorrentDialog.fileInput.selectedFiles", { count: field.state.value.length })}
-                            </span>
-                            {duplicateFileKeys.length > 0 && (
-                              <span className="flex items-center gap-1 text-xs font-medium text-yellow-500">
-                                <AlertCircle className="h-3 w-3" />
-                                {t("addTorrentDialog.fileInput.duplicateFiles", { count: duplicateFileKeys.length })}
-                              </span>
-                            )}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="text-xs underline hover:text-foreground"
-                                  onClick={() => setShowFileList(!showFileList)}
-                                >
-                                  {showFileList ? t("addTorrentDialog.fileInput.hideFiles") : t("addTorrentDialog.fileInput.showFiles")}
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <div className="max-w-xs">
-                                  {Array.isArray(field.state.value) && field.state.value.slice(0, 3).map((file, index) => {
-                                    const fileKey = createFileKey(file)
-                                    const duplicateInfo = duplicateFileEntries[fileKey]
-                                    return (
-                                      <div
-                                        key={`${fileKey}-${index}`}
-                                        className={`text-xs truncate ${duplicateInfo ? "text-yellow-500" : ""}`}
-                                      >
-                                        • {file.name}
-                                      </div>
-                                    )
-                                  })}
-                                  {field.state.value.length > 3 && (
-                                    <div className="text-xs">{t("addTorrentDialog.fileInput.moreFiles", { count: field.state.value.length - 3 })}</div>
-                                  )}
-                                </div>
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                        )}
-                        {showFileList && field.state.value && field.state.value.length > 0 && (
-                          <div className="max-h-24 overflow-y-auto border rounded-md p-2">
-                            <div className="space-y-1 text-xs">
-                              {Array.isArray(field.state.value) && field.state.value.map((file, index) => {
+
+                        {hasFiles && (
+                          <div className="rounded-md border">
+                            <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
+                              <span>{t("addTorrentDialog.fileInput.selectedFiles", { count: files.length })}</span>
+                              {duplicateFileKeys.length > 0 && (
+                                <span className="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-500">
+                                  <AlertCircle className="h-3 w-3" />
+                                  {t("addTorrentDialog.fileInput.duplicateFiles", { count: duplicateFileKeys.length })}
+                                </span>
+                              )}
+                            </div>
+                            <ul className="max-h-40 overflow-y-auto divide-y">
+                              {files.map((file, index) => {
                                 const fileKey = createFileKey(file)
                                 const duplicateInfo = duplicateFileEntries[fileKey]
-                                const isDuplicate = Boolean(duplicateInfo)
                                 return (
-                                  <div
+                                  <li
                                     key={`${fileKey}-${index}`}
-                                    className={`flex items-start gap-2 rounded-sm px-2 py-1 ${isDuplicate ? "bg-yellow-500/10 text-yellow-600" : "text-muted-foreground"}`}
+                                    className={cn(
+                                      "flex items-center gap-2 pl-3 pr-1 py-1 text-sm",
+                                      duplicateInfo && "bg-yellow-500/10"
+                                    )}
                                   >
-                                    <span className="select-none leading-5">•</span>
-                                    <div className="flex-1 break-all">
-                                      <span>{file.name}</span>
-                                      {isDuplicate && duplicateInfo?.matches.length ? (
-                                        <span className="block text-[11px] text-yellow-700">
-                                          {t("addTorrentDialog.duplicate.matchesExisting", { names: duplicateInfo.matches.slice(0, 2).join(", ") })}
-                                          {duplicateInfo.matches.length > 2 && ` (+${duplicateInfo.matches.length - 2} more)`}
-                                        </span>
-                                      ) : null}
+                                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <div className="min-w-0 flex-1">
+                                      <span className="block break-all">{file.name}</span>
+                                      {duplicateInfo?.matches.length ? renderDuplicateMatches(duplicateInfo.matches) : null}
                                     </div>
-                                    <button
+                                    <Button
                                       type="button"
+                                      variant="ghost"
+                                      size="icon"
                                       onClick={() => handleRemoveFile(index)}
-                                      className="shrink-0 h-5 w-5 rounded-sm hover:bg-destructive/10 hover:text-destructive flex items-center justify-center transition-colors"
+                                      className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8"
+                                      aria-label={t("addTorrentDialog.fileInput.removeFile")}
                                       title={t("addTorrentDialog.fileInput.removeFile")}
                                     >
-                                      <X className="h-3 w-3" />
-                                    </button>
-                                  </div>
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </li>
                                 )
                               })}
-                            </div>
+                            </ul>
                           </div>
                         )}
                         {field.state.meta.isTouched && field.state.meta.errors[0] && (
                           <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                         )}
                       </div>
-                    )}
-                  </form.Field>
-                ) : (
-                  <form.Field
-                    name="urls"
-                    validators={{
-                      onChange: ({ value }) => {
-                        if (!value && activeTab === "url") {
-                          return t("addTorrentDialog.validation.enterUrl")
-                        }
-                        return undefined
-                      },
-                    }}
-                  >
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="urls">{t("addTorrentDialog.urlInput.label")}</Label>
-                        <Textarea
-                          id="urls"
-                          placeholder={t("addTorrentDialog.urlInput.placeholder")}
-                          rows={4}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={(e) => {
-                            field.handleChange(e.target.value)
-                            // Check for duplicates when URLs are entered
-                            checkForDuplicates(form.getFieldValue("torrentFiles"), e.target.value)
-                          }}
-                        />
-                        {duplicateUrlKeys.length > 0 && (
-                          <div className="rounded-md border border-yellow-600/30 bg-yellow-500/5 p-2 space-y-2 text-xs">
-                            {duplicateUrlKeys.map((urlKey) => {
-                              const duplicateInfo = duplicateUrlEntries[urlKey]
-                              if (!duplicateInfo) {
-                                return null
-                              }
-                              return (
-                                <div key={urlKey} className="text-yellow-600 space-y-1">
-                                  <div className="font-medium truncate">{duplicateInfo.label}</div>
-                                  {duplicateInfo.matches.length > 0 && (
-                                    <div className="text-yellow-700 text-[11px]">
-                                      {t("addTorrentDialog.duplicate.matchesExisting", { names: duplicateInfo.matches.slice(0, 2).join(", ") })}
-                                      {duplicateInfo.matches.length > 2 && ` (+${duplicateInfo.matches.length - 2} more)`}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                        )}
-                      </div>
-                    )}
-                  </form.Field>
-                )}
-
-                {activeTab === "file" && (
-                  <form.Subscribe selector={(state) => [state.values.torrentFiles, state.values.urls] as const}>
-                    {([files, urls]) => {
-                      if (!files || !canOfferManualCrossSeed({ fileCount: files.length, urlText: urls ?? "" })) {
-                        return null
+                    )
+                  }}
+                </form.Field>
+              ) : (
+                <form.Field
+                  name="urls"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value && activeTab === "url") {
+                        return t("addTorrentDialog.validation.enterUrl")
                       }
-                      return (
-                        <div className="flex items-center justify-between gap-3 rounded-md border p-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">{t("manualCrossSeed.addOptionTitle")}</p>
-                            <p className="text-xs text-muted-foreground">{t("manualCrossSeed.addOptionDescription")}</p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setManualCrossSeedFile(files[0])}
-                          >
-                            {t("manualCrossSeed.addOptionButton")}
-                          </Button>
-                        </div>
-                      )
-                    }}
-                  </form.Subscribe>
-                )}
-
-                {/* Basic Toggles */}
-                <div className="flex items-center justify-center gap-8">
-                  <form.Field name="startPaused">
-                    {(field) => (
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="startPaused-left"
-                          checked={field.state.value}
-                          onCheckedChange={field.handleChange}
-                        />
-                        <Label htmlFor="startPaused-left">{t("addTorrentDialog.options.startPaused")}</Label>
-                      </div>
-                    )}
-                  </form.Field>
-
-                  <div className="w-px h-6 bg-border" />
-
-                  <form.Field name="skipHashCheck">
-                    {(field) => (
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="skipHashCheck-left"
-                          checked={field.state.value}
-                          onCheckedChange={field.handleChange}
-                        />
-                        <Label htmlFor="skipHashCheck-left">{t("addTorrentDialog.options.skipHashCheck")}</Label>
-                      </div>
-                    )}
-                  </form.Field>
-                </div>
-
-                {/* Category */}
-                <div className="space-y-3">
-                  <form.Field name="category">
-                    {(field) => (
-                      <>
-                        {/* Header with search */}
-                        <div className="flex items-center gap-2 w-full">
-                          <Label className="shrink-0">{t("addTorrentDialog.options.category")}</Label>
-                          <Input
-                            id="categorySearch"
-                            value={categorySearch}
-                            onChange={(e) => setCategorySearch(e.target.value)}
-                            placeholder={t("addTorrentDialog.options.searchCategories")}
-                            className="h-8 text-sm flex-1 min-w-0"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && categorySearch.trim()) {
-                                e.preventDefault()
-                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                const filtered = Object.entries(categories || {}).filter(([_key, cat]) =>
-                                  cat.name.toLowerCase().includes(categorySearch.toLowerCase())
-                                )
-
-                                // If there's exactly one filtered category, select it
-                                if (filtered.length === 1) {
-                                  field.handleChange(filtered[0][1].name)
-                                  setCategorySearch("")
-                                }
-                              }
-                              if (e.key === "Escape") {
-                                setCategorySearch("")
-                              }
-                            }}
-                          />
-                        </div>
-
-                        {/* Available categories */}
-                        {categories && Object.entries(categories).length > 0 && (
-                          <div className="space-y-2">
-                            <Label className="text-xs text-muted-foreground">
-                              {categorySearch
-                                ? t("addTorrentDialog.options.availableCategoriesFiltered", { query: categorySearch })
-                                : t("addTorrentDialog.options.availableCategories")}
-                            </Label>
-                            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-                              {[
-                                // Selected category first (if it matches search)
-                                ...(field.state.value && field.state.value !== "__none__" &&
-                                  (categorySearch === "" || field.state.value.toLowerCase().includes(categorySearch.toLowerCase())) ? [{ name: field.state.value, isSelected: true }] : []),
-                                // Then unselected categories
-                                ...Object.entries(categories)
-                                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                  .filter(([_key, cat]) => cat.name !== field.state.value)
-                                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                  .filter(([_key, cat]) => categorySearch === "" || cat.name.toLowerCase().includes(categorySearch.toLowerCase()))
-                                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                  .map(([_key, cat]) => ({ name: cat.name, isSelected: false })),
-                              ].map((cat) => (
-                                <Badge
-                                  key={cat.name}
-                                  variant={field.state.value === cat.name ? "secondary" : "outline"}
-                                  className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
-                                  onClick={() => field.handleChange(field.state.value === cat.name ? "__none__" : cat.name)}
-                                >
-                                  {cat.name}
-                                </Badge>
-                              ))}
-                            </div>
-                            {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
-                            {categorySearch && Object.entries(categories).filter(([_key, cat]) => cat.name.toLowerCase().includes(categorySearch.toLowerCase())).length === 0 && (
-                              <p className="text-xs text-muted-foreground">{t("addTorrentDialog.options.noCategoriesMatch", { query: categorySearch })}</p>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </form.Field>
-                </div>
-
-                {/* Tags */}
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center gap-2 w-full">
-                    <Label className="shrink-0">{t("addTorrentDialog.options.tags")}</Label>
-                    <Input
-                      id="newTag"
-                      value={newTag}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        setNewTag(value)
-                        setTagSearch(value) // Update search filter
-                      }}
-                      placeholder={t("addTorrentDialog.options.tagsPlaceholder")}
-                      className="h-8 text-sm flex-1 min-w-0"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && newTag.trim()) {
-                          e.preventDefault()
-                          const filteredAvailable = allAvailableTags?.filter(tag =>
-                            !selectedTags.includes(tag) &&
-                            tag.toLowerCase().includes(newTag.toLowerCase())
-                          ) || []
-
-                          // If there's exactly one filtered tag, add it
-                          if (filteredAvailable.length === 1) {
-                            setSelectedTags([...selectedTags, filteredAvailable[0]])
-                            setNewTag("")
-                            setTagSearch("")
-                          }
-                          // Otherwise, create new tag
-                          else if (!selectedTags.includes(newTag.trim())) {
-                            setSelectedTags([...selectedTags, newTag.trim()])
-                            setNewTag("")
-                            setTagSearch("")
-                          }
-                        }
-                        if (e.key === "Escape") {
-                          setNewTag("")
-                          setTagSearch("")
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (newTag.trim() && !selectedTags.includes(newTag.trim())) {
-                          setSelectedTags([...selectedTags, newTag.trim()])
-                          setNewTag("")
-                          setTagSearch("")
-                        }
-                      }}
-                      disabled={!newTag.trim() || selectedTags.includes(newTag.trim())}
-                      className="h-8 px-2"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                    {selectedTags.length > 0 && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setSelectedTags([])}
-                        className="h-8 px-2 text-xs"
-                      >
-                        {t("addTorrentDialog.options.clearAll")}
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Available tags */}
-                  {allAvailableTags && allAvailableTags.length > 0 && (
+                      return undefined
+                    },
+                  }}
+                >
+                  {(field) => (
                     <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">
-                        {tagSearch
-                          ? t("addTorrentDialog.options.availableTagsFiltered", { query: tagSearch })
-                          : t("addTorrentDialog.options.availableTags")}
-                      </Label>
-                      <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-                        {[...selectedTags.filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase())),
-                          ...allAvailableTags
-                            .filter(tag => !selectedTags.includes(tag))
-                            .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))]
-                          .map((tag) => (
-                            <Badge
-                              key={tag}
-                              variant={selectedTags.includes(tag) ? "secondary" : "outline"}
-                              className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
-                              onClick={() => {
-                                if (selectedTags.includes(tag)) {
-                                  setSelectedTags(selectedTags.filter(t => t !== tag))
-                                } else {
-                                  setSelectedTags([...selectedTags, tag])
-                                }
-                              }}
-                            >
-                              {tag}
-                              {!allAvailableTags.includes(tag) && (
-                                <span className="ml-1 text-[10px] opacity-70">{t("addTorrentDialog.options.newTag")}</span>
-                              )}
-                            </Badge>
-                          ))}
-                      </div>
-                      {tagSearch &&
-                        [...selectedTags, ...allAvailableTags]
-                          .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))
-                          .length === 0 && (
-                        <p className="text-xs text-muted-foreground">{t("addTorrentDialog.options.noTagsMatch", { query: tagSearch })}</p>
+                      <Label htmlFor="urls" className="sr-only">{t("addTorrentDialog.urlInput.label")}</Label>
+                      <Textarea
+                        id="urls"
+                        placeholder={t("addTorrentDialog.urlInput.placeholder")}
+                        rows={3}
+                        className="max-h-40 font-mono break-all md:text-xs"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => {
+                          field.handleChange(e.target.value)
+                          checkForDuplicates(form.getFieldValue("torrentFiles"), e.target.value)
+                        }}
+                      />
+                      {duplicateUrlKeys.length > 0 && (
+                        <div className="rounded-md border border-yellow-600/30 bg-yellow-500/5 p-2 space-y-2 text-xs">
+                          {duplicateUrlKeys.map((urlKey) => {
+                            const duplicateInfo = duplicateUrlEntries[urlKey]
+                            if (!duplicateInfo) {
+                              return null
+                            }
+                            return (
+                              <div key={urlKey} className="text-yellow-700 dark:text-yellow-500 space-y-1">
+                                <div className="font-medium truncate">{duplicateInfo.label}</div>
+                                {duplicateInfo.matches.length > 0 && renderDuplicateMatches(duplicateInfo.matches)}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                       )}
                     </div>
                   )}
+                </form.Field>
+              )}
+
+              {showDuplicateCheckIndicator && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t("addTorrentDialog.duplicate.checking")}
                 </div>
-              </TabsContent>
+              )}
 
-              <TabsContent value="advanced" className="space-y-4 mt-4">
+              {duplicateSelectionCount > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-yellow-600/30 bg-yellow-500/5 px-3 py-2">
+                  <div className="flex min-w-0 flex-col gap-0.5 text-sm">
+                    <span className="flex items-center gap-2 font-medium text-yellow-700 dark:text-yellow-500">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {t("addTorrentDialog.duplicate.selectionDetected", { count: duplicateSelectionCount })}
+                    </span>
+                    <span className="text-xs text-muted-foreground break-words">
+                      {duplicatePreviewNames.length > 0 ? (
+                        <>
+                          {t("addTorrentDialog.duplicate.existingTorrents", { names: duplicatePreviewNames.join(", ") })}
+                          {duplicatePreviewRemaining > 0 && ` ${t("addTorrentDialog.duplicate.more", { count: duplicatePreviewRemaining })}`}
+                        </>
+                      ) : t("addTorrentDialog.duplicate.highlightedBelow")}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="text-yellow-700 dark:text-yellow-500 border-yellow-600/40 hover:bg-yellow-600/10"
+                    onClick={handleRemoveDuplicateSelections}
+                  >
+                    {t("addTorrentDialog.duplicate.remove")}
+                  </Button>
+                </div>
+              )}
 
-                {/* Automatic Torrent Management */}
-                <form.Field name="autoTMM">
-                  {(field) => (
-                    <div className="flex items-center space-x-2">
-                      <Switch
+              {activeTab === "file" && (
+                <form.Subscribe selector={(state) => [state.values.torrentFiles, state.values.urls] as const}>
+                  {([files, urls]) => {
+                    if (!files || !canOfferManualCrossSeed({ fileCount: files.length, urlText: urls ?? "" })) {
+                      return null
+                    }
+                    return (
+                      <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{t("manualCrossSeed.addOptionTitle")}</p>
+                          <p className="text-xs text-muted-foreground">{t("manualCrossSeed.addOptionDescription")}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setManualCrossSeedFile(files[0])}
+                        >
+                          {t("manualCrossSeed.addOptionButton")}
+                        </Button>
+                      </div>
+                    )
+                  }}
+                </form.Subscribe>
+              )}
+            </section>
+
+            <section className="space-y-4">
+              <form.Field name="category">
+                {(field) => (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="category">{t("addTorrentDialog.options.category")}</Label>
+                    <CategoryPicker
+                      id="category"
+                      categories={categories}
+                      value={field.state.value}
+                      onChange={field.handleChange}
+                    />
+                    <form.Subscribe selector={(state) => state.values.autoTMM}>
+                      {(autoTMM) => {
+                        const target = resolveDestinationPath({
+                          autoTMM,
+                          savePath: "",
+                          category: field.state.value,
+                          categories,
+                          defaultSavePath: preferenceDefaults.savePath,
+                          parentCategoryPaths,
+                        })
+                        return autoTMM && target ? (
+                          <p className="truncate text-xs text-muted-foreground" title={target}>
+                            {t("addTorrentDialog.options.categorySavePath", { path: target })}
+                          </p>
+                        ) : null
+                      }}
+                    </form.Subscribe>
+                  </div>
+                )}
+              </form.Field>
+
+              <form.Field name="tags">
+                {(field) => (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>{t("addTorrentDialog.options.tags")}</Label>
+                      {field.state.value.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="-my-1 h-8 px-2 text-xs text-muted-foreground"
+                          onClick={() => field.handleChange([])}
+                        >
+                          {t("addTorrentDialog.options.clearAll")}
+                        </Button>
+                      )}
+                    </div>
+                    <TagPicker
+                      id="tags"
+                      availableTags={availableTags}
+                      value={field.state.value}
+                      onChange={field.handleChange}
+                    />
+                  </div>
+                )}
+              </form.Field>
+            </section>
+
+            <section className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <form.Field name="startPaused">
+                {(field) => (
+                  <OptionSwitch
+                    id="startPaused"
+                    label={t("addTorrentDialog.options.startPaused")}
+                    checked={field.state.value}
+                    onCheckedChange={field.handleChange}
+                  />
+                )}
+              </form.Field>
+              <form.Field name="skipHashCheck">
+                {(field) => (
+                  <OptionSwitch
+                    id="skipHashCheck"
+                    label={t("addTorrentDialog.options.skipHashCheck")}
+                    checked={field.state.value}
+                    onCheckedChange={field.handleChange}
+                  />
+                )}
+              </form.Field>
+            </section>
+
+            <Collapsible
+              ref={moreOptionsRef}
+              open={showMoreOptions}
+              onOpenChange={(next) => {
+                setShowMoreOptions(next)
+                if (next) {
+                  requestAnimationFrame(() => moreOptionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+                }
+              }}
+            >
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md border px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent/40"
+                >
+                  <SlidersHorizontal className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="font-medium">{t("addTorrentDialog.options.moreOptions")}</span>
+                    <span className="truncate text-xs text-muted-foreground">{t("addTorrentDialog.options.moreOptionsHint")}</span>
+                  </span>
+                  <form.Subscribe selector={(state) => countChangedOptions(state.values, preferenceDefaults, supportsTorrentTmpPath)}>
+                    {(changed) => changed > 0 && (
+                      <Badge variant="secondary" className="shrink-0">
+                        {t("addTorrentDialog.options.changedCount", { count: changed })}
+                      </Badge>
+                    )}
+                  </form.Subscribe>
+                  <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", showMoreOptions && "rotate-180")} />
+                </button>
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className="space-y-6 pt-5">
+                <OptionGroup title={t("addTorrentDialog.options.saveLocation")}>
+                  <form.Field name="autoTMM">
+                    {(field) => (
+                      <OptionSwitch
                         id="autoTMM"
+                        label={t("addTorrentDialog.options.autoTmm")}
+                        status={field.state.value ? t("addTorrentDialog.options.autoTmmStatus") : undefined}
                         checked={field.state.value}
                         onCheckedChange={field.handleChange}
                       />
-                      <Label htmlFor="autoTMM">{t("addTorrentDialog.options.autoTmm")}</Label>
-                    </div>
-                  )}
-                </form.Field>
+                    )}
+                  </form.Field>
 
-                {/* Save Path - show based on TMM toggle */}
-                <form.Field name="autoTMM">
-                  {(autoTMMField) => (
-                    <>
-                      {!autoTMMField.state.value ? (
-                        <>
-                          <form.Field name="savePath">
-                            {(field) => (
-                              <div className="space-y-2">
-                                <Label htmlFor="savePath">{t("addTorrentDialog.options.savePath")}</Label>
-                                <Input
-                                  id="savePath"
-                                  ref={supportsPathAutocomplete ? savePathInputRef : undefined}
-                                  placeholder={preferenceDefaults.savePath || t("addTorrentDialog.options.savePathPlaceholder")}
-                                  autoComplete="off"
-                                  spellCheck={false}
-                                  value={field.state.value}
-                                  onBlur={field.handleBlur}
-                                  onKeyDown={supportsPathAutocomplete ? handleSaveKeyDown : undefined}
-                                  onChange={(e) => {
-                                    field.handleChange(e.target.value)
-                                    if (supportsPathAutocomplete) {
-                                      handleSaveInputChange(e.target.value)
-                                    }
-                                  }}
+                  <form.Subscribe selector={(state) => state.values.autoTMM}>
+                    {(autoTMM) => !autoTMM && (
+                      <>
+                        <form.Field name="savePath">
+                          {(field) => (
+                            <div className="space-y-1.5">
+                              <Label htmlFor="savePath">{t("addTorrentDialog.options.savePath")}</Label>
+                              <Input
+                                id="savePath"
+                                ref={supportsPathAutocomplete ? savePathInputRef : undefined}
+                                placeholder={preferenceDefaults.savePath || t("addTorrentDialog.options.savePathPlaceholder")}
+                                autoComplete="off"
+                                autoCapitalize="off"
+                                autoCorrect="off"
+                                spellCheck={false}
+                                value={field.state.value}
+                                onBlur={field.handleBlur}
+                                onKeyDown={supportsPathAutocomplete ? handleSaveKeyDown : undefined}
+                                onChange={(e) => {
+                                  field.handleChange(e.target.value)
+                                  if (supportsPathAutocomplete) {
+                                    handleSaveInputChange(e.target.value)
+                                  }
+                                }}
+                              />
+                              {supportsPathAutocomplete && showSaveSuggestions && (
+                                <PathSuggestions
+                                  listRef={savePathListRef}
+                                  suggestions={saveSuggestions}
+                                  highlightedIndex={saveHighlightedIndex}
+                                  onSelect={handleSaveInputSelect}
                                 />
+                              )}
+                            </div>
+                          )}
+                        </form.Field>
 
-                                {supportsPathAutocomplete && showSaveSuggestions && saveSuggestions.length > 0 && (
-                                  <div className="relative">
-                                    <div ref={savePathListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
-                                      <div className="max-h-55 overflow-y-auto py-1">
-                                        {saveSuggestions.map((entry, idx) => (
-                                          <button
-                                            key={entry}
-                                            type="button"
-                                            title={entry}
-                                            className={cn(
-                                              "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
-                                              saveHighlightedIndex === idx? "bg-accent text-accent-foreground": "hover:bg-accent/70"
-                                            )}
-                                            onMouseDown={(e) => e.preventDefault()}
-                                            onClick={() => handleSaveInputSelect(entry)}
-                                          >
-                                            <span className="block truncate text-left">{entry}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
+                        {supportsTorrentTmpPath && (
+                          <>
+                            <form.Field name="tempPathEnabled">
+                              {(field) => (
+                                <OptionSwitch
+                                  id="tempPathEnabled"
+                                  label={t("addTorrentDialog.options.useTemporaryPath")}
+                                  help={t("addTorrentDialog.options.useTemporaryPathDescription")}
+                                  checked={field.state.value}
+                                  onCheckedChange={field.handleChange}
+                                />
+                              )}
+                            </form.Field>
 
-                                <p className="text-xs text-muted-foreground">
-                                  {t("addTorrentDialog.options.manualSavePath")}
-                                </p>
-                              </div>
-                            )}
-                          </form.Field>
-
-                          {supportsTorrentTmpPath ? (
-                            <>
-                              <form.Field name="tempPathEnabled">
-                                {(field) => (
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <Switch
-                                        id="tempPathEnabled"
-                                        checked={field.state.value}
-                                        onCheckedChange={field.handleChange}
+                            <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
+                              {(tempPathEnabled) => tempPathEnabled && (
+                                <form.Field name="tempPath">
+                                  {(field) => (
+                                    <div className="space-y-1.5">
+                                      <Label htmlFor="tempPath">{t("addTorrentDialog.options.tempPath")}</Label>
+                                      <Input
+                                        id="tempPath"
+                                        ref={supportsPathAutocomplete ? tempPathInputRef : undefined}
+                                        placeholder={preferenceDefaults.tempPath || t("addTorrentDialog.options.tempPathPlaceholder")}
+                                        autoComplete="off"
+                                        autoCapitalize="off"
+                                        autoCorrect="off"
+                                        spellCheck={false}
+                                        value={field.state.value}
+                                        onBlur={field.handleBlur}
+                                        onKeyDown={supportsPathAutocomplete ? handleTempKeyDown : undefined}
+                                        onChange={(e) => {
+                                          field.handleChange(e.target.value)
+                                          if (supportsPathAutocomplete) {
+                                            handleTempInputChange(e.target.value)
+                                          }
+                                        }}
                                       />
-                                      <Label htmlFor="tempPathEnabled" className="text-sm font-medium">{t("addTorrentDialog.options.useTemporaryPath")}</Label>
+                                      {supportsPathAutocomplete && showTempSuggestions && (
+                                        <PathSuggestions
+                                          listRef={tempPathListRef}
+                                          suggestions={tempSuggestions}
+                                          highlightedIndex={tempHighlightedIndex}
+                                          onSelect={handleTempInputSelect}
+                                        />
+                                      )}
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
-                                      {t("addTorrentDialog.options.useTemporaryPathDescription")}
-                                    </p>
-                                  </div>
-                                )}
-                              </form.Field>
+                                  )}
+                                </form.Field>
+                              )}
+                            </form.Subscribe>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </form.Subscribe>
 
-                              <form.Field name="tempPath">
-                                {(field) => (
-                                  <form.Subscribe selector={(state) => state.values.tempPathEnabled}>
-                                    {(tempPathEnabled) => {
-                                      return (
-                                        <div className="space-y-2 pl-4 border-l-2 border-primary border-opacity-50 data-[temp-path-enabled=true]:block hidden" data-temp-path-enabled={tempPathEnabled}>
-                                          <Label htmlFor="tempPath">{t("addTorrentDialog.options.tempPath")}</Label>
-                                          <Input
-                                            id="tempPath"
-                                            ref={supportsPathAutocomplete ? tempPathInputRef : undefined}
-                                            placeholder={preferenceDefaults.tempPath || t("addTorrentDialog.options.tempPathPlaceholder")}
-                                            autoComplete="off"
-                                            spellCheck={false}
-                                            value={field.state.value}
-                                            onBlur={field.handleBlur}
-                                            onKeyDown={supportsPathAutocomplete ? handleTempKeyDown : undefined}
-                                            onChange={(e) => {
-                                              field.handleChange(e.target.value)
-                                              if (supportsPathAutocomplete) {
-                                                handleTempInputChange(e.target.value)
-                                              }
-                                            }}
-                                          />
+                  <form.Subscribe selector={(state) => [state.values.autoTMM, state.values.savePath, state.values.category] as const}>
+                    {([autoTMM, savePath, category]) => (
+                      <DestinationFreeSpace
+                        instanceId={instanceId}
+                        path={resolveDestinationPath({
+                          autoTMM,
+                          savePath,
+                          category,
+                          categories,
+                          defaultSavePath: preferenceDefaults.savePath,
+                          parentCategoryPaths,
+                        })}
+                      />
+                    )}
+                  </form.Subscribe>
 
-                                          {supportsPathAutocomplete && showTempSuggestions && tempSuggestions.length > 0 && (
-                                            <div className="relative">
-                                              <div ref={tempPathListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
-                                                <div className="max-h-55 overflow-y-auto py-1">
-                                                  {tempSuggestions.map((entry, idx) => (
-                                                    <button
-                                                      key={entry}
-                                                      type="button"
-                                                      title={entry}
-                                                      className={cn(
-                                                        "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
-                                                        tempHighlightedIndex === idx? "bg-accent text-accent-foreground": "hover:bg-accent/70"
-                                                      )}
-                                                      onMouseDown={(e) => e.preventDefault()}
-                                                      onClick={() => handleTempInputSelect(entry)}
-                                                    >
-                                                      <span className="block truncate text-left">{entry}</span>
-                                                    </button>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          )}
-
-                                          <p className="text-xs text-muted-foreground">
-                                            {t("addTorrentDialog.options.tempPathDescription")}
-                                          </p>
-                                        </div>
-                                      )
-                                    }}
-                                  </form.Subscribe>
-                                )}
-                              </form.Field>
-                            </>
-                          ) : null}
-                        </>
-                      ) : (
-                        <div className="space-y-2">
-                          <Label>{t("addTorrentDialog.options.savePath")}</Label>
-                          <div className="px-3 py-2 bg-muted rounded-md">
-                            <p className="text-sm text-muted-foreground">
-                              {t("addTorrentDialog.options.autoTmmSavePathDescription")}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </form.Field>
-
-                <form.Subscribe selector={(state) => [state.values.autoTMM, state.values.savePath, state.values.category] as const}>
-                  {([autoTMM, savePath, category]) => (
-                    <DestinationFreeSpace
-                      instanceId={instanceId}
-                      path={resolveDestinationPath({
-                        autoTMM,
-                        savePath,
-                        category,
-                        categories,
-                        defaultSavePath: preferenceDefaults.savePath,
-                      })}
-                    />
-                  )}
-                </form.Subscribe>
-
-                {/* Advanced Options */}
-                <div className="space-y-4">
-                  <Label className="text-sm font-medium">{t("addTorrentDialog.options.advancedOptions")}</Label>
-                  {/* Sequential Download & First/Last Piece Priority */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <form.Field name="sequentialDownload">
-                      {(field) => (
-                        <div className="flex items-center space-x-2">
-                          <Switch
-                            id="sequentialDownload"
-                            checked={field.state.value}
-                            onCheckedChange={field.handleChange}
-                          />
-                          <Label htmlFor="sequentialDownload">{t("addTorrentDialog.options.sequentialDownload")}</Label>
-                          <span className="text-xs text-muted-foreground ml-2">
-                            {t("addTorrentDialog.options.sequentialDownloadDescription")}
-                          </span>
-                        </div>
-                      )}
-                    </form.Field>
-
-                    {/* First/Last Piece Priority */}
-                    <form.Field name="firstLastPiecePrio">
-                      {(field) => (
-                        <div className="flex items-center space-x-2">
-                          <Switch
-                            id="firstLastPiecePrio"
-                            checked={field.state.value}
-                            onCheckedChange={field.handleChange}
-                          />
-                          <Label htmlFor="firstLastPiecePrio">{t("addTorrentDialog.options.firstLastPiecePriority")}</Label>
-                          <span className="text-xs text-muted-foreground ml-2">
-                            {t("addTorrentDialog.options.firstLastPiecePriorityDescription")}
-                          </span>
-                        </div>
-                      )}
-                    </form.Field>
-
-                  </div>
-
-                  {/* Speed Limits */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <form.Field name="limitDownloadSpeed">
-                      {(field) => (
-                        <div className="space-y-2">
-                          <Label htmlFor="limitDownloadSpeed">{t("addTorrentDialog.options.downloadLimit")}</Label>
-                          <Input
-                            id="limitDownloadSpeed"
-                            type="number"
-                            min="0"
-                            placeholder={t("addTorrentDialog.options.unlimitedPlaceholder")}
-                            value={field.state.value || ""}
-                            onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
-                          />
-                        </div>
-                      )}
-                    </form.Field>
-
-                    <form.Field name="limitUploadSpeed">
-                      {(field) => (
-                        <div className="space-y-2">
-                          <Label htmlFor="limitUploadSpeed">{t("addTorrentDialog.options.uploadLimit")}</Label>
-                          <Input
-                            id="limitUploadSpeed"
-                            type="number"
-                            min="0"
-                            placeholder={t("addTorrentDialog.options.unlimitedPlaceholder")}
-                            value={field.state.value || ""}
-                            onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
-                          />
-                        </div>
-                      )}
-                    </form.Field>
-                  </div>
-
-                  {/* Seeding Limits */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <form.Field name="limitRatio">
-                      {(field) => (
-                        <div className="space-y-2">
-                          <Label htmlFor="limitRatio">{t("addTorrentDialog.options.ratioLimit")}</Label>
-                          <Input
-                            id="limitRatio"
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            placeholder={t("addTorrentDialog.options.useGlobalPlaceholder")}
-                            value={field.state.value || ""}
-                            onChange={(e) => field.handleChange(parseFloat(e.target.value) || 0)}
-                          />
-                        </div>
-                      )}
-                    </form.Field>
-
-                    <form.Field name="limitSeedTime">
-                      {(field) => (
-                        <div className="space-y-2">
-                          <Label htmlFor="limitSeedTime">{t("addTorrentDialog.options.seedTimeLimit")}</Label>
-                          <Input
-                            id="limitSeedTime"
-                            type="number"
-                            min="0"
-                            placeholder={t("addTorrentDialog.options.useGlobalPlaceholder")}
-                            value={field.state.value || ""}
-                            onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
-                          />
-                        </div>
-                      )}
-                    </form.Field>
-                  </div>
-
-                  {/* Content Layout & Rename - available regardless of TMM */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <form.Field name="contentLayout">
                       {(field) => (
-                        <div className="space-y-2">
-                          <Label>{t("addTorrentDialog.options.contentLayout")}</Label>
-                          <Select
-                            value={field.state.value}
-                            onValueChange={field.handleChange}
-                          >
-                            <SelectTrigger id="contentLayout">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="contentLayout">{t("addTorrentDialog.options.contentLayout")}</Label>
+                          <Select value={field.state.value} onValueChange={field.handleChange}>
+                            <SelectTrigger id="contentLayout" className="w-full">
                               <SelectValue placeholder={t("addTorrentDialog.options.useGlobalSetting")} />
                             </SelectTrigger>
                             <SelectContent>
@@ -1659,10 +1343,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       )}
                     </form.Field>
 
-                    {/* Rename Torrent */}
                     <form.Field name="rename">
                       {(field) => (
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           <Label htmlFor="rename">{t("addTorrentDialog.options.renameTorrent")}</Label>
                           <Input
                             id="rename"
@@ -1674,65 +1357,256 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       )}
                     </form.Field>
                   </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+                </OptionGroup>
 
-            {/* Auto-applied Settings Info - Compact */}
+                <OptionGroup title={t("addTorrentDialog.options.downloadBehavior")}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <form.Field name="sequentialDownload">
+                      {(field) => (
+                        <OptionSwitch
+                          id="sequentialDownload"
+                          label={t("addTorrentDialog.options.sequentialDownload")}
+                          help={t("addTorrentDialog.options.sequentialDownloadDescription")}
+                          checked={field.state.value}
+                          onCheckedChange={field.handleChange}
+                        />
+                      )}
+                    </form.Field>
+                    <form.Field name="firstLastPiecePrio">
+                      {(field) => (
+                        <OptionSwitch
+                          id="firstLastPiecePrio"
+                          label={t("addTorrentDialog.options.firstLastPiecePriority")}
+                          help={t("addTorrentDialog.options.firstLastPiecePriorityDescription")}
+                          checked={field.state.value}
+                          onCheckedChange={field.handleChange}
+                        />
+                      )}
+                    </form.Field>
+                  </div>
+                </OptionGroup>
+
+                <OptionGroup title={t("addTorrentDialog.options.limits")}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <form.Field name="limitDownloadSpeed">
+                      {(field) => (
+                        <NumberOption
+                          id="limitDownloadSpeed"
+                          label={t("addTorrentDialog.options.downloadLimit")}
+                          placeholder={t("addTorrentDialog.options.unlimitedPlaceholder")}
+                          value={field.state.value}
+                          onChange={field.handleChange}
+                        />
+                      )}
+                    </form.Field>
+                    <form.Field name="limitUploadSpeed">
+                      {(field) => (
+                        <NumberOption
+                          id="limitUploadSpeed"
+                          label={t("addTorrentDialog.options.uploadLimit")}
+                          placeholder={t("addTorrentDialog.options.unlimitedPlaceholder")}
+                          value={field.state.value}
+                          onChange={field.handleChange}
+                        />
+                      )}
+                    </form.Field>
+                    <form.Field name="limitRatio">
+                      {(field) => (
+                        <NumberOption
+                          id="limitRatio"
+                          decimal
+                          label={t("addTorrentDialog.options.ratioLimit")}
+                          placeholder={t("addTorrentDialog.options.useGlobalPlaceholder")}
+                          value={field.state.value}
+                          onChange={field.handleChange}
+                        />
+                      )}
+                    </form.Field>
+                    <form.Field name="limitSeedTime">
+                      {(field) => (
+                        <NumberOption
+                          id="limitSeedTime"
+                          label={t("addTorrentDialog.options.seedTimeLimit")}
+                          placeholder={t("addTorrentDialog.options.useGlobalPlaceholder")}
+                          value={field.state.value}
+                          onChange={field.handleChange}
+                        />
+                      )}
+                    </form.Field>
+                  </div>
+                </OptionGroup>
+              </CollapsibleContent>
+            </Collapsible>
+
             {addTorrentPreferences.autoAddTrackers || addTorrentPreferences.excludedFileNamesEnabled ? (
-              <div className="bg-muted rounded-md p-3 text-xs text-muted-foreground">
-                <p className="font-medium mb-1">{t("addTorrentDialog.options.autoAppliedTitle")}</p>
-                <div className="space-y-0.5">
-                  {addTorrentPreferences.autoAddTrackers && (
-                    <div>{t("addTorrentDialog.options.autoAddTrackers")}</div>
-                  )}
-                  {addTorrentPreferences.excludedFileNamesEnabled && addTorrentPreferences.excludedFileNames && (
-                    <div>{t("addTorrentDialog.options.fileExclusions", { value: addTorrentPreferences.excludedFileNames })}</div>
-                  )}
-                </div>
+              <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                <p className="font-medium mb-0.5">{t("addTorrentDialog.options.autoAppliedTitle")}</p>
+                {addTorrentPreferences.autoAddTrackers && (
+                  <div>{t("addTorrentDialog.options.autoAddTrackers")}</div>
+                )}
+                {addTorrentPreferences.excludedFileNamesEnabled && addTorrentPreferences.excludedFileNames && (
+                  <div className="break-words">{t("addTorrentDialog.options.fileExclusions", { value: addTorrentPreferences.excludedFileNames })}</div>
+                )}
               </div>
             ) : null}
-
           </form>
         </div>
 
-        {/* Fixed footer with submit buttons */}
-        <div className="flex-shrink-0 px-6 py-3 border-t bg-background">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+        <div className="flex-shrink-0 px-5 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t bg-background">
+          <div className="flex gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 sm:h-10 px-5"
+              onClick={() => setOpen(false)}
+            >
+              {t("addTorrentDialog.footer.cancel")}
+            </Button>
             <form.Subscribe
               selector={(state) => ({
                 canSubmit: state.canSubmit,
                 isSubmitting: state.isSubmitting,
                 torrentFiles: state.values.torrentFiles,
+                urls: state.values.urls,
               })}
             >
-              {({ canSubmit, isSubmitting, torrentFiles }) => {
-                const hasSelectedFiles = Array.isArray(torrentFiles) && torrentFiles.length > 0
-                const requiresFileSelection = activeTab === "file" && !hasSelectedFiles
-                const isDisabled = !canSubmit || isSubmitting || mutation.isPending || requiresFileSelection
+              {({ canSubmit, isSubmitting, torrentFiles, urls }) => {
+                const count = activeTab === "file"? (Array.isArray(torrentFiles) ? torrentFiles.length : 0): urls.split("\n").filter(u => u.trim()).length
+                const isPending = isSubmitting || mutation.isPending
+                const isDisabled = !canSubmit || isPending || count === 0
                 return (
                   <Button
-                    type="submit"
+                    type="button"
                     disabled={isDisabled}
-                    className="w-full sm:flex-1 h-11 sm:h-10 order-1 sm:order-2"
+                    className="h-11 sm:h-10 flex-1 sm:flex-none sm:min-w-36"
                     onClick={() => form.handleSubmit()}
                   >
-                    {isSubmitting || mutation.isPending ? t("addTorrentDialog.footer.adding") : t("addTorrentDialog.footer.add")}
+                    {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isPending? t("addTorrentDialog.footer.adding"): count > 1? t("addTorrentDialog.footer.addCount", { count }): t("addTorrentDialog.footer.add")}
                   </Button>
                 )
               }}
             </form.Subscribe>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full sm:w-auto px-6 sm:px-4 h-11 sm:h-10 order-2 sm:order-1"
-              onClick={() => setOpen(false)}
-            >
-              {t("addTorrentDialog.footer.cancel")}
-            </Button>
           </div>
         </div>
       </DialogContent>
     </Dialog>
   )
+}
+
+function OptionGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+      {children}
+    </div>
+  )
+}
+
+function OptionSwitch({ id, label, help, status, checked, onCheckedChange }: {
+  id: string
+  label: string
+  help?: string
+  status?: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div
+      className="flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2.5"
+      onClick={(e) => {
+        const target = e.target as HTMLElement
+        // The label, the switch, its hidden form input, and the help button handle their own clicks.
+        // The help tooltip renders in a portal, so React bubbles its clicks here although they land outside the row.
+        if (e.currentTarget.contains(target) && !target.closest("button, label, input")) onCheckedChange(!checked)
+      }}
+    >
+      <div className="min-w-0 space-y-0.5">
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor={id} className="cursor-pointer leading-snug">{label}</Label>
+          {help && <FieldHelp>{help}</FieldHelp>}
+        </div>
+        {status && <p className="text-xs text-muted-foreground">{status}</p>}
+      </div>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  )
+}
+
+function NumberOption({ id, label, placeholder, value, onChange, decimal = false }: {
+  id: string
+  label: string
+  placeholder: string
+  value: number
+  onChange: (value: number) => void
+  decimal?: boolean
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs sm:text-sm">{label}</Label>
+      <Input
+        id={id}
+        type="number"
+        min="0"
+        step={decimal ? "0.1" : undefined}
+        inputMode={decimal ? "decimal" : "numeric"}
+        placeholder={placeholder}
+        value={value || ""}
+        onChange={(e) => onChange((decimal ? parseFloat(e.target.value) : parseInt(e.target.value)) || 0)}
+      />
+    </div>
+  )
+}
+
+function PathSuggestions({ listRef, suggestions, highlightedIndex, onSelect }: {
+  listRef: React.Ref<HTMLDivElement>
+  suggestions: string[]
+  highlightedIndex: number
+  onSelect: (entry: string) => void
+}) {
+  if (suggestions.length === 0) return null
+  return (
+    <div className="relative">
+      <div ref={listRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+        <div className="max-h-55 overflow-y-auto py-1">
+          {suggestions.map((entry, idx) => (
+            <button
+              key={entry}
+              type="button"
+              title={entry}
+              className={cn(
+                "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                highlightedIndex === idx ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onSelect(entry)}
+            >
+              <span className="block truncate text-left">{entry}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function countChangedOptions(
+  values: FormData,
+  defaults: { autoTMM: boolean; savePath: string; contentLayout: string; tempPathEnabled: boolean; tempPath: string },
+  supportsTempPath: boolean
+): number {
+  const manual = !values.autoTMM
+  return [
+    values.autoTMM !== defaults.autoTMM,
+    manual && values.savePath !== defaults.savePath,
+    manual && supportsTempPath && (values.tempPathEnabled !== defaults.tempPathEnabled || (values.tempPathEnabled && values.tempPath !== defaults.tempPath)),
+    values.contentLayout !== defaults.contentLayout && !(values.contentLayout === "__global__" && defaults.contentLayout === ""),
+    values.rename !== "",
+    values.sequentialDownload,
+    values.firstLastPiecePrio,
+    values.limitDownloadSpeed > 0,
+    values.limitUploadSpeed > 0,
+    values.limitRatio > 0,
+    values.limitSeedTime > 0,
+  ].filter(Boolean).length
 }

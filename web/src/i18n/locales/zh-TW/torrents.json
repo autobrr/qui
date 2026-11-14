@@ -1300,10 +1300,6 @@
     "description": "新增種子檔案或磁力連結以開始下載",
     "file": "檔案",
     "url": "URL",
-    "tabs": {
-      "basic": "基本",
-      "advanced": "進階"
-    },
     "validation": {
       "selectTorrentFile": "請至少選擇一個種子檔案",
       "enterUrl": "請至少輸入一個 URL 或磁力連結"
@@ -1314,7 +1310,9 @@
       "existingTorrents": "已存在的種子：{{names}}",
       "highlightedBelow": "重複選擇已在下方高亮顯示。",
       "remove": "移除重複項",
-      "matchesExisting": "與已存在的種子匹配：{{names}}"
+      "matchesExisting": "與已存在的種子匹配：{{names}}",
+      "existingTorrent": "已有種子",
+      "more_other": "（另有 {{count}} 個）"
     },
     "fileInput": {
       "label": "種子檔案",
@@ -1323,10 +1321,9 @@
       "browse": "或點選瀏覽",
       "selectedFiles_other": "已選擇 {{count}} 個檔案",
       "duplicateFiles_other": "{{count}} 個重複檔案",
-      "showFiles": "顯示檔案",
-      "hideFiles": "隱藏檔案",
-      "moreFiles": "... 還有 {{count}} 個",
-      "removeFile": "移除檔案"
+      "removeFile": "移除檔案",
+      "addMore": "新增更多檔案",
+      "choose": "選擇種子檔案"
     },
     "urlInput": {
       "label": "URL / 磁力連結",
@@ -1337,32 +1334,22 @@
       "skipHashCheck": "跳過雜湊檢查",
       "category": "分類",
       "searchCategories": "搜尋分類...",
-      "availableCategories": "可用分類（點選選擇）",
-      "availableCategoriesFiltered": "可用分類（點選選擇）- 篩選：「{{query}}」",
       "noCategoriesMatch": "沒有匹配「{{query}}」的分類",
       "tags": "標籤",
       "tagsPlaceholder": "建立新標籤或搜尋可用標籤...",
-      "clearAll": "全部清除",
-      "availableTags": "可用標籤（點選選擇/取消選擇）",
-      "availableTagsFiltered": "可用標籤（點選選擇/取消選擇）- 篩選：「{{query}}」",
       "newTag": "（新）",
-      "noTagsMatch": "沒有匹配「{{query}}」的標籤",
       "autoTmm": "自動種子管理",
       "savePath": "儲存路徑",
       "freeSpaceAtDestination": "目標位置可用空間：{{value}}",
       "savePathPlaceholder": "留空使用預設值",
-      "manualSavePath": "手動儲存路徑（TMM 已停用）",
       "useTemporaryPath": "使用臨時路徑",
       "useTemporaryPathDescription": "先下載到臨時路徑，然後移動到儲存路徑",
       "tempPath": "臨時下載路徑",
       "tempPathPlaceholder": "留空使用預設值",
-      "tempPathDescription": "種子將先下載到此處，然後再移動到儲存路徑",
-      "autoTmmSavePathDescription": "自動種子管理已啟用。儲存路徑將由分類設定決定。",
-      "advancedOptions": "進階選項",
       "sequentialDownload": "按順序下載",
-      "sequentialDownloadDescription": "（適用於媒體檔案）",
+      "sequentialDownloadDescription": "適用於媒體檔案",
       "firstLastPiecePriority": "首尾分塊優先",
-      "firstLastPiecePriorityDescription": "（更快開始播放）",
+      "firstLastPiecePriorityDescription": "更快開始播放",
       "downloadLimit": "下載限制（KB/s）",
       "uploadLimit": "上傳限制（KB/s）",
       "unlimitedPlaceholder": "0 = 無限制",
@@ -1378,12 +1365,32 @@
       "renamePlaceholder": "留空使用原始名稱",
       "autoAppliedTitle": "自動應用：",
       "autoAddTrackers": "• 自動新增 Tracker",
-      "fileExclusions": "• 檔案排除：{{value}}"
+      "fileExclusions": "• 檔案排除：{{value}}",
+      "noCategory": "無分類",
+      "removeTag": "移除標籤 {{tag}}",
+      "addTags": "新增標籤",
+      "createTag": "建立標籤「{{tag}}」",
+      "noTagsYet": "尚無標籤。輸入名稱即可建立。",
+      "done": "完成",
+      "moreOptions": "更多選項",
+      "moreOptionsHint": "儲存路徑、配置、下載順序、限制",
+      "saveLocation": "儲存位置",
+      "downloadBehavior": "下載順序",
+      "limits": "限制",
+      "changedCount_other": "已變更 {{count}} 項",
+      "clearAll": "全部清除",
+      "tagsWithCount": "標籤（{{n}}）",
+      "categorySavePath": "儲存至 {{path}}",
+      "autoTmmStatus": "儲存路徑由分類決定",
+      "addTypedTags": "新增標籤：{{tags}}",
+      "selectedState": "已選擇",
+      "moreTags_other": "另有 {{count}} 個"
     },
     "footer": {
       "adding": "正在新增...",
       "add": "新增種子",
-      "cancel": "取消"
+      "cancel": "取消",
+      "addCount_other": "新增 {{count}} 個種子"
     },
     "toast": {
       "verifyInput": "請檢查種子檔案或 URL，然後重試。",

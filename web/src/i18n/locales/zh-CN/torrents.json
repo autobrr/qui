@@ -1300,10 +1300,6 @@
     "description": "添加种子文件或磁力链接以开始下载",
     "file": "文件",
     "url": "URL",
-    "tabs": {
-      "basic": "基本",
-      "advanced": "高级"
-    },
     "validation": {
       "selectTorrentFile": "请至少选择一个种子文件",
       "enterUrl": "请至少输入一个 URL 或磁力链接"
@@ -1314,7 +1310,9 @@
       "existingTorrents": "已存在的种子：{{names}}",
       "highlightedBelow": "重复选择已在下方高亮显示。",
       "remove": "移除重复项",
-      "matchesExisting": "与已存在的种子匹配：{{names}}"
+      "matchesExisting": "与已存在的种子匹配：{{names}}",
+      "existingTorrent": "已有种子",
+      "more_other": "（另有 {{count}} 个）"
     },
     "fileInput": {
       "label": "种子文件",
@@ -1323,10 +1321,9 @@
       "browse": "或点击浏览",
       "selectedFiles_other": "已选择 {{count}} 个文件",
       "duplicateFiles_other": "{{count}} 个重复文件",
-      "showFiles": "显示文件",
-      "hideFiles": "隐藏文件",
-      "moreFiles": "... 还有 {{count}} 个",
-      "removeFile": "移除文件"
+      "removeFile": "移除文件",
+      "addMore": "添加更多文件",
+      "choose": "选择种子文件"
     },
     "urlInput": {
       "label": "URL / 磁力链接",
@@ -1337,32 +1334,22 @@
       "skipHashCheck": "跳过哈希校验",
       "category": "分类",
       "searchCategories": "搜索分类...",
-      "availableCategories": "可用分类（点击选择）",
-      "availableCategoriesFiltered": "可用分类（点击选择）- 筛选：「{{query}}」",
       "noCategoriesMatch": "没有匹配「{{query}}」的分类",
       "tags": "标签",
       "tagsPlaceholder": "创建新标签或搜索可用标签...",
-      "clearAll": "全部清除",
-      "availableTags": "可用标签（点击选择/取消选择）",
-      "availableTagsFiltered": "可用标签（点击选择/取消选择）- 筛选：「{{query}}」",
       "newTag": "（新）",
-      "noTagsMatch": "没有匹配「{{query}}」的标签",
       "autoTmm": "自动种子管理",
       "savePath": "保存路径",
       "freeSpaceAtDestination": "目标位置可用空间：{{value}}",
       "savePathPlaceholder": "留空使用默认值",
-      "manualSavePath": "手动保存路径（TMM 已禁用）",
       "useTemporaryPath": "使用临时路径",
       "useTemporaryPathDescription": "先下载到临时路径，然后移动到保存路径",
       "tempPath": "临时下载路径",
       "tempPathPlaceholder": "留空使用默认值",
-      "tempPathDescription": "种子将先下载到此处，然后再移动到保存路径",
-      "autoTmmSavePathDescription": "自动种子管理已启用。保存路径将由分类设置决定。",
-      "advancedOptions": "高级选项",
       "sequentialDownload": "按顺序下载",
-      "sequentialDownloadDescription": "（适用于媒体文件）",
+      "sequentialDownloadDescription": "适用于媒体文件",
       "firstLastPiecePriority": "首尾分块优先",
-      "firstLastPiecePriorityDescription": "（更快开始播放）",
+      "firstLastPiecePriorityDescription": "更快开始播放",
       "downloadLimit": "下载限制（KB/s）",
       "uploadLimit": "上传限制（KB/s）",
       "unlimitedPlaceholder": "0 = 无限制",
@@ -1378,12 +1365,32 @@
       "renamePlaceholder": "留空使用原始名称",
       "autoAppliedTitle": "自动应用：",
       "autoAddTrackers": "• 自动添加 Tracker",
-      "fileExclusions": "• 文件排除：{{value}}"
+      "fileExclusions": "• 文件排除：{{value}}",
+      "noCategory": "无分类",
+      "removeTag": "移除标签 {{tag}}",
+      "addTags": "添加标签",
+      "createTag": "创建标签“{{tag}}”",
+      "noTagsYet": "还没有标签。输入名称即可创建。",
+      "done": "完成",
+      "moreOptions": "更多选项",
+      "moreOptionsHint": "保存路径、布局、下载顺序、限制",
+      "saveLocation": "保存位置",
+      "downloadBehavior": "下载顺序",
+      "limits": "限制",
+      "changedCount_other": "已更改 {{count}} 项",
+      "clearAll": "全部清除",
+      "tagsWithCount": "标签（{{n}}）",
+      "categorySavePath": "保存到 {{path}}",
+      "autoTmmStatus": "保存路径由分类决定",
+      "addTypedTags": "添加标签：{{tags}}",
+      "selectedState": "已选择",
+      "moreTags_other": "另有 {{count}} 个"
     },
     "footer": {
       "adding": "正在添加...",
       "add": "添加种子",
-      "cancel": "取消"
+      "cancel": "取消",
+      "addCount_other": "添加 {{count}} 个种子"
     },
     "toast": {
       "verifyInput": "请检查种子文件或 URL，然后重试。",
