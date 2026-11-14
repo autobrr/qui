@@ -7,7 +7,6 @@ export interface TrackerCustomization {
   id: number
   displayName: string
   domains: string[]
-  includedInStats?: string[]
   createdAt: string
   updatedAt: string
 }
@@ -15,7 +14,6 @@ export interface TrackerCustomization {
 export interface TrackerCustomizationInput {
   displayName: string
   domains: string[]
-  includedInStats?: string[]
 }
 
 export interface DashboardSettings {
@@ -24,9 +22,6 @@ export interface DashboardSettings {
   sectionVisibility: Record<string, boolean>
   sectionOrder: string[]
   sectionCollapsed: Record<string, boolean>
-  trackerBreakdownSortColumn: string
-  trackerBreakdownSortDirection: string
-  trackerBreakdownItemsPerPage: number
   createdAt: string
   updatedAt: string
 }
@@ -35,9 +30,6 @@ export interface DashboardSettingsInput {
   sectionVisibility?: Record<string, boolean>
   sectionOrder?: string[]
   sectionCollapsed?: Record<string, boolean>
-  trackerBreakdownSortColumn?: string
-  trackerBreakdownSortDirection?: string
-  trackerBreakdownItemsPerPage?: number
 }
 
 export interface LogExclusions {

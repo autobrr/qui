@@ -13,7 +13,7 @@ import { StatisticsSettingsCard } from "@/components/settings/StatisticsSettings
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import { server } from "@/test/msw/server"
-import type { TransferHistorySettings } from "@/types"
+import type { DatabaseShrinkStatus, TransferHistorySettings } from "@/types"
 
 const i18n = vi.hoisted(() => ({
   t: (key: string, values?: object) => (values ? `${key} ${JSON.stringify(values)}` : key),
@@ -35,7 +35,14 @@ vi.mock("@/components/ui/select", () => ({
   SelectValue: () => null,
 }))
 
+const shrink = vi.hoisted(() => ({ requestShrink: vi.fn(async () => {}), pending: false }))
+vi.mock("@/hooks/useDatabaseShrink", () => ({
+  databaseShrinkQueryKey: ["database-shrink"],
+  useDatabaseShrink: () => shrink,
+}))
+
 let stored: TransferHistorySettings
+let shrinkStatus: DatabaseShrinkStatus
 let saved: unknown[]
 let engine: string
 let deletes: URLSearchParams[]
@@ -60,7 +67,9 @@ beforeEach(() => {
   saved = []
   engine = "sqlite"
   deletes = []
+  shrinkStatus = { available: true, fileBytes: 100 * 1024 * 1024, freeBytes: 50 * 1024 * 1024 * 1024, needBytes: 200 * 1024 * 1024, restartAvailable: true, pending: false }
   server.use(
+    http.get("*/api/database/shrink", () => HttpResponse.json(shrinkStatus)),
     http.get("*/api/transfer-history/status", () =>
       HttpResponse.json({ instances, historyBytes: 3 * 1024 * 1024, settings: stored })
     ),
@@ -157,5 +166,51 @@ describe("Delete history", () => {
     fireEvent.click(await screen.findByRole("radio", { name: "statistics.deleteHistory.before" }))
 
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "statistics.deleteHistory.button" }).disabled).toBe(true)
+  })
+})
+
+describe("Shrink tick box", () => {
+  async function openDialog() {
+    renderCard()
+    fireEvent.click(await screen.findByRole("button", { name: "statistics.deleteHistory.button" }))
+    return screen.findByRole("alertdialog")
+  }
+
+  it("deletes the history and then requests the shrink", async () => {
+    const dialog = await openDialog()
+    const box = await screen.findByRole<HTMLButtonElement>("checkbox", { name: "statistics.deleteHistory.shrink.label" })
+    expect(box.disabled).toBe(false)
+    expect(dialog.textContent).toContain("statistics.deleteHistory.shrink.restart")
+
+    fireEvent.click(box)
+    fireEvent.click(screen.getByRole("button", { name: "statistics.deleteHistory.confirm" }))
+
+    await waitFor(() => expect(shrink.requestShrink).toHaveBeenCalledTimes(1))
+    expect(deletes).toHaveLength(1)
+  })
+
+  it("is off with too little free disk space and gives the two numbers", async () => {
+    shrinkStatus = { ...shrinkStatus, freeBytes: 150 * 1024 * 1024 }
+    const dialog = await openDialog()
+    const box = await screen.findByRole<HTMLButtonElement>("checkbox", { name: "statistics.deleteHistory.shrink.label" })
+
+    expect(box.disabled).toBe(true)
+    expect(dialog.textContent).toContain("statistics.deleteHistory.shrink.tooLittleSpace")
+    expect(dialog.textContent).toMatch(/"free":"150(\.0)? MiB"/)
+    expect(dialog.textContent).toMatch(/"need":"200(\.0)? MiB"/)
+    expect(screen.getByRole("link", { name: "statistics.deleteHistory.shrink.manualDocs" })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "statistics.deleteHistory.confirm" }))
+    await waitFor(() => expect(deletes).toHaveLength(1))
+    expect(shrink.requestShrink).not.toHaveBeenCalled()
+  })
+
+  it("is absent on Postgres", async () => {
+    engine = "postgres"
+    shrinkStatus = { ...shrinkStatus, available: false }
+    const dialog = await openDialog()
+
+    await waitFor(() => expect(dialog.textContent).toContain("statistics.deleteHistory.postgresSpace"))
+    expect(screen.queryByRole("checkbox")).toBeNull()
   })
 })

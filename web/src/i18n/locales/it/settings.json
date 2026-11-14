@@ -13,6 +13,7 @@
     "notifications": "Notifiche",
     "dateTime": "Ora e lingua",
     "statistics": "Statistiche",
+    "trackers": "Personalizzazione tracker",
     "premiumThemes": "Temi",
     "security": "Sicurezza",
     "logs": "Log"
@@ -432,7 +433,14 @@
       "cancel": "Annulla",
       "confirm": "Elimina",
       "deleted": "Cronologia eliminata",
-      "failed": "Impossibile eliminare la cronologia"
+      "failed": "Impossibile eliminare la cronologia",
+      "shrink": {
+        "label": "Riduci anche il file del database",
+        "restart": "qui si riavvia e riduce il file, così recuperi lo spazio su disco. qui non è disponibile per un breve momento.",
+        "nextStart": "qui non può riavviarsi da solo in questa installazione. La riduzione verrà eseguita al prossimo avvio di qui.",
+        "tooLittleSpace": "Il disco ha {{free}} liberi e una riduzione richiede fino a {{need}}. Puoi lasciare questa opzione disattivata senza rischi: SQLite riutilizza lo spazio libero per la nuova cronologia.",
+        "manualDocs": "Riduci il file a mano"
+      }
     },
     "loadFailed": "Impossibile caricare le impostazioni delle statistiche",
     "toasts": {
@@ -1203,6 +1211,74 @@
       "bind": "Indirizzo di binding",
       "configDir": "Directory di configurazione",
       "dataDir": "Directory dei dati"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Personalizzazione tracker",
+    "cardDescription": "Rinomina i tracker e unisci i domini di uno stesso tracker in una sola voce. qui mostra il nome visualizzato ovunque mostri il tracker.",
+    "loading": "Caricamento dei tracker…",
+    "empty": "Ancora nessun tracker. I tracker compaiono qui quando un'istanza ha dei torrent.",
+    "importTooltip": "Importa personalizzazioni",
+    "exportTooltip": "Esporta personalizzazioni",
+    "mergedFrom": "Unito da: {{domains}}",
+    "original": "Originale: {{domain}}",
+    "mergeTooltip": "Unisci i tracker selezionati in questo gruppo",
+    "mergeIntoGroup": "Unisci nel gruppo",
+    "addToMerge": "Aggiungi all'unione",
+    "rename": "Rinomina",
+    "edit": "Modifica",
+    "delete": "Elimina",
+    "customizeDialog": {
+      "editTitle": "Modifica nome tracker",
+      "renameTitle": "Rinomina tracker",
+      "mergeTitle": "Unisci tracker",
+      "editDescription": "Aggiorna il nome visualizzato per questo tracker.",
+      "renameDescription": "Assegna a questo tracker un nome visualizzato personalizzato.",
+      "mergeDescription": "Combina questi tracker in un'unica voce con un nome personalizzato.",
+      "displayName": "Nome visualizzato",
+      "displayNamePlaceholder": "es. TorrentLeech",
+      "domains": "Dominio/i",
+      "selectedTrackers": "Tracker selezionati",
+      "primary": "Principale",
+      "removeDomain": "Rimuovi {{domain}}",
+      "cancel": "Annulla",
+      "saving": "Salvataggio...",
+      "save": "Salva",
+      "renameAction": "Rinomina",
+      "mergeAction": "Unisci"
+    },
+    "importDialog": {
+      "title": "Importa personalizzazioni tracker",
+      "description": "Incolla il JSON per importare le personalizzazioni dei tracker (rinomine e unioni).",
+      "jsonData": "Dati JSON",
+      "invalidFormat": "Formato non valido: previsto un array trackerCustomizations",
+      "missingDisplayName": "Voce non valida: displayName mancante",
+      "invalidDomains": "Voce non valida: domains deve essere un array non vuoto",
+      "invalidJson": "JSON non valido",
+      "newCount": "{{count}} nuovo/i",
+      "conflictCount_one": "{{count}} conflitto",
+      "conflictCount_other": "{{count}} conflitti",
+      "unchangedCount": "{{count}} invariato/i",
+      "resolveConflicts": "Risolvi i conflitti",
+      "conflictsWith": "In conflitto con: {{name}}",
+      "skip": "Ignora",
+      "overwrite": "Sovrascrivi",
+      "cancel": "Annulla",
+      "importing": "Importazione...",
+      "import": "Importa"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Nessuna personalizzazione da esportare",
+      "copiedToClipboard": "Copiato negli appunti",
+      "failedToCopy": "Impossibile copiare negli appunti",
+      "createFailed": "Impossibile creare la personalizzazione del tracker",
+      "updateFailed": "Impossibile aggiornare la personalizzazione del tracker",
+      "deleteFailed": "Impossibile eliminare la personalizzazione del tracker",
+      "failedToImport": "Importazione non riuscita: {{names}}",
+      "importedAndSkipped": "Importati {{imported}}, ignorati {{skipped}}",
+      "importedCount_one": "{{count}} personalizzazione importata",
+      "importedCount_other": "{{count}} personalizzazioni importate",
+      "noCustomizationsImported": "Nessuna personalizzazione importata"
     }
   }
 }

@@ -143,6 +143,7 @@ import type {
   User,
   VersionInfo,
   SystemNotice,
+  DatabaseShrinkStatus,
   WarningResponse,
   WebSeed,
   SSHCredentials,
@@ -2472,6 +2473,23 @@ class ApiClient {
 
   async getSystemNotices(): Promise<SystemNotice[]> {
     return this.request<SystemNotice[]>("/system-notices")
+  }
+
+  async dismissSystemNotice(kind: string): Promise<void> {
+    await this.request<void>(`/system-notices/${encodeURIComponent(kind)}`, { method: "DELETE" })
+  }
+
+  async getDatabaseShrink(): Promise<DatabaseShrinkStatus> {
+    return this.request<DatabaseShrinkStatus>("/database/shrink")
+  }
+
+  /** Stores the "shrink pending" mark. restarting is false where qui cannot restart itself. */
+  async requestDatabaseShrink(): Promise<{ restarting: boolean }> {
+    return this.request<{ restarting: boolean }>("/database/shrink", { method: "POST" })
+  }
+
+  async dismissDatabaseShrinkResult(): Promise<void> {
+    await this.request<void>("/database/shrink/result", { method: "DELETE" })
   }
 
   async getTrackerIcons(): Promise<Record<string, string>> {

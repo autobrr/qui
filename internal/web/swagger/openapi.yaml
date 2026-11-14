@@ -6551,6 +6551,95 @@ paths:
                 items:
                   $ref: '#/components/schemas/SystemNotice'
 
+  /api/database/shrink:
+    get:
+      tags:
+        - System
+      summary: Read the database shrink status
+      description: >-
+        Returns the size of the SQLite database file, the free space on its disk, and the space that a shrink needs: up to
+        two times the size of the file. It also returns whether a shrink is pending and the outcome of the shrink at the
+        last start, until the web UI dismisses it. On Postgres, available is false and the other numbers are zero. An API
+        key with an instance limit cannot use this route.
+      responses:
+        '200':
+          description: The shrink status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseShrinkStatus'
+        '500':
+          description: Failed to read the file size or the free disk space
+    post:
+      tags:
+        - System
+      summary: Shrink the database file
+      description: >-
+        Stores the "shrink pending" mark and restarts qui. At the next start, before any service starts, qui makes the
+        SQLite file smaller and gives the free space back to the disk. Where Restart is not available, the shrink runs at
+        the next start of qui. When the shrink fails, qui starts as usual and opens the System notice "shrink_failed". Only
+        a signed-in browser can use this route, because the shrink restarts qui.
+      security:
+        - SessionAuth: []
+      responses:
+        '202':
+          description: The shrink is pending
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - restarting
+                properties:
+                  restarting:
+                    type: boolean
+                    description: True when qui restarts now. False when the shrink waits for the next start.
+        '409':
+          description: The database is Postgres, the disk has too little free space, or an update or restart is already running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to store the mark, or the restart was refused. A refused restart keeps the mark for the next start.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/database/shrink/result:
+    delete:
+      tags:
+        - System
+      summary: Dismiss the outcome of the last shrink
+      description: Forgets the sizes before and after the shrink at the last start, after the web UI showed them. An API key with an instance limit cannot use this route.
+      responses:
+        '204':
+          description: The outcome is dismissed
+
+  /api/system-notices/{kind}:
+    delete:
+      tags:
+        - System
+      summary: Dismiss a System notice
+      description: Closes a System notice that the user can dismiss, for example "shrink_failed". A notice such as "recording_stopped" closes itself when the fault is gone, and returns 409.
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema:
+            type: string
+          description: The kind of the notice
+      responses:
+        '204':
+          description: The notice is closed
+        '409':
+          description: The notice closes itself and cannot be dismissed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/system/restart:
     post:
       tags:
@@ -8940,11 +9029,15 @@ components:
       properties:
         kind:
           type: string
-          enum: [recording_stopped]
+          enum: [recording_stopped, shrink_failed]
           description: The kind of the notice. The web UI shows the title and the fix of each kind.
         severity:
           type: string
-          enum: [error]
+          enum: [error, warning]
+        reason:
+          type: string
+          description: Selects the fix that the notice shows. For shrink_failed it is disk_full, locked, or unknown. Absent for a kind with one fix.
+          example: disk_full
         cause:
           type: string
           description: The error that opened the notice, or the latest error while it is open
@@ -8953,6 +9046,51 @@ components:
           type: string
           format: date-time
           description: When the notice opened
+
+    DatabaseShrinkStatus:
+      type: object
+      required:
+        - available
+        - fileBytes
+        - freeBytes
+        - needBytes
+        - restartAvailable
+        - pending
+      properties:
+        available:
+          type: boolean
+          description: True on SQLite. Postgres has no file to shrink.
+        fileBytes:
+          type: integer
+          format: int64
+          description: The size of the database file
+        freeBytes:
+          type: integer
+          format: int64
+          description: The free space on the disk of the database file
+        needBytes:
+          type: integer
+          format: int64
+          description: The free space that a shrink needs, two times the size of the file
+        restartAvailable:
+          type: boolean
+          description: False where qui cannot restart itself. The shrink then runs at the next start.
+        pending:
+          type: boolean
+          description: True when the shrink runs at the next start
+        result:
+          type: object
+          description: The outcome of the shrink at the last start, until the web UI dismisses it
+          required:
+            - beforeBytes
+            - afterBytes
+          properties:
+            beforeBytes:
+              type: integer
+              format: int64
+            afterBytes:
+              type: integer
+              format: int64
 
     LatestVersionResponse:
       type: object

@@ -14,18 +14,23 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { databaseShrinkQueryKey, useDatabaseShrink } from "@/hooks/useDatabaseShrink"
 import { api } from "@/lib/api"
-import type { TransferHistoryInstance } from "@/types"
+import { formatBytes } from "@/lib/utils"
+import type { DatabaseShrinkStatus, TransferHistoryInstance } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const ALL = "all"
+
+const MANUAL_SHRINK_DOCS_URL = "https://getqui.com/docs/features/statistics#shrink-the-database-file-by-hand"
 
 type Range = "everything" | "before"
 
@@ -52,8 +57,14 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
   const [range, setRange] = useState<Range>("everything")
   const [date, setDate] = useState("")
   const [confirming, setConfirming] = useState(false)
+  const [shrinkTicked, setShrinkTicked] = useState(false)
   const engineQuery = useQuery({ queryKey: ["application-info"], queryFn: () => api.getApplicationInfo() })
   const engine = engineQuery.data?.database.engine
+  const shrinkQuery = useQuery({ queryKey: databaseShrinkQueryKey, queryFn: () => api.getDatabaseShrink(), enabled: confirming && engine === "sqlite" })
+  const shrinkStatus = shrinkQuery.data
+  const shrinkFits = shrinkStatus !== undefined && shrinkStatus.freeBytes >= shrinkStatus.needBytes
+  const shrink = shrinkTicked && shrinkFits
+  const { requestShrink } = useDatabaseShrink()
 
   const mutation = useMutation({
     mutationFn: () => api.deleteTransferHistory({
@@ -64,6 +75,10 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
       // A delete of everything takes the instance out of the list.
       setTarget(ALL)
       toast.success(t("statistics.deleteHistory.deleted"))
+      if (shrink) {
+        setShrinkTicked(false)
+        void requestShrink()
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t("statistics.deleteHistory.failed"))
@@ -137,7 +152,10 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
                 : t("statistics.deleteHistory.confirmEverything", { name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {engine === "sqlite" && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.sqliteSpace")}</p>}
+          {engine === "sqlite" && !shrink && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.sqliteSpace")}</p>}
+          {engine === "sqlite" && shrinkStatus?.available && (
+            <ShrinkCheckbox status={shrinkStatus} checked={shrink} onCheckedChange={setShrinkTicked} disabled={mutation.isPending} />
+          )}
           {engine === "postgres" && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.postgresSpace")}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={mutation.isPending}>{t("statistics.deleteHistory.cancel")}</AlertDialogCancel>
@@ -155,6 +173,41 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+function ShrinkCheckbox({ status, checked, onCheckedChange, disabled }: {
+  status: DatabaseShrinkStatus
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  disabled: boolean
+}) {
+  const { t } = useTranslation("settings")
+  const fits = status.freeBytes >= status.needBytes
+
+  return (
+    <div className="flex items-start gap-2">
+      <Checkbox
+        id="statistics-delete-shrink"
+        checked={checked}
+        disabled={disabled || !fits}
+        onCheckedChange={value => onCheckedChange(value === true)}
+        className="mt-0.5"
+      />
+      <div className="space-y-1">
+        <Label htmlFor="statistics-delete-shrink">{t("statistics.deleteHistory.shrink.label")}</Label>
+        <p className="text-sm text-muted-foreground">
+          {fits
+            ? t(status.restartAvailable ? "statistics.deleteHistory.shrink.restart" : "statistics.deleteHistory.shrink.nextStart")
+            : t("statistics.deleteHistory.shrink.tooLittleSpace", { free: formatBytes(status.freeBytes), need: formatBytes(status.needBytes) })}
+        </p>
+        {!fits && (
+          <a className="text-sm underline underline-offset-2" href={MANUAL_SHRINK_DOCS_URL} target="_blank" rel="noopener noreferrer">
+            {t("statistics.deleteHistory.shrink.manualDocs")}
+          </a>
+        )}
+      </div>
     </div>
   )
 }

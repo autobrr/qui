@@ -13,6 +13,7 @@
     "notifications": "Notifications",
     "dateTime": "Time & Language",
     "statistics": "Statistics",
+    "trackers": "Tracker Customizations",
     "premiumThemes": "Themes",
     "security": "Security",
     "logs": "Logs"
@@ -432,7 +433,14 @@
       "cancel": "Cancel",
       "confirm": "Delete",
       "deleted": "History deleted",
-      "failed": "Failed to delete the history"
+      "failed": "Failed to delete the history",
+      "shrink": {
+        "label": "Also shrink the database file",
+        "restart": "qui restarts and makes the file smaller, so you get the disk space back. qui is unavailable for a short time.",
+        "nextStart": "qui cannot restart itself on this install. The shrink runs at the next start of qui.",
+        "tooLittleSpace": "The disk has {{free}} free, and a shrink needs up to {{need}}. It is safe to leave this off: SQLite uses the free space again for new history.",
+        "manualDocs": "Shrink the file by hand"
+      }
     },
     "loadFailed": "Failed to load the Statistics settings",
     "toasts": {
@@ -1203,6 +1211,74 @@
       "bind": "Bind Address",
       "configDir": "Config Directory",
       "dataDir": "Data Directory"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker Customizations",
+    "cardDescription": "Rename trackers and merge the domains of one tracker into one entry. qui shows the display name everywhere it shows the tracker.",
+    "loading": "Loading trackers…",
+    "empty": "No trackers yet. Trackers show here when an instance has torrents.",
+    "importTooltip": "Import customizations",
+    "exportTooltip": "Export customizations",
+    "mergedFrom": "Merged from: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Merge selected trackers into this group",
+    "mergeIntoGroup": "Merge into group",
+    "addToMerge": "Add to merge",
+    "rename": "Rename",
+    "edit": "Edit",
+    "delete": "Delete",
+    "customizeDialog": {
+      "editTitle": "Edit Tracker Name",
+      "renameTitle": "Rename Tracker",
+      "mergeTitle": "Merge Trackers",
+      "editDescription": "Update the display name for this tracker.",
+      "renameDescription": "Give this tracker a custom display name.",
+      "mergeDescription": "Combine these trackers into a single entry with a custom name.",
+      "displayName": "Display Name",
+      "displayNamePlaceholder": "e.g., TorrentLeech",
+      "domains": "Domain(s)",
+      "selectedTrackers": "Selected Tracker(s)",
+      "primary": "Primary",
+      "removeDomain": "Remove {{domain}}",
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "save": "Save",
+      "renameAction": "Rename",
+      "mergeAction": "Merge"
+    },
+    "importDialog": {
+      "title": "Import Tracker Customizations",
+      "description": "Paste JSON to import tracker customizations (renames and merges).",
+      "jsonData": "JSON Data",
+      "invalidFormat": "Invalid format: expected trackerCustomizations array",
+      "missingDisplayName": "Invalid entry: missing displayName",
+      "invalidDomains": "Invalid entry: domains must be a non-empty array",
+      "invalidJson": "Invalid JSON",
+      "newCount": "{{count}} new",
+      "conflictCount_one": "{{count}} conflict",
+      "conflictCount_other": "{{count}} conflicts",
+      "unchangedCount": "{{count}} unchanged",
+      "resolveConflicts": "Resolve conflicts",
+      "conflictsWith": "Conflicts with: {{name}}",
+      "skip": "Skip",
+      "overwrite": "Overwrite",
+      "cancel": "Cancel",
+      "importing": "Importing...",
+      "import": "Import"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "No customizations to export",
+      "copiedToClipboard": "Copied to clipboard",
+      "failedToCopy": "Failed to copy to clipboard",
+      "createFailed": "Failed to create tracker customization",
+      "updateFailed": "Failed to update tracker customization",
+      "deleteFailed": "Failed to delete tracker customization",
+      "failedToImport": "Failed to import: {{names}}",
+      "importedAndSkipped": "Imported {{imported}}, skipped {{skipped}}",
+      "importedCount_one": "Imported {{count}} customization",
+      "importedCount_other": "Imported {{count}} customizations",
+      "noCustomizationsImported": "No customizations imported"
     }
   }
 }
