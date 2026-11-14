@@ -195,11 +195,15 @@ func (h *ThemesHandler) DeleteCustomTheme(w http.ResponseWriter, r *http.Request
 // findCustomTheme matches the id of the route against the ids of the theme
 // files, exact case first, so the path never comes from the request.
 func (h *ThemesHandler) findCustomTheme(w http.ResponseWriter, r *http.Request) (string, os.DirEntry, bool) {
-	// chi matches on the raw path, so an id with an escape that Go keeps, such as %20 next to (, arrives escaped.
-	id, err := url.PathUnescape(chi.URLParam(r, "id"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid theme id")
-		return "", nil, false
+	// chi routes on RawPath when Go sets it, and then the id arrives still escaped.
+	id := chi.URLParam(r, "id")
+	if r.URL.RawPath != "" {
+		unescaped, err := url.PathUnescape(id)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, "Invalid theme id")
+			return "", nil, false
+		}
+		id = unescaped
 	}
 	dir, ok := h.writableThemesDir(w)
 	if !ok {

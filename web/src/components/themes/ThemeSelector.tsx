@@ -502,7 +502,11 @@ export function ThemeSelector() {
       </CardContent>
 
       {editorTarget && (
-        <CustomThemeEditor target={editorTarget} onClose={() => setEditorTarget(null)} />
+        <CustomThemeEditor
+          key={editorTarget.kind === "edit" ? `edit:${editorTarget.id}` : "new"}
+          target={editorTarget}
+          onClose={() => setEditorTarget(null)}
+        />
       )}
 
       <AlertDialog

@@ -63,8 +63,11 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "name":
       return { ...state, name: action.name }
-    case "css":
-      return { ...state, css: action.css, name: readThemeName(action.css) ?? state.name }
+    case "css": {
+      // Only a new @name fills the field, so an edit elsewhere in the CSS keeps a name that the user typed.
+      const header = readThemeName(action.css)
+      return { ...state, css: action.css, name: header !== null && header !== readThemeName(state.css) ? header : state.name }
+    }
     case "save-start":
       return { ...state, phase: { kind: "saving" } }
     case "save-failed":
@@ -131,7 +134,7 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
     if (previewProblem) return
     const parsed = parseThemeCSS(previewCss)
     if (!parsed) return
-    previewCustomThemeCss(previewCss, parsed.cssVars)
+    previewCustomThemeCss(previewCss, parsed.cssVars, parsed.metadata.lightOnly === true)
     previewed.current = true
   }, [previewCss, previewProblem])
 

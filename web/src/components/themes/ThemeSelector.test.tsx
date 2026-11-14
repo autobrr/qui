@@ -292,7 +292,7 @@ describe("ThemeSelector custom theme editor", () => {
     expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, {
       light: { "--background": "red" },
       dark: { "--background": "darkred" },
-    })
+    }, false)
 
     fireEvent.click(saveButton())
 
@@ -315,6 +315,32 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("Red Alert", "Blood Moon") })
   })
 
+  it("keeps a typed name through a later CSS edit", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "blood-moon", filename: "blood-moon.css", css: "" }, { status: 201 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(nameField(), { target: { value: "Blood Moon" } })
+    fireEvent.change(cssField(), { target: { value: RED_THEME.replace("darkred", "maroon") } })
+
+    expect(nameField().value).toBe("Blood Moon")
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("darkred", "maroon").replace("Red Alert", "Blood Moon") })
+  })
+
+  it("loads the other theme when Edit is clicked while the editor is open", async () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+
+    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
+    expect(nameField().value).toBe("Custom theme")
+  })
+
   it("says why qui cannot use CSS without a .dark block and keeps the last good preview", () => {
     render(<ThemeSelector />)
 
@@ -324,7 +350,7 @@ describe("ThemeSelector custom theme editor", () => {
 
     expect(screen.getByText("themes.custom.editor.problems.missingDark")).toBeTruthy()
     expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything())
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
     expect(saveButton().disabled).toBe(true)
   })
 
@@ -340,7 +366,7 @@ describe("ThemeSelector custom theme editor", () => {
 
     expect(screen.getByText("themes.custom.editor.problems.outsideFile")).toBeTruthy()
     expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything())
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
 
     fireEvent.click(saveButton())
     expect((await screen.findByRole("alert")).textContent).toBe(refusal)

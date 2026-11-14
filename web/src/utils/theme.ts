@@ -396,9 +396,10 @@ export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
  * custom theme. It writes no theme slot, boot cache, or stored selection, so a
  * reload ends it. endCustomThemePreview paints the active theme again.
  */
-export const previewCustomThemeCss = (css: string, cssVars: Theme["cssVars"]): void => {
+export const previewCustomThemeCss = (css: string, cssVars: Theme["cssVars"], lightOnly: boolean): void => {
   const root = document.documentElement;
   void loadThemeFonts({ cssVars });
+  root.classList.toggle(THEME_DARK, !lightOnly && isDarkMode(getCurrentThemeMode()));
   Array.from(root.style)
     .filter(prop => prop.startsWith("--"))
     .forEach(prop => root.style.removeProperty(prop));

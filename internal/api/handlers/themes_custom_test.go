@@ -237,6 +237,22 @@ func TestCustomTheme_EscapedIDReachesFile(t *testing.T) {
 	require.Equal(t, []string{"My Theme (dark).css"}, rig.fileNames(t))
 }
 
+func TestCustomTheme_PercentInFileNameIsNotDecodedTwice(t *testing.T) {
+	rig := newCustomThemeRig(t, true)
+	rig.write(t, "100%.css", "hundred")
+	rig.write(t, "a%20b.css", "escaped name")
+	rig.write(t, "a b.css", "space name")
+
+	rec := rig.replace(t, "100%25", okThemeCSS)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, okThemeCSS, rig.read(t, "100%.css"))
+
+	rec = rig.remove(t, "a%2520b")
+	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+	require.Equal(t, []string{"100%.css", "a b.css"}, rig.fileNames(t))
+	require.Equal(t, "space name", rig.read(t, "a b.css"))
+}
+
 func TestCustomTheme_ConcurrentCreatesOfOneID(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	const callers = 8

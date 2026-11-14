@@ -28,6 +28,6 @@ export function writeThemeName(css: string, name: string): string {
   if (!match || match.index === undefined) {
     return `/* @name: ${safeName} */\n${css}`
   }
-  const start = match.index + match[0].indexOf(match[1])
+  const start = match.index + match[0].lastIndexOf(match[1])
   return css.slice(0, start) + safeName + css.slice(start + match[1].length)
 }

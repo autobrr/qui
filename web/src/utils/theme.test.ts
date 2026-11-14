@@ -144,7 +144,7 @@ describe("custom theme preview", () => {
     previewCustomThemeCss(":root { --background: red; } .dark { --background: maroon; }", {
       light: { "--background": "red" },
       dark: { "--background": "maroon" },
-    })
+    }, false)
 
     window.removeEventListener("themechange", listener)
     expect(customStyle()).toContain("--background: red")
@@ -157,7 +157,7 @@ describe("custom theme preview", () => {
   it("ends by painting the active theme again", async () => {
     registerCustomThemes([customTheme])
     await setTheme("custom:ocean")
-    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} })
+    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} }, false)
 
     await endCustomThemePreview()
 
@@ -167,12 +167,25 @@ describe("custom theme preview", () => {
 
   it("ends on a built-in theme without the preview style", async () => {
     await setTheme("minimal")
-    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} })
+    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} }, false)
 
     await endCustomThemePreview()
 
     expect(customStyle()).toBeNull()
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
+  })
+})
+
+describe("custom theme preview mode", () => {
+  it("shows a light-only theme in light mode and an ordinary theme in the selected mode", async () => {
+    await setTheme("minimal", "dark")
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+
+    previewCustomThemeCss(":root{--a:b}.dark{--a:c}", { light: {}, dark: {} }, true)
+    expect(document.documentElement.classList.contains("dark")).toBe(false)
+
+    previewCustomThemeCss(":root{--a:b}.dark{--a:c}", { light: {}, dark: {} }, false)
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
   })
 })
 
