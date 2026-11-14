@@ -208,16 +208,16 @@
       "redacted_key_rejected": {
         "short": "Chiave Redacted rifiutata",
         "title": "Redacted ha rifiutato la chiave API",
-        "effect": "qui non cerca su Redacted finché non incolli una nuova chiave.",
-        "fix": "Crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Redacted e incollala nelle impostazioni Gazelle (OPS/RED) di qui.",
+        "effect": "Redacted ha rifiutato l'ultima ricerca. qui lo interroga di nuovo alla prossima ricerca.",
+        "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Redacted e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Redacted ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Redacted.",
         "menuFix": "Incolla una nuova chiave nelle impostazioni",
         "action": "Apri le impostazioni Gazelle (OPS/RED)"
       },
       "orpheus_key_rejected": {
         "short": "Chiave Orpheus rifiutata",
         "title": "Orpheus ha rifiutato la chiave API",
-        "effect": "qui non cerca su Orpheus finché non incolli una nuova chiave.",
-        "fix": "Crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Orpheus e incollala nelle impostazioni Gazelle (OPS/RED) di qui.",
+        "effect": "Orpheus ha rifiutato l'ultima ricerca. qui lo interroga di nuovo alla prossima ricerca.",
+        "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Orpheus e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Orpheus ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Orpheus.",
         "menuFix": "Incolla una nuova chiave nelle impostazioni",
         "action": "Apri le impostazioni Gazelle (OPS/RED)"
       }

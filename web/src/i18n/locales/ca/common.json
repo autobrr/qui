@@ -208,16 +208,16 @@
       "redacted_key_rejected": {
         "short": "Clau de Redacted rebutjada",
         "title": "Redacted ha rebutjat la clau API",
-        "effect": "qui no cerca a Redacted fins que no enganxis una clau nova.",
-        "fix": "Crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Redacted i enganxa-la a la configuració Gazelle (OPS/RED) de qui.",
+        "effect": "Redacted ha rebutjat l'última cerca. qui el torna a consultar a la cerca següent.",
+        "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Redacted i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Redacted ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Redacted.",
         "menuFix": "Enganxa una clau nova a la configuració",
         "action": "Obre la configuració Gazelle (OPS/RED)"
       },
       "orpheus_key_rejected": {
         "short": "Clau de Orpheus rebutjada",
         "title": "Orpheus ha rebutjat la clau API",
-        "effect": "qui no cerca a Orpheus fins que no enganxis una clau nova.",
-        "fix": "Crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Orpheus i enganxa-la a la configuració Gazelle (OPS/RED) de qui.",
+        "effect": "Orpheus ha rebutjat l'última cerca. qui el torna a consultar a la cerca següent.",
+        "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Orpheus i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Orpheus ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Orpheus.",
         "menuFix": "Enganxa una clau nova a la configuració",
         "action": "Obre la configuració Gazelle (OPS/RED)"
       }

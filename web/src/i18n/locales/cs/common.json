@@ -208,16 +208,16 @@
       "redacted_key_rejected": {
         "short": "Klíč pro Redacted odmítnut",
         "title": "Redacted odmítl klíč API",
-        "effect": "qui nehledá na Redacted, dokud nevložíte nový klíč.",
-        "fix": "V nastavení profilu na Redacted vytvořte klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui.",
+        "effect": "Redacted odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Redacted klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Redacted zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Redacted.",
         "menuFix": "Vložte nový klíč v nastavení",
         "action": "Otevřít nastavení Gazelle (OPS/RED)"
       },
       "orpheus_key_rejected": {
         "short": "Klíč pro Orpheus odmítnut",
         "title": "Orpheus odmítl klíč API",
-        "effect": "qui nehledá na Orpheus, dokud nevložíte nový klíč.",
-        "fix": "V nastavení profilu na Orpheus vytvořte klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui.",
+        "effect": "Orpheus odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Orpheus klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Orpheus zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Orpheus.",
         "menuFix": "Vložte nový klíč v nastavení",
         "action": "Otevřít nastavení Gazelle (OPS/RED)"
       }

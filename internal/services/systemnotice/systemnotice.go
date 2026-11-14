@@ -90,7 +90,7 @@ func keyRejected(site string) definition {
 		severity: SeverityError,
 		title:    site + " rejected the API key",
 		fixes: map[string]string{
-			"": "qui does not search " + site + " until you paste a new key. Make an API key with the Torrents permission in your " + site + " profile settings, and paste it in the Gazelle (OPS/RED) settings of qui.",
+			"": site + " rejected the last search. qui asks it again at the next search. If the key is wrong, make an API key with the Torrents permission in your " + site + " profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If " + site + " banned the IP of qui, a new key does not help: contact the staff of " + site + ".",
 		},
 	}
 }
