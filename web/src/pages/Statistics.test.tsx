@@ -837,6 +837,18 @@ describe("Statistics", () => {
     expect(screen.getByText("growth.gapNote")).toBeTruthy()
   })
 
+  it("leaves a gap on a day on which an instance that qui records has no row, and ends a removed instance at its last row", async () => {
+    statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Old box", 400), recordedDaysAgo(3, "Home", 400)]
+    // Instance 1 has no row 2 days ago and none yet today. Instance 2 is removed after 3 days ago, so its last row ends it.
+    libraryAnswer = instanceId => [3, 2, 1, 0].filter(daysAgo => instanceId === 1 ? daysAgo === 3 || daysAgo === 1 : instanceId === 2 ? daysAgo === 3 : true)
+      .map(daysAgo => libraryRow(daysAgo, { torrents: 1, totalSize: instanceId * 1024, uniqueSize: instanceId * 1024 }))
+    configuredIds = [1, 3]
+    renderPage()
+
+    expect(await growthPoints()).toEqual([[3, 6144, 6144], [null, null, null], [2, 4096, 4096], [null, null, null]])
+    await expectTile("tiles.unique", "4 KiB | tiles.uniqueTotal size=4 KiB")
+  })
+
   it("says that the period has no Unique size before the first Copy groups build", async () => {
     libraryAnswer = () => [libraryRow(0, { torrents: 1, totalSize: 4096 })]
     renderPage()

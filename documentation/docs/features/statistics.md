@@ -138,13 +138,13 @@ Click a row to see the upload and download of that torrent for each day of the p
 
 The Library growth chart is below the top torrents. It shows the size of your library for each UTC day of the period. The Total size line counts each torrent in full. The Unique size line counts each Copy group one time inside an instance. A Copy group is a set of torrents that share the same files, for example a hardlinked or reflinked cross-seed.
 
-The text above the chart gives the torrent count of the newest day. To see the total size, the Unique size, and the torrent count of a day, hover over that day. Each value comes from the last reading of that UTC day.
+The text above the chart gives the torrent count of the newest day. To see the total size, the Unique size, and the torrent count of a day, hover over that day. The torrent count and the total size come from the last reading of that UTC day. The Unique size comes from the last reading of that day that had a Unique size.
 
 The page adds the selected instances together. The Unique size of two instances is the sum of the Unique size of each instance, because a Copy group stays inside one instance.
 
 The chart starts on the first day in the period that qui recorded the library. It has no data from before the first recording.
 
-If a day has no completed Copy groups build, that day has no Unique size. The Unique size line then has a gap on that day, and it does not drop to zero. If one of two or more selected instances has no Unique size on a day, the line also has a gap. A sum without that instance would show a false drop. If qui did not record a day, for example because qui was stopped, both lines have a gap.
+If a day has no completed Copy groups build, that day has no Unique size. The Unique size line then has a gap on that day, and it does not drop to zero. If one of two or more selected instances has no Unique size on a day, the line also has a gap. A sum without that instance would show a false drop. If qui did not record a selected instance on a day, for example because qui or qBittorrent was stopped, both lines have a gap on that day. A removed or disabled instance is the exception: after its last recorded day, the sum leaves it out. Today can show a gap for a few minutes after midnight UTC, until qui stores the first reading of the day.
 
 ## Baseline
 

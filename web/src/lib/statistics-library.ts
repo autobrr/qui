@@ -19,29 +19,36 @@ export interface LibraryPoint {
 
 /**
  * Builds one point for each UTC day from the first stored day of the period to the end of the period, with the
- * instances added together. The Unique size of a day is null unless each instance with a size on that day has one,
- * so that one instance without a Copy groups build does not draw a drop.
+ * instances added together. recording tells for each instance whether qui records it now. An instance counts on each
+ * day from its first stored day: to the end of the period when qui records it, else to its last stored day. A day on
+ * which a counted instance has no size is null, and so is a Unique size that a counted instance lacks, so that a
+ * missing instance does not draw a drop.
  */
-export function buildLibraryPoints(rowsByInstance: TransferHistoryLibraryRow[][], period: StatisticsPeriod): LibraryPoint[] {
+export function buildLibraryPoints(rowsByInstance: TransferHistoryLibraryRow[][], period: StatisticsPeriod, recording: boolean[]): LibraryPoint[] {
   const days = new Map<number, TransferHistoryLibraryRow[]>()
-  for (const rows of rowsByInstance) {
+  const spans: { first: number; last: number }[] = []
+  rowsByInstance.forEach((rows, index) => {
     for (const row of rows) {
       if (row.totalSize === undefined) {
         continue
       }
       const day = Date.parse(row.day)
       days.set(day, [...days.get(day) ?? [], row])
+      const span = spans[index] ??= { first: day, last: day }
+      span.first = Math.min(span.first, day)
+      span.last = Math.max(span.last, day)
     }
-  }
+  })
   if (days.size === 0) {
     return []
   }
   const points: LibraryPoint[] = []
   const lastDay = utcDayStart(new Date(period.to.getTime() - 1))
   for (let day = Math.min(...days.keys()); day <= lastDay; day += DAY) {
-    const rows = days.get(day)
+    const rows = days.get(day) ?? []
+    const counted = spans.filter((span, index) => span && span.first <= day && (recording[index] || day <= span.last)).length
     const sum = (value: (row: TransferHistoryLibraryRow) => number | undefined) =>
-      rows?.every(row => value(row) !== undefined) ? rows.reduce((total, row) => total + value(row)!, 0) : null
+      rows.length === counted && rows.every(row => value(row) !== undefined) ? rows.reduce((total, row) => total + value(row)!, 0) : null
     points.push({ start: localDateOfUtc(day), torrents: sum(row => row.torrents), totalSize: sum(row => row.totalSize), uniqueSize: sum(row => row.uniqueSize) })
   }
   return points
