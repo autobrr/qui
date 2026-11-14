@@ -316,7 +316,7 @@ func TestAdapterDropsTheSpeedsOfAnUpdateThatWaitsWhenRecordingGoesOff(t *testing
 	})
 }
 
-// regression: delete cause lost at a restart
+// regression: #4143
 func TestAdapterShutdownKeepsTheCauseOfADeleteThatTheNextReadingWouldShow(t *testing.T) {
 	const kept, deleted = "aaaa000000000000000000000000000000000001", "aaaa000000000000000000000000000000000002"
 	var gone atomic.Bool
