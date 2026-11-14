@@ -5,3 +5,7 @@ package transferhistory
 
 // WaitForFolds waits until each fold that the module started ends.
 func WaitForFolds(m *Module) { m.folds.Wait() }
+
+// SetPartSize sets the most torrents in one part of a write. Call it before
+// the first reading.
+func SetPartSize(m *Module, torrents int) { m.partSize = torrents }
