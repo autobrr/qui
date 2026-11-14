@@ -170,6 +170,40 @@ describe("CrossSeedDialog search scope", () => {
     expect(entryRow("Orpheus (API)")?.textContent).toContain("crossSeedDialog.gazelle.willAsk")
   })
 
+  it("lists the Torznab indexers by name beside the RED/OPS entries, in both modes", () => {
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "will_ask" }]
+    const options = [{ id: 1, name: "Alpha Music" }, { id: 2, name: "Beta Tracker" }]
+    const { rerender } = render(
+      <CrossSeedDialog {...baseProps} indexerOptions={options} gazelleEntries={plan} selectableGazelleIds={[red.indexerId, ops.indexerId]} />
+    )
+
+    expect(entryRow("Alpha Music")?.getAttribute("data-status")).toBe("will_ask")
+    expect(entryRow("Beta Tracker")?.getAttribute("data-status")).toBe("will_ask")
+    expect(entryRow("Orpheus (API)")?.getAttribute("data-status")).toBe("will_ask")
+
+    rerender(
+      <CrossSeedDialog
+        {...baseProps}
+        indexerMode="custom"
+        selectedIndexerIds={[1, red.indexerId]}
+        indexerOptions={options}
+        gazelleEntries={plan}
+        selectableGazelleIds={[red.indexerId, ops.indexerId]}
+      />
+    )
+
+    expect(entryRow("Alpha Music")?.getAttribute("data-status")).toBe("will_ask")
+    expect(entryRow("Beta Tracker")?.getAttribute("data-status")).toBe("not_asked")
+    expect(entryRow("Redacted (API)")?.textContent).toContain("crossSeedDialog.gazelle.willAsk")
+    expect(entryRow("Orpheus (API)")?.textContent).toContain("crossSeedDialog.gazelle.notAsked.notSelected")
+  })
+
+  it("says that a site rejected the key last time", () => {
+    render(<CrossSeedDialog {...baseProps} gazelleEntries={[{ ...ops, status: "will_ask", reason: "key_rejected" }]} />)
+
+    expect(entryRow("Orpheus (API)")?.textContent).toContain("crossSeedDialog.gazelle.willAskRejected")
+  })
+
   it("links a site with no API key to the RED/OPS settings", () => {
     const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "not_asked", reason: "no_api_key" }]
     render(<CrossSeedDialog {...baseProps} gazelleEntries={plan} />)

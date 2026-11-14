@@ -209,17 +209,17 @@
         "short": "Redacted 金鑰遭拒",
         "title": "Redacted 拒絕了 API 金鑰",
         "effect": "在您貼上新金鑰之前，qui 不會搜尋 Redacted。",
-        "fix": "在您的 Redacted 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 RED/OPS 設定中。",
+        "fix": "在您的 Redacted 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 Gazelle (OPS/RED) 設定中。",
         "menuFix": "在設定中貼上新金鑰",
-        "action": "開啟 RED/OPS 設定"
+        "action": "開啟 Gazelle (OPS/RED) 設定"
       },
       "orpheus_key_rejected": {
         "short": "Orpheus 金鑰遭拒",
         "title": "Orpheus 拒絕了 API 金鑰",
         "effect": "在您貼上新金鑰之前，qui 不會搜尋 Orpheus。",
-        "fix": "在您的 Orpheus 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 RED/OPS 設定中。",
+        "fix": "在您的 Orpheus 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 Gazelle (OPS/RED) 設定中。",
         "menuFix": "在設定中貼上新金鑰",
-        "action": "開啟 RED/OPS 設定"
+        "action": "開啟 Gazelle (OPS/RED) 設定"
       }
     },
     "actions": {

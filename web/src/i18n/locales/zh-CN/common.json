@@ -209,17 +209,17 @@
         "short": "Redacted 密钥被拒绝",
         "title": "Redacted 拒绝了 API 密钥",
         "effect": "在您粘贴新密钥之前，qui 不会搜索 Redacted。",
-        "fix": "在您的 Redacted 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 RED/OPS 设置中。",
+        "fix": "在您的 Redacted 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。",
         "menuFix": "在设置中粘贴新密钥",
-        "action": "打开 RED/OPS 设置"
+        "action": "打开 Gazelle (OPS/RED) 设置"
       },
       "orpheus_key_rejected": {
         "short": "Orpheus 密钥被拒绝",
         "title": "Orpheus 拒绝了 API 密钥",
         "effect": "在您粘贴新密钥之前，qui 不会搜索 Orpheus。",
-        "fix": "在您的 Orpheus 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 RED/OPS 设置中。",
+        "fix": "在您的 Orpheus 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。",
         "menuFix": "在设置中粘贴新密钥",
-        "action": "打开 RED/OPS 设置"
+        "action": "打开 Gazelle (OPS/RED) 设置"
       }
     },
     "actions": {

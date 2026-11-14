@@ -209,17 +209,17 @@
         "short": "Chave do Redacted recusada",
         "title": "O Redacted recusou a chave de API",
         "effect": "O qui não pesquisa no Redacted até você colar uma nova chave.",
-        "fix": "Crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Redacted e cole-a nas configurações RED/OPS do qui.",
+        "fix": "Crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Redacted e cole-a nas configurações Gazelle (OPS/RED) do qui.",
         "menuFix": "Cole uma nova chave nas configurações",
-        "action": "Abrir configurações RED/OPS"
+        "action": "Abrir configurações Gazelle (OPS/RED)"
       },
       "orpheus_key_rejected": {
         "short": "Chave do Orpheus recusada",
         "title": "O Orpheus recusou a chave de API",
         "effect": "O qui não pesquisa no Orpheus até você colar uma nova chave.",
-        "fix": "Crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Orpheus e cole-a nas configurações RED/OPS do qui.",
+        "fix": "Crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Orpheus e cole-a nas configurações Gazelle (OPS/RED) do qui.",
         "menuFix": "Cole uma nova chave nas configurações",
-        "action": "Abrir configurações RED/OPS"
+        "action": "Abrir configurações Gazelle (OPS/RED)"
       }
     },
     "actions": {

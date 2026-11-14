@@ -1502,6 +1502,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "es consultarà",
+      "willAskRejected": "es consultarà: l'última vegada el lloc va rebutjar la clau API",
       "match": "coincidència",
       "noMatch": "cap coincidència",
       "openSettings": "Obre la configuració",

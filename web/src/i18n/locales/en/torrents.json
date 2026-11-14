@@ -816,6 +816,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "will ask",
+      "willAskRejected": "will ask: the site rejected the API key last time",
       "match": "match",
       "noMatch": "no match",
       "openSettings": "Open settings",

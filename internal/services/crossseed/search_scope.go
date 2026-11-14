@@ -297,6 +297,14 @@ func (s *Service) collectGazellePlan(ctx context.Context, instanceID int, torren
 			plan = decideGazelleSites(f)
 		}
 	}
+	// The search still asks a site whose key rejected notice is open, because
+	// the site can answer again. The plan says that the last answer was a
+	// rejection.
+	for i, d := range plan {
+		if d.Status == GazelleWillAsk && s.keyRejectedOpen(gazelleLookupSite(d)) {
+			plan[i].Reason = GazelleReasonKeyRejected
+		}
+	}
 	return plan, nil
 }
 

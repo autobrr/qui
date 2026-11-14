@@ -209,17 +209,17 @@
         "short": "Clé Redacted refusée",
         "title": "Redacted a refusé la clé API",
         "effect": "qui ne recherche plus sur Redacted tant que vous ne collez pas une nouvelle clé.",
-        "fix": "Créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Redacted, puis collez-la dans les paramètres RED/OPS de qui.",
+        "fix": "Créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Redacted, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui.",
         "menuFix": "Coller une nouvelle clé dans les paramètres",
-        "action": "Ouvrir les paramètres RED/OPS"
+        "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
       },
       "orpheus_key_rejected": {
         "short": "Clé Orpheus refusée",
         "title": "Orpheus a refusé la clé API",
         "effect": "qui ne recherche plus sur Orpheus tant que vous ne collez pas une nouvelle clé.",
-        "fix": "Créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Orpheus, puis collez-la dans les paramètres RED/OPS de qui.",
+        "fix": "Créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Orpheus, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui.",
         "menuFix": "Coller une nouvelle clé dans les paramètres",
-        "action": "Ouvrir les paramètres RED/OPS"
+        "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
       }
     },
     "actions": {

@@ -757,6 +757,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "将查询",
+      "willAskRejected": "将查询：站点上次拒绝了 API 密钥",
       "match": "匹配",
       "noMatch": "无匹配",
       "openSettings": "打开设置",

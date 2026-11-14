@@ -934,6 +934,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "буде запитано",
+      "willAskRejected": "буде запитано: минулого разу сайт відхилив API-ключ",
       "match": "збіг",
       "noMatch": "немає збігу",
       "openSettings": "Відкрити налаштування",

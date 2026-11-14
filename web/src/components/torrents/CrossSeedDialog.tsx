@@ -33,10 +33,10 @@ import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import { copyTextToClipboard, formatBytes } from "@/lib/utils"
-import { GazelleScopeEntries } from "@/components/torrents/GazelleScopeEntries"
+import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { SearchScopeEntries } from "@/components/torrents/SearchScopeEntries"
 import { useGazelleLookupText } from "@/hooks/useGazelleLookupText"
-import { gazelleReportLines } from "@/lib/gazelle-lookup"
+import { gazelleEntryForPick, gazelleReportLines, gazelleStatusClass } from "@/lib/gazelle-lookup"
 import type {
   CrossSeedApplyResponse,
   CrossSeedGazelleLookup,
@@ -225,6 +225,17 @@ const CrossSeedDialogComponent = ({
     [decisionTrace]
   )
 
+  // The scope list shows what the next search asks. In Select Custom, a RED/OPS
+  // site that the user did not pick is not asked.
+  const scopeTorznabEntries = useMemo(
+    () => indexerOptions.map(option => ({ ...option, asked: indexerMode === "all" || selectedIndexerIds.includes(option.id) })),
+    [indexerOptions, indexerMode, selectedIndexerIds]
+  )
+  const scopeGazelleEntries = useMemo(
+    () => gazelleEntries.map(entry => gazelleEntryForPick(entry, indexerMode === "all" || selectedIndexerIds.includes(entry.indexerId))),
+    [gazelleEntries, indexerMode, selectedIndexerIds]
+  )
+
   // After a search, gazelleEntries holds the outcome of each RED/OPS site.
   const gazelleLookups = useMemo(
     () => (hasSearched && !isLoading ? gazelleEntries.filter(entry => entry.status !== "will_ask") : []),
@@ -358,7 +369,7 @@ const CrossSeedDialogComponent = ({
                 {gazelleAsks && <ScopeSearchButton onClick={onScopeSearch} isSearching={isLoading} disabled={isLoading} />}
               </div>
             )}
-            <GazelleScopeEntries entries={gazelleEntries} />
+            <SearchScopeEntries torznab={scopeTorznabEntries} gazelle={scopeGazelleEntries} />
             {(capabilityFilteredIndexerEntries.length > 0 && indexerOptions.length > 0) && (
               <div className="mt-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground">
                 <p className="font-medium text-[11px] text-foreground">{t("crossSeedDialog.capabilityNote")}</p>
@@ -863,7 +874,7 @@ function GazelleTraceRows({ lookups }: { lookups: CrossSeedGazelleLookup[] }) {
       {lookups.map(lookup => (
         <li key={lookup.site} className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="min-w-0 truncate">{lookup.name}</span>
-          <span className="min-w-0 break-words text-muted-foreground">{lookupText(lookup)}</span>
+          <span className={cn("min-w-0 break-words", gazelleStatusClass(lookup.status))}>{lookupText(lookup)}</span>
         </li>
       ))}
     </ul>

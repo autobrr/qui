@@ -209,17 +209,17 @@
         "short": "Redacted 키 거부됨",
         "title": "Redacted에서 API 키를 거부했습니다",
         "effect": "새 키를 붙여 넣을 때까지 qui는 Redacted를 검색하지 않습니다.",
-        "fix": "Redacted 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 RED/OPS 설정에 붙여 넣으세요.",
+        "fix": "Redacted 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 Gazelle (OPS/RED) 설정에 붙여 넣으세요.",
         "menuFix": "설정에 새 키 붙여 넣기",
-        "action": "RED/OPS 설정 열기"
+        "action": "Gazelle (OPS/RED) 설정 열기"
       },
       "orpheus_key_rejected": {
         "short": "Orpheus 키 거부됨",
         "title": "Orpheus에서 API 키를 거부했습니다",
         "effect": "새 키를 붙여 넣을 때까지 qui는 Orpheus를 검색하지 않습니다.",
-        "fix": "Orpheus 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 RED/OPS 설정에 붙여 넣으세요.",
+        "fix": "Orpheus 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 Gazelle (OPS/RED) 설정에 붙여 넣으세요.",
         "menuFix": "설정에 새 키 붙여 넣기",
-        "action": "RED/OPS 설정 열기"
+        "action": "Gazelle (OPS/RED) 설정 열기"
       }
     },
     "actions": {

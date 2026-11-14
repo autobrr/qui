@@ -209,17 +209,17 @@
         "short": "Redacted-Schlüssel abgelehnt",
         "title": "Redacted hat den API-Schlüssel abgelehnt",
         "effect": "qui durchsucht Redacted erst wieder, wenn du einen neuen Schlüssel einfügst.",
-        "fix": "Erstelle in deinen Redacted-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den RED/OPS-Einstellungen von qui ein.",
+        "fix": "Erstelle in deinen Redacted-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein.",
         "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
-        "action": "RED/OPS-Einstellungen öffnen"
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
       },
       "orpheus_key_rejected": {
         "short": "Orpheus-Schlüssel abgelehnt",
         "title": "Orpheus hat den API-Schlüssel abgelehnt",
         "effect": "qui durchsucht Orpheus erst wieder, wenn du einen neuen Schlüssel einfügst.",
-        "fix": "Erstelle in deinen Orpheus-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den RED/OPS-Einstellungen von qui ein.",
+        "fix": "Erstelle in deinen Orpheus-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein.",
         "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
-        "action": "RED/OPS-Einstellungen öffnen"
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
       }
     },
     "actions": {

@@ -875,6 +875,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "bude dotázán",
+      "willAskRejected": "bude dotázán: web minule odmítl klíč API",
       "match": "shoda",
       "noMatch": "žádná shoda",
       "openSettings": "Otevřít nastavení",

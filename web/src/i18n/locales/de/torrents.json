@@ -816,6 +816,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "wird angefragt",
+      "willAskRejected": "wird angefragt: die Seite hat den API-Schlüssel zuletzt abgelehnt",
       "match": "Treffer",
       "noMatch": "kein Treffer",
       "openSettings": "Einstellungen öffnen",

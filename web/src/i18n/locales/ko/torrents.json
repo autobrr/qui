@@ -757,6 +757,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "조회 예정",
+      "willAskRejected": "조회 예정: 지난번에 사이트에서 API 키를 거부함",
       "match": "일치",
       "noMatch": "일치 없음",
       "openSettings": "설정 열기",

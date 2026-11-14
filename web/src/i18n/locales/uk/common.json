@@ -209,17 +209,17 @@
         "short": "Ключ Redacted відхилено",
         "title": "Redacted відхилив API-ключ",
         "effect": "qui не шукає на Redacted, доки ви не вставите новий ключ.",
-        "fix": "Створіть API-ключ із дозволом «Torrents» у налаштуваннях профілю Redacted і вставте його в налаштування RED/OPS у qui.",
+        "fix": "Створіть API-ключ із дозволом «Torrents» у налаштуваннях профілю Redacted і вставте його в налаштування Gazelle (OPS/RED) у qui.",
         "menuFix": "Вставте новий ключ у налаштуваннях",
-        "action": "Відкрити налаштування RED/OPS"
+        "action": "Відкрити налаштування Gazelle (OPS/RED)"
       },
       "orpheus_key_rejected": {
         "short": "Ключ Orpheus відхилено",
         "title": "Orpheus відхилив API-ключ",
         "effect": "qui не шукає на Orpheus, доки ви не вставите новий ключ.",
-        "fix": "Створіть API-ключ із дозволом «Torrents» у налаштуваннях профілю Orpheus і вставте його в налаштування RED/OPS у qui.",
+        "fix": "Створіть API-ключ із дозволом «Torrents» у налаштуваннях профілю Orpheus і вставте його в налаштування Gazelle (OPS/RED) у qui.",
         "menuFix": "Вставте новий ключ у налаштуваннях",
-        "action": "Відкрити налаштування RED/OPS"
+        "action": "Відкрити налаштування Gazelle (OPS/RED)"
       }
     },
     "actions": {

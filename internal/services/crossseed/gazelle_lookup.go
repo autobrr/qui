@@ -185,6 +185,15 @@ func (s *Service) closeKeyRejectedNotices(lookups []GazelleLookup) {
 	}
 }
 
+// keyRejectedOpen reports that the key rejected notice of the site is open.
+func (s *Service) keyRejectedOpen(site gazellemusic.Site) bool {
+	if s.systemNotices == nil {
+		return false
+	}
+	kind := keyRejectedNotice(site)
+	return slices.ContainsFunc(s.systemNotices.List(), func(n systemnotice.Notice) bool { return n.Kind == kind })
+}
+
 // GazelleKeysSaved closes the key rejected notice of each site that the saved
 // settings fix: the save checked its key with the site (checked), cleared its
 // key, or turned RED/OPS off.

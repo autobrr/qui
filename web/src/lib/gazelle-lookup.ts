@@ -39,6 +39,9 @@ export function gazelleLookupTextKey(lookup: CrossSeedGazelleLookup): string {
   if (lookup.status === "failed") {
     return (lookup.reason && failedKeys[lookup.reason]) ?? "crossSeedDialog.gazelle.failed.other"
   }
+  if (lookup.status === "will_ask" && lookup.reason === "key_rejected") {
+    return "crossSeedDialog.gazelle.willAskRejected"
+  }
   return statusKeys[lookup.status] ?? "crossSeedDialog.gazelle.willAsk"
 }
 
@@ -55,4 +58,21 @@ export function gazelleReportLines(lookups: CrossSeedGazelleLookup[]): string[] 
       return `  ${lookup.name}: ${lookup.status}${reason}${detail}`
     }),
   ]
+}
+
+/** gazelleStatusClass is the text color of the plan or the outcome of a RED/OPS entry. */
+export function gazelleStatusClass(status: CrossSeedGazelleLookup["status"]): string {
+  if (status === "failed") return "text-destructive"
+  if (status === "match") return "text-primary"
+  return "text-muted-foreground"
+}
+
+const notSelected: CrossSeedGazelleLookupReason = "not_selected"
+
+/** gazelleEntryForPick shows a planned RED/OPS entry that the user did not pick as not selected. */
+export function gazelleEntryForPick(entry: CrossSeedGazelleLookup, picked: boolean): CrossSeedGazelleLookup {
+  if (picked || entry.status !== "will_ask") {
+    return entry
+  }
+  return { ...entry, status: "not_asked", reason: notSelected }
 }

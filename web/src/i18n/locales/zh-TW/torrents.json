@@ -757,6 +757,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "將查詢",
+      "willAskRejected": "將查詢：網站上次拒絕了 API 金鑰",
       "match": "相符",
       "noMatch": "無相符",
       "openSettings": "開啟設定",

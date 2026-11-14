@@ -816,6 +816,7 @@
     "gazelle": {
       "heading": "RED/OPS",
       "willAsk": "será consultado",
+      "willAskRejected": "será consultado: da última vez o site recusou a chave de API",
       "match": "correspondência",
       "noMatch": "nenhuma correspondência",
       "openSettings": "Abrir configurações",

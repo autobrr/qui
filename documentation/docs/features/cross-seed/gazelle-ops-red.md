@@ -43,13 +43,14 @@ Each search for one torrent reports one RED/OPS lookup for each site: a match, n
 
 ### Search dialog
 
-The **Search Scope** list of the **Search Cross-Seeds** dialog always shows two entries: **Redacted (API)** and **Orpheus (API)**. When a site has an API key, the list does not show the Torznab indexer of that site, because qui asks the site through its API.
+The **Search Scope** section of the **Search Cross-Seeds** dialog lists each Torznab indexer by name, and always two more entries: **Redacted (API)** and **Orpheus (API)**. An entry that the next search does not ask is grey. When a site has an API key, the list does not show the Torznab indexer of that site, because qui asks the site through its API.
 
 When the dialog opens, each entry shows the plan:
 
 | Text | Meaning |
 | --- | --- |
 | will ask | The search asks the site. |
+| will ask: the site rejected the API key last time | The search asks the site, but the System notice for its key is open. |
 | not asked: the torrent comes from Redacted | The torrent comes from that site. qui asks only the other site. |
 | not asked: you already seed it there | A copy of the release already seeds on that site, or the instance already holds its content. |
 | not asked: not music | Most of the bytes of the torrent are not audio, e-book, or comic files. |
@@ -140,7 +141,7 @@ qui checks a new key when you save it. It sends one request to the tracker. If t
 
 A ban can also start after you saved the key. When the tracker refuses a request during a search, qui sends no more requests to that tracker for the rest of the search. It keeps searching the other Gazelle site and Torznab. It does not stamp the Gazelle cooldown for the torrents it could not check, so they stay eligible for the next run. The run history shows the message. If that tracker was the only source of the run, the run ends as failed.
 
-qui also opens a System notice for that site, for example "Orpheus rejected the API key". Each kind of search can open the notice: the search dialog, a Library Scan, and a completion search. Each site has its own notice. The **Open RED/OPS settings** button of the notice opens the Gazelle settings. The notice closes when one of these occurs:
+qui also opens a System notice for that site, for example "Orpheus rejected the API key". Each kind of search can open the notice: the search dialog, a Library Scan, and a completion search. Each site has its own notice. The **Open Gazelle (OPS/RED) settings** button of the notice opens the **Gazelle (OPS/RED)** card in the settings. The notice closes when one of these occurs:
 
 - You save a new key for that site, and the site accepts it.
 - A later lookup on that site gets an answer.

@@ -357,3 +357,19 @@ func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 
 	require.Equal(t, 1, syncManager.exportCalls)
 }
+
+// The plan of a site whose key rejected notice is open still asks the site,
+// and says that the last answer was a rejection.
+func TestPlanMarksSiteWithOpenRejectedNotice(t *testing.T) {
+	svc := newGazelleSeamService(t, otherTracker, bothGazelleKeys(), nil)
+	svc.systemNotices = systemnotice.New(nil)
+	svc.systemNotices.Open(systemnotice.RedactedKeyRejected, "rejected")
+	clients, err := svc.buildGazelleClientSet(t.Context(), nil)
+	require.NoError(t, err)
+	torrent := svc.syncManager.(*hashFilteringSyncManager).torrents[0]
+
+	plan, err := svc.collectGazellePlan(t.Context(), gazelleSeamInstanceID, &torrent, clients)
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"redacted.sh": "will_ask key_rejected", "orpheus.network": "will_ask "}, gazelleStatuses(plan))
+}
