@@ -90,7 +90,8 @@
     },
     "empty": "V tomto období nebyl smazán žádný torrent.",
     "shown": "{{shown}} z {{total}}",
-    "more": "Zobrazit další"
+    "more": "Zobrazit další",
+    "final": "Poměr {{ratio}} · Doba seedování {{seeded}}"
   },
   "allTimeNote": "Celkem zahrnuje výchozí stav: bajty, které torrenty měly, když je qui poprvé zaznamenal. Graf výchozí stav neukazuje, protože nemá datum.",
   "serverStatisticsNote": "Tato čísla sčítají přenos jednotlivých torrentů. Statistiky serveru na nástěnce čtou čítače qBittorrentu, které počítají i provoz protokolu, proto se čísla liší.",

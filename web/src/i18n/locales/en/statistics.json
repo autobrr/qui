@@ -89,7 +89,8 @@
     },
     "empty": "No torrent was deleted in the period.",
     "shown": "{{shown}} of {{total}}",
-    "more": "Show more"
+    "more": "Show more",
+    "final": "Ratio {{ratio}} · Seeding time {{seeded}}"
   },
   "allTimeNote": "All time includes the Baseline: the bytes that the torrents had when qui first recorded them. The chart does not show the Baseline, because it has no date.",
   "serverStatisticsNote": "These numbers add up the transfer of each torrent. Server Statistics on the Dashboard reads the counters of qBittorrent, which also count protocol traffic, so the numbers differ.",

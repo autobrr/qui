@@ -90,7 +90,8 @@
     },
     "empty": "Cap torrent suprimit en aquest període.",
     "shown": "{{shown}} de {{total}}",
-    "more": "Mostra'n més"
+    "more": "Mostra'n més",
+    "final": "Ràtio {{ratio}} · Temps de sembra {{seeded}}"
   },
   "allTimeNote": "Des de l’inici inclou la base inicial: els bytes que tenien els torrents quan qui els va enregistrar per primera vegada. El gràfic no mostra la base inicial, perquè no té data.",
   "serverStatisticsNote": "Aquests números sumen la transferència de cada torrent. Les estadístiques del servidor al tauler llegeixen els comptadors de qBittorrent, que també compten el trànsit del protocol, per això els números són diferents.",

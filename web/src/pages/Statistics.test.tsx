@@ -12,6 +12,7 @@ import "@/i18n"
 import { Statistics } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
 import type { StatisticsBar } from "@/lib/statistics"
+import type { EventDay } from "@/lib/statistics-events"
 import type { LibraryPoint } from "@/lib/statistics-library"
 import type { LiveTrackerGroup, TransferHistoryInstance, TransferHistoryLibraryRow, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
 
@@ -44,6 +45,11 @@ vi.mock("@/components/statistics/TransferChart", () => ({
 vi.mock("@/components/statistics/LibraryGrowthChart", () => ({
   LibraryGrowthChart: ({ points }: { points: LibraryPoint[] }) => (
     <div data-testid="growth-chart" data-points={JSON.stringify(points.map(point => [point.torrents, point.totalSize, point.uniqueSize]))} />
+  ),
+}))
+vi.mock("@/components/statistics/EventsChart", () => ({
+  EventsChart: ({ days }: { days: EventDay[] }) => (
+    <div data-testid="events-chart" data-events={JSON.stringify(days.map(day => [day.added, day.completed, day.deleted]))} />
   ),
 }))
 vi.mock("@/components/statistics/GroupChart", () => ({
@@ -157,6 +163,7 @@ beforeEach(() => {
   libraryAnswer = () => []
   server.use(
     http.get("*/api/instances/:id/transfer-history/library", ({ params }) => HttpResponse.json({ rows: libraryAnswer(Number(params.id)) })),
+    http.get("*/api/instances/:id/transfer-history/deletes", () => HttpResponse.json({ deletes: [], counts: { automation: 0, user: 0, other: 0 } })),
     http.get("*/api/instances/:id/tracker-groups", ({ params }) => HttpResponse.json({ groups: liveGroups(Number(params.id)) })),
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/instances", () => HttpResponse.json(configuredIds.map(id => ({ id, name: `instance ${id}`, isActive: true })))),
@@ -835,6 +842,15 @@ describe("Statistics", () => {
     expect(await growthPoints()).toEqual([[2, 8192, 2048], [null, null, null], [2, 8192, null], [2, 8192, null]])
     await expectTile("tiles.unique", "2 KiB | tiles.uniqueTotal size=8 KiB")
     expect(screen.getByText("growth.gapNote")).toBeTruthy()
+  })
+
+  it("adds the adds, completions, and deletes of the instances together for each UTC day of the period", async () => {
+    libraryAnswer = instanceId => [libraryRow(2, { added: instanceId, completed: 1, deleted: 0 }), libraryRow(0, { added: 0, completed: 0, deleted: instanceId * 2 })]
+    renderPage()
+
+    const chart = await screen.findByTestId("events-chart")
+    const days: number[][] = JSON.parse(chart.getAttribute("data-events") ?? "[]")
+    expect(days.slice(-3)).toEqual([[3, 2, 0], [0, 0, 0], [0, 0, 6]])
   })
 
   it("says that the period has no Unique size before the first Copy groups build", async () => {

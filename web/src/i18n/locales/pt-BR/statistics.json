@@ -90,7 +90,8 @@
     },
     "empty": "Nenhum torrent excluído neste período.",
     "shown": "{{shown}} de {{total}}",
-    "more": "Mostrar mais"
+    "more": "Mostrar mais",
+    "final": "Ratio {{ratio}} · Tempo semeando {{seeded}}"
   },
   "allTimeNote": "Desde o início inclui a base inicial: os bytes que os torrents tinham quando o qui os gravou pela primeira vez. O gráfico não mostra a base inicial, porque ela não tem data.",
   "serverStatisticsNote": "Estes números somam a transferência de cada torrent. As estatísticas do servidor no painel leem os contadores do qBittorrent, que também contam o tráfego do protocolo, por isso os números são diferentes.",

@@ -90,7 +90,8 @@
     },
     "empty": "Nessun torrent eliminato in questo periodo.",
     "shown": "{{shown}} di {{total}}",
-    "more": "Mostra altri"
+    "more": "Mostra altri",
+    "final": "Ratio {{ratio}} · Tempo di seeding {{seeded}}"
   },
   "allTimeNote": "Dall’inizio include la base iniziale: i byte che i torrent avevano quando qui li ha registrati per la prima volta. Il grafico non mostra la base iniziale, perché non ha una data.",
   "serverStatisticsNote": "Questi numeri sommano il trasferimento di ogni torrent. Le statistiche del server nella dashboard leggono i contatori di qBittorrent, che contano anche il traffico di protocollo, quindi i numeri sono diversi.",

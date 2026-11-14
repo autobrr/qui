@@ -152,7 +152,7 @@ The chart **Added and deleted** shows how many torrents were added, completed, a
 
 - The adds and the completions are above the zero line. The deletes are below it.
 - qui counts these events for each UTC day. Thus, each bar is a UTC day, also for a period of 24 hours or 7 days.
-- The legend gives the total of each kind for the period.
+- The legend gives the total of each kind for the days of the chart. For a period of 24 hours, these days can hold more events than the period. Thus, the legend can show more deletes than the table.
 
 When you delete a torrent and add it again, the chart counts one delete and one add.
 
@@ -182,7 +182,7 @@ The cause is one of these:
 
 The buttons above the table select **All**, **Automations**, **You**, or **Other**. Other is a backup restore, a Client Proxy key, and outside qui. Each button shows the number of deletes of that kind in the period.
 
-The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table hides some columns, and it shows the tracker and the cause below the name.
+The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table hides some columns. It shows the tracker, the cause, the final ratio, and the seeding time below the name.
 
 ## Baseline
 

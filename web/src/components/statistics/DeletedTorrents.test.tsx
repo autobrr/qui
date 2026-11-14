@@ -43,6 +43,8 @@ interface DeletesRequest {
 
 let deletesOf: Map<number, TransferHistoryDeleteEvent[]>
 let requests: DeletesRequest[]
+// While set, the route waits for it before it answers.
+let hold: Promise<void> | undefined
 
 function event(instanceId: number, index: number, time: number, kind: TransferHistoryCauseKind, name?: string): TransferHistoryDeleteEvent {
   return {
@@ -64,15 +66,17 @@ function instance(instanceId: number, name: string): TransferHistoryInstance {
 
 function renderTable(instances: TransferHistoryInstance[]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const table = (to: number) => (
     <QueryClientProvider client={queryClient}>
-      <DeletedTorrents scope="30d" instances={instances} period={{ from: new Date(0), to: new Date(1e12) }} displayGroup={group => `group:${group}`} />
+      <DeletedTorrents scope="30d" instances={instances} period={{ from: new Date(0), to: new Date(to) }} displayGroup={group => `group:${group}`} />
     </QueryClientProvider>
   )
+  const view = render(table(1e12))
+  return { moveTo: (to: number) => view.rerender(table(to)) }
 }
 
 function shownNames(): string[] {
-  return [...document.querySelectorAll("tbody tr span[title]")].map(node => node.getAttribute("title") ?? "")
+  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title]")].map(node => node.getAttribute("title") ?? "")
 }
 
 beforeEach(() => {
@@ -83,14 +87,16 @@ beforeEach(() => {
   })
   mocks.incognitoMode = [false, () => {}]
   requests = []
+  hold = undefined
   deletesOf = new Map()
-  server.use(http.get("*/api/instances/:id/transfer-history/deletes", ({ params, request }) => {
+  server.use(http.get("*/api/instances/:id/transfer-history/deletes", async ({ params, request }) => {
     const url = new URL(request.url)
     const instanceId = Number(params.id)
     const cause = url.searchParams.get("cause")
     const offset = Number(url.searchParams.get("offset"))
     const limit = Number(url.searchParams.get("limit"))
     requests.push({ instanceId, cause, offset })
+    await hold
     const all = deletesOf.get(instanceId) ?? []
     const kindsOf = (filter: string | null) => filter === null ? undefined : filter === "other" ? OTHER_KINDS : [filter]
     const kinds = kindsOf(cause)
@@ -156,6 +162,36 @@ describe("DeletedTorrents", () => {
     fireEvent.click(screen.getByText("deletes.more"))
     await vi.waitFor(() => expect(shownNames()).toHaveLength(110))
     expect(screen.queryByText("deletes.more")).toBeNull()
+  })
+
+  it("shows a delete once when a new delete moves it onto the next page", async () => {
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(DELETES_PAGE))
+
+    // Two new deletes before the next page push the last two rows of the first page onto the second page.
+    deletesOf.set(1, [event(1, 100, 2_000_000, "user"), event(1, 101, 1_999_000, "user"), ...deletesOf.get(1)!])
+    fireEvent.click(screen.getByText("deletes.more"))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
+    expect(new Set(shownNames()).size).toBe(60)
+  })
+
+  it("keeps the rows while the rows of a moved period load", async () => {
+    deletesOf.set(1, [event(1, 0, 5_000, "user")])
+    const { moveTo } = renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.0-GRP"]))
+
+    let release = () => {}
+    hold = new Promise(resolve => {
+      release = resolve
+    })
+    moveTo(1e12 + 300_000)
+    await vi.waitFor(() => expect(requests).toHaveLength(2))
+    expect(shownNames()).toEqual(["Built.Name.1.0-GRP"])
+
+    deletesOf.set(1, [event(1, 1, 6_000, "user"), event(1, 0, 5_000, "user")])
+    release()
+    await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.1-GRP", "Built.Name.1.0-GRP"]))
   })
 
   it("masks the torrent names in incognito mode", async () => {

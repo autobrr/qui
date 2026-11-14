@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { localDateOfUtc, utcDayStart } from "@/lib/statistics"
 import type { TransferHistoryLibraryRow } from "@/types"
 
 const DAY = 24 * 3_600_000
@@ -14,11 +15,6 @@ export type EventKind = (typeof EVENTS)[number]
 /** The events of one UTC day. start is the local midnight of the date of that day, so that its label shows the stored date. */
 export type EventDay = { start: number } & Record<EventKind, number>
 
-function utcDay(time: number): number {
-  const date = new Date(time)
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
-}
-
 /**
  * Adds the library rows of the instances into one day for each UTC day that the period overlaps, because qui counts the
  * events for each UTC day. A period with no start begins at the first recording.
@@ -29,14 +25,13 @@ export function buildEventDays(rowsByInstance: TransferHistoryLibraryRow[][], pe
     return undefined
   }
   const days = new Map<number, EventDay>()
-  const last = utcDay(period.to.getTime() - 1)
-  for (let day = utcDay(start.getTime()); day <= last; day += DAY) {
-    const date = new Date(day)
-    days.set(day, { start: new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()).getTime(), added: 0, completed: 0, deleted: 0 })
+  const last = utcDayStart(new Date(period.to.getTime() - 1))
+  for (let day = utcDayStart(start); day <= last; day += DAY) {
+    days.set(day, { start: localDateOfUtc(day), added: 0, completed: 0, deleted: 0 })
   }
   for (const rows of rowsByInstance) {
     for (const row of rows) {
-      const day = days.get(utcDay(Date.parse(row.day)))
+      const day = days.get(utcDayStart(new Date(row.day)))
       if (day) {
         day.added += row.added
         day.completed += row.completed

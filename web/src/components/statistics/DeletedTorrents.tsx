@@ -6,7 +6,7 @@
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { formatBytes, formatDuration } from "@/lib/utils"
@@ -57,8 +57,12 @@ function useDeletesPages(instances: TransferHistoryInstance[], period: { from?: 
     while (loaded < pages && instances.every((_, index) => answer(index, loaded))) {
       loaded++
     }
-    const deletes = instances.flatMap((instance, index) => Array.from({ length: loaded }, (_, page) => answer(index, page)!.deletes.map(event => ({ ...event, instanceId: instance.instanceId, timeMs: Date.parse(event.time) }))).flat())
-    deletes.sort((a, b) => b.timeMs - a.timeMs)
+    // A delete that lands between two page loads moves the offsets, so a row can come back on the next page.
+    const unique = new Map(instances.flatMap((instance, index) => Array.from({ length: loaded }, (_, page) => answer(index, page)!.deletes.map(event => [
+      `${instance.instanceId}:${event.hash}:${event.time}`,
+      { ...event, instanceId: instance.instanceId, timeMs: Date.parse(event.time) },
+    ] as const)).flat()))
+    const deletes = [...unique.values()].sort((a, b) => b.timeMs - a.timeMs)
     return {
       deletes: loaded > 0 ? deletes.slice(0, loaded * DELETES_PAGE) : undefined,
       counts: loaded > 0 ? instances.reduce((sum, _, index) => {
@@ -73,8 +77,6 @@ function useDeletesPages(instances: TransferHistoryInstance[], period: { from?: 
     queries: instances.flatMap(instance => Array.from({ length: pages }, (_, page) => ({
       queryKey: ["transfer-history", "deletes", instance.instanceId, cause, period.from?.toISOString(), period.to.toISOString(), page],
       queryFn: () => api.getTransferHistoryDeletes(instance.instanceId, { from: period.from, to: period.to, cause, limit: DELETES_PAGE, offset: page * DELETES_PAGE }),
-      // A preset period moves forward each 5 minutes. The rows of the same instance and cause stay until the new ones load.
-      placeholderData: (previous: TransferHistoryDeletesAnswer | undefined, query?: { queryKey: readonly unknown[] }) => query?.queryKey[2] === instance.instanceId && query.queryKey[3] === cause ? previous : undefined,
     }))),
     combine,
   })
@@ -92,15 +94,21 @@ interface DeletedTorrentsProps {
 export function DeletedTorrents({ scope, instances, period, displayGroup }: DeletedTorrentsProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const hour12 = usePersistedDateTimePreferences().preferences.timeFormat === "12h"
+  const { formatISOTimestamp } = useDateTimeFormatters()
   const [incognitoMode] = useIncognitoMode()
   const [cause, setCause] = useState<TransferHistoryCauseFilter>("")
   const [paging, setPaging] = useState({ scope, cause, pages: 1 })
   const pages = paging.scope === scope && paging.cause === cause ? paging.pages : 1
-  const { deletes, counts, error, loadingMore } = useDeletesPages(instances, period, cause, pages)
+  const loaded = useDeletesPages(instances, period, cause, pages)
+  // A preset period moves forward each 5 minutes. The rows of the same view stay until the rows of the new period load.
+  const view = `${scope}:${cause}`
+  const [kept, setKept] = useState<{ view: string; pages: DeletesPages }>()
+  if (loaded.deletes && kept?.pages !== loaded) {
+    setKept({ view, pages: loaded })
+  }
+  const { deletes, counts, error, loadingMore } = !loaded.deletes && !loaded.error && kept?.view === view ? kept.pages : loaded
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
   const formatCount = useMemo(() => new Intl.NumberFormat(locale), [locale])
-  const formatTime = useMemo(() => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12 }), [locale, hour12])
 
   const countOf = (filter: TransferHistoryCauseFilter) => counts && (filter === "" ? counts.automation + counts.user + counts.other : counts[filter])
   const total = countOf(cause)
@@ -130,12 +138,12 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-6">{t("deletes.columns.time")}</TableHead>
-                <TableHead className="w-full">{t("topTorrents.columns.torrent")}</TableHead>
+                <TableHead className="hidden pl-6 @xl:table-cell">{t("deletes.columns.time")}</TableHead>
+                <TableHead className="w-full pl-6 @xl:pl-2">{t("topTorrents.columns.torrent")}</TableHead>
                 <TableHead className="hidden @2xl:table-cell">{t("table.columns.tracker")}</TableHead>
                 <TableHead className="hidden @xl:table-cell">{t("deletes.columns.cause")}</TableHead>
                 <TableHead className="text-right">{t("deletes.columns.uploaded")}</TableHead>
-                <TableHead className="hidden text-right @xl:table-cell">{t("deletes.columns.ratio")}</TableHead>
+                <TableHead className="hidden text-right @2xl:table-cell">{t("deletes.columns.ratio")}</TableHead>
                 <TableHead className="hidden pr-6 text-right @2xl:table-cell">{t("deletes.columns.seeded")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -143,24 +151,27 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
               {deletes.map(event => {
                 const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
                 const cause = <Cause kind={event.cause.kind} name={event.cause.name} />
+                const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
+                const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
+                const time = formatISOTimestamp(event.time)
                 return (
                   <TableRow key={`${event.instanceId}:${event.hash}:${event.time}`}>
-                    <TableCell className="whitespace-nowrap pl-6 align-top text-muted-foreground">
-                      {formatTime.format(event.timeMs)}
-                    </TableCell>
-                    <TableCell className="w-full max-w-0 font-medium">
+                    <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
+                    <TableCell className="w-full max-w-0 pl-6 font-medium @xl:pl-2">
                       <span className="line-clamp-2 break-all whitespace-normal @2xl:line-clamp-1" title={name}>{name}</span>
                       <div className="truncate text-xs font-normal text-muted-foreground @2xl:hidden">
                         {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
                       </div>
                       <div className="text-xs font-normal @xl:hidden">{cause}</div>
+                      <div className="truncate text-xs font-normal text-muted-foreground tabular-nums @xl:hidden">{time}</div>
+                      <div className="truncate text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
                       {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(event.instanceId)}</div>}
                     </TableCell>
                     <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @2xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
-                    <TableCell className="hidden align-top @xl:table-cell">{cause}</TableCell>
+                    <TableCell className="hidden max-w-64 align-top @xl:table-cell">{cause}</TableCell>
                     <TableCell className="text-right align-top tabular-nums">{formatBytes(event.uploaded)}</TableCell>
-                    <TableCell className="hidden text-right align-top tabular-nums @xl:table-cell">{event.ratio === undefined ? "–" : event.ratio.toFixed(2)}</TableCell>
-                    <TableCell className="hidden pr-6 text-right align-top tabular-nums @2xl:table-cell">{event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)}</TableCell>
+                    <TableCell className="hidden text-right align-top tabular-nums @2xl:table-cell">{ratio}</TableCell>
+                    <TableCell className="hidden pr-6 text-right align-top tabular-nums @2xl:table-cell">{seeded}</TableCell>
                   </TableRow>
                 )
               })}
@@ -186,10 +197,10 @@ function Cause({ kind, name }: { kind: TransferHistoryCauseKind; name?: string }
   const { t } = useTranslation("statistics")
   const { icon: Icon, labelKey } = CAUSES[kind]
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+    <span className="flex min-w-0 items-center gap-1.5">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-      {t(labelKey)}
-      {name && <span className="truncate text-muted-foreground">· {name}</span>}
+      <span className="shrink-0 whitespace-nowrap">{t(labelKey)}</span>
+      {name && <span className="min-w-0 truncate text-muted-foreground" title={name}>· {name}</span>}
     </span>
   )
 }
