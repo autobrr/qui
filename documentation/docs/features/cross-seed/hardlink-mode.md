@@ -109,6 +109,8 @@ If the active member's downloaded-byte counter makes no progress for 15 minutes,
 
 Hardlink members require every originally linked file to verify completely before acquisition because repair could modify the source through the shared inode. A propagated hardlink that fails verification is removed only when the current qui process can prove it created that exact link; otherwise the member stays paused for manual recovery. Reflink members can safely repair incomplete clones through copy-on-write, so failed target verification keeps the clone and can return the member to normal pooled acquisition.
 
+Pooled completion needs local filesystem access on the instance. An instance can lose this access, for example when you change it to SSH access. Then qui pauses each pool member on that instance that is not complete and moves it to manual review. qui does not change the files of that member. The member stays in manual review when the instance gets local filesystem access again.
+
 ## Notes
 
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until you remove all remaining links.

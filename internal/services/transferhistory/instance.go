@@ -6,6 +6,7 @@ package transferhistory
 import (
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
@@ -37,9 +38,15 @@ func (b *bytesMoved) add(up, down int64) {
 	b.downloaded += down
 }
 
-type torrentDayKey struct {
-	record *models.TransferHistoryRecord
-	day    int64
+// movedKey holds the values of the bytes of one torrent in one hour that the
+// totals group by. A part of a write sums the bytes of its torrents only.
+type movedKey struct {
+	record    *models.TransferHistoryRecord
+	hour      int64
+	domain    string
+	public    bool
+	category  string
+	crossSeed bool
 }
 
 type totalKey struct {
@@ -68,17 +75,34 @@ type instance struct {
 	records map[string]*models.TransferHistoryRecord
 	deleted map[string]*models.TransferHistoryRecord
 
+	// completeAt is the time of the last reading that a write stored with
+	// all its parts, or zero before the first such write. loaded is set from a
+	// load of stored history until the next reading. That reading compares a
+	// torrent without a stored record with completeAt, because a part that
+	// qui did not store can have held its record.
+	completeAt time.Time
+	loaded     bool
+	// deletedLate holds the time of the last delete of each record that a
+	// part of a write after completeAt marked deleted, by hash. The stored
+	// state of the record is that of that reading. It is set from a load until
+	// the next reading.
+	deletedLate map[string]time.Time
+	// unsure is what the parts whose outcome qui does not know can have
+	// stored, since the last write that stored all its parts.
+	unsure unsure
+
 	// changedRecords changed in more than their last counters.
 	changedRecords  map[*models.TransferHistoryRecord]struct{}
 	changedCounters map[*models.TransferHistoryRecord]struct{}
-	torrentDays     map[torrentDayKey]*bytesMoved
-	trackerHours    map[totalKey]*bytesMoved
-	categoryDays    map[totalKey]*bytesMoved
-	gaps            map[int64]int64
-	hashChanges     []models.TransferHistoryHashChange
-	events          []models.TransferHistoryEvent
-	libraryDays     map[int64]*models.TransferHistoryLibraryDay
-	instanceHours   map[int64]*models.TransferHistoryInstanceHour
+	moved           map[movedKey]*bytesMoved
+	// continued holds the record of each magnet whose life continued in the
+	// deleted record of its hash, with that record. A part holds both.
+	continued     map[*models.TransferHistoryRecord]*models.TransferHistoryRecord
+	gaps          map[int64]int64
+	hashChanges   []models.TransferHistoryHashChange
+	events        []models.TransferHistoryEvent
+	libraryDays   map[int64]*models.TransferHistoryLibraryDay
+	instanceHours map[int64]*models.TransferHistoryInstanceHour
 	// unwritten is set from the first reading until a write stores the instance.
 	unwritten bool
 }
@@ -102,6 +126,10 @@ func newInstance(id int, row *models.TransferHistoryInstance, records []*models.
 		inst.lastReadingAt = row.LastReadingAt
 		inst.writes = row.Writes
 		inst.resumed = true
+		inst.loaded = true
+		if row.CompleteReadingAt != nil {
+			inst.completeAt = *row.CompleteReadingAt
+		}
 	}
 	return inst
 }
@@ -109,9 +137,8 @@ func newInstance(id int, row *models.TransferHistoryInstance, records []*models.
 func (inst *instance) reset() {
 	inst.changedRecords = make(map[*models.TransferHistoryRecord]struct{})
 	inst.changedCounters = make(map[*models.TransferHistoryRecord]struct{})
-	inst.torrentDays = make(map[torrentDayKey]*bytesMoved)
-	inst.trackerHours = make(map[totalKey]*bytesMoved)
-	inst.categoryDays = make(map[totalKey]*bytesMoved)
+	inst.moved = make(map[movedKey]*bytesMoved)
+	inst.continued = make(map[*models.TransferHistoryRecord]*models.TransferHistoryRecord)
 	inst.gaps = make(map[int64]int64)
 	inst.hashChanges, inst.events = nil, nil
 	inst.libraryDays = make(map[int64]*models.TransferHistoryLibraryDay)
@@ -121,12 +148,17 @@ func (inst *instance) reset() {
 
 // pass is one reading while apply reads it. first is set for the first
 // reading of the instance, and previous is the time of the reading before.
+// After a load, previous is the time of the complete reading.
+// baselineOpen is set when the stored first write lacks parts, so a torrent
+// without a record can be one that qBittorrent had at the first recording.
 type pass struct {
-	reading  *Reading
-	first    bool
-	previous time.Time
-	mapper   *trackergroup.Mapper
-	hashes   map[string]struct{}
+	reading      *Reading
+	first        bool
+	baselineOpen bool
+	previous     time.Time
+	deletedLate  map[string]time.Time
+	mapper       *trackergroup.Mapper
+	hashes       map[string]struct{}
 }
 
 func (p *pass) present(hash string) bool {
@@ -145,21 +177,25 @@ func (p *pass) present(hash string) bool {
 // note that is too old.
 func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *releases.Parser, notes map[string][]deleteNote) {
 	p := &pass{reading: &r, first: inst.firstRecordedAt.IsZero(), previous: inst.lastReadingAt, mapper: mapper}
+	if inst.loaded {
+		p.previous, p.baselineOpen, p.deletedLate = inst.completeAt, inst.completeAt.IsZero(), inst.deletedLate
+		inst.deletedLate = nil
+	}
 	if p.first {
 		inst.firstRecordedAt = r.Time
 	} else {
 		inst.addGap(r)
 	}
 	inst.lastReadingAt = r.Time
-	inst.resumed = false
+	inst.resumed, inst.loaded = false, false
 	inst.unwritten = true
 
 	hour, today := hourOf(r.Time), dayOf(r.Time)
 	inst.addLibrary(&r, hour, today)
 	for i := range r.Torrents {
 		t := &r.Torrents[i]
-		rec, added, up, down := inst.read(t, p)
-		inst.addEvents(rec, t, added, p)
+		rec, added, firstRecording, up, down := inst.read(t, p)
+		inst.addEvents(rec, t, added, firstRecording, p.reading.Time)
 		if rec.Final == nil {
 			rec.Final = &models.TransferHistoryFinal{}
 		}
@@ -177,9 +213,7 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 			continue
 		}
 		public := rec.Private != nil && !*rec.Private
-		addTo(inst.torrentDays, torrentDayKey{rec, today}, up, down)
-		addTo(inst.trackerHours, totalKey{bucket: hour, domain: rec.TrackerDomain, public: public, crossSeed: crossSeed}, up, down)
-		addTo(inst.categoryDays, totalKey{bucket: today, domain: rec.TrackerDomain, public: public, category: rec.Category, crossSeed: crossSeed}, up, down)
+		addTo(inst.moved, movedKey{record: rec, hour: hour, domain: rec.TrackerDomain, public: public, category: rec.Category, crossSeed: crossSeed}, up, down)
 	}
 
 	// Each torrent of the reading has a record in records now, so a larger
@@ -226,9 +260,10 @@ func (inst *instance) addLibrary(r *Reading, hour, today int64) {
 	state.MaxDownloadSpeed = max(state.MaxDownloadSpeed, r.MaxDownloadSpeed)
 }
 
-// read returns the record of t, whether the reading adds the torrent, and
+// read returns the record of t, whether the reading adds the torrent, whether
+// the torrent counts as one that qBittorrent had at the first recording, and
 // the bytes that the torrent moved since the last reading.
-func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryRecord, added bool, up, down int64) {
+func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryRecord, added, firstRecording bool, up, down int64) {
 	// A torrent that qBittorrent had before the last reading, but left out of
 	// it, did not move its bytes since then.
 	leftOut := t.AddedAt.Before(p.previous.Add(-clockSkew))
@@ -243,6 +278,9 @@ func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryReco
 			inst.changeHash(magnet, t.Hash)
 			rec = magnet
 		case returned != nil:
+			if deletedAt, late := p.deletedLate[t.Hash]; late {
+				leftOut = t.AddedAt.Before(deletedAt.Add(-clockSkew))
+			}
 			inst.addAgain(returned, t, p.reading.Time, leftOut)
 			rec, added = returned, true
 		default:
@@ -254,19 +292,22 @@ func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryReco
 		rec.UploadFirst24h = new(*rec.UploadFirst24h + up)
 		inst.changedRecords[rec] = struct{}{}
 	}
-	return rec, added, up, down
+	return rec, added, p.first, up, down
 }
 
 // add makes the record of a torrent that qui sees for the first time. Its
 // bytes are transfer, unless they are in the Baseline.
-func (inst *instance) add(t *Torrent, p *pass, leftOut bool) (rec *models.TransferHistoryRecord, added bool, up, down int64) {
-	rec = newRecord(t, p.mapper, p.reading.Time, p.first || leftOut)
+func (inst *instance) add(t *Torrent, p *pass, leftOut bool) (rec *models.TransferHistoryRecord, added, firstRecording bool, up, down int64) {
+	// The stored first write lacks parts, so a torrent that qBittorrent can
+	// have had at the first recording goes into the Baseline.
+	firstRecording = p.first || (p.baselineOpen && t.AddedAt.Before(inst.firstRecordedAt.Add(clockSkew)))
+	rec = newRecord(t, p.mapper, p.reading.Time, firstRecording || leftOut)
 	inst.records[t.Hash] = rec
 	inst.changedCounters[rec] = struct{}{}
 	if rec.BaselineUploaded == 0 && rec.BaselineDownloaded == 0 {
 		up, down = t.Uploaded, t.Downloaded
 	}
-	return rec, true, up, down
+	return rec, true, firstRecording, up, down
 }
 
 // magnetOf returns the live record under the v1 infohash of t, when the hash
@@ -306,22 +347,23 @@ func (inst *instance) continueIn(returned, magnet *models.TransferHistoryRecord)
 	inst.changedCounters[returned] = struct{}{}
 	inst.changedRecords[returned] = struct{}{}
 	inst.changedRecords[magnet] = struct{}{}
+	inst.continued[magnet] = returned
 }
 
-// addEvents adds the add event and the completion event that the reading
-// shows for t. A torrent gets one completion event in each life. The first
-// reading of an instance gives no event.
-func (inst *instance) addEvents(rec *models.TransferHistoryRecord, t *Torrent, added bool, p *pass) {
-	if added && !p.first {
-		inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventAdd, Time: p.reading.Time})
+// addEvents adds the add event and the completion event that the reading at
+// now shows for t. A torrent gets one completion event in each life. A torrent
+// that qBittorrent had at the first recording gives no event.
+func (inst *instance) addEvents(rec *models.TransferHistoryRecord, t *Torrent, added, firstRecording bool, now time.Time) {
+	if added && !firstRecording {
+		inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventAdd, Time: now})
 	}
 	if !t.Complete || rec.Completed {
 		return
 	}
 	rec.Completed = true
 	inst.changedRecords[rec] = struct{}{}
-	if !p.first {
-		inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventCompletion, Time: p.reading.Time})
+	if !firstRecording {
+		inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventCompletion, Time: now})
 	}
 }
 
@@ -468,8 +510,8 @@ func addTo[K comparable](m map[K]*bytesMoved, key K, up, down int64) {
 // holdsDaysBefore reports whether the changes hold transfer or hourly state
 // of a UTC day before day.
 func (inst *instance) holdsDaysBefore(day int64) bool {
-	for key := range inst.categoryDays {
-		if key.bucket < day {
+	for key := range inst.moved {
+		if key.hour < day*24 {
 			return true
 		}
 	}
@@ -485,40 +527,168 @@ func (inst *instance) hasChanges() bool {
 	return inst.unwritten || len(inst.changedRecords) > 0 || len(inst.changedCounters) > 0
 }
 
-// changes returns the write of the changes since the last write. The records
-// in it are the records of inst: the write must finish before the next apply.
-func (inst *instance) changes() *models.TransferHistoryWrite {
-	w := &models.TransferHistoryWrite{
-		InstanceID:      inst.id,
-		FirstRecordedAt: inst.firstRecordedAt,
-		LastReadingAt:   inst.lastReadingAt,
-		Number:          inst.writes + 1,
-		Records:         slices.Collect(maps.Keys(inst.changedRecords)),
-		Counters:        slices.Collect(maps.Keys(inst.changedCounters)),
-		HashChanges:     inst.hashChanges,
-		Events:          inst.events,
+// parts is one write of the changes since the last write, split into parts
+// that are stored in order, each in its own transaction. part holds the index
+// of the part of each torrent.
+type parts struct {
+	writes []*models.TransferHistoryWrite
+	part   map[*models.TransferHistoryRecord]int
+}
+
+// parts splits the changes into parts of at most size torrents. Each part
+// holds all changes of its torrents, and the first part also holds the
+// changes of the instance. Each part takes one write number, and only the
+// last one stores the time of its reading as the complete reading. The records in the parts
+// are the records of inst: the writes must finish before the next apply.
+func (inst *instance) parts(size int) parts {
+	part := make(map[*models.TransferHistoryRecord]int, len(inst.changedRecords)+len(inst.changedCounters))
+	for rec := range inst.changedRecords {
+		part[rec] = 0
 	}
 	for rec := range inst.changedCounters {
+		part[rec] = 0
+	}
+	for key := range inst.moved {
+		part[key.record] = 0
+	}
+	for _, e := range inst.events {
+		part[e.Record] = 0
+	}
+	count := max(1, (len(part)+size-1)/size)
+	if count > 1 {
+		// The order of the hashes makes the parts of the same changes the same.
+		sorted := slices.SortedFunc(maps.Keys(part), func(a, b *models.TransferHistoryRecord) int { return strings.Compare(a.Hash, b.Hash) })
+		for i, rec := range sorted {
+			part[rec] = i / size
+		}
+		for magnet, returned := range inst.continued {
+			part[magnet] = part[returned]
+		}
+	}
+
+	writes := make([]*models.TransferHistoryWrite, count)
+	for i := range writes {
+		writes[i] = &models.TransferHistoryWrite{
+			InstanceID:      inst.id,
+			FirstRecordedAt: inst.firstRecordedAt,
+			LastReadingAt:   inst.lastReadingAt,
+			Number:          inst.writes + int64(i) + 1,
+		}
+		complete := inst.completeAt
+		if i == count-1 {
+			complete = inst.lastReadingAt
+		}
+		if !complete.IsZero() {
+			writes[i].CompleteReadingAt = new(complete)
+		}
+	}
+	first := writes[0]
+	first.HashChanges = inst.hashChanges
+	for hour, seconds := range inst.gaps {
+		first.Gaps = append(first.Gaps, models.TransferHistoryGap{Hour: hour, Seconds: seconds})
+	}
+	for _, d := range inst.libraryDays {
+		first.LibraryDays = append(first.LibraryDays, *d)
+	}
+	for _, h := range inst.instanceHours {
+		first.InstanceHours = append(first.InstanceHours, *h)
+	}
+
+	for rec := range inst.changedRecords {
+		w := writes[part[rec]]
+		w.Records = append(w.Records, rec)
+	}
+	for rec := range inst.changedCounters {
+		w := writes[part[rec]]
+		w.Counters = append(w.Counters, rec)
 		// A record that a write with a lost answer stored has no id yet.
 		if _, listed := inst.changedRecords[rec]; !listed && rec.ID == 0 {
 			w.Records = append(w.Records, rec)
 		}
 	}
-	for k, b := range inst.torrentDays {
-		w.TorrentDays = append(w.TorrentDays, models.TransferHistoryTorrentDay{Record: k.record, Day: k.day, Uploaded: b.uploaded, Downloaded: b.downloaded})
+	for _, e := range inst.events {
+		w := writes[part[e.Record]]
+		w.Events = append(w.Events, e)
 	}
-	w.TrackerHours = totals(inst.trackerHours)
-	w.CategoryDays = totals(inst.categoryDays)
-	for hour, seconds := range inst.gaps {
-		w.Gaps = append(w.Gaps, models.TransferHistoryGap{Hour: hour, Seconds: seconds})
+
+	type partTotals struct {
+		torrentDays  map[torrentDay]*bytesMoved
+		trackerHours map[totalKey]*bytesMoved
+		categoryDays map[totalKey]*bytesMoved
 	}
-	for _, d := range inst.libraryDays {
-		w.LibraryDays = append(w.LibraryDays, *d)
+	sums := make([]partTotals, count)
+	for i := range sums {
+		sums[i] = partTotals{make(map[torrentDay]*bytesMoved), make(map[totalKey]*bytesMoved), make(map[totalKey]*bytesMoved)}
 	}
-	for _, h := range inst.instanceHours {
-		w.InstanceHours = append(w.InstanceHours, *h)
+	for k, b := range inst.moved {
+		sum := sums[part[k.record]]
+		today := floorDiv(k.hour, 24)
+		addTo(sum.torrentDays, torrentDay{k.record, today}, b.uploaded, b.downloaded)
+		addTo(sum.trackerHours, totalKey{bucket: k.hour, domain: k.domain, public: k.public, crossSeed: k.crossSeed}, b.uploaded, b.downloaded)
+		addTo(sum.categoryDays, totalKey{bucket: today, domain: k.domain, public: k.public, category: k.category, crossSeed: k.crossSeed}, b.uploaded, b.downloaded)
 	}
-	return w
+	for i, sum := range sums {
+		w := writes[i]
+		for k, b := range sum.torrentDays {
+			w.TorrentDays = append(w.TorrentDays, models.TransferHistoryTorrentDay{Record: k.record, Day: k.day, Uploaded: b.uploaded, Downloaded: b.downloaded})
+		}
+		w.TrackerHours = totals(sum.trackerHours)
+		w.CategoryDays = totals(sum.categoryDays)
+	}
+	return parts{writes: writes, part: part}
+}
+
+type torrentDay struct {
+	record *models.TransferHistoryRecord
+	day    int64
+}
+
+// forget drops the changes of the first stored parts of p, which a write
+// stored. It drops all changes when the write stored each part.
+func (inst *instance) forget(p parts, stored int) {
+	inst.writes += int64(stored)
+	if stored == len(p.writes) {
+		inst.completeAt = inst.lastReadingAt
+		inst.reset()
+		return
+	}
+	if stored == 0 {
+		return
+	}
+	isStored := func(rec *models.TransferHistoryRecord) bool { return p.part[rec] < stored }
+	maps.DeleteFunc(inst.changedRecords, func(rec *models.TransferHistoryRecord, _ struct{}) bool { return isStored(rec) })
+	maps.DeleteFunc(inst.changedCounters, func(rec *models.TransferHistoryRecord, _ struct{}) bool { return isStored(rec) })
+	maps.DeleteFunc(inst.moved, func(k movedKey, _ *bytesMoved) bool { return isStored(k.record) })
+	maps.DeleteFunc(inst.continued, func(magnet, _ *models.TransferHistoryRecord) bool { return isStored(magnet) })
+	inst.events = slices.DeleteFunc(inst.events, func(e models.TransferHistoryEvent) bool { return isStored(e.Record) })
+	// The first part holds the changes of the instance.
+	inst.hashChanges = nil
+	clear(inst.gaps)
+	clear(inst.libraryDays)
+	clear(inst.instanceHours)
+	inst.unwritten = false
+}
+
+// unsure is what a part whose outcome qui does not know can have stored.
+type unsure int
+
+const (
+	sure unsure = iota
+	// sameRows is a part that holds no rows that add up, so a second write of
+	// it stores the same rows.
+	sameRows
+	// addedRows is a part whose rows would count twice in a second write.
+	addedRows
+)
+
+// markUnsure notes that the database can hold w, a part whose outcome qui
+// does not know.
+func (inst *instance) markUnsure(w *models.TransferHistoryWrite) {
+	if len(w.TorrentDays)+len(w.TrackerHours)+len(w.CategoryDays)+len(w.Gaps)+len(w.Events) > 0 {
+		inst.unsure = addedRows
+	} else if inst.unsure == sure {
+		inst.unsure = sameRows
+	}
 }
 
 func totals(m map[totalKey]*bytesMoved) []models.TransferHistoryTotal {
