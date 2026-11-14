@@ -372,65 +372,19 @@ func TestCustomTheme_UnwritableFolderNamesFolder(t *testing.T) {
 	require.Empty(t, rig.pub.events)
 }
 
-func TestCustomTheme_OutsideFileRule(t *testing.T) {
-	refused := []struct {
-		name   string
-		css    string
-		line   int
-		reason string
-	}{
-		{"import", "@import 'https://example.invalid/a.css';", 1, "@import"},
-		{"import in uppercase", "\n@IMPORT url(x.css);", 2, "@import"},
-		{"image-set", ":root{}\n.dark{}\nbody { background: image-set('a.png' 1x); }", 3, "image-set()"},
-		{"http url", "body {\n  background: url(https://example.invalid/a.png);\n}", 2, "url()"},
-		{"quoted http url", "body { background: url( \"https://example.invalid/a.png\" ); }", 1, "url()"},
-		{"protocol-relative url", "body { background: url(//example.invalid/a.png); }", 1, "url()"},
-		{"url in uppercase", "\n\n\nbody { background: URL(https://example.invalid/a.png); }", 4, "url()"},
-		{"relative url", "body { background: url(a.png); }", 1, "url()"},
-		{"escaped url", "body { background: \\75rl(https://example.invalid/a.png); }", 1, "backslash"},
-		{"escaped import", "@\\69mport 'x.css';", 1, "backslash"},
-		{"line break in a string", "body::after { content: \"a\n@import 'x.css'; b\"; }", 1, "line break"},
-		{"url after a comment", "/* one\n two */ body { background: url(http://example.invalid); }", 2, "url()"},
-		{"escape in the data: prefix of a quoted url", "body { background: url(\"d\\61ta:image/png;base64,AAAA\"); }", 1, "url()"},
-		{"escaped at-rule name", "@\\66ont-face { font-family: X; }", 1, "backslash"},
-		{"prefixed image-set", "body { background: -webkit-image-set(\"a.png\" 1x); }", 1, "image-set()"},
-		{"url function that is not a string", "body { background: url(var(--image)); }", 1, "url()"},
-		// regression: #4124
-		{"no-break space before data:", "body { background: url(\"\u00a0data:image/png;base64,AAAA\"); }", 1, "url()"},
-	}
-	for _, tt := range refused {
-		t.Run(tt.name, func(t *testing.T) {
-			rig := newCustomThemeRig(t, true)
-			rec := rig.create(t, "ocean", tt.css)
-			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-			msg := errorMessage(t, rec)
-			require.Contains(t, msg, fmt.Sprintf("line %d", tt.line))
-			require.Contains(t, msg, tt.reason)
-			require.Empty(t, rig.fileNames(t))
-			require.Empty(t, rig.pub.events)
-		})
-	}
+// The cases of the rule itself are in internal/themes/testdata/outside_files.json.
+func TestCustomTheme_CreateAppliesOutsideFileRule(t *testing.T) {
+	rig := newCustomThemeRig(t, true)
+	rec := rig.create(t, "ocean", "body {\n  background: url(https://example.invalid/a.png);\n}")
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	msg := errorMessage(t, rec)
+	require.Contains(t, msg, "line 2")
+	require.Contains(t, msg, "url()")
+	require.Empty(t, rig.fileNames(t))
+	require.Empty(t, rig.pub.events)
 
-	allowed := []struct {
-		name string
-		css  string
-	}{
-		{"url in a comment", "/* background: url(https://example.invalid/a.png); @import 'x'; \\75rl() */ :root { --a: b; }"},
-		{"data url", "body { background: url(data:image/png;base64,iVBORw0KGgo=); }"},
-		{"quoted data url", "body { background: url( 'DATA:image/svg+xml,<svg></svg>' ); }"},
-		{"fragment url", "body { filter: url(#blur); }"},
-		{"url text in a string", "body::after { content: \"url(https://example.invalid) @import \\\" \"; }"},
-		{"backslash in a string", "body::after { content: \"\\2014\"; }"},
-		{"data url at the end of the file", "body { background: url(data:image/png;base64,AAAA"},
-		{"font from data", "@font-face { font-family: X; src: url(\"data:font/woff2;base64,AAAA\") format(\"woff2\"); }"},
-	}
-	for _, tt := range allowed {
-		t.Run(tt.name, func(t *testing.T) {
-			rig := newCustomThemeRig(t, true)
-			rec := rig.create(t, "ocean", tt.css)
-			require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
-		})
-	}
+	rec = rig.create(t, "ocean", "body { background: url(data:image/png;base64,iVBORw0KGgo=); }")
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }
 
 func TestCustomTheme_ReplaceAppliesOutsideFileRule(t *testing.T) {
