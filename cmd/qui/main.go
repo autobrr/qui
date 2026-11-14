@@ -1091,7 +1091,7 @@ func (app *Application) runServer() {
 			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
 		}
 
-		if err := transferHistory.Shutdown(ctx); err != nil {
+		if err := transferHistoryAdapter.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("failed to write the transfer history at shutdown")
 		}
 

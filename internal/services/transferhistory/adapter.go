@@ -5,6 +5,7 @@ package transferhistory
 
 import (
 	"cmp"
+	"context"
 	"sync"
 	"time"
 
@@ -28,6 +29,8 @@ type Adapter struct {
 
 	mu        sync.Mutex
 	instances map[int]*adapterInstance
+	stopping  bool
+	builds    sync.WaitGroup
 }
 
 type adapterInstance struct {
@@ -73,6 +76,9 @@ func (a *Adapter) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 	now := update.Snapshot.Time().UTC()
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.stopping {
+		return
+	}
 	inst := a.instance(instanceID)
 	inst.maxUp = max(inst.maxUp, update.ServerState.UpInfoSpeed)
 	inst.maxDown = max(inst.maxDown, update.ServerState.DlInfoSpeed)
@@ -84,7 +90,8 @@ func (a *Adapter) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) {
 		}
 		return
 	}
-	go a.record(instanceID, update, now, failedSince, inst.takeSpeeds())
+	b := readingBuild{instanceID: instanceID, update: update, now: now, failedSince: failedSince, peaks: inst.takeSpeeds()}
+	a.builds.Go(func() { a.record(b) })
 }
 
 // takePending builds a reading from the update that waits, if one does.
@@ -92,6 +99,11 @@ func (a *Adapter) takePending(instanceID int) {
 	a.mu.Lock()
 	inst := a.instance(instanceID)
 	inst.timer = nil
+	// Shutdown takes the update that waits.
+	if a.stopping {
+		a.mu.Unlock()
+		return
+	}
 	update := inst.pending
 	// While recording is off, the adapter builds no reading, and the speeds
 	// of the update belong to no reading.
@@ -107,11 +119,51 @@ func (a *Adapter) takePending(instanceID int) {
 		a.mu.Unlock()
 		return
 	}
-	now := update.Snapshot.Time().UTC()
-	failedSince := inst.start(now, time.Now().UTC())
-	peaks := inst.takeSpeeds()
+	b := inst.takePendingBuild(instanceID)
+	a.builds.Add(1)
 	a.mu.Unlock()
-	a.record(instanceID, *update, now, failedSince, peaks)
+	defer a.builds.Done()
+	a.record(b)
+}
+
+type readingBuild struct {
+	instanceID  int
+	update      qbt.SyncUpdate
+	now         time.Time
+	failedSince time.Time
+	peaks       peakSpeeds
+}
+
+func (inst *adapterInstance) takePendingBuild(instanceID int) readingBuild {
+	now := inst.pending.Snapshot.Time().UTC()
+	b := readingBuild{instanceID: instanceID, update: *inst.pending, now: now}
+	b.failedSince = inst.start(now, time.Now().UTC())
+	b.peaks = inst.takeSpeeds()
+	return b
+}
+
+// Shutdown gives the module each reading that the adapter builds and the
+// update that each instance holds back, and then shuts the module down. Call
+// it in place of Module.Shutdown. The adapter builds no reading after the call.
+func (a *Adapter) Shutdown(ctx context.Context) error {
+	a.mu.Lock()
+	a.stopping = true
+	a.mu.Unlock()
+	// A build in progress holds an older reading than the update that waits.
+	a.builds.Wait()
+
+	a.mu.Lock()
+	var held []readingBuild
+	for id, inst := range a.instances {
+		if inst.pending != nil {
+			held = append(held, inst.takePendingBuild(id))
+		}
+	}
+	a.mu.Unlock()
+	for _, b := range held {
+		a.record(b) //nolint:contextcheck // a build reads memory only, and the module write after it gets ctx
+	}
+	return a.module.Shutdown(ctx)
 }
 
 type peakSpeeds struct{ up, down int64 }
@@ -152,12 +204,13 @@ func (inst *adapterInstance) start(now, builtAt time.Time) (failedSince time.Tim
 	return failedSince
 }
 
-func (a *Adapter) record(instanceID int, update qbt.SyncUpdate, now, failedSince time.Time, peaks peakSpeeds) {
-	torrents := update.Snapshot.Torrents()
-	facts := a.sync.TorrentFactsOf(instanceID, torrents, update.Trackers)
+func (a *Adapter) record(b readingBuild) {
+	instanceID := b.instanceID
+	torrents := b.update.Snapshot.Torrents()
+	facts := a.sync.TorrentFactsOf(instanceID, torrents, b.update.Trackers)
 	reading := Reading{
-		InstanceID: instanceID, Time: now, FailedSince: failedSince, Torrents: make([]Torrent, len(torrents)),
-		FreeDisk: update.ServerState.FreeSpaceOnDisk, MaxUploadSpeed: peaks.up, MaxDownloadSpeed: peaks.down,
+		InstanceID: instanceID, Time: b.now, FailedSince: b.failedSince, Torrents: make([]Torrent, len(torrents)),
+		FreeDisk: b.update.ServerState.FreeSpaceOnDisk, MaxUploadSpeed: b.peaks.up, MaxDownloadSpeed: b.peaks.down,
 	}
 	if size, ok := a.sync.UniqueSizeOf(instanceID, torrents); ok {
 		reading.UniqueSize = new(size)

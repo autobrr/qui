@@ -46,7 +46,7 @@ func TestTheFirstReadingAfterARestartKeepsTheTrackerGroup(t *testing.T) {
 	})
 	require.NoError(t, owner.Sync(t.Context()))
 	update := qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked(), Trackers: owner.GetTrackersUnchecked()}
-	NewAdapter(module, syncManager).record(1, update, start.Add(10*time.Minute), time.Time{}, peakSpeeds{})
+	NewAdapter(module, syncManager).record(readingBuild{instanceID: 1, update: update, now: start.Add(10 * time.Minute)})
 
 	rows, err := module.Transfer(t.Context(), TransferQuery{
 		InstanceID: 1, From: start.Truncate(time.Hour), To: start.Truncate(time.Hour).Add(time.Hour),
