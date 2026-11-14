@@ -4,8 +4,12 @@
 package themes
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
+
+	tdparse "github.com/tdewolff/parse/v2"
+	"github.com/tdewolff/parse/v2/css"
 )
 
 // OutsideFileError names the first construct that can make a browser load a
@@ -19,135 +23,73 @@ func (e *OutsideFileError) Error() string {
 	return fmt.Sprintf("line %d: %s", e.Line, e.Reason)
 }
 
+const cssSpace = " \t\n\r\f"
+
 // CheckNoOutsideFiles refuses CSS that can load a file from another host:
 // @import, image-set(), a url() whose target is not a data: address or a
 // #fragment, and a backslash outside a quoted string (an escape can spell
-// url or @import). Comments are ignored. When the scan cannot decide, for
-// example on a line break inside a string, it refuses. It returns an
+// url or @import). Comments are ignored. A token that the browser would
+// drop, such as a string with a line break, is refused too. It returns an
 // *OutsideFileError, or nil.
-func CheckNoOutsideFiles(css string) error {
-	s := outsideFileScanner{css: css, line: 1}
-	return s.scan()
-}
-
-type outsideFileScanner struct {
-	css  string
-	pos  int
-	line int
-}
-
-func (s *outsideFileScanner) refuse(line int, reason string) error {
-	return &OutsideFileError{Line: line, Reason: reason}
-}
-
-func (s *outsideFileScanner) advance() byte {
-	c := s.css[s.pos]
-	s.pos++
-	if c == '\n' {
-		s.line++
-	}
-	return c
-}
-
-func (s *outsideFileScanner) hasPrefixFold(prefix string) bool {
-	return len(s.css)-s.pos >= len(prefix) && strings.EqualFold(s.css[s.pos:s.pos+len(prefix)], prefix)
-}
-
-func (s *outsideFileScanner) scan() error {
-	for s.pos < len(s.css) {
-		switch c := s.css[s.pos]; {
-		case c == '/' && s.hasPrefixFold("/*"):
-			s.skipComment()
-		case c == '"' || c == '\'':
-			if _, err := s.readString(); err != nil {
-				return err
-			}
-		case c == '\\':
-			return s.refuse(s.line, "a backslash escape outside a quoted string is not allowed")
-		case c == '@' && s.hasPrefixFold("@import"):
-			return s.refuse(s.line, "@import loads a file from another website")
-		case s.hasPrefixFold("image-set("):
-			return s.refuse(s.line, "image-set() can load a file from another website; use url() with a data: address")
-		case s.hasPrefixFold("url("):
-			if err := s.checkURL(); err != nil {
-				return err
-			}
-		default:
-			s.advance()
+func CheckNoOutsideFiles(content string) error {
+	lexer := css.NewLexer(tdparse.NewInputString(content))
+	line := 1
+	for {
+		tt, data := lexer.Next()
+		if tt == css.ErrorToken {
+			return nil
 		}
+		if reason := outsideFileReason(tt, data); reason != "" {
+			return &OutsideFileError{Line: line, Reason: reason}
+		}
+		line += bytes.Count(data, []byte{'\n'})
 	}
-	return nil
 }
 
-func (s *outsideFileScanner) skipComment() {
-	s.pos += len("/*")
-	for s.pos < len(s.css) && !s.hasPrefixFold("*/") {
-		s.advance()
+func outsideFileReason(tt css.TokenType, data []byte) string {
+	switch tt {
+	case css.CommentToken, css.StringToken:
+		return ""
+	case css.BadStringToken:
+		return "a quoted string has a line break"
+	case css.BadURLToken:
+		return "url() has a character that this check cannot read"
+	case css.URLToken:
+		return urlTargetReason(data)
+	default:
+		return tokenReason(tt, data)
 	}
-	s.pos = min(s.pos+len("*/"), len(s.css))
 }
 
-// readString consumes a quoted string, escapes included, and returns its
-// contents. A line break ends a CSS string early, so the rest of the line
-// would parse as CSS that this scan did not see.
-func (s *outsideFileScanner) readString() (string, error) {
-	start := s.line
-	quote := s.advance()
-	var out strings.Builder
-	for s.pos < len(s.css) {
-		c := s.advance()
-		switch c {
-		case quote:
-			return out.String(), nil
-		case '\n', '\r', '\f':
-			return "", s.refuse(start, "a quoted string has a line break")
-		case '\\':
-			if s.pos < len(s.css) {
-				out.WriteByte(c)
-				out.WriteByte(s.advance())
-			}
-		default:
-			out.WriteByte(c)
-		}
+func tokenReason(tt css.TokenType, data []byte) string {
+	if bytes.IndexByte(data, '\\') >= 0 {
+		return "a backslash escape outside a quoted string is not allowed"
 	}
-	return "", s.refuse(start, "a quoted string is not closed")
+	name := strings.ToLower(string(data))
+	switch {
+	case tt == css.AtKeywordToken && name == "@import":
+		return "@import loads a file from another website"
+	case tt == css.FunctionToken && strings.HasSuffix(name, "image-set("):
+		return "image-set() can load a file from another website; use url() with a data: address"
+	}
+	return ""
 }
 
-func (s *outsideFileScanner) checkURL() error {
-	line := s.line
-	s.pos += len("url(")
-	for s.pos < len(s.css) && isCSSSpace(s.css[s.pos]) {
-		s.advance()
+// urlTargetReason reads the lexer's url() token, which holds both the
+// unquoted form and the quoted form. Escapes stay unresolved, so an escape
+// in the data: prefix is refused.
+func urlTargetReason(data []byte) string {
+	_, after, _ := bytes.Cut(data, []byte{'('})
+	inner := strings.TrimSuffix(strings.Trim(string(after), cssSpace), ")")
+	inner = strings.Trim(inner, cssSpace)
+	if inner != "" && (inner[0] == '"' || inner[0] == '\'') {
+		inner = strings.TrimSuffix(inner[1:], inner[:1])
+	} else if strings.IndexByte(inner, '\\') >= 0 {
+		return "a backslash escape outside a quoted string is not allowed"
 	}
-
-	var target string
-	if s.pos < len(s.css) && (s.css[s.pos] == '"' || s.css[s.pos] == '\'') {
-		str, err := s.readString()
-		if err != nil {
-			return err
-		}
-		target = str
-	} else {
-		end := strings.IndexByte(s.css[s.pos:], ')')
-		if end < 0 {
-			return s.refuse(line, "url() is not closed")
-		}
-		target = s.css[s.pos : s.pos+end]
-		if strings.ContainsAny(target, "\\\"'(") {
-			return s.refuse(line, "url() has a character that this check cannot read")
-		}
-		for range end {
-			s.advance()
-		}
+	target := strings.ToLower(strings.Trim(inner, cssSpace))
+	if strings.HasPrefix(target, "data:") || strings.HasPrefix(target, "#") {
+		return ""
 	}
-
-	lower := strings.ToLower(strings.Trim(target, " \t\n\r\f"))
-	if strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "#") {
-		return nil
-	}
-	return s.refuse(line, "url() can only use a data: address or a #fragment")
-}
-
-func isCSSSpace(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'
+	return "url() can only use a data: address or a #fragment"
 }

@@ -20,7 +20,11 @@ describe("findOutsideFile", () => {
     ["escaped url", "body { background: \\75rl(https://example.invalid/a.png); }", 1, "outside-file"],
     ["escaped import", "@\\69mport 'x.css';", 1, "outside-file"],
     ["line break in a string", "body::after { content: \"a\n@import 'x.css'; b\"; }", 1, "unreadable"],
-    ["url without an end", "body { background: url(data:x", 1, "unreadable"],
+    ["unquoted url with a space inside", "body { background: url(a b); }", 1, "unreadable"],
+    ["escape in the data: prefix of a quoted url", "body { background: url(\"d\\61ta:image/png;base64,AAAA\"); }", 1, "outside-file"],
+    ["escaped at-rule name", "@\\66ont-face { font-family: X; }", 1, "outside-file"],
+    ["prefixed image-set", "body { background: -webkit-image-set(\"a.png\" 1x); }", 1, "outside-file"],
+    ["url function that is not a string", "body { background: url(var(--image)); }", 1, "unreadable"],
     ["url after a comment", "/* one\n two */ body { background: url(http://example.invalid); }", 2, "outside-file"],
     // regression: #4124
     ["url with a no-break space before data:", "body { background: url(\"\u00a0data:image/png;base64,AAAA\"); }", 1, "outside-file"],
@@ -36,6 +40,7 @@ describe("findOutsideFile", () => {
     ["fragment url", "body { filter: url(#blur); }"],
     ["url text in a string", "body::after { content: \"url(https://example.invalid) @import \\\" \"; }"],
     ["backslash in a string", "body::after { content: \"\\2014\"; }"],
+    ["data url at the end of the file", "body { background: url(data:image/png;base64,AAAA"],
     ["font from data", "@font-face { font-family: X; src: url(\"data:font/woff2;base64,AAAA\") format(\"woff2\"); }"],
   ])("allows %s", (_name, css) => {
     expect(findOutsideFile(css)).toBeNull()

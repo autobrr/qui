@@ -391,6 +391,10 @@ func TestCustomTheme_OutsideFileRule(t *testing.T) {
 		{"escaped import", "@\\69mport 'x.css';", 1, "backslash"},
 		{"line break in a string", "body::after { content: \"a\n@import 'x.css'; b\"; }", 1, "line break"},
 		{"url after a comment", "/* one\n two */ body { background: url(http://example.invalid); }", 2, "url()"},
+		{"escape in the data: prefix of a quoted url", "body { background: url(\"d\\61ta:image/png;base64,AAAA\"); }", 1, "url()"},
+		{"escaped at-rule name", "@\\66ont-face { font-family: X; }", 1, "backslash"},
+		{"prefixed image-set", "body { background: -webkit-image-set(\"a.png\" 1x); }", 1, "image-set()"},
+		{"url function that is not a string", "body { background: url(var(--image)); }", 1, "url()"},
 		// regression: #4124
 		{"no-break space before data:", "body { background: url(\"\u00a0data:image/png;base64,AAAA\"); }", 1, "url()"},
 	}
@@ -417,6 +421,7 @@ func TestCustomTheme_OutsideFileRule(t *testing.T) {
 		{"fragment url", "body { filter: url(#blur); }"},
 		{"url text in a string", "body::after { content: \"url(https://example.invalid) @import \\\" \"; }"},
 		{"backslash in a string", "body::after { content: \"\\2014\"; }"},
+		{"data url at the end of the file", "body { background: url(data:image/png;base64,AAAA"},
 		{"font from data", "@font-face { font-family: X; src: url(\"data:font/woff2;base64,AAAA\") format(\"woff2\"); }"},
 	}
 	for _, tt := range allowed {

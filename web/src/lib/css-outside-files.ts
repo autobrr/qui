@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TokenType, tokenize, type CSSToken } from "@csstools/css-tokenizer"
+
 /**
  * Where css can make the browser load a file from another host, or where the
- * scan cannot decide. The same rule as CheckNoOutsideFiles in
+ * check cannot decide. The same rule as CheckNoOutsideFiles in
  * internal/themes/outside_files.go, which refuses the save; the editor uses it
  * so that a preview never loads such a file.
  */
@@ -14,72 +16,56 @@ export interface OutsideFile {
   kind: "outside-file" | "unreadable"
 }
 
-const SPACE = /[ \t\n\r\f]/
+const CSS_SPACE = /^[ \t\n\r\f]+|[ \t\n\r\f]+$/g
+
+function isLocalTarget(target: string): boolean {
+  const t = target.replace(CSS_SPACE, "").toLowerCase()
+  return t.startsWith("data:") || t.startsWith("#")
+}
+
+// Escapes stay unresolved, as on the server, so an escape in the data: prefix is refused.
+function rawStringValue(token: CSSToken): string {
+  const raw = token[1]
+  return raw.length > 1 && raw.endsWith(raw[0]) ? raw.slice(1, -1) : raw.slice(1)
+}
 
 export function findOutsideFile(css: string): OutsideFile | null {
-  let pos = 0
+  const tokens = tokenize({ css })
   let line = 1
-  const at = (word: string): boolean => {
-    for (let i = 0; i < word.length; i++) {
-      let code = css.charCodeAt(pos + i)
-      if (code >= 65 && code <= 90) code += 32
-      if (code !== word.charCodeAt(i)) return false
-    }
-    return true
-  }
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    const [type, raw] = token
+    const at = (kind: OutsideFile["kind"]): OutsideFile => ({ line, kind })
 
-  const advance = (): string => {
-    const c = css[pos++]
-    if (c === "\n") line++
-    return c
-  }
-
-  const readString = (): { value: string } | OutsideFile => {
-    const start = line
-    const quote = advance()
-    let value = ""
-    while (pos < css.length) {
-      const c = advance()
-      if (c === quote) return { value }
-      if (c === "\n" || c === "\r" || c === "\f") return { line: start, kind: "unreadable" }
-      value += c
-      if (c === "\\" && pos < css.length) value += advance()
-    }
-    return { line: start, kind: "unreadable" }
-  }
-
-  while (pos < css.length) {
-    const c = css[pos]
-    if (at("/*")) {
-      pos += 2
-      while (pos < css.length && !at("*/")) advance()
-      pos = Math.min(pos + 2, css.length)
-    } else if (c === "\"" || c === "'") {
-      const result = readString()
-      if ("kind" in result) return result
-    } else if (c === "\\" || at("@import") || at("image-set(")) {
-      return { line, kind: "outside-file" }
-    } else if (at("url(")) {
-      const urlLine = line
-      pos += 4
-      while (pos < css.length && SPACE.test(css[pos])) advance()
-      let target: string
-      if (css[pos] === "\"" || css[pos] === "'") {
-        const result = readString()
-        if ("kind" in result) return result
-        target = result.value
-      } else {
-        const end = css.indexOf(")", pos)
-        if (end < 0) return { line: urlLine, kind: "unreadable" }
-        target = css.slice(pos, end)
-        if (/["'\\(]/.test(target)) return { line: urlLine, kind: "unreadable" }
-        while (pos < end) advance()
+    switch (token[0]) {
+      case TokenType.Comment:
+      case TokenType.String:
+      case TokenType.EOF:
+        break
+      case TokenType.BadString:
+      case TokenType.BadURL:
+        return at("unreadable")
+      case TokenType.URL:
+        if (raw.includes("\\") || !isLocalTarget(token[4].value)) return at("outside-file")
+        break
+      case TokenType.AtKeyword:
+        if (raw.includes("\\") || token[4].value.toLowerCase() === "import") return at("outside-file")
+        break
+      case TokenType.Function: {
+        if (raw.includes("\\")) return at("outside-file")
+        const name = token[4].value.toLowerCase()
+        if (name.endsWith("image-set")) return at("outside-file")
+        if (name !== "url") break
+        let next = i + 1
+        while (tokens[next]?.[0] === TokenType.Whitespace || tokens[next]?.[0] === TokenType.Comment) next++
+        const target = tokens[next]
+        if (target?.[0] !== TokenType.String || !isLocalTarget(rawStringValue(target))) return at("outside-file")
+        break
       }
-      const t = target.replace(/^[ \t\n\r\f]+|[ \t\n\r\f]+$/g, "").toLowerCase()
-      if (!t.startsWith("data:") && !t.startsWith("#")) return { line: urlLine, kind: "outside-file" }
-    } else {
-      advance()
+      default:
+        if (type !== TokenType.Whitespace && raw.includes("\\")) return at("outside-file")
     }
+    for (const c of raw) if (c === "\n") line++
   }
   return null
 }

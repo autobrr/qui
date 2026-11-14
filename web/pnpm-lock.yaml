@@ -22,6 +22,9 @@ importers:
       '@codemirror/lint':
         specifier: ^6.9.7
         version: 6.9.7
+      '@csstools/css-tokenizer':
+        specifier: 4.0.2
+        version: 4.0.2
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

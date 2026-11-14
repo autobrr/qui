@@ -38,6 +38,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.12.1
+	github.com/tdewolff/parse/v2 v2.8.20
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ulikunitz/xz v0.5.17
 	github.com/yuin/goldmark v1.8.6
