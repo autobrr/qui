@@ -14,7 +14,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SERIES_COLOR_SETS, useSeriesColorSet, type SeriesColorSet } from "@/hooks/useSeriesColors"
 import { PERIOD_PRESETS, type PeriodPreset } from "@/lib/statistics"
 import { ChevronDown } from "lucide-react"
 import { useState } from "react"
@@ -132,5 +134,24 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** Selects the series colors of the charts: the distinct set or the chart colors of the theme. */
+export function SeriesColorPicker() {
+  const { t } = useTranslation("statistics")
+  const [set, setSet] = useSeriesColorSet()
+
+  return (
+    <Select value={set} onValueChange={value => setSet(value as SeriesColorSet)}>
+      <SelectTrigger aria-label={t("seriesColors.label")} className="h-9">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        {SERIES_COLOR_SETS.map(value => (
+          <SelectItem key={value} value={value}>{t(`seriesColors.${value}`)}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

@@ -24,6 +24,11 @@
     "count_other": "{{count}} instàncies",
     "removed": "eliminada"
   },
+  "seriesColors": {
+    "label": "Colors de les sèries",
+    "distinct": "Colors diferenciats",
+    "theme": "Colors del tema"
+  },
   "tiles": {
     "uploaded": "Pujat",
     "downloaded": "Baixat",

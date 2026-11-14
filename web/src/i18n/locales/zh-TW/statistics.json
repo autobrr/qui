@@ -22,6 +22,11 @@
     "count_other": "{{count}} 個實例",
     "removed": "已移除"
   },
+  "seriesColors": {
+    "label": "系列顏色",
+    "distinct": "區分色",
+    "theme": "主題顏色"
+  },
   "tiles": {
     "uploaded": "已上傳",
     "downloaded": "已下載",

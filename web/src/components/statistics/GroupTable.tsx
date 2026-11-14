@@ -9,6 +9,7 @@ import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTopTorrents, useTorrentName } from "@/hooks/useTopTorrents"
+import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import {
@@ -25,7 +26,6 @@ import {
   type BarWidth,
   formatBuffer,
   formatRatio,
-  SERIES_COLORS,
   sumBytes,
   type ChartUnit,
   type GroupTotals,
@@ -71,10 +71,11 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
   const tracker = grouping === "tracker"
   const withBaseline = !period.from
 
+  const colors = useSeriesColors()
   const config = useMemo<ChartConfig>(() => Object.fromEntries(seriesGroups.map((group, index) => [
     `s${index}`,
-    { label: group, theme: { light: SERIES_COLORS.light[index], dark: SERIES_COLORS.dark[index] } },
-  ])), [seriesGroups])
+    { label: group, theme: { light: colors.light[index], dark: colors.dark[index] } },
+  ])), [seriesGroups, colors])
   const total = useMemo<TransferHistoryBytes | undefined>(() => rows && sumBytes(rows, false), [rows])
   const liveTotal = useMemo<Live | undefined>(() => rows && liveLoaded ? rows.reduce<Live>((sum, row) => ({
     torrents: sum.torrents + (row.live?.torrents ?? 0),
@@ -239,6 +240,7 @@ interface ShownRows {
 
 /** The band below an open row: the share of the upload, the upload from cross-seeds, the best and the average bucket, and the chart of the group. */
 function GroupDetail({ group, grouping, row, total, period, since, series, instances, seriesIndex, name }: GroupDetailProps) {
+  const colors = useSeriesColors()
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const hour12 = usePersistedDateTimePreferences().preferences.timeFormat === "12h"
@@ -318,7 +320,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
         ) : !chartBars ? (
           <div className="flex h-[200px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
         ) : (
-          <GroupChart bars={chartBars} unit={unit} color={seriesIndex >= 0 ? { light: SERIES_COLORS.light[seriesIndex], dark: SERIES_COLORS.dark[seriesIndex] } : undefined} />
+          <GroupChart bars={chartBars} unit={unit} color={seriesIndex >= 0 ? { light: colors.light[seriesIndex], dark: colors.dark[seriesIndex] } : undefined} />
         )}
       </div>
       <GroupTorrents group={group} grouping={grouping} name={name} period={period} series={series} instances={instances} />

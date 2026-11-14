@@ -4,8 +4,9 @@
  */
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import { byteTicks, formatGapLength, labelledGaps, SERIES_COLORS, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
+import { byteTicks, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
+import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -34,15 +35,16 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatStart, formatTick } = useBucketFormat(unit)
+  const colors = useSeriesColors()
 
   const config = useMemo<ChartConfig>(() => {
     const entries: ChartConfig = {}
     groups.forEach((group, index) => {
-      entries[`s${index}`] = { label: displayName(group), theme: { light: SERIES_COLORS.light[index], dark: SERIES_COLORS.dark[index] } }
+      entries[`s${index}`] = { label: displayName(group), theme: { light: colors.light[index], dark: colors.dark[index] } }
     })
     entries[OTHER] = { label: t("chart.other"), color: "var(--muted-foreground)" }
     return entries
-  }, [groups, displayName, t])
+  }, [groups, displayName, t, colors])
 
   const rows = useMemo(() => bars.map(bar => {
     const row: ChartRow = { start: bar.start, width: bar.width, gapSeconds: bar.gapSeconds, total: 0, [OTHER]: 0 }

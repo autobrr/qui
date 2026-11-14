@@ -6,14 +6,13 @@
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
-import { calendarDays, daysSinceMonday, formatGapLength, monthBars, SERIES_COLORS, yearSummary, type CalendarDay, type StatisticsBar } from "@/lib/statistics"
+import { useSeriesColors } from "@/hooks/useSeriesColors"
+import { calendarDays, daysSinceMonday, formatGapLength, monthBars, yearSummary, type CalendarDay, type StatisticsBar } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
 import { useEffect, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-year"
-
-const CONFIG: ChartConfig = { heat: { theme: { light: SERIES_COLORS.light[0], dark: SERIES_COLORS.dark[0] } } }
 
 // The share of the series color for each step of upload above zero.
 const HEAT = [25, 50, 75, 100].map(percent => `color-mix(in oklab, var(--color-heat) ${percent}%, transparent)`)
@@ -35,12 +34,14 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
   const days = useMemo(() => calendarDays(bars, to, since), [bars, to, since])
   const months = useMemo(() => monthBars(bars), [bars])
   const summary = useMemo(() => yearSummary(bars), [bars])
+  const colors = useSeriesColors()
+  const config = useMemo<ChartConfig>(() => ({ heat: { theme: { light: colors.light[0], dark: colors.dark[0] } } }), [colors])
   const { formatStart } = useBucketFormat("day")
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
 
   return (
     <div className="space-y-8" data-chart={CHART_ID}>
-      <ChartStyle id={CHART_ID} config={CONFIG} />
+      <ChartStyle id={CHART_ID} config={config} />
       <Calendar days={days} />
       <dl className="grid gap-6 sm:grid-cols-3">
         <YearFact

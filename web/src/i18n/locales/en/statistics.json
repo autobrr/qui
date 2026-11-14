@@ -23,6 +23,11 @@
     "count_other": "{{count}} instances",
     "removed": "removed"
   },
+  "seriesColors": {
+    "label": "Series colors",
+    "distinct": "Distinct colors",
+    "theme": "Theme colors"
+  },
   "tiles": {
     "uploaded": "Uploaded",
     "downloaded": "Downloaded",

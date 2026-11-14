@@ -5,7 +5,7 @@
 
 import { PageHeader } from "@/components/layout/PageHeader"
 import { GroupTable } from "@/components/statistics/GroupTable"
-import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
+import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
@@ -236,6 +236,7 @@ export function Statistics() {
         }
         actions={
           <>
+            <SeriesColorPicker />
             {options.length > 1 && <InstanceFilter
               options={options}
               selected={selectedIds}
