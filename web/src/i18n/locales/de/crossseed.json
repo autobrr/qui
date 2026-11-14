@@ -196,6 +196,21 @@
     "cancelDialog": {
       "title": "Bibliotheks-Scan abbrechen?",
       "description": "Dies stoppt den aktuellen Bibliotheks-Scan. Bereits hinzugefügte Cross-Seeds bleiben erhalten, aber es werden keine weiteren Torrents gesucht."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: {{asked}} angefragt, {{matched}} Treffer, {{failed}} fehlgeschlagen",
+      "siteWithNotAsked": "{{counts}}, {{notAsked}} nicht angefragt ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "aus",
+        "noApiKey": "kein API-Schlüssel",
+        "cooldown": "kürzlich durchsucht",
+        "sourceSite": "von der Seite",
+        "alreadySeeded": "bereits geseedet",
+        "notMusic": "keine Musik",
+        "other": "sonstige"
+      }
     }
   },
   "rules": {

@@ -720,7 +720,6 @@
     "partialResults": "Teilergebnisse – einige Indexer haben nicht geantwortet",
     "arrLookupFailed": "Metadaten-ID-Abfrage fehlgeschlagen – nur Titelsuche, Ergebnisse können unvollständig sein",
     "arrNoIds": "Keine Metadaten-IDs für dieses Release gefunden – nur Titelsuche",
-    "gazelleTimedOut": "RED/OPS hat nicht rechtzeitig geantwortet",
     "torznabFailed": "Torznab-Suche fehlgeschlagen – nur RED/OPS-Ergebnisse",
     "searchScope": "Suchbereich",
     "noIndexers": "Keine Torznab-Indexer verfügbar",
@@ -813,7 +812,30 @@
       "useRss": "Nutze die RSS-Automatisierung für fortlaufendes Cross-Seeding",
       "checkIndexers": "Prüfe auf der Indexer-Seite, welche davon rate-limitiert sind"
     },
-    "routedTo": "Cross-Seeds gehen an die Cross-Seed-Instanz {{instance}}."
+    "routedTo": "Cross-Seeds gehen an die Cross-Seed-Instanz {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "wird angefragt",
+      "willAskRejected": "wird angefragt: die Seite hat den API-Schlüssel zuletzt abgelehnt",
+      "match": "Treffer",
+      "noMatch": "kein Treffer",
+      "openSettings": "Einstellungen öffnen",
+      "notAsked": {
+        "disabled": "nicht angefragt: aus",
+        "noApiKey": "nicht angefragt: kein API-Schlüssel",
+        "cooldown": "nicht angefragt: kürzlich durchsucht",
+        "notSelected": "nicht angefragt: nicht ausgewählt",
+        "sourceSite": "nicht angefragt: der Torrent stammt von {{site}}",
+        "alreadySeeded": "nicht angefragt: du seedest ihn dort bereits",
+        "notMusic": "nicht angefragt: keine Musik",
+        "other": "nicht angefragt"
+      },
+      "failed": {
+        "keyRejected": "fehlgeschlagen: die Seite hat den API-Schlüssel abgelehnt",
+        "timedOut": "fehlgeschlagen: Zeitüberschreitung",
+        "other": "fehlgeschlagen: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "{{column}} filtern",

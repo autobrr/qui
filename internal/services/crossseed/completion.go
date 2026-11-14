@@ -13,6 +13,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -744,12 +745,14 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	scope := s.collectSearchScope(ctx, instanceID, torrent, searchScopeFacts{
 		requestedIndexerIDs: requestedIndexerIDs,
 		picked:              len(uniquePositiveInts(requestedIndexerIDs)) > 0,
+		gazelleOff:          gazelleClients.disabled(),
 		gazelleKeys:         gazelleClients.hosts(),
 	}, true)
 	if scope.err != nil {
 		return scope.err
 	}
-	if len(scope.torznabIndexerIDs) == 0 && len(scope.gazelleHosts) == 0 {
+	if len(scope.torznabIndexerIDs) == 0 && !scope.asksGazelle() {
+		logCompletionGazelleLookups(instanceID, torrent, scope.gazelle)
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("hash", torrent.Hash).
@@ -759,11 +762,14 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	searchCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityCompletion)
-	searchResp, _, _, err := s.searchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
+	searchResp, err := s.searchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 		FindIndividualEpisodes: settings.FindIndividualEpisodes,
 		RescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
 		CacheMode:              cacheMode,
 	}, scope, gazelleClients)
+	if searchResp != nil {
+		logCompletionGazelleLookups(instanceID, torrent, searchResp.GazelleLookups)
+	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			log.Warn().
@@ -842,6 +848,9 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
 			lines = append(lines, "Samples: "+sampleText)
 		}
+		if len(searchResp.GazelleLookups) > 0 {
+			lines = append(lines, gazelleLookupsLine(searchResp.GazelleLookups))
+		}
 		notifyCtx := context.WithoutCancel(ctx)
 		s.notifier.Notify(notifyCtx, notifications.Event{
 			Type:        eventType,
@@ -863,6 +872,32 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	return nil
+}
+
+// logCompletionGazelleLookups writes one line for each RED/OPS site: Info for a
+// match, Warn for a failure, and Debug for the rest.
+func logCompletionGazelleLookups(instanceID int, torrent *qbt.Torrent, lookups []GazelleLookup) {
+	for _, l := range lookups {
+		var event *zerolog.Event
+		switch l.Status {
+		case GazelleMatch:
+			event = log.Info()
+		case GazelleFailed:
+			event = log.Warn()
+		default:
+			event = log.Debug()
+		}
+		event.
+			Str("trigger", "completion").
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Str("site", l.Site).
+			Str("status", string(l.Status)).
+			Str("reason", string(l.Reason)).
+			Str("detail", l.Detail).
+			Msg("[CROSSSEED-COMPLETION] RED/OPS lookup: " + gazelleOutcomeText(l))
+	}
 }
 
 // logCompletionSearchSummary emits every outcome count and promotes runs with

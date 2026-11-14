@@ -202,6 +202,21 @@
     "cancelDialog": {
       "title": "Скасувати сканування бібліотеки?",
       "description": "Це зупинить поточне сканування бібліотеки. Уже додані крос-сіди залишаться, але інші торренти більше не шукатимуться."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: запитано {{asked}}, збігів {{matched}}, помилок {{failed}}",
+      "siteWithNotAsked": "{{counts}}, не запитано {{notAsked}} ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "вимкнено",
+        "noApiKey": "немає API-ключа",
+        "cooldown": "нещодавно шукали",
+        "sourceSite": "із цього сайту",
+        "alreadySeeded": "вже роздається",
+        "notMusic": "не музика",
+        "other": "інше"
+      }
     }
   },
   "rules": {

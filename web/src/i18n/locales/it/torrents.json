@@ -720,7 +720,6 @@
     "partialResults": "Risultati parziali - alcuni indexer non hanno risposto",
     "arrLookupFailed": "Ricerca degli ID dei metadati non riuscita - ricerca solo per titolo, i risultati potrebbero essere incompleti",
     "arrNoIds": "Nessun ID dei metadati trovato per questa release - ricerca solo per titolo",
-    "gazelleTimedOut": "RED/OPS non ha risposto in tempo",
     "torznabFailed": "Ricerca Torznab non riuscita - solo risultati RED/OPS",
     "searchScope": "Ambito di ricerca",
     "noIndexers": "Nessun indexer Torznab disponibile",
@@ -813,7 +812,30 @@
       "useRss": "Usa la funzione di automazione RSS per il cross-seeding continuo",
       "checkIndexers": "Controlla la pagina degli indexer per vedere quali sono soggetti a rate limit"
     },
-    "routedTo": "I cross-seed vanno all'istanza di cross-seed {{instance}}."
+    "routedTo": "I cross-seed vanno all'istanza di cross-seed {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "verrà interrogato",
+      "willAskRejected": "verrà interrogato: l'ultima volta il sito ha rifiutato la chiave API",
+      "match": "corrispondenza",
+      "noMatch": "nessuna corrispondenza",
+      "openSettings": "Apri impostazioni",
+      "notAsked": {
+        "disabled": "non interrogato: disattivato",
+        "noApiKey": "non interrogato: nessuna chiave API",
+        "cooldown": "non interrogato: cercato di recente",
+        "notSelected": "non interrogato: non selezionato",
+        "sourceSite": "non interrogato: il torrent proviene da {{site}}",
+        "alreadySeeded": "non interrogato: lo condividi già lì",
+        "notMusic": "non interrogato: non è musica",
+        "other": "non interrogato"
+      },
+      "failed": {
+        "keyRejected": "non riuscito: il sito ha rifiutato la chiave API",
+        "timedOut": "non riuscito: tempo scaduto",
+        "other": "non riuscito: {{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "Filtra {{column}}",

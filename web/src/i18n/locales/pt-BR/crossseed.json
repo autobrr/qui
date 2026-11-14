@@ -196,6 +196,21 @@
     "cancelDialog": {
       "title": "Cancelar Busca na Biblioteca?",
       "description": "Isso interrompe a busca atual na biblioteca. Os cross-seeds já adicionados permanecem, mas nenhum outro torrent é buscado."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: {{asked}} consultados, {{matched}} correspondências, {{failed}} falhas",
+      "siteWithNotAsked": "{{counts}}, {{notAsked}} não consultados ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "desativado",
+        "noApiKey": "sem chave de API",
+        "cooldown": "pesquisado recentemente",
+        "sourceSite": "do site",
+        "alreadySeeded": "já semeado",
+        "notMusic": "não é música",
+        "other": "outros"
+      }
     }
   },
   "rules": {

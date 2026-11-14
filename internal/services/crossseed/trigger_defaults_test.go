@@ -248,3 +248,15 @@ func TestWebhookCategoryAndStartPausedDefaults(t *testing.T) {
 		})
 	}
 }
+
+// A RED/OPS match keeps the indexer name of older versions for its category
+// and link folder.
+func TestRequestKeepsGazellePlacementName(t *testing.T) {
+	settings := &models.CrossSeedAutomationSettings{UseCategoryFromIndexer: true}
+	svc := &Service{}
+	for indexer, want := range map[string]string{"Redacted (API)": "Gazelle (RED)", "Orpheus (API)": "Gazelle (OPS)", "Music Indexer": "Music Indexer"} {
+		req := defaultsFor(triggerSeededSearch, settings).request("", indexer)
+		category, _ := svc.determineCrossSeedCategory(t.Context(), req, nil, settings)
+		require.Equal(t, want, category, indexer)
+	}
+}

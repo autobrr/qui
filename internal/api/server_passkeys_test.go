@@ -127,7 +127,7 @@ func newPasskeyRig(t *testing.T) *passkeyRig {
 	deps.ClientPool = clientPool
 	deps.SyncManager = syncManager
 	deps.BackupService = backups.NewService(backupStore, syncManager, backups.Config{DataDir: t.TempDir()}, nil)
-	deps.CrossSeedService = crossseed.NewService(instanceStore, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	deps.CrossSeedService = crossseed.NewService(instanceStore, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
 
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)

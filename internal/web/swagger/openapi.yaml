@@ -4746,6 +4746,23 @@ paths:
         '500':
           description: Capabilities refresh failed
 
+  /api/cross-seed/gazelle/sites:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get the RED/OPS sites
+      description: Returns each RED/OPS site that cross-seed searches ask through its API, whether searches ask it, and the Torznab indexers that it replaces.
+      responses:
+        '200':
+          description: The RED/OPS sites, in a fixed order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrossSeedGazelleSite'
+        '500':
+          description: Failed to load the RED/OPS sites
   /api/cross-seed/settings:
     get:
       tags:
@@ -10364,6 +10381,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedSearchResult'
+        gazelleSummary:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedGazelleSiteSummary'
         createdAt:
           type: string
           format: date-time
@@ -10479,6 +10500,82 @@ components:
         disc_marker:
           type: string
           description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
+        gazellePlan:
+          type: array
+          description: For the search dialog, what a search asks each RED/OPS site. The status is will_ask or not_asked.
+          items:
+            $ref: '#/components/schemas/CrossSeedGazelleLookup'
+
+    CrossSeedGazelleLookup:
+      type: object
+      description: The RED/OPS lookup of one site for one search, as a plan before the search or as the outcome after it.
+      properties:
+        site:
+          type: string
+          description: API host of the site
+        name:
+          type: string
+        shortName:
+          type: string
+        indexerId:
+          type: integer
+          description: Pseudo indexer ID of the result rows of the site
+        status:
+          type: string
+          enum: [will_ask, match, no_match, not_asked, failed]
+        reason:
+          type: string
+          description: Why the search did not ask the site, or why the lookup failed
+          enum: [disabled, no_api_key, cooldown, not_selected, source_site, already_seeded, not_music, key_rejected, timed_out, error]
+        detail:
+          type: string
+          description: Error text of a failed lookup
+        replacedIndexerIds:
+          type: array
+          description: Torznab indexers of the site that the search leaves out
+          items:
+            type: integer
+
+    CrossSeedGazelleSite:
+      type: object
+      properties:
+        site:
+          type: string
+          description: API host of the site
+        name:
+          type: string
+        shortName:
+          type: string
+        indexerId:
+          type: integer
+        active:
+          type: boolean
+          description: RED/OPS is on and the site has an API key, so each search asks the site through its API
+        replacedIndexerIds:
+          type: array
+          description: Torznab indexers of an active site, which every search leaves out
+          items:
+            type: integer
+
+    CrossSeedGazelleSiteSummary:
+      type: object
+      description: The RED/OPS lookups of one site in one Library Scan run
+      properties:
+        site:
+          type: string
+        name:
+          type: string
+        asked:
+          type: integer
+        matched:
+          type: integer
+        failed:
+          type: integer
+        notAsked:
+          type: object
+          description: Torrents that the run did not ask the site about, for each reason
+          additionalProperties:
+            type: integer
 
     CrossSeedTorrentSearchRequest:
       type: object
@@ -10492,6 +10589,11 @@ components:
           type: array
           items:
             type: integer
+        gazelle_sites:
+          type: array
+          description: API hosts of the RED/OPS sites to ask. Absent means every site. A list with no indexer_ids asks no Torznab indexer.
+          items:
+            type: string
 
     CrossSeedTorrentSearchResult:
       type: object
@@ -10572,9 +10674,11 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
-        gazelle_timed_out:
-          type: boolean
-          description: Set when a RED/OPS lookup did not answer in time. The results hold the Torznab matches and the matches of each RED/OPS site that answered.
+        gazelleLookups:
+          type: array
+          description: One RED/OPS lookup for each site, in a fixed site order. A site that timed out or failed has the status failed; the results hold the matches of the other sites and of Torznab.
+          items:
+            $ref: '#/components/schemas/CrossSeedGazelleLookup'
         torznab_failed:
           type: boolean
           description: Set when the Torznab search failed and the results come only from RED/OPS.

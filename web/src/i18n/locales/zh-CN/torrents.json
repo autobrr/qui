@@ -662,7 +662,6 @@
     "partialResults": "部分结果：部分索引器未响应",
     "arrLookupFailed": "元数据 ID 查询失败：仅按标题搜索，结果可能不完整",
     "arrNoIds": "未找到该资源的元数据 ID：仅按标题搜索",
-    "gazelleTimedOut": "RED/OPS 未及时响应",
     "torznabFailed": "Torznab 搜索失败：仅显示 RED/OPS 结果",
     "searchScope": "搜索范围",
     "noIndexers": "没有可用的 Torznab 索引器",
@@ -754,7 +753,30 @@
       "useRss": "使用 RSS 自动化功能进行持续辅种",
       "checkIndexers": "检查索引器页面以查看哪些被限流"
     },
-    "routedTo": "辅种将添加到辅种实例 {{instance}}。"
+    "routedTo": "辅种将添加到辅种实例 {{instance}}。",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "将查询",
+      "willAskRejected": "将查询：站点上次拒绝了 API 密钥",
+      "match": "匹配",
+      "noMatch": "无匹配",
+      "openSettings": "打开设置",
+      "notAsked": {
+        "disabled": "未查询：已关闭",
+        "noApiKey": "未查询：无 API 密钥",
+        "cooldown": "未查询：最近已搜索",
+        "notSelected": "未查询：未选择",
+        "sourceSite": "未查询：种子来自 {{site}}",
+        "alreadySeeded": "未查询：您已在那里做种",
+        "notMusic": "未查询：不是音乐",
+        "other": "未查询"
+      },
+      "failed": {
+        "keyRejected": "失败：站点拒绝了 API 密钥",
+        "timedOut": "失败：超时",
+        "other": "失败：{{detail}}"
+      }
+    }
   },
   "columnFilter": {
     "filterColumn": "筛选 {{column}}",

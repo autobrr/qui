@@ -204,6 +204,22 @@
         "fix": "Gib Platz auf dem Datenträger frei, verkürze „Tägliche Details behalten für“ oder lösche älteren Verlauf in den Statistik-Einstellungen.",
         "menuFix": "Speicher für die Datenbank freigeben",
         "action": "Statistik-Einstellungen öffnen"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted-Schlüssel abgelehnt",
+        "title": "Redacted hat den API-Schlüssel abgelehnt",
+        "effect": "qui durchsucht Redacted erst wieder, wenn du einen neuen Schlüssel einfügst.",
+        "fix": "Erstelle in deinen Redacted-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein.",
+        "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus-Schlüssel abgelehnt",
+        "title": "Orpheus hat den API-Schlüssel abgelehnt",
+        "effect": "qui durchsucht Orpheus erst wieder, wenn du einen neuen Schlüssel einfügst.",
+        "fix": "Erstelle in deinen Orpheus-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein.",
+        "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
       }
     },
     "actions": {
