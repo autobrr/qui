@@ -48,6 +48,7 @@ import { Link } from "@tanstack/react-router"
 import { AlertCircle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Database, Plus, RefreshCcw, Turtle } from "lucide-react"
 import { useState, type KeyboardEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 /** The upload and the download of the last 24 hours of one instance, with its bytes for each hour. */
 export interface InstanceDay extends TransferHistoryBytes {
@@ -474,6 +475,7 @@ function AltSpeedSwitch({ d }: { d: DashboardInstanceStats }) {
   const { mutate: toggle, isPending } = useMutation({
     mutationFn: () => api.toggleAlternativeSpeedLimits(d.instance.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["torrents-list", d.instance.id] }),
+    onError: (error: Error) => toast.error(t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
   })
   const enabled = d.altSpeedEnabled
   const id = `alt-speed-${d.instance.id}`

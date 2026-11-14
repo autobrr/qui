@@ -35,6 +35,7 @@ import { useTable } from "@tanstack/react-table"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { torrentTableFeatures, type TorrentRow, type TorrentTableColumnDef } from "./tanstackTableFeatures"
 import { type TableViewMode } from "./TorrentTableColumns"
@@ -62,6 +63,7 @@ import {
 import { useGlobalMaxRatio, useListenPort, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { formatErrorMessage } from "@/lib/format-error-message"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
@@ -686,6 +688,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["alternative-speed-limits", instanceId] })
     },
+    onError: (error: Error) => toast.error(t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
   })
 
   useEffect(() => {

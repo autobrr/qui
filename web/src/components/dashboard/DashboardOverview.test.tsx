@@ -27,12 +27,17 @@ const mocks = vi.hoisted(() => {
   return {
     i18n: { t, i18n: { resolvedLanguage: "en", language: "en" } },
     incognitoMode: [false, () => {}] as [boolean, () => void],
+    toastError: vi.fn(),
   }
 })
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => mocks.i18n,
+}))
+vi.mock("sonner", async (importOriginal) => ({
+  ...await importOriginal<typeof import("sonner")>(),
+  toast: { error: mocks.toastError },
 }))
 vi.mock("@/lib/incognito", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/incognito")>(),
@@ -46,6 +51,7 @@ let statuses: TransferHistoryInstance[]
 let answer: (instanceId: number) => TransferHistoryRow[]
 let transferRequests: number[]
 let toggles: number[]
+let toggleFails: boolean
 let desktop: boolean
 
 function hourRow(group: string, hoursAgo: number, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
@@ -97,6 +103,8 @@ beforeEach(() => {
   answer = () => []
   transferRequests = []
   toggles = []
+  toggleFails = false
+  mocks.toastError.mockReset()
   desktop = false
   mocks.incognitoMode = [false, () => {}]
   vi.stubGlobal("ResizeObserver", class {
@@ -118,7 +126,7 @@ beforeEach(() => {
     }),
     http.post("*/api/instances/:id/alternative-speed-limits/toggle", ({ params }) => {
       toggles.push(Number(params.id))
-      return HttpResponse.json({ enabled: true })
+      return toggleFails ? HttpResponse.json({ error: "qBittorrent rejected the request" }, { status: 500 }) : HttpResponse.json({ enabled: true })
     })
   )
 })
@@ -367,6 +375,19 @@ describe("DashboardOverview instances", () => {
     expect(toggles).toEqual([])
     fireEvent.click(within(confirm).getByText("altSpeedDialog.enable"))
     await vi.waitFor(() => expect(toggles).toEqual([1]))
+  })
+
+  // regression: #4141
+  it("tells the user when qBittorrent rejects the change of the alternative speed limits", async () => {
+    toggleFails = true
+    renderOverview([stats(1)])
+    fireEvent.click(within(screen.getByRole("list", { name: "instances.title" })).getByText("instance 1"))
+    const sheet = await screen.findByRole("dialog")
+
+    fireEvent.click(within(sheet).getByRole("switch"))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByText("altSpeedDialog.enable"))
+    await vi.waitFor(() => expect(mocks.toastError).toHaveBeenCalledTimes(1))
+    expect(String(mocks.toastError.mock.calls[0][0])).toMatch(/^common:errors\.altSpeedToggle message=/)
   })
 
   it("opens the torrent list with the filter of an issue", async () => {
