@@ -24,6 +24,11 @@
     "count_other": "{{count}} instancí",
     "removed": "odebraná"
   },
+  "seriesColors": {
+    "label": "Barvy řad",
+    "distinct": "Odlišné barvy",
+    "theme": "Barvy motivu"
+  },
   "tiles": {
     "uploaded": "Odesláno",
     "downloaded": "Staženo",

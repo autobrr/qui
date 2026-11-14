@@ -24,6 +24,11 @@
     "count_other": "{{count}} instances",
     "removed": "supprimée"
   },
+  "seriesColors": {
+    "label": "Couleurs des séries",
+    "distinct": "Couleurs distinctes",
+    "theme": "Couleurs du thème"
+  },
   "tiles": {
     "uploaded": "Envoyé",
     "downloaded": "Reçu",

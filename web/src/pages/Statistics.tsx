@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/layout/PageHeader"
 import { DeletedTorrents } from "@/components/statistics/DeletedTorrents"
 import { EventsChart } from "@/components/statistics/EventsChart"
 import { GroupTable } from "@/components/statistics/GroupTable"
-import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
+import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
@@ -245,6 +245,7 @@ export function Statistics() {
         }
         actions={
           <>
+            <SeriesColorPicker />
             {options.length > 1 && <InstanceFilter
               options={options}
               selected={selectedIds}

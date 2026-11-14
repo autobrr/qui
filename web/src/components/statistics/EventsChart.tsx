@@ -5,7 +5,7 @@
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
-import { SERIES_COLORS } from "@/lib/statistics"
+import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { EVENTS, type EventDay, type EventKind } from "@/lib/statistics-events"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -28,10 +28,11 @@ export function EventsChart({ days }: EventsChartProps) {
   const { formatStart, formatTick } = useBucketFormat("day")
   const formatCount = useMemo(() => new Intl.NumberFormat(locale), [locale])
 
+  const colors = useSeriesColors()
   const config = useMemo<ChartConfig>(() => Object.fromEntries(EVENTS.map((kind, index) => [
     kind,
-    { label: t(LABELS[kind].labelKey), theme: { light: SERIES_COLORS.light[index], dark: SERIES_COLORS.dark[index] } },
-  ])), [t])
+    { label: t(LABELS[kind].labelKey), theme: { light: colors.light[index], dark: colors.dark[index] } },
+  ])), [t, colors])
   const rows = useMemo(() => days.map(day => ({ ...day, deleted: -day.deleted })), [days])
   const totals = useMemo(() => Object.fromEntries(EVENTS.map(kind => [kind, days.reduce((sum, day) => sum + day[kind], 0)])) as Record<EventKind, number>, [days])
 

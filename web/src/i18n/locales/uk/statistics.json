@@ -25,6 +25,11 @@
     "count_other": "{{count}} екземпляра",
     "removed": "видалено"
   },
+  "seriesColors": {
+    "label": "Кольори рядів",
+    "distinct": "Різні кольори",
+    "theme": "Кольори теми"
+  },
   "tiles": {
     "uploaded": "Віддано",
     "downloaded": "Завантажено",
