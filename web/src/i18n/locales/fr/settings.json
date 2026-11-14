@@ -543,7 +543,9 @@
       "lockedCount_other": "{{count}} thèmes nécessitent une licence.",
       "showAll_one": "Afficher {{count}} thème",
       "showAll_other": "Afficher les {{count}} thèmes",
-      "showFewer": "Afficher moins de thèmes"
+      "showFewer": "Afficher moins de thèmes",
+      "variationCount_one": "{{count}} variante de couleur",
+      "variationCount_other": "{{count}} variantes de couleur"
     },
     "current": {
       "label": "Actif",
@@ -768,7 +770,8 @@
       "localOnlyHelp": "Ce navigateur ne récupère pas le thème depuis le serveur et n'envoie pas ses changements de thème au serveur. Ce paramètre s'applique uniquement à ce navigateur.",
       "changesMobile": "Modifie le thème mobile",
       "changesDesktop": "Modifie le thème bureau",
-      "changesLocal": "Modifie uniquement le thème de ce navigateur. Pour modifier le réglage de la disposition mobile, désactivez le réglage local.",
+      "changesLocal": "Modifie uniquement le thème de ce navigateur.",
+      "splitNeedsSync": "Pour modifier le réglage de la disposition mobile, désactivez le réglage local.",
       "saveError": "Impossible d'enregistrer le paramètre de thème",
       "mobileSplitOffWarning": "La désactivation supprime le thème mobile."
     }

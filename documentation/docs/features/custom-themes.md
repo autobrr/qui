@@ -17,7 +17,7 @@ A custom theme is a `.css` file in the custom themes directory on the server. It
 
 The theme picker is under **Settings → Themes**. At the top, it shows the theme in use with a larger picture and its description. If the theme has color variations, click a color dot under its name to change the variation.
 
-Below that, a grid shows a small picture of each theme: free themes, licensed themes, and your custom themes. Click a theme to apply it. The grid shows two rows. To see all themes, click **Show all** below the grid. To find a theme, type a part of its name or description in the search field. To show only one group, click **Free**, **Licensed**, or **Custom** above the grid.
+Below that, a grid shows a small picture of each theme: free themes, licensed themes, and your custom themes. Click a theme to apply it. If a theme has color variations, its picture shows the colors as dots. The grid shows two rows. To see all themes, click **Show all** below the grid. To find a theme, type a part of its name or description in the search field. To show only one group, click **Free**, **Licensed**, or **Custom** above the grid.
 
 If you do not have an active license, a lock icon marks each licensed theme, and its picture shows only its preview colors. You cannot apply a locked theme. To get a license, click **Get a license** above the grid.
 

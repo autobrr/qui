@@ -539,7 +539,8 @@
       "needsLicense": "需要许可证",
       "lockedCount_other": "{{count}} 个主题需要许可证。",
       "showAll_other": "显示全部 {{count}} 个主题",
-      "showFewer": "显示较少主题"
+      "showFewer": "显示较少主题",
+      "variationCount_other": "{{count}} 种颜色变体"
     },
     "current": {
       "label": "使用中",
@@ -763,7 +764,8 @@
       "localOnlyHelp": "此浏览器不从服务器获取主题，也不会将其主题更改发送到服务器。此设置仅适用于此浏览器。",
       "changesMobile": "更改移动主题",
       "changesDesktop": "更改桌面主题",
-      "changesLocal": "仅更改此浏览器的主题。要更改移动布局设置，请关闭本地设置。",
+      "changesLocal": "仅更改此浏览器的主题。",
+      "splitNeedsSync": "要更改移动布局设置，请关闭本地设置。",
       "saveError": "保存主题设置失败",
       "mobileSplitOffWarning": "关闭此设置会删除移动主题。"
     }

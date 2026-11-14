@@ -543,7 +543,9 @@
       "lockedCount_other": "{{count}} temi richiedono una licenza.",
       "showAll_one": "Mostra {{count}} tema",
       "showAll_other": "Mostra tutti i {{count}} temi",
-      "showFewer": "Mostra meno temi"
+      "showFewer": "Mostra meno temi",
+      "variationCount_one": "{{count}} variante di colore",
+      "variationCount_other": "{{count}} varianti di colore"
     },
     "current": {
       "label": "In uso",
@@ -768,7 +770,8 @@
       "localOnlyHelp": "Questo browser non prende il tema dal server e non invia al server le sue modifiche al tema. Questa impostazione vale solo per questo browser.",
       "changesMobile": "Modifica il tema mobile",
       "changesDesktop": "Modifica il tema desktop",
-      "changesLocal": "Modifica solo il tema di questo browser. Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
+      "changesLocal": "Modifica solo il tema di questo browser.",
+      "splitNeedsSync": "Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
       "saveError": "Impossibile salvare l'impostazione del tema",
       "mobileSplitOffWarning": "Disattivandola, il tema mobile viene eliminato."
     }

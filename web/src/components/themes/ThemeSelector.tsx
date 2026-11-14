@@ -97,6 +97,7 @@ function CustomThemeActions({ file, onEdit, onRemove, className }: CustomThemeAc
 interface ThemeTileProps {
   theme: Theme
   palette: ThemeThumbnailPalette
+  variations: Array<{ id: string; color: string }>
   isSelected: boolean
   onSelect: () => void
   customFile?: CustomThemeFileRef
@@ -104,7 +105,7 @@ interface ThemeTileProps {
   onRemove: (file: CustomThemeFileRef) => void
 }
 
-function ThemeTile({ theme, palette, isSelected, onSelect, customFile, onEdit, onRemove }: ThemeTileProps) {
+function ThemeTile({ theme, palette, variations, isSelected, onSelect, customFile, onEdit, onRemove }: ThemeTileProps) {
   const { t } = useTranslation("settings")
   return (
     <li className="relative">
@@ -118,7 +119,17 @@ function ThemeTile({ theme, palette, isSelected, onSelect, customFile, onEdit, o
           isSelected && "border-primary ring-1 ring-primary hover:border-primary"
         )}
       >
-        <ThemeThumbnail palette={palette} className={cn(theme.locked && "opacity-60")} />
+        <span className="relative block">
+          <ThemeThumbnail palette={palette} className={cn(theme.locked && "opacity-60")} />
+          {variations.length > 1 && (
+            <span className="absolute right-1 bottom-1 flex -space-x-1 rounded-full bg-background/85 p-0.5 shadow-sm">
+              {variations.slice(0, 4).map((v) => (
+                <span key={v.id} aria-hidden="true" className="size-2.5 rounded-full ring-1 ring-background" style={{ backgroundColor: v.color }} />
+              ))}
+              <span className="sr-only">{t("themes.selector.variationCount", { count: variations.length })}</span>
+            </span>
+          )}
+        </span>
         <span className={cn("flex min-w-0 items-center gap-1 px-0.5 text-xs font-medium", customFile && "pr-6")}>
           <span className="truncate">{theme.name}</span>
           {isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-primary" />}
@@ -210,7 +221,7 @@ type ThemeFilter = "all" | ThemeGroup
 
 export function ThemeSelector() {
   const { t } = useTranslation("settings")
-  const { theme: currentTheme, mode, setTheme, setVariation } = useTheme()
+  const { theme: currentTheme, currentTheme: appliedTheme, mode, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
   const {
     customThemes,
@@ -298,7 +309,8 @@ export function ThemeSelector() {
   const lockedCount = themeCatalog.filter(theme => theme.locked).length
   const dark = mode === "dark" || (mode === "auto" && getSystemTheme() === "dark")
   const paletteOf = (theme: Theme) => themeThumbnailPalette(theme, dark, getThemeVariation(theme.id))
-  const activeTheme = getThemeById(currentTheme)
+  // Before the theme lists load, the registry can lack the theme in use. The applied theme then stands in for it.
+  const activeTheme = getThemeById(currentTheme) ?? appliedTheme
 
   const searching = query.trim() !== ""
   const matches = themeCatalog.filter(theme => themeMatchesSearch(theme, query))
@@ -395,15 +407,13 @@ export function ThemeSelector() {
             </Alert>
           )}
 
-          {activeTheme && (
-            <CurrentTheme
-              theme={activeTheme}
-              palette={paletteOf(activeTheme)}
-              dark={dark}
-              variation={getThemeVariation(activeTheme.id)}
-              onVariationSelect={(variationId) => handleVariationSelect(activeTheme.id, variationId)}
-            />
-          )}
+          <CurrentTheme
+            theme={activeTheme}
+            palette={paletteOf(activeTheme)}
+            dark={dark}
+            variation={getThemeVariation(activeTheme.id)}
+            onVariationSelect={(variationId) => handleVariationSelect(activeTheme.id, variationId)}
+          />
 
           {isError && !hasPremiumAccess && (
             <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
@@ -493,6 +503,7 @@ export function ThemeSelector() {
                   key={theme.id}
                   theme={theme}
                   palette={paletteOf(theme)}
+                  variations={themeVariationColors(theme, dark)}
                   isSelected={currentTheme === theme.id}
                   onSelect={() => handleThemeSelect(theme.id)}
                   customFile={hasPremiumAccess ? customFileOf(theme) : undefined}

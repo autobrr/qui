@@ -61,6 +61,7 @@ export function ThemeLayoutSettings() {
         </div>
         <Switch id="theme-mobile-split" checked={split} disabled={!data || !canWriteSlots} onCheckedChange={(on) => void setSplit(on)} />
       </div>
+      {localOnly && <p className="text-xs text-muted-foreground">{t("themes.layout.splitNeedsSync")}</p>}
       {split && <p className="text-xs text-muted-foreground">{t("themes.layout.mobileSplitOffWarning")}</p>}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">

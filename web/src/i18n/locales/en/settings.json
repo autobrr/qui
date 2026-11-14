@@ -543,7 +543,9 @@
       "lockedCount_other": "{{count}} themes need a license.",
       "showAll_one": "Show {{count}} theme",
       "showAll_other": "Show all {{count}} themes",
-      "showFewer": "Show fewer themes"
+      "showFewer": "Show fewer themes",
+      "variationCount_one": "{{count}} color variation",
+      "variationCount_other": "{{count}} color variations"
     },
     "current": {
       "label": "In use",
@@ -768,7 +770,8 @@
       "localOnlyHelp": "This browser does not take the theme from the server and does not send its theme changes to the server. This setting applies only to this browser.",
       "changesMobile": "Changes the mobile theme",
       "changesDesktop": "Changes the desktop theme",
-      "changesLocal": "Changes the theme of this browser only. To change the mobile layout setting, turn off the local setting.",
+      "changesLocal": "Changes the theme of this browser only.",
+      "splitNeedsSync": "To change the mobile layout setting, turn off the local setting.",
       "saveError": "Failed to save the theme setting",
       "mobileSplitOffWarning": "Turning this off deletes the mobile theme."
     }

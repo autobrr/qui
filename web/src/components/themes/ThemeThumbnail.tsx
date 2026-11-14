@@ -38,7 +38,8 @@ export function ThemeThumbnail({ palette, className }: ThemeThumbnailProps) {
         <rect width="160" height="100" style={{ fill: palette.background }} />
         <rect width="38" height="100" style={{ fill: palette.sidebar ?? card }} />
         <rect x="38" width="0.75" height="100" style={{ fill: border }} />
-        <rect x="7" y="12" width="24" height="5" rx="2.5" style={{ fill: primary }} />
+        <rect x="4" y="9" width="30" height="11" rx="3" opacity="0.2" style={{ fill: primary }} />
+        <rect x="8" y="12.5" width="18" height="4" rx="2" style={{ fill: primary }} />
         <rect x="7" y="25" width="19" height="4" rx="2" opacity="0.55" style={{ fill: muted }} />
         <rect x="7" y="35" width="22" height="4" rx="2" opacity="0.55" style={{ fill: muted }} />
         <rect x="7" y="45" width="15" height="4" rx="2" opacity="0.55" style={{ fill: muted }} />
@@ -47,7 +48,8 @@ export function ThemeThumbnail({ palette, className }: ThemeThumbnailProps) {
         <rect x="126" y="9" width="24" height="10" rx="3" style={{ fill: primary }} />
 
         <rect x="48.5" y="27.5" width="101" height="63" rx="5" style={{ fill: card, stroke: border }} />
-        <circle cx="58" cy="40" r="3" style={{ fill: palette.accent ?? primary }} />
+        <rect x="52" y="33" width="94" height="14" rx="3" style={{ fill: palette.accent ?? card }} />
+        <circle cx="58" cy="40" r="3" style={{ fill: primary }} />
         <rect x="66" y="38" width="48" height="4" rx="2" opacity="0.85" style={{ fill: foreground }} />
         <rect x="122" y="38" width="20" height="4" rx="2" opacity="0.55" style={{ fill: muted }} />
         <circle cx="58" cy="54" r="3" style={{ fill: palette.secondary ?? muted }} />

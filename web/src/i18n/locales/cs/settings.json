@@ -547,7 +547,10 @@
       "showAll_one": "Zobrazit {{count}} motiv",
       "showAll_few": "Zobrazit všechny {{count}} motivy",
       "showAll_other": "Zobrazit všech {{count}} motivů",
-      "showFewer": "Zobrazit méně motivů"
+      "showFewer": "Zobrazit méně motivů",
+      "variationCount_one": "{{count}} barevná varianta",
+      "variationCount_few": "{{count}} barevné varianty",
+      "variationCount_other": "{{count}} barevných variant"
     },
     "current": {
       "label": "Používá se",
@@ -773,7 +776,8 @@
       "localOnlyHelp": "Tento prohlížeč nepřebírá motiv ze serveru a neodesílá na server své změny motivu. Toto nastavení platí jen pro tento prohlížeč.",
       "changesMobile": "Mění mobilní motiv",
       "changesDesktop": "Mění desktopový motiv",
-      "changesLocal": "Mění jen motiv tohoto prohlížeče. Chcete-li změnit nastavení mobilního rozložení, vypněte místní nastavení.",
+      "changesLocal": "Mění jen motiv tohoto prohlížeče.",
+      "splitNeedsSync": "Chcete-li změnit nastavení mobilního rozložení, vypněte místní nastavení.",
       "saveError": "Nastavení motivu se nepodařilo uložit",
       "mobileSplitOffWarning": "Vypnutím se mobilní motiv smaže."
     }

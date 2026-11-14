@@ -543,7 +543,9 @@
       "lockedCount_other": "{{count}} temes necessiten una llicència.",
       "showAll_one": "Mostra {{count}} tema",
       "showAll_other": "Mostra els {{count}} temes",
-      "showFewer": "Mostra menys temes"
+      "showFewer": "Mostra menys temes",
+      "variationCount_one": "{{count}} variació de color",
+      "variationCount_other": "{{count}} variacions de color"
     },
     "current": {
       "label": "En ús",
@@ -768,7 +770,8 @@
       "localOnlyHelp": "Aquest navegador no agafa el tema del servidor i no envia els seus canvis de tema al servidor. Aquesta opció només s'aplica a aquest navegador.",
       "changesMobile": "Canvia el tema mòbil",
       "changesDesktop": "Canvia el tema d'escriptori",
-      "changesLocal": "Canvia només el tema d'aquest navegador. Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
+      "changesLocal": "Canvia només el tema d'aquest navegador.",
+      "splitNeedsSync": "Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
       "saveError": "No s'ha pogut desar l'opció del tema",
       "mobileSplitOffWarning": "Desactivar aquesta opció elimina el tema mòbil."
     }

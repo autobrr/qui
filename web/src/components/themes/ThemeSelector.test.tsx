@@ -261,6 +261,13 @@ describe("ThemeSelector", () => {
     }
   })
 
+  it("marks a theme with color variations on its tile", () => {
+    render(<ThemeSelector />)
+
+    expect(card("Licensed theme").textContent).toContain("themes.selector.variationCount")
+    expect(card("Free theme").textContent).not.toContain("themes.selector.variationCount")
+  })
+
   it("names the theme in use and sets one of its color variations", () => {
     themeHook.theme = "nord"
     render(<ThemeSelector />)

@@ -543,7 +543,9 @@
       "lockedCount_other": "{{count}} Themes benötigen eine Lizenz.",
       "showAll_one": "{{count}} Theme anzeigen",
       "showAll_other": "Alle {{count}} Themes anzeigen",
-      "showFewer": "Weniger Themes anzeigen"
+      "showFewer": "Weniger Themes anzeigen",
+      "variationCount_one": "{{count}} Farbvariante",
+      "variationCount_other": "{{count}} Farbvarianten"
     },
     "current": {
       "label": "Aktiv",
@@ -768,7 +770,8 @@
       "localOnlyHelp": "Dieser Browser übernimmt das Theme nicht vom Server und sendet seine Theme-Änderungen nicht an den Server. Diese Einstellung gilt nur für diesen Browser.",
       "changesMobile": "Ändert das mobile Theme",
       "changesDesktop": "Ändert das Desktop-Theme",
-      "changesLocal": "Ändert nur das Theme dieses Browsers. Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
+      "changesLocal": "Ändert nur das Theme dieses Browsers.",
+      "splitNeedsSync": "Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
       "saveError": "Theme-Einstellung konnte nicht gespeichert werden",
       "mobileSplitOffWarning": "Beim Ausschalten wird das mobile Theme gelöscht."
     }
