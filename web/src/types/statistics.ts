@@ -5,6 +5,9 @@
 
 export type TransferHistoryBucket = "hour" | "day" | "total"
 
+/** The bucket of a row. A year row holds the days of a torrent in a UTC year that qui folded. */
+export type TransferHistoryWidth = TransferHistoryBucket | "year"
+
 export interface TransferHistoryBytes {
   uploaded: number
   downloaded: number
@@ -14,20 +17,35 @@ export interface TransferHistoryBytes {
 export interface TransferHistoryRow extends TransferHistoryBytes {
   group: string
   start?: string
-  width: TransferHistoryBucket
+  width: TransferHistoryWidth
   gapSeconds: number
   baseline?: TransferHistoryBytes
+  /** Set on the rows of the grouping by torrent, whose group is the hash. */
+  torrent?: TransferHistoryTorrent
 }
 
-export type TransferHistoryGrouping = "tracker" | "category"
+export interface TransferHistoryTorrent {
+  name: string
+  trackerGroup: string
+  deleted: boolean
+  statisticsCrossSeed: boolean
+  /** Null when qui first saw the torrent after its first 24 hours. */
+  uploadFirst24h: number | null
+}
+
+export type TransferHistoryGrouping = "tracker" | "category" | "torrent"
 
 export interface TransferHistoryQuery {
   from?: Date
   to: Date
   bucket: TransferHistoryBucket
   groupBy: TransferHistoryGrouping
-  /** Limits the rows to one group. "" is the group of the torrents with no category. */
+  /** Limits the rows to one group of groupOf. "" is the group of the torrents with no category. */
   group?: string
+  /** The grouping of group. The default is groupBy. Only the grouping by torrent takes another one. */
+  groupOf?: TransferHistoryGrouping
+  /** Keeps the groups with the most upload, in the order of that upload. */
+  limit?: number
   /** IANA name of the zone whose midnights start the day rows of Tracker groups. The default is UTC. */
   timeZone?: string
 }

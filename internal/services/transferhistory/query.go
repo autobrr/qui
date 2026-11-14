@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -25,6 +26,9 @@ const (
 	BucketHour  Bucket = "hour"
 	BucketDay   Bucket = "day"
 	BucketTotal Bucket = "total"
+	// BucketYear is the width of a row of a torrent in a year that qui
+	// folded. A query cannot ask for it.
+	BucketYear Bucket = "year"
 )
 
 // Grouping is what the rows of a transfer query group by.
@@ -33,6 +37,7 @@ type Grouping string
 const (
 	GroupByTracker  Grouping = "tracker"
 	GroupByCategory Grouping = "category"
+	GroupByTorrent  Grouping = "torrent"
 )
 
 // TransferQuery asks for the transfer of one instance in the period
@@ -40,8 +45,16 @@ const (
 // Location sets the midnights of the day buckets of Tracker groups, and nil
 // is UTC. An hour counts toward the day of its start. Category totals stay on
 // UTC days, because qui stores them for each UTC day. A non-nil Group limits
-// the answer to the rows of that group; "" is the group of torrents with no
-// category.
+// the answer to the torrents of that group of the grouping GroupOf, which is
+// GroupBy when empty; "" is the group of torrents with no category. GroupOf
+// can differ from GroupBy only when GroupBy is the torrent. A Limit above 0
+// keeps the groups with the most upload, the Baseline included, and orders
+// the rows by that upload.
+//
+// The grouping by torrent reads the daily bytes of each torrent, which are on
+// UTC days. A row of a torrent has the hash as its group, and a torrent counts
+// toward its Tracker group and category of now. It counts all its upload as
+// upload from Statistics cross-seeds when it has that flag now.
 type TransferQuery struct {
 	InstanceID int
 	From       time.Time
@@ -49,6 +62,8 @@ type TransferQuery struct {
 	Bucket     Bucket
 	GroupBy    Grouping
 	Group      *string
+	GroupOf    Grouping
+	Limit      int
 	Location   *time.Location
 }
 
@@ -63,8 +78,9 @@ type Bytes struct {
 // TransferRow is the transfer of one group in one bucket. A row can be
 // coarser than the query asks: Width tells its bucket. Start is the start of
 // the bucket. A total covers each whole stored bucket that overlaps the
-// period, hours for Tracker groups and UTC days for categories, and starts at
-// the first of them. GapSeconds is the length of the
+// period, hours for Tracker groups, UTC days for categories and torrents, and
+// the folded years of a torrent, and starts at the first of them. GapSeconds
+// is the length of the
 // Recording gaps that ended in the bucket. Baseline is set on the total rows
 // of a period with no start.
 type TransferRow struct {
@@ -74,6 +90,19 @@ type TransferRow struct {
 	GapSeconds int64     `json:"gapSeconds"`
 	Bytes
 	Baseline *Bytes `json:"baseline,omitempty"`
+	// Torrent is set on the rows of the grouping by torrent.
+	Torrent *TorrentFacts `json:"torrent,omitempty"`
+}
+
+// TorrentFacts is what a row of a torrent tells about the torrent.
+// UploadFirst24h is nil when qui first saw the torrent after its first 24
+// hours.
+type TorrentFacts struct {
+	Name                string `json:"name"`
+	TrackerGroup        string `json:"trackerGroup"`
+	Deleted             bool   `json:"deleted"`
+	StatisticsCrossSeed bool   `json:"statisticsCrossSeed"`
+	UploadFirst24h      *int64 `json:"uploadFirst24h"`
 }
 
 // Status is the instances that have history, by instance id, the bytes that
@@ -107,19 +136,50 @@ func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, 
 	m.foldMu.RLock()
 	defer m.foldMu.RUnlock()
 	a := answer{query: q, mapper: trackergroup.New(customizations), rows: make(map[rowKey]*TransferRow)}
-	if q.GroupBy == GroupByCategory {
+	switch q.GroupBy {
+	case GroupByCategory:
 		err = a.byCategory(ctx, m.store)
-	} else {
+	case GroupByTorrent:
+		err = a.byTorrent(ctx, m.store)
+	default:
 		err = a.byTracker(ctx, m.store)
 	}
 	if err != nil {
 		return nil, err
 	}
 	rows := a.sorted()
-	if q.Group != nil {
+	// The torrent rows hold only the torrents of the group.
+	if q.Group != nil && q.GroupBy != GroupByTorrent {
 		rows = slices.DeleteFunc(rows, func(r TransferRow) bool { return r.Group != *q.Group })
 	}
+	if q.Limit > 0 {
+		rows = top(rows, q.Limit)
+	}
+	a.addTorrentFacts(rows)
 	return rows, nil
+}
+
+// top keeps the rows of the limit groups with the most upload, the Baseline
+// included, in the order of that upload.
+func top(rows []TransferRow, limit int) []TransferRow {
+	uploaded := make(map[string]int64)
+	for _, r := range rows {
+		uploaded[r.Group] += r.Uploaded
+		if r.Baseline != nil {
+			uploaded[r.Group] += r.Baseline.Uploaded
+		}
+	}
+	groups := slices.SortedFunc(maps.Keys(uploaded), func(x, y string) int {
+		return cmp.Or(cmp.Compare(uploaded[y], uploaded[x]), cmp.Compare(x, y))
+	})
+	kept := groups[:min(limit, len(groups))]
+	rank := make(map[string]int, len(kept))
+	for i, group := range kept {
+		rank[group] = i
+	}
+	rows = slices.DeleteFunc(rows, func(r TransferRow) bool { _, ok := rank[r.Group]; return !ok })
+	slices.SortStableFunc(rows, func(x, y TransferRow) int { return cmp.Compare(rank[x.Group], rank[y.Group]) })
+	return rows
 }
 
 // ErrInvalidQuery is the error of a query that the module cannot answer.
@@ -142,8 +202,16 @@ func (q TransferQuery) validate() error {
 	switch {
 	case q.Bucket != BucketHour && q.Bucket != BucketDay && q.Bucket != BucketTotal:
 		return fmt.Errorf("%w: unknown bucket %q", ErrInvalidQuery, q.Bucket)
-	case q.GroupBy != GroupByTracker && q.GroupBy != GroupByCategory:
+	case !slices.Contains([]Grouping{GroupByTracker, GroupByCategory, GroupByTorrent}, q.GroupBy):
 		return fmt.Errorf("%w: unknown grouping %q", ErrInvalidQuery, q.GroupBy)
+	case q.GroupOf != "" && q.GroupOf != q.GroupBy && q.GroupBy != GroupByTorrent:
+		return fmt.Errorf("%w: only the grouping by torrent takes the group of another grouping", ErrInvalidQuery)
+	case q.GroupOf != "" && !slices.Contains([]Grouping{GroupByTracker, GroupByCategory, GroupByTorrent}, q.GroupOf):
+		return fmt.Errorf("%w: unknown grouping %q of the group", ErrInvalidQuery, q.GroupOf)
+	case q.GroupOf != "" && q.Group == nil:
+		return fmt.Errorf("%w: a grouping of the group needs a group", ErrInvalidQuery)
+	case q.Limit < 0:
+		return fmt.Errorf("%w: the limit is below 0", ErrInvalidQuery)
 	}
 	return nil
 }
@@ -187,6 +255,9 @@ type answer struct {
 	// foldedFrom is set when the answer holds day rows of folded hours, so
 	// that the period starts at a whole day.
 	foldedFrom bool
+	// torrents holds the record of each torrent of the grouping by torrent, by
+	// hash.
+	torrents map[string]*models.TransferHistoryTorrentFacts
 }
 
 func ceilDiv(a, b int64) int64 { return -floorDiv(-a, b) }

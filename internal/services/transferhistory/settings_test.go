@@ -191,42 +191,60 @@ func concat(parts ...[]step) []step {
 	return out
 }
 
-// The daily bytes of a torrent have no query until the grouping by torrent
-// exists, so this test reads the tables.
+// A fold moves the days of a torrent before the Detail retention into one row
+// for each year. A query for the days of a torrent in a folded year returns
+// that row, and a period after the fold does not.
 func TestAFoldMovesTheDaysOfATorrentIntoItsYearPostgresIntegration(t *testing.T) {
 	t.Parallel()
+	name := "Some.Show.S01E01.1080p.WEB-DL-GRP"
+	a := &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", UploadFirst24h: new(int64(300))}
+	c := &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", StatisticsCrossSeed: true, UploadFirst24h: new(int64(60))}
+	year := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	days := period(day10, day12, transferhistory.BucketDay, transferhistory.GroupByTorrent)
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
-		db := newDB(t)
-		steps := concat(twoDaysOfUpload, []step{
+		runSteps(t, newDB(t), concat(twoDaysOfUpload, []step{
 			settings(true, 90),
 			reading(day10.Add(91*24*time.Hour+10*time.Hour), torrent("a", 400, 50), crossSeed(60)),
 			{foldsDone: true},
-		})
-		runSteps(t, db, steps)
+			expect(days,
+				torrentRow("a", year, transferhistory.BucketYear, 300, 50, 0, a),
+				torrentRow("c", year, transferhistory.BucketYear, 60, 0, 0, c),
+				torrentRow("a", day11, transferhistory.BucketDay, 100, 0, 0, a),
+			),
+			expect(withGroup(days, "c"),
+				torrentRow("c", year, transferhistory.BucketYear, 60, 0, 0, c),
+			),
+			// A total starts at the first year that it covers.
+			expect(period(day10, day12, transferhistory.BucketTotal, transferhistory.GroupByTorrent),
+				torrentRow("a", year, transferhistory.BucketTotal, 400, 50, 5400, a),
+				torrentRow("c", year, transferhistory.BucketTotal, 60, 0, 5400, c),
+			),
+			expect(limited(period(day10, day12, transferhistory.BucketTotal, transferhistory.GroupByTorrent), 1),
+				torrentRow("a", year, transferhistory.BucketTotal, 400, 50, 5400, a),
+			),
+			expect(period(day11, day12, transferhistory.BucketDay, transferhistory.GroupByTorrent),
+				torrentRow("a", day11, transferhistory.BucketDay, 100, 0, 0, a),
+			),
+		}))
+	})
+}
 
-		type bytesOf struct{ uploaded, downloaded int64 }
-		read := func(query string) map[string]bytesOf {
-			rows, err := db.QueryContext(t.Context(), query)
-			require.NoError(t, err)
-			defer rows.Close()
-			out := make(map[string]bytesOf)
-			for rows.Next() {
-				var key string
-				var b bytesOf
-				require.NoError(t, rows.Scan(&key, &b.uploaded, &b.downloaded))
-				out[key] = b
-			}
-			require.NoError(t, rows.Err())
-			return out
-		}
-		years := read(`
-			SELECT t.hash || ' ' || CAST(y.year AS TEXT), y.uploaded, y.downloaded
-			FROM transfer_history_torrent_years y JOIN transfer_history_torrents t ON t.id = y.torrent_id`)
-		require.Equal(t, map[string]bytesOf{"a 2026": {300, 50}, "c 2026": {60, 0}}, years)
-		days := read(`
-			SELECT t.hash || ' ' || CAST(d.day AS TEXT), d.uploaded, d.downloaded
-			FROM transfer_history_torrent_days d JOIN transfer_history_torrents t ON t.id = d.torrent_id`)
-		require.Equal(t, map[string]bytesOf{"a 20768": {100, 0}}, days)
+// An instance that moved no bytes after the fold has no hourly rows, and a
+// recent period of it still gets no folded year.
+// regression: #4113
+func TestARecentPeriodOfAnIdleInstanceGetsNoFoldedYearPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	later := day10.Add(100 * 24 * time.Hour)
+	afterFold := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
+		runSteps(t, newDB(t), concat(twoDaysOfUpload, []step{
+			settings(true, 90),
+			reading(later.Add(10*time.Hour), torrent("a", 400, 50), crossSeed(60)),
+			{foldsDone: true},
+			// The fold moved the days before 2026-11-20 into the year 2026.
+			expect(period(afterFold, afterFold.Add(24*time.Hour), transferhistory.BucketTotal, transferhistory.GroupByTorrent)),
+			expect(period(afterFold, afterFold.Add(24*time.Hour), transferhistory.BucketDay, transferhistory.GroupByTorrent)),
+		}))
 	})
 }
 

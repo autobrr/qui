@@ -4,9 +4,11 @@
  */
 
 import { GroupChart } from "@/components/statistics/GroupChart"
+import { TorrentMarks } from "@/components/statistics/TopTorrents"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTopTorrents, useTorrentName } from "@/hooks/useTopTorrents"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import {
@@ -17,13 +19,15 @@ import {
   buildBars,
   buildCategoryBars,
   chartRange,
+  type BarWidth,
   formatBuffer,
   formatRatio,
   SERIES_COLORS,
   sumBytes,
   type ChartUnit,
   type GroupTotals,
-  type StatisticsPeriod
+  type StatisticsPeriod,
+  type TopTorrent
 } from "@/lib/statistics"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryInstance, TransferHistoryRow } from "@/types"
@@ -259,7 +263,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   const recordedBars = bars && recordedUnits(bars, since, unit, grouping === "category")
 
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 })
-  const formatStart = (start: number, width: ChartUnit) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
+  const formatStart = (start: number, width: BarWidth) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
 
   return (
     <div className="sticky left-0 w-[100cqw] space-y-4 border-l-2 bg-muted/30 px-6 py-5" style={{ borderLeftColor: seriesIndex >= 0 ? `var(--color-s${seriesIndex})` : "var(--border)" }}>
@@ -297,6 +301,48 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
           <GroupChart bars={bars} unit={unit} color={seriesIndex >= 0 ? { light: SERIES_COLORS.light[seriesIndex], dark: SERIES_COLORS.dark[seriesIndex] } : undefined} />
         )}
       </div>
+      <GroupTorrents group={group} grouping={grouping} name={name} period={period} series={series} instances={instances} />
+    </div>
+  )
+}
+
+const GROUP_LIMIT = 5
+
+/** The torrents of a group with the most upload in the period. */
+function GroupTorrents({ group, grouping, name, period, series, instances }: { group: string; grouping: TransferHistoryGrouping; name: string; period: StatisticsPeriod; series: string; instances: TransferHistoryInstance[] }) {
+  const { t } = useTranslation("statistics")
+  const torrentName = useTorrentName()
+  const { torrents: loaded, error } = useTopTorrents(instances, period, GROUP_LIMIT, { grouping, name: group })
+
+  // After the period moves, the list keeps its torrents until the torrents of the new period load, as the chart does.
+  const key = `${series}:${grouping}:${group}`
+  const [last, setLast] = useState<{ key: string; torrents: TopTorrent[] }>()
+  if (loaded && last?.torrents !== loaded) {
+    setLast({ key, torrents: loaded })
+  }
+  const torrents = loaded ?? (last?.key === key ? last.torrents : undefined)
+
+  return (
+    <div>
+      <div className="mb-2 text-xs font-medium">{t("detail.topTorrents", { group: name })}</div>
+      {error ? (
+        <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>
+      ) : !torrents ? (
+        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      ) : torrents.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("chart.empty")}</p>
+      ) : (
+        <ol className="space-y-1 text-sm">
+          {torrents.map(torrent => (
+            <li key={`${torrent.instanceId}:${torrent.hash}`} className="flex min-w-0 items-center gap-2">
+              <span className="truncate" title={torrentName(torrent)}>{torrentName(torrent)}</span>
+              <TorrentMarks torrent={torrent} />
+              <span className="ml-auto shrink-0 pl-4 tabular-nums">{formatBytes(torrent.uploaded)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {grouping === "category" && <p className="mt-2 text-xs text-muted-foreground">{t("detail.topTorrentsCategoryNote")}</p>}
     </div>
   )
 }

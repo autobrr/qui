@@ -95,6 +95,21 @@
     "averageDay": "Media per giorno",
     "chartHour": "{{group}} per ora",
     "chartDay": "{{group}} per giorno",
-    "chartLegend": "Upload sopra la linea, download sotto"
+    "chartLegend": "Upload sopra la linea, download sotto",
+    "topTorrents": "Torrent migliori di {{group}}",
+    "topTorrentsCategoryNote": "I torrent migliori di una categoria seguono la categoria attuale di ogni torrent."
+  },
+  "topTorrents": {
+    "title": "Torrent migliori",
+    "description": "I torrent con più upload nel periodo. Fai clic su una riga per vedere il suo upload per ogni giorno.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "Prime 24 ore"
+    },
+    "deleted": "Eliminato",
+    "crossSeed": "Cross-seed",
+    "note": "Un torrent eliminato mantiene il suo posto con il suo nome. Un torrent conta per il tracker che ha ora. Prime 24 ore è l'upload delle 24 ore dopo l'aggiunta. Il valore è vuoto quando qui ha visto il torrent per la prima volta dopo di esse.",
+    "utcNote": "Ogni barra è un giorno UTC.",
+    "yearNote": "Ogni barra è un giorno UTC, tranne la barra di un anno: dopo la conservazione dei dettagli, qui tiene un solo numero per torrent e per anno."
   }
 }

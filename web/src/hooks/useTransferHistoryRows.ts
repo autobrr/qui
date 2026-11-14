@@ -24,7 +24,7 @@ export function useTransferHistoryRows(instances: TransferHistoryInstance[], que
   }), [enabled])
   return useQueries({
     queries: instances.map(instance => ({
-      queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.group, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
+      queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.groupOf, query?.group, query?.limit, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
       queryFn: () => api.getTransferHistory(instance.instanceId, query!),
       enabled,
     })),

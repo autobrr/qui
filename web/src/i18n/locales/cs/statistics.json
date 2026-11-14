@@ -95,6 +95,21 @@
     "averageDay": "Průměr za den",
     "chartHour": "{{group}} za hodinu",
     "chartDay": "{{group}} za den",
-    "chartLegend": "Odesílání nad čarou, stahování pod ní"
+    "chartLegend": "Odesílání nad čarou, stahování pod ní",
+    "topTorrents": "Nejlepší torrenty skupiny {{group}}",
+    "topTorrentsCategoryNote": "Nejlepší torrenty kategorie se řídí kategorií, kterou má každý torrent nyní."
+  },
+  "topTorrents": {
+    "title": "Nejlepší torrenty",
+    "description": "Torrenty s největším odesláním v období. Kliknutím na řádek zobrazíte jeho odeslání po dnech.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "Prvních 24 hodin"
+    },
+    "deleted": "Smazáno",
+    "crossSeed": "Cross-seed",
+    "note": "Smazaný torrent si ponechá své místo i se jménem. Torrent se počítá k trackeru, který má nyní. Prvních 24 hodin je odeslání za 24 hodin po přidání. Hodnota je prázdná, když qui torrent poprvé viděl až po nich.",
+    "utcNote": "Každý sloupec je jeden den UTC.",
+    "yearNote": "Každý sloupec je jeden den UTC, kromě sloupce roku: po uplynutí doby uchování podrobností qui uchovává jedno číslo pro každý torrent a rok."
   }
 }

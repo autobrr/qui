@@ -95,6 +95,21 @@
     "averageDay": "Mitjana per dia",
     "chartHour": "{{group}} per hora",
     "chartDay": "{{group}} per dia",
-    "chartLegend": "Pujada damunt de la línia, baixada a sota"
+    "chartLegend": "Pujada damunt de la línia, baixada a sota",
+    "topTorrents": "Torrents principals de {{group}}",
+    "topTorrentsCategoryNote": "Els torrents principals d'una categoria segueixen la categoria actual de cada torrent."
+  },
+  "topTorrents": {
+    "title": "Torrents principals",
+    "description": "Els torrents amb més pujada del període. Feu clic en una fila per veure'n la pujada de cada dia.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "Primeres 24 hores"
+    },
+    "deleted": "Suprimit",
+    "crossSeed": "Cross-seed",
+    "note": "Un torrent suprimit conserva el seu lloc amb el seu nom. Un torrent compta per al tracker que té ara. Primeres 24 hores és la pujada de les 24 hores després d'afegir-lo. El valor és buit quan qui va veure el torrent per primer cop després.",
+    "utcNote": "Cada barra és un dia UTC.",
+    "yearNote": "Cada barra és un dia UTC, llevat de la barra d'un any: després de la retenció del detall, qui conserva un sol nombre per torrent i any."
   }
 }

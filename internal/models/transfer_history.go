@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -1105,6 +1106,220 @@ func (s *TransferHistoryStore) TrackerDayTotals(ctx context.Context, instanceID 
 	return totals, nil
 }
 
+// TransferHistoryTorrentFacts is the record of one torrent as a query reads
+// it. BaselineStatisticsCrossSeed is the Statistics cross-seed flag of its
+// Baseline.
+type TransferHistoryTorrentFacts struct {
+	ID                          int64
+	Hash                        string
+	Name                        string
+	TrackerDomain               string
+	Private                     *bool
+	Category                    string
+	ReleaseGroup                string
+	Resolution                  string
+	Source                      string
+	ContentType                 string
+	StatisticsCrossSeed         bool
+	Deleted                     bool
+	UploadFirst24h              *int64
+	BaselineUploaded            int64
+	BaselineDownloaded          int64
+	BaselineStatisticsCrossSeed bool
+}
+
+// TorrentFacts returns the records of the torrents of an instance, or the
+// record of the torrent with hash when hash is set.
+func (s *TransferHistoryStore) TorrentFacts(ctx context.Context, instanceID int, hash string) ([]TransferHistoryTorrentFacts, error) {
+	where, args := "instance_id = ?", []any{instanceID}
+	if hash != "" {
+		where, args = where+" AND hash = ?", append(args, hash)
+	}
+	return s.torrentFacts(ctx, where, args)
+}
+
+// TorrentFactsOf returns the records of the torrents with ids.
+func (s *TransferHistoryStore) TorrentFactsOf(ctx context.Context, ids []int64) ([]TransferHistoryTorrentFacts, error) {
+	var facts []TransferHistoryTorrentFacts
+	for chunk := range slices.Chunk(ids, torrentTransferChunk) {
+		part, err := s.torrentFacts(ctx, "id IN ("+placeholders(len(chunk))+")", int64Args(chunk))
+		if err != nil {
+			return nil, err
+		}
+		facts = append(facts, part...)
+	}
+	return facts, nil
+}
+
+func (s *TransferHistoryStore) torrentFacts(ctx context.Context, where string, args []any) ([]TransferHistoryTorrentFacts, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, hash, name, tracker_domain, private, category, release_group, resolution, source,
+			content_type, COALESCE(statistics_cross_seed, FALSE), deleted, upload_first_24h,
+			baseline_uploaded, baseline_downloaded,
+			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE)
+		FROM transfer_history_torrents
+		WHERE `+where, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history torrent facts: %w", err)
+	}
+	defer rows.Close()
+	var facts []TransferHistoryTorrentFacts
+	for rows.Next() {
+		var f TransferHistoryTorrentFacts
+		var private sql.NullBool
+		var first24h sql.NullInt64
+		if err := rows.Scan(&f.ID, &f.Hash, &f.Name, &f.TrackerDomain, &private, &f.Category, &f.ReleaseGroup,
+			&f.Resolution, &f.Source, &f.ContentType, &f.StatisticsCrossSeed, &f.Deleted, &first24h,
+			&f.BaselineUploaded, &f.BaselineDownloaded, &f.BaselineStatisticsCrossSeed); err != nil {
+			return nil, fmt.Errorf("scan transfer history torrent facts: %w", err)
+		}
+		if private.Valid {
+			f.Private = &private.Bool
+		}
+		if first24h.Valid {
+			f.UploadFirst24h = &first24h.Int64
+		}
+		facts = append(facts, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history torrent facts: %w", err)
+	}
+	return facts, nil
+}
+
+// TransferHistoryTorrentBaseline is the Baseline of one torrent.
+type TransferHistoryTorrentBaseline struct {
+	TorrentID           int64
+	Uploaded            int64
+	Downloaded          int64
+	StatisticsCrossSeed bool
+}
+
+// TorrentBaselines returns the Baseline of each torrent of an instance that
+// has one.
+func (s *TransferHistoryStore) TorrentBaselines(ctx context.Context, instanceID int) ([]TransferHistoryTorrentBaseline, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, baseline_uploaded, baseline_downloaded,
+			COALESCE(baseline_statistics_cross_seed, statistics_cross_seed, FALSE)
+		FROM transfer_history_torrents
+		WHERE instance_id = ? AND (baseline_uploaded > 0 OR baseline_downloaded > 0)`, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history torrent baselines: %w", err)
+	}
+	defer rows.Close()
+	var baselines []TransferHistoryTorrentBaseline
+	for rows.Next() {
+		var b TransferHistoryTorrentBaseline
+		if err := rows.Scan(&b.TorrentID, &b.Uploaded, &b.Downloaded, &b.StatisticsCrossSeed); err != nil {
+			return nil, fmt.Errorf("scan transfer history torrent baseline: %w", err)
+		}
+		baselines = append(baselines, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history torrent baselines: %w", err)
+	}
+	return baselines, nil
+}
+
+// TorrentDaysFoldedBefore returns the latest UTC day before which a fold moved
+// the days of the torrents into years, or 0 before the first fold. Only the
+// days before it can be in a yearly row.
+func (s *TransferHistoryStore) TorrentDaysFoldedBefore(ctx context.Context) (int64, error) {
+	var day int64
+	err := s.db.QueryRowContext(ctx, `SELECT torrent_days_before FROM transfer_history_folds WHERE id = 1`).Scan(&day)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read transfer history fold day: %w", err)
+	}
+	return day, nil
+}
+
+// TransferHistoryTorrentBytes is the transfer of one torrent in one bucket.
+// Bucket is a day counted since 1970-01-01 UTC, or a year when Year is set,
+// or 0 for the days of the whole period.
+type TransferHistoryTorrentBytes struct {
+	TorrentID  int64
+	Year       bool
+	Bucket     int64
+	Uploaded   int64
+	Downloaded int64
+}
+
+// torrentTransferChunk is the number of torrent ids in one statement of
+// TorrentTransfer.
+const torrentTransferChunk = 500
+
+// TorrentTransfer returns the daily bytes of the torrents of an instance in
+// UTC days [fromDay, toDay), and the yearly rows of a fold for each year that
+// overlaps that period. It gives one row
+// for each torrent and day, or one row for the days of each torrent when
+// total is set, and always one row for each torrent and year. A non-nil
+// torrentIDs limits the rows to those torrents. Each statement reads the days
+// and the years of its torrents together, and a fold moves the days of one
+// torrent in one transaction, so a fold at the same time moves no byte into
+// the answer twice.
+func (s *TransferHistoryStore) TorrentTransfer(ctx context.Context, instanceID int, torrentIDs []int64, fromDay, toDay int64, total bool) ([]TransferHistoryTorrentBytes, error) {
+	if torrentIDs == nil {
+		return s.torrentTransfer(ctx, instanceID, nil, fromDay, toDay, total)
+	}
+	var out []TransferHistoryTorrentBytes
+	for chunk := range slices.Chunk(torrentIDs, torrentTransferChunk) {
+		rows, err := s.torrentTransfer(ctx, instanceID, chunk, fromDay, toDay, total)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+	}
+	return out, nil
+}
+
+func (s *TransferHistoryStore) torrentTransfer(ctx context.Context, instanceID int, torrentIDs []int64, fromDay, toDay int64, total bool) ([]TransferHistoryTorrentBytes, error) {
+	day, groupBy := "0", ""
+	if !total {
+		day, groupBy = "r.day", ", r.day"
+	}
+	// The torrent ids come from an IN list, not a join, so that SQLite reads
+	// the rows in the order of the primary key and groups them with no sort.
+	torrents := "IN (SELECT id FROM transfer_history_torrents WHERE instance_id = ?)"
+	ids := []any{instanceID}
+	if torrentIDs != nil {
+		torrents, ids = "IN ("+placeholders(len(torrentIDs))+")", int64Args(torrentIDs)
+	}
+	query := `
+		SELECT 0, r.torrent_id, ` + day + `, CAST(SUM(r.uploaded) AS BIGINT), CAST(SUM(r.downloaded) AS BIGINT)
+		FROM transfer_history_torrent_days r
+		WHERE r.torrent_id ` + torrents + ` AND r.day >= ? AND r.day < ?
+		GROUP BY r.torrent_id` + groupBy + `
+		UNION ALL
+		SELECT 1, r.torrent_id, r.year, r.uploaded, r.downloaded
+		FROM transfer_history_torrent_years r
+		WHERE r.torrent_id ` + torrents + ` AND r.year >= ? AND r.year <= ?`
+	args := append(slices.Clone(ids), fromDay, toDay)
+	args = append(args, ids...)
+	args = append(args, time.Unix(fromDay*86400, 0).UTC().Year(), time.Unix((toDay-1)*86400, 0).UTC().Year())
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read transfer history torrent days: %w", err)
+	}
+	defer rows.Close()
+	var out []TransferHistoryTorrentBytes
+	for rows.Next() {
+		var b TransferHistoryTorrentBytes
+		var year int64
+		if err := rows.Scan(&year, &b.TorrentID, &b.Bucket, &b.Uploaded, &b.Downloaded); err != nil {
+			return nil, fmt.Errorf("scan transfer history torrent day: %w", err)
+		}
+		b.Year = year == 1
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read transfer history torrent days: %w", err)
+	}
+	return out, nil
+}
+
 // FoldHours deletes the hourly totals and the hourly state of an instance
 // before beforeDay, a few whole days in each delete. The daily totals hold the
 // same bytes. No daily row holds the state.
@@ -1280,6 +1495,13 @@ func (s *TransferHistoryStore) foldTorrentDays(ctx context.Context, ids []int64,
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM transfer_history_torrent_days WHERE torrent_id IN (`+in+`) AND day < ?`, args...); err != nil {
 		return fmt.Errorf("delete folded transfer history days: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO transfer_history_folds (id, torrent_days_before) VALUES (1, ?)
+		ON CONFLICT (id) DO UPDATE SET torrent_days_before = CASE
+			WHEN excluded.torrent_days_before > transfer_history_folds.torrent_days_before THEN excluded.torrent_days_before
+			ELSE transfer_history_folds.torrent_days_before END`, beforeDay); err != nil {
+		return fmt.Errorf("write transfer history fold day: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transfer history fold: %w", err)

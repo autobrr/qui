@@ -4,7 +4,7 @@
  */
 
 import { formatBytes } from "@/lib/utils"
-import type { LiveTrackerGroup, TransferHistoryBytes, TransferHistoryInstance, TransferHistoryRow } from "@/types"
+import type { LiveTrackerGroup, TransferHistoryBytes, TransferHistoryInstance, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
 
 // A browser that cannot find its zone reports Etc/Unknown. The days are then UTC days.
 export const BROWSER_TIME_ZONE = ((zone: string) => zone === "Etc/Unknown" ? undefined : zone)(Intl.DateTimeFormat().resolvedOptions().timeZone)
@@ -12,6 +12,9 @@ export const BROWSER_TIME_ZONE = ((zone: string) => zone === "Etc/Unknown" ? und
 export type PeriodPreset = "24h" | "7d" | "30d" | "1y" | "all"
 
 export type ChartUnit = "hour" | "day"
+
+/** The width of a bar. A year bar stands for the days of a torrent in a UTC year that qui folded. */
+export type BarWidth = ChartUnit | "year"
 
 /** A period of the Statistics page. Without from, the period has no start. */
 export interface StatisticsPeriod {
@@ -156,7 +159,7 @@ export function topGroups(rows: TransferHistoryRow[], metric: Metric): string[] 
 /** One bar of the chart. A day bar of an hourly chart is a day that qui folded. */
 export interface StatisticsBar {
   start: number
-  width: ChartUnit
+  width: BarWidth
   bytes: Map<string, Record<Metric, number>>
   gapSeconds: number
 }
@@ -261,8 +264,7 @@ export function buildCategoryBars(rowsByInstance: TransferHistoryRow[][], period
   const bars = new Map<number, StatisticsBar>()
   const lastDay = utcDayStart(new Date(period.to.getTime() - 1))
   for (let day = utcDayStart(start); day <= lastDay; day += 24 * HOUR) {
-    const date = new Date(day)
-    bars.set(day, { start: new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()).getTime(), width: "day", bytes: new Map(), gapSeconds: 0 })
+    bars.set(day, { start: localDateOfUtc(day), width: "day", bytes: new Map(), gapSeconds: 0 })
   }
   for (const rows of rowsByInstance) {
     for (const row of rows) {
@@ -278,6 +280,94 @@ export function buildCategoryBars(rowsByInstance: TransferHistoryRow[][], period
     }
   }
   return [...bars.values()]
+}
+
+/** The local midnight of the date of a UTC time, so that a label shows the date of the stored UTC day in each timezone. */
+function localDateOfUtc(time: number): number {
+  const date = new Date(time)
+  return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()).getTime()
+}
+
+/**
+ * Builds the bars of the chart of one torrent: one bar for each UTC day that the period overlaps, because qui stores
+ * the bytes of a torrent for each UTC day. A year row of a fold is one bar of the width of a year, in place of the
+ * empty days of that year before the first day that holds bytes. A period with no start begins at the first recording.
+ */
+export function buildTorrentBars(rows: TransferHistoryRow[], period: StatisticsPeriod, since: Date | undefined): StatisticsBar[] | undefined {
+  const start = period.from ?? since
+  if (!start) {
+    return undefined
+  }
+  const days = new Map<number, StatisticsBar>()
+  const lastDay = utcDayStart(new Date(period.to.getTime() - 1))
+  for (let day = utcDayStart(start); day <= lastDay; day += 24 * HOUR) {
+    days.set(day, { start: localDateOfUtc(day), width: "day", bytes: new Map(), gapSeconds: 0 })
+  }
+  const years: StatisticsBar[] = []
+  for (const row of rows) {
+    if (!row.start) {
+      continue
+    }
+    const time = new Date(row.start).getTime()
+    const bar = row.width === "year"
+      ? { start: localDateOfUtc(time), width: "year" as const, bytes: new Map(), gapSeconds: 0 }
+      : days.get(utcDayStart(new Date(time)))
+    if (!bar) {
+      continue
+    }
+    if (row.width === "year") {
+      years.push(bar)
+    }
+    bar.bytes.set(row.group, { uploaded: row.uploaded, downloaded: row.downloaded })
+    bar.gapSeconds = Math.max(bar.gapSeconds, row.gapSeconds)
+  }
+  for (const year of years) {
+    const first = Date.UTC(new Date(year.start).getFullYear(), 0, 1)
+    const next = Date.UTC(new Date(year.start).getFullYear() + 1, 0, 1)
+    for (let day = first; day < next; day += 24 * HOUR) {
+      if (days.get(day)?.bytes.size) {
+        break
+      }
+      days.delete(day)
+    }
+  }
+  return [...years, ...days.values()].sort((a, b) => a.start - b.start)
+}
+
+/** A torrent of the top torrents of a period, over the instances. */
+export interface TopTorrent extends TransferHistoryBytes, TransferHistoryTorrent {
+  instanceId: number
+  hash: string
+}
+
+/**
+ * Joins the torrent rows of each instance, with the Baseline when withBaseline is set, and keeps the limit torrents
+ * with the most upload, in the order of that upload. Each instance gave its own top torrents, so the top torrents of
+ * the instances are among them.
+ */
+export function topTorrents(rowsByInstance: TransferHistoryRow[][], instanceIds: number[], withBaseline: boolean, limit: number): TopTorrent[] {
+  const torrents = new Map<string, TopTorrent>()
+  rowsByInstance.forEach((rows, index) => {
+    const instanceId = instanceIds[index]
+    for (const row of rows) {
+      if (!row.torrent) {
+        continue
+      }
+      const key = `${instanceId}:${row.group}`
+      let torrent = torrents.get(key)
+      if (!torrent) {
+        torrent = { ...row.torrent, instanceId, hash: row.group, uploaded: 0, downloaded: 0, statisticsCrossSeedUploaded: 0 }
+        torrents.set(key, torrent)
+      }
+      const sum = sumBytes([row], withBaseline)
+      torrent.uploaded += sum.uploaded
+      torrent.downloaded += sum.downloaded
+      torrent.statisticsCrossSeedUploaded += sum.statisticsCrossSeedUploaded
+    }
+  })
+  return [...torrents.values()]
+    .sort((a, b) => b.uploaded - a.uploaded || a.instanceId - b.instanceId || a.hash.localeCompare(b.hash))
+    .slice(0, limit)
 }
 
 /** Returns about count ticks from 0 past max, on round numbers of the byte unit of max. */

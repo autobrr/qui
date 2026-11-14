@@ -94,6 +94,21 @@
     "averageDay": "Average per day",
     "chartHour": "{{group}} per hour",
     "chartDay": "{{group}} per day",
-    "chartLegend": "Upload above the line, download below it"
+    "chartLegend": "Upload above the line, download below it",
+    "topTorrents": "Top torrents of {{group}}",
+    "topTorrentsCategoryNote": "The top torrents of a category follow the category that each torrent has now."
+  },
+  "topTorrents": {
+    "title": "Top torrents",
+    "description": "The torrents with the most upload in the period. Click a row to see its upload for each day.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "First 24 hours"
+    },
+    "deleted": "Deleted",
+    "crossSeed": "Cross-seed",
+    "note": "A deleted torrent keeps its place with its name. A torrent counts toward the tracker that it has now. First 24 hours is the upload in the 24 hours after the add. It is empty when qui first saw the torrent after them.",
+    "utcNote": "Each bar is a UTC day.",
+    "yearNote": "Each bar is a UTC day, apart from the bar of a year: after the Detail retention, qui keeps one number for each torrent and year."
   }
 }
