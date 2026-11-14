@@ -1509,8 +1509,10 @@ function OptionSwitch({ id, label, help, status, checked, onCheckedChange }: {
     <div
       className="flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2.5"
       onClick={(e) => {
+        const target = e.target as HTMLElement
         // The label, the switch, its hidden form input, and the help button handle their own clicks.
-        if (!(e.target as HTMLElement).closest("button, label, input")) onCheckedChange(!checked)
+        // The help tooltip renders in a portal, so React bubbles its clicks here although they land outside the row.
+        if (e.currentTarget.contains(target) && !target.closest("button, label, input")) onCheckedChange(!checked)
       }}
     >
       <div className="min-w-0 space-y-0.5">
