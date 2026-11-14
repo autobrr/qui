@@ -13,6 +13,7 @@ import type { TrackerCustomization } from "@/types"
 const mocks = vi.hoisted(() => ({
   customizations: [] as TrackerCustomization[],
   listTrackerCustomizations: vi.fn(),
+  createTrackerCustomization: vi.fn(),
   updateTrackerCustomization: vi.fn(),
   deleteTrackerCustomization: vi.fn(),
 }))
@@ -28,6 +29,7 @@ vi.mock("@/lib/incognito", () => ({ useIncognitoMode: () => [false], getLinuxTra
 vi.mock("@/lib/api", () => ({
   api: {
     listTrackerCustomizations: mocks.listTrackerCustomizations,
+    createTrackerCustomization: mocks.createTrackerCustomization,
     updateTrackerCustomization: mocks.updateTrackerCustomization,
     deleteTrackerCustomization: mocks.deleteTrackerCustomization,
   },
@@ -103,6 +105,28 @@ describe("TrackerCustomizationsManager", () => {
 
     fireEvent.change(input, { target: { value: JSON.stringify({ trackerCustomizations: [{ displayName: "Other", domains: ["b.example.invalid"] }] }) } })
     expect(importButton().hasAttribute("disabled")).toBe(true)
+  })
+
+  it("keeps Import disabled in a reopened dialog while the first import still runs", async () => {
+    mocks.customizations = []
+    mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
+    mocks.createTrackerCustomization.mockImplementation(() => new Promise(() => {}))
+    renderManager()
+    await screen.findByText("trackerCustomizations.empty")
+    const text = JSON.stringify({ trackerCustomizations: [{ displayName: "New", domains: ["n.example.invalid"] }] })
+    const openAndPaste = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+      fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), { target: { value: text } })
+    }
+
+    await openAndPaste()
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.import" }))
+    await waitFor(() => expect(mocks.createTrackerCustomization).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.cancel" }))
+    await waitFor(() => expect(screen.queryByLabelText("trackerCustomizations.importDialog.jsonData")).toBeNull())
+
+    await openAndPaste()
+    expect(screen.getByRole("button", { name: "trackerCustomizations.importDialog.importing" }).hasAttribute("disabled")).toBe(true)
   })
 })
 

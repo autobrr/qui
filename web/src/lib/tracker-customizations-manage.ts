@@ -43,7 +43,7 @@ export interface ImportEntry {
   displayName: string
   domains: string[]
   conflict: { id: number; displayName: string; domains: string[] } | null
-  /** The entry equals an existing customization: same name and same domains. */
+  /** The entry equals an existing customization: same name and the same domains in the same order. */
   isIdentical: boolean
 }
 
@@ -90,9 +90,10 @@ export function parseTrackerCustomizationsImport(text: string, existing: readonl
     const conflict = match ? { id: match.id, displayName: match.displayName, domains: match.domains } : null
     let isIdentical = false
     if (conflict) {
-      const have = new Set(conflict.domains.map(d => d.toLowerCase()))
-      const want = new Set(domains.map(d => d.toLowerCase()))
-      isIdentical = conflict.displayName === displayName && have.size === want.size && [...want].every(d => have.has(d))
+      // Order counts: the first domain is the primary.
+      const have = conflict.domains.map(d => d.toLowerCase())
+      const want = domains.map(d => d.toLowerCase())
+      isIdentical = conflict.displayName === displayName && have.length === want.length && want.every((d, i) => d === have[i])
     }
     entries.push({ index, displayName, domains, conflict, isIdentical })
   }

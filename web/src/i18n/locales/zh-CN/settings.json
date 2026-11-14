@@ -1230,6 +1230,7 @@
       "domains": "域名",
       "selectedTrackers": "已选 Tracker",
       "primary": "主要",
+      "removeDomain": "移除 {{domain}}",
       "cancel": "取消",
       "saving": "保存中……",
       "save": "保存",

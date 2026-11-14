@@ -53,6 +53,18 @@ describe("parseTrackerCustomizationsImport", () => {
     ])
   })
 
+  it("treats the same domains in another order as a conflict, because the first domain is the primary", () => {
+    const existing = [customization(7, "Tracker", ["a.example.invalid", "b.example.invalid"])]
+    const text = JSON.stringify({ trackerCustomizations: [{ displayName: "Tracker", domains: ["b.example.invalid", "a.example.invalid"] }] })
+
+    const result = parseTrackerCustomizationsImport(text, existing)
+
+    expect(result.valid).toBe(true)
+    if (!result.valid) return
+    expect(result.entries[0].conflict?.id).toBe(7)
+    expect(result.entries[0].isIdentical).toBe(false)
+  })
+
   it("names the fault of a text it cannot import", () => {
     expect(parseTrackerCustomizationsImport("", [])).toEqual({ valid: false, error: null })
     expect(parseTrackerCustomizationsImport("{", [])).toEqual({ valid: false, error: "invalidJson" })

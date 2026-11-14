@@ -1233,6 +1233,7 @@
       "domains": "Domain(s)",
       "selectedTrackers": "Selected Tracker(s)",
       "primary": "Primary",
+      "removeDomain": "Remove {{domain}}",
       "cancel": "Cancel",
       "saving": "Saving...",
       "save": "Save",

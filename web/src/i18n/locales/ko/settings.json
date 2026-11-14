@@ -1230,6 +1230,7 @@
       "domains": "도메인",
       "selectedTrackers": "선택한 트래커",
       "primary": "기본",
+      "removeDomain": "{{domain}} 제거",
       "cancel": "취소",
       "saving": "저장 중...",
       "save": "저장",

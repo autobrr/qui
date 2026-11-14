@@ -248,7 +248,8 @@ export function TrackerCustomizationsManager() {
                         checked={hasCustomization ? isGroupSelected : isSelected}
                         onCheckedChange={() => hasCustomization ? toggleGroupSelection(customizationId) : toggleSelection(domain)}
                         aria-label={shownName}
-                        className="sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=checked]:opacity-100"
+                        // the box is 16px; the pseudo-element grows the tap target to fill the 44px cell
+                        className="relative before:absolute before:-inset-3.5 before:content-[''] sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=checked]:opacity-100"
                       />
                     )}
                   </div>
@@ -309,7 +310,14 @@ export function TrackerCustomizationsManager() {
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        {importOpen && <ImportDialogContent customizations={customizations ?? []} onDone={() => setImportOpen(false)} />}
+        {importOpen && (
+          <ImportDialogContent
+            customizations={customizations ?? []}
+            createCustomization={createCustomization}
+            updateCustomization={updateCustomization}
+            onDone={() => setImportOpen(false)}
+          />
+        )}
       </Dialog>
     </Card>
   )
@@ -365,6 +373,7 @@ function CustomizeDialogContent({ mode, initialName, domains, incognitoMode, sav
                       <button
                         type="button"
                         onClick={() => onRemoveDomain(domain)}
+                        aria-label={t("trackerCustomizations.customizeDialog.removeDomain", { domain: shownDomain })}
                         className="text-muted-foreground hover:text-destructive cursor-pointer"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -389,10 +398,16 @@ function CustomizeDialogContent({ mode, initialName, domains, incognitoMode, sav
   )
 }
 
-function ImportDialogContent({ customizations, onDone }: { customizations: TrackerCustomization[]; onDone: () => void }) {
+interface ImportDialogContentProps {
+  customizations: TrackerCustomization[]
+  // The mutations live in the parent, so a reopened dialog still sees a running import.
+  createCustomization: ReturnType<typeof useCreateTrackerCustomization>
+  updateCustomization: ReturnType<typeof useUpdateTrackerCustomization>
+  onDone: () => void
+}
+
+function ImportDialogContent({ customizations, createCustomization, updateCustomization, onDone }: ImportDialogContentProps) {
   const { t } = useTranslation("settings")
-  const createCustomization = useCreateTrackerCustomization()
-  const updateCustomization = useUpdateTrackerCustomization()
   const [importJson, setImportJson] = useState("")
   const [conflictChoices, setConflictChoices] = useState<Map<number, "skip" | "overwrite">>(new Map())
 
