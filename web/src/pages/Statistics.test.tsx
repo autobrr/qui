@@ -612,6 +612,7 @@ describe("Statistics", () => {
     expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
   })
 
+  // regression: #4113
   it("keeps the daily chart of an open torrent on the period of the shown rows while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
