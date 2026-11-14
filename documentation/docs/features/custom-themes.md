@@ -96,7 +96,7 @@ qui does not apply this rule to a file that you put into the directory yourself.
 
 If a theme makes qui unusable, add `?theme=default` to the address, for example `http://localhost:7476/?theme=default`. If qui runs with a base URL, add the parameter after the base URL. qui then shows the default theme until the next page load without the parameter. This works on the login page and on a phone.
 
-During this visit, qui does not change your stored theme selection. **Settings → Themes** shows a line about the visit. You can then edit or remove the bad theme. If you select a theme in a theme picker, qui stores and applies that theme as usual, and the visit ends.
+During this visit, qui does not change your stored theme selection. A change to the light, dark, or auto mode applies only to this visit. **Settings → Themes** shows a line about the visit. You can then edit or remove the bad theme. If you select a theme in a theme picker, qui stores and applies that theme as usual, and the visit ends.
 
 ## Save a theme through the API
 

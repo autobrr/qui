@@ -5,7 +5,7 @@
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
 import { isDemo } from "@/lib/demo";
-import { endDefaultThemeVisit, isDefaultThemeVisit } from "@/lib/default-theme-visit";
+import { endDefaultThemeVisit, getVisitMode, isDefaultThemeVisit, setVisitMode } from "@/lib/default-theme-visit";
 import { isSpreadsheetDocumentTitle, SPREADSHEET_THEME_IDS, spreadsheetDocumentTitle } from "@/lib/spreadsheet-disguise";
 import { loadThemeFonts } from "./fontLoader";
 import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
@@ -56,6 +56,7 @@ const getStoredMode = (): ThemeMode | null => {
 const setStoredMode = (mode: ThemeMode): void => {
   localStorage.setItem(THEME_KEY, mode);
 };
+
 
 const getStoredThemeId = (): string | null => {
   return localStorage.getItem(COLOR_THEME_KEY);
@@ -245,10 +246,8 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
 
 // Event handlers
 const handleSystemThemeChange = async (event: MediaQueryListEvent): Promise<void> => {
-  const storedMode = getStoredMode();
-
   // Only apply system theme if set to auto or not set
-  if (!storedMode || storedMode === THEME_AUTO) {
+  if (getCurrentThemeMode() === THEME_AUTO) {
     const theme = getCurrentTheme();
     const variation = getThemeVariation(theme.id);
     await applyTheme(theme, variation, event.matches, true);
@@ -310,7 +309,7 @@ export const getCurrentTheme = (): Theme => {
 };
 
 export const getCurrentThemeMode = (): ThemeMode => {
-  return getStoredMode() || THEME_AUTO;
+  return getVisitMode() ?? getStoredMode() ?? THEME_AUTO;
 };
 
 // isSystemChange marks applications that restore existing state (catalog
@@ -328,6 +327,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
       dispatchThemeChange(currentMode, defaultTheme, true, currentVariation);
       return;
     }
+    mode ??= getVisitMode() ?? undefined;
     endDefaultThemeVisit();
   }
 
@@ -383,7 +383,11 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
 export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
   const theme = getCurrentTheme();
   const variation = getThemeVariation(theme.id);
-  setStoredMode(mode);
+  if (isDefaultThemeVisit()) {
+    setVisitMode(mode);
+  } else {
+    setStoredMode(mode);
+  }
 
   const isDark = isDarkMode(mode);
 
@@ -429,7 +433,7 @@ export const initializeTheme = async (): Promise<void> => {
   } else {
     // No preference or auto - follow system
     isDark = systemPreference.matches;
-    if (!storedMode) {
+    if (!storedMode && !isDefaultThemeVisit()) {
       setStoredMode(THEME_AUTO);
     }
   }

@@ -14,6 +14,7 @@ export function asksForDefaultTheme(search: string): boolean {
 
 // Read once at page load, so navigation inside the app keeps the visit.
 let active = typeof window !== "undefined" && asksForDefaultTheme(window.location.search)
+let visitMode: "light" | "dark" | "auto" | null = null
 
 /**
  * A default theme visit shows the default theme until the next page load
@@ -24,9 +25,19 @@ export function isDefaultThemeVisit(): boolean {
   return active
 }
 
+/** The light, dark, or auto mode chosen during the visit; it is not stored. */
+export function getVisitMode(): "light" | "dark" | "auto" | null {
+  return active ? visitMode : null
+}
+
+export function setVisitMode(mode: "light" | "dark" | "auto"): void {
+  visitMode = mode
+}
+
 export function endDefaultThemeVisit(): void {
   if (!active) return
   active = false
+  visitMode = null
   window.dispatchEvent(new Event(CHANGE_EVENT))
 }
 
@@ -41,5 +52,6 @@ export function useDefaultThemeVisit(): boolean {
 
 export function _setDefaultThemeVisitForTests(value: boolean): void {
   active = value
+  visitMode = null
   window.dispatchEvent(new Event(CHANGE_EVENT))
 }
