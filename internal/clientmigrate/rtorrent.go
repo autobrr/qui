@@ -73,229 +73,260 @@ func (i *RTorrentImport) Migrate() error {
 	for _, match := range matches {
 		positionNum++
 
-		file, err := metainfo.LoadFromFile(match)
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not load torrent file %s", match)
-			failed++
-			continue
-		}
-
-		// an unresolved magnet download's session file has no info dict
-		if len(file.InfoBytes) == 0 {
-			log.Debug().Msgf("(%d/%d) skipping magnet/meta download session file: %s", positionNum, totalJobs, match)
-			skipped++
-			continue
-		}
-
-		metaInfo, err := file.UnmarshalInfo()
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s", match)
-			failed++
-			continue
-		}
-
-		// qBittorrent requires BT_backup files named by lowercase infohash
-		torrentID := file.HashInfoBytes().HexString()
-
-		torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
-
-		// If file already exists, skip
-		if _, err = os.Stat(torrentOutFile); err == nil {
-			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
-			skipped++
-			continue
-		}
-
-		// check for FILE.torrent.libtorrent_resume
-		resumeFile, err := i.decodeRTorrentLibTorrentResumeFile(match)
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not decode rtorrent libtorrent resume file %s for %s", match, torrentID)
-			failed++
-			continue
-		}
-
-		// check for FILE.torrent.rtorrent
-		rtFile, err := i.decodeRTorrentFile(match)
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not decode rtorrent state file %s for %s", match, torrentID)
-			failed++
-			continue
-		}
-
-		// complete means every piece of every wanted (non-off) file is
-		// present; files with priority 0 may legitimately be missing
-		pieces, complete := rtorrentPieces(resumeFile, &metaInfo)
-		if !complete {
-			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
-			skipped++
-			continue
-		}
-
-		// directory is stored before shell expansion and can be ~-prefixed
-		dir := rtFile.Directory
-		if strings.HasPrefix(dir, "~/") {
-			if home, err := os.UserHomeDir(); err == nil {
-				dir = filepath.Join(home, dir[2:])
-			}
-		}
-		dir = filepath.Clean(replacePath(dir, i.opts.PathReplaces))
-
-		// also catches POSIX session paths on a Windows host that no
-		// --replace-path rule maps
-		if !filepath.IsAbs(dir) {
-			log.Warn().Msgf("(%d/%d) %s download directory %q is not an absolute path on this OS, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
-			skipped++
-			continue
-		}
-
-		if i.opts.DryRun {
-			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
+		switch i.importTorrent(match, positionNum, totalJobs) {
+		case rtorrentImported:
 			imported++
-			continue
-		}
-
-		// added time: ruTorrent's custom.addtime when present, else rtorrent's
-		// first-resume timestamp, else the session file mtime
-		addedTime := firstNonZero(
-			strToIntClean(rtFile.Custom.AddTime),
-			rtFile.TimestampStarted,
-			fileModTime(match+rtStateFileExtension),
-			time.Now().Unix(),
-		)
-
-		// timestamp.finished stays 0 on 0.9.6 for torrents completed via
-		// hash-check; the torrent is complete here, so fall back to added time
-		finishedTime := firstNonZero(rtFile.TimestampFinished, addedTime)
-
-		// derive every seeding duration from one epoch so qBittorrent's Time
-		// Active and Seeding Time columns agree: ruTorrent's custom.seedingtime
-		// (start of seeding) when present, else the finished timestamp
-		seedingSince := firstNonZero(strToIntClean(rtFile.Custom.SeedingTime), finishedTime)
-		seedingDuration := max(time.Now().Unix()-seedingSince, 0)
-
-		// 0.9.6 predates the total_downloaded key
-		totalDownloaded := rtFile.TotalDownloaded
-		if totalDownloaded == 0 {
-			totalDownloaded = metaInfo.TotalLength()
-		}
-
-		// auto-managed keeps qBittorrent's queueing and share limits in
-		// charge; a stopped torrent must stay out of auto-management or
-		// qBittorrent would resume it
-		paused := int64(1)
-		if rtFile.State == 1 {
-			paused = 0
-		}
-
-		newFastResume := Fastresume{
-			ActiveTime:                seedingDuration,
-			AddedTime:                 addedTime,
-			Allocation:                "sparse",
-			ApplyIPFilter:             1,
-			AutoManaged:               1 - paused,
-			CompletedTime:             finishedTime,
-			DisableDHT:                0,
-			DisableLSD:                0,
-			DisablePEX:                0,
-			DownloadRateLimit:         -1,
-			FileFormat:                "libtorrent resume file",
-			FileVersion:               1,
-			FilePriority:              rtorrentFilePriorities(resumeFile.Files, len(metaInfo.UpvertedFiles())),
-			FinishedTime:              seedingDuration,
-			LastDownload:              0,
-			LastSeenComplete:          finishedTime,
-			LastUpload:                0,
-			LibTorrentVersion:         "1.2.11.0",
-			MaxConnections:            16777215,
-			MaxUploads:                -1,
-			NumComplete:               16777215,
-			NumDownloaded:             16777215,
-			NumIncomplete:             0,
-			Paused:                    paused,
-			Peers:                     "",
-			Peers6:                    "",
-			QbtCategory:               rtorrentLabel(rtFile.Custom1),
-			QbtContentLayout:          "Original",
-			QbtFirstLastPiecePriority: 0,
-			QbtName:                   "",
-			QbtRatioLimit:             -2000,
-			QbtSavePath:               dir,
-			QbtSeedStatus:             1,
-			QbtSeedingTimeLimit:       -2,
-			QbtTags:                   []string{"migrated"},
-			SavePath:                  dir,
-			SeedMode:                  0,
-			SeedingTime:               seedingDuration,
-			SequentialDownload:        0,
-			ShareMode:                 0,
-			StopWhenReady:             0,
-			SuperSeeding:              0,
-			TotalDownloaded:           totalDownloaded,
-			TotalUploaded:             rtFile.TotalUploaded,
-			UploadMode:                0,
-			UploadRateLimit:           -1,
-			URLList:                   file.UrlList,
-		}
-
-		if metaInfo.IsDir() {
-			if filepath.Base(dir) == metaInfo.Name {
-				// normal d.directory.set layout: directory includes the
-				// torrent's top folder, qBittorrent expects the parent
-				savePath := filepath.Dir(dir)
-				newFastResume.SavePath = savePath
-				newFastResume.QbtSavePath = savePath
-				// legacy and should be removed sometime with 4.3.X
-				newFastResume.QbtHasRootFolder = 1
-			} else {
-				// d.directory_base.set layout: files live directly in the
-				// directory without the torrent-name folder. qBt-contentLayout
-				// only applies to newly added torrents, so a restored torrent
-				// needs mapped_files to strip the name folder from each path
-				newFastResume.QbtContentLayout = "NoSubfolder"
-				newFastResume.QbtHasRootFolder = 0
-
-				files := metaInfo.UpvertedFiles()
-				mapped := make([]string, 0, len(files))
-				for _, f := range files {
-					mapped = append(mapped, strings.Join(f.BestPath(), "/"))
-				}
-				newFastResume.MappedFiles = mapped
-			}
-		} else {
-			newFastResume.QbtHasRootFolder = 0
-		}
-
-		// handle trackers
-		newFastResume.Trackers = rtorrentTrackers(file, resumeFile)
-
-		// pieces overlapping only priority-off files stay unset
-		newFastResume.Pieces = pieces
-
-		// Set 20 byte SHA1 hash
-		newFastResume.InfoHash = file.HashInfoBytes().Bytes()
-
-		// copy torrent file
-		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
-		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
+		case rtorrentFailed:
 			failed++
-			continue
+		case rtorrentSkipped:
+			skipped++
 		}
-
-		if err = CopyFile(match, torrentOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s", torrentOutFile)
-			failed++
-			continue
-		}
-
-		imported++
-
-		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
 	}
 
 	logImportSummary(i.opts.DryRun, imported, failed, skipped, totalJobs)
 
 	return nil
+}
+
+type rtorrentOutcome int
+
+const (
+	rtorrentImported rtorrentOutcome = iota
+	rtorrentFailed
+	rtorrentSkipped
+)
+
+// importTorrent converts one rtorrent session torrent into a qBittorrent
+// BT_backup torrent and fastresume pair
+func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int) rtorrentOutcome {
+	file, err := metainfo.LoadFromFile(match)
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not load torrent file %s", match)
+		return rtorrentFailed
+	}
+
+	// an unresolved magnet download's session file has no info dict
+	if len(file.InfoBytes) == 0 {
+		log.Debug().Msgf("(%d/%d) skipping magnet/meta download session file: %s", positionNum, totalJobs, match)
+		return rtorrentSkipped
+	}
+
+	metaInfo, err := file.UnmarshalInfo()
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not unmarshal torrent file %s", match)
+		return rtorrentFailed
+	}
+
+	// qBittorrent requires BT_backup files named by lowercase infohash
+	torrentID := file.HashInfoBytes().HexString()
+
+	torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
+
+	// If file already exists, skip
+	if _, err = os.Stat(torrentOutFile); err == nil {
+		log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
+		return rtorrentSkipped
+	}
+
+	// check for FILE.torrent.libtorrent_resume
+	resumeFile, err := i.decodeRTorrentLibTorrentResumeFile(match)
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not decode rtorrent libtorrent resume file %s for %s", match, torrentID)
+		return rtorrentFailed
+	}
+
+	// check for FILE.torrent.rtorrent
+	rtFile, err := i.decodeRTorrentFile(match)
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not decode rtorrent state file %s for %s", match, torrentID)
+		return rtorrentFailed
+	}
+
+	// complete means every piece of every wanted (non-off) file is
+	// present; files with priority 0 may legitimately be missing
+	pieces, complete := rtorrentPieces(resumeFile, &metaInfo)
+	if !complete {
+		log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
+		return rtorrentSkipped
+	}
+
+	dir := rtorrentSaveDir(rtFile.Directory, i.opts.PathReplaces)
+
+	// also catches POSIX session paths on a Windows host that no
+	// --replace-path rule maps
+	if !filepath.IsAbs(dir) {
+		log.Warn().Msgf("(%d/%d) %s download directory %q is not an absolute path on this OS, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
+		return rtorrentSkipped
+	}
+
+	if i.opts.DryRun {
+		log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
+		return rtorrentImported
+	}
+
+	newFastResume := newRTorrentFastresume(match, dir, file, &metaInfo, resumeFile, rtFile)
+
+	// pieces overlapping only priority-off files stay unset
+	newFastResume.Pieces = pieces
+
+	// copy torrent file
+	fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
+	if err = newFastResume.Encode(fastResumeOutFile); err != nil {
+		log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
+		return rtorrentFailed
+	}
+
+	if err = CopyFile(match, torrentOutFile); err != nil {
+		log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s", torrentOutFile)
+		return rtorrentFailed
+	}
+
+	log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
+
+	return rtorrentImported
+}
+
+// rtorrentSaveDir expands and rewrites the session download directory
+func rtorrentSaveDir(directory string, rules []PathReplace) string {
+	// directory is stored before shell expansion and can be ~-prefixed
+	dir := directory
+	if strings.HasPrefix(dir, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir = filepath.Join(home, dir[2:])
+		}
+	}
+	return filepath.Clean(replacePath(dir, rules))
+}
+
+// newRTorrentFastresume builds the fastresume of a complete torrent saved in
+// dir; the caller sets Pieces
+func newRTorrentFastresume(match, dir string, file *metainfo.MetaInfo, metaInfo *metainfo.Info, resumeFile *RTorrentLibTorrentResumeFile, rtFile *RTorrentTorrentFile) Fastresume {
+	// added time: ruTorrent's custom.addtime when present, else rtorrent's
+	// first-resume timestamp, else the session file mtime
+	addedTime := firstNonZero(
+		strToIntClean(rtFile.Custom.AddTime),
+		rtFile.TimestampStarted,
+		fileModTime(match+rtStateFileExtension),
+		time.Now().Unix(),
+	)
+
+	// timestamp.finished stays 0 on 0.9.6 for torrents completed via
+	// hash-check; the torrent is complete here, so fall back to added time
+	finishedTime := firstNonZero(rtFile.TimestampFinished, addedTime)
+
+	// derive every seeding duration from one epoch so qBittorrent's Time
+	// Active and Seeding Time columns agree: ruTorrent's custom.seedingtime
+	// (start of seeding) when present, else the finished timestamp
+	seedingSince := firstNonZero(strToIntClean(rtFile.Custom.SeedingTime), finishedTime)
+	seedingDuration := max(time.Now().Unix()-seedingSince, 0)
+
+	// 0.9.6 predates the total_downloaded key
+	totalDownloaded := rtFile.TotalDownloaded
+	if totalDownloaded == 0 {
+		totalDownloaded = metaInfo.TotalLength()
+	}
+
+	// auto-managed keeps qBittorrent's queueing and share limits in
+	// charge; a stopped torrent must stay out of auto-management or
+	// qBittorrent would resume it
+	paused := int64(1)
+	if rtFile.State == 1 {
+		paused = 0
+	}
+
+	newFastResume := Fastresume{
+		ActiveTime:                seedingDuration,
+		AddedTime:                 addedTime,
+		Allocation:                "sparse",
+		ApplyIPFilter:             1,
+		AutoManaged:               1 - paused,
+		CompletedTime:             finishedTime,
+		DisableDHT:                0,
+		DisableLSD:                0,
+		DisablePEX:                0,
+		DownloadRateLimit:         -1,
+		FileFormat:                "libtorrent resume file",
+		FileVersion:               1,
+		FilePriority:              rtorrentFilePriorities(resumeFile.Files, len(metaInfo.UpvertedFiles())),
+		FinishedTime:              seedingDuration,
+		LastDownload:              0,
+		LastSeenComplete:          finishedTime,
+		LastUpload:                0,
+		LibTorrentVersion:         "1.2.11.0",
+		MaxConnections:            16777215,
+		MaxUploads:                -1,
+		NumComplete:               16777215,
+		NumDownloaded:             16777215,
+		NumIncomplete:             0,
+		Paused:                    paused,
+		Peers:                     "",
+		Peers6:                    "",
+		QbtCategory:               rtorrentLabel(rtFile.Custom1),
+		QbtContentLayout:          "Original",
+		QbtFirstLastPiecePriority: 0,
+		QbtName:                   "",
+		QbtRatioLimit:             -2000,
+		QbtSavePath:               dir,
+		QbtSeedStatus:             1,
+		QbtSeedingTimeLimit:       -2,
+		QbtTags:                   []string{"migrated"},
+		SavePath:                  dir,
+		SeedMode:                  0,
+		SeedingTime:               seedingDuration,
+		SequentialDownload:        0,
+		ShareMode:                 0,
+		StopWhenReady:             0,
+		SuperSeeding:              0,
+		TotalDownloaded:           totalDownloaded,
+		TotalUploaded:             rtFile.TotalUploaded,
+		UploadMode:                0,
+		UploadRateLimit:           -1,
+		URLList:                   file.UrlList,
+	}
+
+	setRTorrentLayout(&newFastResume, metaInfo, dir)
+
+	// handle trackers
+	newFastResume.Trackers = rtorrentTrackers(file, resumeFile)
+
+	// Set 20 byte SHA1 hash
+	newFastResume.InfoHash = file.HashInfoBytes().Bytes()
+
+	return newFastResume
+}
+
+// setRTorrentLayout sets the save path and content layout fields for the
+// rtorrent directory layout of a multi-file torrent
+func setRTorrentLayout(fr *Fastresume, metaInfo *metainfo.Info, dir string) {
+	if !metaInfo.IsDir() {
+		fr.QbtHasRootFolder = 0
+		return
+	}
+
+	if filepath.Base(dir) == metaInfo.Name {
+		// normal d.directory.set layout: directory includes the
+		// torrent's top folder, qBittorrent expects the parent
+		savePath := filepath.Dir(dir)
+		fr.SavePath = savePath
+		fr.QbtSavePath = savePath
+		// legacy and should be removed sometime with 4.3.X
+		fr.QbtHasRootFolder = 1
+		return
+	}
+
+	// d.directory_base.set layout: files live directly in the
+	// directory without the torrent-name folder. qBt-contentLayout
+	// only applies to newly added torrents, so a restored torrent
+	// needs mapped_files to strip the name folder from each path
+	fr.QbtContentLayout = "NoSubfolder"
+	fr.QbtHasRootFolder = 0
+
+	files := metaInfo.UpvertedFiles()
+	mapped := make([]string, 0, len(files))
+	for _, f := range files {
+		mapped = append(mapped, strings.Join(f.BestPath(), "/"))
+	}
+	fr.MappedFiles = mapped
 }
 
 // rtorrentPieces expands the libtorrent_resume bitfield into a qBittorrent

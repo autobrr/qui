@@ -4,9 +4,11 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/services/systemnotice"
 )
@@ -27,8 +29,14 @@ func (h *SystemNoticeHandler) List(w http.ResponseWriter, _ *http.Request) {
 // Dismiss closes a notice that the user can dismiss.
 // DELETE /api/system-notices/{kind}
 func (h *SystemNoticeHandler) Dismiss(w http.ResponseWriter, r *http.Request) {
-	if err := h.notices.Dismiss(systemnotice.Kind(chi.URLParam(r, "kind"))); err != nil {
+	err := h.notices.Dismiss(r.Context(), systemnotice.Kind(chi.URLParam(r, "kind")))
+	switch {
+	case errors.Is(err, systemnotice.ErrNotDismissible):
 		RespondError(w, http.StatusConflict, err.Error())
+		return
+	case err != nil:
+		log.Error().Err(err).Str("kind", chi.URLParam(r, "kind")).Msg("Failed to dismiss System notice")
+		RespondError(w, http.StatusInternalServerError, "dismiss the notice: "+err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

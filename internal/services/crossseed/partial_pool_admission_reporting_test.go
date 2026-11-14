@@ -443,6 +443,7 @@ func TestPartialPoolWakePreservesNewAdmissionUntilInventoryVisible(t *testing.T)
 		},
 	}
 	service := &partialPoolCoordinator{
+		instanceStore:   partialPoolLocalInstances(instanceID),
 		automationStore: store,
 		syncManager:     sync,
 		settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
