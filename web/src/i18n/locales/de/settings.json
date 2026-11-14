@@ -562,6 +562,7 @@
       "title": "Themes fürs Menü wählen",
       "description": "Wähle die Themes, die das Theme-Menü in der oberen Leiste und in der Fußleiste auf dem Handy zeigt. Das aktive Theme ist immer im Menü.",
       "groupCount": "{{shown}} von {{total}}",
+      "groupsLocked": "Leere die Suche, um die Kontrollkästchen der Gruppen zu verwenden.",
       "inUse": "Aktiv",
       "summary": "{{shown}} von {{total}} Themes im Menü",
       "reset": "Auf Standard zurücksetzen",

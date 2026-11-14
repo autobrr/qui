@@ -562,6 +562,7 @@
       "title": "Escolher temas do menu",
       "description": "Escolha os temas que o menu de temas mostra, na barra superior e no rodapé do celular. O tema em uso está sempre no menu.",
       "groupCount": "{{shown}} de {{total}}",
+      "groupsLocked": "Limpe a pesquisa para usar as caixas de seleção dos grupos.",
       "inUse": "Em uso",
       "summary": "{{shown}} de {{total}} temas no menu",
       "reset": "Restaurar padrões",

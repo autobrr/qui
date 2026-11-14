@@ -562,6 +562,7 @@
       "title": "Choose menu themes",
       "description": "Choose the themes that the theme menu lists, in the top bar and in the phone footer. The theme in use is always in the menu.",
       "groupCount": "{{shown}} of {{total}}",
+      "groupsLocked": "Clear the search to use the group check boxes.",
       "inUse": "In use",
       "summary": "{{shown}} of {{total}} themes in the menu",
       "reset": "Reset to defaults",

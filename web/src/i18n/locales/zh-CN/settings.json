@@ -557,6 +557,7 @@
       "title": "选择菜单主题",
       "description": "选择主题菜单（顶部栏和手机底部栏）中列出的主题。正在使用的主题始终在菜单中。",
       "groupCount": "{{shown}}/{{total}}",
+      "groupsLocked": "清除搜索后才能使用分组复选框。",
       "inUse": "使用中",
       "summary": "菜单中有 {{shown}}/{{total}} 个主题",
       "reset": "恢复默认",

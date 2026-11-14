@@ -562,6 +562,7 @@
       "title": "Tria els temes del menú",
       "description": "Tria els temes que mostra el menú de temes, a la barra superior i al peu de pàgina del mòbil. El tema en ús sempre hi és.",
       "groupCount": "{{shown}} de {{total}}",
+      "groupsLocked": "Esborra la cerca per fer servir les caselles dels grups.",
       "inUse": "En ús",
       "summary": "{{shown}} de {{total}} temes al menú",
       "reset": "Restableix els valors per defecte",

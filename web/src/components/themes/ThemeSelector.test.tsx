@@ -389,9 +389,11 @@ describe("ThemeSelector", () => {
     fireEvent.change(within(menu).getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "community" } })
     expect(within(menu).queryByRole("checkbox", { name: "Licensed theme" })).toBeNull()
     expect(group().disabled).toBe(true)
+    expect(within(menu).getByText("themes.menu.groupsLocked")).toBeTruthy()
 
     fireEvent.change(within(menu).getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "" } })
     expect(group().disabled).toBe(false)
+    expect(within(menu).queryByText("themes.menu.groupsLocked")).toBeNull()
   })
 
   it("resets the theme menu to the defaults", async () => {

@@ -104,6 +104,7 @@ export function ThemeMenuDialog({ trigger, catalog, currentThemeId, visibility, 
             className="pl-8"
           />
         </div>
+        {searching && <p className="-mt-2 text-xs text-muted-foreground">{t("themes.menu.groupsLocked")}</p>}
 
         <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
           {matches.length === 0 && (

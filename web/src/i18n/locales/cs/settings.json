@@ -567,6 +567,7 @@
       "title": "Vybrat motivy nabídky",
       "description": "Vyberte motivy, které nabídka motivů zobrazuje na horní liště a v zápatí na telefonu. Používaný motiv je v nabídce vždy.",
       "groupCount": "{{shown}} z {{total}}",
+      "groupsLocked": "Pro použití zaškrtávacích polí skupin vymažte hledání.",
       "inUse": "Používá se",
       "summary": "{{shown}} z {{total}} motivů v nabídce",
       "reset": "Obnovit výchozí",

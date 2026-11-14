@@ -562,6 +562,7 @@
       "title": "Scegli i temi del menu",
       "description": "Scegli i temi che il menu dei temi mostra, nella barra superiore e nel piè di pagina sul telefono. Il tema in uso è sempre nel menu.",
       "groupCount": "{{shown}} di {{total}}",
+      "groupsLocked": "Cancella la ricerca per usare le caselle dei gruppi.",
       "inUse": "In uso",
       "summary": "{{shown}} di {{total}} temi nel menu",
       "reset": "Ripristina predefiniti",

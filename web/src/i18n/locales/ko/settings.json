@@ -557,6 +557,7 @@
       "title": "메뉴 테마 선택",
       "description": "상단 표시줄과 휴대폰 하단 바의 테마 메뉴에 표시할 테마를 선택하세요. 사용 중인 테마는 항상 메뉴에 표시됩니다.",
       "groupCount": "{{total}}개 중 {{shown}}개",
+      "groupsLocked": "그룹 체크박스를 사용하려면 검색어를 지우세요.",
       "inUse": "사용 중",
       "summary": "메뉴에 테마 {{total}}개 중 {{shown}}개",
       "reset": "기본값으로 재설정",

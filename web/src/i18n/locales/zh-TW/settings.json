@@ -557,6 +557,7 @@
       "title": "選擇選單主題",
       "description": "選擇主題選單（頂端列與手機底部列）中列出的主題。使用中的主題一律在選單中。",
       "groupCount": "{{shown}}/{{total}}",
+      "groupsLocked": "清除搜尋後才能使用群組核取方塊。",
       "inUse": "使用中",
       "summary": "選單中有 {{shown}}/{{total}} 個主題",
       "reset": "恢復預設值",

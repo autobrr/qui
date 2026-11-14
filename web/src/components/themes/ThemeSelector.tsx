@@ -164,13 +164,13 @@ function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: Cu
 
   return (
     <section aria-labelledby={titleId} className="flex items-center gap-4">
-      <ThemeThumbnail palette={palette} className="w-24 shrink-0 shadow-sm sm:w-48" />
+      <ThemeThumbnail palette={palette} className="w-48 shrink-0 shadow-sm max-sm:hidden" />
       <div className="min-w-0 space-y-1.5">
         <p className="text-xs text-muted-foreground">{t("themes.current.label")}</p>
         <h3 id={titleId} className="truncate text-lg font-semibold leading-tight">{theme.name}</h3>
-        {theme.description && <p className="line-clamp-2 text-sm text-muted-foreground max-sm:text-xs">{theme.description}</p>}
+        {theme.description && <p className="text-sm text-muted-foreground sm:line-clamp-2">{theme.description}</p>}
         {variations.length > 0 && (
-          <div role="group" aria-label={t("themes.current.colors")} className="flex flex-wrap gap-1.5 pt-1">
+          <div role="group" aria-label={t("themes.current.colors")} className="flex flex-wrap gap-1 pt-1 max-sm:gap-0">
             {variations.map((v) => (
               <button
                 key={v.id}
@@ -179,12 +179,16 @@ function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: Cu
                 aria-label={v.id}
                 title={v.id}
                 onClick={() => onVariationSelect(v.id)}
-                className={cn(
-                  "size-6 rounded-full outline-none ring-offset-2 ring-offset-card transition-shadow focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:size-7",
-                  variation === v.id ? "ring-2 ring-foreground" : "ring-1 ring-border"
-                )}
-                style={{ backgroundColor: v.color }}
-              />
+                className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:size-11"
+              >
+                <span
+                  className={cn(
+                    "size-6 rounded-full ring-offset-2 ring-offset-card max-sm:size-8",
+                    variation === v.id ? "ring-2 ring-foreground" : "ring-1 ring-border"
+                  )}
+                  style={{ backgroundColor: v.color }}
+                />
+              </button>
             ))}
           </div>
         )}

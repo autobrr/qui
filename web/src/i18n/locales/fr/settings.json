@@ -562,6 +562,7 @@
       "title": "Choisir les thèmes du menu",
       "description": "Choisissez les thèmes que le menu des thèmes affiche, dans la barre supérieure et dans le pied de page sur téléphone. Le thème actif est toujours dans le menu.",
       "groupCount": "{{shown}} sur {{total}}",
+      "groupsLocked": "Effacez la recherche pour utiliser les cases des groupes.",
       "inUse": "Actif",
       "summary": "{{shown}} thèmes sur {{total}} dans le menu",
       "reset": "Rétablir les valeurs par défaut",
