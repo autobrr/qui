@@ -152,6 +152,7 @@ import type {
   SSHTestResponse,
   LiveTrackerGroup,
   TransferHistoryInstance,
+  TransferHistoryLibraryRow,
   TransferHistoryQuery,
   TransferHistoryRow
 } from "@/types"
@@ -888,6 +889,15 @@ class ApiClient {
       params.set("timeZone", query.timeZone)
     }
     const response = await this.request<{ rows: TransferHistoryRow[] }>(`/instances/${instanceId}/transfer-history?${params}`)
+    return response.rows
+  }
+
+  async getTransferHistoryLibrary(instanceId: number, query: { from?: Date; to: Date }): Promise<TransferHistoryLibraryRow[]> {
+    const params = new URLSearchParams({ to: query.to.toISOString() })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    const response = await this.request<{ rows: TransferHistoryLibraryRow[] }>(`/instances/${instanceId}/transfer-history/library?${params}`)
     return response.rows
   }
 
