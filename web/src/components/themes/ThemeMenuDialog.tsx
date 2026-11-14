@@ -91,19 +91,22 @@ export function ThemeMenuDialog({ open, onOpenChange, catalog, currentThemeId, v
           {THEME_GROUPS.map((group) => {
             const themes = matches.filter((theme) => themeGroup(theme) === group)
             if (themes.length === 0) return null
-            // The group checkbox and its count stand for the whole group, so a search locks the checkbox.
+            // The count says how many themes of the whole group the menu lists. The checkbox acts on the
+            // whole group except the locked theme in use, so a search locks it.
             const groupThemes = catalog.filter((theme) => themeGroup(theme) === group)
             const shown = groupThemes.filter(inMenu).length
+            const toggleable = groupThemes.filter((theme) => theme.id !== currentThemeId)
+            const chosen = toggleable.filter((theme) => isThemeShown(theme, visibility)).length
             const groupId = `${baseId}-group-${group}`
-            const groupState = shown === groupThemes.length ? true : shown === 0 ? false : "indeterminate"
+            const groupState = chosen === toggleable.length ? true : chosen === 0 ? false : "indeterminate"
             return (
               <section key={group} aria-labelledby={groupId} className="pb-3">
                 <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background py-2">
                   <Checkbox
                     id={`${groupId}-all`}
                     checked={groupState}
-                    disabled={searching}
-                    onCheckedChange={() => onShownChange(groupThemes, groupState !== true)}
+                    disabled={searching || toggleable.length === 0}
+                    onCheckedChange={() => onShownChange(toggleable, groupState !== true)}
                   />
                   <label id={groupId} htmlFor={`${groupId}-all`} className="flex flex-1 cursor-pointer items-baseline justify-between gap-2 text-sm font-medium">
                     {groupLabels[group]}{" "}
@@ -146,7 +149,7 @@ export function ThemeMenuDialog({ open, onOpenChange, catalog, currentThemeId, v
           })}
         </div>
 
-        <DialogFooter className="items-center gap-2 sm:justify-between">
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground tabular-nums">
             {t("themes.menu.summary", { shown: shownCount, total: catalog.length })}
           </p>

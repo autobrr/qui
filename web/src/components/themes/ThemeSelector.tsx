@@ -122,16 +122,16 @@ function ThemeTile({ theme, palette, variations, isSelected, onSelect, customFil
         <span className="relative block">
           <ThemeThumbnail palette={palette} className={cn(theme.locked && "opacity-60")} />
           {variations.length > 1 && (
-            <span className="absolute right-1 bottom-1 flex -space-x-1 rounded-full bg-background/85 p-0.5 shadow-sm">
+            <span className="pointer-events-none absolute right-1.5 bottom-1.5 flex -space-x-1">
               {variations.slice(0, 4).map((v) => (
-                <span key={v.id} aria-hidden="true" className="size-2.5 rounded-full ring-1 ring-background" style={{ backgroundColor: v.color }} />
+                <span key={v.id} aria-hidden="true" className="size-2.5 rounded-full ring-2 ring-background/80" style={{ backgroundColor: v.color }} />
               ))}
               <span className="sr-only">{t("themes.selector.variationCount", { count: variations.length })}</span>
             </span>
           )}
         </span>
         <span className={cn("flex min-w-0 items-center gap-1 px-0.5 text-xs font-medium", customFile && "pr-6")}>
-          <span className="truncate">{theme.name}</span>
+          <span className="truncate max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-words">{theme.name}</span>
           {isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-primary" />}
           {theme.locked && (
             <>
@@ -164,11 +164,11 @@ function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: Cu
 
   return (
     <section aria-labelledby={titleId} className="flex items-center gap-4">
-      <ThemeThumbnail palette={palette} className="w-28 shrink-0 shadow-sm sm:w-48" />
+      <ThemeThumbnail palette={palette} className="w-24 shrink-0 shadow-sm sm:w-48" />
       <div className="min-w-0 space-y-1.5">
         <p className="text-xs text-muted-foreground">{t("themes.current.label")}</p>
         <h3 id={titleId} className="truncate text-lg font-semibold leading-tight">{theme.name}</h3>
-        {theme.description && <p className="line-clamp-2 text-sm text-muted-foreground">{theme.description}</p>}
+        {theme.description && <p className="line-clamp-2 text-sm text-muted-foreground max-sm:text-xs">{theme.description}</p>}
         {variations.length > 0 && (
           <div role="group" aria-label={t("themes.current.colors")} className="flex flex-wrap gap-1.5 pt-1">
             {variations.map((v) => (
@@ -180,7 +180,7 @@ function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: Cu
                 title={v.id}
                 onClick={() => onVariationSelect(v.id)}
                 className={cn(
-                  "size-6 rounded-full outline-none ring-offset-2 ring-offset-card transition-shadow focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:size-8",
+                  "size-6 rounded-full outline-none ring-offset-2 ring-offset-card transition-shadow focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:size-7",
                   variation === v.id ? "ring-2 ring-foreground" : "ring-1 ring-border"
                 )}
                 style={{ backgroundColor: v.color }}
@@ -233,7 +233,7 @@ export function ThemeSelector() {
   } = useCustomThemes()
   // Subscribe so the picker re-renders when the async theme registry lands.
   const builtins = useBuiltinThemes()
-  const [visibility, setThemesShown, resetThemeVisibility] = useThemeVisibility()
+  const [visibility, setThemesShown, replaceThemeVisibility] = useThemeVisibility()
   const defaultThemeVisit = useDefaultThemeVisit()
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
@@ -329,6 +329,14 @@ export function ThemeSelector() {
     custom: t("themes.groups.custom"),
   }
 
+  const resetThemeMenu = () => {
+    const previous = visibility
+    replaceThemeVisibility({})
+    toast.success(t("themes.menu.resetDone"), {
+      action: { label: t("themes.menu.undo"), onClick: () => replaceThemeVisibility(previous) },
+    })
+  }
+
   const toggleExpanded = () => {
     setExpanded(!expanded)
     // After a collapse the button moves up, so it stays in view.
@@ -372,10 +380,18 @@ export function ThemeSelector() {
           </CardTitle>
           <CardDescription>{t("themes.selector.loadingDescription")}</CardDescription>
         </CardHeader>
-        <CardContent className="px-4">
-          <div className="grid animate-pulse grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3">
+        <CardContent className="animate-pulse space-y-4 px-4">
+          <div className="flex items-center gap-4">
+            <div className="aspect-[16/10] w-24 shrink-0 rounded-md bg-muted sm:w-48" />
+            <div className="w-full max-w-64 space-y-2">
+              <div className="h-3 w-1/4 rounded bg-muted" />
+              <div className="h-5 w-1/2 rounded bg-muted" />
+              <div className="h-3 w-full rounded bg-muted" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 border-t pt-4 sm:grid-cols-5 sm:gap-3">
             {[...Array(10)].map((_, i) => (
-              <div key={i} className="aspect-[16/12] rounded-lg bg-muted"></div>
+              <div key={i} className="aspect-[16/12] rounded-lg bg-muted max-sm:[&:nth-child(n+7)]:hidden" />
             ))}
           </div>
         </CardContent>
@@ -394,7 +410,7 @@ export function ThemeSelector() {
             </CardTitle>
             <CardDescription>{t("themes.selector.description")}</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setMenuOpen(true)}>
+          <Button variant="outline" size="sm" className="max-sm:min-h-11" onClick={() => setMenuOpen(true)}>
             <ListChecks />
             {t("themes.menu.button")}
           </Button>
@@ -453,7 +469,7 @@ export function ThemeSelector() {
                   className="pl-8"
                 />
               </div>
-              <div role="group" aria-label={t("themes.selector.filterLabel")} className="flex flex-wrap gap-1.5">
+              <div role="group" aria-label={t("themes.selector.filterLabel")} className="flex flex-wrap gap-1 sm:gap-1.5">
                 {filters.map((value) => {
                   const active = activeFilter === value
                   return (
@@ -466,7 +482,7 @@ export function ThemeSelector() {
                         setExpanded(false)
                       }}
                       className={cn(
-                        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:h-9",
+                        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:h-9 max-sm:gap-1 max-sm:px-2",
                         active
                           ? "border-primary/50 bg-primary/10 font-medium text-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -496,7 +512,7 @@ export function ThemeSelector() {
               ref={setGrid}
               id={gridId}
               aria-label={t("themes.selector.title")}
-              className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3"
+              className="grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-2 sm:grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] sm:gap-3"
             >
               {visibleThemes.map((theme) => (
                 <ThemeTile
@@ -642,7 +658,7 @@ export function ThemeSelector() {
         visibility={visibility}
         paletteOf={paletteOf}
         onShownChange={setThemesShown}
-        onReset={resetThemeVisibility}
+        onReset={resetThemeMenu}
       />
 
       {editorTarget && (

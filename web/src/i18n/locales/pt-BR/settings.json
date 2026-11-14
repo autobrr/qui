@@ -565,6 +565,8 @@
       "inUse": "Em uso",
       "summary": "{{shown}} de {{total}} temas no menu",
       "reset": "Restaurar padrões",
+      "resetDone": "Menu de temas restaurado para os padrões",
+      "undo": "Desfazer",
       "done": "Concluído"
     },
     "toasts": {

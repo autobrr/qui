@@ -565,6 +565,8 @@
       "inUse": "Aktiv",
       "summary": "{{shown}} von {{total}} Themes im Menü",
       "reset": "Auf Standard zurücksetzen",
+      "resetDone": "Theme-Menü auf Standard zurückgesetzt",
+      "undo": "Rückgängig",
       "done": "Fertig"
     },
     "toasts": {

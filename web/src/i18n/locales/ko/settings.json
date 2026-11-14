@@ -560,6 +560,8 @@
       "inUse": "사용 중",
       "summary": "메뉴에 테마 {{total}}개 중 {{shown}}개",
       "reset": "기본값으로 재설정",
+      "resetDone": "테마 메뉴를 기본값으로 재설정했습니다",
+      "undo": "실행 취소",
       "done": "완료"
     },
     "toasts": {

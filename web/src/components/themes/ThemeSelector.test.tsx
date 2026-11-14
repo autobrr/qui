@@ -338,6 +338,36 @@ describe("ThemeSelector", () => {
     expect(group.getAttribute("aria-checked")).toBe("true")
   })
 
+  it("leaves the locked theme in use out of the state of its group checkbox", async () => {
+    themeHook.theme = "nord"
+    const push = nextSettingsPush()
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+    const group = within(menu).getByRole("checkbox", { name: "themes.groups.licensed themes.menu.groupCount" })
+
+    expect(group.getAttribute("aria-checked")).toBe("false")
+    fireEvent.click(group)
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ locked: true, gruvbox: true }) })
+    expect(group.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("undoes a reset from its toast", async () => {
+    const { toast } = await import("sonner")
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ nord: false }))
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("true")
+
+    const [message, options] = vi.mocked(toast.success).mock.calls[0] as unknown as [string, { action: { onClick: () => void } }]
+    expect(message).toBe("themes.menu.resetDone")
+    act(() => options.action.onClick())
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("false")
+  })
+
   it("locks the group checkboxes during a search, because they stand for the whole group", () => {
     render(<ThemeSelector />)
     const menu = openThemeMenu()

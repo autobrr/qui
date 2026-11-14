@@ -565,6 +565,8 @@
       "inUse": "En ús",
       "summary": "{{shown}} de {{total}} temes al menú",
       "reset": "Restableix els valors per defecte",
+      "resetDone": "Menú de temes restablert als valors per defecte",
+      "undo": "Desfés",
       "done": "Fet"
     },
     "toasts": {

@@ -23,12 +23,13 @@ function parseThemeVisibility(raw: string): ThemeVisibility {
 
 /**
  * The user's Show and Hide choices for the quick theme pickers, a setter that
- * shows or hides a list of themes in one write, and a reset to the defaults.
+ * shows or hides a list of themes in one write, and a setter that replaces all
+ * choices at once ({} restores the defaults).
  */
 export function useThemeVisibility(): [
   ThemeVisibility,
   (themes: readonly Theme[], shown: boolean) => void,
-  () => void
+  (next: ThemeVisibility) => void
 ] {
   const [visibility, setVisibility] = useClientSetting(THEME_VISIBILITY_KEY, {
     defaultValue: noChoices,
@@ -47,7 +48,5 @@ export function useThemeVisibility(): [
     })
   }, [setVisibility])
 
-  const resetThemeVisibility = useCallback(() => setVisibility(noChoices), [setVisibility])
-
-  return [visibility, setThemesShown, resetThemeVisibility]
+  return [visibility, setThemesShown, setVisibility]
 }
