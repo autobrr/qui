@@ -67,7 +67,7 @@ function CustomThemeActions({ file, onEdit, onRemove }: CustomThemeActionsProps)
         <Button
           variant="ghost"
           size="icon"
-          className="size-6 shrink-0 max-sm:size-9"
+          className="size-6 shrink-0 max-sm:size-11"
           aria-label={t("themes.custom.actionsFor", { theme: file.label })}
           onClick={(e) => e.stopPropagation()}
         >
@@ -301,7 +301,8 @@ export function ThemeSelector() {
     const fresh = await refreshCustomThemes(queryClient).catch(() => [])
     // A later New theme or Edit wins over this one.
     if (request !== editorRequest.current) return
-    openEditor({ kind: "edit", id: file.id, css: fresh.find(theme => theme.id === file.id)?.css ?? file.css })
+    const current = fresh.find(theme => theme.id === file.id)
+    openEditor({ kind: "edit", id: file.id, filename: current?.filename ?? `${file.id}.css`, css: current?.css ?? file.css })
   }
   const newTheme = () => {
     editorRequest.current++
@@ -430,26 +431,26 @@ export function ThemeSelector() {
 
         <ThemeLayoutSettings />
 
-        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="@container space-y-2 rounded-md border bg-muted/20 p-3">
+          <div className="flex flex-col gap-2 @lg:flex-row @lg:items-center @lg:justify-between">
             <h4 className="flex items-center gap-2 whitespace-nowrap text-sm font-medium">
               <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
               {t("themes.custom.title")}
             </h4>
             {!hasPremiumAccess ? (
-              <Button variant="outline" size="sm" onClick={scrollToLicenseManager}>
+              <Button variant="outline" size="sm" className="self-start" onClick={scrollToLicenseManager}>
                 <Lock className="h-3 w-3" />
                 {t("themes.custom.unlockCta")}
               </Button>
             ) : (
-              <div className="grid w-full gap-2 sm:ml-auto sm:flex sm:w-auto">
+              <div className="grid gap-2 @sm:flex">
+                <Button size="sm" className="max-sm:min-h-11" onClick={newTheme}>
+                  <Plus className="h-3 w-3" />
+                  {t("themes.custom.newTheme")}
+                </Button>
                 <Button variant="outline" size="sm" className="max-sm:min-h-11" onClick={() => void copyPrompt()}>
                   <Sparkles className="h-3 w-3" />
                   {t("themes.custom.copyPrompt")}
-                </Button>
-                <Button size="sm" className="max-sm:order-first max-sm:min-h-11" onClick={newTheme}>
-                  <Plus className="h-3 w-3" />
-                  {t("themes.custom.newTheme")}
                 </Button>
               </div>
             )}
@@ -540,7 +541,7 @@ export function ThemeSelector() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("themes.custom.removeTitle", { theme: removeTarget?.label ?? "" })}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("themes.custom.removeDescription", { theme: removeTarget?.label ?? "" })}
+              {t("themes.custom.removeDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

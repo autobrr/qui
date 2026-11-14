@@ -41,7 +41,7 @@ const PREVIEW_DELAY_MS = 300
 
 export type CustomThemeEditorTarget =
   | { kind: "new" }
-  | { kind: "edit"; id: string; css: string }
+  | { kind: "edit"; id: string; filename: string; css: string }
 
 type EditorPhase =
   | { kind: "editing"; error: string | null }
@@ -175,6 +175,7 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
 
   const name = state.name.trim()
   const id = target.kind === "edit" ? target.id : themeIdFromName(name)
+  const filename = target.kind === "edit" ? target.filename : id && `${id}.css`
   const saving = state.phase.kind === "saving"
   const canSave = !saving && id !== "" && name !== "" && cssProblem(state.css) === null
 
@@ -239,12 +240,13 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
                 onChange={(event) => dispatch({ type: "name", name: event.target.value })}
                 disabled={saving}
               />
-              {target.kind === "new" && name !== "" && id === "" && (
+              {target.kind === "new" && name !== "" && id === "" ? (
                 <p className="text-xs text-destructive">{t("themes.custom.editor.nameInvalid")}</p>
-              )}
-              {target.kind === "new" && id !== "" && (
+              ) : name === "" && state.css.trim() !== "" ? (
+                <p className="text-xs text-muted-foreground">{t("themes.custom.editor.nameRequired")}</p>
+              ) : filename && (
                 <p className="text-xs text-muted-foreground">
-                  {t("themes.custom.editor.savedAs", { filename: `${id}.css` })}
+                  {t("themes.custom.editor.savedAs", { filename })}
                 </p>
               )}
             </div>
@@ -260,6 +262,7 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
                 onChange={(event) => dispatch({ type: "css", css: event.target.value })}
                 disabled={saving}
                 placeholder={t("themes.custom.editor.cssPlaceholder")}
+                wrap="off"
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"

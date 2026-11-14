@@ -348,6 +348,16 @@ describe("ThemeSelector custom theme editor", () => {
     expect(nameField().value).toBe("Custom theme")
   })
 
+  it("asks for a name when the CSS has no @name line, and keeps Save off", () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: ":root { --background: red; }\n.dark { --background: maroon; }" } })
+
+    expect(screen.getByText("themes.custom.editor.nameRequired")).toBeTruthy()
+    expect(saveButton().disabled).toBe(true)
+  })
+
   it("says why qui cannot use CSS without a .dark block and keeps the last good preview", () => {
     render(<ThemeSelector />)
 
@@ -561,6 +571,7 @@ describe("ThemeSelector custom theme editor", () => {
     await chooseCardAction("Custom theme", "themes.custom.edit")
     await waitFor(() => expect(cssField().value).toBe(onDisk))
     expect(nameField().value).toBe("Custom theme")
+    expect(screen.getByText("themes.custom.editor.savedAs")).toBeTruthy()
 
     const edited = onDisk.replace("linen", "ivory")
     fireEvent.change(cssField(), { target: { value: edited } })
