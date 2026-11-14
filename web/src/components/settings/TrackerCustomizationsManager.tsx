@@ -5,7 +5,7 @@
 
 import { useQueries } from "@tanstack/react-query"
 import { AlertTriangle, Download, Link2, Pencil, Trash2, Upload, X } from "lucide-react"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -65,9 +65,7 @@ export function TrackerCustomizationsManager() {
     return new Set([...selectedDomainState].filter(domain => standalone.has(domain)))
   }, [selectedDomainState, rows])
   // Drop the domains for good, so a later delete of their customization does not select them again.
-  useEffect(() => {
-    if (selectedDomains.size !== selectedDomainState.size) setSelectedDomains(selectedDomains)
-  }, [selectedDomains, selectedDomainState])
+  if (selectedDomains.size !== selectedDomainState.size) setSelectedDomains(selectedDomains)
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [editingCustomization, setEditingCustomization] = useState<{ id: number; displayName: string; domains: string[] } | null>(null)
