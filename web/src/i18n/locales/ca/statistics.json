@@ -54,6 +54,41 @@
   "errors": {
     "load": "No s’han pogut carregar les estadístiques: {{message}}"
   },
+  "events": {
+    "title": "Afegits i suprimits",
+    "description": "Els torrents que es van afegir, que es van completar i que es van suprimir cada dia UTC.",
+    "added": "Afegits",
+    "completed": "Completats",
+    "deleted": "Suprimits",
+    "empty": "Cap torrent afegit, completat ni suprimit en aquest període."
+  },
+  "deletes": {
+    "title": "Torrents suprimits",
+    "description": "Qui va suprimir cada torrent i els valors finals que tenia. La supressió més recent és la primera.",
+    "filters": {
+      "all": "Tots",
+      "automation": "Automatitzacions",
+      "user": "Tu",
+      "other": "Altres"
+    },
+    "causes": {
+      "automation": "Automatització",
+      "user": "Tu",
+      "backupRestore": "Restauració de còpia",
+      "clientProxy": "Clau del Client Proxy",
+      "outside": "Fora de qui"
+    },
+    "columns": {
+      "time": "Suprimit",
+      "cause": "Suprimit per",
+      "uploaded": "Pujada final",
+      "ratio": "Ràtio final",
+      "seeded": "Temps de sembra"
+    },
+    "empty": "Cap torrent suprimit en aquest període.",
+    "shown": "{{shown}} de {{total}}",
+    "more": "Mostra'n més"
+  },
   "allTimeNote": "Des de l’inici inclou la base inicial: els bytes que tenien els torrents quan qui els va enregistrar per primera vegada. El gràfic no mostra la base inicial, perquè no té data.",
   "serverStatisticsNote": "Aquests números sumen la transferència de cada torrent. Les estadístiques del servidor al tauler llegeixen els comptadors de qBittorrent, que també compten el trànsit del protocol, per això els números són diferents.",
   "table": {

@@ -412,8 +412,8 @@ describe("Statistics", () => {
     server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
 
-    // The line at the top of the page, the table, and the top torrents show it.
-    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(3))
+    // The line at the top of the page, the table, the top torrents, the adds and deletes, and the deleted torrents show it.
+    await vi.waitFor(() => expect(screen.getAllByText("errors.load message=database is locked")).toHaveLength(5))
   })
 
   it("says that a period with no transfer has none", async () => {

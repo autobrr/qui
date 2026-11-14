@@ -52,6 +52,41 @@
   "errors": {
     "load": "无法加载统计：{{message}}"
   },
+  "events": {
+    "title": "添加与删除",
+    "description": "每个 UTC 日添加、完成和删除的种子。",
+    "added": "添加",
+    "completed": "完成",
+    "deleted": "删除",
+    "empty": "此时段内没有添加、完成或删除的种子。"
+  },
+  "deletes": {
+    "title": "已删除的种子",
+    "description": "谁删除了每个种子，以及种子最终的数据。最新的删除排在最前。",
+    "filters": {
+      "all": "全部",
+      "automation": "自动化",
+      "user": "你",
+      "other": "其他"
+    },
+    "causes": {
+      "automation": "自动化",
+      "user": "你",
+      "backupRestore": "备份恢复",
+      "clientProxy": "Client Proxy 密钥",
+      "outside": "qui 之外"
+    },
+    "columns": {
+      "time": "删除时间",
+      "cause": "删除者",
+      "uploaded": "最终上传",
+      "ratio": "最终分享率",
+      "seeded": "做种时间"
+    },
+    "empty": "此时段内没有删除的种子。",
+    "shown": "{{shown}} / {{total}}",
+    "more": "显示更多"
+  },
   "allTimeNote": "全部时间包含基线：qui 首次记录时种子已有的字节数。基线没有日期，因此图表不显示基线。",
   "serverStatisticsNote": "这些数字是每个种子传输量的总和。仪表板上的服务器统计读取 qBittorrent 的计数器，其中也包含协议流量，因此数字会不同。",
   "table": {

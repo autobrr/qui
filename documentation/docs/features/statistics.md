@@ -133,6 +133,44 @@ A deleted torrent stays in the list with its name. Thus, the list of a long peri
 
 Click a row to see the upload and download of that torrent for each day of the period. qui stores the bytes of a torrent for each UTC day, so each bar is a UTC day.
 
+## Added and deleted
+
+The chart **Added and deleted** shows how many torrents were added, completed, and deleted on each day of the period. It includes each selected instance.
+
+- The adds and the completions are above the zero line. The deletes are below it.
+- qui counts these events for each UTC day. Thus, each bar is a UTC day, also for a period of 24 hours or 7 days.
+- The legend gives the total of each kind for the period.
+
+When you delete a torrent and add it again, the chart counts one delete and one add.
+
+## Deleted torrents
+
+The table **Deleted torrents** lists each torrent that was deleted in the period, with the newest delete first. It includes each selected instance. Each row has these columns:
+
+| Column | Content |
+|--------|---------|
+| Deleted | The time of the delete |
+| Torrent | The name of the torrent |
+| Tracker | The tracker of the torrent |
+| Deleted by | The cause of the delete |
+| Final upload | The upload of the torrent at the delete |
+| Final ratio | The last ratio that qBittorrent gave for the torrent |
+| Seeding time | The last seeding time that qBittorrent gave for the torrent |
+
+If qui did not read the torrent after qui started and before the delete, Final ratio and Seeding time are empty.
+
+The cause is one of these:
+
+- **Automation**, with the name of the rule: an [automation](./automations.md) rule deleted the torrent.
+- **You**: you deleted the torrent in qui.
+- **Backup restore**: a [backup](./backups.md) restore deleted the torrent.
+- **Client Proxy key**, with the name of the API key: a tool deleted the torrent through the [Client Proxy](./reverse-proxy.md), for example Sonarr.
+- **Outside qui**: the torrent left qBittorrent without qui. For example, you deleted it in the qBittorrent WebUI, or a tool deleted it through a direct connection to qBittorrent.
+
+The buttons above the table select **All**, **Automations**, **You**, or **Other**. Other is a backup restore, a Client Proxy key, and outside qui. Each button shows the number of deletes of that kind in the period.
+
+The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table hides some columns, and it shows the tracker and the cause below the name.
+
 ## Baseline
 
 When qui first records an instance, the torrents already have upload and download. These bytes are the Baseline. The Baseline has no date.

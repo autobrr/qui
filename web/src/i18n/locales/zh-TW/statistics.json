@@ -52,6 +52,41 @@
   "errors": {
     "load": "無法載入統計：{{message}}"
   },
+  "events": {
+    "title": "新增與刪除",
+    "description": "每個 UTC 日新增、完成和刪除的種子。",
+    "added": "新增",
+    "completed": "完成",
+    "deleted": "刪除",
+    "empty": "此時段內沒有新增、完成或刪除的種子。"
+  },
+  "deletes": {
+    "title": "已刪除的種子",
+    "description": "誰刪除了每個種子，以及種子最終的數據。最新的刪除排在最前。",
+    "filters": {
+      "all": "全部",
+      "automation": "自動化",
+      "user": "你",
+      "other": "其他"
+    },
+    "causes": {
+      "automation": "自動化",
+      "user": "你",
+      "backupRestore": "備份還原",
+      "clientProxy": "Client Proxy 金鑰",
+      "outside": "qui 之外"
+    },
+    "columns": {
+      "time": "刪除時間",
+      "cause": "刪除者",
+      "uploaded": "最終上傳",
+      "ratio": "最終分享率",
+      "seeded": "做種時間"
+    },
+    "empty": "此時段內沒有刪除的種子。",
+    "shown": "{{shown}} / {{total}}",
+    "more": "顯示更多"
+  },
   "allTimeNote": "全部時間包含基準：qui 首次記錄時種子已有的位元組數。基準沒有日期，因此圖表不顯示基準。",
   "serverStatisticsNote": "這些數字是每個種子傳輸量的總和。儀表板上的伺服器統計讀取 qBittorrent 的計數器，其中也包含協定流量，因此數字會不同。",
   "table": {

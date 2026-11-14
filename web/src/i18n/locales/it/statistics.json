@@ -54,6 +54,41 @@
   "errors": {
     "load": "Impossibile caricare le statistiche: {{message}}"
   },
+  "events": {
+    "title": "Aggiunti ed eliminati",
+    "description": "I torrent aggiunti, completati ed eliminati in ogni giorno UTC.",
+    "added": "Aggiunti",
+    "completed": "Completati",
+    "deleted": "Eliminati",
+    "empty": "Nessun torrent aggiunto, completato o eliminato in questo periodo."
+  },
+  "deletes": {
+    "title": "Torrent eliminati",
+    "description": "Chi ha eliminato ogni torrent e i valori con cui è terminato. L'eliminazione più recente è la prima.",
+    "filters": {
+      "all": "Tutti",
+      "automation": "Automazioni",
+      "user": "Tu",
+      "other": "Altro"
+    },
+    "causes": {
+      "automation": "Automazione",
+      "user": "Tu",
+      "backupRestore": "Ripristino backup",
+      "clientProxy": "Chiave Client Proxy",
+      "outside": "Fuori da qui"
+    },
+    "columns": {
+      "time": "Eliminato",
+      "cause": "Eliminato da",
+      "uploaded": "Upload finale",
+      "ratio": "Ratio finale",
+      "seeded": "Tempo di seeding"
+    },
+    "empty": "Nessun torrent eliminato in questo periodo.",
+    "shown": "{{shown}} di {{total}}",
+    "more": "Mostra altri"
+  },
   "allTimeNote": "Dall’inizio include la base iniziale: i byte che i torrent avevano quando qui li ha registrati per la prima volta. Il grafico non mostra la base iniziale, perché non ha una data.",
   "serverStatisticsNote": "Questi numeri sommano il trasferimento di ogni torrent. Le statistiche del server nella dashboard leggono i contatori di qBittorrent, che contano anche il traffico di protocollo, quindi i numeri sono diversi.",
   "table": {

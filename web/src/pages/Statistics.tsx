@@ -4,6 +4,8 @@
  */
 
 import { PageHeader } from "@/components/layout/PageHeader"
+import { DeletedTorrents } from "@/components/statistics/DeletedTorrents"
+import { EventsChart } from "@/components/statistics/EventsChart"
 import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
@@ -12,6 +14,7 @@ import { TransferChart } from "@/components/statistics/TransferChart"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
 import { getLinuxCategoryName, getLinuxReleaseGroup, getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
@@ -34,6 +37,7 @@ import {
   type StatisticsPeriod,
   type TopTorrent
 } from "@/lib/statistics"
+import { buildEventDays } from "@/lib/statistics-events"
 import { formatBytes } from "@/lib/utils"
 import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryRow } from "@/types"
 import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
@@ -141,6 +145,7 @@ export function Statistics() {
   const byTracker = grouping === "tracker"
   const grouped = useTransferHistoryRows(selected, ready && !byTracker ? { from: period.from, to: period.to, bucket: "total", groupBy: grouping } : undefined)
   const top = useTopTorrents(selected, period, TOP_TORRENTS)
+  const library = useTransferHistoryLibrary(selected, ready ? { from: period.from, to: period.to } : undefined)
 
   // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
   const liveIds = useMemo(() => {
@@ -178,6 +183,7 @@ export function Statistics() {
   const previousTotals = useMemo(() => shown.before && sumBytes(shown.before.flat(), false), [shown.before])
   const comparedTotals = useMemo(() => shown.compared && sumBytes(shown.compared.flat(), false), [shown.compared])
   const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], metric), [shown.chart, metric])
+  const eventDays = useMemo(() => library.rows && buildEventDays(library.rows, period, since), [library.rows, period, since])
   const bars = useMemo(() => {
     const range = chartRange(shown.period, since)
     return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
@@ -326,6 +332,45 @@ export function Statistics() {
           <p>{t("topTorrents.note")}</p>
           {!period.from && <p>{t("table.baselineNote")}</p>}
         </div>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("events.title")}</CardTitle>
+            <CardDescription>{t("events.description")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {statusQuery.error ?? library.error ? (
+              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: (statusQuery.error ?? library.error)!.message })}</div>
+            ) : !eventDays ? (
+              <div className="flex h-[240px] items-center justify-center">{library.pending || !ready ? <Loader2 className="size-6 animate-spin text-muted-foreground" /> : null}</div>
+            ) : eventDays.some(day => day.added + day.completed + day.deleted > 0) ? (
+              <EventsChart days={eventDays} />
+            ) : (
+              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("events.empty")}</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="gap-0 overflow-hidden pb-4">
+        <CardHeader className="pb-4">
+          <CardTitle>{t("deletes.title")}</CardTitle>
+          <CardDescription>{t("deletes.description")}</CardDescription>
+        </CardHeader>
+        {statusQuery.error ? (
+          <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
+        ) : ready ? (
+          <DeletedTorrents
+            scope={`${periodState.choice === "custom" ? period.from?.getTime() : periodState.choice}:${selectedIds.join(",")}`}
+            instances={selected}
+            period={period}
+            displayGroup={displayName}
+          />
+        ) : (
+          <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+        )}
       </Card>
 
       <div className="space-y-1 text-xs text-muted-foreground">

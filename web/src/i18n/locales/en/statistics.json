@@ -53,6 +53,41 @@
   "errors": {
     "load": "Could not load the statistics: {{message}}"
   },
+  "events": {
+    "title": "Added and deleted",
+    "description": "The torrents that were added, that completed, and that were deleted on each UTC day.",
+    "added": "Added",
+    "completed": "Completed",
+    "deleted": "Deleted",
+    "empty": "No torrent was added, completed, or deleted in the period."
+  },
+  "deletes": {
+    "title": "Deleted torrents",
+    "description": "Who deleted each torrent, and the numbers that it ended with. The newest delete is first.",
+    "filters": {
+      "all": "All",
+      "automation": "Automations",
+      "user": "You",
+      "other": "Other"
+    },
+    "causes": {
+      "automation": "Automation",
+      "user": "You",
+      "backupRestore": "Backup restore",
+      "clientProxy": "Client Proxy key",
+      "outside": "Outside qui"
+    },
+    "columns": {
+      "time": "Deleted",
+      "cause": "Deleted by",
+      "uploaded": "Final upload",
+      "ratio": "Final ratio",
+      "seeded": "Seeding time"
+    },
+    "empty": "No torrent was deleted in the period.",
+    "shown": "{{shown}} of {{total}}",
+    "more": "Show more"
+  },
   "allTimeNote": "All time includes the Baseline: the bytes that the torrents had when qui first recorded them. The chart does not show the Baseline, because it has no date.",
   "serverStatisticsNote": "These numbers add up the transfer of each torrent. Server Statistics on the Dashboard reads the counters of qBittorrent, which also count protocol traffic, so the numbers differ.",
   "table": {
