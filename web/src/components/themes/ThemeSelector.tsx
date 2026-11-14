@@ -131,7 +131,7 @@ function ThemeTile({ theme, palette, variations, isSelected, onSelect, customFil
           )}
         </span>
         <span className={cn("flex min-w-0 items-center gap-1 px-0.5 text-xs font-medium", customFile && "pr-6")}>
-          <span className="truncate max-sm:line-clamp-2 max-sm:whitespace-normal max-sm:break-words">{theme.name}</span>
+          <span className="line-clamp-2 break-words">{theme.name}</span>
           {isSelected && <Check aria-hidden="true" className="size-3.5 shrink-0 text-primary" />}
           {theme.locked && (
             <>
@@ -216,6 +216,8 @@ function useGridColumns(grid: HTMLElement | null): number | null {
 }
 
 const COLLAPSED_ROWS = 2
+// Before the first measure, the grid assumes this many columns, so it draws a few tiles too many instead of every theme.
+const UNMEASURED_COLUMNS = 8
 
 function editorKey(target: CustomThemeEditorTarget): string {
   return target.kind === "edit" ? `edit:${target.id}` : "new"
@@ -322,7 +324,7 @@ export function ThemeSelector() {
   const activeFilter = filters.includes(filter) ? filter : "all"
   const shownThemes = activeFilter === "all" ? matches : matches.filter(theme => themeGroup(theme) === activeFilter)
   // Two rows of tiles keep the cards below in reach. A search shows every match.
-  const collapsedCount = columns === null ? shownThemes.length : columns * COLLAPSED_ROWS
+  const collapsedCount = (columns ?? UNMEASURED_COLUMNS) * COLLAPSED_ROWS
   const canCollapse = !searching && shownThemes.length > collapsedCount
   const visibleThemes = canCollapse && !expanded ? shownThemes.slice(0, collapsedCount) : shownThemes
   const filterLabels: Record<ThemeFilter, string> = {
@@ -458,9 +460,9 @@ export function ThemeSelector() {
             </div>
           )}
 
-          <div className="space-y-3 border-t pt-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative sm:w-60">
+          <div className="@container space-y-3 border-t pt-4">
+            <div className="flex flex-col gap-2 @3xl:flex-row @3xl:items-center @3xl:justify-between">
+              <div className="relative @3xl:w-60">
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="search"
