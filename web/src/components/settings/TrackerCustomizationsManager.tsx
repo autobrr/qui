@@ -209,7 +209,7 @@ export function TrackerCustomizationsManager() {
             <CardDescription>{t("trackerCustomizations.cardDescription")}</CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <IconAction label={t("trackerCustomizations.importTooltip")} onClick={() => setImportOpen(true)}>
+            <IconAction label={t("trackerCustomizations.importTooltip")} onClick={() => setImportOpen(true)} disabled={saving}>
               <Download className="h-4 w-4" />
             </IconAction>
             <IconAction label={t("trackerCustomizations.exportTooltip")} onClick={handleExport} disabled={!customizations || customizations.length === 0}>

@@ -76,6 +76,7 @@ afterEach(() => {
 })
 
 describe("TrackerCustomizationsManager", () => {
+  // regression: #4108
   it("clears the group selection when the selected customization is deleted", async () => {
     mocks.customizations = [customization(1, "Alpha", ["a.example.invalid"]), customization(2, "Bravo", ["b.example.invalid"])]
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -94,6 +95,7 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("checkbox", { name: "Bravo" })).not.toBeNull()
   })
 
+  // regression: #4108
   it("asks again about a conflict after the pasted text changes", async () => {
     mocks.customizations = [customization(1, "Alpha", ["a.example.invalid"]), customization(2, "Bravo", ["b.example.invalid"])]
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
@@ -112,28 +114,25 @@ describe("TrackerCustomizationsManager", () => {
     expect(importButton().hasAttribute("disabled")).toBe(true)
   })
 
-  it("keeps Import disabled in a reopened dialog while the first import still runs", async () => {
+  // regression: #4108
+  it("does not reopen the import dialog while an import still runs", async () => {
     mocks.customizations = []
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
     mocks.createTrackerCustomization.mockImplementation(() => new Promise(() => {}))
     renderManager()
     await screen.findByText("trackerCustomizations.empty")
     const text = JSON.stringify({ trackerCustomizations: [{ displayName: "New", domains: ["n.example.invalid"] }] })
-    const openAndPaste = async () => {
-      fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
-      fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), { target: { value: text } })
-    }
-
-    await openAndPaste()
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+    fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), { target: { value: text } })
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.import" }))
     await waitFor(() => expect(mocks.createTrackerCustomization).toHaveBeenCalledTimes(1))
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.cancel" }))
     await waitFor(() => expect(screen.queryByLabelText("trackerCustomizations.importDialog.jsonData")).toBeNull())
 
-    await openAndPaste()
-    expect(screen.getByRole("button", { name: "trackerCustomizations.importDialog.importing" }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }).hasAttribute("disabled")).toBe(true)
   })
 
+  // regression: #4108
   it("clears the domain selection after an import, so a later rename does not take an imported domain", async () => {
     mocks.instances = [{ id: 1, isActive: true }]
     mocks.activeTrackers = { "a.example.invalid": "https://a.example.invalid/announce", "b.example.invalid": "https://b.example.invalid/announce" }
@@ -160,6 +159,7 @@ describe("TrackerCustomizationsManager", () => {
 })
 
 describe("useUpdateTrackerCustomization", () => {
+  // regression: #4108
   it("puts the saved customization in the cache before the refetch answers", async () => {
     const client = newClient()
     const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>

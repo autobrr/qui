@@ -53,6 +53,7 @@ describe("parseTrackerCustomizationsImport", () => {
     ])
   })
 
+  // regression: #4108
   it("treats the same domains in another order as a conflict, because the first domain is the primary", () => {
     const existing = [customization(7, "Tracker", ["a.example.invalid", "b.example.invalid"])]
     const text = JSON.stringify({ trackerCustomizations: [{ displayName: "Tracker", domains: ["b.example.invalid", "a.example.invalid"] }] })
@@ -65,6 +66,7 @@ describe("parseTrackerCustomizationsImport", () => {
     expect(result.entries[0].isIdentical).toBe(false)
   })
 
+  // regression: #4108
   it("cleans the domains as the server stores them, so a padded domain still conflicts", () => {
     const existing = [customization(7, "Tracker", ["a.example.invalid"])]
     const text = JSON.stringify({ trackerCustomizations: [{ displayName: "Tracker", domains: [" A.example.invalid ", "a.example.invalid", ""] }] })
