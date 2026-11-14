@@ -168,17 +168,26 @@
     "dismiss": "Verwerfen"
   },
   "systemNotice": {
+    "needsAttention": "Erfordert Aufmerksamkeit",
+    "since": "Seit {{time}}, {{age}}",
+    "causeLabel": "Ursache",
+    "actionFallback": "Zur Behebung",
     "kinds": {
       "recording_stopped": {
+        "short": "Aufzeichnung gestoppt",
         "title": "Aufzeichnung gestoppt",
-        "fix": "qui versucht es beim nächsten Schreiben erneut. Stelle sicher, dass der Datenträger freien Speicher hat und qui die Datenbankdatei schreiben kann."
+        "effect": "qui kann den Übertragungsverlauf nicht schreiben. Es versucht es beim nächsten Schreiben erneut.",
+        "fix": "Stelle sicher, dass der Datenträger freien Speicher hat und qui die Datenbankdatei schreiben kann.",
+        "menuFix": "Speicher für die Datenbank freigeben"
       }
     },
     "unknown": {
+      "short": "Systemhinweis",
       "title": "Systemhinweis",
-      "fix": "qui benötigt eine Aktion von dir. Details stehen im qui-Log."
-    },
-    "cause": "Ursache: {{cause}}"
+      "effect": "qui hat einen Fehler gefunden, der eine Aktion von dir benötigt.",
+      "fix": "Details stehen im qui-Log.",
+      "menuFix": "qui-Log lesen"
+    }
   },
   "pwaUpdate": {
     "reload": "Neu laden",

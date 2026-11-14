@@ -168,17 +168,26 @@
     "dismiss": "Zavřít"
   },
   "systemNotice": {
+    "needsAttention": "Vyžaduje pozornost",
+    "since": "Od {{time}}, {{age}}",
+    "causeLabel": "Příčina",
+    "actionFallback": "Přejít k opravě",
     "kinds": {
       "recording_stopped": {
+        "short": "Záznam zastaven",
         "title": "Záznam zastaven",
-        "fix": "qui to zkusí znovu při dalším zápisu. Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze."
+        "effect": "qui nemůže zapisovat historii přenosů. Zkusí to znovu při dalším zápisu.",
+        "fix": "Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze.",
+        "menuFix": "Uvolněte místo na disku pro databázi"
       }
     },
     "unknown": {
+      "short": "Systémové upozornění",
       "title": "Systémové upozornění",
-      "fix": "qui od vás potřebuje zásah. Podrobnosti najdete v logu qui."
-    },
-    "cause": "Příčina: {{cause}}"
+      "effect": "qui našel chybu, která od vás vyžaduje zásah.",
+      "fix": "Podrobnosti najdete v logu qui.",
+      "menuFix": "Přečtěte si log qui"
+    }
   },
   "pwaUpdate": {
     "reload": "Znovu načíst",

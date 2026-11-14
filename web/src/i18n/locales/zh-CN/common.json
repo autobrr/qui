@@ -168,17 +168,26 @@
     "dismiss": "关闭"
   },
   "systemNotice": {
+    "needsAttention": "需要处理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修复",
     "kinds": {
       "recording_stopped": {
+        "short": "记录已停止",
         "title": "记录已停止",
-        "fix": "qui 会在下次写入时重试。请确认磁盘有可用空间，并且 qui 可以写入数据库文件。"
+        "effect": "qui 无法写入传输历史。它会在下次写入时重试。",
+        "fix": "请确认磁盘有可用空间，并且 qui 可以写入数据库文件。",
+        "menuFix": "为数据库释放磁盘空间"
       }
     },
     "unknown": {
+      "short": "系统通知",
       "title": "系统通知",
-      "fix": "qui 需要你采取操作。详情请查看 qui 日志。"
-    },
-    "cause": "原因：{{cause}}"
+      "effect": "qui 发现了一个需要你处理的故障。",
+      "fix": "详情请查看 qui 日志。",
+      "menuFix": "查看 qui 日志"
+    }
   },
   "pwaUpdate": {
     "reload": "重新加载",

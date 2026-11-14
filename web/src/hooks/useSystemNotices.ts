@@ -4,6 +4,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 
 import { api } from "@/lib/api"
 import type { SystemNotice } from "@/types"
@@ -21,4 +22,16 @@ export function useSystemNotices(): SystemNotice[] {
     refetchInterval: 60 * 1000,
   })
   return data ?? noNotices
+}
+
+// useOpenSystemNotice holds the notice whose detail a menu opened. It forgets
+// the notice when the server closes it, so that the same kind opening again
+// later does not open its detail with no click.
+export function useOpenSystemNotice(notices: SystemNotice[]) {
+  const [openKind, setOpenKind] = useState<string>()
+  const notice = notices.find((candidate) => candidate.kind === openKind)
+  if (openKind !== undefined && notice === undefined) {
+    setOpenKind(undefined)
+  }
+  return { notice, open: setOpenKind, close: () => setOpenKind(undefined) }
 }

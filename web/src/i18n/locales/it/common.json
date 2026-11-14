@@ -168,17 +168,26 @@
     "dismiss": "Ignora"
   },
   "systemNotice": {
+    "needsAttention": "Richiede attenzione",
+    "since": "Da {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Vai alla soluzione",
     "kinds": {
       "recording_stopped": {
+        "short": "Registrazione interrotta",
         "title": "Registrazione interrotta",
-        "fix": "qui riprova alla prossima scrittura. Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database."
+        "effect": "qui non può scrivere lo storico dei trasferimenti. Riprova alla prossima scrittura.",
+        "fix": "Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database.",
+        "menuFix": "Libera spazio su disco per il database"
       }
     },
     "unknown": {
+      "short": "Avviso di sistema",
       "title": "Avviso di sistema",
-      "fix": "qui richiede un tuo intervento. Il log di qui contiene i dettagli."
-    },
-    "cause": "Causa: {{cause}}"
+      "effect": "qui ha trovato un errore che richiede un tuo intervento.",
+      "fix": "Il log di qui contiene i dettagli.",
+      "menuFix": "Leggi il log di qui"
+    }
   },
   "pwaUpdate": {
     "reload": "Ricarica",
