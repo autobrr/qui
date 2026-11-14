@@ -184,9 +184,15 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
     onChange(selectedSet.has(tag) ? value.filter(v => v !== tag) : [...value, tag])
   }
 
+  // A finished pick starts over: a later Return on the empty search must not toggle a row again.
+  const clearSearch = () => {
+    setQuery("")
+    setNavigated(false)
+  }
+
   const addTyped = () => {
     onChange([...value, ...typedTags.filter(tag => !selectedSet.has(tag))])
-    setQuery("")
+    clearSearch()
   }
 
   return (
@@ -246,7 +252,7 @@ export function TagPicker({ id, availableTags, value, onChange }: TagPickerProps
                 if (canAdd) addTyped()
               } else if (visible.includes(active) && !selectedSet.has(active)) {
                 onChange([...value, active])
-                setQuery("")
+                clearSearch()
               }
             }}
             autoCapitalize="off"

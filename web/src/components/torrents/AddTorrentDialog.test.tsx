@@ -286,6 +286,23 @@ it("leaves Return alone while an input method composes text", async () => {
   expect(vi.mocked(api.addTorrent).mock.calls[0][1].tags).toBeUndefined()
 })
 
+// regression: #4129
+it("keeps a tag picked with the arrow keys when Return is pressed again", async () => {
+  metadataResult.data = { categories: {}, tags: ["autobrr"] }
+  const ui = renderColdDialog()
+
+  fireEvent.click(ui.getByRole("button", { name: /addTorrentDialog\.options\.addTags/ }))
+  const search = await waitFor(() => ui.getByPlaceholderText("addTorrentDialog.options.tagsPlaceholder"))
+  fireEvent.change(search, { target: { value: "auto" } })
+  fireEvent.keyDown(search, { key: "ArrowDown" })
+  fireEvent.keyDown(search, { key: "Enter" })
+  fireEvent.keyDown(search, { key: "Enter" })
+
+  fireEvent.click(ui.getByRole("button", { name: "addTorrentDialog.footer.add" }))
+  await waitFor(() => expect(api.addTorrent).toHaveBeenCalled())
+  expect(vi.mocked(api.addTorrent).mock.calls[0][1]).toMatchObject({ tags: ["autobrr"] })
+})
+
 it("starts with More options closed on each open", async () => {
   vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
