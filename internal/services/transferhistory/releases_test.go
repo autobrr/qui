@@ -181,6 +181,11 @@ func TestTheAnswerOfAReleaseAttributeStaysUntilTheNextWritePostgresIntegration(t
 
 		record(transferhistory.Reading{Time: at(0), Torrents: releaseTorrents(0, 0, 0, 0)})
 		record(transferhistory.Reading{Time: at(5 * time.Minute), Torrents: releaseTorrents(100, 200, 300, 30)})
+		// The first reading of a UTC day starts a fold, and no answer is kept
+		// while a fold runs.
+		_, err := module.Status(t.Context())
+		require.NoError(t, err)
+		transferhistory.WaitForFolds(module)
 		require.Equal(t, int64(130), uploadOf("GRP"))
 		reads := db.reads.Load()
 		require.Positive(t, reads)
