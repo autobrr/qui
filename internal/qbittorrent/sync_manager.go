@@ -2146,13 +2146,12 @@ func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts
 
 	if base == nil {
 		base = &TorrentCounts{
-			Status:           make(map[string]int, len(next.Status)),
-			Categories:       make(map[string]int, len(next.Categories)),
-			CategorySizes:    make(map[string]int64, len(next.CategorySizes)),
-			Tags:             make(map[string]int, len(next.Tags)),
-			TagSizes:         make(map[string]int64, len(next.TagSizes)),
-			Trackers:         make(map[string]int, len(next.Trackers)),
-			TrackerTransfers: make(map[string]TrackerTransferStats, len(next.TrackerTransfers)),
+			Status:        make(map[string]int, len(next.Status)),
+			Categories:    make(map[string]int, len(next.Categories)),
+			CategorySizes: make(map[string]int64, len(next.CategorySizes)),
+			Tags:          make(map[string]int, len(next.Tags)),
+			TagSizes:      make(map[string]int64, len(next.TagSizes)),
+			Trackers:      make(map[string]int, len(next.Trackers)),
 		}
 	}
 
@@ -2174,9 +2173,6 @@ func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts
 	if base.Trackers == nil {
 		base.Trackers = make(map[string]int, len(next.Trackers))
 	}
-	if base.TrackerTransfers == nil {
-		base.TrackerTransfers = make(map[string]TrackerTransferStats, len(next.TrackerTransfers))
-	}
 
 	for key, value := range next.Status {
 		base.Status[key] += value
@@ -2195,17 +2191,6 @@ func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts
 	}
 	for key, value := range next.Trackers {
 		base.Trackers[key] += value
-	}
-	for key, value := range next.TrackerTransfers {
-		current := base.TrackerTransfers[key]
-		base.TrackerTransfers[key] = TrackerTransferStats{
-			Uploaded:          current.Uploaded + value.Uploaded,
-			Downloaded:        current.Downloaded + value.Downloaded,
-			UploadedSession:   current.UploadedSession + value.UploadedSession,
-			DownloadedSession: current.DownloadedSession + value.DownloadedSession,
-			TotalSize:         current.TotalSize + value.TotalSize,
-			Count:             current.Count + value.Count,
-		}
 	}
 
 	base.Total += next.Total
@@ -3410,7 +3395,7 @@ func trackerDetailsFromManager(ctx context.Context, client *Client, torrents []*
 	return lookup
 }
 
-// TrackerTransferStats holds aggregated upload/download stats for a tracker domain
+// TrackerTransferStats holds the upload, download, and size totals of a set of torrents.
 type TrackerTransferStats struct {
 	Uploaded          int64 `json:"uploaded"`
 	Downloaded        int64 `json:"downloaded"`
@@ -3422,14 +3407,13 @@ type TrackerTransferStats struct {
 
 // TorrentCounts represents counts for filtering sidebar
 type TorrentCounts struct {
-	Status           map[string]int                  `json:"status"`
-	Categories       map[string]int                  `json:"categories"`
-	CategorySizes    map[string]int64                `json:"categorySizes,omitempty"`
-	Tags             map[string]int                  `json:"tags"`
-	TagSizes         map[string]int64                `json:"tagSizes,omitempty"`
-	Trackers         map[string]int                  `json:"trackers"`
-	TrackerTransfers map[string]TrackerTransferStats `json:"trackerTransfers,omitempty"`
-	Total            int                             `json:"total"`
+	Status        map[string]int   `json:"status"`
+	Categories    map[string]int   `json:"categories"`
+	CategorySizes map[string]int64 `json:"categorySizes,omitempty"`
+	Tags          map[string]int   `json:"tags"`
+	TagSizes      map[string]int64 `json:"tagSizes,omitempty"`
+	Trackers      map[string]int   `json:"trackers"`
+	Total         int              `json:"total"`
 }
 
 // ExtractDomainFromURL calls the package-level ExtractDomainFromURL.
@@ -4734,10 +4718,9 @@ func addStat(stats map[string]*countWithSize, key string, torrent *qbt.Torrent, 
 	entry.size.add(torrent, sharedPath)
 }
 
-// trackerDomainStats aggregates per-tracker transfer totals as torrents arrive,
-// so the counts path does not build a hash set per domain and then walk it a
-// second time. Empty content paths are counted per torrent because they are
-// unknown identities, not proof of shared data.
+// trackerDomainStats sums the transfer totals of the torrents of one Tracker
+// group as they arrive. Empty content paths are counted per torrent because
+// they are unknown identities, not proof of shared data.
 type trackerDomainStats struct {
 	sum  TrackerTransferStats
 	size dedupedSize

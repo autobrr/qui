@@ -271,10 +271,7 @@ func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 			Categories: map[string]int{"tv": 2, "movies": 1},
 			Tags:       map[string]int{"cross-seed": 1},
 			Trackers:   map[string]int{"tracker.example.invalid": 3},
-			TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{
-				"tracker.example.invalid": {Uploaded: 100, Downloaded: 200, Count: 3},
-			},
-			Total: 3,
+			Total:      3,
 		}
 	}
 
