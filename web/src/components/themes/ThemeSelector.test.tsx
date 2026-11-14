@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { _resetClientSettingsForTests, seedAndMarkReady } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
+import { _setDefaultThemeVisitForTests } from "@/lib/default-theme-visit"
 
 const fixture = vi.hoisted(() => {
   const makeTheme = (
@@ -138,6 +139,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  _setDefaultThemeVisitForTests(false)
 })
 
 function render(ui: ReactElement) {
@@ -396,6 +398,32 @@ describe("ThemeSelector custom theme editor", () => {
       "PUT /api/themes/custom/red-alert",
     ])
     expect(requests[1].body).toEqual({ css: RED_THEME })
+  })
+
+  it("paints the preview again after a mode change repaints the page", () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
+
+    window.dispatchEvent(new CustomEvent("themechange", { detail: { mode: "light", theme: { id: "free" }, isSystemChange: false } }))
+
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(2)
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
+  })
+
+  it("previews an edited theme only after a change during a default theme visit", async () => {
+    _setDefaultThemeVisitForTests(true)
+    render(<ThemeSelector />)
+
+    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
+    expect(themeUtils.previewCustomThemeCss).not.toHaveBeenCalled()
+
+    const repaired = fixture.customThemes[0].rawCss.replace("white", "ivory")
+    fireEvent.change(cssField(), { target: { value: repaired } })
+    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(repaired, expect.anything(), false)
   })
 
   it("restores the active theme on Cancel and on Esc", async () => {

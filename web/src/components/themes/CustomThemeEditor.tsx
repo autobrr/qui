@@ -31,6 +31,8 @@ import { APIError, api } from "@/lib/api"
 import { findOutsideFile } from "@/lib/css-outside-files"
 import { readThemeName, themeIdFromName, writeThemeName } from "@/lib/custom-theme-editor"
 import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
+import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
+import type { Theme } from "@/config/themes"
 import { endCustomThemePreview, previewCustomThemeCss, setTheme } from "@/utils/theme"
 import { findThemeCssProblem, parseThemeCSS } from "@/utils/themeParser"
 
@@ -128,18 +130,30 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
 
   const previewCss = useDebounce(state.css, PREVIEW_DELAY_MS)
   const previewProblem = useMemo(() => previewProblemOf(previewCss), [previewCss])
-  const previewed = useRef(false)
+  const shown = useRef<{ css: string; cssVars: Theme["cssVars"]; lightOnly: boolean } | null>(null)
+  const openedCss = useRef(state.css)
 
   useEffect(() => {
     if (previewProblem) return
+    // A default theme visit is for repair, and the saved CSS can hide the page, so only a change previews.
+    if (isDefaultThemeVisit() && previewCss === openedCss.current) return
     const parsed = parseThemeCSS(previewCss)
     if (!parsed) return
+    shown.current = { css: previewCss, cssVars: parsed.cssVars, lightOnly: parsed.metadata.lightOnly === true }
     previewCustomThemeCss(previewCss, parsed.cssVars, parsed.metadata.lightOnly === true)
-    previewed.current = true
   }, [previewCss, previewProblem])
 
-  useEffect(() => () => {
-    if (previewed.current) void endCustomThemePreview()
+  // A mode change or a re-applied theme repaints the page, so the preview paints itself again.
+  useEffect(() => {
+    const repaint = () => {
+      const preview = shown.current
+      if (preview) previewCustomThemeCss(preview.css, preview.cssVars, preview.lightOnly)
+    }
+    window.addEventListener("themechange", repaint)
+    return () => {
+      window.removeEventListener("themechange", repaint)
+      if (shown.current) void endCustomThemePreview()
+    }
   }, [])
 
   const name = state.name.trim()
