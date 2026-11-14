@@ -457,6 +457,28 @@ describe("ThemeSelector custom theme editor", () => {
     expect(screen.getByText("themes.custom.editor.newTitle")).toBeTruthy()
   })
 
+  it("keeps an editor that opened while an earlier save was still running", async () => {
+    let finishSave: () => void = () => {}
+    const saved = new Promise<void>(resolve => { finishSave = resolve })
+    server.use(http.put("*/api/themes/custom/:id", async () => {
+      await saved
+      return HttpResponse.json({ id: "local", filename: "local.css", css: "" })
+    }))
+    render(<ThemeSelector />)
+
+    fireEvent.click(within(card("Custom theme")).getByRole("button", { name: "themes.custom.edit" }))
+    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
+    fireEvent.click(saveButton())
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+
+    finishSave()
+    await waitFor(() => expect(customThemesHook.refreshCustomThemes).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+
+    expect(cssField().value).toBe(RED_THEME)
+  })
+
   it("restores the active theme on Cancel and on Esc", async () => {
     render(<ThemeSelector />)
 

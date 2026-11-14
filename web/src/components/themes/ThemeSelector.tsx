@@ -513,7 +513,7 @@ export function ThemeSelector() {
         <CustomThemeEditor
           key={editorTarget.kind === "edit" ? `edit:${editorTarget.id}` : "new"}
           target={editorTarget}
-          onClose={() => setEditorTarget(null)}
+          onClose={() => setEditorTarget(current => (current === editorTarget ? null : current))}
         />
       )}
 
