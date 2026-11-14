@@ -623,8 +623,9 @@ export function MobileFooterNav() {
 
       {/* Theme selection dialog */}
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
-        {/* Only the theme list scrolls: the mode rows above it and the link below it stay in view. */}
-        <DialogContent className="flex max-h-[85dvh] max-w-md flex-col gap-4 overflow-hidden">
+        {/* Only the theme list scrolls: the mode rows above it and the link below it stay in view.
+            A screen under 35rem tall has no room for that, so there the whole dialog scrolls. */}
+        <DialogContent className="flex max-h-[85dvh] max-w-md flex-col gap-4 overflow-hidden [@media(max-height:35rem)]:overflow-y-auto">
           <DialogHeader className="shrink-0">
             <DialogTitle>{t("themeToggle.appearance")}</DialogTitle>
           </DialogHeader>
@@ -685,7 +686,7 @@ export function MobileFooterNav() {
           </div>
 
           {/* Theme Selection */}
-          <div className="-mx-6 -mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6">
+          <div className="-mx-6 -mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 [@media(max-height:35rem)]:flex-none [@media(max-height:35rem)]:overflow-visible">
             <div className="space-y-1">
               {themeCatalog.map((theme) => {
                 const isLocked = !!theme.locked
