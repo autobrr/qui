@@ -12,10 +12,20 @@ import (
 	"github.com/tdewolff/parse/v2/css"
 )
 
-// OutsideFileError names the first construct that can make a browser load a
-// file from another host, and the line it starts on.
+// OutsideFileKind tells CSS that can load a file from another host from CSS
+// that the check cannot read.
+type OutsideFileKind string
+
+const (
+	KindOutsideFile OutsideFileKind = "outside-file"
+	KindUnreadable  OutsideFileKind = "unreadable"
+)
+
+// OutsideFileError names the first construct that the rule refuses, its kind,
+// and the line it starts on.
 type OutsideFileError struct {
 	Line   int
+	Kind   OutsideFileKind
 	Reason string
 }
 
@@ -39,25 +49,25 @@ func CheckNoOutsideFiles(content string) error {
 		if tt == css.ErrorToken {
 			return nil
 		}
-		if reason := outsideFileReason(tt, data); reason != "" {
-			return &OutsideFileError{Line: line, Reason: reason}
+		if kind, reason := outsideFileReason(tt, data); reason != "" {
+			return &OutsideFileError{Line: line, Kind: kind, Reason: reason}
 		}
 		line += bytes.Count(data, []byte{'\n'})
 	}
 }
 
-func outsideFileReason(tt css.TokenType, data []byte) string {
+func outsideFileReason(tt css.TokenType, data []byte) (OutsideFileKind, string) {
 	switch tt {
 	case css.CommentToken, css.StringToken:
-		return ""
+		return "", ""
 	case css.BadStringToken:
-		return "a quoted string has a line break"
+		return KindUnreadable, "a quoted string has a line break"
 	case css.BadURLToken:
-		return "url() has a character that this check cannot read"
+		return KindUnreadable, "url() has a character that this check cannot read"
 	case css.URLToken:
-		return urlTargetReason(data)
+		return KindOutsideFile, urlTargetReason(data)
 	default:
-		return tokenReason(tt, data)
+		return KindOutsideFile, tokenReason(tt, data)
 	}
 }
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useId, useMemo, useReducer, useRef, useState } from "react"
+import { useEffect, useId, useMemo, useReducer, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, Eye, Loader2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -33,9 +33,8 @@ import { findOutsideFile } from "@/lib/css-outside-files"
 import { readThemeName, themeIdFromName, writeThemeName } from "@/lib/custom-theme-editor"
 import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
 import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
-import type { Theme } from "@/config/themes"
-import { endCustomThemePreview, previewCustomThemeCss, setTheme } from "@/utils/theme"
-import { findThemeCssProblem, parseThemeCSS } from "@/utils/themeParser"
+import { endCustomThemePreview, previewCustomTheme, setTheme } from "@/utils/theme"
+import { findThemeCssProblem } from "@/utils/themeParser"
 
 const PREVIEW_DELAY_MS = 300
 
@@ -140,38 +139,17 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
 
   const previewCss = useDebounce(state.css, PREVIEW_DELAY_MS)
   const previewProblem = useMemo(() => previewProblemOf(previewCss), [previewCss])
-  const shown = useRef<{ css: string; cssVars: Theme["cssVars"]; lightOnly: boolean } | null>(null)
   const [openedCss] = useState(state.css)
   // A default theme visit is for repair, and the saved CSS can hide the page, so only a change previews.
   const waitsForChange = isDefaultThemeVisit() && previewCss === openedCss
 
   useEffect(() => {
     if (previewProblem) return
-    if (waitsForChange) {
-      if (shown.current) {
-        shown.current = null
-        void endCustomThemePreview()
-      }
-      return
-    }
-    const parsed = parseThemeCSS(previewCss)
-    if (!parsed) return
-    shown.current = { css: previewCss, cssVars: parsed.cssVars, lightOnly: parsed.metadata.lightOnly === true }
-    previewCustomThemeCss(previewCss, parsed.cssVars, parsed.metadata.lightOnly === true)
+    if (waitsForChange) void endCustomThemePreview()
+    else previewCustomTheme(previewCss)
   }, [previewCss, previewProblem, waitsForChange])
 
-  // A mode change or a re-applied theme repaints the page, so the preview paints itself again.
-  useEffect(() => {
-    const repaint = () => {
-      const preview = shown.current
-      if (preview) previewCustomThemeCss(preview.css, preview.cssVars, preview.lightOnly)
-    }
-    window.addEventListener("themechange", repaint)
-    return () => {
-      window.removeEventListener("themechange", repaint)
-      if (shown.current) void endCustomThemePreview()
-    }
-  }, [])
+  useEffect(() => () => void endCustomThemePreview(), [])
 
   const name = state.name.trim()
   const id = target.kind === "edit" ? target.id : themeIdFromName(name)

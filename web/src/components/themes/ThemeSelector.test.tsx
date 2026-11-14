@@ -49,7 +49,7 @@ const fixture = vi.hoisted(() => {
 
 const license = vi.hoisted(() => ({ hasPremiumAccess: true }))
 const themeUtils = vi.hoisted(() => ({
-  previewCustomThemeCss: vi.fn(),
+  previewCustomTheme: vi.fn(),
   endCustomThemePreview: vi.fn(() => Promise.resolve()),
   setTheme: vi.fn(() => Promise.resolve()),
 }))
@@ -294,10 +294,7 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: RED_THEME } })
 
     expect(nameField().value).toBe("Red Alert")
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, {
-      light: { "--background": "red" },
-      dark: { "--background": "darkred" },
-    }, false)
+    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(RED_THEME)
 
     fireEvent.click(saveButton())
 
@@ -366,8 +363,8 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: ":root { --background: blue; }" } })
 
     expect(screen.getByRole("status").textContent).toContain("themes.custom.editor.problems.missingDark")
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
+    expect(themeUtils.previewCustomTheme).toHaveBeenCalledTimes(1)
+    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(RED_THEME)
     expect(saveButton().disabled).toBe(true)
   })
 
@@ -383,8 +380,8 @@ describe("ThemeSelector custom theme editor", () => {
     fireEvent.change(cssField(), { target: { value: outside } })
 
     expect(screen.getByText("themes.custom.editor.problems.outsideFile")).toBeTruthy()
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(RED_THEME, expect.anything(), false)
+    expect(themeUtils.previewCustomTheme).toHaveBeenCalledTimes(1)
+    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(RED_THEME)
 
     fireEvent.click(saveButton())
     expect((await screen.findByRole("alert")).textContent).toContain(refusal)
@@ -424,16 +421,16 @@ describe("ThemeSelector custom theme editor", () => {
 
     await chooseCardAction("Custom theme", "themes.custom.edit")
     await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
-    expect(themeUtils.previewCustomThemeCss).not.toHaveBeenCalled()
+    expect(themeUtils.previewCustomTheme).not.toHaveBeenCalled()
 
     const repaired = fixture.customThemes[0].rawCss.replace("white", "ivory")
     fireEvent.change(cssField(), { target: { value: repaired } })
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenLastCalledWith(repaired, expect.anything(), false)
+    expect(themeUtils.previewCustomTheme).toHaveBeenLastCalledWith(repaired)
 
+    themeUtils.endCustomThemePreview.mockClear()
     fireEvent.change(cssField(), { target: { value: fixture.customThemes[0].rawCss } })
     expect(themeUtils.endCustomThemePreview).toHaveBeenCalledTimes(1)
-    window.dispatchEvent(new CustomEvent("themechange", { detail: { mode: "dark", theme: { id: "minimal" }, isSystemChange: true } }))
-    expect(themeUtils.previewCustomThemeCss).toHaveBeenCalledTimes(1)
+    expect(themeUtils.previewCustomTheme).toHaveBeenCalledTimes(1)
   })
 
   // regression: #4124
@@ -581,6 +578,23 @@ describe("ThemeSelector custom theme editor", () => {
     expect(requests).toEqual([{ method: "PUT", path: "/api/themes/custom/local", body: { css: edited } }])
     expect(customThemesHook.refreshCustomThemes).toHaveBeenCalled()
     expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  // regression: #4124
+  it("keeps the editor closed when Edit cannot read the file, and a retry opens the current file", async () => {
+    const { toast } = await import("sonner")
+    const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")
+    customThemesHook.refreshCustomThemes
+      .mockRejectedValueOnce(new Error("list failed"))
+      .mockResolvedValueOnce([{ id: "local", filename: "local.css", css: onDisk }])
+    render(<ThemeSelector />)
+
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("themes.custom.editLoadFailed"))
+    expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull()
+
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+    await waitFor(() => expect(cssField().value).toBe(onDisk))
   })
 
   it("asks before it removes a custom theme, then removes it", async () => {

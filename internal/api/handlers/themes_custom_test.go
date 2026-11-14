@@ -383,6 +383,11 @@ func TestCustomTheme_CreateAppliesOutsideFileRule(t *testing.T) {
 	require.Empty(t, rig.fileNames(t))
 	require.Empty(t, rig.pub.events)
 
+	// regression: #4124
+	rec = rig.create(t, "ocean", "body::after { content: \"a\nb\"; }")
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "The outside-file check cannot read the theme, line 1: a quoted string has a line break", errorMessage(t, rec))
+
 	rec = rig.create(t, "ocean", "body { background: url(data:image/png;base64,iVBORw0KGgo=); }")
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }

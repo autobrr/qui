@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { endCustomThemePreview, getCurrentThemeMode, previewCustomThemeCss, setTheme, setThemeMode } from "./theme"
+import { endCustomThemePreview, getAppliedCustomThemeCss, getCurrentThemeMode, previewCustomTheme, setTheme, setThemeMode } from "./theme"
 import { _setDefaultThemeVisitForTests, isDefaultThemeVisit } from "@/lib/default-theme-visit"
 import { parseCachedTheme, registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
@@ -29,7 +29,8 @@ beforeEach(() => {
   ])
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await endCustomThemePreview()
   _setDefaultThemeVisitForTests(false)
   registerCustomThemes([])
   localStorage.clear()
@@ -141,10 +142,7 @@ describe("custom theme preview", () => {
     const listener = (event: Event) => events.push(event)
     window.addEventListener("themechange", listener)
 
-    previewCustomThemeCss(":root { --background: red; } .dark { --background: maroon; }", {
-      light: { "--background": "red" },
-      dark: { "--background": "maroon" },
-    }, false)
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
 
     window.removeEventListener("themechange", listener)
     expect(customStyle()).toContain("--background: red")
@@ -157,7 +155,7 @@ describe("custom theme preview", () => {
   it("ends by painting the active theme again", async () => {
     registerCustomThemes([customTheme])
     await setTheme("custom:ocean")
-    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} }, false)
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
 
     await endCustomThemePreview()
 
@@ -167,9 +165,47 @@ describe("custom theme preview", () => {
 
   it("ends on a built-in theme without the preview style", async () => {
     await setTheme("minimal")
-    previewCustomThemeCss(":root { --background: red; } .dark{}", { light: {}, dark: {} }, false)
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
 
     await endCustomThemePreview()
+
+    expect(customStyle()).toBeNull()
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
+  })
+
+  // regression: #4124
+  it("stays on the page through a mode change and a theme change", async () => {
+    const draft = ":root { --background: red; } .dark { --background: maroon; }"
+    registerCustomThemes([customTheme])
+    await setTheme("minimal", "light")
+    previewCustomTheme(draft)
+
+    await setThemeMode("dark")
+    expect(customStyle()).toBe(draft)
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("")
+
+    await setTheme("custom:ocean")
+    expect(customStyle()).toBe(draft)
+
+    await endCustomThemePreview()
+    expect(customStyle()).toBe(customTheme.rawCss)
+  })
+
+  // regression: #4124
+  it("reports the css of the applied theme, not the draft", async () => {
+    registerCustomThemes([customTheme])
+    await setTheme("custom:ocean")
+
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
+
+    expect(getAppliedCustomThemeCss()).toBe(customTheme.rawCss)
+  })
+
+  it("leaves the page as it is for css that does not parse as a theme", async () => {
+    await setTheme("minimal")
+
+    previewCustomTheme("body { color: red; }")
 
     expect(customStyle()).toBeNull()
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
@@ -182,10 +218,10 @@ describe("custom theme preview mode", () => {
     await setTheme("minimal", "dark")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
 
-    previewCustomThemeCss(":root{--a:b}.dark{--a:c}", { light: {}, dark: {} }, true)
+    previewCustomTheme("/* @lightOnly: true */ :root { --background: red; } .dark { --background: maroon; }")
     expect(document.documentElement.classList.contains("dark")).toBe(false)
 
-    previewCustomThemeCss(":root{--a:b}.dark{--a:c}", { light: {}, dark: {} }, false)
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
     expect(document.documentElement.classList.contains("dark")).toBe(true)
   })
 })

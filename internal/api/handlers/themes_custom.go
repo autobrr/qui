@@ -77,8 +77,12 @@ func validCustomThemeCSS(w http.ResponseWriter, css string) bool {
 		RespondError(w, http.StatusBadRequest, "A custom theme can have 1 MiB at most")
 		return false
 	}
-	if err := themes.CheckNoOutsideFiles(css); err != nil {
-		RespondError(w, http.StatusBadRequest, fmt.Sprintf("The theme can load a file from another website, %s", err))
+	if outside, ok := errors.AsType[*themes.OutsideFileError](themes.CheckNoOutsideFiles(css)); ok {
+		message := "The theme can load a file from another website, "
+		if outside.Kind == themes.KindUnreadable {
+			message = "The outside-file check cannot read the theme, "
+		}
+		RespondError(w, http.StatusBadRequest, message+outside.Error())
 		return false
 	}
 	return true

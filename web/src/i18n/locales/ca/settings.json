@@ -705,6 +705,7 @@
       "removeConfirm": "Suprimeix",
       "removed": "S'ha suprimit el tema",
       "removeFailed": "No s'ha pogut suprimir el tema: {{message}}",
+      "editLoadFailed": "No s'ha pogut llegir el fitxer del tema: {{message}}",
       "editor": {
         "newTitle": "Tema nou",
         "editTitle": "Edita el tema",

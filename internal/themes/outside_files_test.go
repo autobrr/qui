@@ -17,10 +17,11 @@ import (
 // checks cannot drift apart.
 type outsideFileCases struct {
 	Refused []struct {
-		Name   string `json:"name"`
-		CSS    string `json:"css"`
-		Line   int    `json:"line"`
-		Reason string `json:"reason"`
+		Name   string          `json:"name"`
+		CSS    string          `json:"css"`
+		Line   int             `json:"line"`
+		Kind   OutsideFileKind `json:"kind"`
+		Reason string          `json:"reason"`
 	} `json:"refused"`
 	Allowed []struct {
 		Name string `json:"name"`
@@ -46,6 +47,7 @@ func TestCheckNoOutsideFiles(t *testing.T) {
 			outside, ok := errors.AsType[*OutsideFileError](CheckNoOutsideFiles(tt.CSS))
 			require.True(t, ok, "want an *OutsideFileError")
 			require.Equal(t, tt.Line, outside.Line)
+			require.Equal(t, tt.Kind, outside.Kind)
 			require.Contains(t, outside.Reason, tt.Reason)
 		})
 	}

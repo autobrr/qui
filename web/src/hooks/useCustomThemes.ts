@@ -9,8 +9,8 @@ import { api } from "@/lib/api"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { parseCustomThemes, decideCustomThemeAction, type ParsedCustomThemes } from "@/lib/custom-themes"
 import { registerCustomThemes, getDefaultTheme } from "@/config/themes"
+import { storedThemeId } from "@/lib/theme-storage"
 import { setTheme, getAppliedCustomThemeCss } from "@/utils/theme"
-import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
 import type { CustomThemeFile } from "@/lib/custom-themes"
 
 const EMPTY: ParsedCustomThemes = { themes: [], errors: [] }
@@ -53,16 +53,15 @@ export function useCustomThemes() {
 
   // Sync the runtime registry and the stored selection with the latest list.
   useEffect(() => {
-    const storedThemeId = localStorage.getItem("color-theme")
+    const themeId = storedThemeId()
     const action = decideCustomThemeAction({
       isLoading,
       isError,
       hasPremiumAccess,
       hasData: !!query.data,
-      storedThemeId,
+      storedThemeId: themeId,
       themes: parsed.themes,
       appliedCustomCss: getAppliedCustomThemeCss(),
-      defaultThemeVisit: isDefaultThemeVisit(),
     })
 
     switch (action) {
@@ -81,7 +80,7 @@ export function useCustomThemes() {
         // pre-fetch init, or its file was edited and refreshed (CSS changed).
         registerCustomThemes(parsed.themes)
         // System change: restoring existing state must not be pushed.
-        void setTheme(storedThemeId!, undefined, undefined, true)
+        void setTheme(themeId!, undefined, undefined, true)
         break
       case "register-and-downgrade":
         // The selected custom theme's file was removed/renamed - fall back.

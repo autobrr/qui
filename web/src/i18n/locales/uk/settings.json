@@ -711,6 +711,7 @@
       "removeConfirm": "Вилучити",
       "removed": "Тему вилучено",
       "removeFailed": "Не вдалося вилучити тему: {{message}}",
+      "editLoadFailed": "Не вдалося прочитати файл теми: {{message}}",
       "editor": {
         "newTitle": "Нова тема",
         "editTitle": "Редагувати тему",

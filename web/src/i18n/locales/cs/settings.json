@@ -708,6 +708,7 @@
       "removeConfirm": "Odstranit",
       "removed": "Motiv odstraněn",
       "removeFailed": "Motiv se nepodařilo odstranit: {{message}}",
+      "editLoadFailed": "Soubor motivu se nepodařilo načíst: {{message}}",
       "editor": {
         "newTitle": "Nový motiv",
         "editTitle": "Upravit motiv",

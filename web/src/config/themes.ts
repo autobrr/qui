@@ -4,7 +4,7 @@
  */
 
 import { FALLBACK_THEME } from "@/utils/themeLoader";
-import { isDefaultThemeVisit } from "@/lib/default-theme-visit";
+import { cachedThemeJson } from "@/lib/theme-storage";
 
 export interface Theme {
   id: string;
@@ -41,13 +41,8 @@ export function parseCachedTheme(raw: string | null): Theme | null {
 }
 
 function hydrateCachedTheme(): Theme[] {
-  if (isDefaultThemeVisit()) return [];
-  try {
-    const cached = parseCachedTheme(localStorage.getItem("theme-cache"));
-    return cached ? [cached] : [];
-  } catch {
-    return [];
-  }
+  const cached = parseCachedTheme(cachedThemeJson());
+  return cached ? [cached] : [];
 }
 
 // Starts as the bundled fallback plus the cached last-applied theme; the full

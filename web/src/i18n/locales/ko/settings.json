@@ -702,6 +702,7 @@
       "removeConfirm": "제거",
       "removed": "테마를 제거했습니다",
       "removeFailed": "테마를 제거하지 못했습니다: {{message}}",
+      "editLoadFailed": "테마 파일을 읽지 못했습니다: {{message}}",
       "editor": {
         "newTitle": "새 테마",
         "editTitle": "테마 편집",

@@ -13,6 +13,7 @@ import { useIsMobile } from "@/hooks/useMediaQuery"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { getThemeById } from "@/config/themes"
 import { isDefaultThemeVisit } from "@/lib/default-theme-visit"
+import { storedThemeId, storeThemeId } from "@/lib/theme-storage"
 import { setTheme, type ThemeMode } from "@/utils/theme"
 import type { ThemeSettings, ThemeSlot } from "@/types"
 
@@ -54,7 +55,7 @@ export function setThemeLocalOnly(localOnly: boolean): void {
  * fallback default, which must not overwrite the server selection.
  */
 export function storedThemeSelection(mode: ThemeMode, appliedId: string, appliedVariant?: string): ThemeSettings {
-  const themeId = localStorage.getItem("color-theme") ?? appliedId
+  const themeId = storedThemeId() ?? appliedId
   const variation = themeId === appliedId ? appliedVariant : getStoredVariation(themeId)
   return { themeId, mode, ...(variation ? { variation } : {}) }
 }
@@ -113,7 +114,7 @@ export function useThemeSettingsSync(): void {
     // Mirror the server selection locally even when it resolves to a locked
     // stub or an unknown id, so the push below never sends a differing local
     // id over it.
-    localStorage.setItem("color-theme", selection.themeId)
+    storeThemeId(selection.themeId)
     // Skip unknown ids (e.g. a custom theme not registered yet) so we never
     // downgrade the local selection to the default theme.
     const resolved = getThemeById(selection.themeId)

@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api"
-import { CUSTOM_THEME_PREFIX } from "@/lib/custom-themes"
+import { CUSTOM_THEME_PREFIX, type CustomThemeFile } from "@/lib/custom-themes"
 import { useDefaultThemeVisit } from "@/lib/default-theme-visit"
 import { buildThemePrompt } from "@/lib/theme-prompt"
 import { copyTextToClipboard } from "@/lib/utils"
@@ -295,10 +295,18 @@ export function ThemeSelector() {
     const id = theme.id.slice(CUSTOM_THEME_PREFIX.length)
     return { id, label: theme.name, css: theme.rawCss }
   }
-  // Edit reads the file again, because it can have changed by hand on the server. A failed read opens the copy of the picker.
+  // Edit reads the file again, because it can have changed by hand on the server, and a save of an old copy would undo that change.
   const editTheme = async (file: CustomThemeFileRef) => {
     const request = ++editorRequest.current
-    const fresh = await refreshCustomThemes(queryClient).catch(() => [])
+    let fresh: CustomThemeFile[]
+    try {
+      fresh = await refreshCustomThemes(queryClient)
+    } catch (error) {
+      if (request === editorRequest.current) {
+        toast.error(t("themes.custom.editLoadFailed", { message: error instanceof Error ? error.message : String(error) }))
+      }
+      return
+    }
     // A later New theme or Edit wins over this one.
     if (request !== editorRequest.current) return
     const current = fresh.find(theme => theme.id === file.id)

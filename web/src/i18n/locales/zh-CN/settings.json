@@ -702,6 +702,7 @@
       "removeConfirm": "移除",
       "removed": "主题已移除",
       "removeFailed": "无法移除主题：{{message}}",
+      "editLoadFailed": "无法读取主题文件：{{message}}",
       "editor": {
         "newTitle": "新建主题",
         "editTitle": "编辑主题",

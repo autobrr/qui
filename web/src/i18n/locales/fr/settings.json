@@ -705,6 +705,7 @@
       "removeConfirm": "Supprimer",
       "removed": "Thème supprimé",
       "removeFailed": "Impossible de supprimer le thème : {{message}}",
+      "editLoadFailed": "Impossible de lire le fichier du thème : {{message}}",
       "editor": {
         "newTitle": "Nouveau thème",
         "editTitle": "Modifier le thème",

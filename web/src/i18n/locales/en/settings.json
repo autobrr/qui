@@ -705,6 +705,7 @@
       "removeConfirm": "Remove",
       "removed": "Theme removed",
       "removeFailed": "Could not remove the theme: {{message}}",
+      "editLoadFailed": "Could not read the theme file: {{message}}",
       "editor": {
         "newTitle": "New theme",
         "editTitle": "Edit theme",

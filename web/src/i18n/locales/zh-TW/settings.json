@@ -702,6 +702,7 @@
       "removeConfirm": "移除",
       "removed": "主題已移除",
       "removeFailed": "無法移除主題：{{message}}",
+      "editLoadFailed": "無法讀取主題檔案：{{message}}",
       "editor": {
         "newTitle": "新增主題",
         "editTitle": "編輯主題",
