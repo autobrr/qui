@@ -184,11 +184,46 @@ A delete before a date keeps each hour and each day from that date on. qui store
 
 qui deletes in a series of short writes, so the other features of qui can write to the database between them. The Statistics page waits until the delete ends. qui records the transfer of that time when the delete ends.
 
-On SQLite, the database file keeps its size after a delete. SQLite uses the free space again for new history. On Postgres, a delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again.
+On SQLite, the database file keeps its size after a delete. SQLite uses the free space again for new history. To give the space back to the disk, [shrink the database file](#shrink-the-database-file). On Postgres, a delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again.
 
 An API key needs **Settings: write** to delete history. A key with an instance limit cannot delete history.
 
 The tick box in the dialog that removes an instance sends a second request after the removal. If that request fails, qui removes the instance, and a part or all of its history can stay. You can delete the rest here.
+
+### Shrink the database file
+
+On SQLite, the Delete history dialog has the tick box **Also shrink the database file**. With the tick, qui deletes the history, restarts, and makes the database file smaller. The disk gets the free space back. qui is unavailable while the shrink runs. The time grows with the data that stays in the file. For a large file on a slow disk, it can take some minutes. When qui is back, a message shows the size of the file before and after the shrink.
+
+Without the tick, the file keeps its size, and SQLite uses the free space again for new history. Thus, it is safe to leave the tick box empty.
+
+A shrink needs free disk space of up to two times the size of the database file. If the disk of the database has less free space, the tick box is off, and the dialog shows the free space and the need. You can then [shrink the file by hand](#shrink-the-database-file-by-hand), also into a file on another disk.
+
+If qui cannot restart itself on your install, the dialog says so. The shrink then runs at the next start of qui. The shrink also runs when you restart qui in another way. qui never shrinks the file without a request.
+
+If the shrink fails, qui starts as usual, and the database does not change. qui shows the System notice **Shrink failed** in the sidebar, in the header menu, and in the mobile menu. The notice gives the cause and the fix:
+
+- The disk has too little free space. Free space on the disk.
+- Another program held the database file, for example a backup tool or a database viewer. Stop that program.
+- For another cause, the notice links to the log.
+
+To request a new shrink and restart qui, click **Try again**. To close the notice, click **Dismiss**. qui does not try again on its own.
+
+Only the web UI can request a shrink. An API key cannot request one, because the shrink restarts qui. On Postgres, the tick box is absent, because a delete of everything gives the space back at once.
+
+### Shrink the database file by hand
+
+Use these steps if the disk of the database has too little free space for a shrink. You need the `sqlite3` command-line program on the host of the database file. Replace `/config/qui.db` with the path of your database file.
+
+1. Stop qui.
+2. Make a backup with `sqlite3 /config/qui.db ".backup '/backup/qui.db'"`. The backup also reads the WAL, so it holds each change.
+3. Do one of these steps:
+   - To shrink the file on its own disk, run `sqlite3 /config/qui.db 'VACUUM;'`. The disk needs free space of up to the size of the file. The temp directory of the system, for example `/tmp`, also needs free space of up to the size of the file.
+   - To write a small copy on another disk, run `sqlite3 /config/qui.db "VACUUM INTO '/mnt/other/qui.db';"`. The other disk needs free space for the small copy. Copy the small copy into the data directory as `qui.db.new`. The disk of the database needs free space for this copy. If the copy fails, the old file is still in place. Then move `qui.db` out of the data directory. If `qui.db-wal` or `qui.db-shm` exist, move them out too. Rename `qui.db.new` to `qui.db`, and give it the owner of the old file.
+4. Start qui.
+
+Do not leave an old `qui.db-wal` file next to the small copy. SQLite applies it to the new file and damages the database.
+
+When qui runs correctly, you can delete the backup and the old file.
 
 ## Why the numbers differ from Server Statistics
 

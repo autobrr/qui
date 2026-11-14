@@ -100,6 +100,16 @@ func TestAdapterReadings(t *testing.T) {
 func newAdapterRig(t *testing.T) (*syncowner.Owner, *qbittorrent.SyncManager, *atomic.Int64) {
 	const hash = "aaaa000000000000000000000000000000000001"
 	var uploaded, rid atomic.Int64
+	owner, syncManager := newStubSync(t, func() string {
+		return fmt.Sprintf(`{"rid":%d,"full_update":true,"torrents":{%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP","uploaded":%d}}}`,
+			rid.Add(1), hash, uploaded.Load())
+	})
+	return owner, syncManager, &uploaded
+}
+
+// newStubSync returns a stub qBittorrent whose sync/maindata answer is
+// maindata, and a new sync manager, as after a start of qui.
+func newStubSync(t *testing.T, maindata func() string) (*syncowner.Owner, *qbittorrent.SyncManager) {
 	client := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"}).WithHTTPClient(&http.Client{
 		Transport: testutil.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			rec := httptest.NewRecorder()
@@ -107,15 +117,14 @@ func newAdapterRig(t *testing.T) (*syncowner.Owner, *qbittorrent.SyncManager, *a
 				rec.WriteHeader(http.StatusNotFound)
 				return rec.Result(), nil
 			}
-			_, _ = fmt.Fprintf(rec, `{"rid":%d,"full_update":true,"torrents":{%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP","uploaded":%d}}}`,
-				rid.Add(1), hash, uploaded.Load())
+			_, _ = rec.WriteString(maindata())
 			return rec.Result(), nil
 		}),
 	})
 	pool, err := qbittorrent.NewClientPool(nil, nil, time.Minute)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
-	return syncowner.New(client, qbt.DefaultSyncOptions()), qbittorrent.NewSyncManager(pool, nil), &uploaded
+	return syncowner.New(client, qbt.DefaultSyncOptions()), qbittorrent.NewSyncManager(pool, nil)
 }
 
 // syncer returns a function that syncs the stub and gives the update to the
