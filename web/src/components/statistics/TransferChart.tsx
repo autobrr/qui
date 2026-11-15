@@ -104,7 +104,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
               return null
             }
             return (
-              <div className="min-w-48 max-w-64 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+              <div className="min-w-48 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md max-sm:max-w-[calc(100vw-4rem)]">
                 <div className="mb-1.5 font-medium">
                   {formatStart(row.start, row.width)}
                   {row.width === "day" && unit === "hour" && <span className="ml-1 font-normal text-muted-foreground">{t("chart.foldedDay")}</span>}
