@@ -495,6 +495,15 @@ describe("Statistics", () => {
     expect(screen.queryByTestId("chart")).toBeNull()
   })
 
+  it("labels a period that starts before the first recording as partial", async () => {
+    statuses = [recordedDaysAgo(1, "Seedbox", 400), recordedDaysAgo(2, "Home", 10)]
+    renderPage()
+
+    expect(await screen.findByText("partial")).toBeTruthy()
+    fireEvent.mouseDown(screen.getByText("periods.7d"), { button: 0 })
+    await vi.waitFor(() => expect(screen.queryByText("partial")).toBeNull())
+  })
+
   it("limits the queries to the selected instances and lists a removed instance", async () => {
     configuredIds = [1]
     renderPage()
