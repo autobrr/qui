@@ -226,7 +226,8 @@ function loadEnglishBundles() {
   return bundles
 }
 
-if (process.argv[1] === import.meta.filename) {
+// import.meta.filename is the real path, so a path through a symlink, such as /var on macOS, must resolve first.
+if (fs.realpathSync(process.argv[1]) === import.meta.filename) {
   const localeKeys = collectLocaleKeys(loadEnglishBundles())
   const references = mergeReferences(
     walkFiles(srcRoot).map((file) => collectKeyReferencesFromSource(

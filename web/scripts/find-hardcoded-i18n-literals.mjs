@@ -456,7 +456,8 @@ function printMatches(matches) {
   console.log(`\nFound ${matches.length} hardcoded string matches across ${grouped.size} files.`)
 }
 
-if (process.argv[1] === import.meta.filename) {
+// import.meta.filename is the real path, so a path through a symlink, such as /var on macOS, must resolve first.
+if (fs.realpathSync(process.argv[1]) === import.meta.filename) {
   const files = walkFiles(srcRoot)
   const matches = findHardcodedStringsInFiles(files)
 
