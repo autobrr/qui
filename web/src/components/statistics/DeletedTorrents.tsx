@@ -177,13 +177,15 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   }, [firstLoaded, scope, cause, instances, period, queryClient])
 
   // Deleted torrents ends the page. A shorter list after a filter switch keeps the height of the last list, so that the
-  // page does not end higher and move the tabs away from the pointer. The space goes when it is below the screen.
+  // page does not end higher and move the tabs away from the pointer. The space goes when it is below the screen, or when
+  // the rows of the new filter show and fill it.
   const body = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
   const [held, setHeld] = useState<{ scope: string; height: number }>()
   const minHeight = held?.scope === scope ? held.height : undefined
   useEffect(() => {
-    if (minHeight === undefined) {
+    // The rows of the last filter still show, and they fill the space by themselves.
+    if (minHeight === undefined || stale) {
       return
     }
     const release = () => {
@@ -199,7 +201,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
       window.removeEventListener("scroll", release, { capture: true })
       window.removeEventListener("resize", release)
     }
-  }, [minHeight])
+  }, [minHeight, stale])
 
   return (
     <>
