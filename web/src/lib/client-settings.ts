@@ -11,7 +11,8 @@ import {
   newDisplayProfileEntry,
   parseDisplayProfileEntry,
   validateDisplayProfileName,
-  type DisplayProfile
+  type DisplayProfile,
+  type DisplayProfileEntry
 } from "@/lib/display-profiles"
 
 /**
@@ -409,10 +410,16 @@ export function getDisplayProfiles(): DisplayProfilesState {
   return profilesState
 }
 
+/** True when the profile keeps its own copy of the setting instead of the key of today. */
+function keepsOwnCopy(profile: DisplayProfile, key: string): boolean {
+  const group = settingGroup(key)
+  return group === "display" || (group === "sortAndFilters" && profile.ownSortAndFilters)
+}
+
 /** The storage key that holds a setting for the profile of this browser. */
 function resolveKey(key: string): string {
   const { active } = getDisplayProfiles()
-  if (active.isDefault || settingGroup(key) !== "display") return key
+  if (active.isDefault || !keepsOwnCopy(active, key)) return key
   return profileValueKey(active.id, key)
 }
 
@@ -444,7 +451,7 @@ export function createDisplayProfile(name: string): string {
       if (!storageKey?.startsWith(sourcePrefix)) continue
       const key = storageKey.slice(sourcePrefix.length)
       const raw = localStorage.getItem(storageKey)
-      if (raw !== null && settingGroup(key) === "display") copies.push([key, raw])
+      if (raw !== null && keepsOwnCopy(active, key)) copies.push([key, raw])
     }
   } catch (scanError) {
     console.error("Failed to copy the Display settings of the active profile:", scanError)
@@ -452,9 +459,52 @@ export function createDisplayProfile(name: string): string {
 
   const id = randomProfileId()
   for (const [key, raw] of copies) writeRaw(profileValueKey(id, key), raw)
-  writeRaw(profileEntryKey(id), JSON.stringify({ ...newDisplayProfileEntry(name.trim()), sameColumns: active.sameColumns }))
+  writeRaw(profileEntryKey(id), JSON.stringify({
+    ...newDisplayProfileEntry(name.trim()),
+    sameColumns: active.sameColumns,
+    ownSortAndFilters: active.ownSortAndFilters,
+  }))
   pickDisplayProfile(id)
   return id
+}
+
+/** The Sort and filters values stored under the prefix, as pairs of the key of today and the raw value. */
+function storedSortAndFilters(prefix: string): [string, string][] {
+  const values: [string, string][] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i)
+      if (!storageKey?.startsWith(prefix)) continue
+      const key = storageKey.slice(prefix.length)
+      const raw = localStorage.getItem(storageKey)
+      if (raw !== null && settingGroup(key) === "sortAndFilters") values.push([key, raw])
+    }
+  } catch (error) {
+    console.error("Failed to read the Sort and filters values:", error)
+  }
+  return values
+}
+
+/**
+ * Sets "Own sort and filters" of a profile. On copies the shared values to the profile, so nothing changes at that
+ * moment. Off writes "" to the own values, and the profile reads the shared values again. Throws for Default, which
+ * always shares.
+ */
+export function setDisplayProfileOwnSortAndFilters(profileId: string, on: boolean): void {
+  const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+  if (!profile || profile.isDefault) throw new Error(`Display profile ${profileId} cannot keep its own sort and filters`)
+  if (profile.ownSortAndFilters === on) return
+  const { name, icon, color, sameColumns } = profile
+  const entry = JSON.stringify({ name, icon, color, sameColumns, ownSortAndFilters: on } satisfies DisplayProfileEntry)
+
+  // The entry flips last on the way in and first on the way out, so the profile never reads blank own values.
+  if (on) {
+    for (const [key, raw] of storedSortAndFilters("")) writeRaw(profileValueKey(profileId, key), raw)
+    writeRaw(profileEntryKey(profileId), entry)
+  } else {
+    writeRaw(profileEntryKey(profileId), entry)
+    for (const [key] of storedSortAndFilters(profileValueKey(profileId, ""))) writeRaw(profileValueKey(profileId, key), "")
+  }
 }
 
 function subscribeDisplayProfiles(callback: () => void): () => void {
@@ -476,12 +526,18 @@ function subscribeDisplayProfiles(callback: () => void): () => void {
 export interface DisplayProfilesApi extends DisplayProfilesState {
   pick: (profileId: string) => void
   create: (name: string) => string
+  setOwnSortAndFilters: (profileId: string, on: boolean) => void
 }
 
 /** The Display profiles for the UI. */
 export function useDisplayProfiles(): DisplayProfilesApi {
   const state = useSyncExternalStore(subscribeDisplayProfiles, getDisplayProfiles)
-  return useMemo(() => ({ ...state, pick: pickDisplayProfile, create: createDisplayProfile }), [state])
+  return useMemo(() => ({
+    ...state,
+    pick: pickDisplayProfile,
+    create: createDisplayProfile,
+    setOwnSortAndFilters: setDisplayProfileOwnSortAndFilters,
+  }), [state])
 }
 
 // --- server sync (called by useClientSettingsSync) ---
