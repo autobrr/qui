@@ -456,8 +456,9 @@ function printMatches(matches) {
   console.log(`\nFound ${matches.length} hardcoded string matches across ${grouped.size} files.`)
 }
 
-// import.meta.filename is the real path, so a path through a symlink, such as /var on macOS, must resolve first.
-if (fs.realpathSync(process.argv[1]) === import.meta.filename) {
+// A path through a symlink, such as /var on macOS, differs from the real path, and Node keeps the symlink in
+// import.meta.filename with --preserve-symlinks-main. Both paths resolve first.
+if (fs.realpathSync(process.argv[1]) === fs.realpathSync(import.meta.filename)) {
   const files = walkFiles(srcRoot)
   const matches = findHardcodedStringsInFiles(files)
 
