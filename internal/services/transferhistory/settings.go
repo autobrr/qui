@@ -100,20 +100,22 @@ func (m *Module) pauseInstances() {
 	clear(m.reloads)
 }
 
-// foldIfNewDay starts a fold of the detail before the Detail retention when
-// a reading at today starts a new UTC day. The fold runs beside the worker. A
+// foldIfNewDay starts a fold when a reading at today starts a new UTC day. The
+// fold moves the torrent days before today out of the recent days, and folds
+// the detail before the Detail retention. It runs beside the worker. A
 // transfer query waits until the fold of the hours ends, because it reads the
-// hours. The fold of the torrent days moves each byte in one transaction.
+// hours. The moves of the torrent days move each byte in one transaction.
 func (m *Module) foldIfNewDay(today int64, retentionDays int) {
-	if today <= m.foldedDay || retentionDays == 0 {
+	if today <= m.foldedDay {
 		return
 	}
+	retain := retentionDays != 0
 	beforeDay := today - int64(retentionDays)
 	// The changes in memory can hold a day that the fold covers, as for an
 	// instance that is offline. A later write would make that day partial
 	// again, so a failed write stops the fold until the next reading.
 	for _, inst := range m.instances {
-		if inst.holdsDaysBefore(beforeDay) && m.write(inst) != nil {
+		if retain && inst.holdsDaysBefore(beforeDay) && m.write(inst) != nil {
 			return
 		}
 	}
@@ -135,9 +137,15 @@ func (m *Module) foldIfNewDay(today int64, retentionDays int) {
 		defer m.foldRun.Unlock()
 		ctx, cancel := context.WithTimeout(m.foldCtx, maxWriteTimeout)
 		defer cancel()
-		err := m.foldHours(ctx, beforeDay)
+		var err error
+		if retain {
+			err = m.foldHours(ctx, beforeDay)
+		}
 		m.foldMu.Unlock()
 		if err == nil {
+			err = m.store.MoveRecentTorrentDays(ctx, today)
+		}
+		if err == nil && retain {
 			m.answers.foldStarted()
 			err = m.store.FoldTorrentDays(ctx, beforeDay)
 			m.answers.foldEnded()

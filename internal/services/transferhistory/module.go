@@ -40,7 +40,7 @@ const (
 	// partTorrents is the most torrents that one transaction of a write
 	// stores. SQLite has one writer for all of qui, and the other writes run
 	// between two parts.
-	partTorrents = 2000
+	partTorrents = 1000
 )
 
 // Reading is the state of one instance at one successful read of qBittorrent.
