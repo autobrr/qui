@@ -12,6 +12,7 @@ import {
   generateUniqueName,
   getTrackerMatchMode,
   getTrackerTokens,
+  hasMixedActionConditions,
   loadWorkflowNames,
   parseImportJSON,
   toCopyInput,
@@ -22,7 +23,7 @@ import {
   type WorkflowExport,
   type WorkflowImport
 } from "@/lib/workflow-utils"
-import type { ActionConditions, Automation } from "@/types"
+import type { ActionConditions, Automation, RuleCondition } from "@/types"
 import { QueryClient } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -411,5 +412,23 @@ describe("ACTION_RUN_ORDER", () => {
 
     expect(goKeys.length).toBeGreaterThan(0)
     expect([...ACTION_RUN_ORDER]).toEqual(goKeys)
+  })
+})
+
+// regression: #3012
+describe("hasMixedActionConditions", () => {
+  const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
+  const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
+  const tag = (tags: string[], condition?: RuleCondition, enabled = true) => ({ enabled, tags, mode: "full" as const, condition })
+
+  it.each([
+    { name: "two tag actions with different conditions", mixed: true, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] } },
+    { name: "a condition on category and none on pause", mixed: true, conditions: { schemaVersion: "1", category: { enabled: true, category: "sorted", condition: packed }, pause: { enabled: true } } },
+    { name: "the same condition on every action", mixed: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed)], pause: { enabled: true, condition: packed } } },
+    { name: "a different condition on a disabled action", mixed: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked, false)] } },
+    { name: "a disabled action whose condition the editor shows", mixed: true, conditions: { schemaVersion: "1", speedLimits: { enabled: false, condition: unpacked }, pause: { enabled: true, condition: packed } } },
+    { name: "auto management set to off with no condition", mixed: true, conditions: { schemaVersion: "1", pause: { enabled: true, condition: packed }, autoManagement: { enabled: false } } },
+  ])("returns $mixed for $name", ({ mixed, conditions }) => {
+    expect(hasMixedActionConditions(makeAutomation({ conditions }))).toBe(mixed)
   })
 })

@@ -1108,7 +1108,7 @@ A partially downloaded pack still counts as a pack. Add a `PROGRESS` condition t
 
 #### Example: tag packs, packed, and unpacked
 
-One rule per status. The rule editor keeps one condition per rule and applies it to every tag action in that rule, so three tag actions with three conditions cannot live in one rule. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
+One rule per status. The rule editor keeps one condition per rule and applies it to every tag action in that rule, so three tag actions with three conditions cannot live in one rule. When the editor opens a rule whose actions have different conditions, it shows a warning under the conditions, because a save gives every action the condition shown. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
 
 ```json
 {

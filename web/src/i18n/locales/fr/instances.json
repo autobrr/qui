@@ -1167,6 +1167,7 @@
         "notSupportedForScoreMultiplier": "Non pris en charge pour les multiplicateurs de score"
       },
       "conditionsLabel": "Conditions (facultatif)",
+      "mixedActionConditions": "Les actions de cette règle ont des conditions différentes. L'éditeur n'en affiche qu'une, et l'enregistrement l'applique à toutes les actions.",
       "actions": {
         "title": "Action",
         "addAction": "Ajouter une action",

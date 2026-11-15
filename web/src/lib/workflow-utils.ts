@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
+import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, RuleCondition, SortingConfig } from "@/types"
 import type { QueryClient } from "@tanstack/react-query"
 
 // i18n-namespace: instances
@@ -51,6 +51,34 @@ export function getRuleActions(rule: Automation): ActionType[] {
       return rule.conditions?.autoManagement != null
     }
     return Boolean(rule.conditions?.[action]?.enabled)
+  })
+}
+
+/** Returns the condition that the rule editor shows: the first condition of any action, enabled or not. */
+export function firstActionCondition(conditions: ActionConditions): RuleCondition | null {
+  return conditions.speedLimits?.condition
+    ?? conditions.shareLimits?.condition
+    ?? conditions.pause?.condition
+    ?? conditions.resume?.condition
+    ?? conditions.recheck?.condition
+    ?? conditions.reannounce?.condition
+    ?? conditions.autoManagement?.condition
+    ?? conditions.delete?.condition
+    ?? conditions.tags?.[0]?.condition
+    ?? conditions.tag?.condition
+    ?? conditions.category?.condition
+    ?? conditions.move?.condition
+    ?? conditions.externalProgram?.condition
+    ?? conditions.exportToInstance?.condition
+    ?? null
+}
+
+/** Reports whether a save from the rule editor changes the condition of an action that the rule turns on. A save writes the shown condition onto every action. */
+export function hasMixedActionConditions(rule: Automation): boolean {
+  const shown = JSON.stringify(firstActionCondition(rule.conditions))
+  return getRuleActions(rule).some(action => {
+    const actions = action === "tag" ? getRuleTagActions(rule).filter(tag => tag.enabled) : [rule.conditions[action]]
+    return actions.some(entry => JSON.stringify(entry?.condition ?? null) !== shown)
   })
 }
 

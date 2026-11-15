@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { Automation, FilesystemCapabilities } from "@/types"
+import type { Automation, FilesystemCapabilities, RuleCondition } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string) => key
@@ -192,7 +192,7 @@ describe("WorkflowDialog tracker pattern", () => {
   })
 })
 
-function renderDialog(dialogRule: Automation) {
+function renderDialog(dialogRule: Automation | null) {
   // Radix scrolls focused select options; jsdom has no layout.
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
   mocks.instancesQuery.data = []
@@ -705,5 +705,36 @@ describe("WorkflowDialog Save flow", () => {
       expect(screen.getByText(key("enableDryRunPrompt.title"))).not.toBeNull()
       cleanup()
     }
+  })
+})
+
+// regression: #3012
+describe("WorkflowDialog mixed action conditions", () => {
+  const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
+  const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
+  const tag = (tags: string[], condition: RuleCondition) => ({ enabled: true, tags, mode: "full" as const, condition })
+  const mixedTags: Automation["conditions"] = { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] }
+  const notice = key("mixedActionConditions")
+
+  it.each([
+    { name: "a rule whose actions have different conditions", shown: true, dialogRule: { ...rule, conditions: mixedTags } },
+    { name: "a rule whose actions have one condition", shown: false, dialogRule: { ...rule, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed)], pause: { enabled: true, condition: packed } } } },
+    { name: "a new rule", shown: false, dialogRule: null },
+  ])("shows the notice for $name: $shown", ({ shown, dialogRule }) => {
+    const client = renderDialog(dialogRule)
+    expect(screen.queryByText(notice) !== null).toBe(shown)
+    client.clear()
+  })
+
+  it("keeps save enabled and saves one condition on every action", async () => {
+    mocks.save.mockResolvedValue(rule)
+    const client = renderDialog({ ...rule, conditions: mixedTags })
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    const tags = mocks.save.mock.calls[0][2].conditions.tags
+    expect(tags.map((t: { condition: unknown }) => t.condition)).toEqual([packed, packed])
+    client.clear()
   })
 })

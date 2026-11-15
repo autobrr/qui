@@ -1144,6 +1144,7 @@
         "notSupportedForScoreMultiplier": "점수 곱셈기에서 지원되지 않음"
       },
       "conditionsLabel": "조건(선택 사항)",
+      "mixedActionConditions": "이 규칙의 작업마다 조건이 다릅니다. 편집기에는 그중 하나만 표시되며, 저장하면 그 조건이 모든 작업에 적용됩니다.",
       "actions": {
         "title": "작업",
         "addAction": "작업 추가",

@@ -1144,6 +1144,7 @@
         "notSupportedForScoreMultiplier": "不支持得分乘数"
       },
       "conditionsLabel": "条件（可选）",
+      "mixedActionConditions": "此规则中的操作各有不同的条件。编辑器只显示其中一个，保存后该条件将应用于所有操作。",
       "actions": {
         "title": "操作",
         "addAction": "添加操作",

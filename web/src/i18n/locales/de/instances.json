@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Nicht unterstützt für Score-Multiplikatoren"
       },
       "conditionsLabel": "Bedingungen (optional)",
+      "mixedActionConditions": "Die Aktionen dieser Regel haben unterschiedliche Bedingungen. Der Editor zeigt nur eine davon, und beim Speichern gilt sie für alle Aktionen.",
       "actions": {
         "title": "Aktion",
         "addAction": "Aktion hinzufügen",

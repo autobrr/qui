@@ -1208,6 +1208,7 @@
         "notSupportedForScoreMultiplier": "Nepodporováno pro násobitele skóre"
       },
       "conditionsLabel": "Podmínky (volitelné)",
+      "mixedActionConditions": "Akce v tomto pravidle mají různé podmínky. Editor zobrazuje jen jednu z nich a uložení ji použije pro všechny akce.",
       "actions": {
         "title": "Akce",
         "addAction": "Přidat akci",

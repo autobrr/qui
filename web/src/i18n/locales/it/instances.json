@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Non supportato per i moltiplicatori di punteggio"
       },
       "conditionsLabel": "Condizioni (facoltativo)",
+      "mixedActionConditions": "Le azioni di questa regola hanno condizioni diverse. L'editor ne mostra solo una e il salvataggio la applica a tutte le azioni.",
       "actions": {
         "title": "Azione",
         "addAction": "Aggiungi un'azione",

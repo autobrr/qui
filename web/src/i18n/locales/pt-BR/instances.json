@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Não suportado nos multiplicadores de pontuação"
       },
       "conditionsLabel": "Condições (Quando a regra vai agir?)",
+      "mixedActionConditions": "As ações desta regra têm condições diferentes. O editor mostra apenas uma delas, e salvar a aplica a todas as ações.",
       "actions": {
         "title": "Ações (O que a regra fará?)",
         "addAction": "Criar ação",
