@@ -40,7 +40,7 @@
 ## Page layout
 
 - Each authenticated page, except the torrent list and the instance pages, starts with `PageHeader` from `@/components/layout/PageHeader`. It renders the title, the description, and the page actions. Pass several actions as a fragment, so that each action wraps below the title on its own when the row has no room.
-- The page root uses `p-4 lg:p-6`. A page that scrolls with the window also uses `pb-16`. Do not put a page in a centered `container`.
+- The page root uses `p-4 lg:p-6`. Below `lg`, `AppLayout` pads `main` for the bottom nav, so the page root adds no bottom padding of its own. Do not put a page in a centered `container`.
 - A page with more than one section uses `SectionedPage` from `@/components/layout/SectionedPage`. The page translates every nav label before it passes the groups. Keep the section in the `tab` URL search parameter, and drop an unknown value to the default section, as `components/cross-seed/tabs.ts` does.
 - A page that works on one instance puts the instance picker in the actions of `PageHeader`.
 - In a card footer, Save is at the right. Run controls (Run now, Start run, Cancel, Dry run) are at the left. A section that runs a job builds its `RunState` in a pure function in `lib/run-state.ts` and renders `RunFooter`. Cancel always asks first.

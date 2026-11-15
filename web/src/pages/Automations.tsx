@@ -33,7 +33,7 @@ export function Automations({ activeTab, onTabChange }: AutomationsProps) {
   const configureOrphanScanInstance = instances?.find((inst) => inst.id === configureOrphanScanId)
 
   return (
-    <div className="space-y-6 p-4 lg:p-6 pb-16">
+    <div className="space-y-6 p-4 lg:p-6">
       <PageHeader title={t("page.title")} description={t("page.description")} />
 
       {instances && instances.length === 0 && (

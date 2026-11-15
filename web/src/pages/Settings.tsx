@@ -879,7 +879,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   }
 
   return (
-    <div className="space-y-6 p-4 lg:p-6 pb-16">
+    <div className="space-y-6 p-4 lg:p-6">
       <PageHeader title={t("title")} description={t("description")} />
 
       <SectionedPage navLabel={t("title")} groups={navGroups} activeSection={activeTab} onSectionChange={handleTabChange}>

@@ -685,7 +685,7 @@ export function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-4 lg:p-6 pb-16">
+      <div className="p-4 lg:p-6">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-48"></div>
           <div className="h-4 bg-muted rounded w-64"></div>
@@ -709,7 +709,7 @@ export function Dashboard() {
   )
 
   return (
-    <div className="p-4 lg:p-6 pb-16">
+    <div className="p-4 lg:p-6">
       <div className="mb-6">
         <PageHeader
           title={t("title")}
