@@ -1731,5 +1731,23 @@
       "description": "Mostra le copie di un torrent in un'unica riga.",
       "action": "Prova"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Profilo di visualizzazione: {{name}}",
+    "menuLabel": "Profilo di visualizzazione",
+    "manage": "Gestisci profili…",
+    "panel": {
+      "title": "Profili di visualizzazione",
+      "description": "Questo browser usa un profilo. Una modifica alle colonne, alla densità delle righe o alle barre laterali vale solo per quel profilo.",
+      "thisBrowser": "Questo browser",
+      "use": "Usa",
+      "newName": "Nuovo profilo da questa configurazione",
+      "create": "Crea"
+    },
+    "nameErrors": {
+      "empty": "Inserisci un nome.",
+      "tooLong": "Usa al massimo {{max}} caratteri.",
+      "duplicate": "Un altro profilo ha già questo nome."
+    }
   }
 }

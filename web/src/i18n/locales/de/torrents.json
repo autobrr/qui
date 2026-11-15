@@ -1731,5 +1731,23 @@
       "description": "Zeigt die Kopien eines Torrents in einer einzigen Zeile.",
       "action": "Ausprobieren"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Anzeigeprofil: {{name}}",
+    "menuLabel": "Anzeigeprofil",
+    "manage": "Profile verwalten…",
+    "panel": {
+      "title": "Anzeigeprofile",
+      "description": "Dieser Browser nutzt ein Profil. Eine Änderung an Spalten, Zeilendichte oder Seitenleisten gilt nur für dieses Profil.",
+      "thisBrowser": "Dieser Browser",
+      "use": "Verwenden",
+      "newName": "Neues Profil aus dieser Einrichtung",
+      "create": "Erstellen"
+    },
+    "nameErrors": {
+      "empty": "Gib einen Namen ein.",
+      "tooLong": "Verwende höchstens {{max}} Zeichen.",
+      "duplicate": "Ein anderes Profil hat diesen Namen."
+    }
   }
 }

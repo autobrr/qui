@@ -1647,5 +1647,23 @@
       "description": "將同一種子的多個副本顯示為一行。",
       "action": "試試看"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "顯示設定檔：{{name}}",
+    "menuLabel": "顯示設定檔",
+    "manage": "管理設定檔…",
+    "panel": {
+      "title": "顯示設定檔",
+      "description": "此瀏覽器使用一個設定檔。對欄位、列密度或側邊欄的變更只套用到該設定檔。",
+      "thisBrowser": "此瀏覽器",
+      "use": "使用",
+      "newName": "從目前設定建立新設定檔",
+      "create": "建立"
+    },
+    "nameErrors": {
+      "empty": "請輸入名稱。",
+      "tooLong": "最多 {{max}} 個字元。",
+      "duplicate": "已有其他設定檔使用此名稱。"
+    }
   }
 }

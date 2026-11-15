@@ -1647,5 +1647,23 @@
       "description": "한 토렌트의 사본을 한 행으로 표시합니다.",
       "action": "사용해 보기"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "표시 프로필: {{name}}",
+    "menuLabel": "표시 프로필",
+    "manage": "프로필 관리…",
+    "panel": {
+      "title": "표시 프로필",
+      "description": "이 브라우저는 프로필 하나를 사용합니다. 열, 행 밀도, 사이드바를 변경하면 그 프로필에만 적용됩니다.",
+      "thisBrowser": "이 브라우저",
+      "use": "사용",
+      "newName": "현재 설정으로 새 프로필 만들기",
+      "create": "만들기"
+    },
+    "nameErrors": {
+      "empty": "이름을 입력하세요.",
+      "tooLong": "{{max}}자 이하로 입력하세요.",
+      "duplicate": "다른 프로필이 이 이름을 사용합니다."
+    }
   }
 }
