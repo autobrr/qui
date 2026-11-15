@@ -143,6 +143,7 @@
     "total": "Celkem",
     "shown": "{{shown}} z {{total}}",
     "showAll": "Zobrazit vše",
+    "showFewer": "Zobrazit méně",
     "noCategory": "Bez kategorie",
     "none": "Žádné",
     "liveError": "Torrenty, které jsou nyní v qBittorrentu, se nepodařilo načíst: {{message}}",

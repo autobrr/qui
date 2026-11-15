@@ -143,6 +143,7 @@
     "total": "Total",
     "shown": "{{shown}} de {{total}}",
     "showAll": "Mostra-ho tot",
+    "showFewer": "Mostra'n menys",
     "noCategory": "Cap categoria",
     "none": "Cap",
     "liveError": "No s’han pogut carregar els torrents que ara són a qBittorrent: {{message}}",

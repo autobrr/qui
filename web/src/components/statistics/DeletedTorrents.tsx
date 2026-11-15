@@ -11,10 +11,10 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
-import { formatBytes, formatDuration } from "@/lib/utils"
+import { cn, formatBytes, formatDuration } from "@/lib/utils"
 import type { TransferHistoryCauseFilter, TransferHistoryCauseKind, TransferHistoryDeleteEvent, TransferHistoryDeletesAnswer, TransferHistoryInstance } from "@/types"
 import { useQueries, type UseQueryResult } from "@tanstack/react-query"
-import { ArchiveRestore, KeyRound, Loader2, Unplug, User, Zap } from "lucide-react"
+import { ArchiveRestore, ChevronDown, ChevronRight, KeyRound, Loader2, Unplug, User, Zap } from "lucide-react"
 import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -186,33 +186,31 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                 const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
                 const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
                 const time = formatISOTimestamp(event.time)
+                const toggle = () => setFullNames(names => {
+                  const next = new Set(names)
+                  if (full) {
+                    next.delete(key)
+                  } else {
+                    next.add(key)
+                  }
+                  return next
+                })
+                const line = narrow ? "pl-5.5" : undefined
                 return (
-                  <TableRow key={key}>
+                  <TableRow key={key} className={cn(narrow && "cursor-pointer", full && "bg-muted hover:bg-muted")} onClick={narrow ? toggle : undefined}>
                     <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
                     <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
                       {narrow ? (
-                        <button
-                          type="button"
-                          aria-expanded={full}
-                          className="block w-full text-left"
-                          onClick={() => setFullNames(names => {
-                            const next = new Set(names)
-                            if (full) {
-                              next.delete(key)
-                            } else {
-                              next.add(key)
-                            }
-                            return next
-                          })}
-                        >
-                          <TorrentName name={name} className={full ? undefined : "line-clamp-2"} />
+                        <button type="button" aria-expanded={full} className="flex w-full min-w-0 items-start gap-2 text-left">
+                          {full ? <ChevronDown className="mt-1 size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />}
+                          <TorrentName name={name} className={cn("min-w-0", !full && "line-clamp-2")} />
                         </button>
                       ) : <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />}
-                      <div className="truncate text-xs font-normal text-muted-foreground @2xl:hidden">
+                      <div className={cn("truncate text-xs font-normal text-muted-foreground @2xl:hidden", line)}>
                         {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
                       </div>
-                      <div className="text-xs font-normal @xl:hidden"><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
-                      <div className="text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
+                      <div className={cn("text-xs font-normal @xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
+                      <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
                       {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(event.instanceId)}</div>}
                     </TableCell>
                     <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @2xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>

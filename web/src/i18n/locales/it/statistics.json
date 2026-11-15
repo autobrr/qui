@@ -143,6 +143,7 @@
     "total": "Totale",
     "shown": "{{shown}} di {{total}}",
     "showAll": "Mostra tutto",
+    "showFewer": "Mostra meno",
     "noCategory": "Nessuna categoria",
     "none": "Nessuno",
     "liveError": "Impossibile caricare i torrent che sono ora in qBittorrent: {{message}}",

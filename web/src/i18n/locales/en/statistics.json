@@ -142,6 +142,7 @@
     "total": "Total",
     "shown": "{{shown}} of {{total}}",
     "showAll": "Show all",
+    "showFewer": "Show fewer",
     "noCategory": "No category",
     "none": "None",
     "liveError": "Could not load the torrents that are in qBittorrent now: {{message}}",

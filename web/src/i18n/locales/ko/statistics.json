@@ -141,6 +141,7 @@
     "total": "합계",
     "shown": "{{total}}개 중 {{shown}}개",
     "showAll": "모두 보기",
+    "showFewer": "간략히 보기",
     "noCategory": "카테고리 없음",
     "none": "없음",
     "liveError": "지금 qBittorrent에 있는 토렌트를 불러오지 못했습니다: {{message}}",

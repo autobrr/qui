@@ -257,7 +257,7 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("deletes.more")).toBeNull()
   })
 
-  it("opens the whole name of a delete on a tap on a phone, and closes it on the next tap", async () => {
+  it("opens a delete on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     renderTable([instance(1, "Seedbox")])
@@ -267,7 +267,7 @@ describe("DeletedTorrents", () => {
     fireEvent.click(name)
     expect(name.getAttribute("aria-expanded")).toBe("true")
 
-    fireEvent.click(name)
+    fireEvent.click(name.closest("td")!.querySelector("div")!)
     expect(name.getAttribute("aria-expanded")).toBe("false")
   })
 

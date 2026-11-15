@@ -1044,7 +1044,7 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(preloads()).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
   })
 
-  it("shows ten rows of the table on a phone, and each row after Show all", async () => {
+  it("shows ten rows of the table on a phone, each row after Show all, and ten again after Show fewer", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1059,6 +1059,15 @@ describe("Statistics", () => {
 
     expect(within(table).getByText("t12.test")).toBeTruthy()
     expect(screen.queryByText("table.showAll")).toBeNull()
+
+    // jsdom has no layout, so it lacks scrollIntoView, which Show fewer calls to keep the button in view.
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    fireEvent.click(screen.getByText("table.showFewer"))
+
+    expect(within(table).queryByText("t11.test")).toBeNull()
+    expect(screen.getByText("table.shown shown=10 total=12")).toBeTruthy()
+    expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 })
 

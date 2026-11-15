@@ -40,7 +40,8 @@ import {
 import { cn, formatBytes } from "@/lib/utils"
 import type { TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryInstance, TransferHistoryRow } from "@/types"
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
-import { Fragment, useMemo, useState, type ReactNode } from "react"
+import { Fragment, useMemo, useRef, useState, type ReactNode } from "react"
+import { flushSync } from "react-dom"
 import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-table"
@@ -80,6 +81,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
   const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
   const [allRowsOf, setAllRowsOf] = useState<string>()
+  const rowLimit = useRef<HTMLDivElement>(null)
   const withBaseline = !period.from
 
   // Only a switch of the grouping keeps the old rows, so that the table never shows the numbers of another period or selection.
@@ -266,10 +268,22 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
               </TableFooter>
             )}
           </Table>
-          {visible.length < shownRows.length && (
-            <div className="flex items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground">
+          {narrow && shownRows.length > PHONE_ROWS && (
+            <div ref={rowLimit} className="flex items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground">
               <span>{t("table.shown", { shown: formatCount.format(visible.length), total: formatCount.format(shownRows.length) })}</span>
-              <Button variant="outline" size="sm" onClick={() => setAllRowsOf(series)}>{t("table.showAll")}</Button>
+              {allRows ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    flushSync(() => setAllRowsOf(undefined))
+                    // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
+                    rowLimit.current?.scrollIntoView({ block: "nearest" })
+                  }}
+                >
+                  {t("table.showFewer")}
+                </Button>
+              ) : <Button variant="outline" size="sm" onClick={() => setAllRowsOf(series)}>{t("table.showAll")}</Button>}
             </div>
           )}
         </div>

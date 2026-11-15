@@ -142,6 +142,7 @@
     "total": "Gesamt",
     "shown": "{{shown}} von {{total}}",
     "showAll": "Alle anzeigen",
+    "showFewer": "Weniger anzeigen",
     "noCategory": "Keine Kategorie",
     "none": "Keine",
     "liveError": "Die Torrents, die jetzt in qBittorrent sind, konnten nicht geladen werden: {{message}}",
