@@ -54,6 +54,7 @@ describe("buildLiveLayers", () => {
     expect(buildLiveLayers(live({ 1: [[60, 1, 0]] }), instanceLayers([1]))).toEqual([])
   })
 
+  // regression: #4192
   it("does not join two samples more than 6 seconds apart, also when their slots are 3 apart", () => {
     // Slots 86 and 89, 7.8 seconds apart.
     expect(buildLiveLayers(live({ 1: [[7.9, 1, 0], [0.1, 2, 0]] }), instanceLayers([1]))).toEqual([])
@@ -67,6 +68,7 @@ describe("buildLiveLayers", () => {
     expect(filled(layers[0], "up")).toEqual({ 87: 5, 88: 15, 89: 15 })
   })
 
+  // regression: #4192
   it("draws an instance that syncs a little slower than each 2 seconds without holes", () => {
     // A sync each 2.2 s, as the stream sync loop does, and each 4.2 s for a slow instance.
     const steady = Array.from({ length: 80 }, (_, index): [number, number, number] => [178 - index * 2.2, 100, 0])

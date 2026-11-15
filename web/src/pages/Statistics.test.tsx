@@ -265,6 +265,7 @@ describe("Statistics period", () => {
     expect(selectedPeriod()).toBe("periods.24h")
   })
 
+  // regression: #4192
   it("moves to a preset that the server or another tab saves after the page opened", async () => {
     renderPage()
     await screen.findByText("periods.7d")
@@ -284,6 +285,7 @@ describe("Statistics period", () => {
     expect(selectedPeriod()).toBe("periods.7d")
   })
 
+  // regression: #4192
   it("keeps the period of the address over an older server value when the local copy already holds it", async () => {
     localStorage.setItem("qui-statistics-period", JSON.stringify("24h"))
     mocks.search = { period: "24h" }

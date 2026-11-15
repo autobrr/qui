@@ -176,6 +176,7 @@ func TestRecorderTakesNoSampleWhileASyncFails(t *testing.T) {
 	})
 }
 
+// regression: #4192
 func TestRecorderTakesTheSpeedsThatReachTheCacheAfterTheSyncTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()

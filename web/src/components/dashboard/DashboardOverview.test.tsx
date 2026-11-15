@@ -301,6 +301,7 @@ describe("DashboardOverview, Live", () => {
     expect(screen.getByRole("tab", { name: "stream.day" }).hasAttribute("disabled")).toBe(false)
   })
 
+  // regression: #4192
   it("offers 24 h and Live with the local view when the saved settings cannot load", async () => {
     _resetClientSettingsForTests()
     localStorage.setItem("qui-dashboard-chart-view", JSON.stringify("live"))
@@ -331,6 +332,7 @@ describe("DashboardOverview, Live", () => {
     expect(screen.getAllByText(/^stream.peakSpeed/).map(peak => peak.textContent)).toEqual(["stream.peakSpeed speed=4 KiB/s", "stream.peakSpeed speed=0 B/s"])
   })
 
+  // regression: #4192
   it("shows the error in place of the Live chart when a later read of the samples fails", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     localStorage.setItem("qui-dashboard-chart-view", JSON.stringify("live"))

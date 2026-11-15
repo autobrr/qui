@@ -1011,9 +1011,9 @@ export function Search() {
                 type="button"
                 variant="outline"
                 disabled={loadingInstances || !instancesAvailable}
-                className="gap-2"
+                className="min-w-0 shrink gap-2"
               >
-                <span className="text-sm">{instanceSelectorLabel}</span>
+                <span className="truncate text-sm">{instanceSelectorLabel}</span>
                 <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
