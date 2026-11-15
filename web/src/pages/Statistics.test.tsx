@@ -9,7 +9,7 @@ import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
-import { readRaw, writeRaw } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady, writeRaw } from "@/lib/client-settings"
 import { Statistics, StatisticsRoute } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
 import { stubPhone } from "@/test/stubPhone"
@@ -213,9 +213,26 @@ afterEach(() => {
   // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   localStorage.clear()
+  _resetClientSettingsForTests()
   mocks.search = {}
   mocks.navigate.mockReset()
 })
+
+function renderRoute() {
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <StatisticsRoute />
+    </QueryClientProvider>
+  )
+}
+
+// The two calls that useClientSettingsSync makes for the first server snapshot.
+function loadServerSnapshot(settings: Record<string, string> = {}) {
+  act(() => {
+    applyServerSettings(settings)
+    seedAndMarkReady(settings)
+  })
+}
 
 function selectedPeriod(): string | undefined {
   return screen.getAllByRole("tab").find(tab => tab.textContent?.startsWith("periods.") && tab.getAttribute("aria-selected") === "true")?.textContent ?? undefined
@@ -257,14 +274,21 @@ describe("Statistics period", () => {
     expect(selectedPeriod()).toBe("periods.7d")
   })
 
+  // regression: #4192
+  it("waits for the saved period from the server before it shows the periods, so that a tap is not lost", async () => {
+    renderRoute()
+    expect(screen.queryByText("periods.30d")).toBeNull()
+
+    loadServerSnapshot({ "qui-statistics-period": JSON.stringify("7d") })
+    await screen.findByText("periods.7d")
+    expect(selectedPeriod()).toBe("periods.7d")
+  })
+
   it("opens on the period of the address, saves it, and removes it from the address", async () => {
     localStorage.setItem("qui-statistics-period", JSON.stringify("7d"))
     mocks.search = { period: "24h" }
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <StatisticsRoute />
-      </QueryClientProvider>
-    )
+    renderRoute()
+    loadServerSnapshot()
 
     await screen.findByText("periods.24h")
     expect(selectedPeriod()).toBe("periods.24h")

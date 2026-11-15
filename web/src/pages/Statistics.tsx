@@ -11,6 +11,7 @@ import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, t
 import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useStatisticsPeriod } from "@/hooks/useStatisticsPeriod"
+import { useClientSettingsLoaded } from "@/lib/client-settings"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { YearView } from "@/components/statistics/YearView"
@@ -106,7 +107,11 @@ function presetState(preset: PeriodPreset): PeriodState {
 
 const statisticsRoute = getRouteApi("/_authenticated/statistics")
 
-/** Opens on the period of the address, saves it, and removes it from the address, so that a reload opens on the saved period. */
+/**
+ * Opens on the period of the address, saves it, and removes it from the address, so that a reload opens on the saved
+ * period. The page waits for the first read of the server, because until then the saved period can be the default or
+ * an old local copy, and a tap on it is lost.
+ */
 export function StatisticsRoute() {
   const { period } = statisticsRoute.useSearch()
   const navigate = statisticsRoute.useNavigate()
@@ -116,6 +121,14 @@ export function StatisticsRoute() {
     savePreset(period)
     void navigate({ search: previous => ({ ...previous, period: undefined }), replace: true })
   }, [period, savePreset, navigate])
+  const settingsLoaded = useClientSettingsLoaded()
+  if (!settingsLoaded) {
+    return (
+      <div className="flex h-64 items-center justify-center p-4 lg:p-6">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
   return <Statistics initialPreset={period} />
 }
 

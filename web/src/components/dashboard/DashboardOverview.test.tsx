@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "@/i18n"
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { readRaw } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady } from "@/lib/client-settings"
 import type { DashboardInstanceStats } from "@/lib/dashboard-overview"
 import { formatBytes } from "@/lib/utils"
 import { server } from "@/test/msw/server"
@@ -99,7 +99,17 @@ function renderOverview(statsData: DashboardInstanceStats[]) {
   return { ...view, router }
 }
 
+// The two calls that useClientSettingsSync makes for the first server snapshot.
+function loadServerSnapshot(settings: Record<string, string> = {}) {
+  act(() => {
+    applyServerSettings(settings)
+    seedAndMarkReady(settings)
+  })
+}
+
 beforeEach(() => {
+  _resetClientSettingsForTests()
+  seedAndMarkReady({})
   statuses = [recorded(1, 48), recorded(2, 48)]
   answer = () => []
   transferRequests = []
@@ -123,6 +133,7 @@ beforeEach(() => {
   server.use(
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
     http.get("*/api/live-samples", () => HttpResponse.json(liveSamples)),
+    http.put("*/api/client-settings", () => HttpResponse.json({})),
     http.get("*/api/instances/:id/transfer-history", ({ params }) => {
       transferRequests.push(Number(params.id))
       return HttpResponse.json({ rows: answer(Number(params.id)) })
@@ -272,6 +283,22 @@ describe("DashboardOverview, Live", () => {
 
     renderOverview([stats(1)])
     expect(screen.getByRole("tab", { name: "stream.live" }).getAttribute("aria-selected")).toBe("true")
+  })
+
+  // regression: #4192
+  it("waits for the saved view from the server before it offers 24 h and Live, so that a tap is not lost", async () => {
+    _resetClientSettingsForTests()
+    answer = () => [hourRow("a.test", 2, GiB, 0)]
+    renderOverview([stats(1)])
+    await screen.findByTestId("tracker-row")
+    expect(screen.getByRole("tab", { name: "stream.day" }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("tab", { name: "stream.live" }).hasAttribute("disabled")).toBe(true)
+
+    loadServerSnapshot({ "qui-dashboard-chart-view": JSON.stringify("live") })
+    const live = screen.getByRole("tab", { name: "stream.live" })
+    expect(live.getAttribute("aria-selected")).toBe("true")
+    expect(live.hasAttribute("disabled")).toBe(false)
+    expect(screen.getByRole("tab", { name: "stream.day" }).hasAttribute("disabled")).toBe(false)
   })
 
   it("draws the samples of the server for the instances of the list", async () => {

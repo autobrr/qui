@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useDashboardChartView, type DashboardChartView } from "@/hooks/useDashboardChartView"
 import { useLiveSamples } from "@/hooks/useLiveSamples"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import { useClientSettingsLoaded } from "@/lib/client-settings"
 import { useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import {
   buildDayChart,
@@ -107,9 +108,11 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   const dayChart = useMemo(() => current && dayData && buildDayChart(current.rows, current.instanceIds, layerOf, dayData.range), [current, dayData, layerOf])
 
   const [chosen, setChosen] = useDashboardChartView()
+  // Until the first read of the server, the saved view can be the default or an old local copy. A tap then is lost.
+  const settingsLoaded = useClientSettingsLoaded()
   // With no history, the page shows Live and keeps the saved view.
   const range: DashboardChartView = noHistory ? "live" : chosen
-  const live = useLiveSamples(range === "live")
+  const live = useLiveSamples(settingsLoaded && range === "live")
   const liveLayers = useMemo(() => live.data && !live.error ? buildLiveLayers(live.data, layerOf) : [], [live.data, live.error, layerOf])
 
   const totalUp = statsData.reduce((sum, d) => sum + (d.stats?.totalUploadSpeed ?? 0), 0)
@@ -140,14 +143,20 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
 
   const hours = dayChart?.hours ?? []
   // A chart that is loading, failed, or has no sample yet has no peak to give.
-  const shownLayers = range === "day" ? dayChart?.layers : liveLayers.length > 0 ? liveLayers : undefined
+  const shownLayers = !settingsLoaded ? undefined : range === "day" ? dayChart?.layers : liveLayers.length > 0 ? liveLayers : undefined
   const peaks = shownLayers && layerPeaks(shownLayers)
   const peakUp = peaks && (range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.up) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.up, unit) }))
   const peakDown = peaks && (range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.down) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.down, unit) }))
 
   const chartError = range === "live" ? live.error : failed
   let chart: ReactNode
-  if (range === "live" && !chartError) {
+  if (!settingsLoaded) {
+    chart = (
+      <div className="flex h-36 items-center justify-center lg:h-56">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  } else if (range === "live" && !chartError) {
     chart = <StreamChart layers={liveLayers} kind="areas" slots={LIVE_SLOTS} label={t("stream.liveLabel")} className="h-36 lg:h-56" />
   } else if (range === "day" && dayChart) {
     const up = slotTotals(dayChart.layers, "up")
@@ -170,7 +179,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
     ? hours.length > 0 && [clock(hours[0].start), clock(hours[Math.floor(hours.length / 2)].start), clock(hours[hours.length - 1].start + 3_600_000)]
     : [t("stream.liveStart"), t("stream.now")]
 
-  const dayTrigger = <TabsTrigger value="day" disabled={noHistory} className="px-2.5 text-xs">{t("stream.day")}</TabsTrigger>
+  const dayTrigger = <TabsTrigger value="day" disabled={noHistory || !settingsLoaded} className="px-2.5 text-xs">{t("stream.day")}</TabsTrigger>
   const controls = (
     <Tabs value={range} onValueChange={value => setChosen(value as DashboardChartView)}>
       <TabsList className="h-9 lg:h-7">
@@ -180,7 +189,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
             <TooltipContent className="max-w-xs">{t("stream.noHistory")}</TooltipContent>
           </Tooltip>
         ) : dayTrigger}
-        <TabsTrigger value="live" className="px-2.5 text-xs">{t("stream.live")}</TabsTrigger>
+        <TabsTrigger value="live" disabled={!settingsLoaded} className="px-2.5 text-xs">{t("stream.live")}</TabsTrigger>
       </TabsList>
     </Tabs>
   )
