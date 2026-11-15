@@ -72,7 +72,7 @@ function renderTable(instances: TransferHistoryInstance[]) {
     </QueryClientProvider>
   )
   const view = render(table(1e12))
-  return { moveTo: (to: number) => view.rerender(table(to)) }
+  return { queryClient, moveTo: (to: number) => view.rerender(table(to)) }
 }
 
 function shownNames(): string[] {
@@ -308,11 +308,13 @@ describe("DeletedTorrents", () => {
   it("loads the first page of the other filters of each instance after the first filter", async () => {
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     deletesOf.set(2, [event(2, 0, 4_000, "automation")])
-    renderTable([instance(1, "Seedbox"), instance(2, "Home")])
+    const { queryClient } = renderTable([instance(1, "Seedbox"), instance(2, "Home")])
 
     await vi.waitFor(() => expect(requests.filter(request => request.cause !== null).map(request => `${request.instanceId} ${request.cause} ${request.offset}`).sort()).toEqual([
       "1 automation 0", "1 other 0", "1 user 0", "2 automation 0", "2 other 0", "2 user 0",
     ]))
+    // The rows of a switch come from the preload only when each preload answered.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
     const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
     fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
 

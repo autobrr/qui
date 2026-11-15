@@ -1156,8 +1156,9 @@ describe("Statistics", () => {
   })
 
   // regression: #4179
-  it("loads the rows of a grouping once when the pointer reaches its tab", async () => {
+  it("loads the rows of a grouping once when the pointer reaches its tab, and shows them at once on a click", async () => {
     const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
+    answer = ({ bucket, groupBy }) => groupBy === "category" && bucket === "total" ? [row("tv", 1024, 0, { width: "total" })] : []
     const { queryClient } = renderPage()
     // The chart asks for its rows once the status loaded.
     await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
@@ -1177,14 +1178,21 @@ describe("Statistics", () => {
     // A preload starts its request at once, so no running query means that each request reached the server.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
     expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"])
+
+    fireEvent.mouseDown(category, { button: 0 })
+
+    expect(cells(screen.getByRole("table"), "tv")[1]).toBe("2 KiB")
+    // The table reads its cached rows again in the background. A request that lands after the test would count in the next one.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
 
   // regression: #4179
-  it("loads the rows of each other grouping when a phone opens the grouping picker", async () => {
+  it("loads the rows of each other grouping when a phone opens the grouping picker, and shows them at once on a pick", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     Element.prototype.scrollIntoView = vi.fn()
     const preloads = () => new Set(requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent").map(request => request.groupBy))
-    renderPage()
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" && bucket === "total" ? [row("1080p", 1024, 0, { width: "total" })] : []
+    const { queryClient } = renderPage()
     await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
     expect(preloads().size).toBe(0)
 
@@ -1192,6 +1200,13 @@ describe("Statistics", () => {
     fireEvent.keyDown(picker, { key: "Enter" })
 
     await vi.waitFor(() => expect(preloads()).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
+    // Ten preloads and the queries of the page take more than the 1 s default of waitFor.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0), { timeout: 5000 })
+
+    fireEvent.click(await screen.findByRole("option", { name: "table.groupings.resolution" }))
+
+    expect(within(screen.getByRole("table")).getByText("1080p")).toBeTruthy()
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
 
   // regression: #4179
