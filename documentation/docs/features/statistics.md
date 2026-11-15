@@ -212,7 +212,7 @@ After the first list loads, qui also loads the first rows of the other buttons, 
 
 The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table shows 5 rows first, and **Show more** shows 10 more rows. **Show fewer** goes back to 5 rows.
 
-On a narrow screen, such as a phone, the table hides some columns. It shows the time below the final upload. It shows the tracker, the cause, the final ratio, and the seeding time below the name. On a phone, tap a row to see the whole name and the whole cause. Tap the row again to cut them to one line.
+On a narrow screen, such as a phone, the table hides some columns. It shows the time below the final upload. It shows the tracker, the cause, the final ratio, and the seeding time below the name. On a phone, a row whose name or cause is cut shows an arrow. Tap the row to see the whole name and the whole cause, and tap it again to cut them again. A row that shows its name and cause in full has no arrow.
 
 ## Baseline
 

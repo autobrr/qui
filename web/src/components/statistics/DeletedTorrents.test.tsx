@@ -76,7 +76,8 @@ function renderTable(instances: TransferHistoryInstance[]) {
 }
 
 function shownNames(): string[] {
-  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title], tbody tr td:nth-child(2) > button > span[title]")].map(node => node.getAttribute("title") ?? "")
+  // A phone row puts the name in a button when the row opens, and in a div when it has nothing more to show.
+  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title], tbody tr td:nth-child(2) > button > span[title], tbody tr td:nth-child(2) > div > span[title]")].map(node => node.getAttribute("title") ?? "")
 }
 
 beforeEach(() => {
@@ -112,6 +113,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   // A test of Show fewer stubs it, as jsdom has no layout.
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
 })
@@ -370,8 +372,11 @@ describe("DeletedTorrents", () => {
   })
 
   // regression: #4179
-  it("opens a delete on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
+  it("opens a delete with a cut name on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    // jsdom has no layout. A name that needs more lines than the row shows has a larger scroll height.
+    vi.spyOn(Element.prototype, "scrollHeight", "get").mockReturnValue(60)
+    vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(40)
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     renderTable([instance(1, "Seedbox")])
     const name = (await screen.findByTitle("Built.Name.1.0-GRP")).closest("button")!
@@ -382,6 +387,18 @@ describe("DeletedTorrents", () => {
 
     fireEvent.click(name.closest("td")!.querySelector("div")!)
     expect(name.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  // regression: #4179
+  it("offers no opener on a phone for a delete whose name and cause show in full", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, [event(1, 0, 5_000, "automation", "Tidy up")])
+    renderTable([instance(1, "Seedbox")])
+    const name = await screen.findByTitle("Built.Name.1.0-GRP")
+
+    expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
+    fireEvent.click(name)
+    expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
   })
 
   it("masks the torrent names in incognito mode", async () => {

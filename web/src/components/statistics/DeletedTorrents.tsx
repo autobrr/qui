@@ -16,7 +16,7 @@ import { cn, formatBytes, formatDuration } from "@/lib/utils"
 import type { TransferHistoryCauseFilter, TransferHistoryCauseKind, TransferHistoryDeleteEvent, TransferHistoryDeletesAnswer, TransferHistoryInstance } from "@/types"
 import { useQueries, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
 import { ArchiveRestore, ChevronDown, ChevronRight, KeyRound, Loader2, Unplug, User, Zap } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { useTranslation } from "react-i18next"
 
@@ -115,6 +115,8 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const [cause, setCause] = useState<TransferHistoryCauseFilter>("")
   // The phone rows that the user opened with a tap, to read the whole name and cause, as a touch screen cannot show a title.
   const [fullNames, setFullNames] = useState<ReadonlySet<string>>(new Set())
+  // The phone rows whose name or cause the row cuts. Only such a row has more to show when it opens.
+  const [cutRows, setCutRows] = useState<ReadonlySet<string>>(new Set())
   const [paging, setPaging] = useState({ scope, cause, pages: 1 })
   const pages = paging.scope === scope && paging.cause === cause ? paging.pages : 1
   const loaded = useDeletesPages(instances, period, cause, pages)
@@ -203,6 +205,28 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     }
   }, [minHeight, stale])
 
+  const table = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const node = table.current
+    if (!narrow || !node) {
+      return
+    }
+    const measure = () => {
+      const cut = new Set<string>()
+      for (const row of node.querySelectorAll<HTMLElement>("tr[data-delete]")) {
+        // The name and the cause carry a title with their whole text.
+        if ([...row.querySelectorAll("span[title]")].some(span => span.scrollHeight > span.clientHeight + 1 || span.scrollWidth > span.clientWidth + 1)) {
+          cut.add(row.dataset.delete!)
+        }
+      }
+      setCutRows(last => last.size === cut.size && [...cut].every(key => last.has(key)) ? last : cut)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [narrow, rows, fullNames])
+
   return (
     <>
       <div className="overflow-x-auto px-4 pb-4 sm:px-6">
@@ -232,7 +256,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
           ) : rows.length === 0 ? (
             <div className="flex h-24 items-center justify-center border-t px-4 text-sm text-muted-foreground sm:px-6">{t("deletes.empty")}</div>
           ) : (
-            <div className="@container border-t">
+            <div ref={table} className="@container border-t">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -264,15 +288,23 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                       return next
                     })
                     const line = narrow ? "pl-5.5" : undefined
+                    // An open row stays open until a tap closes it. A closed row opens only when it cuts its name or cause.
+                    const opens = narrow && (full || cutRows.has(key))
                     return (
-                      <TableRow key={key} className={cn(narrow && "cursor-pointer", full && "bg-muted hover:bg-muted")} onClick={narrow ? toggle : undefined}>
+                      <TableRow key={key} data-delete={key} className={cn(opens && "cursor-pointer", full && "bg-muted hover:bg-muted")} onClick={opens ? toggle : undefined}>
                         <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
                         <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
-                          {narrow ? (
+                          {opens ? (
                             <button type="button" aria-expanded={full} className="flex w-full min-w-0 items-start gap-2 text-left">
                               {full ? <ChevronDown className="mt-1 size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />}
                               <TorrentName name={name} className={cn("min-w-0", !full && "line-clamp-2")} />
                             </button>
+                          ) : narrow ? (
+                            <div className="flex w-full min-w-0 items-start gap-2">
+                              {/* The space of the arrow keeps the name in line with the names of the rows that open. */}
+                              <span className="mt-1 size-3.5 shrink-0" aria-hidden />
+                              <TorrentName name={name} className="min-w-0 line-clamp-2" />
+                            </div>
                           ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
                           <div className={cn("truncate text-xs font-normal text-muted-foreground @4xl:hidden", line)}>
                             {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
