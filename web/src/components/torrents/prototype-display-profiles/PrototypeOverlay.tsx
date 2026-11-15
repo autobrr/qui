@@ -4,13 +4,16 @@
  */
 
 // PROTOTYPE (throwaway): the floating variant switcher (torrent page only) and
-// the state debug panel (every page). Mounted once in AppLayout, dev builds only.
+// the state debug panel (every page), plus the New profile dialog and the phone
+// profile sheet. Mounted once in AppLayout, dev builds only.
 
 import { useLocation, useNavigate } from "@tanstack/react-router"
 import { Bug, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import { cn } from "@/lib/utils"
+import { MobileProfileSheet } from "./MobileProfileSheet"
+import { NewProfileDialog } from "./NewProfileDialog"
 import {
   actions,
   columnsFor,
@@ -163,6 +166,9 @@ function DebugPanel() {
             <button type="button" onClick={actions.simulateRemoteDelete} className="rounded bg-white/10 px-1.5 py-0.5 hover:bg-white/20">
               other browser deletes {active.name}
             </button>
+            <button type="button" onClick={actions.simulateUnknownIcon} className="rounded bg-white/10 px-1.5 py-0.5 hover:bg-white/20">
+              unknown icon on {active.name}
+            </button>
             <button type="button" onClick={actions.showNoticeAgain} className="rounded bg-white/10 px-1.5 py-0.5 hover:bg-white/20">show notice</button>
             <button type="button" onClick={actions.firstRun} className="rounded bg-white/10 px-1.5 py-0.5 hover:bg-white/20">first run (Default only)</button>
             <button
@@ -200,6 +206,8 @@ export function DisplayProfilesPrototypeOverlay() {
     <>
       <DebugPanel />
       {pathname.includes("/instances/") && <PrototypeSwitcher />}
+      <NewProfileDialog />
+      <MobileProfileSheet />
     </>
   )
 }

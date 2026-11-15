@@ -5,6 +5,7 @@
 
 import { useCallback } from "react"
 
+import { PROTOTYPE_ENABLED, usePrototypeViewMode } from "@/components/torrents/prototype-display-profiles/store"
 import { TORRENT_VIEW_MODE_KEYS, useClientSetting } from "@/lib/client-settings"
 
 const MOBILE_VIEW_MODES = ["normal", "compact", "ultra-compact"] as const
@@ -63,6 +64,17 @@ export function usePersistedCompactViewState(layout: ViewModeLayout) {
   const cycleViewMode = useCallback(() => {
     setViewMode(modes[(modes.indexOf(viewMode) + 1) % modes.length])
   }, [modes, setViewMode, viewMode])
+
+  // PROTOTYPE (throwaway): the desktop row density follows this browser's Display profile.
+  const prototype = usePrototypeViewMode()
+  if (PROTOTYPE_ENABLED && layout === "desktop") {
+    return {
+      viewMode: prototype.viewMode as ViewMode,
+      setViewMode: prototype.setViewMode as (requested: ViewMode) => void,
+      cycleViewMode: prototype.cycleViewMode,
+      viewModes: modes,
+    } as const
+  }
 
   return {
     viewMode,

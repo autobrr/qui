@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { MobileProfileMenuItem } from "./prototype-display-profiles/MobileProfileSheet"
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
@@ -1136,7 +1137,8 @@ export function TorrentCardsMobile({
                     {t("mobileCards.sort")}: {t(currentSortOption.labelKey)}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
+                <DropdownMenuContent align="end" className="w-56 max-h-100 overflow-y-auto">
+                  <MobileProfileMenuItem />
                   <CopyGroupMenuItems groupCopies={groupCopiesSetting} onToggleGroupCopies={toggleGroupCopies} />
                   <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup

@@ -3,18 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// PROTOTYPE (throwaway), v2: the Display profile picker on /instances/$id
+// PROTOTYPE (throwaway), v3: the Display profile picker on /instances/$id
 // (?variant=C by default, A and B through the switcher; ?notice=1 forces the
 // Feature notice) and the Settings › General › Display profiles section.
 // All state lives in this module; nothing writes Client settings. The table
-// reads its visible columns and Name stretch from here, so "Same columns on
-// every instance" shows on the real table. Column order and widths stay real.
+// reads its visible columns, Name stretch, and row density from here, so
+// "Same columns on every instance" shows on the real table. Column order and
+// widths stay real.
 
 import type { ColumnVisibilityState } from "@tanstack/react-table"
 import { useCallback, useEffect, useSyncExternalStore, type SetStateAction } from "react"
 import { toast } from "sonner"
 
 import { DEFAULT_COLUMN_VISIBILITY } from "@/lib/torrent-table/default-columns"
+import { guessIcon, type ProfileColor } from "./look"
 
 export const PROTOTYPE_ENABLED = import.meta.env.DEV
 
@@ -69,6 +71,9 @@ export interface DisplayProfile {
   openFilterSections: string[]
   collapsedCategoryTrees: string[]
   showEmptyFilters: boolean
+  /** A lucide icon name from look.ts; an unknown name shows a letter tile. */
+  icon: string
+  color: ProfileColor
   copiedFrom?: string
 }
 
@@ -78,6 +83,11 @@ interface PrototypeState {
   noticeSeen: boolean
   noticeSeenBy: string
   pickerOpen: boolean
+  newProfileOpen: boolean
+  /** The Settings editor shows a new profile as soon as it exists. */
+  lastCreatedId: string | null
+  /** The phone sheet behind the "Display profile" item of the mobile torrent list menu. */
+  profileSheetOpen: boolean
   /** The instance the torrent page shows; null off the torrent page. */
   currentInstanceId: number | null
   /** The last instance this browser showed. Settings turns "Same columns" on from its setup. */
@@ -117,6 +127,8 @@ function initialProfiles(): DisplayProfile[] {
       openFilterSections: ["Status", "Categories", "Tags", "Trackers"],
       collapsedCategoryTrees: [],
       showEmptyFilters: true,
+      icon: "app-window",
+      color: "none",
     },
     {
       id: "laptop",
@@ -130,6 +142,8 @@ function initialProfiles(): DisplayProfile[] {
       openFilterSections: ["Status"],
       collapsedCategoryTrees: ["movies"],
       showEmptyFilters: false,
+      icon: "laptop",
+      color: "none",
     },
     {
       id: "phone",
@@ -143,6 +157,8 @@ function initialProfiles(): DisplayProfile[] {
       openFilterSections: [],
       collapsedCategoryTrees: ["movies", "tv"],
       showEmptyFilters: false,
+      icon: "smartphone",
+      color: "none",
     },
   ]
 }
@@ -161,6 +177,9 @@ function initialState(): PrototypeState {
     noticeSeen: !params.noticeForced,
     noticeSeenBy: params.noticeForced ? "" : "a second profile exists",
     pickerOpen: false,
+    newProfileOpen: false,
+    lastCreatedId: null,
+    profileSheetOpen: false,
     currentInstanceId: null,
     lastInstanceId: PROTO_INSTANCES[0].id,
     activeProfileId: "laptop",
@@ -200,6 +219,28 @@ function activeProfile(s: PrototypeState = state): DisplayProfile {
 
 export function useActiveProfile(): DisplayProfile {
   return usePrototype(activeProfile)
+}
+
+export function useProfile(id: string): DisplayProfile {
+  return usePrototype((s) => profileById(s, id))
+}
+
+const DENSITY_TO_VIEW_MODE = { Table: "normal", Dense: "dense", Stacked: "compact" } as const
+const DENSITIES: RowDensity[] = ["Table", "Dense", "Stacked"]
+type DesktopViewMode = (typeof DENSITY_TO_VIEW_MODE)[RowDensity]
+
+/** The desktop row density of this browser's profile, as the view mode the torrent table reads. */
+export function usePrototypeViewMode() {
+  const density = usePrototype((s) => activeProfile(s).rowDensity)
+  const setViewMode = useCallback((mode: string) => {
+    const next = DENSITIES.find((d) => DENSITY_TO_VIEW_MODE[d] === mode)
+    if (next) actions.setRowDensity(activeProfile().id, next)
+  }, [])
+  const cycleViewMode = useCallback(() => {
+    const current = activeProfile().rowDensity
+    actions.setRowDensity(activeProfile().id, DENSITIES[(DENSITIES.indexOf(current) + 1) % DENSITIES.length])
+  }, [])
+  return { viewMode: DENSITY_TO_VIEW_MODE[density] as DesktopViewMode, setViewMode, cycleViewMode }
 }
 
 export function useNoticeVisible(): boolean {
@@ -335,7 +376,8 @@ export const actions = {
     if (id === state.activeProfileId) return
     set({ activeProfileId: id, lastAction: `this browser now uses ${nameOf(id)}` })
   },
-  createFromActive(name: string) {
+  /** The copy takes every setting and both switches of the source, but not its icon or color. */
+  createFromActive(name: string, look: { icon: string; color: ProfileColor } = { icon: guessIcon(name), color: "none" }) {
     const source = activeProfile()
     const id = `p${Date.now().toString(36)}`
     const profile: DisplayProfile = {
@@ -343,6 +385,8 @@ export const actions = {
       id,
       name: name.trim(),
       isDefault: false,
+      icon: look.icon,
+      color: look.color,
       copiedFrom: source.name,
     }
     const profiles = [...state.profiles, profile]
@@ -351,8 +395,33 @@ export const actions = {
       ...noticePatch,
       profiles,
       activeProfileId: id,
-      lastAction: `created "${profile.name}" as a copy of ${source.name} (columns, both switches, sort and filters); this browser now uses it`,
+      newProfileOpen: false,
+      lastCreatedId: id,
+      lastAction: `created "${profile.name}" (${profile.icon}, ${profile.color}) as a copy of ${source.name} (columns, both switches, sort and filters); this browser now uses it`,
     })
+    return id
+  },
+  setNewProfileOpen(open: boolean) {
+    if (open === state.newProfileOpen) return
+    set({ newProfileOpen: open, lastAction: open ? "New profile dialog opened" : "New profile dialog closed" })
+  },
+  setProfileSheetOpen(open: boolean) {
+    if (open === state.profileSheetOpen) return
+    set({ profileSheetOpen: open, lastAction: open ? "mobile profile sheet opened" : "mobile profile sheet closed" })
+  },
+  setIcon(id: string, icon: string) {
+    set({ profiles: updateProfile(id, (p) => ({ ...p, icon })), lastAction: `${nameOf(id)}: icon → ${icon}` })
+  },
+  setColor(id: string, color: ProfileColor) {
+    set({ profiles: updateProfile(id, (p) => ({ ...p, color })), lastAction: `${nameOf(id)}: color → ${color}` })
+  },
+  setRowDensity(id: string, rowDensity: RowDensity) {
+    set({ profiles: updateProfile(id, (p) => ({ ...p, rowDensity })), lastAction: `${nameOf(id)}: row density → ${rowDensity}` })
+  },
+  /** A profile saved by a newer qui with an icon this build does not know. */
+  simulateUnknownIcon() {
+    const target = activeProfile()
+    set({ profiles: updateProfile(target.id, (p) => ({ ...p, icon: "cassette-tape" })), lastAction: `${target.name}: icon → cassette-tape (unknown here)` })
   },
   setOwnSortAndFilters(id: string, on: boolean) {
     set({
