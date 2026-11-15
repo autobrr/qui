@@ -305,6 +305,24 @@ describe("DeletedTorrents", () => {
   })
 
   // regression: #4179
+  it("shows five deletes again on a phone after a return to an earlier filter", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
+    fireEvent.click(screen.getByText("deletes.more"))
+    expect(shownNames()).toHaveLength(15)
+    const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
+
+    fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
+    await vi.waitFor(() => expect(trigger("deletes.filters.user").getAttribute("aria-selected")).toBe("true"))
+    fireEvent.mouseDown(trigger("deletes.filters.all"), { button: 0 })
+
+    await vi.waitFor(() => expect(trigger("deletes.filters.all").getAttribute("aria-selected")).toBe("true"))
+    expect(shownNames()).toHaveLength(5)
+  })
+
+  // regression: #4179
   it("opens a delete on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, [event(1, 0, 5_000, "user")])

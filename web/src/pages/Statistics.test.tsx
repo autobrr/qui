@@ -776,6 +776,35 @@ describe("Statistics", () => {
   })
 
   // regression: #4179
+  it("shows ten group rows and five top torrents again on a phone after a return to an earlier period", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    Element.prototype.scrollIntoView = vi.fn()
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" || bucket === "hour" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: bucket })) : []
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    const pickPeriod = async (shown: string, next: string) => {
+      fireEvent.keyDown(screen.getAllByRole("combobox").find(picker => picker.textContent === shown)!, { key: "Enter" })
+      fireEvent.click(await screen.findByRole("option", { name: next }))
+    }
+    renderPage()
+    await screen.findByText("table.shown shown=10 total=12")
+    await screen.findByText("table.shown shown=5 total=7")
+    for (const button of screen.getAllByText("table.showAll")) {
+      fireEvent.click(button)
+    }
+    expect(screen.getByText("table.shown shown=12 total=12")).toBeTruthy()
+
+    await pickPeriod("periods.30d", "periods.7d")
+    await screen.findByText("table.shown shown=10 total=12")
+    await pickPeriod("periods.7d", "periods.30d")
+
+    await vi.waitFor(() => expect(screen.getAllByRole("combobox").some(picker => picker.textContent === "periods.30d")).toBe(true))
+    await screen.findByText("table.shown shown=10 total=12")
+    expect(screen.getByText("table.shown shown=5 total=7")).toBeTruthy()
+  })
+
+  // regression: #4179
   it("shows five top torrents again on a phone after another period", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     Element.prototype.scrollIntoView = vi.fn()

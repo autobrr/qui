@@ -126,6 +126,9 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const countOf = (filter: TransferHistoryCauseFilter) => counts && (filter === "" ? counts.automation + counts.user + counts.other : counts[filter])
   const total = countOf(cause)
   const [phoneRows, setPhoneRows] = useState({ view, count: PHONE_ROWS })
+  if (phoneRows.view !== view) {
+    setPhoneRows({ view, count: PHONE_ROWS })
+  }
   const limit = narrow ? phoneRows.view === view ? phoneRows.count : PHONE_ROWS : Infinity
   const rows = deletes?.slice(0, limit)
   const footer = useRef<HTMLDivElement>(null)

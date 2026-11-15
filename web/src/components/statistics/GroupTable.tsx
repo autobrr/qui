@@ -96,6 +96,10 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
   const shownRows = rows ?? last?.rows
   const shownGrouping = rows ? grouping : last?.grouping ?? grouping
   const shownLimitKey = rows ? limitKey : last?.limitKey ?? limitKey
+  // Show all ends with the rows that it opened, so a return to an earlier choice shows ten rows again.
+  if (allRowsOf !== undefined && allRowsOf !== shownLimitKey) {
+    setAllRowsOf(undefined)
+  }
   const stale = !rows && last !== undefined
   const tracker = shownGrouping === "tracker"
 

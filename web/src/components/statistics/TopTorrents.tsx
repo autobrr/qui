@@ -41,6 +41,9 @@ export function TopTorrents({ scope, torrents: shown, error, period, instances, 
   const [open, setOpen] = useState<string>()
   const [allOf, setAllOf] = useState<string>()
   const all = allOf === scope
+  if (allOf !== undefined && !all) {
+    setAllOf(undefined)
+  }
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
 
   if (error) {
