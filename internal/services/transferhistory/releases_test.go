@@ -249,7 +249,7 @@ func TestNoAnswerOfAReleaseAttributeIsKeptWhileAFoldRuns(t *testing.T) {
 
 	// A change that no write of the module made shows in the next answer, so
 	// the module did not keep the first one.
-	_, err := db.ExecContext(t.Context(), `UPDATE transfer_history_torrent_days SET uploaded = uploaded + 1000`)
+	_, err := db.ExecContext(t.Context(), `UPDATE transfer_history_recent_torrent_days SET uploaded = uploaded + 1000`)
 	require.NoError(t, err)
 	require.Equal(t, int64(2130), upload())
 }

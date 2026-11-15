@@ -72,8 +72,9 @@ func (a sourceAnswer) lasting() bool {
 	return a == sourceOutsideFilter || a == sourceErrored
 }
 
-// sourceGate is the one rule that says if a torrent can give files to a
-// cross-seed now.
+// sourceGate is the Source gate (GLOSSARY.md): the one rule that says if a
+// torrent can give files to a cross-seed now. It joins the source filter, the
+// errored rule, and Settled source.
 type sourceGate struct {
 	recoverErrored bool
 }

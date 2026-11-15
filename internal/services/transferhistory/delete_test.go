@@ -126,6 +126,16 @@ func TestDeleteHistoryPostgresIntegration(t *testing.T) {
 			}),
 		},
 		{
+			// No reading on day 11 moved the torrent days of day 10 yet.
+			name: "a delete before a date deletes the torrent days that wait to move",
+			steps: []step{
+				reading(at(0), torrent("a", 10, 0)),
+				reading(at(5*time.Minute), torrent("a", 110, 0)),
+				deleteHistory(instanceID, at(24*time.Hour)),
+				expect(period(day10, day12, transferhistory.BucketDay, transferhistory.GroupByTorrent)),
+			},
+		},
+		{
 			name: "a delete before the first recording keeps the Baseline",
 			steps: concat(twoDaysWithEvents, []step{
 				deleteHistory(instanceID, day10),
