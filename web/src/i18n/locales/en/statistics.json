@@ -116,9 +116,9 @@
   "allTimeNote": "All time includes the Baseline: the bytes that the torrents had when qui first recorded them. The chart does not show the Baseline, because it has no date.",
   "table": {
     "title": "By group",
-    "descriptionTracker": "The transfer of the period for each tracker. Click a row to open its detail.",
-    "descriptionCategory": "The transfer of the period for each category, under the category that each torrent had when the bytes moved. Click a row to open its detail.",
-    "descriptionRelease": "The transfer of the period for each value that qui reads from the torrent names. Click a row to open its detail.",
+    "descriptionTracker": "The transfer of the period for each tracker. Select a row to open its detail.",
+    "descriptionCategory": "The transfer of the period for each category, under the category that each torrent had when the bytes moved. Select a row to open its detail.",
+    "descriptionRelease": "The transfer of the period for each value that qui reads from the torrent names. Select a row to open its detail.",
     "groupBy": "Group by",
     "groupings": {
       "tracker": "Tracker",
@@ -169,7 +169,7 @@
   },
   "topTorrents": {
     "title": "Top torrents",
-    "description": "The torrents with the most upload in the period. Click a row to see its upload for each day.",
+    "description": "The torrents with the most upload in the period. Select a row to see its upload for each day.",
     "columns": {
       "torrent": "Torrent",
       "first24h": "First 24 hours"

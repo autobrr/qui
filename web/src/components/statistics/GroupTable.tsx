@@ -147,7 +147,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
   return (
     <div className="space-y-3">
       {narrow ? (
-        <div className="flex items-center gap-2 px-4">
+        <div className="flex items-center gap-2 px-4 sm:px-6">
           <span className="shrink-0 text-xs text-muted-foreground">{t("table.groupBy")}</span>
           <Select value={grouping} onValueChange={pick} onOpenChange={opened => opened && onPrefetch?.()}>
             <SelectTrigger size="sm" className="min-w-0">

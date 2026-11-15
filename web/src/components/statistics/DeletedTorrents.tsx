@@ -175,11 +175,11 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
               <TableRow>
                 <TableHead className="hidden pl-6 @xl:table-cell">{t("deletes.columns.time")}</TableHead>
                 <TableHead className="w-full pl-4 sm:pl-6 @xl:pl-2">{t("topTorrents.columns.torrent")}</TableHead>
-                <TableHead className="hidden @2xl:table-cell">{t("table.columns.tracker")}</TableHead>
-                <TableHead className="hidden @xl:table-cell">{t("deletes.columns.cause")}</TableHead>
-                <TableHead className="pr-4 text-right sm:pr-6 @2xl:pr-2">{t("deletes.columns.uploaded")}</TableHead>
-                <TableHead className="hidden text-right @2xl:table-cell">{t("deletes.columns.ratio")}</TableHead>
-                <TableHead className="hidden pr-6 text-right @2xl:table-cell">{t("deletes.columns.seeded")}</TableHead>
+                <TableHead className="hidden @4xl:table-cell">{t("table.columns.tracker")}</TableHead>
+                <TableHead className="hidden @2xl:table-cell">{t("deletes.columns.cause")}</TableHead>
+                <TableHead className="pr-4 text-right sm:pr-6 @4xl:pr-2">{t("deletes.columns.uploaded")}</TableHead>
+                <TableHead className="hidden text-right @4xl:table-cell">{t("deletes.columns.ratio")}</TableHead>
+                <TableHead className="hidden pr-6 text-right @4xl:table-cell">{t("deletes.columns.seeded")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -187,7 +187,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                 const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
                 const key = `${event.instanceId}:${event.hash}:${event.time}`
                 const full = fullNames.has(key)
-                const cause = <Cause kind={event.cause.kind} name={event.cause.name} />
+                const cause = <Cause kind={event.cause.kind} name={event.cause.name} wrap={full} />
                 const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
                 const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
                 const time = formatISOTimestamp(event.time)
@@ -210,22 +210,22 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                           {full ? <ChevronDown className="mt-1 size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />}
                           <TorrentName name={name} className={cn("min-w-0", !full && "line-clamp-2")} />
                         </button>
-                      ) : <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />}
-                      <div className={cn("truncate text-xs font-normal text-muted-foreground @2xl:hidden", line)}>
+                      ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
+                      <div className={cn("truncate text-xs font-normal text-muted-foreground @4xl:hidden", line)}>
                         {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
                       </div>
-                      <div className={cn("text-xs font-normal @xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
-                      <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
-                      {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(event.instanceId)}</div>}
+                      <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
+                      <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
+                      {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @4xl:block">{instanceNames.get(event.instanceId)}</div>}
                     </TableCell>
-                    <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @2xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
-                    <TableCell className="hidden max-w-64 align-top @xl:table-cell">{cause}</TableCell>
-                    <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @2xl:pr-2">
+                    <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @4xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
+                    <TableCell className="hidden max-w-64 align-top @2xl:table-cell">{cause}</TableCell>
+                    <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @4xl:pr-2">
                       {formatBytes(event.uploaded)}
                       <div className="ml-auto max-w-24 whitespace-normal text-xs text-muted-foreground @xl:hidden">{time}</div>
                     </TableCell>
-                    <TableCell className="hidden text-right align-top tabular-nums @2xl:table-cell">{ratio}</TableCell>
-                    <TableCell className="hidden pr-6 text-right align-top tabular-nums @2xl:table-cell">{seeded}</TableCell>
+                    <TableCell className="hidden text-right align-top tabular-nums @4xl:table-cell">{ratio}</TableCell>
+                    <TableCell className="hidden pr-6 text-right align-top tabular-nums @4xl:table-cell">{seeded}</TableCell>
                   </TableRow>
                 )
               })}

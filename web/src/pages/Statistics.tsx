@@ -275,7 +275,6 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   // The period choice and the instance selection. A new one starts the lists of deletes and of top torrents again at their first rows.
   const listScope = `${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`
 
-  // Below lg, main already pads 4rem for the nav, so this page leaves out the pb-16 of the Page layout rule in docs/standards/frontend-review.md.
   return (
     <div className="space-y-4 p-4 sm:space-y-6 lg:p-6">
       <PageHeader
@@ -287,7 +286,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
           </span>
         }
         actions={narrow ? (
-          <div className={cn("flex min-w-0 items-center gap-1.5", instanceFilter && "w-full")}>
+          <div className={cn("flex min-w-0 items-center gap-1.5", instanceFilter && "max-sm:w-full")}>
             {periodPicker}
             {instanceFilter}
             <SeriesColorPicker />

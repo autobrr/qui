@@ -763,6 +763,15 @@ describe("Statistics", () => {
     expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 
+  it("shows five top torrents on a phone turned sideways, which is wider than the phone layout", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse) and (max-height: 499px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    renderPage()
+
+    await within(await screen.findByRole("table")).findByText("Torrent 5")
+    expect(within(screen.getByRole("table")).queryByText("Torrent 6")).toBeNull()
+  })
+
   it("shows five top torrents again on a phone after another period", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     Element.prototype.scrollIntoView = vi.fn()

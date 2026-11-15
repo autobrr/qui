@@ -22,7 +22,7 @@ export function RowLimit({ shown, total, all, onAllChange }: RowLimitProps) {
   const formatCount = new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language)
 
   return (
-    <div ref={line} className="flex items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground">
+    <div ref={line} className="flex items-center justify-between gap-2 border-t px-4 pt-3 text-xs sm:px-6 text-muted-foreground">
       <span>{t("table.shown", { shown: formatCount.format(shown), total: formatCount.format(total) })}</span>
       {all ? (
         <Button

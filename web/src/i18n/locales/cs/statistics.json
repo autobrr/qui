@@ -117,9 +117,9 @@
   "allTimeNote": "Celkem zahrnuje výchozí stav: bajty, které torrenty měly, když je qui poprvé zaznamenal. Graf výchozí stav neukazuje, protože nemá datum.",
   "table": {
     "title": "Podle skupiny",
-    "descriptionTracker": "Přenos za období pro každý tracker. Klikněte na řádek, abyste otevřeli jeho detail.",
-    "descriptionCategory": "Přenos za období pro každou kategorii, pod kategorií, kterou měl každý torrent, když se bajty přenesly. Klikněte na řádek, abyste otevřeli jeho detail.",
-    "descriptionRelease": "Přenos za období pro každou hodnotu, kterou qui čte z názvů torrentů. Kliknutím na řádek otevřete jeho podrobnosti.",
+    "descriptionTracker": "Přenos za období pro každý tracker. Vyberte řádek, abyste otevřeli jeho detail.",
+    "descriptionCategory": "Přenos za období pro každou kategorii, pod kategorií, kterou měl každý torrent, když se bajty přenesly. Vyberte řádek, abyste otevřeli jeho detail.",
+    "descriptionRelease": "Přenos za období pro každou hodnotu, kterou qui čte z názvů torrentů. Výběrem řádku otevřete jeho podrobnosti.",
     "groupBy": "Seskupit podle",
     "groupings": {
       "tracker": "Tracker",
@@ -170,7 +170,7 @@
   },
   "topTorrents": {
     "title": "Nejlepší torrenty",
-    "description": "Torrenty s největším odesláním v období. Kliknutím na řádek zobrazíte jeho odeslání po dnech.",
+    "description": "Torrenty s největším odesláním v období. Výběrem řádku zobrazíte jeho odeslání po dnech.",
     "columns": {
       "torrent": "Torrent",
       "first24h": "Prvních 24 hodin"

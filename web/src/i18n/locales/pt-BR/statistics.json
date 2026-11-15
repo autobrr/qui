@@ -117,9 +117,9 @@
   "allTimeNote": "Desde o início inclui a base inicial: os bytes que os torrents tinham quando o qui os gravou pela primeira vez. O gráfico não mostra a base inicial, porque ela não tem data.",
   "table": {
     "title": "Por grupo",
-    "descriptionTracker": "A transferência do período para cada tracker. Clique em uma linha para abrir o detalhe.",
-    "descriptionCategory": "A transferência do período para cada categoria, sob a categoria que cada torrent tinha quando os bytes foram transferidos. Clique em uma linha para abrir o detalhe.",
-    "descriptionRelease": "A transferência do período para cada valor que o qui lê dos nomes dos torrents. Clique em uma linha para abrir o detalhe.",
+    "descriptionTracker": "A transferência do período para cada tracker. Selecione uma linha para abrir o detalhe.",
+    "descriptionCategory": "A transferência do período para cada categoria, sob a categoria que cada torrent tinha quando os bytes foram transferidos. Selecione uma linha para abrir o detalhe.",
+    "descriptionRelease": "A transferência do período para cada valor que o qui lê dos nomes dos torrents. Selecione uma linha para abrir o detalhe.",
     "groupBy": "Agrupar por",
     "groupings": {
       "tracker": "Tracker",
@@ -170,7 +170,7 @@
   },
   "topTorrents": {
     "title": "Principais torrents",
-    "description": "Os torrents com mais upload no período. Clique em uma linha para ver o upload de cada dia.",
+    "description": "Os torrents com mais upload no período. Selecione uma linha para ver o upload de cada dia.",
     "columns": {
       "torrent": "Torrent",
       "first24h": "Primeiras 24 horas"

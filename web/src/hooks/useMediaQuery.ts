@@ -43,10 +43,13 @@ export function useMediaQuery(query: string): boolean {
 }
 
 /**
- * Returns true when the viewport is phone-sized (< 640px), where the Tailwind max-sm styles apply.
+ * Returns true on a phone: a viewport under 640px wide, where the Tailwind max-sm styles apply, or a touch screen
+ * under 500px tall, which is a phone turned sideways.
  */
 export function useIsPhone(): boolean {
-  return useMediaQuery("(max-width: 639px)")
+  const narrow = useMediaQuery("(max-width: 639px)")
+  const sideways = useMediaQuery("(pointer: coarse) and (max-height: 499px)")
+  return narrow || sideways
 }
 
 /**
