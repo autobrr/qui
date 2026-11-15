@@ -80,7 +80,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const keys = [...groups.map((_, index) => `s${index}`), ...(hasOther ? [OTHER] : [])]
 
   return (
-    <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[260px] w-full sm:h-[300px]">
+    <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[260px] w-full sm:h-[300px] sideways:h-[220px]">
       <BarChart data={rows} margin={{ top: 16, right: narrow ? 4 : 24, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />

@@ -138,7 +138,8 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                       onMouseEnter={() => setShown(day.start)}
                       onClick={() => setShown(day.start)}
                       className={cn(
-                        "size-3 rounded-[3px]",
+                        // The hit area covers the gaps around the cell, so that each tap in the calendar lands on a day.
+                        "relative size-3 rounded-[3px] after:absolute after:-inset-[1.5px]",
                         day.uploaded === undefined ? "border border-dashed border-border" : !day.uploaded && "bg-muted",
                         day.gapSeconds > 0 && "ring-1 ring-yellow-500",
                         shown === day.start && "outline outline-1 outline-foreground"

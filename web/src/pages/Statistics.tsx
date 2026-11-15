@@ -302,8 +302,8 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-      {/* A phone shows the five numbers in two columns of one card, the last across both. Six tracks give rows of 3 and 2 without an empty cell. */}
-      <div className="grid grid-cols-2 max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5">
+      {/* A phone shows the five numbers in two columns of one card, the last across both, and a phone turned sideways in one row. Six tracks give rows of 3 and 2 without an empty cell. */}
+      <div className="grid grid-cols-2 max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5 sideways:grid-cols-5 sideways:gap-2">
         <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
         <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
         <Tile
@@ -340,15 +340,15 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         </CardHeader>
         <CardContent className="px-4 sm:px-6">
           {chart.error ? (
-            <div className="flex h-[260px] items-center justify-center text-sm text-destructive sm:h-[300px]">{t("errors.load", { message: chart.error.message })}</div>
+            <div className="flex h-[260px] items-center justify-center text-sm text-destructive sm:h-[300px] sideways:h-[220px]">{t("errors.load", { message: chart.error.message })}</div>
           ) : loading ? (
-            <div className="flex h-[260px] items-center justify-center sm:h-[300px]"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            <div className="flex h-[260px] items-center justify-center sm:h-[300px] sideways:h-[220px]"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           ) : bars.some(bar => bar.bytes.size > 0) ? yearView ? (
             <YearView bars={bars} groups={groups} to={shown.period.to} since={since} displayName={displayName} />
           ) : (
             <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
           ) : (
-            <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground sm:h-[300px]">{t("chart.empty")}</div>
+            <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground sm:h-[300px] sideways:h-[220px]">{t("chart.empty")}</div>
           )}
         </CardContent>
       </Card>
@@ -460,13 +460,13 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
 function Tile({ label, value, hint, wide = false }: { label: string; value?: string; hint?: ReactNode; wide?: boolean }) {
   return (
     <Card className={cn(
-      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:nth-[-n+2]:border-t-0 max-sm:even:border-l max-sm:last:col-span-2 xl:col-span-1",
+      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:nth-[-n+2]:border-t-0 max-sm:even:border-l max-sm:last:col-span-2 xl:col-span-1 sideways:col-span-1 sideways:gap-1 sideways:py-3",
       wide ? "sm:col-span-3" : "sm:col-span-2"
     )}>
       <CardContent className="px-4">
-        <div className="text-xs text-muted-foreground sm:text-sm">{label}</div>
+        <div className="text-xs text-muted-foreground sm:text-sm sideways:text-xs">{label}</div>
         <div>
-          <div className="mt-0.5 whitespace-nowrap text-lg font-semibold tabular-nums sm:mt-1 sm:text-2xl">{value ?? "–"}</div>
+          <div className="mt-0.5 whitespace-nowrap text-lg font-semibold tabular-nums sm:mt-1 sm:text-2xl sideways:mt-0.5 sideways:text-lg">{value ?? "–"}</div>
           <div className="text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:empty:block">{hint}</div>
         </div>
       </CardContent>

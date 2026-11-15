@@ -152,7 +152,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     <>
       <div className="overflow-x-auto px-4 pb-4 sm:px-6">
         <Tabs value={cause} onValueChange={value => setCause(value as TransferHistoryCauseFilter)}>
-          <TabsList className="max-sm:w-full">
+          <TabsList className="max-sm:w-max max-sm:min-w-full">
             {FILTERS.map(filter => (
               <TabsTrigger key={filter.cause} value={filter.cause} className="gap-1.5 px-3 max-sm:gap-1 max-sm:px-1.5 max-sm:text-xs">
                 {t(filter.labelKey)}
