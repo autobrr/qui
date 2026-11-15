@@ -85,3 +85,10 @@ test("ignores a key prop after an arrow function prop", (t) => {
 
   assert.equal(result.status, 0, result.stdout + result.stderr)
 })
+
+// regression: #4178
+test("ignores a key prop after a comparison or a quoted bracket", (t) => {
+  const result = scan(t, "<Row hidden={count > 0} key={notice.kind} />\n<Row title=\"a > b\" key={notice.kind} />\n")
+
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+})
