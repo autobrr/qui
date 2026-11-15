@@ -54,6 +54,7 @@ const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
 // "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
 const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
 const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
+const pageShellMessage = 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls.'
 const gazelleSiteSelectors = [
   { selector: 'Literal[regex.pattern=/orpheus|opsfet|flacsfor|redacted/i]', message: gazelleSiteMessage },
   { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
@@ -184,10 +185,8 @@ export default tseslint.config([
     rules: {
       'no-restricted-syntax': ['error',
         ...gazelleSiteSelectors,
-        {
-          selector: 'Program:not(:has(ImportDeclaration[source.value="@/components/layout/Page"]))',
-          message: 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls.',
-        },
+        { selector: 'Program:not(:has(ImportDeclaration[source.value="@/components/layout/Page"]))', message: pageShellMessage },
+        { selector: 'Program:not(:has(JSXOpeningElement[name.name="Page"]))', message: pageShellMessage },
       ],
     },
   },
