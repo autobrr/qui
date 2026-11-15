@@ -54,7 +54,6 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			display_name TEXT NOT NULL,
 			domains TEXT NOT NULL DEFAULT '',
-			included_in_stats TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)
@@ -63,9 +62,9 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 
 	now := time.Now().UTC()
 	_, err = q.ExecContext(ctx, `
-		INSERT INTO tracker_customizations (display_name, domains, included_in_stats, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, "BHD", "bhd.example", "", now, now)
+		INSERT INTO tracker_customizations (display_name, domains, created_at, updated_at)
+		VALUES (?, ?, ?, ?)
+	`, "BHD", "bhd.example", now, now)
 	require.NoError(t, err)
 
 	store := models.NewTrackerCustomizationStore(q)

@@ -429,14 +429,6 @@
     "renameTorrentSuccess": "S'ha reanomenat el torrent a \"{{name}}\"",
     "renameTorrentFailed": "No s'ha pogut reanomenar el torrent: {{error}}",
     "renameTorrentEmpty": "El nom del torrent no pot ser buit",
-    "renameFileSuccess": "S'ha reanomenat el fitxer a \"{{name}}\"",
-    "renameFileFailed": "No s'ha pogut reanomenar el fitxer: {{error}}",
-    "renameFilePathsRequired": "Calen tant el camí original com el nou del fitxer",
-    "renameFileUnchanged": "El nom del fitxer no ha canviat",
-    "renameFolderSuccess": "S'ha reanomenat la carpeta a \"{{name}}\"",
-    "renameFolderFailed": "No s'ha pogut reanomenar la carpeta: {{error}}",
-    "renameFolderPathsRequired": "Calen tant el camí original com el nou de la carpeta",
-    "renameFolderUnchanged": "El nom de la carpeta no ha canviat",
     "partialTags": {
       "title_one": "S'han actualitzat parcialment les etiquetes d'{{count}} torrent",
       "title_other": "S'han actualitzat parcialment les etiquetes de {{count}} torrents",
@@ -556,7 +548,7 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} de {{total}} torrents carregats",
     "scrollForMore": "(desplaça't per veure'n més)",
-    "freeSpace": "Espai lliure",
+    "freeSpace": "Espai lliure (camí predeterminat)",
     "switchToBits": "Canvia a bits per segon (bps)",
     "switchToBytes": "Canvia a bytes per segon (B/s)",
     "altSpeedOn": "Límits de velocitat alternatius: activats",
@@ -1414,12 +1406,10 @@
     "partialResults": "Resultats parcials: hi ha indexadors que no han respost",
     "arrLookupFailed": "Ha fallat la cerca d'ID de metadades: s'ha cercat només pel títol i els resultats poden ser incomplets",
     "arrNoIds": "No s'ha trobat cap ID de metadades d'aquesta release: s'ha cercat només pel títol",
-    "gazelleTimedOut": "RED/OPS no ha respost a temps",
     "torznabFailed": "La cerca de Torznab ha fallat: només es mostren resultats de RED/OPS",
     "searchScope": "Abast de la cerca",
     "noIndexers": "No hi ha cap indexador de Torznab disponible",
     "noIndexersHelp": "Afegeix o activa indexadors de Torznab a Configuració per cercar cross-seed.",
-    "gazelleOnlySearch": "La cerca consulta només els llocs RED/OPS que tenen una clau d'API.",
     "capabilityNote": "Nota sobre les capacitats",
     "capabilityDescription": "Aquests indexadors no tenen les capacitats o categories necessàries per a aquest torrent i el servidor els ometrà:",
     "smartFilteringActive": "Filtratge intel·ligent actiu",
@@ -1507,7 +1497,30 @@
       "useRss": "Fes servir l'automatització d'RSS per al cross-seeding continu",
       "checkIndexers": "Mira la pàgina d'indexadors per veure quins tenen límit de freqüència"
     },
-    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}."
+    "routedTo": "Els cross-seed van a la instància de cross-seed {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "es consultarà",
+      "willAskRejected": "es consultarà: l'última vegada el lloc va rebutjar la clau API",
+      "match": "coincidència",
+      "noMatch": "cap coincidència",
+      "openSettings": "Obre la configuració",
+      "notAsked": {
+        "disabled": "no consultat: desactivat",
+        "noApiKey": "no consultat: sense clau API",
+        "cooldown": "no consultat: cercat fa poc",
+        "notSelected": "no consultat: no seleccionat",
+        "sourceSite": "no consultat: el torrent ve de {{site}}",
+        "alreadySeeded": "no consultat: ja el comparteixes allà",
+        "notMusic": "no consultat: no és música",
+        "other": "no consultat"
+      },
+      "failed": {
+        "keyRejected": "error: el lloc ha rebutjat la clau API",
+        "timedOut": "error: temps esgotat",
+        "other": "error: {{detail}}"
+      }
+    }
   },
   "manualCrossSeed": {
     "title": "Coincidència manual de cross-seed",
@@ -1581,10 +1594,6 @@
     "description": "Afegeix un fitxer torrent o un enllaç magnet per començar a baixar",
     "file": "Fitxer",
     "url": "URL",
-    "tabs": {
-      "basic": "Bàsic",
-      "advanced": "Avançat"
-    },
     "validation": {
       "selectTorrentFile": "Selecciona com a mínim un fitxer torrent",
       "enterUrl": "Introdueix com a mínim un URL o enllaç magnet"
@@ -1596,7 +1605,10 @@
       "existingTorrents": "Torrents existents: {{names}}",
       "highlightedBelow": "Les seleccions duplicades estan destacades a sota.",
       "remove": "Suprimeix els duplicats",
-      "matchesExisting": "Coincideix amb els existents: {{names}}"
+      "matchesExisting": "Coincideix amb els existents: {{names}}",
+      "existingTorrent": "Torrent existent",
+      "more_one": "(+{{count}} més)",
+      "more_other": "(+{{count}} més)"
     },
     "fileInput": {
       "label": "Fitxers torrent",
@@ -1607,10 +1619,9 @@
       "selectedFiles_other": "{{count}} fitxers seleccionats",
       "duplicateFiles_one": "{{count}} fitxer duplicat",
       "duplicateFiles_other": "{{count}} fitxers duplicats",
-      "showFiles": "Mostra els fitxers",
-      "hideFiles": "Amaga els fitxers",
-      "moreFiles": "... i {{count}} més",
-      "removeFile": "Suprimeix el fitxer"
+      "removeFile": "Suprimeix el fitxer",
+      "addMore": "Afegeix més fitxers",
+      "choose": "Tria fitxers torrent"
     },
     "urlInput": {
       "label": "URL / enllaços magnet",
@@ -1621,31 +1632,22 @@
       "skipHashCheck": "Omet la comprovació del hash",
       "category": "Categoria",
       "searchCategories": "Cerca categories...",
-      "availableCategories": "Categories disponibles (fes clic per seleccionar-ne una)",
-      "availableCategoriesFiltered": "Categories disponibles (fes clic per seleccionar-ne una) - filtre: \"{{query}}\"",
       "noCategoriesMatch": "Cap categoria coincideix amb \"{{query}}\"",
       "tags": "Etiquetes",
       "tagsPlaceholder": "Crea una etiqueta nova o cerca entre les disponibles...",
-      "clearAll": "Neteja-ho tot",
-      "availableTags": "Etiquetes disponibles (fes clic per seleccionar-les o desseleccionar-les)",
-      "availableTagsFiltered": "Etiquetes disponibles (fes clic per seleccionar-les o desseleccionar-les) - filtre: \"{{query}}\"",
       "newTag": "(nova)",
-      "noTagsMatch": "Cap etiqueta coincideix amb \"{{query}}\"",
       "autoTmm": "Gestió automàtica dels torrents",
       "savePath": "Camí de desada",
+      "freeSpaceAtDestination": "Espai lliure a la destinació: {{value}}",
       "savePathPlaceholder": "Deixa-ho buit per al predeterminat",
-      "manualSavePath": "Camí de desada manual (TMM desactivat)",
       "useTemporaryPath": "Fes servir un camí temporal",
       "useTemporaryPathDescription": "Baixa a un camí temporal abans de moure el contingut al camí de desada",
       "tempPath": "Camí de baixada temporal",
       "tempPathPlaceholder": "Deixa-ho buit per al predeterminat",
-      "tempPathDescription": "Els torrents es baixaran aquí abans de moure'ls al camí de desada",
-      "autoTmmSavePathDescription": "La gestió automàtica dels torrents està activada. El camí de desada es determinarà segons la configuració de la categoria.",
-      "advancedOptions": "Opcions avançades",
       "sequentialDownload": "Baixada seqüencial",
-      "sequentialDownloadDescription": "(va bé per als fitxers multimèdia)",
+      "sequentialDownloadDescription": "Va bé per als fitxers multimèdia",
       "firstLastPiecePriority": "Prioritat de la primera i l'última peça",
-      "firstLastPiecePriorityDescription": "(comença la reproducció abans)",
+      "firstLastPiecePriorityDescription": "Comença la reproducció abans",
       "downloadLimit": "Límit de baixada (KB/s)",
       "uploadLimit": "Límit de pujada (KB/s)",
       "unlimitedPlaceholder": "0 = il·limitat",
@@ -1661,12 +1663,35 @@
       "renamePlaceholder": "Deixa-ho buit per fer servir el nom original",
       "autoAppliedTitle": "Aplicat automàticament:",
       "autoAddTrackers": "• Addició automàtica de trackers",
-      "fileExclusions": "• Exclusions de fitxers: {{value}}"
+      "fileExclusions": "• Exclusions de fitxers: {{value}}",
+      "noCategory": "Sense categoria",
+      "removeTag": "Elimina l’etiqueta {{tag}}",
+      "addTags": "Afegeix etiquetes",
+      "createTag": "Crea l’etiqueta \"{{tag}}\"",
+      "noTagsYet": "Encara no hi ha etiquetes. Escriu un nom per crear-ne una.",
+      "done": "Fet",
+      "moreOptions": "Més opcions",
+      "moreOptionsHint": "Camí, disposició, ordre de baixada, límits",
+      "saveLocation": "Ubicació",
+      "downloadBehavior": "Ordre de baixada",
+      "limits": "Límits",
+      "changedCount_one": "{{count}} canviada",
+      "changedCount_other": "{{count}} canviades",
+      "clearAll": "Neteja-ho tot",
+      "tagsWithCount": "Etiquetes ({{n}})",
+      "categorySavePath": "Es desa a {{path}}",
+      "autoTmmStatus": "El camí ve de la categoria",
+      "addTypedTags": "Afegeix etiquetes: {{tags}}",
+      "selectedState": "Seleccionat",
+      "moreTags_one": "+{{count}} més",
+      "moreTags_other": "+{{count}} més"
     },
     "footer": {
       "adding": "S'està afegint...",
       "add": "Afegeix el torrent",
-      "cancel": "Cancel·la"
+      "cancel": "Cancel·la",
+      "addCount_one": "Afegeix {{count}} torrent",
+      "addCount_other": "Afegeix {{count}} torrents"
     },
     "toast": {
       "verifyInput": "Comprova el fitxer torrent o l'URL i torna-ho a provar.",

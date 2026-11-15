@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"testing"
 
 	"github.com/autobrr/rls"
@@ -467,6 +468,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 		sourceName string
 		candidate  string
 		wantMatch  bool
+		wantReason string
 	}{
 		{
 			name:       "forward slash in candidate title",
@@ -485,6 +487,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 			sourceName: "Whitesnake-Back.In.Black-1980-FLAC",
 			candidate:  "AC/DC - Back In Black 1980 FLAC",
 			wantMatch:  false,
+			wantReason: "artist mismatch",
 		},
 		{
 			name:       "slash does not join unrelated shows",
@@ -508,7 +511,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 				return
 			}
 			require.False(t, match)
-			require.Equal(t, "title mismatch", reason)
+			require.Equal(t, cmp.Or(tt.wantReason, "title mismatch"), reason)
 		})
 	}
 }

@@ -40,3 +40,19 @@ func (sm *SyncManager) TorrentFactsOf(instanceID int, torrents []*qbt.Torrent, t
 	}
 	return facts
 }
+
+// UniqueSizeOf returns the Unique size (GLOSSARY.md) of torrents, the full
+// torrent list of a sync of an instance. ok is false until a Copy groups
+// build that read the instance ends.
+func (sm *SyncManager) UniqueSizeOf(instanceID int, torrents []*qbt.Torrent) (size int64, ok bool) {
+	unique := sm.copyGroups.Load().uniqueSizes(instanceID)
+	if unique == nil {
+		return 0, false
+	}
+	shared := findSharedContentPaths(torrents)
+	for i, t := range torrents {
+		unique.add(t, shared[i], false)
+	}
+	size, _ = unique.totals()
+	return size, true
+}

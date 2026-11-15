@@ -125,7 +125,9 @@
     "httpStatus": "Errore HTTP! Stato: {{status}}",
     "httpStatusHtml": "Errore HTTP! Stato: {{status}} (il server ha restituito una pagina di errore HTML)",
     "ssoHtmlResponse": "L'API ha restituito una risposta HTML invece di JSON. Se sei dietro un proxy SSO (Cloudflare Access, Pangolin, ecc.), prova ad aggiornare la pagina o a riaprire l'URL in una nuova scheda.",
-    "torrentFileDownloadFailed": "Impossibile scaricare il file torrent: {{status}}"
+    "torrentFileDownloadFailed": "Impossibile scaricare il file torrent: {{status}}",
+    "altSpeedToggle": "Impossibile modificare i limiti di velocità alternativi: {{message}}",
+    "altSpeedToggleHidden": "Impossibile modificare i limiti di velocità alternativi. La modalità incognito nasconde la causa."
   },
   "status": {
     "disabled": "Disabilitato",
@@ -134,6 +136,7 @@
     "updating": "Aggiornamento in corso",
     "error": "Errore",
     "unknown": "Sconosciuto",
+    "unavailable": "Non disponibile",
     "trackerError": "Errore del tracker",
     "unreachable": "Irraggiungibile"
   },
@@ -166,6 +169,79 @@
     "updateAvailable": "Aggiornamento disponibile",
     "versionAvailable": "La versione {{version}} è ora disponibile",
     "dismiss": "Ignora"
+  },
+  "systemNotice": {
+    "needsAttention": "Richiede attenzione",
+    "since": "Da {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Vai alla soluzione",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Registrazione interrotta",
+        "title": "Registrazione interrotta",
+        "effect": "qui non può scrivere lo storico dei trasferimenti. Riprova alla prossima scrittura.",
+        "fix": "Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database.",
+        "menuFix": "Libera spazio su disco per il database"
+      },
+      "shrink_failed": {
+        "short": "Riduzione non riuscita",
+        "title": "Riduzione non riuscita",
+        "effect": "qui non è riuscito a ridurre il file del database. Il database non è cambiato e qui funziona normalmente.",
+        "fix": "Il log di qui contiene i dettagli.",
+        "menuFix": "Leggi il log di qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Il disco ha troppo poco spazio libero. Una riduzione richiede fino a due volte la dimensione del file del database. Libera spazio sul disco, poi riprova.",
+            "menuFix": "Libera spazio, poi riprova"
+          },
+          "locked": {
+            "fix": "Un altro programma teneva aperto il file del database. Chiudi quel programma, ad esempio uno strumento di backup o un visualizzatore di database, poi riprova.",
+            "menuFix": "Chiudi l'altro programma, poi riprova"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Disco quasi pieno",
+        "title": "Disco quasi pieno",
+        "effect": "Il disco del database di qui ha poco spazio libero. Quando il disco è pieno, ogni scrittura di qui fallisce.",
+        "fix": "Libera spazio sul disco, riduci «Mantieni il dettaglio giornaliero per» o elimina la cronologia più vecchia nelle impostazioni Statistiche.",
+        "menuFix": "Libera spazio su disco per il database",
+        "action": "Apri le impostazioni Statistiche"
+      },
+      "redacted_key_rejected": {
+        "short": "Chiave Redacted rifiutata",
+        "title": "Redacted ha rifiutato la chiave API",
+        "effect": "Redacted ha rifiutato l'ultima ricerca. qui lo interroga di nuovo alla prossima ricerca.",
+        "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Redacted e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Redacted ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Redacted.",
+        "menuFix": "Incolla una nuova chiave nelle impostazioni",
+        "action": "Apri le impostazioni Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Chiave Orpheus rifiutata",
+        "title": "Orpheus ha rifiutato la chiave API",
+        "effect": "Orpheus ha rifiutato l'ultima ricerca. qui lo interroga di nuovo alla prossima ricerca.",
+        "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Orpheus e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Orpheus ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Orpheus.",
+        "menuFix": "Incolla una nuova chiave nelle impostazioni",
+        "action": "Apri le impostazioni Gazelle (OPS/RED)"
+      }
+    },
+    "actions": {
+      "tryAgain": "Riprova",
+      "dismiss": "Ignora",
+      "openLog": "Apri il log"
+    },
+    "unknown": {
+      "short": "Avviso di sistema",
+      "title": "Avviso di sistema",
+      "effect": "qui ha trovato un errore che richiede un tuo intervento.",
+      "fix": "Il log di qui contiene i dettagli.",
+      "menuFix": "Leggi il log di qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "File del database ridotto da {{before}} a {{after}}",
+    "nextStart": "La riduzione verrà eseguita al prossimo avvio di qui",
+    "failed": "Impossibile richiedere la riduzione"
   },
   "pwaUpdate": {
     "reload": "Ricarica",

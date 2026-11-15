@@ -12,6 +12,8 @@
     "externalPrograms": "Externí programy",
     "notifications": "Notifikace",
     "dateTime": "Čas a jazyk",
+    "statistics": "Statistiky",
+    "trackers": "Úpravy trackerů",
     "premiumThemes": "Motivy",
     "security": "Bezpečnost",
     "logs": "Logy"
@@ -297,7 +299,7 @@
     "loading": "Načítám cíle oznámení...",
     "loadFailed": "Nepodařilo se načíst cíle oznámení",
     "empty": "Žádné cíle oznámení nakonfigurovány. Přidejte jeden, abyste mohli začít.",
-    "allEvents": "Všechny události",
+    "allEvents": "Všechny události kromě systémového upozornění",
     "showList": "Zobrazit seznam",
     "hideList": "Skrýt seznam",
     "badges": {
@@ -396,6 +398,56 @@
       "error": "Nepodařilo se uložit nastavení data a času"
     }
   },
+  "statistics": {
+    "cardTitle": "Statistiky",
+    "cardDescription": "qui zaznamenává odeslaná a stažená data každého torrentu ve své databázi. Tato nastavení platí pro všechny instance.",
+    "recording": {
+      "label": "Zaznamenávat historii přenosů",
+      "description": "Když je vypnuto, qui nic nezaznamenává a uloženou historii ponechá. Doba, kdy je vypnuto, se stane mezerou v záznamu."
+    },
+    "retention": {
+      "label": "Uchovávat denní podrobnosti po dobu",
+      "description": "Po této době qui sloučí hodinové součty do dnů a denní bajty každého torrentu do jednoho řádku za rok. Součty zůstanou stejné. Když zvolíte kratší dobu, qui starší podrobnosti sloučí při příštím čtení a nelze je obnovit.",
+      "days90": "90 dní",
+      "days400": "400 dní",
+      "forever": "Navždy"
+    },
+    "size": {
+      "label": "Velikost historie"
+    },
+    "deleteHistory": {
+      "label": "Smazat historii",
+      "description": "Smaže historii přenosů jedné instance nebo všech instancí. Nelze ji obnovit.",
+      "instance": "Instance",
+      "allInstances": "Všechny instance",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Vše",
+      "before": "Vše před datem",
+      "date": "Datum",
+      "button": "Smazat historii",
+      "confirmTitle": "Smazat historii?",
+      "confirmEverything": "qui smaže celou historii instance {{name}}. Záznam začne znovu s novým výchozím stavem. Tuto akci nelze vrátit.",
+      "confirmBefore": "qui smaže historii instance {{name}} před {{date}}. Pokud záznam začal před tímto datem, smažou se i bajty z doby před prvním záznamem a „Záznam od“ se posune na toto datum. Tuto akci nelze vrátit.",
+      "sqliteSpace": "Soubor databáze si ponechá svou velikost. SQLite volné místo znovu použije pro novou historii.",
+      "postgresSpace": "Smazání všeho u všech instancí vrátí místo na disk hned. Po jiném smazání Postgres volné místo znovu použije pro novou historii.",
+      "cancel": "Zrušit",
+      "confirm": "Smazat",
+      "deleted": "Historie smazána",
+      "failed": "Historii se nepodařilo smazat",
+      "shrink": {
+        "label": "Zmenšit také soubor databáze",
+        "restart": "qui se restartuje a zmenší soubor, takže získáte místo na disku zpět. qui bude krátce nedostupný.",
+        "nextStart": "qui se v této instalaci nemůže restartovat sám. Zmenšení proběhne při příštím spuštění qui.",
+        "tooLittleSpace": "Na disku je volných {{free}} a zmenšení potřebuje až {{need}}. Můžete to bezpečně nechat vypnuté: SQLite volné místo znovu použije pro novou historii.",
+        "manualDocs": "Zmenšit soubor ručně"
+      }
+    },
+    "loadFailed": "Nastavení statistik se nepodařilo načíst",
+    "toasts": {
+      "saved": "Nastavení statistik uloženo",
+      "saveFailed": "Nastavení statistik se nepodařilo uložit"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "Změnit heslo",
@@ -477,17 +529,49 @@
   },
   "themes": {
     "selector": {
-      "title": "Výběr motivu",
+      "title": "Motivy",
       "loadingDescription": "Načítám dostupné motivy...",
-      "description": "Vyberte z dostupných motivů. Některé motivy vyžadují platnou licenci.",
+      "description": "Kliknutím na motiv ho použijete.",
       "verificationUnavailable": "Ověření licence není dostupné. Přepínání licencovaných motivů je dočasně nedostupné.",
       "notLoaded": "Licencované motivy nejsou načteny",
       "notLoadedDescription": "Spusťte",
+      "defaultThemeVisit": "qui při této návštěvě zobrazuje výchozí motiv, protože adresa obsahuje ?theme=default. Výběrem motivu to ukončíte.",
+      "search": "Hledat motivy",
+      "filterLabel": "Filtrovat motivy",
+      "noMatch": "Žádný motiv neodpovídá „{{query}}“.",
+      "needsLicense": "Vyžaduje licenci",
+      "lockedCount_one": "{{count}} motiv vyžaduje licenci.",
+      "lockedCount_few": "{{count}} motivy vyžadují licenci.",
+      "lockedCount_other": "{{count}} motivů vyžaduje licenci.",
+      "showAll_one": "Zobrazit {{count}} motiv",
+      "showAll_few": "Zobrazit všechny {{count}} motivy",
+      "showAll_other": "Zobrazit všech {{count}} motivů",
+      "showFewer": "Zobrazit méně motivů",
+      "variationCount_one": "{{count}} barevná varianta",
+      "variationCount_few": "{{count}} barevné varianty",
+      "variationCount_other": "{{count}} barevných variant"
+    },
+    "current": {
+      "label": "Používá se",
+      "colors": "Barevné varianty"
+    },
+    "groups": {
+      "all": "Vše",
       "free": "Zdarma",
-      "locked": "Zamčený",
-      "lock": "Zamknout",
-      "showTheme": "Zobrazit",
-      "hideTheme": "Skrýt"
+      "licensed": "S licencí",
+      "custom": "Vlastní"
+    },
+    "menu": {
+      "button": "Vybrat motivy nabídky",
+      "title": "Vybrat motivy nabídky",
+      "description": "Vyberte motivy, které nabídka motivů zobrazuje na horní liště a v zápatí na telefonu. Používaný motiv je v nabídce vždy.",
+      "groupCount": "{{shown}} z {{total}}",
+      "groupsLocked": "Pro použití zaškrtávacích polí skupin vymažte hledání.",
+      "inUse": "Používá se",
+      "summary": "{{shown}} z {{total}} motivů v nabídce",
+      "reset": "Obnovit výchozí",
+      "undo": "Vrátit obnovení",
+      "done": "Hotovo"
     },
     "toasts": {
       "premiumRequired": "Vyžaduje se licence",
@@ -629,25 +713,72 @@
       }
     },
     "custom": {
-      "badge": "Vlastní",
       "title": "Vlastní motivy",
-      "lockedTitle": "Vlastní motivy vyžadují licenci",
-      "lockedDescription": "Získejte licenci a načítejte vlastní CSS soubory motivů z adresáře na disku.",
+      "description": "Napište nebo vložte motiv v editoru motivů, nebo vložte soubory CSS motivů do složky motivů na serveru.",
+      "lockedDescription": "Získejte licenci a přidávejte vlastní motivy: napište nebo vložte motiv v editoru motivů, nebo umístěte CSS soubory motivů do složky motivů na serveru.",
       "unlockCta": "Získat licenci",
       "refresh": "Obnovit",
-      "detectedCount": "Nalezené motivy: {{total}}",
-      "parseErrorsTitle": "Tyto soubory se nepodařilo zpracovat:",
-      "noneFound": "Nenalezeny žádné vlastní motivy. Vložte soubor .css do adresáře motivů a klikněte na Obnovit.",
-      "loadError": "Nepodařilo se načíst vlastní motivy. Zkontrolujte logy serveru a oprávnění adresáře motivů."
+      "themeCount_one": "{{count}} motiv",
+      "themeCount_few": "{{count}} motivy",
+      "themeCount_other": "{{count}} motivů",
+      "folderLabel": "Složka motivů",
+      "actionsFor": "Akce pro {{theme}}",
+      "parseErrorsTitle": "Neplatné motivy:",
+      "parseErrorsHint": "Upravte soubor a opravte ho, nebo ho odstraňte.",
+      "noneFound": "Zatím žádné vlastní motivy. Klikněte na Nový motiv, nebo vložte soubor .css do složky motivů a klikněte na Obnovit.",
+      "loadError": "Nepodařilo se načíst vlastní motivy. Zkontrolujte logy serveru a oprávnění složky motivů.",
+      "newTheme": "Nový motiv",
+      "copyPrompt": "Kopírovat prompt pro vaši AI",
+      "promptCopied": "Prompt zkopírován. Vložte ho do svého AI asistenta a popište vzhled, který chcete.",
+      "promptCopyFailed": "Prompt se nepodařilo zkopírovat",
+      "edit": "Upravit",
+      "remove": "Odstranit",
+      "removeTitle": "Odstranit {{theme}}?",
+      "removeDescription": "qui smaže soubor tohoto motivu ze složky motivů. Tuto akci nelze vrátit zpět. Zařízení, které tento motiv používá, zobrazí výchozí motiv.",
+      "removeConfirm": "Odstranit",
+      "removed": "Motiv odstraněn",
+      "removeFailed": "Motiv se nepodařilo odstranit: {{message}}",
+      "editLoadFailed": "Soubor motivu se nepodařilo načíst: {{message}}",
+      "editor": {
+        "newTitle": "Nový motiv",
+        "editTitle": "Upravit motiv",
+        "description": "Náhled změn se zobrazuje v tomto prohlížeči. Tlačítko Uložit uloží motiv na server.",
+        "name": "Název",
+        "namePlaceholder": "Název motivu",
+        "savedAs": "Název souboru: {{filename}}",
+        "css": "CSS",
+        "cssHelp": "Vložte nebo napište CSS motivu. Potřebuje blok :root pro světlý režim a blok .dark pro tmavý režim, každý s alespoň jedním design tokenem. Tlačítko Kopírovat prompt pro vaši AI předá AI asistentovi úplná pravidla.",
+        "cssPlaceholder": "/* @name: Můj motiv */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "Zadejte název, který obsahuje písmeno nebo číslici.",
+        "nameRequired": "Zadejte název, nebo do CSS přidejte řádek @name.",
+        "save": "Uložit",
+        "saveFailed": "Motiv se nepodařilo uložit.",
+        "saved": "Motiv uložen",
+        "savedNotLoaded": "Motiv je uložen, ale qui nemohlo načíst seznam motivů. Klikněte na Obnovit vedle složky motivů.",
+        "replaceTitle": "Nahradit motiv?",
+        "replaceDescription": "Vlastní motiv s názvem souboru {{filename}} už existuje. Nahradit ho tímto motivem?",
+        "replace": "Nahradit",
+        "problems": {
+          "missingRoot": "qui toto CSS nemůže použít: nemá blok :root s design tokenem. Náhled zobrazuje poslední CSS, které qui mohlo použít.",
+          "missingDark": "qui toto CSS nemůže použít: nemá blok .dark s design tokenem. Náhled zobrazuje poslední CSS, které qui mohlo použít.",
+          "outsideFile": "Řádek {{line}} může načíst soubor z jiného webu. Náhled ponechá poslední platné CSS a Uložit toto CSS odmítne.",
+          "unreadable": "qui nemůže přečíst řádek {{line}}: řetězec v uvozovkách nebo url() není uzavřen. Náhled zobrazuje poslední CSS, které qui mohlo použít."
+        },
+        "previewing": "Náhled v tomto prohlížeči",
+        "previewWaits": "Náhled se spustí, když změníte CSS.",
+        "emptyStatus": "Vložte nebo napište CSS motivu a zobrazí se náhled."
+      }
     },
     "layout": {
+      "title": "Synchronizace motivu",
       "mobileSplit": "Samostatný motiv pro mobilní rozložení",
       "mobileSplitHelp": "Mobilní rozložení (okno užší než 768 px) a desktopové rozložení si každé ponechá vlastní motiv, režim a variantu. Toto nastavení platí pro všechny prohlížeče.",
       "localOnly": "Ponechat motiv tohoto prohlížeče lokálně",
       "localOnlyHelp": "Tento prohlížeč nepřebírá motiv ze serveru a neodesílá na server své změny motivu. Toto nastavení platí jen pro tento prohlížeč.",
       "changesMobile": "Mění mobilní motiv",
       "changesDesktop": "Mění desktopový motiv",
-      "changesLocal": "Mění jen motiv tohoto prohlížeče. Chcete-li změnit nastavení mobilního rozložení, vypněte místní nastavení.",
+      "changesLocal": "Mění jen motiv tohoto prohlížeče.",
+      "splitNeedsSync": "Chcete-li změnit nastavení mobilního rozložení, vypněte místní nastavení.",
       "saveError": "Nastavení motivu se nepodařilo uložit",
       "mobileSplitOffWarning": "Vypnutím se mobilní motiv smaže."
     }
@@ -1162,6 +1293,76 @@
       "bind": "Navázaná adresa",
       "configDir": "Konfigurační adresář",
       "dataDir": "Adresář dat"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Úpravy trackerů",
+    "cardDescription": "Přejmenujte trackery a sloučte domény jednoho trackeru do jedné položky. qui zobrazuje zobrazovaný název všude, kde zobrazuje tracker.",
+    "loading": "Načítání trackerů…",
+    "empty": "Zatím žádné trackery. Trackery se zde zobrazí, jakmile bude mít instance torrenty.",
+    "importTooltip": "Importovat vlastní nastavení",
+    "exportTooltip": "Exportovat vlastní nastavení",
+    "mergedFrom": "Spojeno s: {{domains}}",
+    "original": "Původní: {{domain}}",
+    "mergeTooltip": "Spojit vybrané trackery do této skupiny",
+    "mergeIntoGroup": "Spojit do skupiny",
+    "addToMerge": "Přidat do spojení",
+    "rename": "Přejmenovat",
+    "edit": "Editovat",
+    "delete": "Smazat",
+    "customizeDialog": {
+      "editTitle": "Editovat název trackeru",
+      "renameTitle": "Přejmenovat tracker",
+      "mergeTitle": "Spojit trackery",
+      "editDescription": "Aktualizovat název trackeru.",
+      "renameDescription": "Dát tomuto trackeru vlastní název.",
+      "mergeDescription": "Spojit tyto trackery do jedné položky s vlastním názvem.",
+      "displayName": "Název trackeru",
+      "displayNamePlaceholder": "např. TorrentLeech",
+      "domains": "Domény",
+      "selectedTrackers": "Vybrané trackery",
+      "primary": "Hlavní",
+      "removeDomain": "Odebrat {{domain}}",
+      "cancel": "Zrušit",
+      "saving": "Ukládám...",
+      "save": "Uložit",
+      "renameAction": "Přejmenovat",
+      "mergeAction": "Spojit"
+    },
+    "importDialog": {
+      "title": "Importovat vlastní nastavení trackerů",
+      "description": "Vložte JSON pro import vlastních nastavení trackerů (přejmenování a spojení).",
+      "jsonData": "JSON Data",
+      "invalidFormat": "Neplatný formát: předpokládám pole trackerCustomizations",
+      "missingDisplayName": "Neplatná položka: chybí displayName",
+      "invalidDomains": "Neplatná položka: domains musí být pole, které není prázdné",
+      "invalidJson": "Neplatný JSON",
+      "newCount": "Nové: {{count}}",
+      "conflictCount_one": "{{count}} konflikt",
+      "conflictCount_few": "{{count}} konflikty",
+      "conflictCount_other": "{{count}} konfliktů",
+      "unchangedCount": "Nezměněné: {{count}}",
+      "resolveConflicts": "Vyřešit konflikty",
+      "conflictsWith": "Konflikt s: {{name}}",
+      "skip": "Přeskočit",
+      "overwrite": "Přepsat",
+      "cancel": "Zrušit",
+      "importing": "Importujeme...",
+      "import": "Importovat"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Žádné vlastní nastavení nejsou k exportu",
+      "copiedToClipboard": "Kopírováno do schránky",
+      "failedToCopy": "Selhalo kopírování do schránky",
+      "createFailed": "Selhalo vytvoření vlastního nastavení trackeru",
+      "updateFailed": "Selhala aktualizace vlastního nastavení trackeru",
+      "deleteFailed": "Selhalo smazání vlastního nastavení trackeru",
+      "failedToImport": "Selhalo importování: {{names}}",
+      "importedAndSkipped": "Importováno {{imported}}, přeskočeno {{skipped}}",
+      "importedCount_one": "Importováno {{count}} vlastního nastavení trackeru",
+      "importedCount_few": "Importována {{count}} vlastní nastavení trackerů",
+      "importedCount_other": "Importováno {{count}} vlastních nastavení trackerů",
+      "noCustomizationsImported": "Žádná vlastní nastavení nejsou importována"
     }
   }
 }

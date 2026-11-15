@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-version typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -260,10 +260,18 @@ generate:
 precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend
 	@echo "Pre-commit checks passed."
 
-# Lint new Go issues since the develop merge-base, then all frontend files
-lint:
+# Warn when the local golangci-lint is not the version that CI pins, because lint and lint-ratchet can then find problems that CI does not
+lint-version:
+	@pin=$$(sed -n 's/^ *version: \(v[0-9.]*\)$$/\1/p' .github/workflows/lint.yml | head -1); \
+	have=v$$(golangci-lint version --short 2>/dev/null); \
+	if [ -n "$$pin" ] && [ "$$have" != "$$pin" ]; then \
+		echo "warning: golangci-lint is $$have, but CI pins $$pin. lint and lint-ratchet can find problems that CI does not."; \
+	fi
+
+# Lint new Go issues since the origin/develop merge-base, then all frontend files
+lint: lint-version
 	@echo "Linting changed Go code..."
-	golangci-lint run --new-from-merge-base=develop --timeout=5m
+	golangci-lint run --new-from-merge-base=origin/develop --timeout=5m
 	@echo "Finding unused Go code in the whole repo..."
 	golangci-lint run --enable-only=unused --timeout=5m ./...
 	@echo "Linting frontend..."
@@ -282,13 +290,13 @@ typecheck-frontend:
 	cd $(WEB_DIR) && pnpm exec tsc -b
 
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
-lint-ratchet:
-	go run ./scripts/ratchet -base $$(git merge-base HEAD develop)
+lint-ratchet: lint-version
+	go run ./scripts/ratchet
 
 # Lint with JSON output (for AI agent consumption)
 lint-json:
 	@echo "Generating lint report..."
-	golangci-lint run --new-from-merge-base=develop --output.json.path=./lint-report.json --timeout=5m || true
+	golangci-lint run --new-from-merge-base=origin/develop --output.json.path=./lint-report.json --timeout=5m || true
 	@echo "Lint report saved to lint-report.json"
 
 # Lint with auto-fix where possible

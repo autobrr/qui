@@ -938,7 +938,7 @@ export function LogSettingsPanel() {
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <CardTitle>{t("logs.title")}</CardTitle>
             <CardDescription>
               {t("logs.description")}

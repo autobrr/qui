@@ -125,7 +125,9 @@
     "httpStatus": "Error HTTP! Estat: {{status}}",
     "httpStatusHtml": "Error HTTP! Estat: {{status}} (el servidor ha retornat una pàgina d'error HTML)",
     "ssoHtmlResponse": "S'ha rebut una resposta HTML en lloc de JSON de l'API. Si ets darrere d'un servidor intermediari SSO (Cloudflare Access, Pangolin, etc.), prova d'actualitzar la pàgina o de tornar a obrir l'URL en una pestanya nova.",
-    "torrentFileDownloadFailed": "No s'ha pogut baixar el fitxer torrent: {{status}}"
+    "torrentFileDownloadFailed": "No s'ha pogut baixar el fitxer torrent: {{status}}",
+    "altSpeedToggle": "No s'han pogut canviar els límits de velocitat alternatius: {{message}}",
+    "altSpeedToggleHidden": "No s'han pogut canviar els límits de velocitat alternatius. El mode incògnit n’amaga la causa."
   },
   "status": {
     "disabled": "Desactivat",
@@ -134,6 +136,7 @@
     "updating": "S'està actualitzant",
     "error": "Error",
     "unknown": "Desconegut",
+    "unavailable": "No disponible",
     "trackerError": "Error del tracker",
     "unreachable": "Inaccessible"
   },
@@ -166,6 +169,79 @@
     "updateAvailable": "Actualització disponible",
     "versionAvailable": "La versió {{version}} ja està disponible",
     "dismiss": "Descarta"
+  },
+  "systemNotice": {
+    "needsAttention": "Requereix atenció",
+    "since": "Des de {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Ves a la solució",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Enregistrament aturat",
+        "title": "Enregistrament aturat",
+        "effect": "qui no pot escriure l'historial de transferències. Ho torna a provar a la propera escriptura.",
+        "fix": "Assegura't que el disc té espai lliure i que qui pot escriure el fitxer de la base de dades.",
+        "menuFix": "Allibera espai de disc per a la base de dades"
+      },
+      "shrink_failed": {
+        "short": "La reducció ha fallat",
+        "title": "La reducció ha fallat",
+        "effect": "qui no ha pogut reduir el fitxer de la base de dades. La base de dades no ha canviat i qui funciona com sempre.",
+        "fix": "El registre de qui té els detalls.",
+        "menuFix": "Llegeix el registre de qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "El disc té massa poc espai lliure. Una reducció necessita fins a dues vegades la mida del fitxer de la base de dades. Allibera espai al disc i torna-ho a provar.",
+            "menuFix": "Allibera espai i torna-ho a provar"
+          },
+          "locked": {
+            "fix": "Un altre programa tenia obert el fitxer de la base de dades. Atura aquest programa, per exemple una eina de còpia de seguretat o un visor de bases de dades, i torna-ho a provar.",
+            "menuFix": "Atura l'altre programa i torna-ho a provar"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Poc espai al disc",
+        "title": "Poc espai al disc",
+        "effect": "El disc de la base de dades de qui té poc espai lliure. Quan el disc és ple, totes les escriptures de qui fallen.",
+        "fix": "Allibera espai al disc, redueix «Conserva el detall diari durant» o elimina l'historial antic a la configuració d'Estadístiques.",
+        "menuFix": "Allibera espai de disc per a la base de dades",
+        "action": "Obre la configuració d'Estadístiques"
+      },
+      "redacted_key_rejected": {
+        "short": "Clau de Redacted rebutjada",
+        "title": "Redacted ha rebutjat la clau API",
+        "effect": "Redacted ha rebutjat l'última cerca. qui el torna a consultar a la cerca següent.",
+        "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Redacted i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Redacted ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Redacted.",
+        "menuFix": "Enganxa una clau nova a la configuració",
+        "action": "Obre la configuració Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Clau de Orpheus rebutjada",
+        "title": "Orpheus ha rebutjat la clau API",
+        "effect": "Orpheus ha rebutjat l'última cerca. qui el torna a consultar a la cerca següent.",
+        "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Orpheus i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Orpheus ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Orpheus.",
+        "menuFix": "Enganxa una clau nova a la configuració",
+        "action": "Obre la configuració Gazelle (OPS/RED)"
+      }
+    },
+    "actions": {
+      "tryAgain": "Torna-ho a provar",
+      "dismiss": "Descarta",
+      "openLog": "Obre el registre"
+    },
+    "unknown": {
+      "short": "Avís del sistema",
+      "title": "Avís del sistema",
+      "effect": "qui ha trobat un error que necessita una acció teva.",
+      "fix": "El registre de qui té els detalls.",
+      "menuFix": "Llegeix el registre de qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Fitxer de la base de dades reduït de {{before}} a {{after}}",
+    "nextStart": "La reducció s'executa en el proper inici de qui",
+    "failed": "No s'ha pogut demanar la reducció"
   },
   "pwaUpdate": {
     "reload": "Recarrega",

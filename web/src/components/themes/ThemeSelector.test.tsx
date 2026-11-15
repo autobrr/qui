@@ -4,41 +4,63 @@
  */
 
 import type { Theme } from "@/config/themes"
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react"
+import type { ReactElement } from "react"
 import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { _resetClientSettingsForTests, seedAndMarkReady } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 const fixture = vi.hoisted(() => {
   const makeTheme = (
     id: string,
     name: string,
-    options: Pick<Theme, "isPremium" | "isCustom" | "locked"> = {}
+    options: Partial<Pick<Theme, "isPremium" | "isCustom" | "locked" | "variations" | "cssVars">> = {}
   ): Theme => ({
     id,
     name,
     description: `${name} description`,
-    ...options,
     cssVars: {
       light: {},
       dark: {},
     },
+    ...options,
   })
 
   return {
     builtInThemes: [
-      makeTheme("nord", "Licensed theme", { isPremium: true }),
+      makeTheme("nord", "Licensed theme", {
+        isPremium: true,
+        variations: ["frost", "aurora"],
+        cssVars: { light: {}, dark: { "--variation-frost": "#88c0d0", "--variation-aurora": "#b48ead" } },
+      }),
       makeTheme("locked", "Locked theme", { isPremium: true, locked: true }),
       makeTheme("free", "Free theme"),
       makeTheme("gruvbox", "Community theme", { isPremium: true }),
     ],
     customThemes: [
-      makeTheme("custom:local", "Custom theme", { isCustom: true }),
+      {
+        ...makeTheme("custom:local", "Custom theme", { isCustom: true }),
+        rawCss: "/* @name: Custom theme */\n:root { --background: white; }\n.dark { --background: black; }\n",
+      },
     ],
   }
 })
+
+const license = vi.hoisted(() => ({ hasPremiumAccess: true }))
+const themeUtils = vi.hoisted(() => ({
+  paintCustomThemePreview: vi.fn(),
+  endCustomThemePreview: vi.fn(() => Promise.resolve()),
+  setTheme: vi.fn(() => Promise.resolve()),
+}))
+const customThemesHook = vi.hoisted(() => ({
+  refreshCustomThemes: vi.fn<() => Promise<Array<{ id: string; filename: string; css: string }>>>(() => Promise.resolve([])),
+}))
+const themeHook = vi.hoisted(() => ({ theme: "free", mode: "dark", dark: true, setTheme: vi.fn(), setVariation: vi.fn() }))
+const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()) }))
 
 vi.mock("@/config/themes", () => ({
   themes: fixture.builtInThemes,
@@ -48,7 +70,7 @@ vi.mock("@/config/themes", () => ({
 
 vi.mock("@/hooks/useLicense.ts", () => ({
   useHasPremiumAccess: () => ({
-    hasPremiumAccess: true,
+    hasPremiumAccess: license.hasPremiumAccess,
     isLoading: false,
     isError: false,
   }),
@@ -68,28 +90,31 @@ vi.mock("@/hooks/useCustomThemes", () => ({
     isError: false,
     refetch: vi.fn(),
   }),
+  refreshCustomThemes: customThemesHook.refreshCustomThemes,
+}))
+
+vi.mock("@/hooks/useDebounce", () => ({ useDebounce: (value: unknown) => value }))
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsMobile: () => false }))
+vi.mock("@/lib/utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/utils")>(),
+  copyTextToClipboard: clipboard.copyTextToClipboard,
 }))
 
 vi.mock("@/hooks/useTheme", () => ({
-  useTheme: () => ({
-    theme: "free",
-    setTheme: vi.fn(),
-    setVariation: vi.fn(),
-  }),
+  useTheme: () => themeHook,
 }))
 
 vi.mock("@/utils/theme", () => ({
-  getThemeColors: () => ({
-    primary: "blue",
-    secondary: "gray",
-    accent: "green",
-  }),
+  isDarkMode: () => true,
   getThemeVariation: () => null,
+  ...themeUtils,
 }))
 
 vi.mock("@/components/themes/ThemeLayoutSettings", () => ({
   ThemeLayoutSettings: () => null,
 }))
+
+vi.mock("@/hooks/useThemeTargetHint", () => ({ useThemeTargetHint: () => null }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -98,6 +123,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
+    success: vi.fn(),
   },
 }))
 
@@ -106,9 +132,25 @@ import { ThemeSelector } from "@/components/themes/ThemeSelector"
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  license.hasPremiumAccess = true
+  themeHook.theme = "free"
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+  vi.unstubAllGlobals()
+})
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  return rtlRender(<QueryClientProvider client={queryClient}><TooltipProvider>{ui}</TooltipProvider></QueryClientProvider>)
+}
 
 function themeCards(): HTMLElement[] {
   return within(screen.getByRole("list", { name: "themes.selector.title" })).getAllByRole("listitem")
@@ -118,6 +160,21 @@ function card(name: string): HTMLElement {
   const match = themeCards().find((item) => item.textContent?.includes(name))
   if (!match) throw new Error(`Theme card not found: ${name}`)
   return match
+}
+
+function openThemeMenu(): HTMLElement {
+  fireEvent.click(screen.getByRole("button", { name: "themes.menu.button" }))
+  return screen.getByRole("dialog")
+}
+
+// The theme in use adds themes.menu.inUse to the name of its row.
+function menuCheckbox(menu: HTMLElement, name: string): HTMLElement {
+  return within(menu).getByRole("checkbox", { name: (accessibleName) => accessibleName === name || accessibleName === `${name} themes.menu.inUse` })
+}
+
+async function chooseCardAction(name: string, action: "themes.custom.edit" | "themes.custom.remove") {
+  fireEvent.pointerDown(within(card(name)).getByRole("button", { name: "themes.custom.actionsFor" }), { button: 0, ctrlKey: false })
+  fireEvent.click(await screen.findByRole("menuitem", { name: action }))
 }
 
 // Opens the client settings push and resolves with the body of the next PUT.
@@ -149,35 +206,216 @@ describe("ThemeSelector", () => {
     expect(screen.getByText("themes.custom.title")).toBeTruthy()
   })
 
-  it("offers Hide on a shown theme and Show on a hidden theme", () => {
+  it("narrows the catalog by group and by search", () => {
     render(<ThemeSelector />)
 
-    for (const name of ["Free theme", "Licensed theme", "Custom theme"]) {
-      expect(within(card(name)).getByRole("button", { name: "themes.selector.hideTheme" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.custom/ }))
+    expect(themeCards().map((card) => card.textContent)).toEqual([expect.stringContaining("Custom theme")])
+
+    fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.all/ }))
+    fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "community" } })
+    expect(themeCards().map((card) => card.textContent)).toEqual([expect.stringContaining("Community theme")])
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "nothing like this" } })
+    expect(within(screen.getByRole("list", { name: "themes.selector.title" })).queryAllByRole("listitem")).toEqual([])
+    expect(screen.getByText("themes.selector.noMatch")).toBeTruthy()
+  })
+
+  it("shows two rows of themes until Show all, and every match during a search", () => {
+    // jsdom lays out no grid, so the theme grid reports two columns here.
+    const realGetComputedStyle = window.getComputedStyle.bind(window)
+    const twoColumns = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const style = realGetComputedStyle(element, pseudo)
+      if (element.getAttribute("aria-label") !== "themes.selector.title") return style
+      return new Proxy(style, {
+        get: (target, property) => {
+          if (property === "gridTemplateColumns") return "100px 100px"
+          const value: unknown = Reflect.get(target, property)
+          return typeof value === "function" ? value.bind(target) : value
+        },
+      })
+    })
+    try {
+      render(<ThemeSelector />)
+
+      expect(themeCards()).toHaveLength(4)
+      const toggle = screen.getByRole("button", { name: "themes.selector.showAll" })
+      expect(toggle.getAttribute("aria-expanded")).toBe("false")
+
+      fireEvent.click(toggle)
+      expect(themeCards()).toHaveLength(5)
+      fireEvent.click(screen.getByRole("button", { name: "themes.selector.showFewer" }))
+      expect(themeCards()).toHaveLength(4)
+
+      fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "theme" } })
+      expect(themeCards()).toHaveLength(5)
+      expect(screen.queryByRole("button", { name: "themes.selector.showAll" })).toBeNull()
+
+      // An expanded grid collapses again when the search or the filter changes.
+      fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "" } })
+      fireEvent.click(screen.getByRole("button", { name: "themes.selector.showAll" }))
+      fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.all/ }))
+      expect(themeCards()).toHaveLength(4)
+    } finally {
+      twoColumns.mockRestore()
     }
-    expect(within(card("Community theme")).getByRole("button", { name: "themes.selector.showTheme" })).toBeTruthy()
+  })
+
+  it("marks a theme with color variations on its tile", () => {
+    render(<ThemeSelector />)
+
+    expect(card("Licensed theme").textContent).toContain("themes.selector.variationCount")
+    expect(card("Free theme").textContent).not.toContain("themes.selector.variationCount")
+  })
+
+  it("names the theme in use and sets one of its color variations", () => {
+    themeHook.theme = "nord"
+    render(<ThemeSelector />)
+
+    const current = screen.getByRole("region", { name: "Licensed theme" })
+    fireEvent.click(within(current).getByRole("button", { name: "aurora" }))
+
+    expect(themeHook.setTheme).toHaveBeenCalledWith("nord")
+    expect(themeHook.setVariation).toHaveBeenCalledWith("aurora")
+  })
+
+  it("opens Choose menu themes once when a link asks for it", () => {
+    const opened = vi.fn()
+    render(<ThemeSelector openMenu onMenuOpened={opened} />)
+
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    expect(opened).toHaveBeenCalledTimes(1)
+  })
+
+  it("checks the themes that the theme menu lists", () => {
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    for (const name of ["Free theme", "Licensed theme", "Custom theme"]) {
+      expect(menuCheckbox(menu, name).getAttribute("aria-checked")).toBe("true")
+    }
+    expect(menuCheckbox(menu, "Community theme").getAttribute("aria-checked")).toBe("false")
+  })
+
+  it("keeps the theme in use checked and locked, because the menu always lists it", () => {
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ free: false }))
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    const inUse = menuCheckbox(menu, "Free theme")
+    expect(inUse.getAttribute("aria-checked")).toBe("true")
+    expect((inUse as HTMLButtonElement).disabled).toBe(true)
+    expect(within(menu).getByRole("checkbox", { name: "themes.groups.free themes.menu.groupCount" }).getAttribute("aria-checked")).toBe("true")
   })
 
   it("pushes a Hide choice through the client settings", async () => {
     const push = nextSettingsPush()
     render(<ThemeSelector />)
+    const menu = openThemeMenu()
 
-    fireEvent.click(within(card("Free theme")).getByRole("button", { name: "themes.selector.hideTheme" }))
+    fireEvent.click(menuCheckbox(menu, "Licensed theme"))
     window.dispatchEvent(new Event("pagehide"))
 
-    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ free: false }) })
-    expect(within(card("Free theme")).getByRole("button", { name: "themes.selector.showTheme" })).toBeTruthy()
+    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ nord: false }) })
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("false")
   })
 
   it("stores only the changes from the defaults", async () => {
-    localStorage.setItem("qui-theme-visibility", JSON.stringify({ gruvbox: true, free: false }))
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ gruvbox: true, nord: false }))
     const push = nextSettingsPush()
     render(<ThemeSelector />)
+    const menu = openThemeMenu()
 
-    fireEvent.click(within(card("Free theme")).getByRole("button", { name: "themes.selector.showTheme" }))
+    fireEvent.click(menuCheckbox(menu, "Licensed theme"))
     window.dispatchEvent(new Event("pagehide"))
 
     expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ gruvbox: true }) })
+  })
+
+  it("shows every theme of a group with one click, in one write", async () => {
+    const push = nextSettingsPush()
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    const group = within(menu).getByRole("checkbox", { name: "themes.groups.licensed themes.menu.groupCount" })
+    expect(group.getAttribute("aria-checked")).toBe("mixed")
+    fireEvent.click(group)
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ locked: true, gruvbox: true }) })
+    expect(group.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("leaves the locked theme in use out of the state of its group checkbox", async () => {
+    themeHook.theme = "nord"
+    const push = nextSettingsPush()
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+    const group = within(menu).getByRole("checkbox", { name: "themes.groups.licensed themes.menu.groupCount" })
+
+    expect(group.getAttribute("aria-checked")).toBe("false")
+    fireEvent.click(group)
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(await push).toEqual({ "qui-theme-visibility": JSON.stringify({ locked: true, gruvbox: true }) })
+    expect(group.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("turns Reset to defaults into Undo reset until the next change", () => {
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ nord: false }))
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("true")
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.undo" }))
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("false")
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    fireEvent.click(menuCheckbox(menu, "Community theme"))
+    expect(within(menu).queryByRole("button", { name: "themes.menu.undo" })).toBeNull()
+  })
+
+  it("gives the focus back to Choose menu themes when the dialog closes", async () => {
+    render(<ThemeSelector />)
+    const trigger = screen.getByRole("button", { name: "themes.menu.button" })
+    trigger.focus()
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.done" }))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it("locks the group checkboxes during a search, because they stand for the whole group", () => {
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+    const group = () => within(menu).getByRole("checkbox", { name: "themes.groups.licensed themes.menu.groupCount" }) as HTMLButtonElement
+
+    fireEvent.change(within(menu).getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "community" } })
+    expect(within(menu).queryByRole("checkbox", { name: "Licensed theme" })).toBeNull()
+    expect(group().disabled).toBe(true)
+    expect(within(menu).getByText("themes.menu.groupsLocked")).toBeTruthy()
+
+    fireEvent.change(within(menu).getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "" } })
+    expect(group().disabled).toBe(false)
+    expect(within(menu).queryByText("themes.menu.groupsLocked")).toBeNull()
+  })
+
+  it("resets the theme menu to the defaults", async () => {
+    localStorage.setItem("qui-theme-visibility", JSON.stringify({ gruvbox: true, nord: false }))
+    const push = nextSettingsPush()
+    render(<ThemeSelector />)
+    const menu = openThemeMenu()
+
+    fireEvent.click(within(menu).getByRole("button", { name: "themes.menu.reset" }))
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(await push).toEqual({ "qui-theme-visibility": "{}" })
+    expect(menuCheckbox(menu, "Licensed theme").getAttribute("aria-checked")).toBe("true")
+    expect(within(menu).getByRole("button", { name: "themes.menu.undo" })).toBeTruthy()
   })
 
   it("marks a locked theme with a lock, not a premium badge", () => {
@@ -188,9 +426,388 @@ describe("ThemeSelector", () => {
       .getAllByRole("listitem")
       .filter((card) => card.textContent?.includes("Locked theme"))
 
-    expect(lockedCard.textContent).toContain("themes.selector.locked")
+    expect(lockedCard.textContent).toContain("themes.selector.needsLicense")
     for (const card of within(catalog).getAllByRole("listitem")) {
       expect(card.textContent).not.toMatch(/premium/i)
     }
+  })
+})
+
+const RED_THEME = "/* @name: Red Alert */\n:root { --background: red; }\n.dark { --background: darkred; }\n"
+
+interface RecordedRequest {
+  method: string
+  path: string
+  body: unknown
+}
+
+function recordCustomThemeApi(respond: (req: RecordedRequest) => Response): RecordedRequest[] {
+  const requests: RecordedRequest[] = []
+  const handler = async ({ request }: { request: Request }) => {
+    const text = await request.text()
+    const recorded = { method: request.method, path: new URL(request.url).pathname, body: text ? JSON.parse(text) : null }
+    requests.push(recorded)
+    return respond(recorded)
+  }
+  server.use(
+    http.post("*/api/themes/custom", handler),
+    http.put("*/api/themes/custom/:id", handler),
+    http.delete("*/api/themes/custom/:id", handler)
+  )
+  return requests
+}
+
+function cssField(): HTMLTextAreaElement {
+  return screen.getByLabelText("themes.custom.editor.css") as HTMLTextAreaElement
+}
+
+function nameField(): HTMLInputElement {
+  return screen.getByLabelText("themes.custom.editor.name") as HTMLInputElement
+}
+
+function openNewTheme() {
+  fireEvent.click(screen.getByRole("button", { name: "themes.custom.newTheme" }))
+}
+
+function saveButton(): HTMLButtonElement {
+  return screen.getByRole("button", { name: "themes.custom.editor.save" }) as HTMLButtonElement
+}
+
+describe("ThemeSelector custom theme editor", () => {
+  it("keeps the box locked without a license, and the text names the editor", () => {
+    license.hasPremiumAccess = false
+    render(<ThemeSelector />)
+
+    expect(screen.queryByRole("button", { name: "themes.custom.newTheme" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "themes.custom.copyPrompt" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "themes.custom.actionsFor" })).toBeNull()
+    expect(screen.getByText("themes.custom.lockedDescription")).toBeTruthy()
+  })
+
+  it("previews pasted CSS, fills the name, and saves a new theme as the selection", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+
+    expect(nameField().value).toBe("Red Alert")
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenLastCalledWith(RED_THEME)
+
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(themeUtils.setTheme).toHaveBeenCalledWith("custom:red-alert"))
+    expect(requests).toEqual([{ method: "POST", path: "/api/themes/custom", body: { id: "red-alert", css: RED_THEME } }])
+    expect(customThemesHook.refreshCustomThemes).toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull())
+  })
+
+  it("writes an edited name into the @name line", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "blood-moon", filename: "blood-moon.css", css: "" }, { status: 201 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(nameField(), { target: { value: "Blood Moon" } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("Red Alert", "Blood Moon") })
+  })
+
+  // regression: #4124
+  it("keeps a typed name through a later CSS edit", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "blood-moon", filename: "blood-moon.css", css: "" }, { status: 201 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(nameField(), { target: { value: "Blood Moon" } })
+    fireEvent.change(cssField(), { target: { value: RED_THEME.replace("darkred", "maroon") } })
+
+    expect(nameField().value).toBe("Blood Moon")
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0].body).toEqual({ id: "blood-moon", css: RED_THEME.replace("darkred", "maroon").replace("Red Alert", "Blood Moon") })
+  })
+
+  // regression: #4124
+  it("loads the other theme when Edit is clicked while the editor is open", async () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+
+    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
+    expect(nameField().value).toBe("Custom theme")
+  })
+
+  it("asks for a name when the CSS has no @name line, and keeps Save off", () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: ":root { --background: red; }\n.dark { --background: maroon; }" } })
+
+    expect(screen.getByText("themes.custom.editor.nameRequired")).toBeTruthy()
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  it("says why qui cannot use CSS without a .dark block and keeps the last good preview", () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(cssField(), { target: { value: ":root { --background: blue; }" } })
+
+    expect(screen.getByRole("status").textContent).toContain("themes.custom.editor.problems.missingDark")
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenCalledTimes(1)
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenLastCalledWith(RED_THEME)
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  // regression: #4124
+  it("leaves CSS that loads an outside file out of the preview, and Save still asks the server", async () => {
+    const refusal = "The theme can load a file from another website, line 4: url() can only use a data: address or a #fragment"
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ error: refusal }, { status: 400 }))
+    const outside = `${RED_THEME}body { background: url(https://example.invalid/a.png); }\n`
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.change(cssField(), { target: { value: outside } })
+
+    expect(screen.getByText("themes.custom.editor.problems.outsideFile")).toBeTruthy()
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenCalledTimes(1)
+    expect(themeUtils.paintCustomThemePreview).toHaveBeenLastCalledWith(RED_THEME)
+
+    fireEvent.click(saveButton())
+    expect((await screen.findByRole("alert")).textContent).toContain(refusal)
+    expect(requests).toHaveLength(1)
+  })
+
+  // regression: #4124
+  it("asks before it replaces a theme with the same name, and a yes replaces and selects it", async () => {
+    const requests = recordCustomThemeApi((req) =>
+      req.method === "POST"
+        ? HttpResponse.json({ error: "A custom theme with the id \"red-alert\" exists" }, { status: 409 })
+        : HttpResponse.json({ id: "Red-Alert", filename: "Red-Alert.css", css: RED_THEME }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+
+    const question = await screen.findByRole("alertdialog")
+    expect(within(question).getByText("themes.custom.editor.replaceTitle")).toBeTruthy()
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+
+    fireEvent.click(within(question).getByRole("button", { name: "themes.custom.editor.replace" }))
+
+    await waitFor(() => expect(themeUtils.setTheme).toHaveBeenCalledWith("custom:Red-Alert"))
+    expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "POST /api/themes/custom",
+      "PUT /api/themes/custom/red-alert",
+    ])
+    expect(requests[1].body).toEqual({ css: RED_THEME })
+  })
+
+  // regression: #4124
+  it("closes with a message when the list does not load after a save, and selects nothing", async () => {
+    const { toast } = await import("sonner")
+    recordCustomThemeApi(() => HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 }))
+    customThemesHook.refreshCustomThemes.mockRejectedValueOnce(new Error("list failed"))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("themes.custom.editor.savedNotLoaded"))
+    await waitFor(() => expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull())
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  // regression: #4124
+  it("keeps a New theme draft when an earlier Edit finishes loading later", async () => {
+    let finishLoad: (files: Array<{ id: string; filename: string; css: string }>) => void = () => {}
+    customThemesHook.refreshCustomThemes.mockReturnValueOnce(new Promise(resolve => { finishLoad = resolve }))
+    render(<ThemeSelector />)
+
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    await act(async () => {
+      finishLoad([{ id: "local", filename: "local.css", css: fixture.customThemes[0].rawCss }])
+    })
+
+    expect(cssField().value).toBe(RED_THEME)
+    expect(screen.getByText("themes.custom.editor.newTitle")).toBeTruthy()
+  })
+
+  // regression: #4124
+  it("finishes a save when New theme is clicked again while it runs", async () => {
+    let finishSave: () => void = () => {}
+    const saved = new Promise<void>(resolve => { finishSave = resolve })
+    server.use(http.post("*/api/themes/custom", async () => {
+      await saved
+      return HttpResponse.json({ id: "red-alert", filename: "red-alert.css", css: RED_THEME }, { status: 201 })
+    }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+    openNewTheme()
+    finishSave()
+
+    await waitFor(() => expect(themeUtils.setTheme).toHaveBeenCalledWith("custom:red-alert"))
+    await waitFor(() => expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull())
+  })
+
+  // regression: #4124
+  it("keeps an editor that opened while an earlier save was still running", async () => {
+    let finishSave: () => void = () => {}
+    const saved = new Promise<void>(resolve => { finishSave = resolve })
+    server.use(http.put("*/api/themes/custom/:id", async () => {
+      await saved
+      return HttpResponse.json({ id: "local", filename: "local.css", css: "" })
+    }))
+    render(<ThemeSelector />)
+
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
+    fireEvent.click(saveButton())
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+
+    finishSave()
+    await waitFor(() => expect(customThemesHook.refreshCustomThemes).toHaveBeenCalledTimes(2))
+    await act(async () => {})
+
+    expect(cssField().value).toBe(RED_THEME)
+  })
+
+  it("restores the active theme on Cancel and on Esc", async () => {
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(screen.getByRole("button", { name: "common:actions.cancel" }))
+
+    await waitFor(() => expect(themeUtils.endCustomThemePreview).toHaveBeenCalledTimes(1))
+    expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull()
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.keyDown(cssField(), { key: "Escape" })
+
+    await waitFor(() => expect(themeUtils.endCustomThemePreview).toHaveBeenCalledTimes(2))
+    expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull()
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  it("shows the message of a refused save and keeps the editor open", async () => {
+    const refusal = "The theme can load a file from another website, line 3: url() can only use a data: address or a #fragment"
+    recordCustomThemeApi(() => HttpResponse.json({ error: refusal }, { status: 400 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+
+    expect((await screen.findByRole("alert")).textContent).toContain(refusal)
+    expect(cssField().value).toBe(RED_THEME)
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  // regression: #4124
+  it("drops a refused save message when the CSS changes, and shows the live problem", async () => {
+    recordCustomThemeApi(() => HttpResponse.json({ error: "line 3: url() can only use a data: address" }, { status: 400 }))
+    render(<ThemeSelector />)
+
+    openNewTheme()
+    fireEvent.change(cssField(), { target: { value: RED_THEME } })
+    fireEvent.click(saveButton())
+    await screen.findByRole("alert")
+
+    fireEvent.change(cssField(), { target: { value: ":root { --background: blue; }" } })
+
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(screen.getByText("themes.custom.editor.problems.missingDark")).toBeTruthy()
+  })
+
+  // regression: #4124
+  it("edits the current file of a custom theme with replace and keeps the selection", async () => {
+    const requests = recordCustomThemeApi(() => HttpResponse.json({ id: "local", filename: "local.css", css: "" }))
+    const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")
+    customThemesHook.refreshCustomThemes.mockResolvedValueOnce([{ id: "local", filename: "local.css", css: onDisk }])
+    render(<ThemeSelector />)
+
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+    await waitFor(() => expect(cssField().value).toBe(onDisk))
+    expect(nameField().value).toBe("Custom theme")
+    expect(screen.getByText("themes.custom.editor.savedAs")).toBeTruthy()
+
+    const edited = onDisk.replace("linen", "ivory")
+    fireEvent.change(cssField(), { target: { value: edited } })
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(themeUtils.endCustomThemePreview).toHaveBeenCalled())
+    expect(requests).toEqual([{ method: "PUT", path: "/api/themes/custom/local", body: { css: edited } }])
+    expect(customThemesHook.refreshCustomThemes).toHaveBeenCalled()
+    expect(themeUtils.setTheme).not.toHaveBeenCalled()
+  })
+
+  // regression: #4124
+  it("keeps the editor closed when Edit cannot read the file, and a retry opens the current file", async () => {
+    const { toast } = await import("sonner")
+    const onDisk = fixture.customThemes[0].rawCss.replace("white", "linen")
+    customThemesHook.refreshCustomThemes
+      .mockRejectedValueOnce(new Error("list failed"))
+      .mockResolvedValueOnce([{ id: "local", filename: "local.css", css: onDisk }])
+    render(<ThemeSelector />)
+
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("themes.custom.editLoadFailed"))
+    expect(screen.queryByLabelText("themes.custom.editor.css")).toBeNull()
+
+    await chooseCardAction("Custom theme", "themes.custom.edit")
+    await waitFor(() => expect(cssField().value).toBe(onDisk))
+  })
+
+  it("asks before it removes a custom theme, then removes it", async () => {
+    const requests = recordCustomThemeApi(() => new HttpResponse(null, { status: 204 }))
+    render(<ThemeSelector />)
+
+    await chooseCardAction("Custom theme", "themes.custom.remove")
+    const question = await screen.findByRole("alertdialog")
+    expect(requests).toEqual([])
+
+    fireEvent.click(within(question).getByRole("button", { name: "themes.custom.removeConfirm" }))
+
+    await waitFor(() => expect(requests).toEqual([{ method: "DELETE", path: "/api/themes/custom/local", body: null }]))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+  })
+
+  it("opens the actions menu of a card and uses an item without selecting the card", async () => {
+    render(<ThemeSelector />)
+
+    const trigger = within(card("Custom theme")).getByRole("button", { name: "themes.custom.actionsFor" })
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false })
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByRole("menuitem", { name: "themes.custom.edit" }))
+
+    await waitFor(() => expect(cssField().value).toBe(fixture.customThemes[0].rawCss))
+    expect(themeHook.setTheme).not.toHaveBeenCalled()
+  })
+
+  it("copies the AI prompt with the theme areas", async () => {
+    render(<ThemeSelector />)
+
+    fireEvent.click(screen.getByRole("button", { name: "themes.custom.copyPrompt" }))
+
+    await waitFor(() => expect(clipboard.copyTextToClipboard).toHaveBeenCalledTimes(1))
+    expect(clipboard.copyTextToClipboard.mock.calls[0][0]).toContain("[data-qui-area=\"torrent-table\"]")
   })
 })

@@ -162,20 +162,6 @@ const hardcodedStringChecks = [
     ],
   },
   {
-    file: "src/components/dashboard-settings-dialog.tsx",
-    literals: [
-      "\"Layout Settings\"",
-      "\"Dashboard Settings\"",
-      "\"Sections\"",
-      "\"Tracker Breakdown Defaults\"",
-      "\"Default Sort\"",
-      "\"Direction\"",
-      "\"Descending\"",
-      "\"Ascending\"",
-      "\"Items Per Page\"",
-    ],
-  },
-  {
     file: "src/components/settings/DateTimePreferencesForm.tsx",
     literals: [
       "\"Select your local timezone for accurate time display\"",
@@ -354,7 +340,7 @@ const hardcodedStringChecks = [
     ],
   },
   {
-    file: "src/hooks/useTorrentActions.ts",
+    file: "src/components/torrents/bulk-actions/bulk-action-requests.ts",
     literals: [
       "\"Torrent name cannot be empty\"",
       "\"Both original and new file paths are required\"",

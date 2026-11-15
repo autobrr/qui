@@ -5,7 +5,7 @@
 
 import type { ListFacts, TorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
-import type { TorrentAction } from "@/hooks/useTorrentActions"
+import type { TorrentAction } from "./bulk-action-requests"
 import type { api } from "@/lib/api"
 import { ALL_INSTANCES_ID } from "@/lib/instances"
 import type { TorrentActionTarget } from "@/lib/torrent-action-targets"

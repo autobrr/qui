@@ -13,7 +13,7 @@ import (
 	"maps"
 	"net"
 	"net/url"
-	"path/filepath"
+	"path"
 	"runtime"
 	"slices"
 	"strconv"
@@ -2146,13 +2146,12 @@ func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts
 
 	if base == nil {
 		base = &TorrentCounts{
-			Status:           make(map[string]int, len(next.Status)),
-			Categories:       make(map[string]int, len(next.Categories)),
-			CategorySizes:    make(map[string]int64, len(next.CategorySizes)),
-			Tags:             make(map[string]int, len(next.Tags)),
-			TagSizes:         make(map[string]int64, len(next.TagSizes)),
-			Trackers:         make(map[string]int, len(next.Trackers)),
-			TrackerTransfers: make(map[string]TrackerTransferStats, len(next.TrackerTransfers)),
+			Status:        make(map[string]int, len(next.Status)),
+			Categories:    make(map[string]int, len(next.Categories)),
+			CategorySizes: make(map[string]int64, len(next.CategorySizes)),
+			Tags:          make(map[string]int, len(next.Tags)),
+			TagSizes:      make(map[string]int64, len(next.TagSizes)),
+			Trackers:      make(map[string]int, len(next.Trackers)),
 		}
 	}
 
@@ -2174,9 +2173,6 @@ func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts
 	if base.Trackers == nil {
 		base.Trackers = make(map[string]int, len(next.Trackers))
 	}
-	if base.TrackerTransfers == nil {
-		base.TrackerTransfers = make(map[string]TrackerTransferStats, len(next.TrackerTransfers))
-	}
 
 	for key, value := range next.Status {
 		base.Status[key] += value
@@ -2195,17 +2191,6 @@ func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts
 	}
 	for key, value := range next.Trackers {
 		base.Trackers[key] += value
-	}
-	for key, value := range next.TrackerTransfers {
-		current := base.TrackerTransfers[key]
-		base.TrackerTransfers[key] = TrackerTransferStats{
-			Uploaded:          current.Uploaded + value.Uploaded,
-			Downloaded:        current.Downloaded + value.Downloaded,
-			UploadedSession:   current.UploadedSession + value.UploadedSession,
-			DownloadedSession: current.DownloadedSession + value.DownloadedSession,
-			TotalSize:         current.TotalSize + value.TotalSize,
-			Count:             current.Count + value.Count,
-		}
 	}
 
 	base.Total += next.Total
@@ -3410,7 +3395,7 @@ func trackerDetailsFromManager(ctx context.Context, client *Client, torrents []*
 	return lookup
 }
 
-// TrackerTransferStats holds aggregated upload/download stats for a tracker domain
+// TrackerTransferStats holds the upload, download, and size totals of a set of torrents.
 type TrackerTransferStats struct {
 	Uploaded          int64 `json:"uploaded"`
 	Downloaded        int64 `json:"downloaded"`
@@ -3422,14 +3407,13 @@ type TrackerTransferStats struct {
 
 // TorrentCounts represents counts for filtering sidebar
 type TorrentCounts struct {
-	Status           map[string]int                  `json:"status"`
-	Categories       map[string]int                  `json:"categories"`
-	CategorySizes    map[string]int64                `json:"categorySizes,omitempty"`
-	Tags             map[string]int                  `json:"tags"`
-	TagSizes         map[string]int64                `json:"tagSizes,omitempty"`
-	Trackers         map[string]int                  `json:"trackers"`
-	TrackerTransfers map[string]TrackerTransferStats `json:"trackerTransfers,omitempty"`
-	Total            int                             `json:"total"`
+	Status        map[string]int   `json:"status"`
+	Categories    map[string]int   `json:"categories"`
+	CategorySizes map[string]int64 `json:"categorySizes,omitempty"`
+	Tags          map[string]int   `json:"tags"`
+	TagSizes      map[string]int64 `json:"tagSizes,omitempty"`
+	Trackers      map[string]int   `json:"trackers"`
+	Total         int              `json:"total"`
 }
 
 // ExtractDomainFromURL calls the package-level ExtractDomainFromURL.
@@ -4418,12 +4402,11 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search st
 		return torrents
 	}
 
-	// Check if search contains glob patterns
-	if strings.ContainsAny(search, "*?[") {
-		return sm.filterTorrentsByGlob(torrents, search)
-	}
-
 	searchLower := strings.ToLower(search)
+
+	// A bracket alone is literal text, as in a release group tag. The search
+	// box hint in the web app uses the same * and ? rule.
+	isGlob := strings.ContainsAny(search, "*?")
 	searchNormalized := normalizeForSearch(search)
 	searchWords := strings.Fields(searchNormalized)
 	searchIsFolded := isASCIIFolded(searchNormalized)
@@ -4452,6 +4435,13 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search st
 	var matched []int
 	for i := range torrents {
 		torrent := torrents[i]
+
+		// Method 0: Glob match. A miss or a malformed pattern falls through to
+		// the text methods, so a name that holds a * or ? still matches as typed.
+		if isGlob && torrentMatchesGlob(torrent, searchLower) {
+			matched = append(matched, i)
+			continue
+		}
 
 		// Method 1: Exact substring match (highest priority)
 		if stringutils.ContainsFold(torrent.Name, searchLower) ||
@@ -4524,61 +4514,23 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search st
 	return filtered
 }
 
-// filterTorrentsByGlob filters torrents using glob pattern matching
-func (sm *SyncManager) filterTorrentsByGlob(torrents []*qbt.Torrent, pattern string) []*qbt.Torrent {
-	var filtered []*qbt.Torrent
-
-	// Convert to lowercase for case-insensitive matching
-	patternLower := strings.ToLower(pattern)
-
-	for _, torrent := range torrents {
-		nameLower := strings.ToLower(torrent.Name)
-
-		// Try to match the pattern against the torrent name
-		matched, err := filepath.Match(patternLower, nameLower)
-		if err != nil {
-			// Invalid pattern, log and skip
-			log.Trace().
-				Str("pattern", pattern).
-				Err(err).
-				Msg("Invalid glob pattern")
-			continue
-		}
-
-		if matched {
-			filtered = append(filtered, torrent)
-			continue
-		}
-
-		// Also try matching against category and tags
-		if torrent.Category != "" {
-			categoryLower := strings.ToLower(torrent.Category)
-			if matched, _ := filepath.Match(patternLower, categoryLower); matched {
-				filtered = append(filtered, torrent)
-				continue
-			}
-		}
-
-		if torrent.Tags != "" {
-			tagsLower := strings.ToLower(torrent.Tags)
-			// For tags, try matching against individual tags
-			tags := strings.SplitSeq(tagsLower, ", ")
-			for tag := range tags {
-				if matched, _ := filepath.Match(patternLower, strings.TrimSpace(tag)); matched {
-					filtered = append(filtered, torrent)
-					break
-				}
-			}
+// torrentMatchesGlob reports whether a lower-case glob pattern matches the
+// name, the category, or a single tag of the torrent.
+func torrentMatchesGlob(torrent *qbt.Torrent, patternLower string) bool {
+	if matched, _ := path.Match(patternLower, strings.ToLower(torrent.Name)); matched {
+		return true
+	}
+	if torrent.Category != "" {
+		if matched, _ := path.Match(patternLower, strings.ToLower(torrent.Category)); matched {
+			return true
 		}
 	}
-
-	log.Trace().
-		Str("pattern", pattern).
-		Int("totalTorrents", len(torrents)).
-		Int("matchedTorrents", len(filtered)).
-		Msg("Glob pattern search completed")
-
-	return filtered
+	for tag := range strings.SplitSeq(strings.ToLower(torrent.Tags), ", ") {
+		if matched, _ := path.Match(patternLower, strings.TrimSpace(tag)); matched {
+			return true
+		}
+	}
+	return false
 }
 
 func hasNestedCategories(categories map[string]qbt.Category) bool {
@@ -4766,10 +4718,9 @@ func addStat(stats map[string]*countWithSize, key string, torrent *qbt.Torrent, 
 	entry.size.add(torrent, sharedPath)
 }
 
-// trackerDomainStats aggregates per-tracker transfer totals as torrents arrive,
-// so the counts path does not build a hash set per domain and then walk it a
-// second time. Empty content paths are counted per torrent because they are
-// unknown identities, not proof of shared data.
+// trackerDomainStats sums the transfer totals of the torrents of one Tracker
+// group as they arrive. Empty content paths are counted per torrent because
+// they are unknown identities, not proof of shared data.
 type trackerDomainStats struct {
 	sum  TrackerTransferStats
 	size dedupedSize
@@ -5844,6 +5795,36 @@ func (sm *SyncManager) GetFreeSpace(ctx context.Context, instanceID int) (int64,
 	return state.FreeSpaceOnDisk, nil
 }
 
+// ErrFreeSpaceAtPathUnsupported reports that the instance predates the
+// app/getFreeSpaceAtPath endpoint (qBittorrent 5.3 / Web API 2.15.2).
+var ErrFreeSpaceAtPathUnsupported = errors.New("qBittorrent instance does not support free space at a path")
+
+// GetFreeSpaceAtPath returns the free bytes qBittorrent reports for path on its own host.
+// The path uses the qBittorrent host's semantics; qui never touches its local filesystem here.
+// Zero is a real answer; qBittorrent's negative answer becomes ErrFreeSpaceAtPathUnavailable.
+func (sm *SyncManager) GetFreeSpaceAtPath(ctx context.Context, instanceID int, path string) (int64, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if !client.Supports(CapFreeSpaceAtPath) {
+		return 0, ErrFreeSpaceAtPathUnsupported
+	}
+
+	freeSpace, err := client.GetFreeSpaceAtPathCtx(ctx, path)
+	if err != nil {
+		return 0, err
+	}
+	// A negative answer means qBittorrent could not measure the path. Report it as a
+	// failed read so no caller can mistake it for zero free space.
+	if freeSpace < 0 {
+		return 0, fmt.Errorf("qBittorrent reports free space at %s as unavailable", path)
+	}
+
+	return freeSpace, nil
+}
+
 // RSS Methods - thin proxies to qBittorrent RSS API
 
 // GetRSSItems retrieves all RSS feeds and folders for an instance
@@ -5943,22 +5924,14 @@ func (sm *SyncManager) SetRSSRule(ctx context.Context, instanceID int, ruleName 
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// qBittorrent < 5.0 silently ignores torrentParams and only reads the legacy flat
-	// fields. Mirror any torrentParams values to their flat equivalents so rules behave
-	// correctly on older instances.
+	// qBittorrent < 4.6 silently ignores torrentParams and only reads the legacy flat
+	// fields. A submitted torrentParams is the full intent, so it overwrites the flat
+	// fields, an empty value included, and an edit never keeps a stale stored value.
 	if rule.TorrentParams != nil {
-		if rule.TorrentParams.Category != "" && rule.AssignedCategory == "" { //nolint:forbidigo // an RSS rule field, not a torrent list filter
-			rule.AssignedCategory = rule.TorrentParams.Category //nolint:forbidigo // an RSS rule field, not a torrent list filter
-		}
-		if rule.TorrentParams.SavePath != "" && rule.SavePath == "" {
-			rule.SavePath = rule.TorrentParams.SavePath
-		}
-		if rule.TorrentParams.Stopped != nil && rule.AddPaused == nil {
-			rule.AddPaused = rule.TorrentParams.Stopped
-		}
-		if rule.TorrentParams.ContentLayout != "" && rule.TorrentContentLayout == "" {
-			rule.TorrentContentLayout = rule.TorrentParams.ContentLayout
-		}
+		rule.AssignedCategory = rule.TorrentParams.Category //nolint:forbidigo // an RSS rule field, not a torrent list filter
+		rule.SavePath = rule.TorrentParams.SavePath
+		rule.AddPaused = rule.TorrentParams.Stopped
+		rule.TorrentContentLayout = rule.TorrentParams.ContentLayout
 	}
 
 	return client.SetRSSRuleCtx(ctx, ruleName, rule)

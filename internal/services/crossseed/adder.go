@@ -402,6 +402,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	options["paused"] = paused
 	options["stopped"] = paused
 	if v.skipChecking {
+		// go-qbittorrent also sends this as seedMode, the name that qBittorrent 5.3 (WebAPI 2.16.0) reads.
 		options["skip_checking"] = "true"
 	}
 

@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Non supportato per i moltiplicatori di punteggio"
       },
       "conditionsLabel": "Condizioni (facoltativo)",
+      "mixedActionConditions": "Ogni azione di questo workflow ha la propria condizione. Ora qui usa una sola condizione per workflow. Se salvi, ogni azione riceve la condizione qui sopra. Per conservare le altre, crea prima un workflow per ogni condizione.",
       "actions": {
         "title": "Azione",
         "addAction": "Aggiungi un'azione",
@@ -1286,15 +1287,19 @@
       "freeSpace": {
         "title": "Origine dello spazio libero",
         "aria": "Informazioni sull'origine dello spazio libero",
-        "description": "Scegli da dove leggere lo spazio libero. L'opzione predefinita usa lo spazio libero riportato da qBittorrent. Usa \"Percorso sul server\" per controllare lo spazio libero su un disco o punto di montaggio specifico.",
+        "description": "Scegli da dove leggere lo spazio libero. L'opzione predefinita usa lo spazio libero riportato da qBittorrent. Usa \"Percorso sul server\" per controllare lo spazio libero su un disco o punto di montaggio specifico. \"Percorso sull'host qBittorrent\" interroga qBittorrent stesso e richiede qBittorrent 5.3.",
         "selectSource": "Seleziona l'origine",
         "defaultSource": "Predefinito (qBittorrent)",
         "pathSource": "Percorso sul server",
         "pathSourceWindowsUnsupported": "Percorso sul server (non supportato su Windows)",
+        "qbitPathSource": "Percorso sull'host qBittorrent",
+        "qbitPathSourceUnsupported": "Percorso sull'host qBittorrent (richiede qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Inserisci il percorso su cui controllare lo spazio libero (es., un punto di montaggio)",
+        "qbitPathHelp": "Inserisci un percorso sull'host qBittorrent. Lo spazio libero lo misura qBittorrent, quindi qui non deve accedere a quel disco.",
         "errors": {
           "unsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows.",
+          "qbitPathUnsupported": "Questa istanza è precedente a qBittorrent 5.3 e non può riportare lo spazio libero di un percorso.",
           "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\".",
           "filesystemAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'accesso al filesystem locale o via SSH.",
           "allowanceRequired": "Inserisci uno spazio consentito maggiore di 0.",
@@ -1304,7 +1309,8 @@
         "allowanceSource": "Spazio consentito su un percorso",
         "allowanceSourceWindowsUnsupported": "Spazio consentito su un percorso (non supportato su Windows)",
         "allowanceSourceAccessRequired": "Spazio consentito su un percorso (richiede accesso locale, o accesso SSH con shell)",
-        "allowanceAria": "Spazio consentito",
+        "allowanceLabel": "Spazio consentito",
+        "allowancePathLabel": "Cartella da misurare",
         "allowanceUnitAria": "Unità dello spazio consentito",
         "allowanceHelp": "Inserisci lo spazio consentito dal tuo piano. qui sottrae la dimensione dei file sotto il percorso. La maggior parte dei provider conta a passi di 1000, non di 1024, quindi la cifra del piano è circa il 9% più piccola in {{unit}}.",
         "allowancePathHelp": "Inserisci la cartella da misurare, ad esempio la tua directory home"
@@ -1497,6 +1503,7 @@
         "switchedDeleteModeForFreeSpace": "Passato a \"Rimuovi con i file\" perché la condizione Spazio libero richiede che venga effettivamente liberato spazio su disco",
         "switchedIntervalForFreeSpace": "Passato all'intervallo di 5 minuti perché le eliminazioni per Spazio libero hanno un'attesa di circa 5 minuti",
         "pathSourceUnsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows. Passato al valore predefinito di qBittorrent.",
+        "qbitPathSourceUnsupported": "Questa istanza non può riportare lo spazio libero di un percorso. Passato all'origine predefinita.",
         "switchFreeSpaceSourceDefault": "Cambia l'origine dello spazio libero in Predefinito (qBittorrent)",
         "enterPathOrDefault": "Inserisci un percorso o riporta l'origine dello spazio libero su Predefinito (qBittorrent)",
         "addScoreRule": "Aggiungi almeno una regola di punteggio per l'ordinamento per Punteggio",
@@ -2111,5 +2118,10 @@
       "noReflinks": "Nessun reflink su un'istanza remota.",
       "noHardlinkExtension": "Nessun hardlink: il server non annuncia hardlink@openssh.com. Un'aggiunta cross-seed con hardlink qui fallisce, oppure aggiunge in modalità normale se «Ripiega sulla modalità normale in caso di errore» è attivo."
     }
+  },
+  "deleteHistory": {
+    "label": "Elimina anche la cronologia dei trasferimenti",
+    "description": "Senza questa opzione, qui mantiene la cronologia con il nome dell'istanza.",
+    "failed": "L'istanza è stata eliminata, ma qui non è riuscito a eliminare tutta la sua cronologia. Controlla in Impostazioni > Statistiche ed elimina il resto da lì."
   }
 }

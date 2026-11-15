@@ -429,12 +429,9 @@ func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
 
 	requireOldGazelleKeys := func() {
 		t.Helper()
-		for host, want := range map[string]string{"redacted.sh": "red", "orpheus.network": "ops"} {
-			key, ok, err := oldStore.GetDecryptedGazelleAPIKey(ctx, host)
-			require.NoError(t, err)
-			require.True(t, ok)
-			require.Equal(t, want, key)
-		}
+		keys, err := oldStore.GetDecryptedGazelleAPIKeys(ctx)
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{models.GazelleKeyRedacted: "red", models.GazelleKeyOrpheus: "ops"}, keys.Keys)
 	}
 
 	// An unrelated save under the new key keeps every secret, so restoring the old key brings them back.

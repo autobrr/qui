@@ -51,11 +51,15 @@ import type {
   ManualCrossSeedProposal,
   ManualCrossSeedProposalsResponse,
   SeasonPackRun,
+  CrossSeedGazelleLookup,
+  CrossSeedGazelleSite,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
   DashboardSettings,
   DashboardSettingsInput,
+  TransferHistorySettings,
+  TransferHistorySettingsStatus,
   DirScanDirectory,
   DirScanDirectoryCreate,
   DirScanTriggerResponse,
@@ -140,13 +144,20 @@ import type {
   UncheckedInstance,
   User,
   VersionInfo,
+  SystemNotice,
+  DatabaseShrinkStatus,
   WarningResponse,
   WebSeed,
   SSHCredentials,
   SSHTestResponse,
+  LiveTrackerGroup,
   TransferHistoryInstance,
+  LiveSamples,
+  TransferHistoryLibraryRow,
   TransferHistoryQuery,
-  TransferHistoryRow
+  TransferHistoryRow,
+  TransferHistoryDeletesAnswer,
+  TransferHistoryDeletesQuery
 } from "@/types"
 import type {
   ArrInstance,
@@ -157,6 +168,7 @@ import type {
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
+import type { CustomThemeFile } from "./custom-themes"
 // The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled
 // English namespaces out of the entry chunk into eight extra initial requests.
 import i18n from "i18next"
@@ -855,10 +867,26 @@ class ApiClient {
     return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
   }
 
+  // bytes is null when qBittorrent cannot measure the path.
+  async getFreeSpaceAtPath(id: number, path: string): Promise<{ path: string; bytes: number | null }> {
+    return this.request<{ path: string; bytes: number | null }>(
+      `/instances/${id}/free-space?path=${encodeURIComponent(path)}`
+    )
+  }
+
   async getTransferHistory(instanceId: number, query: TransferHistoryQuery): Promise<TransferHistoryRow[]> {
     const params = new URLSearchParams({ to: query.to.toISOString(), bucket: query.bucket, groupBy: query.groupBy })
     if (query.from) {
       params.set("from", query.from.toISOString())
+    }
+    if (query.group !== undefined) {
+      params.set("group", query.group)
+    }
+    if (query.groupOf) {
+      params.set("groupOf", query.groupOf)
+    }
+    if (query.limit) {
+      params.set("limit", String(query.limit))
     }
     if (query.timeZone) {
       params.set("timeZone", query.timeZone)
@@ -867,9 +895,38 @@ class ApiClient {
     return response.rows
   }
 
+  async getTransferHistoryLibrary(instanceId: number, query: { from?: Date; to: Date }): Promise<TransferHistoryLibraryRow[]> {
+    const params = new URLSearchParams({ to: query.to.toISOString() })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    const response = await this.request<{ rows: TransferHistoryLibraryRow[] }>(`/instances/${instanceId}/transfer-history/library?${params}`)
+    return response.rows
+  }
+
+  async getTrackerGroups(instanceId: number): Promise<LiveTrackerGroup[]> {
+    const response = await this.request<{ groups: LiveTrackerGroup[] }>(`/instances/${instanceId}/tracker-groups`)
+    return response.groups
+  }
+
+  async getTransferHistoryDeletes(instanceId: number, query: TransferHistoryDeletesQuery): Promise<TransferHistoryDeletesAnswer> {
+    const params = new URLSearchParams({ to: query.to.toISOString(), limit: String(query.limit), offset: String(query.offset) })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    if (query.cause) {
+      params.set("cause", query.cause)
+    }
+    return this.request<TransferHistoryDeletesAnswer>(`/instances/${instanceId}/transfer-history/deletes?${params}`)
+  }
+
   async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {
     const response = await this.request<{ instances: TransferHistoryInstance[] }>("/transfer-history/status")
     return response.instances
+  }
+
+  async getLiveSamples(): Promise<LiveSamples> {
+    return this.request<LiveSamples>("/live-samples")
   }
 
   async getInstanceReannounceActivity(
@@ -1329,6 +1386,7 @@ class ApiClient {
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
       content_matches?: string[]
+      gazellePlan?: CrossSeedGazelleLookup[]
     }
 
     const raw = await this.request<RawTorrentInfo>(
@@ -1357,6 +1415,7 @@ class ApiClient {
       filteredIndexers: raw.filtered_indexers,
       excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
       contentMatches: raw.content_matches,
+      gazellePlan: raw.gazellePlan,
     }
   }
 
@@ -1413,6 +1472,8 @@ class ApiClient {
       query?: string
       limit?: number
       indexerIds?: number[]
+      /** API hosts of the RED/OPS sites to ask. Undefined means every site. */
+      gazelleSites?: string[]
       findIndividualEpisodes?: boolean
       cacheMode?: "bypass"
     } = {}
@@ -1427,6 +1488,9 @@ class ApiClient {
     }
     if (options.indexerIds && options.indexerIds.length > 0) {
       body.indexer_ids = options.indexerIds
+    }
+    if (options.gazelleSites) {
+      body.gazelle_sites = options.gazelleSites
     }
     if (options.findIndividualEpisodes !== undefined) {
       body.find_individual_episodes = options.findIndividualEpisodes
@@ -1456,6 +1520,7 @@ class ApiClient {
       filtered_indexers?: number[]
       excluded_indexers?: Record<string, string>
       content_matches?: string[]
+      gazellePlan?: CrossSeedGazelleLookup[]
     } | null
 
     type RawSearchResult = {
@@ -1487,7 +1552,8 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
-      gazelle_timed_out?: boolean
+      // Already camelCase over the wire, like decisionTrace.
+      gazelleLookups?: CrossSeedGazelleLookup[]
       torznab_failed?: boolean
       // Already camelCase over the wire, like cache.
       decisionTrace?: CrossSeedSearchDecisionTrace
@@ -1519,6 +1585,7 @@ class ApiClient {
       filteredIndexers: torrent?.filtered_indexers ?? undefined,
       excludedIndexers: normalizeExcludedIndexerMap(torrent?.excluded_indexers),
       contentMatches: torrent?.content_matches ?? undefined,
+      gazellePlan: torrent?.gazellePlan ?? undefined,
     })
 
     return {
@@ -1548,7 +1615,7 @@ class ApiClient {
       cache: response.cache,
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
-      gazelleTimedOut: response.gazelle_timed_out ?? undefined,
+      gazelleLookups: response.gazelleLookups ?? undefined,
       torznabFailed: response.torznab_failed ?? undefined,
       decisionTrace: response.decisionTrace,
     }
@@ -1774,6 +1841,10 @@ class ApiClient {
 
   async getCrossSeedSettings(): Promise<CrossSeedAutomationSettings> {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
+  }
+
+  async getCrossSeedGazelleSites(): Promise<CrossSeedGazelleSite[]> {
+    return this.request<CrossSeedGazelleSite[]>("/cross-seed/gazelle/sites")
   }
 
   async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {
@@ -2348,12 +2419,30 @@ class ApiClient {
     return this.request("/themes", { signal })
   }
 
-  // Custom themes (sideloaded CSS files; premium-gated server-side)
+  // Custom themes (CSS files in the custom themes folder; premium-gated server-side)
   async getCustomThemes(): Promise<{
     directory: string
-    themes: Array<{ id: string; filename: string; css: string }>
+    themes: CustomThemeFile[]
   }> {
     return this.request("/themes/custom")
+  }
+
+  async createCustomTheme(id: string, css: string): Promise<CustomThemeFile> {
+    return this.request<CustomThemeFile>("/themes/custom", {
+      method: "POST",
+      body: JSON.stringify({ id, css }),
+    })
+  }
+
+  async replaceCustomTheme(id: string, css: string): Promise<CustomThemeFile> {
+    return this.request<CustomThemeFile>(`/themes/custom/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ css }),
+    })
+  }
+
+  async deleteCustomTheme(id: string): Promise<void> {
+    return this.request(`/themes/custom/${encodeURIComponent(id)}`, { method: "DELETE" })
   }
 
   // Theme settings (theme selection stored in the database; writes premium-gated server-side)
@@ -2450,6 +2539,27 @@ class ApiClient {
       // Return null if no update available (204 status) or any error
       return null
     }
+  }
+
+  async getSystemNotices(): Promise<SystemNotice[]> {
+    return this.request<SystemNotice[]>("/system-notices")
+  }
+
+  async dismissSystemNotice(kind: string): Promise<void> {
+    await this.request<void>(`/system-notices/${encodeURIComponent(kind)}`, { method: "DELETE" })
+  }
+
+  async getDatabaseShrink(): Promise<DatabaseShrinkStatus> {
+    return this.request<DatabaseShrinkStatus>("/database/shrink")
+  }
+
+  /** Stores the "shrink pending" mark. restarting is false where qui cannot restart itself. */
+  async requestDatabaseShrink(): Promise<{ restarting: boolean }> {
+    return this.request<{ restarting: boolean }>("/database/shrink", { method: "POST" })
+  }
+
+  async dismissDatabaseShrinkResult(): Promise<void> {
+    await this.request<void>("/database/shrink/result", { method: "DELETE" })
   }
 
   async getTrackerIcons(): Promise<Record<string, string>> {
@@ -2585,6 +2695,26 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     })
+  }
+
+  async getTransferHistorySettingsStatus(): Promise<TransferHistorySettingsStatus> {
+    return this.request<TransferHistorySettingsStatus>("/transfer-history/status")
+  }
+
+  async updateTransferHistorySettings(data: TransferHistorySettings): Promise<TransferHistorySettings> {
+    return this.request<TransferHistorySettings>("/transfer-history/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  /** Deletes the history of one instance or of all instances: everything, or the UTC days before the day of `before`. */
+  async deleteTransferHistory(target: { instanceId: number | "all"; before?: Date }): Promise<void> {
+    const params = new URLSearchParams({ instanceId: String(target.instanceId) })
+    if (target.before) {
+      params.set("before", target.before.toISOString())
+    }
+    return this.request<void>(`/transfer-history?${params}`, { method: "DELETE" })
   }
 
   // Log Exclusions endpoints

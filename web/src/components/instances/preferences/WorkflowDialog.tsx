@@ -66,9 +66,10 @@ import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, allowanceInputOf, freeSpaceSourceOf, getTrackerMatchMode, getTrackerTokens, type ActionType, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, allowanceInputOf, firstActionCondition, freeSpaceSourceOf, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
@@ -396,6 +397,8 @@ type FormState = {
   categoryEnabled: boolean
   moveEnabled: boolean
   externalProgramEnabled: boolean
+  // Actions that the loaded rule switches off. The editor does not show them.
+  switchedOffActions: SwitchedOffActions
   // Speed limits settings (mode-based)
   exprUploadMode: SpeedLimitMode
   exprUploadValue?: number // KiB/s, only used when mode is "custom"
@@ -414,7 +417,7 @@ type FormState = {
   exprDeleteGroupId: string
   exprDeleteAtomic: "all" | ""
   // Free space source settings (for FREE_SPACE conditions)
-  exprFreeSpaceSourceType: "qbittorrent" | "path" | "allowance"
+  exprFreeSpaceSourceType: "qbittorrent" | "path" | "qbitPath" | "allowance"
   exprFreeSpaceSourcePath: string
   exprFreeSpaceAllowance: string
   // Byte multiplier of the allowance figure.
@@ -474,6 +477,7 @@ const emptyFormState: FormState = {
   categoryEnabled: false,
   moveEnabled: false,
   externalProgramEnabled: false,
+  switchedOffActions: {},
   exprUploadMode: "no_change",
   exprUploadValue: undefined,
   exprDownloadMode: "no_change",
@@ -592,6 +596,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
   }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
+  const mixedActionConditions = useMemo(() => rule != null && hasMixedActionConditions(rule), [rule])
   const loadedForm = useRef<FormState | null>(null)
   const currentForm = useRef(formState)
   const saveCheckRun = useRef(0)
@@ -661,6 +666,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const hasNotificationTargets = (notificationTargets ?? []).length > 0
 
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
+  // Undefined while the capabilities query is in flight. Only a definite false
+  // may rewrite a saved source; treating "not loaded yet" as unsupported would
+  // silently drop a stored qBittorrent path when the dialog opens.
+  const supportsFreeSpaceAtPath = capabilities?.supportsFreeSpaceAtPath
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
   const ruleInstance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
   const hasLocalFilesystemAccess = ruleInstance?.hasLocalFilesystemAccess ?? false
@@ -1012,22 +1021,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         if (conditions) {
           exprGrouping = conditions.grouping
-          // Get condition from any enabled action (they should all be the same)
-          actionCondition = conditions.speedLimits?.condition
-            ?? conditions.shareLimits?.condition
-            ?? conditions.pause?.condition
-            ?? conditions.resume?.condition
-            ?? conditions.recheck?.condition
-            ?? conditions.reannounce?.condition
-            ?? conditions.autoManagement?.condition
-            ?? conditions.delete?.condition
-            ?? conditions.tags?.[0]?.condition
-            ?? conditions.tag?.condition
-            ?? conditions.category?.condition
-            ?? conditions.move?.condition
-            ?? conditions.externalProgram?.condition
-            ?? conditions.exportToInstance?.condition
-            ?? null
+          actionCondition = firstActionCondition(rule)
 
           if (conditions.speedLimits?.enabled) {
             speedLimitsEnabled = true
@@ -1148,6 +1142,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           categoryEnabled,
           moveEnabled,
           externalProgramEnabled,
+          switchedOffActions: getSwitchedOffActions(rule),
           exprUploadMode,
           exprUploadValue,
           exprDownloadMode,
@@ -1257,7 +1252,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // This must run during hydration to handle legacy workflows opened on Windows.
   // Only toast after hydration to avoid noise when opening dialogs.
   useEffect(() => {
-    if (pathSourceWindowsBlocked && formState.exprFreeSpaceSourceType !== "qbittorrent") {
+    if (pathSourceWindowsBlocked && (formState.exprFreeSpaceSourceType === "path" || formState.exprFreeSpaceSourceType === "allowance")) {
       setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: "qbittorrent" }))
       if (!isHydrating.current) {
         toast.warning(t("preferences.workflowDialog.toast.pathSourceUnsupportedWindows"))
@@ -1265,9 +1260,38 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
   }, [pathSourceWindowsBlocked, formState.exprFreeSpaceSourceType, t])
 
+  // Instances older than qBittorrent 5.3 have no path endpoint, so fall back to the
+  // default directory instead of reading a path this server cannot answer for.
+  useEffect(() => {
+    const usable = usableFreeSpaceSourceType(formState.exprFreeSpaceSourceType, supportsFreeSpaceAtPath)
+    if (usable !== formState.exprFreeSpaceSourceType) {
+      setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: usable }))
+      if (!isHydrating.current) {
+        toast.warning(t("preferences.workflowDialog.toast.qbitPathSourceUnsupported"))
+      }
+    }
+  }, [supportsFreeSpaceAtPath, formState.exprFreeSpaceSourceType, t])
+
   const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
     if (!usesFreeSpace || state.exprFreeSpaceSourceType === "qbittorrent") {
+      setFreeSpaceSourcePathError(null)
+      return true
+    }
+
+    if (state.exprFreeSpaceSourceType === "qbitPath") {
+      // qBittorrent reads this path on its own host, so neither local access nor the
+      // qui host's operating system matters here.
+      if (supportsFreeSpaceAtPath === false) {
+        setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.qbitPathUnsupported"))
+        toast.error(t("preferences.workflowDialog.toast.switchFreeSpaceSourceDefault"))
+        return false
+      }
+      if (state.exprFreeSpaceSourcePath.trim() === "") {
+        setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.pathRequired"))
+        toast.error(t("preferences.workflowDialog.toast.enterPathOrDefault"))
+        return false
+      }
       setFreeSpaceSourcePathError(null)
       return true
     }
@@ -1304,7 +1328,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     setFreeSpaceSourcePathError(null)
     return true
-  }, [allowanceSourceAvailable, pathSourceAvailable, pathSourceWindowsBlocked, t])
+  }, [allowanceSourceAvailable, pathSourceAvailable, pathSourceWindowsBlocked, supportsFreeSpaceAtPath, t])
 
   const validateCategory = useCallback((state: FormState): boolean => {
     if (state.categoryEnabled && state.exprCategory === undefined) {
@@ -1332,15 +1356,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (state.exprFreeSpaceSourceType === "allowance") {
       return allowanceSourceAvailable && (parseFloat(state.exprFreeSpaceAllowance) || 0) > 0 && state.exprFreeSpaceSourcePath.trim() !== ""
     }
+    if (state.exprFreeSpaceSourceType === "qbitPath") {
+      return supportsFreeSpaceAtPath !== false && state.exprFreeSpaceSourcePath.trim() !== ""
+    }
     if (!pathSourceAvailable) {
       return false
     }
     return state.exprFreeSpaceSourcePath.trim() !== ""
-  }, [allowanceSourceAvailable, pathSourceAvailable])
+  }, [allowanceSourceAvailable, pathSourceAvailable, supportsFreeSpaceAtPath])
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = useCallback((input: FormState): AutomationInput => {
-    const conditions: ActionConditions = { schemaVersion: "1" }
+    const { tags: switchedOffTags = [], ...switchedOffActions } = input.switchedOffActions
+    const conditions: ActionConditions = { schemaVersion: "1", ...switchedOffActions }
     if (input.exprGrouping) {
       conditions.grouping = input.exprGrouping
     }
@@ -1448,25 +1476,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
-    if (input.tagEnabled) {
-      const tagActions = input.exprTagActions
-        .filter((action) => action.useTrackerAsTag || action.tags.length > 0)
-        .map((action) => ({
-          enabled: true,
-          tags: action.tags,
-          mode: action.mode,
-          includeCrossSeeds: action.includeCrossSeeds,
-          deleteFromClient: action.deleteFromClient,
-          useTrackerAsTag: action.useTrackerAsTag,
-          useDisplayName: action.useDisplayName,
-          condition: input.actionCondition ?? undefined,
-        }))
-
-      if (tagActions.length > 0) {
-        conditions.tags = tagActions
-        // Keep legacy single-tag payload for backward compatibility.
-        conditions.tag = tagActions[0]
-      }
+    const formTagActions = !input.tagEnabled ? [] : input.exprTagActions
+      .filter((action) => action.useTrackerAsTag || action.tags.length > 0)
+      .map((action) => ({
+        enabled: true,
+        tags: action.tags,
+        mode: action.mode,
+        includeCrossSeeds: action.includeCrossSeeds,
+        deleteFromClient: action.deleteFromClient,
+        useTrackerAsTag: action.useTrackerAsTag,
+        useDisplayName: action.useDisplayName,
+        condition: input.actionCondition ?? undefined,
+      }))
+    // The server refuses a delete rule with any tag action, also a switched-off one.
+    const tagActions = input.deleteEnabled ? formTagActions : [...formTagActions, ...switchedOffTags]
+    if (tagActions.length > 0) {
+      conditions.tags = tagActions
+      // Keep legacy single-tag payload for backward compatibility.
+      conditions.tag = tagActions[0]
     }
     if (input.categoryEnabled && input.exprCategory !== undefined) {
       conditions.category = {
@@ -2491,6 +2518,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                     groupOptions={groupedConditionOptions}
                   />
+                  {mixedActionConditions && (
+                    <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
+                      <p>{t("preferences.workflowDialog.mixedActionConditions")}</p>
+                    </div>
+                  )}
                   {formState.deleteEnabled && !formState.actionCondition && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
                       <p className="font-medium text-destructive">{t("preferences.workflowDialog.toast.deleteRequiresCondition")}</p>
@@ -3849,15 +3881,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       value={formState.exprFreeSpaceSourceType}
                       onValueChange={(value) => {
                         const nextType = value as FormState["exprFreeSpaceSourceType"]
-                        setFormState(prev => ({
+                        // Each source reads a different host, so a path entered for one
+                        // never carries over to another. Keeping it would save a qui-host
+                        // path as a qBittorrent-host path, or the reverse.
+                        setFormState(prev => prev.exprFreeSpaceSourceType === nextType? prev: {
                           ...prev,
                           exprFreeSpaceSourceType: nextType,
-                        }))
-                        if (nextType === "qbittorrent") {
-                          setFreeSpaceSourcePathError(null)
-                          // Clear autocomplete state to prevent stale suggestions
-                          handleFreeSpacePathInputChange("")
-                        }
+                          exprFreeSpaceSourcePath: "",
+                        })
+                        setFreeSpaceSourcePathError(null)
+                        // Clear autocomplete state to prevent stale suggestions
+                        handleFreeSpacePathInputChange("")
                       }}
                     >
                       <SelectTrigger className="h-8 text-xs">
@@ -3868,6 +3902,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="path" disabled={!pathSourceAvailable}>
                           {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported"): !pathSourceAvailable? t("preferences.workflowDialog.freeSpace.pathSourceFilesystemAccessRequired"): t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
+                        <SelectItem value="qbitPath" disabled={supportsFreeSpaceAtPath === false}>
+                          {supportsFreeSpaceAtPath === false? t("preferences.workflowDialog.freeSpace.qbitPathSourceUnsupported"): t("preferences.workflowDialog.freeSpace.qbitPathSource")}
+                        </SelectItem>
                         <SelectItem value="allowance" disabled={!allowanceSourceAvailable}>
                           {pathSourceWindowsBlocked? t("preferences.workflowDialog.freeSpace.allowanceSourceWindowsUnsupported"): !allowanceSourceAvailable? t("preferences.workflowDialog.freeSpace.allowanceSourceAccessRequired"): t("preferences.workflowDialog.freeSpace.allowanceSource")}
                         </SelectItem>
@@ -3875,13 +3912,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </Select>
                     {formState.exprFreeSpaceSourceType === "allowance" && !pathSourceWindowsBlocked && (
                       <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <Label htmlFor="free-space-allowance" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowanceLabel")}</Label>
+                          <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { unit: unitLabel("TiB") })}</FieldHelp>
+                        </div>
                         <div className="flex gap-2">
                           <Input
+                            id="free-space-allowance"
                             type="number"
                             min={0}
                             step="any"
                             inputMode="decimal"
-                            aria-label={t("preferences.workflowDialog.freeSpace.allowanceAria")}
                             value={formState.exprFreeSpaceAllowance}
                             onChange={(e) => {
                               const nextAllowance = e.target.value
@@ -3903,16 +3944,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </SelectContent>
                           </Select>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {t("preferences.workflowDialog.freeSpace.allowanceHelp", { unit: unitLabel("TiB") })}
-                        </p>
                       </div>
                     )}
-                    {formState.exprFreeSpaceSourceType !== "qbittorrent" && !pathSourceWindowsBlocked && (
+                    {(((formState.exprFreeSpaceSourceType === "path" || formState.exprFreeSpaceSourceType === "allowance") && !pathSourceWindowsBlocked) || (formState.exprFreeSpaceSourceType === "qbitPath" && supportsFreeSpaceAtPath !== false)) && (
                       <div className="flex flex-col gap-1">
+                        {formState.exprFreeSpaceSourceType === "allowance" && (
+                          <div className="flex items-center gap-1.5">
+                            <Label htmlFor="free-space-source-path" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowancePathLabel")}</Label>
+                            <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowancePathHelp")}</FieldHelp>
+                          </div>
+                        )}
                         <div className="relative">
                           <Folder className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10" />
                           <Input
+                            id="free-space-source-path"
                             ref={supportsPathAutocomplete ? freeSpacePathInputRef : undefined}
                             value={formState.exprFreeSpaceSourcePath}
                             autoComplete="off"
@@ -3968,9 +4013,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         {freeSpaceSourcePathError && (
                           <p className="text-xs text-destructive">{freeSpaceSourcePathError}</p>
                         )}
-                        <p className="text-xs text-muted-foreground">
-                          {formState.exprFreeSpaceSourceType === "allowance"? t("preferences.workflowDialog.freeSpace.allowancePathHelp"): t("preferences.workflowDialog.freeSpace.pathHelp")}
-                        </p>
+                        {formState.exprFreeSpaceSourceType !== "allowance" && (
+                          <p className="text-xs text-muted-foreground">
+                            {formState.exprFreeSpaceSourceType === "qbitPath"? t("preferences.workflowDialog.freeSpace.qbitPathHelp"): t("preferences.workflowDialog.freeSpace.pathHelp")}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

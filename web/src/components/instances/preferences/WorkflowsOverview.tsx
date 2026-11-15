@@ -874,7 +874,7 @@ export function WorkflowsOverview() {
 
   return (
     <Card>
-      <CardHeader className="space-y-2">
+      <CardHeader>
         <div className="flex items-center gap-2">
           <CardTitle>{t("preferences.workflowsOverview.title")}</CardTitle>
           <Tooltip>

@@ -27,6 +27,7 @@ var browserOnlyRoutes = []routeKey{
 	{http.MethodDelete, "/api/client-api-keys/1"},
 	{http.MethodPost, "/api/system/update"},
 	{http.MethodPost, "/api/system/restart"},
+	{http.MethodPost, "/api/database/shrink"},
 	{http.MethodPut, "/api/instances/1/ssh-credentials"},
 	{http.MethodDelete, "/api/instances/1/ssh-credentials"},
 	{http.MethodPost, "/api/instances/1/ssh-test"},

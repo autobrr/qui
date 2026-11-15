@@ -125,7 +125,9 @@
     "httpStatus": "Erreur HTTP ! Statut : {{status}}",
     "httpStatusHtml": "Erreur HTTP ! Statut : {{status}} (le serveur a renvoyé une page d'erreur HTML)",
     "ssoHtmlResponse": "L'API a renvoyé une réponse HTML au lieu de JSON. Si vous êtes derrière un proxy SSO (Cloudflare Access, Pangolin, etc.), essayez d'actualiser la page ou de rouvrir l'URL dans un nouvel onglet.",
-    "torrentFileDownloadFailed": "Échec du téléchargement du fichier torrent : {{status}}"
+    "torrentFileDownloadFailed": "Échec du téléchargement du fichier torrent : {{status}}",
+    "altSpeedToggle": "Impossible de modifier les limites de vitesse alternatives : {{message}}",
+    "altSpeedToggleHidden": "Impossible de modifier les limites de vitesse alternatives. Le mode incognito masque la cause."
   },
   "status": {
     "disabled": "Désactivé",
@@ -134,6 +136,7 @@
     "updating": "Mise à jour en cours",
     "error": "Erreur",
     "unknown": "Inconnu",
+    "unavailable": "Indisponible",
     "trackerError": "Erreur du tracker",
     "unreachable": "Inaccessible"
   },
@@ -166,6 +169,79 @@
     "updateAvailable": "Mise à jour disponible",
     "versionAvailable": "La version {{version}} est maintenant disponible",
     "dismiss": "Fermer"
+  },
+  "systemNotice": {
+    "needsAttention": "Requiert votre attention",
+    "since": "Depuis {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Aller à la correction",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Enregistrement arrêté",
+        "title": "Enregistrement arrêté",
+        "effect": "qui ne peut pas écrire l'historique des transferts. Il réessaie à la prochaine écriture.",
+        "fix": "Vérifiez que le disque a de l'espace libre et que qui peut écrire le fichier de la base de données.",
+        "menuFix": "Libérez de l'espace disque pour la base"
+      },
+      "shrink_failed": {
+        "short": "Échec de la réduction",
+        "title": "Échec de la réduction",
+        "effect": "qui n’a pas pu réduire le fichier de base de données. La base de données n’a pas changé et qui fonctionne normalement.",
+        "fix": "Le journal de qui contient les détails.",
+        "menuFix": "Lire le journal de qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Le disque n’a pas assez d’espace libre. Une réduction demande jusqu’à deux fois la taille du fichier de base de données. Libérez de l’espace, puis réessayez.",
+            "menuFix": "Libérez de l’espace, puis réessayez"
+          },
+          "locked": {
+            "fix": "Un autre programme utilisait le fichier de base de données. Arrêtez ce programme, par exemple un outil de sauvegarde ou un visualiseur de base de données, puis réessayez.",
+            "menuFix": "Arrêtez l’autre programme, puis réessayez"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Disque presque plein",
+        "title": "Disque presque plein",
+        "effect": "Le disque de la base de données de qui a peu d'espace libre. Quand le disque est plein, chaque écriture de qui échoue.",
+        "fix": "Libérez de l'espace sur le disque, réduisez « Conserver le détail quotidien pendant » ou supprimez l'historique ancien dans les paramètres Statistiques.",
+        "menuFix": "Libérez de l'espace disque pour la base",
+        "action": "Ouvrir les paramètres Statistiques"
+      },
+      "redacted_key_rejected": {
+        "short": "Clé Redacted refusée",
+        "title": "Redacted a refusé la clé API",
+        "effect": "Redacted a refusé la dernière recherche. qui l’interroge de nouveau à la prochaine recherche.",
+        "fix": "Si la clé est incorrecte, créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Redacted, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui. Si Redacted a banni l’IP de qui, une nouvelle clé ne suffit pas : contactez l’équipe de Redacted.",
+        "menuFix": "Coller une nouvelle clé dans les paramètres",
+        "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Clé Orpheus refusée",
+        "title": "Orpheus a refusé la clé API",
+        "effect": "Orpheus a refusé la dernière recherche. qui l’interroge de nouveau à la prochaine recherche.",
+        "fix": "Si la clé est incorrecte, créez une clé API avec l’autorisation « Torrents » dans les paramètres de votre profil Orpheus, puis collez-la dans les paramètres Gazelle (OPS/RED) de qui. Si Orpheus a banni l’IP de qui, une nouvelle clé ne suffit pas : contactez l’équipe de Orpheus.",
+        "menuFix": "Coller une nouvelle clé dans les paramètres",
+        "action": "Ouvrir les paramètres Gazelle (OPS/RED)"
+      }
+    },
+    "actions": {
+      "tryAgain": "Réessayer",
+      "dismiss": "Ignorer",
+      "openLog": "Ouvrir le journal"
+    },
+    "unknown": {
+      "short": "Avis système",
+      "title": "Avis système",
+      "effect": "qui a trouvé une erreur qui demande une action de votre part.",
+      "fix": "Le journal de qui contient les détails.",
+      "menuFix": "Lisez le journal de qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Fichier de base de données réduit de {{before}} à {{after}}",
+    "nextStart": "La réduction aura lieu au prochain démarrage de qui",
+    "failed": "Impossible de demander la réduction"
   },
   "pwaUpdate": {
     "reload": "Recharger",

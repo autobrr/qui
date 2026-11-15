@@ -12,9 +12,9 @@ require (
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
-	github.com/autobrr/go-qbittorrent v1.19.1-0.20261112163254-c559a2a43556
+	github.com/autobrr/go-qbittorrent v1.19.1-0.20261113202921-a9e81f940928
 	github.com/autobrr/go-torrent v1.1.1
-	github.com/autobrr/rls v0.10.1-0.20261113171516-c9ee0a124e72
+	github.com/autobrr/rls v0.11.1-0.20261113231303-fca00698a352
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.21.0
@@ -38,6 +38,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.12.1
+	github.com/tdewolff/parse/v2 v2.8.20
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ulikunitz/xz v0.5.17
 	github.com/yuin/goldmark v1.8.6

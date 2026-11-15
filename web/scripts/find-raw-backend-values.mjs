@@ -155,13 +155,37 @@ function isInJsxContext(line) {
   );
 }
 
+// React never renders a key prop, so it cannot show a raw value. A key= counts as a prop
+// only inside a tag that opens on the same line. A line cannot tell a key prop on its own
+// line from text, so that case stays reported.
+// A < or > inside a {...} expression (() => x, count > 0) or a quoted attribute is not a tag bracket.
+function withoutKeyProps(line) {
+  return line.replace(/(^|\s)key=\{(?:[^{}]|\{[^{}]*\})*\}/g, (match, space, offset) => {
+    let depth = 0;
+    let quote = "";
+    let lastOpen = -1;
+    let lastClose = -1;
+    for (let i = 0; i < offset; i++) {
+      const c = line[i];
+      if (quote) {
+        if (c === quote) quote = "";
+      } else if (depth === 0 && (c === '"' || c === "'") && line[i - 1] === "=") quote = c;
+      else if (c === "{") depth++;
+      else if (c === "}") depth = Math.max(0, depth - 1);
+      else if (depth === 0 && c === "<") lastOpen = i;
+      else if (depth === 0 && c === ">") lastClose = i;
+    }
+    return lastOpen > lastClose ? space : match;
+  });
+}
+
 function scanFile(filePath) {
   const content = fs.readFileSync(filePath, "utf8");
   const lines = content.split(/\r?\n/);
   const findings = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = withoutKeyProps(lines[i]);
     const lineNum = i + 1;
 
     // Check 1: Raw backend property rendered in JSX
@@ -191,7 +215,7 @@ function scanFile(filePath) {
           line: lineNum,
           type: "RAW_BACKEND_VALUE",
           property: prop,
-          code: line.trim(),
+          code: lines[i].trim(),
           suggestion: `Use t(\`namespace.${prop}Labels.\${variable.${prop}}\`, variable.${prop}) instead`,
         });
       }
@@ -203,7 +227,7 @@ function scanFile(filePath) {
         line: lineNum,
         type: "RUNTIME_CASE_TRANSFORM",
         property: null,
-        code: line.trim(),
+        code: lines[i].trim(),
         suggestion:
           "Use a dedicated i18n key (e.g. statusLabelsUpper) instead of runtime .toUpperCase()/.toLowerCase()",
       });
@@ -224,7 +248,7 @@ function scanFile(filePath) {
             line: lineNum,
             type: "RAW_INTERPOLATION",
             property: prop,
-            code: line.trim(),
+            code: lines[i].trim(),
             suggestion: `Backend value '${prop}' interpolated without t() - consider localizing`,
           });
         }

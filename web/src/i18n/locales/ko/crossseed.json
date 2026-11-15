@@ -193,6 +193,21 @@
     "cancelDialog": {
       "title": "라이브러리 스캔을 취소하시겠습니까?",
       "description": "현재 라이브러리 스캔을 중지합니다. 이미 추가된 크로스 시드는 유지되지만 더 이상 토렌트를 검색하지 않습니다."
+    },
+    "gazelleSummary": {
+      "line": "RED/OPS: {{sites}}",
+      "site": "{{name}}: 조회 {{asked}}, 일치 {{matched}}, 실패 {{failed}}",
+      "siteWithNotAsked": "{{counts}}, 조회 안 함 {{notAsked}} ({{reasons}})",
+      "reasonCount": "{{count}} {{reason}}",
+      "reasons": {
+        "disabled": "꺼짐",
+        "noApiKey": "API 키 없음",
+        "cooldown": "최근에 검색함",
+        "sourceSite": "이 사이트 출처",
+        "alreadySeeded": "이미 시드 중",
+        "notMusic": "음악이 아님",
+        "other": "기타"
+      }
     }
   },
   "rules": {

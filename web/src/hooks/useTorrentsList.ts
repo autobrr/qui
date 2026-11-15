@@ -560,7 +560,7 @@ export function useTorrentsList(
       // The first fetch of a page's key is an ordinary pagination step: the earlier
       // pages are already displayed, so fetch only the new page (the effect below
       // appends it). A refetch of the same key — the post-mutation refetchQueries in
-      // useTorrentActions, or any invalidation — must instead deliver the whole
+      // scheduleTorrentListRefetches, or any invalidation — must instead deliver the whole
       // loaded window (pages 0..currentPage): once the user has paginated this query
       // is the only active torrents-list observer, and the SSE stream only refreshes
       // the page-0 window, so scrolled-in rows would otherwise stay stale until a

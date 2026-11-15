@@ -125,7 +125,9 @@
     "httpStatus": "Chyba HTTP! Stav: {{status}}",
     "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
     "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
-    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}"
+    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}",
+    "altSpeedToggle": "Alternativní rychlostní limity se nepodařilo změnit: {{message}}",
+    "altSpeedToggleHidden": "Alternativní rychlostní limity se nepodařilo změnit. Anonymní režim skrývá příčinu."
   },
   "status": {
     "disabled": "Vypnuto",
@@ -134,6 +136,7 @@
     "updating": "Aktualizace",
     "error": "Chyba",
     "unknown": "Neznámé",
+    "unavailable": "Nedostupné",
     "trackerError": "Chyba trackeru",
     "unreachable": "Nedostupné"
   },
@@ -166,6 +169,79 @@
     "updateAvailable": "Aktualizace dostupná",
     "versionAvailable": "Verze {{version}} je nyní dostupná",
     "dismiss": "Zavřít"
+  },
+  "systemNotice": {
+    "needsAttention": "Vyžaduje pozornost",
+    "since": "Od {{time}}, {{age}}",
+    "causeLabel": "Příčina",
+    "actionFallback": "Přejít k opravě",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Záznam zastaven",
+        "title": "Záznam zastaven",
+        "effect": "qui nemůže zapisovat historii přenosů. Zkusí to znovu při dalším zápisu.",
+        "fix": "Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze.",
+        "menuFix": "Uvolněte místo na disku pro databázi"
+      },
+      "shrink_failed": {
+        "short": "Zmenšení selhalo",
+        "title": "Zmenšení selhalo",
+        "effect": "qui nemohl zmenšit soubor databáze. Databáze se nezměnila a qui běží jako obvykle.",
+        "fix": "Podrobnosti jsou v logu qui.",
+        "menuFix": "Přečíst log qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Na disku je málo volného místa. Zmenšení potřebuje až dvojnásobek velikosti souboru databáze. Uvolněte místo na disku a zkuste to znovu.",
+            "menuFix": "Uvolněte místo a zkuste to znovu"
+          },
+          "locked": {
+            "fix": "Soubor databáze držel jiný program. Ukončete tento program, například nástroj pro zálohy nebo prohlížeč databází, a zkuste to znovu.",
+            "menuFix": "Ukončete jiný program a zkuste to znovu"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Málo místa na disku",
+        "title": "Málo místa na disku",
+        "effect": "Disk s databází qui má málo volného místa. Když je disk plný, každý zápis qui selže.",
+        "fix": "Uvolněte místo na disku, zkraťte „Uchovávat denní podrobnosti po dobu“ nebo smažte starší historii v nastavení Statistik.",
+        "menuFix": "Uvolněte místo na disku pro databázi",
+        "action": "Otevřít nastavení Statistik"
+      },
+      "redacted_key_rejected": {
+        "short": "Klíč pro Redacted odmítnut",
+        "title": "Redacted odmítl klíč API",
+        "effect": "Redacted odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Redacted klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Redacted zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Redacted.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Klíč pro Orpheus odmítnut",
+        "title": "Orpheus odmítl klíč API",
+        "effect": "Orpheus odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Orpheus klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Orpheus zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Orpheus.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      }
+    },
+    "actions": {
+      "tryAgain": "Zkusit znovu",
+      "dismiss": "Zavřít",
+      "openLog": "Otevřít log"
+    },
+    "unknown": {
+      "short": "Systémové upozornění",
+      "title": "Systémové upozornění",
+      "effect": "qui našel chybu, která od vás vyžaduje zásah.",
+      "fix": "Podrobnosti najdete v logu qui.",
+      "menuFix": "Přečtěte si log qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Soubor databáze zmenšen z {{before}} na {{after}}",
+    "nextStart": "Zmenšení proběhne při příštím spuštění qui",
+    "failed": "Zmenšení se nepodařilo vyžádat"
   },
   "pwaUpdate": {
     "reload": "Znovu načíst",

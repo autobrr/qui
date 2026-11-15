@@ -12,6 +12,8 @@
     "externalPrograms": "Programes externs",
     "notifications": "Notificacions",
     "dateTime": "Hora i idioma",
+    "statistics": "Estadístiques",
+    "trackers": "Personalització de trackers",
     "premiumThemes": "Temes",
     "security": "Seguretat",
     "logs": "Registres"
@@ -297,7 +299,7 @@
     "loading": "S'estan carregant les destinacions de notificació…",
     "loadFailed": "No s'han pogut carregar les destinacions de notificació",
     "empty": "No hi ha cap destinació de notificació configurada. Afegeix-ne una per començar a rebre avisos.",
-    "allEvents": "Tots els esdeveniments",
+    "allEvents": "Tots els esdeveniments excepte l'avís del sistema",
     "showList": "Mostra la llista",
     "hideList": "Amaga la llista",
     "badges": {
@@ -396,6 +398,56 @@
       "error": "No s'han pogut desar les preferències de data i hora"
     }
   },
+  "statistics": {
+    "cardTitle": "Estadístiques",
+    "cardDescription": "qui registra la pujada i la baixada de cada torrent a la seva base de dades. Aquesta configuració s'aplica a totes les instàncies.",
+    "recording": {
+      "label": "Registra l'historial de transferències",
+      "description": "Mentre està desactivat, qui no registra res i conserva l'historial desat. El temps que està desactivat esdevé una interrupció del registre."
+    },
+    "retention": {
+      "label": "Conserva el detall diari durant",
+      "description": "Després d'aquest temps, qui agrupa els totals per hora en dies, i els bytes diaris de cada torrent en una fila per any. Els totals no canvien. Si trieu un temps més curt, qui agrupa el detall més antic a la lectura següent i no el podeu recuperar.",
+      "days90": "90 dies",
+      "days400": "400 dies",
+      "forever": "Sempre"
+    },
+    "size": {
+      "label": "Mida de l'historial"
+    },
+    "deleteHistory": {
+      "label": "Elimina l'historial",
+      "description": "Elimina l'historial de transferències d'una instància o de totes les instàncies. No el podràs recuperar.",
+      "instance": "Instància",
+      "allInstances": "Totes les instàncies",
+      "unnamedInstance": "Instància {{id}}",
+      "everything": "Tot",
+      "before": "Tot abans d'una data",
+      "date": "Data",
+      "button": "Elimina l'historial",
+      "confirmTitle": "Vols eliminar l'historial?",
+      "confirmEverything": "qui elimina tot l'historial de {{name}}. L'enregistrament torna a començar amb una nova base. No es pot desfer.",
+      "confirmBefore": "qui elimina l'historial de {{name}} abans del {{date}}. Si l'enregistrament va començar abans d'aquesta data, també s'eliminen els bytes d'abans del primer enregistrament, i «Enregistrant des de» passa a aquesta data. No es pot desfer.",
+      "sqliteSpace": "El fitxer de la base de dades manté la mida. SQLite torna a fer servir l'espai lliure per a l'historial nou.",
+      "postgresSpace": "Eliminar-ho tot de totes les instàncies retorna l'espai al disc de seguida. Després d'una altra eliminació, Postgres torna a fer servir l'espai lliure per a l'historial nou.",
+      "cancel": "Cancel·la",
+      "confirm": "Elimina",
+      "deleted": "Historial eliminat",
+      "failed": "No s'ha pogut eliminar l'historial",
+      "shrink": {
+        "label": "Redueix també el fitxer de la base de dades",
+        "restart": "qui es reinicia i redueix el fitxer, de manera que recuperes l'espai de disc. qui no està disponible durant una estona curta.",
+        "nextStart": "qui no es pot reiniciar sol en aquesta instal·lació. La reducció s'executa en el proper inici de qui.",
+        "tooLittleSpace": "El disc té {{free}} lliures i una reducció necessita fins a {{need}}. Pots deixar-ho desactivat sense risc: SQLite torna a fer servir l'espai lliure per a l'historial nou.",
+        "manualDocs": "Redueix el fitxer a mà"
+      }
+    },
+    "loadFailed": "No s'ha pogut carregar la configuració de les estadístiques",
+    "toasts": {
+      "saved": "S'ha desat la configuració de les estadístiques",
+      "saveFailed": "No s'ha pogut desar la configuració de les estadístiques"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "Canvia la contrasenya",
@@ -475,17 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Selecció de tema",
+      "title": "Temes",
       "loadingDescription": "S'estan carregant els temes disponibles...",
-      "description": "Tria entre els temes disponibles. Alguns temes necessiten una llicència vàlida.",
+      "description": "Fes clic en un tema per fer-lo servir.",
       "verificationUnavailable": "La verificació de llicències no està disponible. El canvi a temes amb llicència està desactivat temporalment.",
       "notLoaded": "Els temes amb llicència no s'han carregat",
       "notLoadedDescription": "Executa",
-      "free": "Gratuït",
-      "locked": "Bloquejat",
-      "lock": "Bloqueja",
-      "showTheme": "Mostra",
-      "hideTheme": "Amaga"
+      "defaultThemeVisit": "qui mostra el tema per defecte durant aquesta visita, perquè l'adreça conté ?theme=default. Selecciona un tema per acabar-la.",
+      "search": "Cerca temes",
+      "filterLabel": "Filtra els temes",
+      "noMatch": "Cap tema coincideix amb «{{query}}».",
+      "needsLicense": "Cal una llicència",
+      "lockedCount_one": "{{count}} tema necessita una llicència.",
+      "lockedCount_other": "{{count}} temes necessiten una llicència.",
+      "showAll_one": "Mostra {{count}} tema",
+      "showAll_other": "Mostra els {{count}} temes",
+      "showFewer": "Mostra menys temes",
+      "variationCount_one": "{{count}} variació de color",
+      "variationCount_other": "{{count}} variacions de color"
+    },
+    "current": {
+      "label": "En ús",
+      "colors": "Variacions de color"
+    },
+    "groups": {
+      "all": "Tots",
+      "free": "Gratuïts",
+      "licensed": "Amb llicència",
+      "custom": "Personalitzats"
+    },
+    "menu": {
+      "button": "Tria els temes del menú",
+      "title": "Tria els temes del menú",
+      "description": "Tria els temes que mostra el menú de temes, a la barra superior i al peu de pàgina del mòbil. El tema en ús sempre hi és.",
+      "groupCount": "{{shown}} de {{total}}",
+      "groupsLocked": "Esborra la cerca per fer servir les caselles dels grups.",
+      "inUse": "En ús",
+      "summary": "{{shown}} de {{total}} temes al menú",
+      "reset": "Restableix els valors per defecte",
+      "undo": "Desfés el restabliment",
+      "done": "Fet"
     },
     "toasts": {
       "premiumRequired": "Cal una llicència",
@@ -627,25 +708,71 @@
       }
     },
     "custom": {
-      "badge": "Personalitzat",
       "title": "Temes personalitzats",
-      "lockedTitle": "Els temes personalitzats necessiten una llicència",
-      "lockedDescription": "Aconsegueix una llicència per carregar els teus propis fitxers CSS de tema des d'un directori del disc.",
+      "description": "Escriu o enganxa un tema a l'editor de temes, o posa fitxers CSS de temes a la carpeta de temes del servidor.",
+      "lockedDescription": "Aconsegueix una llicència per afegir els teus propis temes: escriu o enganxa un tema a l'editor de temes, o posa fitxers CSS de tema a la carpeta de temes del servidor.",
       "unlockCta": "Aconsegueix una llicència",
       "refresh": "Actualitza",
-      "detectedCount": "Temes trobats: {{total}}",
-      "parseErrorsTitle": "No s'han pogut analitzar aquests fitxers:",
-      "noneFound": "No s'ha trobat cap tema personalitzat. Posa un fitxer .css al directori dels temes i fes clic a Actualitza.",
-      "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos del directori dels temes."
+      "themeCount_one": "{{count}} tema",
+      "themeCount_other": "{{count}} temes",
+      "folderLabel": "Carpeta de temes",
+      "actionsFor": "Accions per a {{theme}}",
+      "parseErrorsTitle": "Temes no vàlids:",
+      "parseErrorsHint": "Edita un fitxer per corregir-lo o suprimeix-lo.",
+      "noneFound": "Encara no hi ha cap tema personalitzat. Fes clic a Tema nou, o posa un fitxer .css a la carpeta de temes i fes clic a Actualitza.",
+      "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos de la carpeta de temes.",
+      "newTheme": "Tema nou",
+      "copyPrompt": "Copia la indicació per a la teva IA",
+      "promptCopied": "S'ha copiat la indicació. Enganxa-la al teu assistent d'IA i descriu l'aspecte que vols.",
+      "promptCopyFailed": "No s'ha pogut copiar la indicació",
+      "edit": "Edita",
+      "remove": "Suprimeix",
+      "removeTitle": "Vols suprimir {{theme}}?",
+      "removeDescription": "qui elimina el fitxer d'aquest tema de la carpeta de temes. No es pot desfer. Un dispositiu que utilitzi aquest tema mostrarà el tema per defecte.",
+      "removeConfirm": "Suprimeix",
+      "removed": "S'ha suprimit el tema",
+      "removeFailed": "No s'ha pogut suprimir el tema: {{message}}",
+      "editLoadFailed": "No s'ha pogut llegir el fitxer del tema: {{message}}",
+      "editor": {
+        "newTitle": "Tema nou",
+        "editTitle": "Edita el tema",
+        "description": "Previsualitza els canvis en aquest navegador. En desar, el tema es guarda al servidor.",
+        "name": "Nom",
+        "namePlaceholder": "Nom del tema",
+        "savedAs": "Nom del fitxer: {{filename}}",
+        "css": "CSS",
+        "cssHelp": "Enganxa o escriu el CSS d'un tema. Necessita un bloc :root per al mode clar i un bloc .dark per al mode fosc, cadascun amb almenys un token de disseny. Copia la indicació per a la teva IA dona les regles completes a un assistent d'IA.",
+        "cssPlaceholder": "/* @name: El meu tema */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "Introdueix un nom amb una lletra o un dígit.",
+        "nameRequired": "Introdueix un nom, o afegeix una línia @name al CSS.",
+        "save": "Desa",
+        "saveFailed": "No s'ha pogut desar el tema.",
+        "saved": "S'ha desat el tema",
+        "savedNotLoaded": "S'ha desat el tema, però qui no ha pogut carregar la llista de temes. Fes clic a Actualitza al costat de la carpeta de temes.",
+        "replaceTitle": "Vols substituir el tema?",
+        "replaceDescription": "Ja existeix un tema personalitzat amb el nom de fitxer {{filename}}. Vols substituir-lo per aquest tema?",
+        "replace": "Substitueix",
+        "problems": {
+          "missingRoot": "qui no pot utilitzar aquest CSS: no té cap bloc :root amb un token de disseny. La previsualització mostra l'últim CSS que qui ha pogut utilitzar.",
+          "missingDark": "qui no pot utilitzar aquest CSS: no té cap bloc .dark amb un token de disseny. La previsualització mostra l'últim CSS que qui ha pogut utilitzar.",
+          "outsideFile": "La línia {{line}} pot carregar un fitxer d'un altre lloc web. La previsualització manté l'últim CSS vàlid, i Desa rebutja aquest CSS.",
+          "unreadable": "qui no pot llegir la línia {{line}}: una cadena entre cometes o un url() no està tancat. La previsualització mostra l'últim CSS que qui ha pogut utilitzar."
+        },
+        "previewing": "Previsualització en aquest navegador",
+        "previewWaits": "La previsualització comença quan canvies el CSS.",
+        "emptyStatus": "Enganxa o escriu el CSS d'un tema per veure'n una previsualització."
+      }
     },
     "layout": {
+      "title": "Sincronització del tema",
       "mobileSplit": "Tema separat per a la disposició mòbil",
       "mobileSplitHelp": "La disposició mòbil (una finestra de menys de 768 px d'amplada) i la disposició d'escriptori mantenen cadascuna el seu tema, mode i variació. Aquesta opció s'aplica a tots els navegadors.",
       "localOnly": "Mantén local el tema d'aquest navegador",
       "localOnlyHelp": "Aquest navegador no agafa el tema del servidor i no envia els seus canvis de tema al servidor. Aquesta opció només s'aplica a aquest navegador.",
       "changesMobile": "Canvia el tema mòbil",
       "changesDesktop": "Canvia el tema d'escriptori",
-      "changesLocal": "Canvia només el tema d'aquest navegador. Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
+      "changesLocal": "Canvia només el tema d'aquest navegador.",
+      "splitNeedsSync": "Per canviar l'opció de la disposició mòbil, desactiva l'opció local.",
       "saveError": "No s'ha pogut desar l'opció del tema",
       "mobileSplitOffWarning": "Desactivar aquesta opció elimina el tema mòbil."
     }
@@ -1159,6 +1286,74 @@
       "bind": "Adreça d'escolta",
       "configDir": "Directori de configuració",
       "dataDir": "Directori de dades"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Personalització de trackers",
+    "cardDescription": "Canvia el nom dels trackers i fusiona els dominis d'un mateix tracker en una sola entrada. qui mostra el nom visible a tot arreu on mostra el tracker.",
+    "loading": "S'estan carregant els trackers…",
+    "empty": "Encara no hi ha trackers. Els trackers apareixen aquí quan una instància té torrents.",
+    "importTooltip": "Importa les personalitzacions",
+    "exportTooltip": "Exporta les personalitzacions",
+    "mergedFrom": "Fusionat de: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Fusiona els trackers seleccionats en aquest grup",
+    "mergeIntoGroup": "Fusiona al grup",
+    "addToMerge": "Afegeix a la fusió",
+    "rename": "Reanomena",
+    "edit": "Edita",
+    "delete": "Elimina",
+    "customizeDialog": {
+      "editTitle": "Edita el nom del tracker",
+      "renameTitle": "Reanomena el tracker",
+      "mergeTitle": "Fusiona els trackers",
+      "editDescription": "Actualitza el nom a mostrar d'aquest tracker.",
+      "renameDescription": "Dona a aquest tracker un nom a mostrar personalitzat.",
+      "mergeDescription": "Combina aquests trackers en una sola entrada amb un nom personalitzat.",
+      "displayName": "Nom a mostrar",
+      "displayNamePlaceholder": "p. ex., TorrentLeech",
+      "domains": "Domini(s)",
+      "selectedTrackers": "Tracker(s) seleccionat(s)",
+      "primary": "Principal",
+      "removeDomain": "Elimina {{domain}}",
+      "cancel": "Cancel·la",
+      "saving": "S'està desant...",
+      "save": "Desa",
+      "renameAction": "Reanomena",
+      "mergeAction": "Fusiona"
+    },
+    "importDialog": {
+      "title": "Importa les personalitzacions dels trackers",
+      "description": "Enganxa el JSON per importar les personalitzacions dels trackers (canvis de nom i fusions).",
+      "jsonData": "Dades JSON",
+      "invalidFormat": "Format no vàlid: s'esperava una matriu trackerCustomizations",
+      "missingDisplayName": "Entrada no vàlida: falta displayName",
+      "invalidDomains": "Entrada no vàlida: domains ha de ser una matriu no buida",
+      "invalidJson": "JSON no vàlid",
+      "newCount": "Nous: {{count}}",
+      "unchangedCount": "Sense canvis: {{count}}",
+      "resolveConflicts": "Resol els conflictes",
+      "conflictsWith": "En conflicte amb: {{name}}",
+      "skip": "Omet",
+      "overwrite": "Sobreescriu",
+      "cancel": "Cancel·la",
+      "importing": "S'està important...",
+      "import": "Importa",
+      "conflictCount_one": "{{count}} conflicte",
+      "conflictCount_other": "{{count}} conflictes"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "No hi ha cap personalització per exportar",
+      "copiedToClipboard": "S'ha copiat al porta-retalls",
+      "failedToCopy": "No s'ha pogut copiar al porta-retalls",
+      "createFailed": "No s'ha pogut crear la personalització del tracker",
+      "updateFailed": "No s'ha pogut actualitzar la personalització del tracker",
+      "deleteFailed": "No s'ha pogut eliminar la personalització del tracker",
+      "failedToImport": "No s'han pogut importar: {{names}}",
+      "importedAndSkipped": "Se n'han importat {{imported}} i se n'han omès {{skipped}}",
+      "noCustomizationsImported": "No s'ha importat cap personalització",
+      "importedCount_one": "S'ha importat {{count}} personalització",
+      "importedCount_other": "S'han importat {{count}} personalitzacions"
     }
   }
 }

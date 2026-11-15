@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DeleteHistoryCheckbox } from "@/components/instances/DeleteHistoryCheckbox"
 import { CrossSeedDeleteNotice, useCrossSeedDeleteCheck } from "@/components/cross-seed/RouteProtectionConfirm"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
@@ -83,6 +84,7 @@ export function InstanceCard({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteHistory, setDeleteHistory] = useState(false)
   const deleteCheck = useCrossSeedDeleteCheck(instance.id, showDeleteDialog)
   const displayUrl = instance.host
 
@@ -139,7 +141,7 @@ export function InstanceCard({
   }
 
   const handleDelete = () => {
-    deleteInstance({ id: instance.id, name: instance.name }, {
+    deleteInstance({ id: instance.id, name: instance.name, deleteHistory }, {
       onSuccess: () => {
         toast.success(t("card.toast.instanceDeletedTitle"), {
           description: t("card.toast.instanceDeletedDescription", { name: instance.name }),
@@ -257,7 +259,10 @@ export function InstanceCard({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => setShowDeleteDialog(true)}
+                  onClick={() => {
+                    setDeleteHistory(false)
+                    setShowDeleteDialog(true)
+                  }}
                   disabled={isDeleting}
                   className="text-destructive"
                 >
@@ -351,6 +356,7 @@ export function InstanceCard({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <CrossSeedDeleteNotice check={deleteCheck} />
+          <DeleteHistoryCheckbox checked={deleteHistory} onCheckedChange={setDeleteHistory} disabled={isDeleting} />
           <AlertDialogFooter>
             <AlertDialogCancel>{t("card.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction

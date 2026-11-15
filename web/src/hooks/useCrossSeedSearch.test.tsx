@@ -60,12 +60,15 @@ import { api } from "@/lib/api"
 import { toast } from "sonner"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { makeTorrent } from "@/test/mockTorrent"
-import type { CrossSeedInstanceResult, CrossSeedTorrentSearchResponse, TorznabIndexer } from "@/types"
+import type { CrossSeedGazelleLookup, CrossSeedInstanceResult, CrossSeedTorrentSearchResponse, TorznabIndexer } from "@/types"
 
 const mockedApi = vi.mocked(api, true)
 const mockedToast = vi.mocked(toast, true)
 
 // ---- fixtures ----------------------------------------------------------
+
+const red = { site: "redacted.sh", name: "Redacted (API)", shortName: "Redacted", indexerId: -1001 }
+const ops = { site: "orpheus.network", name: "Orpheus (API)", shortName: "Orpheus", indexerId: -1002 }
 
 function makeIndexer(overrides: Partial<TorznabIndexer> = {}): TorznabIndexer {
   return {
@@ -237,9 +240,9 @@ describe("useCrossSeedSearch", () => {
     mockedApi.getCrossSeedSettings.mockResolvedValue({
       findIndividualEpisodes: false,
       gazelleEnabled: true,
-      redactedApiKey: "red-key",
-      orpheusApiKey: "",
     } as never)
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "not_asked", reason: "no_api_key" }]
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-gazelle", gazellePlan: plan } as never)
     const { result } = await renderSettled()
     expect(result.current.canCrossSeedSearch).toBe(true)
 
@@ -248,7 +251,7 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
     expect(mockedToast.error).not.toHaveBeenCalled()
-    expect(dialogProps(result).gazelleConfigured).toBe(true)
+    expect(dialogProps(result).selectableGazelleIds).toEqual([red.indexerId])
 
     await act(async () => {
       ;(dialogProps(result).onScopeSearch as () => void)()
@@ -587,9 +590,10 @@ describe("useCrossSeedSearch", () => {
     expect(mockedToast.info).toHaveBeenCalledWith("hooks.search.noMatches")
   })
 
-  it("forwards the RED/OPS timeout note instead of a no-matches toast", async () => {
+  it("forwards a failed RED/OPS lookup instead of a no-matches toast", async () => {
+    const lookups: CrossSeedGazelleLookup[] = [{ ...red, status: "no_match" }, { ...ops, status: "failed", reason: "timed_out" }]
     mockedApi.searchCrossSeedTorrent.mockResolvedValue(
-      makeSearchResponse({ results: [], gazelleTimedOut: true })
+      makeSearchResponse({ results: [], gazelleLookups: lookups })
     )
     const { result } = await renderSettled()
     const torrent = makeTorrent({ progress: 1, hash: "hash-gazelle-timeout" })
@@ -604,7 +608,7 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
 
-    expect(dialogProps(result).gazelleTimedOut).toBe(true)
+    expect(dialogProps(result).gazelleEntries).toEqual(lookups)
     expect(mockedToast.info).not.toHaveBeenCalledWith("hooks.search.noMatches")
   })
 
@@ -1056,5 +1060,124 @@ describe("useCrossSeedSearch", () => {
 
     expect(mockedToast.warning).toHaveBeenCalledWith("hooks.search.selectTracker")
     expect(mockedApi.searchCrossSeedTorrent).not.toHaveBeenCalled()
+  })
+
+  describe("RED/OPS entries", () => {
+    const plan: CrossSeedGazelleLookup[] = [
+      { ...red, status: "not_asked", reason: "source_site", replacedIndexerIds: [7] },
+      { ...ops, status: "will_ask", replacedIndexerIds: [8] },
+    ]
+
+    async function openWithPlan() {
+      mockedApi.listTorznabIndexers.mockResolvedValue([
+        makeIndexer({ id: 1, name: "generic" }),
+        makeIndexer({ id: 7, name: "Redacted" }),
+        makeIndexer({ id: 8, name: "Orpheus" }),
+      ])
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-plan", gazellePlan: plan } as never)
+      const rendered = await renderSettled()
+      await act(async () => {
+        rendered.result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-plan" }))
+        await Promise.resolve()
+      })
+      return rendered.result
+    }
+
+    async function searchCustom(result: { current: HookResult }, ids: number[]) {
+      act(() => {
+        ;(dialogProps(result).onIndexerModeChange as (m: "all" | "custom") => void)("custom")
+      })
+      for (const id of ids) {
+        act(() => {
+          ;(dialogProps(result).onToggleIndexer as (id: number) => void)(id)
+        })
+      }
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+      return mockedApi.searchCrossSeedTorrent.mock.calls[0][2]
+    }
+
+    it("shows the plan and leaves out the Torznab indexers that the sites replace", async () => {
+      const result = await openWithPlan()
+
+      expect(dialogProps(result).gazelleEntries).toEqual(plan)
+      expect(dialogProps(result).selectableGazelleIds).toEqual([ops.indexerId])
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+    })
+
+    it("asks every site and no replaced indexer when the user picks all", async () => {
+      const result = await openWithPlan()
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+
+      const options = mockedApi.searchCrossSeedTorrent.mock.calls[0][2]
+      expect(options?.indexerIds).toEqual([1])
+      expect(options?.gazelleSites).toBeUndefined()
+    })
+
+    it("asks only RED/OPS when the user picks only a RED/OPS entry", async () => {
+      const options = await searchCustom(await openWithPlan(), [ops.indexerId])
+
+      expect(options?.indexerIds).toBeUndefined()
+      expect(options?.gazelleSites).toEqual(["orpheus.network"])
+    })
+
+    it("keeps the plan after a search that left a site out", async () => {
+      const result = await openWithPlan()
+      mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({
+        gazelleLookups: [{ ...red, status: "not_asked", reason: "source_site" }, { ...ops, status: "not_asked", reason: "not_selected" }],
+      }))
+      await searchCustom(result, [1])
+
+      expect(dialogProps(result).selectableGazelleIds).toEqual([ops.indexerId])
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+    })
+
+    it("shows the plan again in the scope list when the pick changes after a search", async () => {
+      const lookups: CrossSeedGazelleLookup[] = [{ ...red, status: "not_asked", reason: "source_site" }, { ...ops, status: "not_asked", reason: "not_selected" }]
+      mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ gazelleLookups: lookups }))
+      const result = await openWithPlan()
+      await searchCustom(result, [1])
+
+      expect(dialogProps(result).gazelleEntries).toEqual(lookups)
+      expect(dialogProps(result).gazelleLookups).toEqual(lookups)
+
+      act(() => {
+        ;(dialogProps(result).onToggleIndexer as (id: number) => void)(ops.indexerId)
+      })
+
+      expect(dialogProps(result).gazelleEntries).toEqual(plan)
+      expect(dialogProps(result).gazelleLookups).toEqual(lookups)
+    })
+
+    // regression: #4126
+    it("loads the plan again when the user retries after a failed analysis", async () => {
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockRejectedValueOnce(new Error("analyze failed"))
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-plan" }))
+        await Promise.resolve()
+      })
+      expect(dialogProps(result).error).toBe("analyze failed")
+
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-plan", gazellePlan: plan } as never)
+      await act(async () => {
+        ;(dialogProps(result).onRetry as () => void)()
+        await Promise.resolve()
+      })
+
+      await waitFor(() => expect(dialogProps(result).selectableGazelleIds).toEqual([ops.indexerId]))
+    })
+
+    it("asks no RED/OPS site when the user picks only Torznab indexers", async () => {
+      const options = await searchCustom(await openWithPlan(), [1])
+
+      expect(options?.indexerIds).toEqual([1])
+      expect(options?.gazelleSites).toEqual([])
+    })
   })
 })

@@ -62,6 +62,7 @@ func TestClientSupports(t *testing.T) {
 		{CapShareLimitsAction, []string{"2.15.0"}, []string{"2.15.1"}},
 		{CapProcessInfo, []string{"2.15.0"}, []string{"2.15.1"}},
 		{CapListCreatedBy, []string{"2.15.0"}, []string{"2.15.1"}},
+		{CapFreeSpaceAtPath, []string{"2.15.1"}, []string{"2.15.2"}},
 		{CapCategoryFileNames, []string{"2.15.3"}, []string{"2.15.4"}},
 		{CapShareLimitsMode, []string{"2.15.1"}, []string{"2.16.0"}},
 		{CapPartialCategoryEdit, []string{"2.16.0"}, []string{"2.16.1"}},

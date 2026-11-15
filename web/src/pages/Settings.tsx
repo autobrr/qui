@@ -15,15 +15,17 @@ import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { GazelleSettingsCard } from "@/components/settings/GazelleSettingsCard"
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_GROUPS, type SettingsTab } from "@/components/settings/tabs"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
+import { TrackerCustomizationsManager } from "@/components/settings/TrackerCustomizationsManager"
 import { InstallUpdateButton } from "@/components/settings/InstallUpdateButton"
 import { RestartButton } from "@/components/settings/RestartButton"
 import { RestartOverlay } from "@/components/settings/RestartOverlay"
+import { StatisticsSettingsCard } from "@/components/settings/StatisticsSettingsCard"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { CopyButton } from "@/components/ui/copy-button"
@@ -475,7 +477,7 @@ function TorznabSearchCachePanel() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="space-y-1.5">
             <CardTitle>{t("searchCache.title")}</CardTitle>
             <CardDescription>{t("searchCache.description")}</CardDescription>
           </div>
@@ -611,7 +613,7 @@ function ApplicationSection({ title, description, fields, headerAction }: Applic
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="space-y-1.5">
           <CardTitle>{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
         </div>
@@ -877,9 +879,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   }
 
   return (
-    <div className="space-y-6 p-4 lg:p-6 pb-16">
-      <PageHeader title={t("title")} description={t("description")} />
-
+    <Page title={t("title")} description={t("description")}>
       <SectionedPage navLabel={t("title")} groups={navGroups} activeSection={activeTab} onSectionChange={handleTabChange}>
         {activeTab === "application" && (
           <ApplicationInfoPanel openUpdate={search.modal === "install-update"} onUpdateOpened={() => onSearchChange({ ...search, modal: undefined })} />
@@ -904,6 +904,10 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <IndexersPage withContainer={false} />
             <GazelleSettingsCard />
           </>
+        )}
+
+        {activeTab === "trackers" && (
+          <TrackerCustomizationsManager />
         )}
 
         {activeTab === "search-cache" && (
@@ -1021,9 +1025,13 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           </>
         )}
 
+        {activeTab === "statistics" && (
+          <StatisticsSettingsCard />
+        )}
+
         {activeTab === "themes" && (
           <>
-            <ThemeSelector />
+            <ThemeSelector openMenu={search.modal === "theme-menu"} onMenuOpened={() => onSearchChange({ ...search, modal: undefined })} />
             <div id="license-manager">
               <LicenseManager
                 checkoutStatus={search.checkout}
@@ -1088,6 +1096,6 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           <LogSettingsPanel />
         )}
       </SectionedPage>
-    </div>
+    </Page>
   )
 }

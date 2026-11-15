@@ -295,6 +295,45 @@ export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferen
 }
 
 /**
+ * Format an age as one narrow unit in the active language: minutes below one
+ * hour, hours below one day, and days above that ("4m", "6h", "2d" in English).
+ * An age below one minute shows as one minute.
+ */
+export function formatNarrowAge(ageMs: number): string {
+  const minutes = Math.max(1, Math.floor(ageMs / 60000))
+  const [value, unit] = minutes < 60 ? [minutes, "minute"] : minutes < 24 * 60 ? [Math.floor(minutes / 60), "hour"] : [Math.floor(minutes / (24 * 60)), "day"]
+  return new Intl.NumberFormat(getDisplayLocales(), { style: "unit", unit, unitDisplay: "narrow" }).format(value)
+}
+
+/**
+ * Format the clock time of a moment in the last days: the time alone for a
+ * moment from today, and the weekday with the time for an older one.
+ */
+export function formatClockTime(date: Date, preferences?: DateTimePreferences, now = new Date()): string {
+  const prefs = preferences || getStoredPreferences()
+  const hour12 = prefs.timeFormat === "12h"
+  try {
+    return formatClockTimeIn(date, now, prefs.timezone, hour12)
+  } catch (error) {
+    console.error("Error formatting time:", error)
+    return formatClockTimeIn(date, now, undefined, hour12)
+  }
+}
+
+function formatClockTimeIn(date: Date, now: Date, timeZone: string | undefined, hour12: boolean): string {
+  const day = getFormatter(["en-CA"], { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+  const today = day.format(date) === day.format(now)
+
+  return getFormatter(getDisplayLocales(), {
+    timeZone,
+    ...(today ? {} : { weekday: "short" as const }),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12,
+  }).format(date)
+}
+
+/**
  * Format a JavaScript Date object using user preferences
  * @param date JavaScript Date object
  * @param preferences Optional preferences (will use stored if not provided)

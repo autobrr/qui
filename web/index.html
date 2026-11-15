@@ -14,16 +14,21 @@
     <script>
       /* Anti-FOUC: Apply theme immediately before render */
       (function() {
+        // ?theme=default shows the default theme for this visit, so the stored theme caches are skipped.
+        var defaultThemeVisit = false;
+        try {
+          defaultThemeVisit = new URLSearchParams(window.location.search).get('theme') === 'default';
+        } catch (e) {}
         try {
           // Spreadsheet disguise: the static icon is the qui logo, so blank it until useDynamicFavicon draws the sheet grid.
-          var cachedTheme = JSON.parse(localStorage.getItem('theme-cache') || 'null');
+          var cachedTheme = defaultThemeVisit ? null : JSON.parse(localStorage.getItem('theme-cache') || 'null');
           if (cachedTheme && (cachedTheme.id === 'spreadsheet' || cachedTheme.id === 'spreadsheet-classic')) {
             document.querySelector('link[data-dynamic-favicon="svg"]').href = 'data:,';
           }
         } catch (e) {}
         try {
           // Check if current theme is lightOnly (e.g., Napster)
-          var isLightOnly = localStorage.getItem('theme-light-only') === 'true';
+          var isLightOnly = !defaultThemeVisit && localStorage.getItem('theme-light-only') === 'true';
 
           // Get stored theme preferences
           var themeMode = localStorage.getItem('theme') || 'auto';
@@ -43,7 +48,7 @@
           document.body && (document.body.style.backgroundColor = isDark ? 'oklch(0.1450 0 0)' : 'oklch(0.98 0 0)');
 
           // Check if we have stored critical theme vars for more accurate color
-          var criticalVars = localStorage.getItem('theme-critical-vars');
+          var criticalVars = defaultThemeVisit ? null : localStorage.getItem('theme-critical-vars');
           if (criticalVars) {
             try {
               var vars = JSON.parse(criticalVars);

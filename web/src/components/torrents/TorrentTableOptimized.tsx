@@ -35,6 +35,7 @@ import { useTable } from "@tanstack/react-table"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { torrentTableFeatures, type TorrentRow, type TorrentTableColumnDef } from "./tanstackTableFeatures"
 import { type TableViewMode } from "./TorrentTableColumns"
@@ -62,6 +63,7 @@ import {
 import { useGlobalMaxRatio, useListenPort, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { formatErrorMessage } from "@/lib/format-error-message"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
@@ -116,6 +118,7 @@ import { GroupCopiesToolbar } from "./table/GroupCopiesToolbar"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
+import { themeArea } from "@/lib/theme-areas"
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_SIZING = {}
@@ -685,6 +688,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["alternative-speed-limits", instanceId] })
     },
+    // The error text can hold the host or its IP address, so incognito mode leaves it out.
+    onError: (error: Error) => toast.error(incognitoMode ? t("common:errors.altSpeedToggleHidden") : t("common:errors.altSpeedToggle", { message: formatErrorMessage(error.message) })),
   })
 
   useEffect(() => {
@@ -1173,6 +1178,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
           <TorrentDropZone
             ref={parentRef}
+            {...themeArea("torrent-table")}
             className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
             role="grid"
             aria-label={t("tableView.tableAriaLabel")}

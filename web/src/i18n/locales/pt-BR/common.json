@@ -125,7 +125,9 @@
     "httpStatus": "Erro HTTP! Status: {{status}}",
     "httpStatusHtml": "Erro HTTP! Status: {{status}} (o servidor retornou uma página de erro HTML)",
     "ssoHtmlResponse": "A API retornou uma resposta HTML em vez de JSON. Se você estiver atrás de um proxy SSO (Cloudflare Access, Pangolin etc.), tente atualizar a página ou reabrir a URL em uma nova aba.",
-    "torrentFileDownloadFailed": "Falha ao baixar o arquivo torrent: {{status}}"
+    "torrentFileDownloadFailed": "Falha ao baixar o arquivo torrent: {{status}}",
+    "altSpeedToggle": "Não foi possível alterar os limites de velocidade alternativos: {{message}}",
+    "altSpeedToggleHidden": "Não foi possível alterar os limites de velocidade alternativos. O modo anônimo oculta a causa."
   },
   "status": {
     "disabled": "Desativado",
@@ -134,6 +136,7 @@
     "updating": "Atualizando",
     "error": "Erro",
     "unknown": "Desconhecido",
+    "unavailable": "Indisponível",
     "trackerError": "Erro no tracker",
     "unreachable": "Inacessível"
   },
@@ -166,6 +169,79 @@
     "updateAvailable": "Atualização Disponível",
     "versionAvailable": "A versão {{version}} já está disponível",
     "dismiss": "Dispensar"
+  },
+  "systemNotice": {
+    "needsAttention": "Requer atenção",
+    "since": "Desde {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Ir para a correção",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Gravação parada",
+        "title": "Gravação parada",
+        "effect": "O qui não consegue gravar o histórico de transferências. Ele tenta novamente na próxima gravação.",
+        "fix": "Verifique se o disco tem espaço livre e se o qui pode gravar o arquivo do banco de dados.",
+        "menuFix": "Libere espaço em disco para o banco"
+      },
+      "shrink_failed": {
+        "short": "Falha ao reduzir",
+        "title": "Falha ao reduzir",
+        "effect": "O qui não conseguiu reduzir o arquivo do banco de dados. O banco de dados não mudou e o qui funciona normalmente.",
+        "fix": "O log do qui tem os detalhes.",
+        "menuFix": "Ler o log do qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "O disco tem pouco espaço livre. Uma redução precisa de até duas vezes o tamanho do arquivo do banco de dados. Libere espaço no disco e tente novamente.",
+            "menuFix": "Libere espaço e tente novamente"
+          },
+          "locked": {
+            "fix": "Outro programa estava usando o arquivo do banco de dados. Feche esse programa, por exemplo uma ferramenta de backup ou um visualizador de banco de dados, e tente novamente.",
+            "menuFix": "Feche o outro programa e tente novamente"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Pouco espaço em disco",
+        "title": "Pouco espaço em disco",
+        "effect": "O disco do banco de dados do qui tem pouco espaço livre. Quando o disco fica cheio, toda gravação do qui falha.",
+        "fix": "Libere espaço no disco, reduza “Manter detalhes diários por” ou exclua o histórico antigo nas configurações de Estatísticas.",
+        "menuFix": "Libere espaço em disco para o banco",
+        "action": "Abrir as configurações de Estatísticas"
+      },
+      "redacted_key_rejected": {
+        "short": "Chave do Redacted recusada",
+        "title": "O Redacted recusou a chave de API",
+        "effect": "O Redacted recusou a última pesquisa. O qui consulta o site de novo na próxima pesquisa.",
+        "fix": "Se a chave estiver errada, crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Redacted e cole-a nas configurações Gazelle (OPS/RED) do qui. Se o Redacted baniu o IP do qui, uma nova chave não resolve: fale com a equipe do Redacted.",
+        "menuFix": "Cole uma nova chave nas configurações",
+        "action": "Abrir configurações Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Chave do Orpheus recusada",
+        "title": "O Orpheus recusou a chave de API",
+        "effect": "O Orpheus recusou a última pesquisa. O qui consulta o site de novo na próxima pesquisa.",
+        "fix": "Se a chave estiver errada, crie uma chave de API com a permissão \"Torrents\" nas configurações do seu perfil no Orpheus e cole-a nas configurações Gazelle (OPS/RED) do qui. Se o Orpheus baniu o IP do qui, uma nova chave não resolve: fale com a equipe do Orpheus.",
+        "menuFix": "Cole uma nova chave nas configurações",
+        "action": "Abrir configurações Gazelle (OPS/RED)"
+      }
+    },
+    "actions": {
+      "tryAgain": "Tentar novamente",
+      "dismiss": "Dispensar",
+      "openLog": "Abrir o log"
+    },
+    "unknown": {
+      "short": "Aviso do sistema",
+      "title": "Aviso do sistema",
+      "effect": "O qui encontrou uma falha que precisa de uma ação sua.",
+      "fix": "O log do qui tem os detalhes.",
+      "menuFix": "Leia o log do qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Arquivo do banco de dados reduzido de {{before}} para {{after}}",
+    "nextStart": "A redução será executada na próxima inicialização do qui",
+    "failed": "Falha ao solicitar a redução"
   },
   "pwaUpdate": {
     "reload": "Recarregar",

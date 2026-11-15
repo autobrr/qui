@@ -125,7 +125,9 @@
     "httpStatus": "HTTP error! status: {{status}}",
     "httpStatusHtml": "HTTP error! status: {{status}} (server returned HTML error page)",
     "ssoHtmlResponse": "Received an HTML response instead of JSON from the API. If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), try refreshing the page or re-opening the URL in a new tab.",
-    "torrentFileDownloadFailed": "Failed to download torrent file: {{status}}"
+    "torrentFileDownloadFailed": "Failed to download torrent file: {{status}}",
+    "altSpeedToggle": "Could not change the alternative speed limits: {{message}}",
+    "altSpeedToggleHidden": "Could not change the alternative speed limits. Incognito mode hides the cause."
   },
   "status": {
     "disabled": "Disabled",
@@ -134,6 +136,7 @@
     "updating": "Updating",
     "error": "Error",
     "unknown": "Unknown",
+    "unavailable": "Unavailable",
     "trackerError": "Tracker error",
     "unreachable": "Unreachable"
   },
@@ -166,6 +169,79 @@
     "updateAvailable": "Update Available",
     "versionAvailable": "Version {{version}} is now available",
     "dismiss": "Dismiss"
+  },
+  "systemNotice": {
+    "needsAttention": "Needs attention",
+    "since": "Since {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Go to the fix",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Recording stopped",
+        "title": "Recording stopped",
+        "effect": "qui cannot write the transfer history. It tries again at the next write.",
+        "fix": "Make sure that the disk has free space and that qui can write its database file.",
+        "menuFix": "Free disk space for the database"
+      },
+      "shrink_failed": {
+        "short": "Shrink failed",
+        "title": "Shrink failed",
+        "effect": "qui could not make the database file smaller. The database did not change, and qui runs as usual.",
+        "fix": "The qui log has the details.",
+        "menuFix": "Read the qui log",
+        "reasons": {
+          "disk_full": {
+            "fix": "The disk has too little free space. A shrink needs up to two times the size of the database file. Free space on the disk, then try again.",
+            "menuFix": "Free disk space, then try again"
+          },
+          "locked": {
+            "fix": "Another program held the database file. Stop that program, for example a backup tool or a database viewer, then try again.",
+            "menuFix": "Stop the other program, then try again"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Low disk",
+        "title": "Low disk",
+        "effect": "The disk of the qui database has little free space. When the disk is full, each write of qui fails.",
+        "fix": "Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.",
+        "menuFix": "Free disk space for the database",
+        "action": "Open the Statistics settings"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted key rejected",
+        "title": "Redacted rejected the API key",
+        "effect": "Redacted rejected the last search. qui asks it again at the next search.",
+        "fix": "If the key is wrong, make an API key with the Torrents permission in your Redacted profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Redacted banned the IP of qui, a new key does not help: contact the staff of Redacted.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open Gazelle (OPS/RED) settings"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus key rejected",
+        "title": "Orpheus rejected the API key",
+        "effect": "Orpheus rejected the last search. qui asks it again at the next search.",
+        "fix": "If the key is wrong, make an API key with the Torrents permission in your Orpheus profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Orpheus banned the IP of qui, a new key does not help: contact the staff of Orpheus.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open Gazelle (OPS/RED) settings"
+      }
+    },
+    "actions": {
+      "tryAgain": "Try again",
+      "dismiss": "Dismiss",
+      "openLog": "Open the log"
+    },
+    "unknown": {
+      "short": "System notice",
+      "title": "System notice",
+      "effect": "qui found a fault that needs an action from you.",
+      "fix": "The qui log has the details.",
+      "menuFix": "Read the qui log"
+    }
+  },
+  "databaseShrink": {
+    "done": "Database file shrunk from {{before}} to {{after}}",
+    "nextStart": "The shrink runs at the next start of qui",
+    "failed": "Failed to request the shrink"
   },
   "pwaUpdate": {
     "reload": "Reload",

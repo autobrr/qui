@@ -4,8 +4,11 @@
  */
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import { byteTicks, formatGapLength, labelledGaps, SERIES_COLORS, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
-import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import { byteTicks, foldOther, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
+import { useBucketFormat } from "@/components/statistics/useBucketFormat"
+import { useTapTooltip } from "@/components/statistics/useTapTooltip"
+import { useIsPhone } from "@/hooks/useMediaQuery"
+import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -15,7 +18,7 @@ const OTHER = "other"
 
 interface ChartRow {
   start: number
-  width: ChartUnit
+  width: BarWidth
   gapSeconds: number
   total: number
   [series: string]: number | string
@@ -33,16 +36,19 @@ interface TransferChartProps {
 export function TransferChart({ bars, groups, metric, unit, displayName }: TransferChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const hour12 = usePersistedDateTimePreferences().preferences.timeFormat === "12h"
+  const { formatStart, formatTick } = useBucketFormat(unit)
+  const colors = useSeriesColors()
+  const tooltip = useTapTooltip()
+  const narrow = useIsPhone()
 
   const config = useMemo<ChartConfig>(() => {
     const entries: ChartConfig = {}
     groups.forEach((group, index) => {
-      entries[`s${index}`] = { label: displayName(group), theme: { light: SERIES_COLORS.light[index], dark: SERIES_COLORS.dark[index] } }
+      entries[`s${index}`] = { label: displayName(group), theme: { light: colors.light[index], dark: colors.dark[index] } }
     })
     entries[OTHER] = { label: t("chart.other"), color: "var(--muted-foreground)" }
     return entries
-  }, [groups, displayName, t])
+  }, [groups, displayName, t, colors])
 
   const rows = useMemo(() => bars.map(bar => {
     const row: ChartRow = { start: bar.start, width: bar.width, gapSeconds: bar.gapSeconds, total: 0, [OTHER]: 0 }
@@ -58,20 +64,27 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
     return row
   }), [bars, groups, metric])
 
+  const widths = useMemo(() => new Map(rows.map(row => [row.start, row.width])), [rows])
   const gapLabels = useMemo(() => labelledGaps(rows.flatMap((row, index) => row.gapSeconds > 0 ? [index] : []), rows.length), [rows])
   const ticks = useMemo(() => byteTicks(Math.max(0, ...rows.map(row => row.total))), [rows])
-  const otherGroups = useMemo(() => new Set(bars.flatMap(bar => [...bar.bytes].filter(([group, bytes]) => bytes[metric] > 0 && !groups.includes(group)).map(([group]) => group))).size, [bars, groups, metric])
+  const otherGroups = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const bar of bars) {
+      for (const [group, bytes] of bar.bytes) {
+        totals.set(group, (totals.get(group) ?? 0) + bytes[metric])
+      }
+    }
+    return foldOther(totals, groups)?.groups ?? 0
+  }, [bars, groups, metric])
   const hasOther = otherGroups > 0
   const keys = [...groups.map((_, index) => `s${index}`), ...(hasOther ? [OTHER] : [])]
-  const formatStart = (start: number, width: ChartUnit) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
-  const formatTick = (start: number) => unit === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", hour: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short" })
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[300px] w-full">
-      <BarChart data={rows} margin={{ top: 16, right: 24, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
+    <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[260px] w-full sm:h-[300px] sideways:h-[220px]">
+      <BarChart data={rows} margin={{ top: 16, right: narrow ? 4 : 24, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value))} />
-        <YAxis tickLine={false} axisLine={false} width={72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
+        <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />
+        <YAxis tickLine={false} axisLine={false} width={narrow ? "auto" : 72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
         {rows.map((row, index) => row.gapSeconds > 0 && (
           <ReferenceLine
             key={row.start}
@@ -82,6 +95,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
           />
         ))}
         <ChartTooltip
+          {...tooltip.tooltip}
           cursor={{ fill: "var(--muted)", opacity: 0.5 }}
           isAnimationActive={false}
           content={({ active, payload }) => {
@@ -90,7 +104,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
               return null
             }
             return (
-              <div className="min-w-48 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+              <div className="min-w-48 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md max-sm:max-w-[calc(100vw-4rem)]">
                 <div className="mb-1.5 font-medium">
                   {formatStart(row.start, row.width)}
                   {row.width === "day" && unit === "hour" && <span className="ml-1 font-normal text-muted-foreground">{t("chart.foldedDay")}</span>}
@@ -99,8 +113,8 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
                   {keys.map(key => (
                     <div key={key} className="flex items-center gap-2">
                       <span className="size-2 shrink-0 rounded-[2px]" style={{ background: `var(--color-${key})` }} />
-                      <span className="truncate text-muted-foreground">{config[key]?.label}</span>
-                      <span className="ml-auto pl-4 font-medium tabular-nums">{formatBytes(row[key] as number)}</span>
+                      <span className="min-w-0 truncate text-muted-foreground">{config[key]?.label}</span>
+                      <span className="ml-auto shrink-0 whitespace-nowrap pl-4 font-medium tabular-nums">{formatBytes(row[key] as number)}</span>
                     </div>
                   ))}
                   <div className="flex items-center gap-2 border-t pt-1">

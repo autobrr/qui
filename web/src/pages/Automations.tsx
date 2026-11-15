@@ -9,7 +9,7 @@ import { OrphanScanSettingsDialog } from "@/components/instances/preferences/Orp
 import { ReannounceOverview } from "@/components/instances/preferences/ReannounceOverview"
 import { ReannounceSettingsDialog } from "@/components/instances/preferences/ReannounceSettingsDialog"
 import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
@@ -33,9 +33,7 @@ export function Automations({ activeTab, onTabChange }: AutomationsProps) {
   const configureOrphanScanInstance = instances?.find((inst) => inst.id === configureOrphanScanId)
 
   return (
-    <div className="space-y-6 p-4 lg:p-6 pb-16">
-      <PageHeader title={t("page.title")} description={t("page.description")} />
-
+    <Page title={t("page.title")} description={t("page.description")}>
       {instances && instances.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {t("page.noInstances")}
@@ -63,6 +61,6 @@ export function Automations({ activeTab, onTabChange }: AutomationsProps) {
         isRemote={configureOrphanScanInstance?.filesystemMode === "remote"}
         hasIdentity={configureOrphanScanInstance?.capabilities.identity}
       />
-    </div>
+    </Page>
   )
 }

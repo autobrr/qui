@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Não suportado nos multiplicadores de pontuação"
       },
       "conditionsLabel": "Condições (Quando a regra vai agir?)",
+      "mixedActionConditions": "Cada ação deste workflow tem sua própria condição. O qui agora usa uma condição por workflow. Se você salvar, todas as ações recebem a condição acima. Para manter as outras, crie antes um workflow para cada condição.",
       "actions": {
         "title": "Ações (O que a regra fará?)",
         "addAction": "Criar ação",
@@ -1286,15 +1287,19 @@
       "freeSpace": {
         "title": "Fonte de espaço livre",
         "aria": "Monitoração do Espaço",
-        "description": "Selecione o HD/Mount Point. Se o 'Espaço' estiver baixo, a regra de deleção ativará.",
+        "description": "Selecione o HD/Mount Point. Se o 'Espaço' estiver baixo, a regra de deleção ativará. \"Caminho no host do qBittorrent\" pergunta ao próprio qBittorrent e requer qBittorrent 5.3.",
         "selectSource": "Montagem / Fonte",
         "defaultSource": "Pegar pelo próprio qBittorrent",
         "pathSource": "Localização Manual Exata",
         "pathSourceWindowsUnsupported": "Indisponível (Em Windows você deve usar pelo qBittorrent)",
+        "qbitPathSource": "Caminho no host do qBittorrent",
+        "qbitPathSourceUnsupported": "Caminho no host do qBittorrent (requer qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/hd1",
         "pathHelp": "Defina onde rastrear",
+        "qbitPathHelp": "Informe um caminho no host do qBittorrent. O qBittorrent mede o espaço livre, então o qui não precisa de acesso a esse disco.",
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
+          "qbitPathUnsupported": "Esta instância é anterior ao qBittorrent 5.3 e não informa o espaço livre de um caminho.",
           "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD.",
           "filesystemAccessRequired": "A origem de espaço livre por caminho requer acesso ao sistema de arquivos local ou via SSH.",
           "allowanceRequired": "Informe um espaço permitido maior que 0.",
@@ -1304,7 +1309,8 @@
         "allowanceSource": "Espaço permitido em um caminho",
         "allowanceSourceWindowsUnsupported": "Espaço permitido em um caminho (não suportado no Windows)",
         "allowanceSourceAccessRequired": "Espaço permitido em um caminho (requer acesso local, ou acesso SSH com shell)",
-        "allowanceAria": "Espaço permitido",
+        "allowanceLabel": "Espaço permitido",
+        "allowancePathLabel": "Pasta a medir",
         "allowanceUnitAria": "Unidade do espaço permitido",
         "allowanceHelp": "Informe o espaço que o seu plano permite. O qui subtrai o tamanho dos arquivos sob o caminho. A maioria dos provedores conta em passos de 1000, não de 1024, então o número do plano é cerca de 9% menor em {{unit}}.",
         "allowancePathHelp": "Informe a pasta a medir, por exemplo o seu diretório pessoal"
@@ -1497,6 +1503,7 @@
         "switchedDeleteModeForFreeSpace": "Alterado para \"Remover com arquivos\" pois a condição de Espaço Livre requer liberação real de disco",
         "switchedIntervalForFreeSpace": "Foi trocado seu Intervalo para ~5m, pois é o tempo de recarga que a libtorrent exige.",
         "pathSourceUnsupportedWindows": "Voltamos a opção de Verificação de HD para (Pegar pelo próprio qB). Windows é incompatível.",
+        "qbitPathSourceUnsupported": "Esta instância não informa o espaço livre de um caminho. Alterado para a origem padrão.",
         "switchFreeSpaceSourceDefault": "Ajustado ao original (qB).",
         "enterPathOrDefault": "Você precisa de um caminho na caixa para usar esta opção.",
         "addScoreRule": "Adicione as regras da sua prioridade.",
@@ -2111,5 +2118,10 @@
       "noReflinks": "Sem reflinks em uma instância remota.",
       "noHardlinkExtension": "Sem hardlinks: o servidor não anuncia hardlink@openssh.com. Uma adição de cross-seed por hardlink falha aqui, ou adiciona no modo regular quando \"Retornar ao modo regular em caso de erro\" está ativado."
     }
+  },
+  "deleteHistory": {
+    "label": "Excluir também o histórico de transferências",
+    "description": "Sem isso, o qui mantém o histórico com o nome da instância.",
+    "failed": "A instância foi excluída, mas o qui não conseguiu excluir todo o histórico. Veja em Configurações > Estatísticas e exclua o restante por lá."
   }
 }

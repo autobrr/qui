@@ -19,6 +19,19 @@ export interface ParsedTheme {
   };
 }
 
+/** Matches the `@name:` line of a theme header; group 1 is the name. */
+export const THEME_NAME_PATTERN = /@name:\s*(.+?)(?:\s*\n|\s*\*)/;
+
+/**
+ * Why parseThemeCSS refuses css: no `:root` block or no `.dark` block with at
+ * least one token. Null when the blocks are there.
+ */
+export function findThemeCssProblem(cssContent: string): "missing-root" | "missing-dark" | null {
+  if (!extractCSSVariables(cssContent, ":root")) return "missing-root";
+  if (!extractCSSVariables(cssContent, ".dark")) return "missing-dark";
+  return null;
+}
+
 /**
  * Parse CSS theme file and extract variables and metadata
  */
@@ -70,7 +83,7 @@ function extractMetadata(cssContent: string): ThemeMetadata {
   };
 
   // Extract individual metadata fields for more flexible parsing
-  const nameMatch = cssContent.match(/@name:\s*(.+?)(?:\s*\n|\s*\*)/);
+  const nameMatch = cssContent.match(THEME_NAME_PATTERN);
   const descMatch = cssContent.match(/@description:\s*(.+?)(?:\s*\n|\s*\*)/);
   const lightOnlyMatch = cssContent.match(/@lightOnly:\s*(true|false)/);
   const variationsMatch = cssContent.match(/@variations:\s*(.+?)(?:\s*\n|\s*\*\/)/);
@@ -129,7 +142,6 @@ function extractCSSVariables(cssContent: string, selector: string): Record<strin
   const blockMatch = cssContent.match(blockRegex);
 
   if (!blockMatch) {
-    console.warn(`No ${selector} block found in theme CSS`);
     return null;
   }
 

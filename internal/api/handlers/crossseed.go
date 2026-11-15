@@ -571,6 +571,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 			r.With(crossSeed.Write).Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
 		r.With(authMiddleware, crossSeed.Read).Get("/settings", h.GetAutomationSettings)
+		r.With(authMiddleware, crossSeed.Read).Get("/gazelle/sites", h.GetGazelleSites)
 		r.With(authMiddleware, crossSeed.Write).Patch("/settings", h.PatchAutomationSettings)
 		r.With(authMiddleware, crossSeed.Write).Put("/settings", h.UpdateAutomationSettings)
 		r.With(authMiddleware, crossSeed.Read).Get("/status", h.GetAutomationStatus)
@@ -925,39 +926,59 @@ type automationSettingsSaveResponse struct {
 
 // checkGazelleKeys sends one request with each new OPS or RED key. A key the
 // tracker rejects is an error. Any other failure must not block the save, so
-// that case is a warning.
-func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *models.CrossSeedAutomationSettings) (string, error) {
+// that case is a warning. passed lists the API hosts whose key the tracker
+// accepted.
+func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *models.CrossSeedAutomationSettings) (warning string, passed []string, err error) {
 	// The card resends a typed key on every save, so a banned user must still
 	// be able to turn Gazelle off.
 	if !settings.GazelleEnabled {
-		return "", nil
+		return "", nil, nil
 	}
 	var warnings []string
-	for _, site := range []struct{ host, key string }{
-		{"redacted.sh", settings.RedactedAPIKey},
-		{"orpheus.network", settings.OrpheusAPIKey},
-	} {
+	for _, site := range gazellemusic.Sites() {
+		key := settings.GazelleAPIKey(site.SettingsName)
 		// The form sends a stored key back as the placeholder.
-		if site.key == "" || domain.IsRedactedString(site.key) {
+		if key == "" || domain.IsRedactedString(key) {
 			continue
 		}
-		client, err := gazellemusic.NewClient(site.host, h.gazelleBaseURL, site.key)
+		client, err := gazellemusic.NewClient(site.Host, h.gazelleBaseURL, key)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		// Each tracker gets its own cap, so a hung RED cannot leave OPS unchecked.
 		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err = client.CheckKey(checkCtx)
 		cancel()
 		if errors.Is(err, gazellemusic.ErrAccessDenied) {
-			return "", fmt.Errorf("%s %w", client.SourceFlag(), err)
+			return "", nil, fmt.Errorf("%s %w", client.SourceFlag(), err)
 		}
 		if err != nil {
-			log.Warn().Err(err).Str("host", site.host).Msg("Could not check the Gazelle API key")
+			log.Warn().Err(err).Str("host", site.Host).Msg("Could not check the Gazelle API key")
 			warnings = append(warnings, fmt.Sprintf("qui could not check the %s API key. The log has the details.", client.SourceFlag()))
+			continue
 		}
+		passed = append(passed, site.Host)
 	}
-	return strings.Join(warnings, "; "), nil
+	return strings.Join(warnings, "; "), passed, nil
+}
+
+// GetGazelleSites godoc
+// @Summary Get the RED/OPS sites
+// @Description Returns each RED/OPS site that cross-seed searches ask through its API: its names, whether searches ask it, and the Torznab indexers that it replaces.
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {array} crossseed.GazelleSiteFacts
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/gazelle/sites [get]
+func (h *CrossSeedHandler) GetGazelleSites(w http.ResponseWriter, r *http.Request) {
+	sites, err := h.service.GazelleSites(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load the RED/OPS sites")
+		RespondError(w, http.StatusInternalServerError, "Failed to load the RED/OPS sites")
+		return
+	}
+	RespondJSON(w, http.StatusOK, sites)
 }
 
 // GetAutomationSettings returns scheduler configuration.
@@ -1118,7 +1139,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackTVDBPIN:              patchSecret(req.SeasonPackTVDBPIN),
 	}
 
-	warning, err := h.checkGazelleKeys(r.Context(), settings)
+	warning, passed, err := h.checkGazelleKeys(r.Context(), settings)
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1135,6 +1156,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 		return
 	}
+	h.service.GazelleKeysSaved(settings, passed)
 
 	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
@@ -1250,7 +1272,7 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 		return
 	}
 
-	warning, err := h.checkGazelleKeys(r.Context(), &merged)
+	warning, passed, err := h.checkGazelleKeys(r.Context(), &merged)
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1267,6 +1289,7 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 		}
 		return
 	}
+	h.service.GazelleKeysSaved(&merged, passed)
 
 	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }

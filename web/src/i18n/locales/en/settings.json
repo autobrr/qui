@@ -12,6 +12,8 @@
     "externalPrograms": "External Programs",
     "notifications": "Notifications",
     "dateTime": "Time & Language",
+    "statistics": "Statistics",
+    "trackers": "Tracker Customizations",
     "premiumThemes": "Themes",
     "security": "Security",
     "logs": "Logs"
@@ -297,7 +299,7 @@
     "loading": "Loading notification targets…",
     "loadFailed": "Failed to load notification targets",
     "empty": "No notification targets configured. Add one to start receiving alerts.",
-    "allEvents": "All events",
+    "allEvents": "All events except System notice",
     "showList": "Show list",
     "hideList": "Hide list",
     "badges": {
@@ -396,6 +398,56 @@
       "error": "Failed to save date and time preferences"
     }
   },
+  "statistics": {
+    "cardTitle": "Statistics",
+    "cardDescription": "qui records the upload and download of each torrent in its database. These settings apply to all instances.",
+    "recording": {
+      "label": "Record transfer history",
+      "description": "While this is off, qui records nothing and keeps the stored history. The time while it is off becomes a recording gap."
+    },
+    "retention": {
+      "label": "Keep daily detail for",
+      "description": "After this time, qui folds the hourly totals into days, and the daily bytes of each torrent into one row for each year. The totals stay the same. When you select a shorter time, qui folds the older detail at the next reading, and you cannot get it back.",
+      "days90": "90 days",
+      "days400": "400 days",
+      "forever": "Forever"
+    },
+    "size": {
+      "label": "History size"
+    },
+    "deleteHistory": {
+      "label": "Delete history",
+      "description": "Delete the transfer history of one instance or of all instances. You cannot get it back.",
+      "instance": "Instance",
+      "allInstances": "All instances",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Everything",
+      "before": "Everything before a date",
+      "date": "Date",
+      "button": "Delete history",
+      "confirmTitle": "Delete history?",
+      "confirmEverything": "qui deletes all the history of {{name}}. Recording starts again with a new baseline. You cannot undo this.",
+      "confirmBefore": "qui deletes the history of {{name}} before {{date}}. If recording started before that date, the bytes from before the first recording go too, and \"Recording since\" moves to that date. You cannot undo this.",
+      "sqliteSpace": "The database file keeps its size. SQLite uses the free space again for new history.",
+      "postgresSpace": "A delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again for new history.",
+      "cancel": "Cancel",
+      "confirm": "Delete",
+      "deleted": "History deleted",
+      "failed": "Failed to delete the history",
+      "shrink": {
+        "label": "Also shrink the database file",
+        "restart": "qui restarts and makes the file smaller, so you get the disk space back. qui is unavailable for a short time.",
+        "nextStart": "qui cannot restart itself on this install. The shrink runs at the next start of qui.",
+        "tooLittleSpace": "The disk has {{free}} free, and a shrink needs up to {{need}}. It is safe to leave this off: SQLite uses the free space again for new history.",
+        "manualDocs": "Shrink the file by hand"
+      }
+    },
+    "loadFailed": "Failed to load the Statistics settings",
+    "toasts": {
+      "saved": "Statistics settings saved",
+      "saveFailed": "Failed to save the Statistics settings"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "Change Password",
@@ -475,17 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Theme Selection",
+      "title": "Themes",
       "loadingDescription": "Loading available themes...",
-      "description": "Choose from available themes. Some themes need a valid license.",
+      "description": "Click a theme to use it.",
       "verificationUnavailable": "License verification unavailable. Switching to a licensed theme is temporarily disabled.",
       "notLoaded": "Licensed themes not loaded",
       "notLoadedDescription": "Run",
+      "defaultThemeVisit": "qui shows the default theme for this visit, because the address has ?theme=default. Select a theme to end it.",
+      "search": "Search themes",
+      "filterLabel": "Filter themes",
+      "noMatch": "No theme matches “{{query}}”.",
+      "needsLicense": "Needs a license",
+      "lockedCount_one": "{{count}} theme needs a license.",
+      "lockedCount_other": "{{count}} themes need a license.",
+      "showAll_one": "Show {{count}} theme",
+      "showAll_other": "Show all {{count}} themes",
+      "showFewer": "Show fewer themes",
+      "variationCount_one": "{{count}} color variation",
+      "variationCount_other": "{{count}} color variations"
+    },
+    "current": {
+      "label": "In use",
+      "colors": "Color variations"
+    },
+    "groups": {
+      "all": "All",
       "free": "Free",
-      "locked": "Locked",
-      "lock": "Lock",
-      "showTheme": "Show",
-      "hideTheme": "Hide"
+      "licensed": "Licensed",
+      "custom": "Custom"
+    },
+    "menu": {
+      "button": "Choose menu themes",
+      "title": "Choose menu themes",
+      "description": "Choose the themes that the theme menu lists, in the top bar and in the phone footer. The theme in use is always in the menu.",
+      "groupCount": "{{shown}} of {{total}}",
+      "groupsLocked": "Clear the search to use the group check boxes.",
+      "inUse": "In use",
+      "summary": "{{shown}} of {{total}} themes in the menu",
+      "reset": "Reset to defaults",
+      "undo": "Undo reset",
+      "done": "Done"
     },
     "toasts": {
       "premiumRequired": "License required",
@@ -627,25 +708,71 @@
       }
     },
     "custom": {
-      "badge": "Custom",
-      "title": "Custom Themes",
-      "lockedTitle": "Custom themes need a license",
-      "lockedDescription": "Get a license to sideload your own theme CSS files from a directory on disk.",
+      "title": "Custom themes",
+      "description": "Write or paste a theme in the theme editor, or put theme CSS files into the theme folder on the server.",
+      "lockedDescription": "Get a license to add your own themes: write or paste a theme in the theme editor, or put theme CSS files into the theme folder on the server.",
       "unlockCta": "Get a license",
       "refresh": "Refresh",
-      "detectedCount": "Themes found: {{total}}",
-      "parseErrorsTitle": "Could not parse these files:",
-      "noneFound": "No custom themes found. Drop a .css file into the themes directory and click Refresh.",
-      "loadError": "Couldn't load custom themes. Check the server logs and the themes directory permissions."
+      "themeCount_one": "{{count}} theme",
+      "themeCount_other": "{{count}} themes",
+      "folderLabel": "Theme folder",
+      "actionsFor": "Actions for {{theme}}",
+      "parseErrorsTitle": "Not valid themes:",
+      "parseErrorsHint": "Edit a file to fix it, or remove it.",
+      "noneFound": "No custom themes yet. Click New theme, or put a .css file in the theme folder and click Refresh.",
+      "loadError": "Couldn't load custom themes. Check the server logs and the permissions of the theme folder.",
+      "newTheme": "New theme",
+      "copyPrompt": "Copy prompt for your AI",
+      "promptCopied": "Prompt copied. Paste it into your AI assistant and describe the look that you want.",
+      "promptCopyFailed": "Could not copy the prompt",
+      "edit": "Edit",
+      "remove": "Remove",
+      "removeTitle": "Remove {{theme}}?",
+      "removeDescription": "qui deletes the file of this theme from the theme folder. You cannot undo this. A device that uses this theme shows the default theme.",
+      "removeConfirm": "Remove",
+      "removed": "Theme removed",
+      "removeFailed": "Could not remove the theme: {{message}}",
+      "editLoadFailed": "Could not read the theme file: {{message}}",
+      "editor": {
+        "newTitle": "New theme",
+        "editTitle": "Edit theme",
+        "description": "Preview changes in this browser. Save stores the theme on the server.",
+        "name": "Name",
+        "namePlaceholder": "Theme name",
+        "savedAs": "File name: {{filename}}",
+        "css": "CSS",
+        "cssHelp": "Paste or write the CSS of a theme. It needs a :root block for light mode and a .dark block for dark mode, each with at least one design token. Copy prompt for your AI gives an AI assistant the full rules.",
+        "cssPlaceholder": "/* @name: My theme */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "Enter a name with a letter or a digit.",
+        "nameRequired": "Enter a name, or add an @name line to the CSS.",
+        "save": "Save",
+        "saveFailed": "Could not save the theme.",
+        "saved": "Theme saved",
+        "savedNotLoaded": "The theme is saved, but qui could not load the theme list. Click Refresh next to the theme folder.",
+        "replaceTitle": "Replace the theme?",
+        "replaceDescription": "A custom theme with the file name {{filename}} exists. Replace it with this theme?",
+        "replace": "Replace",
+        "problems": {
+          "missingRoot": "qui cannot use this CSS: it has no :root block with a design token. The preview shows the last CSS that qui could use.",
+          "missingDark": "qui cannot use this CSS: it has no .dark block with a design token. The preview shows the last CSS that qui could use.",
+          "outsideFile": "Line {{line}} can load a file from another website. The preview keeps the last valid CSS, and Save refuses this CSS.",
+          "unreadable": "qui cannot read line {{line}}: a quoted string or a url() is not closed. The preview shows the last CSS that qui could use."
+        },
+        "previewing": "Previewing in this browser",
+        "previewWaits": "The preview starts when you change the CSS.",
+        "emptyStatus": "Paste or write the CSS of a theme to see a preview."
+      }
     },
     "layout": {
+      "title": "Theme sync",
       "mobileSplit": "Separate theme for mobile layout",
       "mobileSplitHelp": "The mobile layout (a window less than 768 px wide) and the desktop layout each keep their own theme, mode, and variation. This setting applies to every browser.",
       "localOnly": "Keep this browser's theme local",
       "localOnlyHelp": "This browser does not take the theme from the server and does not send its theme changes to the server. This setting applies only to this browser.",
       "changesMobile": "Changes the mobile theme",
       "changesDesktop": "Changes the desktop theme",
-      "changesLocal": "Changes the theme of this browser only. To change the mobile layout setting, turn off the local setting.",
+      "changesLocal": "Changes the theme of this browser only.",
+      "splitNeedsSync": "To change the mobile layout setting, turn off the local setting.",
       "saveError": "Failed to save the theme setting",
       "mobileSplitOffWarning": "Turning this off deletes the mobile theme."
     }
@@ -1159,6 +1286,74 @@
       "bind": "Bind Address",
       "configDir": "Config Directory",
       "dataDir": "Data Directory"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker Customizations",
+    "cardDescription": "Rename trackers and merge the domains of one tracker into one entry. qui shows the display name everywhere it shows the tracker.",
+    "loading": "Loading trackers…",
+    "empty": "No trackers yet. Trackers show here when an instance has torrents.",
+    "importTooltip": "Import customizations",
+    "exportTooltip": "Export customizations",
+    "mergedFrom": "Merged from: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Merge selected trackers into this group",
+    "mergeIntoGroup": "Merge into group",
+    "addToMerge": "Add to merge",
+    "rename": "Rename",
+    "edit": "Edit",
+    "delete": "Delete",
+    "customizeDialog": {
+      "editTitle": "Edit Tracker Name",
+      "renameTitle": "Rename Tracker",
+      "mergeTitle": "Merge Trackers",
+      "editDescription": "Update the display name for this tracker.",
+      "renameDescription": "Give this tracker a custom display name.",
+      "mergeDescription": "Combine these trackers into a single entry with a custom name.",
+      "displayName": "Display Name",
+      "displayNamePlaceholder": "e.g., TorrentLeech",
+      "domains": "Domain(s)",
+      "selectedTrackers": "Selected Tracker(s)",
+      "primary": "Primary",
+      "removeDomain": "Remove {{domain}}",
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "save": "Save",
+      "renameAction": "Rename",
+      "mergeAction": "Merge"
+    },
+    "importDialog": {
+      "title": "Import Tracker Customizations",
+      "description": "Paste JSON to import tracker customizations (renames and merges).",
+      "jsonData": "JSON Data",
+      "invalidFormat": "Invalid format: expected trackerCustomizations array",
+      "missingDisplayName": "Invalid entry: missing displayName",
+      "invalidDomains": "Invalid entry: domains must be a non-empty array",
+      "invalidJson": "Invalid JSON",
+      "newCount": "{{count}} new",
+      "conflictCount_one": "{{count}} conflict",
+      "conflictCount_other": "{{count}} conflicts",
+      "unchangedCount": "{{count}} unchanged",
+      "resolveConflicts": "Resolve conflicts",
+      "conflictsWith": "Conflicts with: {{name}}",
+      "skip": "Skip",
+      "overwrite": "Overwrite",
+      "cancel": "Cancel",
+      "importing": "Importing...",
+      "import": "Import"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "No customizations to export",
+      "copiedToClipboard": "Copied to clipboard",
+      "failedToCopy": "Failed to copy to clipboard",
+      "createFailed": "Failed to create tracker customization",
+      "updateFailed": "Failed to update tracker customization",
+      "deleteFailed": "Failed to delete tracker customization",
+      "failedToImport": "Failed to import: {{names}}",
+      "importedAndSkipped": "Imported {{imported}}, skipped {{skipped}}",
+      "importedCount_one": "Imported {{count}} customization",
+      "importedCount_other": "Imported {{count}} customizations",
+      "noCustomizationsImported": "No customizations imported"
     }
   }
 }

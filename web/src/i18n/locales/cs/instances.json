@@ -1208,6 +1208,7 @@
         "notSupportedForScoreMultiplier": "Nepodporováno pro násobitele skóre"
       },
       "conditionsLabel": "Podmínky (volitelné)",
+      "mixedActionConditions": "Každá akce v tomto postupu automatizace má vlastní podmínku. qui nyní používá jednu podmínku pro každý postup automatizace. Pokud uložíte, každá akce dostane podmínku uvedenou výše. Chcete-li zachovat ostatní, vytvořte nejprve jeden postup automatizace pro každou podmínku.",
       "actions": {
         "title": "Akce",
         "addAction": "Přidat akci",
@@ -1321,15 +1322,19 @@
       "freeSpace": {
         "title": "Zdroj volného místa",
         "aria": "O zdroji volného místa",
-        "description": "Vyberte, kde se má číst volné místo. Výchozí používá volné místo hlášené qBittorrentem. Použijte \"Cestu na serveru\" pro kontrolu volného místa na konkrétním disku nebo montáži.",
+        "description": "Vyberte, kde se má číst volné místo. Výchozí používá volné místo hlášené qBittorrentem. Použijte \"Cestu na serveru\" pro kontrolu volného místa na konkrétním disku nebo montáži. \"Cesta na hostiteli qBittorrent\" se ptá přímo qBittorrentu a vyžaduje qBittorrent 5.3.",
         "selectSource": "Vybrat zdroj",
         "defaultSource": "Výchozí (qBittorrent)",
         "pathSource": "Cesta na serveru",
         "pathSourceWindowsUnsupported": "Cesta na serveru (nepodporováno na Windows)",
+        "qbitPathSource": "Cesta na hostiteli qBittorrent",
+        "qbitPathSourceUnsupported": "Cesta na hostiteli qBittorrent (vyžaduje qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Zadejte cestu, na které se má kontrolovat volné místo (např. montážní bod)",
+        "qbitPathHelp": "Zadejte cestu na hostiteli qBittorrent. Volné místo měří qBittorrent, takže qui k tomuto disku nepotřebuje přístup.",
         "errors": {
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
+          "qbitPathUnsupported": "Tato instance je starší než qBittorrent 5.3 a neumí hlásit volné místo pro cestu.",
           "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\".",
           "filesystemAccessRequired": "Zdroj volného místa založený na cestě vyžaduje lokální přístup k souborovému systému nebo přístup přes SSH.",
           "allowanceRequired": "Zadejte povolené místo větší než 0.",
@@ -1339,7 +1344,8 @@
         "allowanceSource": "Povolené místo na cestě",
         "allowanceSourceWindowsUnsupported": "Povolené místo na cestě (nepodporováno na Windows)",
         "allowanceSourceAccessRequired": "Povolené místo na cestě (vyžaduje lokální přístup nebo SSH přístup se shellem)",
-        "allowanceAria": "Povolené místo",
+        "allowanceLabel": "Povolené místo",
+        "allowancePathLabel": "Složka k měření",
         "allowanceUnitAria": "Jednotka povoleného místa",
         "allowanceHelp": "Zadejte místo, které povoluje váš tarif. qui od něj odečte velikost souborů pod cestou. Většina poskytovatelů počítá po 1000, ne po 1024, takže údaj z tarifu je v {{unit}} asi o 9 % menší.",
         "allowancePathHelp": "Zadejte složku, která se má měřit, například váš domovský adresář"
@@ -1532,6 +1538,7 @@
         "switchedDeleteModeForFreeSpace": "Přepnuto na \"Odebrat se soubory\" protože podmínka volného místa vyžaduje skutečné uvolnění místa na disku",
         "switchedIntervalForFreeSpace": "Přepnuto na 5 minutový interval, protože smazání volného místa má ~5 minutové spoždění",
         "pathSourceUnsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows. Přepnuto na výchozí (qBittorrent).",
+        "qbitPathSourceUnsupported": "Tato instance neumí hlásit volné místo pro cestu. Přepnuto na výchozí zdroj.",
         "switchFreeSpaceSourceDefault": "Přepnout zdroj volného místa na výchozí (qBittorrent)",
         "enterPathOrDefault": "Zadejte cestu nebo přepněte zdroj volného místa zpět na výchozí (qBittorrent)",
         "addScoreRule": "Přidat alespoň jedno pravidlo skóre pro řazení skóre",
@@ -2147,5 +2154,10 @@
       "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
       "noHardlinkExtension": "Bez hardlinků: server neoznamuje hardlink@openssh.com. Přidání cross-seedu přes hardlink zde selže, nebo se přidá ve standardním režimu, když je zapnuto „Při chybě přepnout na standardní režim“."
     }
+  },
+  "deleteHistory": {
+    "label": "Smazat i historii přenosů",
+    "description": "Bez této volby qui ponechá historii pod názvem instance.",
+    "failed": "Instance je smazaná, ale qui nedokázal smazat celou její historii. Podívejte se do Nastavení > Statistiky a smažte zbytek tam."
   }
 }

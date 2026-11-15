@@ -411,6 +411,136 @@ func TestAutomationStrictDecode(t *testing.T) {
 		require.Equal(t, []string{"Unknown grouping ID 'my_group' in grouped condition"}, errorLines(t, rec))
 	})
 
+	// regression: #4186
+	t.Run("a saved rule has one condition for its running actions", func(t *testing.T) {
+		const packed = `{"field":"NAME","operator":"CONTAINS","value":"packed"}`
+		const unpacked = `{"field":"NAME","operator":"CONTAINS","value":"unpacked"}`
+		rule := func(conditions string) string {
+			return `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",` + conditions + `}}`
+		}
+		tag := func(name, condition string) string {
+			return `{"enabled":true,"tags":["` + name + `"],"mode":"add","condition":` + condition + `}`
+		}
+		differ := func(first, second string) []string {
+			return []string{first + " and " + second + " differ. All actions in a workflow must use the same condition. Make one workflow for each condition."}
+		}
+		mixedTags := rule(`"tags":[` + tag("packed", packed) + `,` + tag("unpacked", unpacked) + `]`)
+
+		refused := []struct {
+			name string
+			body string
+			want []string
+		}{
+			{
+				name: "two tag actions with two conditions",
+				body: mixedTags,
+				want: differ("/conditions/tags/0/condition", "/conditions/tags/1/condition"),
+			},
+			{
+				name: "pause without a condition and a tag with one",
+				body: rule(`"pause":{"enabled":true},"tags":[` + tag("packed", packed) + `]`),
+				want: differ("/conditions/pause/condition", "/conditions/tags/0/condition"),
+			},
+			{
+				name: "auto management that sets the mode off",
+				body: rule(`"pause":{"enabled":true,"condition":` + packed + `},"autoManagement":{"enabled":false,"condition":` + unpacked + `}`),
+				want: differ("/conditions/pause/condition", "/conditions/autoManagement/condition"),
+			},
+			{
+				name: "a rule that is switched off",
+				body: strings.Replace(mixedTags, `{"name"`, `{"enabled":false,"name"`, 1),
+				want: differ("/conditions/tags/0/condition", "/conditions/tags/1/condition"),
+			},
+			{
+				name: "the legacy tag key without a tags list",
+				body: rule(`"pause":{"enabled":true,"condition":` + packed + `},"tag":` + tag("unpacked", unpacked)),
+				want: differ("/conditions/pause/condition", "/conditions/tags/0/condition"),
+			},
+		}
+		for _, tt := range refused {
+			t.Run("create refuses "+tt.name, func(t *testing.T) {
+				require.Equal(t, tt.want, errorLines(t, serve(handler.Create, tt.body)))
+			})
+		}
+
+		accepted := []struct {
+			name string
+			body string
+		}{
+			{
+				name: "one condition on every action",
+				body: rule(`"pause":{"enabled":true,"condition":` + packed + `},"tags":[` + tag("packed", packed) + `]`),
+			},
+			{
+				name: "a switched-off action with another condition",
+				body: rule(`"pause":{"enabled":false,"condition":` + unpacked + `},"tags":[` + tag("packed", packed) + `]`),
+			},
+			{
+				name: "the legacy tag key next to a tags list",
+				body: rule(`"tag":` + tag("unpacked", unpacked) + `,"tags":[` + tag("packed", packed) + `],"pause":{"enabled":true,"condition":` + packed + `}`),
+			},
+		}
+		for _, tt := range accepted {
+			t.Run("create accepts "+tt.name, func(t *testing.T) {
+				rec := serve(handler.Create, tt.body)
+				require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+			})
+		}
+
+		t.Run("dry run answers for different conditions", func(t *testing.T) {
+			rec := serve(handler.DryRunNow, mixedTags)
+			require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+		})
+
+		// A rule saved before the check.
+		condition := func(value string) *models.RuleCondition {
+			return &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: value}
+		}
+		mixed, err := store.Create(t.Context(), &models.Automation{
+			InstanceID:     instance.ID,
+			Name:           "mixed",
+			TrackerPattern: "*",
+			Enabled:        true,
+			Conditions: &models.ActionConditions{SchemaVersion: "1", Tags: []*models.TagAction{
+				{Enabled: true, Tags: []string{"packed"}, Mode: "add", Condition: condition("packed")},
+				{Enabled: true, Tags: []string{"unpacked"}, Mode: "add", Condition: condition("unpacked")},
+			}},
+		})
+		require.NoError(t, err)
+		stored, err := json.Marshal(mixed)
+		require.NoError(t, err)
+		edit := func(change func(body map[string]any, tags []any)) string {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(stored, &body))
+			change(body, body["conditions"].(map[string]any)["tags"].([]any))
+			out, err := json.Marshal(body)
+			require.NoError(t, err)
+			return string(out)
+		}
+
+		t.Run("update keeps a stored rule when the conditions did not change", func(t *testing.T) {
+			rec := serveRule(handler.Update, mixed.ID, edit(func(body map[string]any, _ []any) {
+				body["enabled"] = false
+				body["name"] = "renamed"
+			}))
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		})
+
+		t.Run("update refuses a change that leaves different conditions", func(t *testing.T) {
+			rec := serveRule(handler.Update, mixed.ID, edit(func(_ map[string]any, tags []any) {
+				tags[0].(map[string]any)["tags"] = []any{"renamed"}
+			}))
+			require.Equal(t, differ("/conditions/tags/0/condition", "/conditions/tags/1/condition"), errorLines(t, rec))
+		})
+
+		t.Run("update accepts a change to one condition", func(t *testing.T) {
+			rec := serveRule(handler.Update, mixed.ID, edit(func(_ map[string]any, tags []any) {
+				tags[1].(map[string]any)["condition"] = tags[0].(map[string]any)["condition"]
+			}))
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		})
+	})
+
 	t.Run("rule check runs after decode", func(t *testing.T) {
 		require.Equal(t, []string{"Name is required"}, errorLines(t, serve(handler.Create,
 			`{"trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true}}}`)))

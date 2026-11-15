@@ -17,9 +17,12 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/testutil"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestAdapterReadings(t *testing.T) {
@@ -100,6 +103,16 @@ func TestAdapterReadings(t *testing.T) {
 func newAdapterRig(t *testing.T) (*syncowner.Owner, *qbittorrent.SyncManager, *atomic.Int64) {
 	const hash = "aaaa000000000000000000000000000000000001"
 	var uploaded, rid atomic.Int64
+	owner, syncManager := newStubSync(t, func() string {
+		return fmt.Sprintf(`{"rid":%d,"full_update":true,"torrents":{%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP","uploaded":%d}}}`,
+			rid.Add(1), hash, uploaded.Load())
+	})
+	return owner, syncManager, &uploaded
+}
+
+// newStubSync returns a stub qBittorrent whose sync/maindata answer is
+// maindata, and a new sync manager, as after a start of qui.
+func newStubSync(t *testing.T, maindata func() string) (*syncowner.Owner, *qbittorrent.SyncManager) {
 	client := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"}).WithHTTPClient(&http.Client{
 		Transport: testutil.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			rec := httptest.NewRecorder()
@@ -107,15 +120,14 @@ func newAdapterRig(t *testing.T) (*syncowner.Owner, *qbittorrent.SyncManager, *a
 				rec.WriteHeader(http.StatusNotFound)
 				return rec.Result(), nil
 			}
-			_, _ = fmt.Fprintf(rec, `{"rid":%d,"full_update":true,"torrents":{%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"uploaded":%d}}}`,
-				rid.Add(1), hash, uploaded.Load())
+			_, _ = rec.WriteString(maindata())
 			return rec.Result(), nil
 		}),
 	})
 	pool, err := qbittorrent.NewClientPool(nil, nil, time.Minute)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
-	return syncowner.New(client, qbt.DefaultSyncOptions()), qbittorrent.NewSyncManager(pool, nil), &uploaded
+	return syncowner.New(client, qbt.DefaultSyncOptions()), qbittorrent.NewSyncManager(pool, nil)
 }
 
 // syncer returns a function that syncs the stub and gives the update to the
@@ -229,4 +241,117 @@ func TestAdapterGivesNoReadingForAFailedSync(t *testing.T) {
 		synctest.Wait()
 		require.Len(t, queued(module), 1)
 	})
+}
+
+func TestAdapterReadingHoldsTheServerStateAndTheUniqueSize(t *testing.T) {
+	owner, syncManager, _ := newAdapterRig(t)
+	synctest.Test(t, func(t *testing.T) {
+		module := &Module{wake: make(chan struct{}, 1)}
+		adapter := NewAdapter(module, syncManager)
+		sync := func(up, down, freeDisk int64) {
+			require.NoError(t, owner.Sync(t.Context()))
+			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{
+				Snapshot:    owner.SnapshotUnchecked(),
+				ServerState: qbt.ServerState{UpInfoSpeed: up, DlInfoSpeed: down, FreeSpaceOnDisk: freeDisk},
+			})
+			synctest.Wait()
+		}
+
+		sync(600, 30, 900)
+		// A Copy groups build that read the instance ends.
+		syncManager.SetCopyGroups(qbittorrent.NewCopyGroups(map[int]map[string]uint64{}, nil, []int{1}))
+		// Two updates that wait for the next reading.
+		time.Sleep(2 * time.Second)
+		sync(500, 5, 800)
+		time.Sleep(2 * time.Second)
+		sync(50, 20, 700)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+
+		readings := queued(module)
+		require.Len(t, readings, 2)
+		first, second := readings[0], readings[1]
+		require.Equal(t, "stalledUP", first.Torrents[0].State)
+		require.Nil(t, first.UniqueSize, "a reading before the first build")
+		require.Equal(t, [3]int64{900, 600, 30}, [3]int64{first.FreeDisk, first.MaxUploadSpeed, first.MaxDownloadSpeed})
+		require.Equal(t, new(int64(1000)), second.UniqueSize)
+		require.Equal(t, [3]int64{700, 500, 20}, [3]int64{second.FreeDisk, second.MaxUploadSpeed, second.MaxDownloadSpeed},
+			"the free disk space of the last update, and the highest speeds since the reading before")
+	})
+}
+
+// setRecording turns recording on or off, as the settings call does.
+func setRecording(m *Module, on bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settingsLoaded, m.settings.Recording = true, on
+}
+
+// regression: #4096
+func TestAdapterDropsTheSpeedsOfAnUpdateThatWaitsWhenRecordingGoesOff(t *testing.T) {
+	owner, syncManager, _ := newAdapterRig(t)
+	synctest.Test(t, func(t *testing.T) {
+		module := &Module{wake: make(chan struct{}, 1)}
+		adapter := NewAdapter(module, syncManager)
+		sync := func(up int64) {
+			require.NoError(t, owner.Sync(t.Context()))
+			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked(), ServerState: qbt.ServerState{UpInfoSpeed: up}})
+			synctest.Wait()
+		}
+
+		sync(600)
+		time.Sleep(2 * time.Second)
+		// This update waits for the next reading.
+		sync(900)
+		setRecording(module, false)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		setRecording(module, true)
+		time.Sleep(24 * time.Hour)
+		sync(5)
+
+		readings := queued(module)
+		require.Len(t, readings, 2)
+		require.Equal(t, int64(5), readings[1].MaxUploadSpeed)
+	})
+}
+
+// regression: #4143
+func TestAdapterShutdownKeepsTheCauseOfADeleteThatTheNextReadingWouldShow(t *testing.T) {
+	const kept, deleted = "aaaa000000000000000000000000000000000001", "aaaa000000000000000000000000000000000002"
+	var gone atomic.Bool
+	var rid atomic.Int64
+	owner, syncManager := newStubSync(t, func() string {
+		torrents := fmt.Sprintf(`%q:{"name":"Quiet.Harbor.2024.1080p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP"}`, kept)
+		if !gone.Load() {
+			torrents += fmt.Sprintf(`,%q:{"name":"Amber.Coast.2023.2160p.WEB-DL-GRP","added_on":1,"size":1000,"state":"stalledUP"}`, deleted)
+		}
+		return fmt.Sprintf(`{"rid":%d,"full_update":true,"torrents":{%s}}`, rid.Add(1), torrents)
+	})
+	db := testdb.NewMigratedSQLite(t, "transfer-history")
+	start := func() (*Module, *Adapter, func()) {
+		module := New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
+		adapter := NewAdapter(module, syncManager)
+		return module, adapter, func() {
+			require.NoError(t, owner.Sync(t.Context()))
+			adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked()})
+		}
+	}
+
+	_, adapter, sync := start()
+	sync()
+	adapter.NoteDelete(1, []string{deleted}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: "Remove old"})
+	gone.Store(true)
+	// qui syncs right after a delete, and the adapter holds that update back for 50 seconds.
+	sync()
+	require.NoError(t, adapter.Shutdown(t.Context()))
+
+	module, adapter, sync := start()
+	sync()
+	require.NoError(t, adapter.Shutdown(t.Context()))
+	answer, err := module.Deletes(t.Context(), DeletesQuery{InstanceID: 1, To: time.Now().Add(time.Hour), Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, answer.Deletes, 1)
+	require.Equal(t, deleted, answer.Deletes[0].Hash)
+	require.Equal(t, DeleteCause{Kind: CauseAutomation, Name: "Remove old"}, answer.Deletes[0].Cause)
 }

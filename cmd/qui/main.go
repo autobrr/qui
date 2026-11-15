@@ -42,16 +42,20 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/dbshrink"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/livesamples"
+	"github.com/autobrr/qui/internal/services/lowdisk"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sqlite3store"
@@ -619,6 +623,7 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 	}
 	defer db.Close()
+	startupShrink, shrinkRan := db.RunPendingShrink(context.Background())
 
 	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
@@ -671,10 +676,25 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 
-	transferHistory := transferhistory.New(db, trackerCustomizationStore)
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
+	notificationCtx, notificationCancel := context.WithCancel(context.Background())
+	defer notificationCancel()
+	if notificationService != nil {
+		notificationService.Start(notificationCtx)
+	}
+	systemNotices := systemnotice.New(notificationService)
+	lowDiskCtx, lowDiskCancel := context.WithCancel(context.Background())
+	defer lowDiskCancel()
+	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
+	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
 	syncManager.SetDeleteNoter(transferHistoryAdapter)
+	liveSamples := livesamples.New(clientPool)
+	liveSamplesCtx, liveSamplesCancel := context.WithCancel(context.Background())
+	defer liveSamplesCancel()
+	go liveSamples.Run(liveSamplesCtx)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
@@ -730,13 +750,6 @@ func (app *Application) runServer() {
 	// Initialize automation activity store and external programs service
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
-	notificationTargetStore := models.NewNotificationTargetStore(db)
-	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
-	notificationCtx, notificationCancel := context.WithCancel(context.Background())
-	defer notificationCancel()
-	if notificationService != nil {
-		notificationService.Start(notificationCtx)
-	}
 
 	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
 	// backups, automations, indexer activity, etc.) onto the SSE stream so the
@@ -784,6 +797,7 @@ func (app *Application) runServer() {
 		instanceCrossSeedCompletionStore,
 		trackerCustomizationStore,
 		notificationService,
+		systemNotices,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 		seasonPackRunStore,
 		settler,
@@ -927,6 +941,15 @@ func (app *Application) runServer() {
 
 	updateInputs := update.Measure(log.Logger, cfg.Config.DisableSelfUpdate, buildinfo.Version)
 	restarter := update.NewRestarter(updateInputs.BinaryPath)
+	updateAvailability := update.Decide(updateInputs)
+	var shrinkRestarter dbshrink.Restarter
+	if updateAvailability.Restart {
+		shrinkRestarter = restarter
+	}
+	databaseShrink := dbshrink.New(db, systemNotices, shrinkRestarter)
+	if shrinkRan {
+		databaseShrink.Report(startupShrink)
+	}
 	selfUpdater := update.NewUpdater(update.Config{
 		Repository: "autobrr/qui",
 		Version:    buildinfo.Version,
@@ -950,7 +973,7 @@ func (app *Application) runServer() {
 		SyncManager:                      syncManager,
 		LicenseService:                   licenseService,
 		UpdateService:                    updateService,
-		UpdateAvailability:               update.Decide(updateInputs),
+		UpdateAvailability:               updateAvailability,
 		Restarter:                        restarter,
 		SelfUpdater:                      selfUpdater,
 		TrackerIconService:               trackerIconService,
@@ -979,6 +1002,9 @@ func (app *Application) runServer() {
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
 		TransferHistory:                  transferHistory,
+		LiveSamples:                      liveSamples,
+		SystemNotices:                    systemNotices,
+		DatabaseShrink:                   databaseShrink,
 		BackendPool:                      backendPool,
 		SSHPool:                          sshPool,
 		DirScanService:                   dirScanService,
@@ -1071,7 +1097,7 @@ func (app *Application) runServer() {
 			log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
 		}
 
-		if err := transferHistory.Shutdown(ctx); err != nil {
+		if err := transferHistoryAdapter.Shutdown(ctx); err != nil {
 			log.Error().Err(err).Msg("failed to write the transfer history at shutdown")
 		}
 

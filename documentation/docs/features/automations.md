@@ -149,7 +149,7 @@ A torrent without metadata, such as a new magnet link, has no Private value. It 
 
 **Tracker** matches every tracker the torrent announces to, including trackers that do not work. qui ignores the DHT, PeX, and LSD pseudo-trackers.
 
-If you configured [Tracker Customizations](./tracker-customizations.md) (Dashboard → **Tracker Breakdown**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
+If you configured [Tracker Customizations](./tracker-customizations.md) (**Settings** → **Tracker Customizations**), the condition can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
 
 On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the one tracker in the qBittorrent tracker field. That is the last tracker that answered, also when that tracker is down now. If no tracker answered yet, the field is empty. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
 
@@ -479,7 +479,13 @@ For content-path-based grouping where `Content Path == Save Path` (ambiguous), y
 
 ## Actions
 
-You can combine actions, except Delete. Delete must be standalone. Each action supports an optional condition override.
+You can combine actions, except Delete. Delete must be standalone.
+
+All actions of a workflow use the same condition. qui does not save a workflow if two of its enabled actions have different conditions, and the error names the two actions. An Auto Management action counts as enabled also when it turns the mode off. To run an action on a different condition, make a second workflow.
+
+A workflow that an earlier version of qui saved with different conditions continues to run as saved. You can still rename it, switch it on and off, reorder it, and run it. A change to its actions or conditions must leave one condition. When you open such a workflow in the editor, a warning shows below the conditions. If you save in the editor, every enabled action gets the condition that the editor shows. To keep the other conditions, make one workflow for each condition before you save.
+
+The editor does not show a disabled action. When you save in the editor, qui keeps each disabled action as saved, with its own condition. If you add Delete in the editor, the save removes the disabled tag actions. qui does not save Delete together with a tag action, also when the tag action is disabled.
 
 ### Speed limits
 
@@ -546,7 +552,6 @@ Force recheck matching torrents.
 
 - Triggers a qBittorrent recheck for matched torrents.
 - You can combine this action with other actions.
-- Supports an optional condition override, as other actions do.
 
 ### Force reannounce
 
@@ -554,7 +559,6 @@ Force reannounce matching torrents.
 
 - Triggers an immediate tracker reannounce for matched torrents.
 - You can combine this action with other actions.
-- Supports an optional condition override, as other actions do.
 
 ### Delete
 
@@ -749,7 +753,6 @@ When torrents match the automation rule, run a configured external program. This
 | Field | Description |
 | --- | --- |
 | **Program** | Select from enabled external programs |
-| **Condition Override** | Optional condition specific to this action |
 
 **Behavior:**
 
@@ -792,7 +795,6 @@ The action assumes the data already exists on the target (moved with rclone, Qui
 | **Skip checking** | Skip hash check on target (default: enabled) |
 | **Paused** | Add torrent paused on target |
 | **Content layout** | `Default`, `Original`, `Create subfolder`, or `Don't create subfolder`. In JSON, `contentLayout` is `Original`, `Subfolder`, or `NoSubfolder`. With `Default`, the JSON has no `contentLayout`, and the target instance uses its own default layout. |
-| **Condition Override** | Optional condition specific to this action |
 
 **Behavior:**
 
@@ -1108,7 +1110,7 @@ A partially downloaded pack still counts as a pack. Add a `PROGRESS` condition t
 
 #### Example: tag packs, packed, and unpacked
 
-One rule per status. The rule editor keeps one condition per rule and applies it to every tag action in that rule, so three tag actions with three conditions cannot live in one rule. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
+One rule per status. A rule has one condition, and every tag action in the rule uses it. Thus three tag actions with three conditions cannot be in one rule, and qui does not save such a rule (see [Actions](#actions)). Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
 
 ```json
 {
@@ -1287,19 +1289,26 @@ After qui removes files, it waits about 5 minutes before running Free Space dele
 
 #### Free Space source
 
-By default, Free Space uses qBittorrent's reported free space, based on its default download location. If you want to manage a specific mount point, select "Path on server" and enter the path to that disk.
+By default, Free Space uses qBittorrent's reported free space, based on its default download location. If you want to manage a specific mount point, pick one of the path sources and enter the path to that disk.
 
 | Source | Description |
 | --- | --- |
-| Default (qBittorrent) | Uses qBittorrent's reported free space |
-| Path on server | Reads free space from a specific filesystem path |
+| Default (qBittorrent) | Uses qBittorrent's reported free space for its default download location |
+| Path on server | qui reads free space at a path on the qui host, or on the remote machine through SSH access |
+| Path on the qBittorrent host | qBittorrent measures free space at a path on its own host |
 | Allowance on a path | Subtracts the size of the files under a path from an allowance that you enter |
 
 :::note
 Path on server requires filesystem access on the instance: "Local Filesystem Access", or [SSH access](./ssh-access.md) for a remote instance. With SSH access, qui reads the free space on the remote machine, and the server must report free space (see [Read the test result](./ssh-access.md#read-the-test-result)). If qui cannot reach the remote machine, the run fails and sends a notification. qui does not use the value from qBittorrent instead, because that value can come from a different disk.
+
+Path on the qBittorrent host needs no filesystem access. qBittorrent measures the free space, so the disk must exist only on the qBittorrent host. It needs qBittorrent 5.3 (WebAPI 2.15.2) or later. On older instances, the UI disables the option.
 :::
 
-If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
+Enter the path the way the qBittorrent host writes it. A qBittorrent on Windows takes `D:\downloads`, one on Linux takes `/downloads`.
+
+If you want to manage multiple disks, create one workflow per disk and set a different path for each workflow.
+
+If qBittorrent cannot measure the path, qui treats the read as failed. Free Space never falls back to zero, so an unreadable path cannot trigger a delete.
 
 ##### Allowance on a path
 
@@ -1316,7 +1325,7 @@ Allowance on a path needs "Local Filesystem Access", or a remote instance where 
 :::
 
 :::note
-When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them.
+When qui runs on Windows, Path on server works only for a remote instance. For an instance with local access, the UI disables the option and switches legacy workflows back to the default when you open them. Path on the qBittorrent host works on every qui host.
 :::
 
 ### Batching

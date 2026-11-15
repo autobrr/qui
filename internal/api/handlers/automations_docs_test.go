@@ -41,7 +41,7 @@ func TestAutomationDocsExamples(t *testing.T) {
 	}
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	for i, block := range blocks {
-		if _, err := decodeAutomationPayload(bytes.NewReader(block), instance.ID, instance, nil); err != nil {
+		if _, err := decodeAutomationPayload(bytes.NewReader(block), instance.ID, instance, nil, true); err != nil {
 			t.Errorf("json block %d:\n%s\n%v", i+1, block, err)
 		}
 	}

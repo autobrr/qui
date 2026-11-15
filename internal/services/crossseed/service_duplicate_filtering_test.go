@@ -596,7 +596,7 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 				stringNormalizer:    stringutils.NewDefaultNormalizer(),
 			}
 
-			response, _, _, err := service.searchTorrentMatches(
+			response, err := service.searchTorrentMatches(
 				context.Background(),
 				instanceID,
 				sourceHash,

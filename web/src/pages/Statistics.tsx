@@ -3,41 +3,59 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { PageHeader } from "@/components/layout/PageHeader"
-import { InstanceFilter, PeriodPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
+import { Page } from "@/components/layout/Page"
+import { DeletedTorrents } from "@/components/statistics/DeletedTorrents"
+import { EventsChart } from "@/components/statistics/EventsChart"
+import { GroupTable } from "@/components/statistics/GroupTable"
+import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
+import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
+import { TopTorrents } from "@/components/statistics/TopTorrents"
+import { useStatisticsPeriod } from "@/hooks/useStatisticsPeriod"
+import { useClientSettingsSettled } from "@/lib/client-settings"
+import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
+import { YearView } from "@/components/statistics/YearView"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
+import { useIsPhone } from "@/hooks/useMediaQuery"
+import { usePrefetchTransferHistoryRows, useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
-import { getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
+import { useTrackerGroupName } from "@/hooks/useTrackerGroupName"
+import { getLinuxCategoryName, getLinuxReleaseGroup, useIncognitoMode } from "@/lib/incognito"
 import {
+  BROWSER_TIME_ZONE,
   buildBars,
   chartRange,
   comparisonEnd,
   customPeriod,
+  formatBuffer,
+  formatRatio,
+  groupTotals,
+  HISTORY_WRITE_MS,
   presetPeriod,
   previousPeriod,
   recordedFrom,
   recordingSince,
+  showsYearView,
   sumBytes,
+  TABLE_GROUPINGS,
   topGroups,
   type Metric,
-  type StatisticsPeriod
+  type PeriodPreset,
+  type StatisticsPeriod,
+  type TopTorrent
 } from "@/lib/statistics"
-import { formatBytes } from "@/lib/utils"
-import type { TransferHistoryBytes, TransferHistoryInstance, TransferHistoryQuery, TransferHistoryRow } from "@/types"
-import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
+import { buildEventDays } from "@/lib/statistics-events"
+import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
+import { cn, formatBytes } from "@/lib/utils"
+import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
+import { getRouteApi } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-
-// A browser that cannot find its zone reports Etc/Unknown. The days are then UTC days.
-const BROWSER_TIME_ZONE = ((zone: string) => zone === "Etc/Unknown" ? undefined : zone)(Intl.DateTimeFormat().resolvedOptions().timeZone)
-
-// Names that the backend gives to the Tracker groups without a tracker domain.
-const PUBLIC_GROUP = "Public"
-const NO_TRACKER_GROUP = "No tracker"
 
 interface PeriodState {
   choice: PeriodChoice
@@ -46,34 +64,21 @@ interface PeriodState {
   moved: boolean
 }
 
-// qui writes the history each 5 minutes, so a faster move shows nothing new.
-const MOVE_AFTER = 5 * 60_000
 
-interface InstanceRows {
-  rows?: TransferHistoryRow[][]
+interface LiveGroups {
+  groups?: LiveTrackerGroup[][]
   error?: Error
-  pending: boolean
 }
 
-/** Reads one transfer query for each instance. The rows are undefined while a query is pending or when no query runs. */
-function useInstanceRows(instances: TransferHistoryInstance[], query: TransferHistoryQuery | undefined): InstanceRows {
-  const enabled = query !== undefined
-  const combine = useCallback((results: UseQueryResult<TransferHistoryRow[]>[]): InstanceRows => ({
-    rows: enabled && results.every(result => result.data) ? results.map(result => result.data!) : undefined,
+/** Joins the live numbers of the instances that loaded once no query is pending, so that one failed instance does not hide the others. */
+function combineLiveGroups(results: UseQueryResult<LiveTrackerGroup[]>[]): LiveGroups {
+  return {
+    groups: results.every(result => !result.isPending) ? results.map(result => result.data ?? []) : undefined,
     error: results.find(result => result.error)?.error ?? undefined,
-    pending: enabled && results.some(result => result.isPending),
-  }), [enabled])
-  return useQueries({
-    queries: instances.map(instance => ({
-      queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
-      queryFn: () => api.getTransferHistory(instance.instanceId, query!),
-      enabled,
-    })),
-    combine,
-  })
+  }
 }
 
-/** The rows of the four queries of the page, for one period and one selection. */
+/** The rows of the queries of the page, for one period and one selection. */
 interface PageRows {
   // The period choice and the selected instances.
   series: string
@@ -82,17 +87,69 @@ interface PageRows {
   allTime?: TransferHistoryRow[][]
   compared?: TransferHistoryRow[][]
   before?: TransferHistoryRow[][]
+  // The rows of the table when it does not group by Tracker group.
+  grouped?: TransferHistoryRow[][]
+  torrents?: TopTorrent[]
+  library?: TransferHistoryLibraryRow[][]
 }
+
+// The number of torrents of the Top torrents card.
+const TOP_TORRENTS = 10
 
 function relativeChange(now: number, before: number): number | undefined {
   return before > 0 ? (now - before) / before : undefined
 }
 
-export function Statistics() {
+/** The state of a preset period that the user picked, which ends now. */
+function presetState(preset: PeriodPreset): PeriodState {
+  return { choice: preset, period: presetPeriod(preset, new Date()), moved: false }
+}
+
+const statisticsRoute = getRouteApi("/_authenticated/statistics")
+
+/**
+ * Opens on the period of the address, saves it, and removes it from the address, so that a reload opens on the saved
+ * period. The page waits until the first read of the saved settings ends (see useClientSettingsSettled), and saves the
+ * address period after it, so that the read does not replace that period.
+ */
+export function StatisticsRoute() {
+  const { t } = useTranslation("statistics")
+  const { period } = statisticsRoute.useSearch()
+  const navigate = statisticsRoute.useNavigate()
+  const [, savePreset] = useStatisticsPeriod()
+  const settingsLoaded = useClientSettingsSettled()
+  useEffect(() => {
+    if (!period || !settingsLoaded) return
+    savePreset(period)
+    void navigate({ search: previous => ({ ...previous, period: undefined }), replace: true })
+  }, [period, settingsLoaded, savePreset, navigate])
+  if (!settingsLoaded) {
+    return (
+      <Page title={t("title")}>
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      </Page>
+    )
+  }
+  return <Statistics initialPreset={period} />
+}
+
+export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
-  const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: "30d", period: presetPeriod("30d", new Date()), moved: false }))
+  const narrow = useIsPhone()
+  const [savedPreset, savePreset] = useStatisticsPeriod()
+  const [periodState, setPeriodState] = useState<PeriodState>(() => presetState(initialPreset ?? savedPreset))
+  // A preset saved after the page opened, by the first read of the server or by another tab or device, opens here too, except over a custom range.
+  const [followedPreset, setFollowedPreset] = useState(savedPreset)
+  if (followedPreset !== savedPreset) {
+    setFollowedPreset(savedPreset)
+    if (periodState.choice !== "custom" && periodState.choice !== savedPreset) {
+      setPeriodState(presetState(savedPreset))
+    }
+  }
   const { choice } = periodState
 
   useEffect(() => {
@@ -103,7 +160,7 @@ export function Statistics() {
       if (document.visibilityState !== "visible") {
         return
       }
-      setPeriodState(state => Date.now() - state.period.to.getTime() < MOVE_AFTER ? state : { choice, period: presetPeriod(choice, new Date()), moved: true })
+      setPeriodState(state => Date.now() - state.period.to.getTime() < HISTORY_WRITE_MS ? state : { choice, period: presetPeriod(choice, new Date()), moved: true })
     }
     const timer = setInterval(move, 60_000)
     document.addEventListener("visibilitychange", move)
@@ -114,10 +171,11 @@ export function Statistics() {
   }, [choice])
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [metric, setMetric] = useState<Metric>("uploaded")
+  const [grouping, setGrouping] = useState<TableGrouping>("tracker")
   const { period } = periodState
 
   // An instance that starts recording while the page is open joins at the next move of the period.
-  const statusQuery = useQuery({ queryKey: ["transfer-history", "status"], queryFn: () => api.getTransferHistoryStatus(), refetchInterval: MOVE_AFTER })
+  const statusQuery = useTransferHistoryStatus()
   const instancesQuery = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances() })
   const statuses = useMemo(() => statusQuery.data ?? [], [statusQuery.data])
   const selected = useMemo(
@@ -132,22 +190,53 @@ export function Statistics() {
   const previous = previousPeriod(period)
   const comparable = previous?.from !== undefined && selected.length > 0 && recordedFrom(selected, previous.from)
   const ready = statusQuery.isSuccess
-  const chart = useInstanceRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
-  const allTime = useInstanceRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
-  const compared = useInstanceRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
-  const before = useInstanceRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const chart = useTransferHistoryRows(selected, ready ? { from: period.from, to: period.to, bucket: period.unit, groupBy: "tracker", timeZone: period.unit === "day" ? BROWSER_TIME_ZONE : undefined } : undefined)
+  const allTime = useTransferHistoryRows(selected, ready && !period.from ? { to: period.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const compared = useTransferHistoryRows(selected, comparable ? { from: previous.to, to: comparisonEnd(period), bucket: "total", groupBy: "tracker" } : undefined)
+  const before = useTransferHistoryRows(selected, comparable ? { from: previous.from, to: previous.to, bucket: "total", groupBy: "tracker" } : undefined)
+  const byTracker = grouping === "tracker"
+  const grouped = useTransferHistoryRows(selected, ready && !byTracker ? { from: period.from, to: period.to, bucket: "total", groupBy: grouping } : undefined)
+  const top = useTopTorrents(selected, period, TOP_TORRENTS)
+  const library = useTransferHistoryLibrary(selected, ready ? { from: period.from, to: period.to } : undefined)
+
+  // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
+  const activeIds = useMemo(() => new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id)), [instancesQuery.data])
+  const liveIds = useMemo(() => selected.map(status => status.instanceId).filter(id => activeIds.has(id)), [activeIds, selected])
+  const liveQuery = (instanceId: number) => ({ queryKey: ["tracker-groups", instanceId], queryFn: () => api.getTrackerGroups(instanceId) })
+  const live = useQueries({
+    queries: liveIds.map(instanceId => ({ ...liveQuery(instanceId), enabled: byTracker, refetchInterval: HISTORY_WRITE_MS })),
+    combine: combineLiveGroups,
+  })
+
+  const queryClient = useQueryClient()
+  const prefetchRows = usePrefetchTransferHistoryRows()
+  const prefetchGroupings = (only?: TableGrouping) => {
+    if (!ready) {
+      return
+    }
+    for (const other of only ? [only] : TABLE_GROUPINGS) {
+      if (other === grouping) {
+        continue
+      }
+      if (other === "tracker") {
+        liveIds.forEach(instanceId => void queryClient.prefetchQuery({ ...liveQuery(instanceId), staleTime: HISTORY_WRITE_MS }))
+      } else {
+        prefetchRows(selected, { from: period.from, to: period.to, bucket: "total", groupBy: other })
+      }
+    }
+  }
 
   // A new period gives new query keys, so the queries hold no previous data to show while they load. After a move,
   // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
   // so that the numbers never mix two periods or two selections.
-  const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}`
-  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined))
+  const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}:${grouping}`
+  const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (byTracker || grouped.rows !== undefined) && top.torrents !== undefined && library.rows !== undefined
   const [lastComplete, setLastComplete] = useState<PageRows>()
-  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows)) {
-    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows })
+  if (complete && (lastComplete?.chart !== chart.rows || lastComplete?.allTime !== allTime.rows || lastComplete?.compared !== compared.rows || lastComplete?.before !== before.rows || lastComplete?.grouped !== grouped.rows || lastComplete?.torrents !== top.torrents || lastComplete?.library !== library.rows)) {
+    setLastComplete({ series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents, library: library.rows })
   }
-  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error) && lastComplete?.series === series
-  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows }
+  const keep = periodState.moved && !complete && !(chart.error ?? allTime.error ?? compared.error ?? before.error ?? grouped.error ?? top.error ?? library.error) && lastComplete?.series === series
+  const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents, library: library.rows }
 
   const since = useMemo(() => recordingSince(selected), [selected])
   const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
@@ -157,20 +246,53 @@ export function Statistics() {
   )
   const previousTotals = useMemo(() => shown.before && sumBytes(shown.before.flat(), false), [shown.before])
   const comparedTotals = useMemo(() => shown.compared && sumBytes(shown.compared.flat(), false), [shown.compared])
-  const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], metric), [shown.chart, metric])
+  // The year view shows upload only, and the table takes its series colors from it.
+  const yearView = showsYearView(shown.period, since)
+  const chartMetric: Metric = yearView ? "uploaded" : metric
+  const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], chartMetric), [shown.chart, chartMetric])
   const bars = useMemo(() => {
     const range = chartRange(shown.period, since)
     return shown.chart && range ? buildBars(shown.chart, range, shown.period.unit) : []
   }, [shown.chart, shown.period, since])
 
-  const displayName = useCallback((group: string) => {
-    if (group === PUBLIC_GROUP) return t("groups.public")
-    if (group === NO_TRACKER_GROUP) return t("groups.noTracker")
-    return incognitoMode ? getLinuxTrackerDomain(group) : group
-  }, [incognitoMode, t])
+  const libraryPoints = useMemo(
+    () => shown.library && buildLibraryPoints(shown.library, shown.period, selected.map(status => ({
+      firstRecordedAt: status.firstRecordedAt,
+      // Until the instances load, each instance counts as recorded, so that a sum never leaves one out.
+      recording: instancesQuery.data === undefined || activeIds.has(status.instanceId),
+    }))),
+    [shown.library, shown.period, selected, activeIds, instancesQuery.data]
+  )
+  const unique = libraryPoints && newestUniqueSize(libraryPoints)
+  const newestCount = [...libraryPoints ?? []].reverse().find(point => point.torrents !== null)?.torrents ?? undefined
+  const growthError = statusQuery.error ?? library.error
+  const eventDays = useMemo(() => shown.library && (buildEventDays(shown.library, shown.period, since) ?? []), [shown.library, shown.period, since])
+
+  // The tracker rows of the table add up the rows of the chart, so that they add up to the numbers at the top.
+  const tableRows = useMemo(() => {
+    const rows = byTracker ? shown.period.from ? shown.chart : shown.allTime : shown.grouped
+    return rows && groupTotals(rows, !shown.period.from, byTracker ? live.groups : undefined)
+  }, [byTracker, shown.grouped, shown.chart, shown.allTime, shown.period.from, live.groups])
+
+  const displayName = useTrackerGroupName()
+  const tableName = useCallback((group: string, by: TransferHistoryGrouping) => {
+    switch (by) {
+      case "tracker":
+        return displayName(group)
+      case "category":
+        if (group === "") return t("table.noCategory")
+        return incognitoMode ? getLinuxCategoryName(group) : group
+      default:
+        if (group === "") return t("table.none")
+        if (by === "releaseGroup" && incognitoMode) return getLinuxReleaseGroup(group)
+        return by === "contentType" ? t([`common:contentTypeLabels.${group}`, "common:contentTypeLabels.unknown"]) : group
+    }
+  }, [displayName, incognitoMode, t])
 
   const formatDay = (date: Date) => date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
-  const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatDay(period.from), to: formatDay(new Date(period.to.getTime() - 1)) }) : undefined
+  // A phone leaves out the year of this year, so that the range leaves room for the instances.
+  const formatRangeDay = (date: Date) => narrow && date.getFullYear() === new Date().getFullYear() ? date.toLocaleDateString(locale, { day: "numeric", month: "short" }) : formatDay(date)
+  const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatRangeDay(period.from), to: formatRangeDay(new Date(period.to.getTime() - 1)) }) : undefined
   const formatChange = new Intl.NumberFormat(locale, { style: "percent", signDisplay: "exceptZero", maximumFractionDigits: 0 })
   const error = statusQuery.error ?? (chart.error ? undefined : allTime.error ?? compared.error ?? before.error)
   const loading = statusQuery.isPending || (!keep && (chart.pending || allTime.pending))
@@ -180,91 +302,214 @@ export function Statistics() {
     return change === undefined ? undefined : t("tiles.change", { change: formatChange.format(change) })
   }
 
+  const periodPicker = (
+    <PeriodPicker
+      value={periodState.choice}
+      customLabel={customLabel}
+      onPreset={preset => {
+        savePreset(preset)
+        setPeriodState(presetState(preset))
+      }}
+      onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
+    />
+  )
+  const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
+  const recording = (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {since ? t("recordingSince", { date: formatDay(since) }) : !statusQuery.isPending && t("notRecording")}
+      {partial && <Badge variant="outline" className="py-0 font-normal text-muted-foreground">{t("partial")}</Badge>}
+    </span>
+  )
+  // The period choice and the instance selection. A new one starts the lists of deletes and of top torrents again at their first rows.
+  const listScope = `${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`
+
   return (
-    <div className="space-y-6 p-4 pb-16 lg:p-6">
-      <PageHeader
-        title={t("title")}
-        description={
-          <span className="inline-flex flex-wrap items-center gap-2">
-            {since ? t("recordingSince", { date: formatDay(since) }) : !statusQuery.isPending && t("notRecording")}
-            {partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-yellow-600 dark:text-yellow-500">{t("partial")}</Badge>}
-          </span>
-        }
-        actions={
-          <>
-            {options.length > 1 && <InstanceFilter
-              options={options}
-              selected={selectedIds}
-              onChange={setSelectedIds}
-            />}
-            <PeriodPicker
-              value={periodState.choice}
-              customLabel={customLabel}
-              onPreset={preset => setPeriodState({ choice: preset, period: presetPeriod(preset, new Date()), moved: false })}
-              onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
-            />
-          </>
-        }
-      />
+    <Page
+      title={t("title")}
+      description={recording}
+      controls={narrow ? (
+        <>
+          {periodPicker}
+          {instanceFilter}
+          <SeriesColorPicker />
+        </>
+      ) : (
+        <>
+          <SeriesColorPicker />
+          {instanceFilter}
+          {periodPicker}
+        </>
+      )}
+    >
+      {/* On a phone, the cards of this page are 16 px apart. */}
+      <div className="space-y-4 sm:space-y-6">
+        {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-      {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
+        {/* A phone shows the five numbers in two columns of one card, the last across both, and a phone turned sideways in one row. Six tracks give rows of 3 and 2 without an empty cell. */}
+        <div className="grid grid-cols-2 max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5 sideways:grid-cols-5 sideways:gap-2 max-sm:sideways:gap-0">
+          <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
+          <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
+          <Tile
+            label={t("tiles.ratio")}
+            value={totals && formatRatio(totals)}
+            hint={totals && formatBuffer(totals) && t("tiles.buffer", { buffer: formatBuffer(totals) })}
+          />
+          <Tile
+            label={t("tiles.crossSeed")}
+            value={totals && formatBytes(totals.statisticsCrossSeedUploaded)}
+            hint={totals && totals.uploaded > 0 ? t("tiles.crossSeedShare", { percent: Math.round((totals.statisticsCrossSeedUploaded / totals.uploaded) * 100) }) : undefined}
+            wide
+          />
+          <Tile
+            label={t("tiles.unique")}
+            value={unique && formatBytes(unique.uniqueSize)}
+            hint={unique ? t("tiles.uniqueTotal", { size: formatBytes(unique.totalSize) }) : libraryPoints && libraryPoints.length > 0 && t("tiles.uniqueNone")}
+            wide
+          />
+        </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
-        <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
-        <Tile
-          label={t("tiles.ratio")}
-          value={totals && (totals.downloaded > 0 ? (totals.uploaded / totals.downloaded).toFixed(2) : totals.uploaded > 0 ? "∞" : undefined)}
-          hint={totals && (totals.uploaded > 0 || totals.downloaded > 0) && t("tiles.buffer", { buffer: `${totals.uploaded >= totals.downloaded ? "+" : "-"}${formatBytes(Math.abs(totals.uploaded - totals.downloaded))}` })}
-        />
-        <Tile
-          label={t("tiles.crossSeed")}
-          value={totals && formatBytes(totals.statisticsCrossSeedUploaded)}
-          hint={totals && totals.uploaded > 0 ? t("tiles.crossSeedShare", { percent: Math.round((totals.statisticsCrossSeedUploaded / totals.uploaded) * 100) }) : undefined}
-        />
-      </div>
+        <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="px-4 sm:px-6">
+            <CardTitle>{yearView ? t("yearView.title") : t("chart.title")}</CardTitle>
+            <CardDescription>{yearView ? t("yearView.description") : period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
+            {!yearView && <CardAction>
+              <Tabs value={metric} onValueChange={value => setMetric(value as Metric)}>
+                <TabsList className="max-sm:h-8">
+                  <TabsTrigger value="uploaded" className="px-3 max-sm:px-2 max-sm:text-xs">{t("chart.upload")}</TabsTrigger>
+                  <TabsTrigger value="downloaded" className="px-3 max-sm:px-2 max-sm:text-xs">{t("chart.download")}</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </CardAction>}
+          </CardHeader>
+          <CardContent className="px-4 sm:px-6">
+            {chart.error ? (
+              <div className="flex h-[260px] items-center justify-center text-sm text-destructive sm:h-[300px] sideways:h-[220px]">{t("errors.load", { message: chart.error.message })}</div>
+            ) : loading ? (
+              <div className="flex h-[260px] items-center justify-center sm:h-[300px] sideways:h-[220px]"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            ) : bars.some(bar => bar.bytes.size > 0) ? yearView ? (
+              <YearView bars={bars} groups={groups} to={shown.period.to} since={since} displayName={displayName} />
+            ) : (
+              <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
+            ) : (
+              <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground sm:h-[300px] sideways:h-[220px]">{t("chart.empty")}</div>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("chart.title")}</CardTitle>
-          <CardDescription>{period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
-          <CardAction>
-            <Tabs value={metric} onValueChange={value => setMetric(value as Metric)}>
-              <TabsList>
-                <TabsTrigger value="uploaded" className="px-3">{t("chart.upload")}</TabsTrigger>
-                <TabsTrigger value="downloaded" className="px-3">{t("chart.download")}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          {chart.error ? (
-            <div className="flex h-[300px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: chart.error.message })}</div>
-          ) : loading ? (
-            <div className="flex h-[300px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-          ) : bars.some(bar => bar.bytes.size > 0) ? (
-            <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
+        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+          <GroupTable
+            listScope={listScope}
+            grouping={grouping}
+            onGroupingChange={setGrouping}
+            rows={loading ? undefined : tableRows}
+            error={statusQuery.error ?? chart.error ?? (period.from ? undefined : allTime.error) ?? (byTracker ? undefined : grouped.error)}
+            liveLoaded={liveIds.length > 0 && live.groups !== undefined}
+            liveError={live.error}
+            period={shown.period}
+            since={since}
+            series={shown.series}
+            instances={selected}
+            seriesGroups={groups}
+            displayName={tableName}
+            onPrefetch={prefetchGroupings}
+          />
+        </Card>
+
+        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+          <CardHeader className="px-4 pb-4 sm:px-6">
+            <CardTitle>{t("topTorrents.title")}</CardTitle>
+            <CardDescription>{t("topTorrents.description")}</CardDescription>
+          </CardHeader>
+          {statusQuery.error ? (
+            <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
+          ) : ready ? (
+            <TopTorrents scope={listScope} torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
           ) : (
-            <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">{t("chart.empty")}</div>
+            <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           )}
-        </CardContent>
-      </Card>
+          <div className="space-y-1 px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+            <p>{t("topTorrents.note")}</p>
+            {!period.from && <p>{t("table.baselineNote")}</p>}
+          </div>
+        </Card>
 
-      <div className="space-y-1 text-xs text-muted-foreground">
-        {!period.from && <p>{t("allTimeNote")}</p>}
-        <p>{t("serverStatisticsNote")}</p>
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle>{t("growth.title")}</CardTitle>
+              <CardDescription>{newestCount !== undefined ? t("growth.description", { torrents: newestCount.toLocaleString(locale) }) : t("growth.descriptionEmpty")}</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 sm:px-6">
+              {growthError ? (
+                <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
+              ) : !libraryPoints ? (
+                <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+              ) : libraryPoints.length > 0 ? (
+                <>
+                  <LibraryGrowthChart points={libraryPoints} />
+                  {libraryPoints.some(point => point.totalSize !== null && point.uniqueSize === null) && <p className="pt-2 text-xs text-muted-foreground">{t("growth.gapNote")}</p>}
+                </>
+              ) : (
+                <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("growth.empty")}</div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle>{t("events.title")}</CardTitle>
+              <CardDescription>{t("events.description")}</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 sm:px-6">
+              {growthError ? (
+                <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
+              ) : !eventDays ? (
+                <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+              ) : eventDays.some(day => day.added + day.completed + day.deleted > 0) ? (
+                <EventsChart days={eventDays} />
+              ) : (
+                <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("events.empty")}</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+          <CardHeader className="px-4 pb-4 sm:px-6">
+            <CardTitle>{t("deletes.title")}</CardTitle>
+            <CardDescription>{t("deletes.description")}</CardDescription>
+          </CardHeader>
+          {statusQuery.error ? (
+            <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
+          ) : ready ? (
+            <DeletedTorrents
+              scope={listScope}
+              instances={selected}
+              period={period}
+              displayGroup={displayName}
+            />
+          ) : (
+            <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+          )}
+        </Card>
+
+        {!period.from && <p className="text-xs text-muted-foreground">{t("allTimeNote")}</p>}
       </div>
-    </div>
+    </Page>
   )
 }
 
-function Tile({ label, value, hint }: { label: string; value?: string; hint?: ReactNode }) {
+function Tile({ label, value, hint, wide = false }: { label: string; value?: string; hint?: ReactNode; wide?: boolean }) {
   return (
-    <Card className="gap-2 py-4">
-      <CardContent className="px-4">
-        <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="mt-1 whitespace-nowrap text-2xl font-semibold tabular-nums">{value ?? "–"}</div>
-        <div className="mt-1 min-h-4 text-xs text-muted-foreground">{hint}</div>
+    <Card className={cn(
+      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:nth-[-n+2]:border-t-0 max-sm:even:border-l max-sm:last:col-span-2 xl:col-span-1 sideways:col-span-1 sideways:last:col-span-1 sideways:gap-1 sideways:py-3 max-sm:sideways:border-t-0 max-sm:sideways:border-l max-sm:sideways:first:border-l-0",
+      wide ? "sm:col-span-3" : "sm:col-span-2"
+    )}>
+      <CardContent className="px-4 max-sm:sideways:px-2">
+        <div className="text-xs text-muted-foreground sm:text-sm sideways:text-xs">{label}</div>
+        <div>
+          <div className="mt-0.5 whitespace-nowrap text-lg font-semibold tabular-nums sm:mt-1 sm:text-2xl sideways:mt-0.5 sideways:text-lg max-sm:sideways:text-base">{value ?? "–"}</div>
+          <div className="text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:empty:block">{hint}</div>
+        </div>
       </CardContent>
     </Card>
   )

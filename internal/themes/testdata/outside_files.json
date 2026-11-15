@@ -1,0 +1,173 @@
+{
+  "refused": [
+    {
+      "name": "import",
+      "css": "@import 'https://example.invalid/a.css';",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "@import"
+    },
+    {
+      "name": "import in uppercase",
+      "css": "\n@IMPORT url(x.css);",
+      "line": 2,
+      "kind": "outside-file",
+      "reason": "@import"
+    },
+    {
+      "name": "image-set",
+      "css": ":root{}\n.dark{}\nbody { background: image-set('a.png' 1x); }",
+      "line": 3,
+      "kind": "outside-file",
+      "reason": "image-set()"
+    },
+    {
+      "name": "http url",
+      "css": "body {\n  background: url(https://example.invalid/a.png);\n}",
+      "line": 2,
+      "kind": "outside-file",
+      "reason": "url()"
+    },
+    {
+      "name": "quoted http url",
+      "css": "body { background: url( \"https://example.invalid/a.png\" ); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "url()"
+    },
+    {
+      "name": "protocol-relative url",
+      "css": "body { background: url(//example.invalid/a.png); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "url()"
+    },
+    {
+      "name": "url in uppercase",
+      "css": "\n\n\nbody { background: URL(https://example.invalid/a.png); }",
+      "line": 4,
+      "kind": "outside-file",
+      "reason": "url()"
+    },
+    {
+      "name": "relative url",
+      "css": "body { background: url(a.png); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "url()"
+    },
+    {
+      "name": "escaped url",
+      "css": "body { background: \\75rl(https://example.invalid/a.png); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "backslash"
+    },
+    {
+      "name": "escaped import",
+      "css": "@\\69mport 'x.css';",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "backslash"
+    },
+    {
+      "name": "line break in a string",
+      "css": "body::after { content: \"a\n@import 'x.css'; b\"; }",
+      "line": 1,
+      "kind": "unreadable",
+      "reason": "line break"
+    },
+    {
+      "name": "unquoted url with a space inside",
+      "css": "body { background: url(a b); }",
+      "line": 1,
+      "kind": "unreadable",
+      "reason": "url()"
+    },
+    {
+      "name": "escape in the data: prefix of a quoted url",
+      "css": "body { background: url(\"d\\61ta:image/png;base64,AAAA\"); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "url()"
+    },
+    {
+      "name": "escaped at-rule name",
+      "css": "@\\66ont-face { font-family: X; }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "backslash"
+    },
+    {
+      "name": "prefixed image-set",
+      "css": "body { background: -webkit-image-set(\"a.png\" 1x); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "image-set()"
+    },
+    {
+      "name": "url function that is not a string",
+      "css": "body { background: url(var(--image)); }",
+      "line": 1,
+      "kind": "unreadable",
+      "reason": "url()"
+    },
+    {
+      "name": "url after a comment",
+      "css": "/* one\n two */ body { background: url(http://example.invalid); }",
+      "line": 2,
+      "kind": "outside-file",
+      "reason": "url()"
+    },
+    {
+      "name": "url with a no-break space before data:",
+      "css": "body { background: url(\" data:image/png;base64,AAAA\"); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "url()",
+      "regression": "#4124"
+    },
+    {
+      "name": "url after a non-ASCII letter",
+      "css": "/* İstanbul */ body { background: url(http://example.invalid); }",
+      "line": 1,
+      "kind": "outside-file",
+      "reason": "url()",
+      "regression": "#4124"
+    }
+  ],
+  "allowed": [
+    {
+      "name": "url in a comment",
+      "css": "/* background: url(https://example.invalid/a.png); @import 'x'; \\75rl() */ :root { --a: b; }"
+    },
+    {
+      "name": "data url",
+      "css": "body { background: url(data:image/png;base64,iVBORw0KGgo=); }"
+    },
+    {
+      "name": "quoted data url",
+      "css": "body { background: url( 'DATA:image/svg+xml,<svg></svg>' ); }"
+    },
+    {
+      "name": "fragment url",
+      "css": "body { filter: url(#blur); }"
+    },
+    {
+      "name": "url text in a string",
+      "css": "body::after { content: \"url(https://example.invalid) @import \\\" \"; }"
+    },
+    {
+      "name": "backslash in a string",
+      "css": "body::after { content: \"\\2014\"; }"
+    },
+    {
+      "name": "data url at the end of the file",
+      "css": "body { background: url(data:image/png;base64,AAAA"
+    },
+    {
+      "name": "font from data",
+      "css": "@font-face { font-family: X; src: url(\"data:font/woff2;base64,AAAA\") format(\"woff2\"); }"
+    }
+  ]
+}

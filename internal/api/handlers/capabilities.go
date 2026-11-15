@@ -30,6 +30,7 @@ type InstanceCapabilitiesResponse struct {
 	SupportsSetRSSFeedURL       bool   `json:"supportsSetRSSFeedURL"`
 	SupportsShareLimitsAction   bool   `json:"supportsShareLimitsAction"`
 	SupportsShareLimitsMode     bool   `json:"supportsShareLimitsMode"`
+	SupportsFreeSpaceAtPath     bool   `json:"supportsFreeSpaceAtPath"`
 	SupportsLiveReannounce      bool   `json:"supportsLiveReannounce"`
 	SupportsListFieldsV5        bool   `json:"supportsListFieldsV5"`
 	SupportsListCreatedBy       bool   `json:"supportsListCreatedBy"`
@@ -61,6 +62,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsLiveReannounce:      client.Supports(internalqbittorrent.CapLiveReannounce),
 		SupportsListFieldsV5:        client.Supports(internalqbittorrent.CapListFieldsV5),
 		SupportsListCreatedBy:       client.Supports(internalqbittorrent.CapListCreatedBy),
+		SupportsFreeSpaceAtPath:     client.Supports(internalqbittorrent.CapFreeSpaceAtPath),
 		WebAPIVersion:               client.GetWebAPIVersion(),
 	}
 }

@@ -34,12 +34,15 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/dbshrink"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/livesamples"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -190,12 +193,14 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey)
 	require.NoError(t, err)
 	discScanStore := models.NewDiscScanStore(db)
-	transferHistory := transferhistory.New(db, trackerCustomizationStore)
+	systemNotices := systemnotice.New(nil)
+	databaseShrink := dbshrink.New(db, systemNotices, nil)
+	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
 	jackettService := jackett.NewService(torznabIndexerStore)
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
 	require.NoError(t, err)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
@@ -241,6 +246,9 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		DiscScanStore:             discScanStore,
 		DiscScanService:           discscan.NewService(discScanStore),
 		TransferHistory:           transferHistory,
+		LiveSamples:               livesamples.New(clientPool),
+		SystemNotices:             systemNotices,
+		DatabaseShrink:            databaseShrink,
 		DirScanService:            dirScanService,
 		CrossSeedService:          crossSeedService,
 		CrossSeedRoutes:           crossseedroute.NewService(models.NewCrossSeedRouteStore(db), instanceStore, clientPool, nil),

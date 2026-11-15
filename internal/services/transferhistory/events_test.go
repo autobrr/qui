@@ -13,6 +13,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -25,6 +26,20 @@ type deletesCheck struct {
 type libraryCheck struct {
 	query transferhistory.LibraryQuery
 	want  []transferhistory.LibraryRow
+	// eventsOnly compares the event counts of the days that have events.
+	eventsOnly bool
+}
+
+// eventCounts returns the days of rows that have events, with their event
+// counts only.
+func eventCounts(rows []transferhistory.LibraryRow) []transferhistory.LibraryRow {
+	var events []transferhistory.LibraryRow
+	for _, r := range rows {
+		if r.Added+r.Completed+r.Deleted > 0 {
+			events = append(events, transferhistory.LibraryRow{Day: r.Day, Added: r.Added, Completed: r.Completed, Deleted: r.Deleted})
+		}
+	}
+	return events
 }
 
 // The UTC day of t0 and the day after it.
@@ -53,7 +68,7 @@ func expectEvents(added, completed, deleted int64) step {
 	if added+completed+deleted > 0 {
 		want = []transferhistory.LibraryRow{{Day: day10, Added: added, Completed: completed, Deleted: deleted}}
 	}
-	return step{library: &libraryCheck{query: twoDays, want: want}}
+	return step{library: &libraryCheck{query: twoDays, want: want, eventsOnly: true}}
 }
 
 // seeded returns t with the ratio and the seeding time that qBittorrent reports.
@@ -510,17 +525,19 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 				reading(at(0), torrent("a", 0, 0)),
 				reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(4*time.Minute))),
 				reading(at(24*time.Hour), torrent("a", 0, 0)),
-				{library: &libraryCheck{query: twoDays, want: []transferhistory.LibraryRow{
+				{library: &libraryCheck{eventsOnly: true, query: twoDays, want: []transferhistory.LibraryRow{
 					{Day: day10, Added: 1},
 					{Day: day10.Add(24 * time.Hour), Deleted: 1},
 				}}},
 				{library: &libraryCheck{
-					query: transferhistory.LibraryQuery{InstanceID: instanceID, From: at(15 * time.Hour), To: at(16 * time.Hour)},
-					want:  []transferhistory.LibraryRow{{Day: day10.Add(24 * time.Hour), Deleted: 1}},
+					eventsOnly: true,
+					query:      transferhistory.LibraryQuery{InstanceID: instanceID, From: at(15 * time.Hour), To: at(16 * time.Hour)},
+					want:       []transferhistory.LibraryRow{{Day: day10.Add(24 * time.Hour), Deleted: 1}},
 				}},
 				{library: &libraryCheck{
-					query: transferhistory.LibraryQuery{InstanceID: instanceID, To: day10.Add(24 * time.Hour)},
-					want:  []transferhistory.LibraryRow{{Day: day10, Added: 1}},
+					eventsOnly: true,
+					query:      transferhistory.LibraryQuery{InstanceID: instanceID, To: day10.Add(24 * time.Hour)},
+					want:       []transferhistory.LibraryRow{{Day: day10, Added: 1}},
 				}},
 			},
 		},
@@ -537,7 +554,7 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 
 func TestInvalidEventQueries(t *testing.T) {
 	t.Parallel()
-	module := transferhistory.New(nil, nil)
+	module := transferhistory.New(nil, nil, systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 	to := day10
@@ -559,7 +576,7 @@ func TestInvalidEventQueries(t *testing.T) {
 func TestAdapterGivesTheDeleteActorAsTheCause(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
-	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db))
+	module := transferhistory.New(db, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	adapter := transferhistory.NewAdapter(module, nil)
 
@@ -590,7 +607,7 @@ func TestAFailedCommitAndAFailedCheckKeepTheDeleteCausePostgresIntegration(t *te
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		module.Record(*reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)).reading)
@@ -611,7 +628,7 @@ func TestALostCommitAnswerAndAFailedCheckGiveTheCauseOnceThenOutsidePostgresInte
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		record := settled(t, module)
@@ -637,7 +654,7 @@ func TestALostCommitAnswerDropsTheCauseOfATorrentThatCameBackPostgresIntegration
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&lostCommitAndCheck{DB: db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		record := settled(t, module)
 
@@ -663,7 +680,7 @@ func TestAFailedCommitDropsTheCauseOfATorrentThatCameBackPostgresIntegration(t *
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db))
+		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		record := settled(t, module)
 

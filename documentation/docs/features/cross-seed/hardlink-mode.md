@@ -109,6 +109,8 @@ If the active member's downloaded-byte counter makes no progress for 15 minutes,
 
 Hardlink members require every originally linked file to verify completely before acquisition because repair could modify the source through the shared inode. A propagated hardlink that fails verification is removed only when the current qui process can prove it created that exact link; otherwise the member stays paused for manual recovery. Reflink members can safely repair incomplete clones through copy-on-write, so failed target verification keeps the clone and can return the member to normal pooled acquisition.
 
+Pooled completion needs local filesystem access on the instance. An instance can lose this access, for example when you change it to SSH access. Then qui pauses each pool member on that instance that is not complete and moves it to manual review. qui does not change the files of that member. The member stays in manual review when the instance gets local filesystem access again.
+
 ## Notes
 
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until you remove all remaining links.
@@ -265,7 +267,7 @@ Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks
   - **FreeBSD**: not supported
 
 :::note
-Windows reflink mode uses ReFS block cloning and requires a ReFS filesystem. qui does not support NTFS. If the matched source path is a symlink, qui resolves it before cloning. The resolved source and the reflink base directory must reside on the same ReFS volume. If reflink creation fails, fallback depends on the "Fallback to regular mode" setting.
+Windows reflink mode uses ReFS block cloning and requires a ReFS filesystem. qui does not support NTFS. Before cloning, qui makes the new destination file use the source file's Integrity Streams setting, even when the destination folder has a different setting. The source file's setting stays unchanged. If the matched source path is a symlink, qui resolves it before cloning. The resolved source and the reflink base directory must reside on the same ReFS volume. For cross-seeds based on an existing torrent, the "Fallback to regular mode" setting can allow fallback when the support probe fails; a reflink creation error fails the add without fallback. Dir Scan can also fall back after a creation error when that setting is enabled, but a lost filesystem connection still fails the add.
 :::
 
 :::tip
@@ -296,7 +298,7 @@ Reflinks use copy-on-write semantics:
    - Single filesystem: `/mnt/data/cross-seed`
    - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`
 5. Choose a **Directory organization** preset (`flat`, `by-tracker`, `by-instance`).
-6. If you want failed reflinks to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode"**.
+6. Enable **"Fallback to regular mode"** if you want regular mode when the filesystem support probe fails. For behavior after creation errors, see [Reflink Requirements](#reflink-requirements).
 
 :::note
 Hardlink and reflink modes are mutually exclusive. You can enable only one per instance.

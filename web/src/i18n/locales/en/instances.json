@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Not supported for score multipliers"
       },
       "conditionsLabel": "Conditions (optional)",
+      "mixedActionConditions": "Each action in this workflow has its own condition. qui now uses one condition per workflow. If you save, every action gets the condition above. To keep the others, make one workflow for each condition first.",
       "actions": {
         "title": "Action",
         "addAction": "Add action",
@@ -1286,15 +1287,19 @@
       "freeSpace": {
         "title": "Free space source",
         "aria": "About free space source",
-        "description": "Choose where to read free space from. Default uses qBittorrent's reported free space. Use \"Path on server\" to check free space on a specific disk or mount point.",
+        "description": "Choose where to read free space from. Default uses qBittorrent's reported free space. Use \"Path on server\" to check free space on a specific disk or mount point. \"Path on the qBittorrent host\" asks qBittorrent itself and needs qBittorrent 5.3.",
         "selectSource": "Select source",
         "defaultSource": "Default (qBittorrent)",
         "pathSource": "Path on server",
         "pathSourceWindowsUnsupported": "Path on server (not supported on Windows)",
+        "qbitPathSource": "Path on the qBittorrent host",
+        "qbitPathSourceUnsupported": "Path on the qBittorrent host (needs qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Enter the path to check free space on (e.g., a mount point)",
+        "qbitPathHelp": "Enter a path on the qBittorrent host. qBittorrent measures the free space, so qui needs no access to that disk.",
         "errors": {
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
+          "qbitPathUnsupported": "This instance is older than qBittorrent 5.3 and cannot report free space at a path.",
           "pathRequired": "Path is required when using \"Path on server\".",
           "filesystemAccessRequired": "Path-based free space source requires local or SSH filesystem access.",
           "allowanceRequired": "Enter an allowance above 0.",
@@ -1304,7 +1309,8 @@
         "allowanceSource": "Allowance on a path",
         "allowanceSourceWindowsUnsupported": "Allowance on a path (not supported on Windows)",
         "allowanceSourceAccessRequired": "Allowance on a path (requires local access, or SSH access with a shell)",
-        "allowanceAria": "Allowance",
+        "allowanceLabel": "Allowance",
+        "allowancePathLabel": "Folder to measure",
         "allowanceUnitAria": "Allowance unit",
         "allowanceHelp": "Enter the space that your plan allows. qui subtracts the size of the files under the path. Most providers count in steps of 1000, not 1024, so a plan figure is about 9% smaller in {{unit}}.",
         "allowancePathHelp": "Enter the folder to measure, for example your home directory"
@@ -1497,6 +1503,7 @@
         "switchedDeleteModeForFreeSpace": "Switched to \"Remove with files\" because Free Space condition requires actual disk space to be freed",
         "switchedIntervalForFreeSpace": "Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown",
         "pathSourceUnsupportedWindows": "Path-based free space source is not supported on Windows. Switched to qBittorrent default.",
+        "qbitPathSourceUnsupported": "This instance cannot report free space at a path. Switched to the default source.",
         "switchFreeSpaceSourceDefault": "Switch Free space source to Default (qBittorrent)",
         "enterPathOrDefault": "Enter a path or switch Free space source back to Default (qBittorrent)",
         "addScoreRule": "Add at least one score rule for Score sorting",
@@ -2111,5 +2118,10 @@
       "noReflinks": "No reflinks on a remote instance.",
       "noHardlinkExtension": "No hardlinks: the server does not advertise hardlink@openssh.com. A cross-seed hardlink add fails here, or adds in regular mode when \"Fallback to regular mode on error\" is on."
     }
+  },
+  "deleteHistory": {
+    "label": "Also delete its transfer history",
+    "description": "Without this, qui keeps the history under the name of the instance.",
+    "failed": "The instance is deleted, but qui could not delete all of its history. Look in Settings > Statistics, and delete the rest there."
   }
 }

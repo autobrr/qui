@@ -12,6 +12,8 @@
     "externalPrograms": "Programas Externos",
     "notifications": "Notificações",
     "dateTime": "Data e Hora",
+    "statistics": "Estatísticas",
+    "trackers": "Personalização de trackers",
     "premiumThemes": "Temas",
     "security": "Segurança",
     "logs": "Logs"
@@ -297,7 +299,7 @@
     "loading": "Carregando alvos de notificação...",
     "loadFailed": "Falha ao carregar alvos de notificação",
     "empty": "Nenhum alvo de notificação configurado. Adicione um para começar a receber alertas.",
-    "allEvents": "Todos os eventos",
+    "allEvents": "Todos os eventos, exceto aviso do sistema",
     "showList": "Mostrar lista",
     "hideList": "Ocultar lista",
     "badges": {
@@ -396,6 +398,56 @@
       "error": "Falha ao salvar preferências de data e hora"
     }
   },
+  "statistics": {
+    "cardTitle": "Estatísticas",
+    "cardDescription": "O qui registra o upload e o download de cada torrent no seu banco de dados. Estas configurações valem para todas as instâncias.",
+    "recording": {
+      "label": "Registrar histórico de transferências",
+      "description": "Enquanto estiver desativado, o qui não registra nada e mantém o histórico salvo. O tempo desativado vira uma lacuna de registro."
+    },
+    "retention": {
+      "label": "Manter detalhes diários por",
+      "description": "Após esse período, o qui agrupa os totais por hora em dias, e os bytes diários de cada torrent em uma linha por ano. Os totais continuam os mesmos. Se você escolher um período menor, o qui agrupa os detalhes mais antigos na próxima leitura, e não é possível recuperá-los.",
+      "days90": "90 dias",
+      "days400": "400 dias",
+      "forever": "Para sempre"
+    },
+    "size": {
+      "label": "Tamanho do histórico"
+    },
+    "deleteHistory": {
+      "label": "Excluir histórico",
+      "description": "Exclui o histórico de transferências de uma instância ou de todas as instâncias. Não é possível recuperá-lo.",
+      "instance": "Instância",
+      "allInstances": "Todas as instâncias",
+      "unnamedInstance": "Instância {{id}}",
+      "everything": "Tudo",
+      "before": "Tudo antes de uma data",
+      "date": "Data",
+      "button": "Excluir histórico",
+      "confirmTitle": "Excluir histórico?",
+      "confirmEverything": "O qui exclui todo o histórico de {{name}}. A gravação recomeça com uma nova linha de base. Não é possível desfazer.",
+      "confirmBefore": "O qui exclui o histórico de {{name}} antes de {{date}}. Se a gravação começou antes dessa data, os bytes de antes da primeira gravação também são excluídos, e \"Gravando desde\" passa para essa data. Não é possível desfazer.",
+      "sqliteSpace": "O arquivo do banco de dados mantém o tamanho. O SQLite reutiliza o espaço livre para o novo histórico.",
+      "postgresSpace": "Excluir tudo de todas as instâncias devolve o espaço ao disco na hora. Após outra exclusão, o Postgres reutiliza o espaço livre para o novo histórico.",
+      "cancel": "Cancelar",
+      "confirm": "Excluir",
+      "deleted": "Histórico excluído",
+      "failed": "Falha ao excluir o histórico",
+      "shrink": {
+        "label": "Reduzir também o arquivo do banco de dados",
+        "restart": "O qui reinicia e reduz o arquivo, para você recuperar o espaço em disco. O qui fica indisponível por um curto período.",
+        "nextStart": "O qui não consegue reiniciar sozinho nesta instalação. A redução será executada na próxima inicialização do qui.",
+        "tooLittleSpace": "O disco tem {{free}} livres e uma redução precisa de até {{need}}. É seguro deixar desativado: o SQLite reutiliza o espaço livre para o novo histórico.",
+        "manualDocs": "Reduzir o arquivo manualmente"
+      }
+    },
+    "loadFailed": "Falha ao carregar as configurações de estatísticas",
+    "toasts": {
+      "saved": "Configurações de estatísticas salvas",
+      "saveFailed": "Falha ao salvar as configurações de estatísticas"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "Alterar Senha",
@@ -475,17 +527,46 @@
   },
   "themes": {
     "selector": {
-      "title": "Seleção de Tema",
+      "title": "Temas",
       "loadingDescription": "Carregando temas disponíveis...",
-      "description": "Escolha entre os temas disponíveis. Alguns temas requerem uma licença válida.",
+      "description": "Clique em um tema para usá-lo.",
       "verificationUnavailable": "Verificação de licença indisponível. A troca para um tema licenciado está temporariamente desativada.",
       "notLoaded": "Temas licenciados não carregados",
       "notLoadedDescription": "Execute",
-      "free": "Grátis",
-      "locked": "Bloqueado",
-      "lock": "Bloquear",
-      "showTheme": "Mostrar",
-      "hideTheme": "Ocultar"
+      "defaultThemeVisit": "qui mostra o tema padrão nesta visita porque o endereço contém ?theme=default. Selecione um tema para encerrar.",
+      "search": "Pesquisar temas",
+      "filterLabel": "Filtrar temas",
+      "noMatch": "Nenhum tema corresponde a “{{query}}”.",
+      "needsLicense": "Requer uma licença",
+      "lockedCount_one": "{{count}} tema requer uma licença.",
+      "lockedCount_other": "{{count}} temas requerem uma licença.",
+      "showAll_one": "Mostrar {{count}} tema",
+      "showAll_other": "Mostrar todos os {{count}} temas",
+      "showFewer": "Mostrar menos temas",
+      "variationCount_one": "{{count}} variação de cor",
+      "variationCount_other": "{{count}} variações de cor"
+    },
+    "current": {
+      "label": "Em uso",
+      "colors": "Variações de cor"
+    },
+    "groups": {
+      "all": "Todos",
+      "free": "Gratuitos",
+      "licensed": "Licenciados",
+      "custom": "Personalizados"
+    },
+    "menu": {
+      "button": "Escolher temas do menu",
+      "title": "Escolher temas do menu",
+      "description": "Escolha os temas que o menu de temas mostra, na barra superior e no rodapé do celular. O tema em uso está sempre no menu.",
+      "groupCount": "{{shown}} de {{total}}",
+      "groupsLocked": "Limpe a pesquisa para usar as caixas de seleção dos grupos.",
+      "inUse": "Em uso",
+      "summary": "{{shown}} de {{total}} temas no menu",
+      "reset": "Restaurar padrões",
+      "undo": "Desfazer restauração",
+      "done": "Concluído"
     },
     "toasts": {
       "premiumRequired": "Licença necessária",
@@ -627,25 +708,71 @@
       }
     },
     "custom": {
-      "badge": "Personalizado",
-      "title": "Temas Personalizados",
-      "lockedTitle": "Temas personalizados precisam de uma licença",
-      "lockedDescription": "Obtenha uma licença para fazer o sideload de seus próprios arquivos CSS de tema de um diretório no disco.",
+      "title": "Temas personalizados",
+      "description": "Escreva ou cole um tema no editor de temas, ou coloque arquivos CSS de temas na pasta de temas do servidor.",
+      "lockedDescription": "Obtenha uma licença para adicionar seus próprios temas: escreva ou cole um tema no editor de temas, ou coloque arquivos CSS de tema na pasta de temas do servidor.",
       "unlockCta": "Obter uma licença",
       "refresh": "Atualizar",
-      "detectedCount": "Temas encontrados: {{total}}",
-      "parseErrorsTitle": "Não foi possível analisar estes arquivos:",
-      "noneFound": "Nenhum tema personalizado encontrado. Coloque um arquivo .css no diretório de temas e clique em Atualizar.",
-      "loadError": "Não foi possível carregar os temas personalizados. Verifique os logs do servidor e as permissões do diretório de temas."
+      "themeCount_one": "{{count}} tema",
+      "themeCount_other": "{{count}} temas",
+      "folderLabel": "Pasta de temas",
+      "actionsFor": "Ações para {{theme}}",
+      "parseErrorsTitle": "Temas inválidos:",
+      "parseErrorsHint": "Edite um arquivo para corrigi-lo ou remova-o.",
+      "noneFound": "Ainda não há temas personalizados. Clique em Novo tema, ou coloque um arquivo .css na pasta de temas e clique em Atualizar.",
+      "loadError": "Não foi possível carregar os temas personalizados. Verifique os logs do servidor e as permissões da pasta de temas.",
+      "newTheme": "Novo tema",
+      "copyPrompt": "Copiar prompt para sua IA",
+      "promptCopied": "Prompt copiado. Cole-o no seu assistente de IA e descreva a aparência que você quer.",
+      "promptCopyFailed": "Não foi possível copiar o prompt",
+      "edit": "Editar",
+      "remove": "Remover",
+      "removeTitle": "Remover {{theme}}?",
+      "removeDescription": "qui exclui o arquivo deste tema da pasta de temas. Não é possível desfazer. Um dispositivo que usa este tema mostrará o tema padrão.",
+      "removeConfirm": "Remover",
+      "removed": "Tema removido",
+      "removeFailed": "Não foi possível remover o tema: {{message}}",
+      "editLoadFailed": "Não foi possível ler o arquivo do tema: {{message}}",
+      "editor": {
+        "newTitle": "Novo tema",
+        "editTitle": "Editar tema",
+        "description": "Visualize as alterações neste navegador. Salvar armazena o tema no servidor.",
+        "name": "Nome",
+        "namePlaceholder": "Nome do tema",
+        "savedAs": "Nome do arquivo: {{filename}}",
+        "css": "CSS",
+        "cssHelp": "Cole ou escreva o CSS de um tema. Ele precisa de um bloco :root para o modo claro e de um bloco .dark para o modo escuro, cada um com pelo menos um design token. Copiar prompt para sua IA fornece as regras completas a um assistente de IA.",
+        "cssPlaceholder": "/* @name: Meu tema */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "Insira um nome com uma letra ou um dígito.",
+        "nameRequired": "Insira um nome ou adicione uma linha @name ao CSS.",
+        "save": "Salvar",
+        "saveFailed": "Não foi possível salvar o tema.",
+        "saved": "Tema salvo",
+        "savedNotLoaded": "O tema foi salvo, mas o qui não conseguiu carregar a lista de temas. Clique em Atualizar ao lado da pasta de temas.",
+        "replaceTitle": "Substituir o tema?",
+        "replaceDescription": "Já existe um tema personalizado com o nome de arquivo {{filename}}. Substituí-lo por este tema?",
+        "replace": "Substituir",
+        "problems": {
+          "missingRoot": "qui não pode usar este CSS: ele não tem um bloco :root com um design token. A visualização mostra o último CSS que o qui conseguiu usar.",
+          "missingDark": "qui não pode usar este CSS: ele não tem um bloco .dark com um design token. A visualização mostra o último CSS que o qui conseguiu usar.",
+          "outsideFile": "A linha {{line}} pode carregar um arquivo de outro site. A visualização mantém o último CSS válido, e Salvar recusa este CSS.",
+          "unreadable": "qui não consegue ler a linha {{line}}: uma string entre aspas ou um url() não está fechado. A visualização mostra o último CSS que o qui conseguiu usar."
+        },
+        "previewing": "Visualizando neste navegador",
+        "previewWaits": "A visualização começa quando você altera o CSS.",
+        "emptyStatus": "Cole ou escreva o CSS de um tema para ver uma visualização."
+      }
     },
     "layout": {
+      "title": "Sincronização do tema",
       "mobileSplit": "Tema separado para o layout móvel",
       "mobileSplitHelp": "O layout móvel (uma janela com menos de 768 px de largura) e o layout de desktop mantêm cada um seu próprio tema, modo e variação. Esta configuração vale para todos os navegadores.",
       "localOnly": "Manter o tema deste navegador local",
       "localOnlyHelp": "Este navegador não obtém o tema do servidor e não envia suas alterações de tema ao servidor. Esta configuração vale apenas para este navegador.",
       "changesMobile": "Altera o tema móvel",
       "changesDesktop": "Altera o tema de desktop",
-      "changesLocal": "Altera apenas o tema deste navegador. Para alterar a configuração do layout móvel, desative a configuração local.",
+      "changesLocal": "Altera apenas o tema deste navegador.",
+      "splitNeedsSync": "Para alterar a configuração do layout móvel, desative a configuração local.",
       "saveError": "Falha ao salvar a configuração do tema",
       "mobileSplitOffWarning": "Desativar esta opção exclui o tema móvel."
     }
@@ -1159,6 +1286,74 @@
       "bind": "Endereço de Bind",
       "configDir": "Diretório de Configurações",
       "dataDir": "Diretório de Dados"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Personalização de trackers",
+    "cardDescription": "Renomeie trackers e mescle os domínios de um mesmo tracker em uma única entrada. O qui mostra o nome de exibição em todos os lugares onde mostra o tracker.",
+    "loading": "Carregando trackers…",
+    "empty": "Nenhum tracker ainda. Os trackers aparecem aqui quando uma instância tem torrents.",
+    "importTooltip": "Importar personalizações",
+    "exportTooltip": "Exportar personalizações",
+    "mergedFrom": "Mesclado de: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Mesclar os trackers selecionados neste grupo",
+    "mergeIntoGroup": "Mesclar no grupo",
+    "addToMerge": "Adicionar à mesclagem",
+    "rename": "Renomear",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "customizeDialog": {
+      "editTitle": "Editar Nome do Tracker",
+      "renameTitle": "Renomear Tracker",
+      "mergeTitle": "Mesclar Trackers",
+      "editDescription": "Atualize o nome de exibição deste tracker.",
+      "renameDescription": "Dê a este tracker um nome de exibição personalizado.",
+      "mergeDescription": "Combine esses trackers em uma única entrada com um nome personalizado.",
+      "displayName": "Nome de Exibição",
+      "displayNamePlaceholder": "ex., TorrentLeech",
+      "domains": "Domínio(s)",
+      "selectedTrackers": "Tracker(s) Selecionado(s)",
+      "primary": "Principal",
+      "removeDomain": "Remover {{domain}}",
+      "cancel": "Cancelar",
+      "saving": "Salvando...",
+      "save": "Salvar",
+      "renameAction": "Renomear",
+      "mergeAction": "Mesclar"
+    },
+    "importDialog": {
+      "title": "Importar Personalizações de Tracker",
+      "description": "Cole o JSON para importar personalizações (renomeações e mesclagens).",
+      "jsonData": "Dados JSON",
+      "invalidFormat": "Formato inválido: esperado um array de trackerCustomizations",
+      "missingDisplayName": "Entrada inválida: displayName ausente",
+      "invalidDomains": "Entrada inválida: domains deve ser um array não vazio",
+      "invalidJson": "JSON inválido",
+      "newCount": "Novos: {{count}}",
+      "conflictCount_one": "{{count}} conflito",
+      "conflictCount_other": "{{count}} conflitos",
+      "unchangedCount": "Inalterados: {{count}}",
+      "resolveConflicts": "Resolver conflitos",
+      "conflictsWith": "Em conflito com: {{name}}",
+      "skip": "Ignorar",
+      "overwrite": "Substituir",
+      "cancel": "Cancelar",
+      "importing": "Importando...",
+      "import": "Importar"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Nenhuma personalização para exportar",
+      "copiedToClipboard": "Copiado para a área de transferência",
+      "failedToCopy": "Falha ao copiar para a área de transferência",
+      "createFailed": "Falha ao criar personalização do tracker",
+      "updateFailed": "Falha ao atualizar personalização do tracker",
+      "deleteFailed": "Falha ao excluir personalização do tracker",
+      "failedToImport": "Falha ao importar: {{names}}",
+      "importedAndSkipped": "Importados {{imported}}, ignorados {{skipped}}",
+      "importedCount_one": "{{count}} personalização importada",
+      "importedCount_other": "{{count}} personalizações importadas",
+      "noCustomizationsImported": "Nenhuma personalização importada"
     }
   }
 }

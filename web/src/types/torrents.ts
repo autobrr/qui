@@ -194,15 +194,6 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
-export interface TrackerTransferStats {
-  uploaded: number
-  downloaded: number
-  uploadedSession: number
-  downloadedSession: number
-  totalSize: number
-  count: number
-}
-
 /**
  * Sidebar count groups returned with a torrent list response.
  *
@@ -216,7 +207,6 @@ export interface TorrentCounts {
   tags: Record<string, number>
   tagSizes?: Record<string, number>
   trackers: Record<string, number>
-  trackerTransfers?: Record<string, TrackerTransferStats>
   total: number
 }
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -342,7 +343,24 @@ type CrossSeedSearchRun struct {
 	IntervalSeconds        int                      `json:"intervalSeconds"`
 	CooldownMinutes        int                      `json:"cooldownMinutes"`
 	Results                []CrossSeedSearchResult  `json:"results"`
-	CreatedAt              time.Time                `json:"createdAt"`
+	// GazelleSummary counts the RED/OPS lookups of the run, one entry for
+	// each site that the run decided on.
+	GazelleSummary []CrossSeedGazelleSiteSummary `json:"gazelleSummary,omitempty"`
+	CreatedAt      time.Time                     `json:"createdAt"`
+}
+
+// CrossSeedGazelleSiteSummary counts the RED/OPS lookups of one site in one
+// Library Scan run.
+type CrossSeedGazelleSiteSummary struct {
+	// Site is the API host of the site.
+	Site    string `json:"site"`
+	Name    string `json:"name"`
+	Asked   int    `json:"asked"`
+	Matched int    `json:"matched"`
+	Failed  int    `json:"failed"`
+	// NotAsked counts the torrents that the run did not ask the site about,
+	// for each reason.
+	NotAsked map[string]int `json:"notAsked,omitempty"`
 }
 
 // CrossSeedFeedItemStatus tracks processing state for feed items.
@@ -363,7 +381,6 @@ type CrossSeedFeedItem struct {
 	FirstSeenAt time.Time               `json:"firstSeenAt"`
 	LastSeenAt  time.Time               `json:"lastSeenAt"`
 	LastStatus  CrossSeedFeedItemStatus `json:"lastStatus"`
-	LastRunID   *int64                  `json:"lastRunId,omitempty"`
 	InfoHash    *string                 `json:"infoHash,omitempty"`
 }
 
@@ -655,41 +672,64 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	return &settings, nil
 }
 
-// GetDecryptedGazelleAPIKey returns the decrypted Gazelle API key for the given host.
-// Supported hosts: redacted.sh, orpheus.network.
-func (s *CrossSeedStore) GetDecryptedGazelleAPIKey(ctx context.Context, host string) (string, bool, error) {
-	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" {
-		return "", false, nil
-	}
+// Names of the RED/OPS API keys in the settings.
+const (
+	GazelleKeyRedacted = "redacted"
+	GazelleKeyOrpheus  = "orpheus"
+)
 
-	col := ""
-	switch host {
-	case "redacted.sh":
-		col = "redacted_api_key_encrypted"
-	case "orpheus.network":
-		col = "orpheus_api_key_encrypted"
+// GazelleAPIKey returns the key with the settings name name, as the settings
+// hold it.
+func (s *CrossSeedAutomationSettings) GazelleAPIKey(name string) string {
+	switch name {
+	case GazelleKeyRedacted:
+		return s.RedactedAPIKey
+	case GazelleKeyOrpheus:
+		return s.OrpheusAPIKey
 	default:
-		return "", false, nil
+		return ""
 	}
+}
 
+// GazelleAPIKeys holds the stored RED/OPS settings, with the keys decrypted.
+type GazelleAPIKeys struct {
+	Enabled bool
+	// Keys maps the name of each stored key to its plain text.
+	Keys map[string]string
+	// Errs maps the name of each stored key that qui could not decrypt to the
+	// error.
+	Errs map[string]error
+}
+
+// GetDecryptedGazelleAPIKeys returns the RED/OPS switch and, when it is on,
+// the stored RED and OPS keys by name.
+func (s *CrossSeedStore) GetDecryptedGazelleAPIKeys(ctx context.Context) (GazelleAPIKeys, error) {
 	var enabled int
-	var encrypted sql.NullString
-	q := fmt.Sprintf(`SELECT gazelle_enabled, %s FROM cross_seed_settings WHERE id = 1`, col)
-	if err := s.db.QueryRowContext(ctx, q).Scan(&enabled, &encrypted); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", false, nil
-		}
-		return "", false, err
+	var redacted, orpheus sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted FROM cross_seed_settings WHERE id = 1`).
+		Scan(&enabled, &redacted, &orpheus)
+	if errors.Is(err, sql.ErrNoRows) {
+		return GazelleAPIKeys{}, nil
 	}
-	if !SQLiteIntToBool(enabled) || !encrypted.Valid || strings.TrimSpace(encrypted.String) == "" {
-		return "", false, nil
-	}
-	plain, err := s.decrypt(encrypted.String)
 	if err != nil {
-		return "", false, err
+		return GazelleAPIKeys{}, err
 	}
-	return plain, true, nil
+	keys := GazelleAPIKeys{Enabled: SQLiteIntToBool(enabled), Keys: map[string]string{}, Errs: map[string]error{}}
+	if !keys.Enabled {
+		return keys, nil
+	}
+	for name, encrypted := range map[string]sql.NullString{GazelleKeyRedacted: redacted, GazelleKeyOrpheus: orpheus} {
+		if !encrypted.Valid || strings.TrimSpace(encrypted.String) == "" {
+			continue
+		}
+		plain, err := s.decrypt(encrypted.String)
+		if err != nil {
+			keys.Errs[name] = err
+			continue
+		}
+		keys.Keys[name] = plain
+	}
+	return keys, nil
 }
 
 // GetDecryptedSeasonPackTVDBCredentials returns the decrypted TVDB API key and PIN
@@ -1387,14 +1427,18 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 	if err != nil {
 		return nil, fmt.Errorf("encode results: %w", err)
 	}
+	gazelleJSON, err := encodeGazelleSummary(run.GazelleSummary)
+	if err != nil {
+		return nil, fmt.Errorf("encode RED/OPS summary: %w", err)
+	}
 
 	const query = `
 		INSERT INTO cross_seed_search_runs (
 			instance_id, status, started_at, total_torrents, processed,
 			torrents_with_cross_seeds, cross_seeds_added, torrents_failed, torrents_skipped, message,
 			error_message, filters_json, indexer_ids_json, interval_seconds,
-			cooldown_minutes, results_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			cooldown_minutes, results_json, gazelle_summary_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
 	`
 
@@ -1416,6 +1460,7 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 		run.IntervalSeconds,
 		run.CooldownMinutes,
 		resultsJSON,
+		gazelleJSON,
 	).Scan(&insertedID)
 	if err != nil {
 		return nil, fmt.Errorf("insert search run: %w", err)
@@ -1460,6 +1505,10 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 	if err != nil {
 		return fmt.Errorf("encode indexers: %w", err)
 	}
+	gazelleJSON, err := encodeGazelleSummary(run.GazelleSummary)
+	if err != nil {
+		return fmt.Errorf("encode RED/OPS summary: %w", err)
+	}
 
 	const query = `
 		UPDATE cross_seed_search_runs SET
@@ -1478,7 +1527,8 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 			indexer_ids_json = ?,
 			interval_seconds = ?,
 			cooldown_minutes = ?,
-			results_json = ?
+			results_json = ?,
+			gazelle_summary_json = ?
 		WHERE id = ?
 	`
 
@@ -1504,6 +1554,7 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 		run.IntervalSeconds,
 		run.CooldownMinutes,
 		resultsJSON,
+		gazelleJSON,
 		run.ID,
 	); err != nil {
 		return fmt.Errorf("update search run: %w", err)
@@ -1516,6 +1567,11 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 // results_json alone. The hot per-candidate path uses it so the bytes written
 // per candidate stay constant; UpdateSearchRun persists the full row.
 func (s *CrossSeedStore) UpdateSearchRunProgress(ctx context.Context, run *CrossSeedSearchRun) error {
+	gazelleJSON, err := encodeGazelleSummary(run.GazelleSummary)
+	if err != nil {
+		return fmt.Errorf("encode RED/OPS summary: %w", err)
+	}
+
 	const query = `
 		UPDATE cross_seed_search_runs SET
 			status = ?,
@@ -1524,7 +1580,8 @@ func (s *CrossSeedStore) UpdateSearchRunProgress(ctx context.Context, run *Cross
 			torrents_with_cross_seeds = ?,
 			cross_seeds_added = ?,
 			torrents_failed = ?,
-			torrents_skipped = ?
+			torrents_skipped = ?,
+			gazelle_summary_json = ?
 		WHERE id = ?
 	`
 
@@ -1536,6 +1593,7 @@ func (s *CrossSeedStore) UpdateSearchRunProgress(ctx context.Context, run *Cross
 		run.CrossSeedsAdded,
 		run.TorrentsFailed,
 		run.TorrentsSkipped,
+		gazelleJSON,
 		run.ID,
 	); err != nil {
 		return fmt.Errorf("update search run progress: %w", err)
@@ -1551,7 +1609,7 @@ func (s *CrossSeedStore) GetSearchRun(ctx context.Context, id int64) (*CrossSeed
 		       total_torrents, processed, torrents_with_cross_seeds, cross_seeds_added,
 		       torrents_failed, torrents_skipped, message, error_message, filters_json,
 		       indexer_ids_json, interval_seconds, cooldown_minutes,
-		       results_json, created_at
+		       results_json, gazelle_summary_json, created_at
 		FROM cross_seed_search_runs
 		WHERE id = ?
 	`
@@ -1574,7 +1632,7 @@ func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, 
 		       total_torrents, processed, torrents_with_cross_seeds, cross_seeds_added,
 		       torrents_failed, torrents_skipped, message, error_message, filters_json,
 		       indexer_ids_json, interval_seconds, cooldown_minutes,
-		       results_json, created_at
+		       results_json, gazelle_summary_json, created_at
 		FROM cross_seed_search_runs
 		WHERE instance_id = ?
 		ORDER BY started_at DESC
@@ -1777,13 +1835,12 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 	query := `
 		INSERT INTO cross_seed_feed_items (
 			guid, indexer_id, title, first_seen_at,
-			last_seen_at, last_status, last_run_id, info_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			last_seen_at, last_status, info_hash
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(guid, indexer_id) DO UPDATE SET
 			title = excluded.title,
 			last_seen_at = excluded.last_seen_at,
 			last_status = excluded.last_status,
-			last_run_id = excluded.last_run_id,
 			info_hash = COALESCE(excluded.info_hash, cross_seed_feed_items.info_hash)
 	`
 
@@ -1794,7 +1851,6 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 		item.FirstSeenAt,
 		lastSeenAt,
 		item.LastStatus,
-		item.LastRunID,
 		item.InfoHash,
 	)
 	if err != nil {
@@ -1935,6 +1991,7 @@ func scanCrossSeedSearchRun(scanner interface {
 		filtersJSON  sql.NullString
 		indexersJSON sql.NullString
 		resultsJSON  sql.NullString
+		gazelleJSON  sql.NullString
 	)
 
 	err := scanner.Scan(
@@ -1956,6 +2013,7 @@ func scanCrossSeedSearchRun(scanner interface {
 		&run.IntervalSeconds,
 		&run.CooldownMinutes,
 		&resultsJSON,
+		&gazelleJSON,
 		&run.CreatedAt,
 	)
 	if err != nil {
@@ -1974,8 +2032,25 @@ func scanCrossSeedSearchRun(scanner interface {
 	if err := decodeSearchResults(resultsJSON, &run.Results); err != nil {
 		return nil, fmt.Errorf("decode search results: %w", err)
 	}
+	if gazelleJSON.Valid && gazelleJSON.String != "" {
+		if err := jsonv2.Unmarshal([]byte(gazelleJSON.String), &run.GazelleSummary); err != nil {
+			return nil, fmt.Errorf("decode RED/OPS summary: %w", err)
+		}
+	}
 
 	return &run, nil
+}
+
+// encodeGazelleSummary returns NULL for a run that decided on no RED/OPS site.
+func encodeGazelleSummary(summary []CrossSeedGazelleSiteSummary) (any, error) {
+	if len(summary) == 0 {
+		return nil, nil
+	}
+	data, err := jsonv2.Marshal(summary)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), nil
 }
 
 func encodeStringSlice(values []string) (string, error) {

@@ -71,7 +71,7 @@ func benchRunService(b *testing.B, pairs int) (*Service, *models.Instance, *atom
 	require.NoError(b, err)
 	b.Cleanup(func() { _ = clientPool.Close() })
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
-	matcher := crossseed.NewService(instanceStore, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	matcher := crossseed.NewService(instanceStore, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
 	svc := NewService(DefaultConfig(), instanceStore, nil, nil, nil, syncManager, nil, nil, matcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
 	return svc, instance, fileReads
 }

@@ -181,11 +181,25 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 			wantErr:       false,
 		},
 		{
+			name:          "qbitPath source needs no filesystem access",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: `D:\downloads`},
+			instance:      &models.Instance{HasLocalFilesystemAccess: false},
+			usesFreeSpace: true,
+			wantErr:       false,
+		},
+		{
 			name:          "allowance source with shell access is valid",
 			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500},
 			instance:      &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
 			usesFreeSpace: true,
 			wantErr:       false,
+		},
+		{
+			name:          "qbitPath source without path returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: "   "},
+			instance:      &models.Instance{HasLocalFilesystemAccess: true},
+			usesFreeSpace: true,
+			wantErr:       true,
 		},
 		{
 			name:          "allowance source with file transfer only returns 400",

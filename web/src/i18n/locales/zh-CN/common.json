@@ -125,7 +125,9 @@
     "httpStatus": "HTTP 错误！状态：{{status}}",
     "httpStatusHtml": "HTTP 错误！状态：{{status}}（服务器返回了 HTML 错误页面）",
     "ssoHtmlResponse": "API 返回了 HTML 响应而不是 JSON。如果您位于 SSO 代理（Cloudflare Access、Pangolin 等）之后，请尝试刷新页面或在新标签页中重新打开该 URL。",
-    "torrentFileDownloadFailed": "下载种子文件失败：{{status}}"
+    "torrentFileDownloadFailed": "下载种子文件失败：{{status}}",
+    "altSpeedToggle": "更改备用速度限制失败：{{message}}",
+    "altSpeedToggleHidden": "更改备用速度限制失败。隐身模式隐藏了原因。"
   },
   "status": {
     "disabled": "已禁用",
@@ -134,6 +136,7 @@
     "updating": "更新中",
     "error": "错误",
     "unknown": "未知",
+    "unavailable": "不可用",
     "trackerError": "Tracker 错误",
     "unreachable": "无法连接"
   },
@@ -166,6 +169,79 @@
     "updateAvailable": "有可用更新",
     "versionAvailable": "版本 {{version}} 现已可用",
     "dismiss": "关闭"
+  },
+  "systemNotice": {
+    "needsAttention": "需要处理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修复",
+    "kinds": {
+      "recording_stopped": {
+        "short": "记录已停止",
+        "title": "记录已停止",
+        "effect": "qui 无法写入传输历史。它会在下次写入时重试。",
+        "fix": "请确认磁盘有可用空间，并且 qui 可以写入数据库文件。",
+        "menuFix": "为数据库释放磁盘空间"
+      },
+      "shrink_failed": {
+        "short": "压缩失败",
+        "title": "压缩失败",
+        "effect": "qui 无法缩小数据库文件。数据库没有变化，qui 照常运行。",
+        "fix": "详情请查看 qui 日志。",
+        "menuFix": "查看 qui 日志",
+        "reasons": {
+          "disk_full": {
+            "fix": "磁盘可用空间不足。压缩最多需要数据库文件大小的两倍空间。请释放磁盘空间后重试。",
+            "menuFix": "释放空间后重试"
+          },
+          "locked": {
+            "fix": "另一个程序占用了数据库文件。请关闭该程序（例如备份工具或数据库查看器）后重试。",
+            "menuFix": "关闭其他程序后重试"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "磁盘空间不足",
+        "title": "磁盘空间不足",
+        "effect": "qui 数据库所在磁盘的可用空间很少。磁盘写满后，qui 的每次写入都会失败。",
+        "fix": "请释放磁盘空间，或在统计设置中缩短“保留每日详情”，或删除较早的历史。",
+        "menuFix": "为数据库释放磁盘空间",
+        "action": "打开统计设置"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted 密钥被拒绝",
+        "title": "Redacted 拒绝了 API 密钥",
+        "effect": "Redacted 拒绝了上一次搜索。qui 会在下一次搜索时再次查询。",
+        "fix": "如果密钥有误，请在您的 Redacted 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Redacted 封禁了 qui 的 IP，新密钥也无济于事：请联系 Redacted 的管理团队。",
+        "menuFix": "在设置中粘贴新密钥",
+        "action": "打开 Gazelle (OPS/RED) 设置"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus 密钥被拒绝",
+        "title": "Orpheus 拒绝了 API 密钥",
+        "effect": "Orpheus 拒绝了上一次搜索。qui 会在下一次搜索时再次查询。",
+        "fix": "如果密钥有误，请在您的 Orpheus 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Orpheus 封禁了 qui 的 IP，新密钥也无济于事：请联系 Orpheus 的管理团队。",
+        "menuFix": "在设置中粘贴新密钥",
+        "action": "打开 Gazelle (OPS/RED) 设置"
+      }
+    },
+    "actions": {
+      "tryAgain": "重试",
+      "dismiss": "忽略",
+      "openLog": "打开日志"
+    },
+    "unknown": {
+      "short": "系统通知",
+      "title": "系统通知",
+      "effect": "qui 发现了一个需要你处理的故障。",
+      "fix": "详情请查看 qui 日志。",
+      "menuFix": "查看 qui 日志"
+    }
+  },
+  "databaseShrink": {
+    "done": "数据库文件已从 {{before}} 压缩到 {{after}}",
+    "nextStart": "压缩将在 qui 下次启动时执行",
+    "failed": "无法请求压缩"
   },
   "pwaUpdate": {
     "reload": "重新加载",

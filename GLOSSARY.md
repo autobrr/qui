@@ -48,12 +48,18 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Stalled view**: A torrent view on an open stream that got no data for 2 minutes. It polls qui until data comes again. The other views on the same connection are not affected. A server error is not a stall. _Avoid_: dead stream, stale connection (that is when the whole connection stops, and the browser reconnects).
 - **Sync snapshot**: The torrents of one instance as one sync left them. Every reader of that sync shares it, and no reader changes it. _Avoid_: copy, sync cache, snapshot alone (a backup run is also a snapshot).
 
+## Torrent details
+
+- **Piece bar**: The bar in the General tab of a torrent that is not complete. It shows where the finished and downloading pieces are. When one column holds more than one piece, the column fills from the bottom to the share of finished pieces, with the share of downloading pieces on top. _Avoid_: progress bar (that is the progress column in the torrent list).
+
 ## Statistics
 
 - **Statistics**: The page that shows Transfer history. _Avoid_: stats page, history page.
 - **Transfer history**: The upload and download bytes that qui recorded, for each period, torrent, tracker, and category. It keeps the bytes of deleted torrents. _Avoid_: bandwidth (that is a speed), tracker history.
 - **Baseline**: The upload and download bytes that a torrent already had when qui first recorded its instance. It has no date. All-time numbers include it, and charts do not. _Avoid_: backfill, opening balance.
 - **Recording gap**: A time when qui did not observe an instance. The bytes of the gap land on the first hour after it, with a mark. _Avoid_: missing data, downtime.
+- **Live sample**: One reading of the upload and download speed of an instance, which qui keeps in memory for the **Live** view of the Dashboard chart. qui takes it from the reads of the instance that it makes anyway, and keeps the last 3 minutes. A restart of qui clears it. _Avoid_: speed history, live history.
+- **Detail retention**: The time that qui keeps the hourly totals, the hourly state of each instance, and the daily bytes of each torrent: 90 days, 400 days, or forever. After it, hours become days, the hourly state is deleted, and the days of a torrent become one row for each year.
 - **Statistics cross-seed**: In Statistics, a torrent that completed with less than 1% of its size downloaded. It gets this role when it completes, and it keeps the role until the user deletes the torrent. A torrent that the user created, or added again with its data on disk, also has this role. _Avoid_: copy (that is a member of a Copy group).
 
 ## Peers
@@ -72,12 +78,16 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Theme slot**: One stored theme selection (theme, mode, variation) on the server. There is a default slot and an optional mobile slot. A theme that a browser keeps local is not a slot, because it never reaches the server.
 - **Free theme**: A theme that qui ships from its own repo. It needs no license.
 - **Community theme**: A theme from the `autobrr/qui-community-themes` repo. qui ships it built in, and it needs the license. _Avoid_: premium theme, user theme.
-- **Custom theme**: A theme that comes from a `.css` file in the custom themes folder on the server. It needs the license. _Avoid_: sideloaded theme.
+- **Custom theme**: A theme that comes from a `.css` file in the custom themes folder on the server. The user puts the file there by hand, or saves it from Settings → Themes or through the API. It needs the license. _Avoid_: sideloaded theme.
+- **Theme area**: A part of the UI with a fixed name that a custom theme can style, for example the torrent table. qui keeps the name across releases. _Avoid_: hook, selector.
+- **Theme preview**: A custom theme that one browser shows before the user saves it. It reaches no theme slot and no other browser, and a page reload ends it.
+- **Default theme visit**: A page visit that opens with `?theme=default` in the address. qui shows the default theme until the next page load without the parameter, and it reads and writes no theme slot and no theme cache in the browser. A theme selection in a picker ends it. _Avoid_: safe mode.
 - **Hidden theme**: A theme that the quick theme pickers do not show. A community theme starts hidden, unless qui showed it before it became a community theme. The user shows or hides a theme in Settings → Themes. _Avoid_: disabled theme.
 
 ## Client settings
 
 - **Client setting**: A UI preference that qui stores for the user on the server, so it follows the user to every browser and tab, for example the sidebar state, filters, and column layout. _Avoid_: local setting.
+- **System notice**: A message about a fault in qui that needs an action from the user, shown where qui shows the update notice. It says what qui does while the fault lasts and how to fix it. An available update is not a System notice. _Avoid_: banner, alert.
 - **Feature notice**: A one-time bubble that points at a control and tells the user about a feature. It goes away for good when the user dismisses it or uses the feature. _Avoid_: banner, tip, tour, announcement.
 
 ## Orphan scan
@@ -113,7 +123,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Manual match**: A cross-seed apply where the user chooses the target torrent. Candidate discovery and the category and content-type gates are bypassed; the recheck is the arbiter of a wrong pick. _Avoid_: forced match, pinned match. The Source gate still applies, with no source filter.
 - **Numbering scheme**: How a TV release names its episode: seasoned (`S04E15`) or absolute (`- 81`, no season). A pair of releases that use the same scheme compare episode numbers directly. _Avoid_: anime numbering, episode format.
 - **Episode map**: The Sonarr-sourced triple (season, episode, absolute) for one release name. It lets one seasoned and one absolute release count as the same episode. Exists only when Sonarr names exactly one episode and that episode has an absolute number; otherwise there is no map and the pair falls back to size evidence. _Avoid_: Sonarr mapping, episode translation, absolute lookup.
-- **Search scope**: The Torznab indexers and the RED/OPS sites that one search asks for one torrent and its duplicate copies, or the reason that it asks none. Every Trigger reads the same Search scope. A scope with no Torznab indexers is not a Gazelle-only run. _Avoid_: allowed indexers, indexer set.
+- **Search scope**: The Torznab indexers and the RED/OPS sites that one search asks for one torrent and its duplicate copies. For each RED/OPS site that it does not ask, and when it asks no Torznab indexer, it holds the reason. Every Trigger reads the same Search scope. A scope with no Torznab indexers is not a Gazelle-only run. _Avoid_: allowed indexers, indexer set.
+- **RED/OPS lookup**: The request that one search sends to one RED/OPS site through its API, and its outcome: a match, no match, not asked with a reason, or failed with a reason. Every Trigger reports the lookups of its search. _Avoid_: Gazelle search, pre-search.
 - **Gazelle-only run**: A library search with Torznab off; candidates come only from the OPS/RED APIs. Reached by the Torznab switch on the Library card, which applies to the next run and is not saved, never inferred from the indexer selection. Needs one Gazelle key. _Avoid_: Torznab-disabled run, forced Gazelle-only.
 - **Season numeral**: A Roman numeral at the end of a release title that names the release's season, as in "Kaiju Squad 100 III" for season 3. When the name also has a season marker, the numeral must equal it. When it has none, only II to X count, and only for a pack, not an episode. A movie with a year never has one. Matching reads the title with and without it, and the alternate-title search tries the title without it. _Avoid_: roman suffix, sequel number.
 - **Read release**: What qui knows about one release after it reads its name once, or its files when the name has no title (a season folder or a seasonless batch): its Title keys, Numbering scheme, season, and absolute episode. Every Match path compares Read releases, never raw names. _Avoid_: release view, parsed release (that is the raw parser output).
@@ -173,6 +184,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Condition**: A test of one torrent field against a value with an operator. Conditions combine with AND and OR into the condition tree of a rule. _Avoid_: Filter, criterion.
 - **Sort value**: What a workflow sorts or scores torrents by for one field, a number or text. It can differ from what a Condition compares. ADDED_ON sorts by date added, while a Condition compares age. _Avoid_: sort key.
 - **Action**: What a rule does to each torrent that its conditions match, for example tag, delete, pause or move. A rule has one or more actions. Delete runs alone. _Avoid_: Effect, step.
+- **Export to Instance**: The Action that adds a torrent to another instance from its `.torrent` file and skips the hash check by default. It copies no files, so the target must already hold the data. _Avoid_: transfer, move (a move changes the save path on one instance).
 - **Shared-file group**: Torrents connected by shared file paths, directly or through another member. _Avoid_: Duplicate group.
 - **Delete trigger**: A torrent whose own delete condition matched. This is different from a torrent that a Shared-file group or cross-seed expansion pulls in. _Avoid_: Direct match.
 - **Deletion selection**: The torrents that the delete rules of a run choose to remove: the Delete triggers and the torrents that their expansion pulls in. The preview shows the Deletion selection of one rule. _Avoid_: Shared-file group (when referring to selected torrents).
@@ -204,6 +216,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Settings**: Configuration that qui stores itself, for example the tracker reannounce and orphan scan configuration. _Avoid_: Preferences (when qui stores the value).
 - **Preference catalog**: The qui list of qBittorrent preferences that says, for each key, where qui shows it and whether a user can change it. _Avoid_: Preference schema, field registry.
 - **Network binding**: The network interface and the IP address that qBittorrent uses for peer connections. _Avoid_: Bind interface, outgoing interface.
+- **Filesystem access**: How qui reaches the files of an instance: local, remote over SSH after the user confirms the host key, or none. The access mode decides which file operations qui may run on the instance, for example reading file contents or writing. _Avoid_: Capability (that comes from the qBittorrent version), remote instance (for an instance without SSH access).
 - **Capability**: something an instance can do or send because of its qBittorrent version, for example editing trackers or sending Popularity in the torrent list. A field that the instance does not send is unknown, not zero. _Avoid_: support flag, feature flag.
 
 ## Allowed Hosts

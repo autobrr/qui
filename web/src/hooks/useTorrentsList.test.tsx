@@ -473,7 +473,7 @@ describe("useTorrentsList", () => {
       }))
     })
 
-    // Mirrors the post-mutation refresh every action in useTorrentActions performs.
+    // Mirrors the post-mutation refresh that scheduleTorrentListRefetches runs after each Bulk action.
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: ["torrents-list", 1], exact: false, type: "active" })
     })

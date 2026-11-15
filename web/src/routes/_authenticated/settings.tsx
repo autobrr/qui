@@ -10,7 +10,7 @@ import { z } from "zod"
 
 const settingsSearchSchema = z.object({
   tab: z.enum(SETTINGS_TABS).optional().catch(undefined),
-  modal: z.enum(["add-instance", "install-update"]).optional().catch(undefined),
+  modal: z.enum(["add-instance", "install-update", "theme-menu"]).optional().catch(undefined),
   checkout: z.enum(["success"]).optional().catch(undefined),
   status: z.string().optional().catch(undefined),
   payment_id: z.string().optional().catch(undefined),

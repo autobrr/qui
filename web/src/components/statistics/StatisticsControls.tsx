@@ -14,10 +14,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useIsPhone, useMediaQuery } from "@/hooks/useMediaQuery"
+import { SERIES_COLOR_SETS, useSeriesColorSet, type SeriesColorSet } from "@/hooks/useSeriesColors"
 import { PERIOD_PRESETS, type PeriodPreset } from "@/lib/statistics"
-import { ChevronDown } from "lucide-react"
-import { useState } from "react"
+import { CalendarRange, ChevronDown, Palette } from "lucide-react"
+import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 export type PeriodChoice = PeriodPreset | "custom"
@@ -36,6 +39,53 @@ function parseDay(value: string): Date | undefined {
 
 export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodPickerProps) {
   const { t } = useTranslation("statistics")
+  const narrow = useIsPhone()
+  const custom = value === "custom"
+
+  if (narrow) {
+    return (
+      <>
+        <Select value={value} onValueChange={next => onPreset(next as PeriodPreset)}>
+          <SelectTrigger className="h-9 min-w-0 max-w-[50vw] shrink-0 gap-1 px-2.5">
+            <SelectValue>{custom ? customLabel ?? t("periods.custom") : t(`periods.${value}`)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {PERIOD_PRESETS.map(preset => (
+              <SelectItem key={preset} value={preset}>{t(`periods.${preset}`)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <CustomRange onCustom={onCustom}>
+          <Button variant={custom ? "secondary" : "outline"} size="icon" className="size-9 shrink-0" aria-label={t("periods.custom")}>
+            <CalendarRange />
+          </Button>
+        </CustomRange>
+      </>
+    )
+  }
+
+  return (
+    <div className="flex max-w-full flex-wrap items-center gap-2">
+      <Tabs value={value} onValueChange={next => next !== "custom" && onPreset(next as PeriodPreset)} className="max-w-full overflow-x-auto">
+        <TabsList>
+          {PERIOD_PRESETS.map(preset => (
+            <TabsTrigger key={preset} value={preset} className="px-3">{t(`periods.${preset}`)}</TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      <CustomRange onCustom={onCustom}>
+        <Button variant={custom ? "secondary" : "outline"} size="sm" className="h-9">
+          {custom && customLabel ? customLabel : t("periods.custom")}
+          <ChevronDown className="size-4 opacity-60" />
+        </Button>
+      </CustomRange>
+    </div>
+  )
+}
+
+function CustomRange({ onCustom, children }: { onCustom: (firstDay: Date, lastDay: Date) => void; children: ReactNode }) {
+  const { t } = useTranslation("statistics")
+  const touch = useMediaQuery("(hover: none)")
   const [open, setOpen] = useState(false)
   const [firstDay, setFirstDay] = useState("")
   const [lastDay, setLastDay] = useState("")
@@ -47,45 +97,32 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
   const valid = first !== undefined && last !== undefined && first <= last && firstDay <= today
 
   return (
-    <div className="flex max-w-full flex-wrap items-center gap-2">
-      <Tabs value={value} onValueChange={next => next !== "custom" && onPreset(next as PeriodPreset)} className="max-w-full overflow-x-auto">
-        <TabsList>
-          {PERIOD_PRESETS.map(preset => (
-            <TabsTrigger key={preset} value={preset} className="px-3">{t(`periods.${preset}`)}</TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button variant={value === "custom" ? "secondary" : "outline"} size="sm" className="h-9">
-            {value === "custom" && customLabel ? customLabel : t("periods.custom")}
-            <ChevronDown className="size-4 opacity-60" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-72">
-          <form
-            className="space-y-3"
-            onSubmit={event => {
-              event.preventDefault()
-              if (valid) {
-                onCustom(first, last)
-                setOpen(false)
-              }
-            }}
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="statistics-first-day">{t("customRange.from")}</Label>
-              <Input id="statistics-first-day" type="date" max={today} value={firstDay} onChange={event => setFirstDay(event.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="statistics-last-day">{t("customRange.to")}</Label>
-              <Input id="statistics-last-day" type="date" value={lastDay} onChange={event => setLastDay(event.target.value)} />
-            </div>
-            <Button type="submit" size="sm" className="w-full" disabled={!valid}>{t("customRange.apply")}</Button>
-          </form>
-        </PopoverContent>
-      </Popover>
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      {/* iOS opens its date picker over the form when the first field gets focus, so a touch screen leaves the focus where it is. */}
+      <PopoverContent align="end" collisionPadding={16} className="w-72" onOpenAutoFocus={touch ? event => event.preventDefault() : undefined}>
+        <form
+          className="space-y-3"
+          onSubmit={event => {
+            event.preventDefault()
+            if (valid) {
+              onCustom(first, last)
+              setOpen(false)
+            }
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="statistics-first-day">{t("customRange.from")}</Label>
+            <Input id="statistics-first-day" type="date" className="pointer-coarse:appearance-none" max={today} value={firstDay} onChange={event => setFirstDay(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="statistics-last-day">{t("customRange.to")}</Label>
+            <Input id="statistics-last-day" type="date" className="pointer-coarse:appearance-none" value={lastDay} onChange={event => setLastDay(event.target.value)} />
+          </div>
+          <Button type="submit" size="sm" className="w-full" disabled={!valid}>{t("customRange.apply")}</Button>
+        </form>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -109,7 +146,7 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 max-w-[14rem]">
+        <Button variant="outline" size="sm" className="h-9 min-w-0 max-w-[14rem] max-sm:ml-auto max-sm:shrink max-sm:gap-1 max-sm:px-2.5">
           <span className="truncate">{label}</span>
           <ChevronDown className="size-4 opacity-60" />
         </Button>
@@ -132,5 +169,25 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** Selects the series colors of the charts: the distinct set or the chart colors of the theme. */
+export function SeriesColorPicker() {
+  const { t } = useTranslation("statistics")
+  const [set, setSet] = useSeriesColorSet()
+  const narrow = useIsPhone()
+
+  return (
+    <Select value={set} onValueChange={value => setSet(value as SeriesColorSet)}>
+      <SelectTrigger aria-label={t("seriesColors.label")} className={narrow ? "size-9 shrink-0 justify-center px-0 [&>svg:last-child]:hidden" : "h-9"}>
+        {narrow ? <><Palette /><span className="sr-only"><SelectValue /></span></> : <SelectValue />}
+      </SelectTrigger>
+      <SelectContent align="end">
+        {SERIES_COLOR_SETS.map(value => (
+          <SelectItem key={value} value={value}>{t(`seriesColors.${value}`)}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

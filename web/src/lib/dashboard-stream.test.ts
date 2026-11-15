@@ -26,16 +26,6 @@ function makeCounts(overrides: Partial<TorrentCounts> = {}): TorrentCounts {
     categories: {},
     tags: {},
     trackers: { "tracker.example": 1 },
-    trackerTransfers: {
-      "tracker.example": {
-        uploaded: 10,
-        downloaded: 20,
-        uploadedSession: 5,
-        downloadedSession: 7,
-        totalSize: 30,
-        count: 1,
-      },
-    },
     total: 1,
     ...overrides,
   }
@@ -96,7 +86,7 @@ describe("resolveDashboardTorrentCounts", () => {
 
   it("uses incoming counts when the stream includes them", () => {
     const currentCounts = makeCounts()
-    const incomingCounts = makeCounts({ status: { all: 0 }, trackers: {}, trackerTransfers: {}, total: 0 })
+    const incomingCounts = makeCounts({ status: { all: 0 }, trackers: {}, total: 0 })
 
     expect(resolveDashboardTorrentCounts(incomingCounts, currentCounts)).toBe(incomingCounts)
   })

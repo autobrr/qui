@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Nicht unterstützt für Score-Multiplikatoren"
       },
       "conditionsLabel": "Bedingungen (optional)",
+      "mixedActionConditions": "Jede Aktion in diesem Workflow hat ihre eigene Bedingung. qui verwendet jetzt eine Bedingung pro Workflow. Wenn du speicherst, erhält jede Aktion die Bedingung oben. Um die anderen zu behalten, erstelle zuerst einen Workflow für jede Bedingung.",
       "actions": {
         "title": "Aktion",
         "addAction": "Aktion hinzufügen",
@@ -1286,15 +1287,19 @@
       "freeSpace": {
         "title": "Quelle für freien Speicher",
         "aria": "Über die Quelle für freien Speicher",
-        "description": "Wähle, woher der freie Speicher gelesen wird. Standard nutzt den von qBittorrent gemeldeten freien Speicher. Verwende \"Pfad auf dem Server\", um den freien Speicher auf einer bestimmten Festplatte oder einem Mountpoint zu prüfen.",
+        "description": "Wähle, woher der freie Speicher gelesen wird. Standard nutzt den von qBittorrent gemeldeten freien Speicher. Verwende \"Pfad auf dem Server\", um den freien Speicher auf einer bestimmten Festplatte oder einem Mountpoint zu prüfen. \"Pfad auf dem qBittorrent-Host\" fragt qBittorrent selbst und erfordert qBittorrent 5.3.",
         "selectSource": "Quelle auswählen",
         "defaultSource": "Standard (qBittorrent)",
         "pathSource": "Pfad auf dem Server",
         "pathSourceWindowsUnsupported": "Pfad auf dem Server (unter Windows nicht unterstützt)",
+        "qbitPathSource": "Pfad auf dem qBittorrent-Host",
+        "qbitPathSourceUnsupported": "Pfad auf dem qBittorrent-Host (erfordert qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Gib den Pfad ein, auf dem der freie Speicher geprüft werden soll (z. B. einen Mountpoint)",
+        "qbitPathHelp": "Geben Sie einen Pfad auf dem qBittorrent-Host ein. qBittorrent misst den freien Speicher, qui braucht also keinen Zugriff auf diesen Datenträger.",
         "errors": {
           "unsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt.",
+          "qbitPathUnsupported": "Diese Instanz ist älter als qBittorrent 5.3 und kann keinen freien Speicher für einen Pfad melden.",
           "pathRequired": "Bei Verwendung von \"Pfad auf dem Server\" ist ein Pfad erforderlich.",
           "filesystemAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen oder SSH-Dateisystemzugriff.",
           "allowanceRequired": "Gib ein Kontingent größer als 0 ein.",
@@ -1304,7 +1309,8 @@
         "allowanceSource": "Kontingent auf einem Pfad",
         "allowanceSourceWindowsUnsupported": "Kontingent auf einem Pfad (unter Windows nicht unterstützt)",
         "allowanceSourceAccessRequired": "Kontingent auf einem Pfad (erfordert lokalen Zugriff oder SSH-Zugriff mit Shell)",
-        "allowanceAria": "Kontingent",
+        "allowanceLabel": "Kontingent",
+        "allowancePathLabel": "Zu messender Ordner",
         "allowanceUnitAria": "Einheit des Kontingents",
         "allowanceHelp": "Gib den Speicher ein, den dein Tarif erlaubt. qui zieht die Größe der Dateien unter dem Pfad ab. Die meisten Anbieter rechnen in Schritten von 1000, nicht 1024, daher ist die Tarifangabe in {{unit}} etwa 9 % kleiner.",
         "allowancePathHelp": "Gib den Ordner ein, der gemessen werden soll, z. B. dein Home-Verzeichnis"
@@ -1497,6 +1503,7 @@
         "switchedDeleteModeForFreeSpace": "Zu \"Mit Dateien entfernen\" gewechselt, da die Bedingung für freien Speicher tatsächlich freizugebenden Speicherplatz erfordert",
         "switchedIntervalForFreeSpace": "Zum 5-Minuten-Intervall gewechselt, da Löschungen für freien Speicher eine Abkühlzeit von ~5 Minuten haben",
         "pathSourceUnsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt. Zum qBittorrent-Standard gewechselt.",
+        "qbitPathSourceUnsupported": "Diese Instanz kann keinen freien Speicher für einen Pfad melden. Zur Standardquelle gewechselt.",
         "switchFreeSpaceSourceDefault": "Quelle für freien Speicher auf Standard (qBittorrent) umstellen",
         "enterPathOrDefault": "Gib einen Pfad ein oder stelle die Quelle für freien Speicher zurück auf Standard (qBittorrent)",
         "addScoreRule": "Füge mindestens eine Score-Regel für die Score-Sortierung hinzu",
@@ -2111,5 +2118,10 @@
       "noReflinks": "Keine Reflinks auf einer Remote-Instanz.",
       "noHardlinkExtension": "Keine Hardlinks: Der Server bietet hardlink@openssh.com nicht an. Ein Cross-Seed-Hinzufügen per Hardlink schlägt hier fehl oder fügt im regulären Modus hinzu, wenn „Bei Fehler auf regulären Modus zurückfallen“ aktiv ist."
     }
+  },
+  "deleteHistory": {
+    "label": "Auch den Übertragungsverlauf löschen",
+    "description": "Ohne diese Option behält qui den Verlauf unter dem Namen der Instanz.",
+    "failed": "Die Instanz ist gelöscht, aber qui konnte nicht ihren ganzen Verlauf löschen. Sieh unter Einstellungen > Statistik nach und lösche den Rest dort."
   }
 }

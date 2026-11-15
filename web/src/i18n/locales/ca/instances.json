@@ -825,6 +825,7 @@
         "notSupportedForScoreMultiplier": "No compatible amb els multiplicadors de puntuació"
       },
       "conditionsLabel": "Condicions (opcional)",
+      "mixedActionConditions": "Cada acció d'aquest workflow té la seva pròpia condició. Ara qui fa servir una sola condició per workflow. Si deses, totes les accions rebran la condició de dalt. Per conservar les altres, crea abans un workflow per a cada condició.",
       "actions": {
         "title": "Acció",
         "addAction": "Afegeix una acció",
@@ -949,15 +950,19 @@
       "freeSpace": {
         "title": "Origen de l'espai lliure",
         "aria": "Sobre l'origen de l'espai lliure",
-        "description": "Tria d'on s'ha de llegir l'espai lliure. El valor predeterminat fa servir l'espai lliure que informa qBittorrent. Fes servir «Camí al servidor» per comprovar l'espai lliure d'un disc o d'un punt de muntatge concret.",
+        "description": "Tria d'on s'ha de llegir l'espai lliure. El valor predeterminat fa servir l'espai lliure que informa qBittorrent. Fes servir «Camí al servidor» per comprovar l'espai lliure d'un disc o d'un punt de muntatge concret. «Camí a l'amfitrió de qBittorrent» ho pregunta al mateix qBittorrent i necessita qBittorrent 5.3.",
         "selectSource": "Selecciona un origen",
         "defaultSource": "Predeterminat (qBittorrent)",
         "pathSource": "Camí al servidor",
         "pathSourceWindowsUnsupported": "Camí al servidor (no compatible amb Windows)",
+        "qbitPathSource": "Camí a l'amfitrió de qBittorrent",
+        "qbitPathSourceUnsupported": "Camí a l'amfitrió de qBittorrent (necessita qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Introdueix el camí on vols comprovar l'espai lliure (p. ex., un punt de muntatge)",
+        "qbitPathHelp": "Introdueix un camí a l'amfitrió de qBittorrent. qBittorrent mesura l'espai lliure, de manera que qui no necessita accés a aquest disc.",
         "errors": {
           "unsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows.",
+          "qbitPathUnsupported": "Aquesta instància és anterior a qBittorrent 5.3 i no pot informar de l'espai lliure d'un camí.",
           "pathRequired": "El camí és obligatori quan es fa servir «Camí al servidor».",
           "filesystemAccessRequired": "L'origen d'espai lliure basat en un camí necessita accés al sistema de fitxers local o per SSH.",
           "allowanceRequired": "Introdueix un espai permès superior a 0.",
@@ -967,7 +972,8 @@
         "allowanceSource": "Espai permès en un camí",
         "allowanceSourceWindowsUnsupported": "Espai permès en un camí (no compatible amb Windows)",
         "allowanceSourceAccessRequired": "Espai permès en un camí (necessita accés local, o accés SSH amb intèrpret d'ordres)",
-        "allowanceAria": "Espai permès",
+        "allowanceLabel": "Espai permès",
+        "allowancePathLabel": "Carpeta que cal mesurar",
         "allowanceUnitAria": "Unitat de l'espai permès",
         "allowanceHelp": "Introdueix l'espai que permet el teu pla. qui en resta la mida dels fitxers que hi ha sota el camí. La majoria de proveïdors compten en passos de 1000, no de 1024, de manera que la xifra del pla és un 9% més petita en {{unit}}.",
         "allowancePathHelp": "Introdueix la carpeta que cal mesurar, per exemple el teu directori d'inici"
@@ -1149,6 +1155,7 @@
         "switchedDeleteModeForFreeSpace": "S'ha canviat a «Suprimeix amb els fitxers» perquè la condició d'espai lliure necessita alliberar espai real al disc",
         "switchedIntervalForFreeSpace": "S'ha canviat a un interval de 5 minuts perquè les supressions per espai lliure tenen un temps d'espera d'uns 5 minuts",
         "pathSourceUnsupportedWindows": "L'origen d'espai lliure basat en un camí no és compatible amb Windows. S'ha canviat al valor predeterminat de qBittorrent.",
+        "qbitPathSourceUnsupported": "Aquesta instància no pot informar de l'espai lliure d'un camí. S'ha canviat a l'origen predeterminat.",
         "switchFreeSpaceSourceDefault": "Canvia l'origen de l'espai lliure a Predeterminat (qBittorrent)",
         "enterPathOrDefault": "Introdueix un camí o torna a posar l'origen de l'espai lliure a Predeterminat (qBittorrent)",
         "addScoreRule": "Afegeix com a mínim una regla de puntuació per ordenar per puntuació",
@@ -2111,5 +2118,10 @@
       "noReflinks": "Sense reflinks en una instància remota.",
       "noHardlinkExtension": "Sense hardlinks: el servidor no anuncia hardlink@openssh.com. Una addició de cross-seed per hardlink falla aquí, o s'afegeix en mode normal quan «Recorre al mode normal si hi ha un error» està activat."
     }
+  },
+  "deleteHistory": {
+    "label": "Elimina també l'historial de transferències",
+    "description": "Sense aquesta opció, qui conserva l'historial amb el nom de la instància.",
+    "failed": "La instància s'ha eliminat, però qui no ha pogut eliminar tot el seu historial. Mira a Configuració > Estadístiques i elimina-hi la resta."
   }
 }

@@ -17,9 +17,6 @@ type Config struct {
 
 	// MaxJitter is the maximum random delay to spread out simultaneous scans.
 	MaxJitter time.Duration
-
-	// StuckRunThreshold is how long a run can be in pending/scanning before it's marked failed on restart.
-	StuckRunThreshold time.Duration
 }
 
 // DefaultConfig returns the default service configuration.
@@ -27,7 +24,6 @@ func DefaultConfig() Config {
 	return Config{
 		SchedulerInterval: 5 * time.Minute,
 		MaxJitter:         30 * time.Second,
-		StuckRunThreshold: 1 * time.Hour,
 	}
 }
 

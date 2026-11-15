@@ -19,7 +19,7 @@ const torrentListImportPatterns = [{
 }, {
   // The torrent-table hooks that moved into the controller. The hooks that stay outside it stay allowed.
   regex: '(^|/)torrent-table/(useBulkActionWrappers|useCrossSeedOrchestration|useFilterLifecycle)$',
-  message: 'The list controller owns this. Use useTorrentListController or useTorrentListActions from "@/hooks/useTorrentListController" instead.',
+  message: 'The list controller owns this. Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
 }, copyGroupImportPattern]
 
 const radixDialogImportPattern = {
@@ -27,6 +27,33 @@ const radixDialogImportPattern = {
   allowTypeImports: true,
   message: 'Use @/components/ui/dialog or @/components/ui/alert-dialog.',
 }
+
+const bulkActionModuleMessage = 'The bulk action module in @/components/torrents/bulk-actions owns the Bulk actions. Send a pick with useBulkActions from "@/components/torrents/bulk-actions/bulk-actions-context" instead.'
+
+// Rename file, Rename folder, and the edit tracker dialog stay out: the details panel and the filter sidebar use them.
+const bulkActionDialogImportPattern = {
+  regex: '(^|/)(TorrentDialogs|DeleteTorrentDialog)$',
+  importNames: [
+    'DeleteTorrentDialog',
+    'TagEditorDialog',
+    'SetCategoryDialog',
+    'CreateAndAssignCategoryDialog',
+    'SetLocationDialog',
+    'LocationWarningDialog',
+    'ShareLimitDialog',
+    'SpeedLimitsDialog',
+    'SetCommentDialog',
+    'TmmConfirmDialog',
+    'RenameTorrentDialog',
+  ],
+  message: bulkActionModuleMessage,
+}
+
+const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
+
+// "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
+const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
+const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
 
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
@@ -77,7 +104,48 @@ export default tseslint.config([
     ],
     rules: {
       'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns, radixDialogImportPattern, bulkActionDialogImportPattern],
+      }],
+    },
+  },
+  {
+    // The block above skips these files, so they get only the dialog pattern.
+    files: [
+      'src/hooks/useTorrentListController.ts',
+      'src/hooks/useTorrentListController.test.tsx',
+      'src/hooks/useTorrentsList.test.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [bulkActionDialogImportPattern] }],
+    },
+  },
+  {
+    // The bulk action module renders the dialogs, and each dialog test renders its dialog.
+    files: [...bulkActionModuleFiles, 'src/components/torrents/{TorrentDialogs,DeleteTorrentDialog}.test.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
         patterns: [...torrentListImportPatterns, radixDialogImportPattern],
+      }],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: [
+      ...bulkActionModuleFiles,
+      // The details panel and the filter sidebar act on one torrent or one tracker, not on the selection.
+      'src/components/torrents/TorrentDetailsPanel.tsx',
+      'src/components/torrents/FilterSidebar.tsx',
+      // The API tests cover the request itself.
+      'src/lib/__tests__/api.torrents.test.ts',
+      'src/lib/__tests__/api.mutations.test.ts',
+      // The table smoke test reads the requests that the module sends.
+      'src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx',
+    ],
+    rules: {
+      'no-restricted-properties': ['error', {
+        object: 'api',
+        property: 'bulkAction',
+        message: bulkActionModuleMessage,
       }],
     },
   },
@@ -86,7 +154,7 @@ export default tseslint.config([
     files: ['src/hooks/useCopyGroupRows.ts'],
     rules: {
       'no-restricted-imports': ['error', {
-        patterns: [...torrentListImportPatterns.filter(pattern => pattern !== copyGroupImportPattern), radixDialogImportPattern],
+        patterns: [...torrentListImportPatterns.filter(pattern => pattern !== copyGroupImportPattern), radixDialogImportPattern, bulkActionDialogImportPattern],
       }],
     },
   },
@@ -94,7 +162,18 @@ export default tseslint.config([
     // The shared dialog components wrap Radix, so only the Radix pattern is lifted here.
     files: ['src/components/ui/{dialog,alert-dialog,sheet}.tsx'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: torrentListImportPatterns }],
+      'no-restricted-imports': ['error', { patterns: [...torrentListImportPatterns, bulkActionDialogImportPattern] }],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
+    rules: {
+      'no-restricted-syntax': ['error',
+        { selector: 'Literal[regex.pattern=/orpheus|opsfet|flacsfor|redacted/i]', message: gazelleSiteMessage },
+        { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+        { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+      ],
     },
   },
   {

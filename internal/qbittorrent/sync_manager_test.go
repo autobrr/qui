@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -264,12 +265,6 @@ func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *test
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 	require.Equal(t, 1, counts.Trackers["current.example"])
 	require.NotContains(t, counts.Trackers, "stale.example")
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   20,
-		Downloaded: 30,
-		TotalSize:  100,
-		Count:      1,
-	}, counts.TrackerTransfers["current.example"])
 
 	staleFiltered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
 	require.Empty(t, staleFiltered)
@@ -338,7 +333,6 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
 	require.NotContains(t, counts.Trackers, "stale.example")
-	require.NotContains(t, counts.TrackerTransfers, "stale.example")
 	require.Nil(t, client.getTrackerExclusionsCopy())
 
 	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, nil, false, nil)
@@ -376,7 +370,6 @@ func TestCalculateCountsFromTorrentsWithTrackersPreservesPartiallyLiveValidatedD
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
 	require.Equal(t, 1, counts.Trackers["tracker.example"])
-	require.Equal(t, TrackerTransferStats{Uploaded: 100, Downloaded: 200, TotalSize: 300, Count: 1}, counts.TrackerTransfers["tracker.example"])
 	exclusions := client.getTrackerExclusionsCopy()
 	require.Contains(t, exclusions, "tracker.example")
 	require.Contains(t, exclusions["tracker.example"], "hash-a")
@@ -411,37 +404,7 @@ func TestCalculateCountsFromTorrentsWithTrackersPreservesValidatedCountsWithoutE
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
 	require.Equal(t, 2, counts.Trackers["tracker.example"])
-	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 300, Count: 2}, counts.TrackerTransfers["tracker.example"])
 	require.Nil(t, client.getTrackerExclusionsCopy())
-}
-
-func TestCalculateCountsFromTorrentsWithTrackersDoesNotDeduplicateEmptyContentPath(t *testing.T) {
-	t.Parallel()
-
-	sm := &SyncManager{
-		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
-			7: {
-				HashToDomains: map[string]map[string]struct{}{
-					"hash-a": {"tracker.example": {}},
-					"hash-b": {"tracker.example": {}},
-				},
-				DomainToHashes: map[string]map[string]struct{}{
-					"tracker.example": {"hash-a": {}, "hash-b": {}},
-				},
-				UpdatedAt: time.Now(),
-			},
-		},
-	}
-	client := &Client{instanceID: 7}
-	torrents := []qbt.Torrent{
-		{Hash: "hash-a", Tracker: "https://tracker.example/announce", Uploaded: 10, Downloaded: 20, Size: 30},
-		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300},
-	}
-
-	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
-
-	require.Equal(t, 2, counts.Trackers["tracker.example"])
-	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 330, Count: 2}, counts.TrackerTransfers["tracker.example"])
 }
 
 func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(t *testing.T) {
@@ -466,7 +429,6 @@ func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.NotContains(t, counts.Trackers, "stale.example")
-	require.NotContains(t, counts.TrackerTransfers, "stale.example")
 	require.Nil(t, client.getTrackerExclusionsCopy())
 
 	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
@@ -492,14 +454,7 @@ func TestFallbackTrackerCountsOmitPseudoTrackersAndPreserveUnknown(t *testing.T)
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.Equal(t, 1, counts.Trackers[""], "a pseudo tracker with a tracker count of 0 is in No tracker")
-	require.NotContains(t, counts.TrackerTransfers, "")
 	require.Equal(t, 1, counts.Trackers["Unknown"])
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   100,
-		Downloaded: 200,
-		TotalSize:  300,
-		Count:      1,
-	}, counts.TrackerTransfers["Unknown"])
 }
 
 func TestTrackerFiltersDoNotTreatPseudoTrackersAsUnknown(t *testing.T) {
@@ -2779,7 +2734,7 @@ func TestTrackerHealthRefreshLevel(t *testing.T) {
 	require.Equal(t, zerolog.WarnLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow))
 }
 
-// Totals accumulate per domain, so one domain must not bleed into the next.
+// Counts accumulate per domain, so one domain must not bleed into the next.
 func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
 	t.Parallel()
 
@@ -2804,18 +2759,7 @@ func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
 
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
 
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   17,
-		Downloaded: 6,
-		TotalSize:  160,
-		Count:      2,
-	}, counts.TrackerTransfers["one.example"])
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:   1,
-		Downloaded: 1,
-		TotalSize:  20,
-		Count:      1,
-	}, counts.TrackerTransfers["two.example"])
+	require.Equal(t, map[string]int{"one.example": 2, "two.example": 1}, counts.Trackers)
 }
 
 func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
@@ -2837,11 +2781,6 @@ func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.Equal(t, 1, counts.Trackers["dupe.example"])
-	require.Equal(t, TrackerTransferStats{
-		Uploaded:  9,
-		TotalSize: 50,
-		Count:     1,
-	}, counts.TrackerTransfers["dupe.example"])
 }
 
 // Category and tag counts share one accumulator per key, so this pins the whole
@@ -3190,9 +3129,9 @@ func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
 	require.Equal(t, 0, unsupported.Status["tracker_error"])
 }
 
-// A torrent that an empty mapping does not place gets its domain from its
-// primary tracker.
-func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
+// A torrent that an empty mapping does not place gets its domains from the
+// steps after the mapping.
+func TestEmptyAuthoritativeMappingPlacesTorrentsByTheLaterSteps(t *testing.T) {
 	t.Parallel()
 
 	sm := &SyncManager{
@@ -3215,7 +3154,6 @@ func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
 	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
 
 	require.Equal(t, map[string]int{"tracker.example": 1}, counts.Trackers)
-	require.Equal(t, TrackerTransferStats{TotalSize: 10, Count: 1}, counts.TrackerTransfers["tracker.example"])
 }
 
 // TestGetAuthoritativeDomainToHashesMemoizesPerGeneration pins the per-generation
@@ -3819,4 +3757,113 @@ func TestInvalidateFileCacheNotifiesAfterFilesAreGone(t *testing.T) {
 	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
 
 	require.False(t, cachedAtNotify, "a read that starts after the notify must not find the old file list")
+}
+
+// regression: #2523
+func TestSetRSSRuleMirrorsTorrentParamsOntoLegacyFields(t *testing.T) {
+	tests := []struct {
+		name string
+		rule qbt.RSSAutoDownloadRule
+		want map[string]any
+	}{
+		{
+			name: "new values replace stale legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				TorrentParams: &qbt.RSSRuleTorrentParams{
+					Category:      "tv-new",
+					SavePath:      "/data/new",
+					ContentLayout: "NoSubfolder",
+					Stopped:       new(true),
+				},
+				AssignedCategory:     "tv-old",
+				SavePath:             "/data/old",
+				TorrentContentLayout: "Subfolder",
+				AddPaused:            new(false),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv-new",
+				"savePath":             "/data/new",
+				"torrentContentLayout": "NoSubfolder",
+				"addPaused":            true,
+			},
+		},
+		{
+			name: "cleared values clear stale legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				TorrentParams:        &qbt.RSSRuleTorrentParams{},
+				AssignedCategory:     "tv-old",
+				SavePath:             "/data/old",
+				TorrentContentLayout: "Subfolder",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{},
+		},
+		{
+			name: "unchanged values stay",
+			rule: qbt.RSSAutoDownloadRule{
+				MustContain: "edited",
+				TorrentParams: &qbt.RSSRuleTorrentParams{
+					Category:      "tv",
+					SavePath:      "/data/tv",
+					ContentLayout: "Original",
+					Stopped:       new(true),
+				},
+				AssignedCategory:     "tv",
+				SavePath:             "/data/tv",
+				TorrentContentLayout: "Original",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv",
+				"savePath":             "/data/tv",
+				"torrentContentLayout": "Original",
+				"addPaused":            true,
+			},
+		},
+		{
+			name: "legacy-only rule keeps its legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				AssignedCategory:     "tv",
+				SavePath:             "/data/tv",
+				TorrentContentLayout: "Original",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv",
+				"savePath":             "/data/tv",
+				"torrentContentLayout": "Original",
+				"addPaused":            true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ruleDef string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v2/rss/setRule" {
+					t.Errorf("unexpected request: %s", r.URL)
+					http.NotFound(w, r)
+					return
+				}
+				ruleDef = r.FormValue("ruleDef")
+			}))
+			defer srv.Close()
+
+			client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}), isHealthy: true}
+			sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
+
+			require.NoError(t, sm.SetRSSRule(t.Context(), 1, "rule", tt.rule))
+
+			var sent map[string]any
+			require.NoError(t, jsonv2.Unmarshal([]byte(ruleDef), &sent))
+			got := map[string]any{}
+			for _, key := range []string{"assignedCategory", "savePath", "torrentContentLayout", "addPaused"} {
+				if v, ok := sent[key]; ok {
+					got[key] = v
+				}
+			}
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
