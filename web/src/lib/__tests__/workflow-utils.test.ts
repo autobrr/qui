@@ -423,7 +423,7 @@ describe("hasMixedActionConditions", () => {
 
   it.each([
     { name: "two tag actions with different conditions", mixed: true, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] } },
-    { name: "a condition on delete and none on pause", mixed: true, conditions: { schemaVersion: "1", delete: { enabled: true, mode: "delete" as const, condition: packed }, pause: { enabled: true } } },
+    { name: "a condition on category and none on pause", mixed: true, conditions: { schemaVersion: "1", category: { enabled: true, category: "sorted", condition: packed }, pause: { enabled: true } } },
     { name: "the same condition on every action", mixed: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed)], pause: { enabled: true, condition: packed } } },
     { name: "a different condition on a disabled action", mixed: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked, false)] } },
     { name: "a disabled action whose condition the editor shows", mixed: true, conditions: { schemaVersion: "1", speedLimits: { enabled: false, condition: unpacked }, pause: { enabled: true, condition: packed } } },
