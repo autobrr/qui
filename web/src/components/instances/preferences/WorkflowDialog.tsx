@@ -69,7 +69,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, getTrackerMatchMode, getTrackerTokens, type ActionType, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, firstActionCondition, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
@@ -580,40 +580,6 @@ const PATH_TEMPLATE_EXAMPLE = "/data/{{ .Category }}"
 const MOVE_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#move-path-templates"
 const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save-path-templates"
 
-// The editor shows the first action condition it finds, enabled or not, and a save
-// writes it onto every action it keeps. Warn when that changes a kept action's condition.
-function firstActionCondition(conditions: ActionConditions): RuleCondition | null {
-  return conditions.speedLimits?.condition
-    ?? conditions.shareLimits?.condition
-    ?? conditions.pause?.condition
-    ?? conditions.resume?.condition
-    ?? conditions.recheck?.condition
-    ?? conditions.reannounce?.condition
-    ?? conditions.autoManagement?.condition
-    ?? conditions.delete?.condition
-    ?? conditions.tags?.[0]?.condition
-    ?? conditions.tag?.condition
-    ?? conditions.category?.condition
-    ?? conditions.move?.condition
-    ?? conditions.externalProgram?.condition
-    ?? conditions.exportToInstance?.condition
-    ?? null
-}
-
-function hasMixedActionConditions(conditions: ActionConditions | undefined): boolean {
-  if (!conditions) return false
-  const tagActions = conditions.tags && conditions.tags.length > 0 ? conditions.tags : [conditions.tag]
-  // autoManagement is kept whenever present: enabled false means "turn it off".
-  const kept = [
-    conditions.speedLimits, conditions.shareLimits, conditions.pause, conditions.resume,
-    conditions.recheck, conditions.reannounce, conditions.delete, ...tagActions,
-    conditions.category, conditions.move, conditions.externalProgram, conditions.exportToInstance,
-  ].filter(action => action?.enabled)
-  if (conditions.autoManagement) kept.push(conditions.autoManagement)
-  const shown = JSON.stringify(firstActionCondition(conditions))
-  return kept.some(action => JSON.stringify(action?.condition ?? null) !== shown)
-}
-
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
@@ -622,7 +588,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
   }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
-  const mixedActionConditions = useMemo(() => hasMixedActionConditions(rule?.conditions), [rule])
+  const mixedActionConditions = useMemo(() => rule != null && hasMixedActionConditions(rule), [rule])
   const loadedForm = useRef<FormState | null>(null)
   const currentForm = useRef(formState)
   const saveCheckRun = useRef(0)
@@ -1038,7 +1004,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         if (conditions) {
           exprGrouping = conditions.grouping
-          // Get condition from any enabled action (they should all be the same)
           actionCondition = firstActionCondition(conditions)
 
           if (conditions.speedLimits?.enabled) {
