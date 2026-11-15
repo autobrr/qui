@@ -120,9 +120,6 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 	if cfg.MaxJitter <= 0 {
 		cfg.MaxJitter = DefaultConfig().MaxJitter
 	}
-	if cfg.StuckRunThreshold <= 0 {
-		cfg.StuckRunThreshold = DefaultConfig().StuckRunThreshold
-	}
 	return &Service{
 		cfg:               cfg,
 		store:             store,
@@ -329,15 +326,15 @@ func (s *Service) Start(ctx context.Context) {
 	if s == nil {
 		return
 	}
+	// Recovery runs before the scheduler and the API can start a run, so it
+	// fails only runs that a previous process left behind.
+	if err := s.recoverStuckRuns(ctx); err != nil {
+		log.Error().Err(err).Msg("orphanscan: failed to recover stuck runs")
+	}
 	go s.loop(ctx)
 }
 
 func (s *Service) loop(ctx context.Context) {
-	// Recover stuck runs from previous crash
-	if err := s.recoverStuckRuns(ctx); err != nil {
-		log.Error().Err(err).Msg("orphanscan: failed to recover stuck runs")
-	}
-
 	ticker := time.NewTicker(s.cfg.SchedulerInterval)
 	defer ticker.Stop()
 
@@ -358,10 +355,9 @@ func (s *Service) recoverStuckRuns(ctx context.Context) error {
 		return fmt.Errorf("mark deleting runs failed: %w", err)
 	}
 
-	// Mark old pending/scanning runs as failed (they won't resume).
-	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely.
-	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"}); err != nil {
-		return fmt.Errorf("mark stuck runs failed: %w", err)
+	// preview_ready is excluded: a preview stays valid indefinitely.
+	if err := s.store.MarkInterruptedScansFailed(ctx, "Scan interrupted by restart"); err != nil {
+		return fmt.Errorf("mark interrupted scans failed: %w", err)
 	}
 
 	// Crash recovery operates in bulk without per-run identifiers, so emit a coarse

@@ -681,27 +681,15 @@ func (s *OrphanScanStore) MarkDeletingRunsFailed(ctx context.Context, errorMessa
 	return err
 }
 
-// MarkStuckRunsFailed marks old pending/scanning runs as failed.
-func (s *OrphanScanStore) MarkStuckRunsFailed(ctx context.Context, threshold time.Duration, statuses []string) error {
-	cutoff := time.Now().Add(-threshold)
-
-	// Build placeholders for status list
-	var placeholders strings.Builder
-	args := make([]any, 0, len(statuses)+1)
-	args = append(args, cutoff)
-	for i, status := range statuses {
-		if i > 0 {
-			placeholders.WriteString(", ")
-		}
-		placeholders.WriteString("?")
-		args = append(args, status)
-	}
-
+// MarkInterruptedScansFailed marks every pending and scanning run as failed with
+// errorMessage, whatever its age. It is intended to run at service startup,
+// because no scan survives a restart.
+func (s *OrphanScanStore) MarkInterruptedScansFailed(ctx context.Context, errorMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
-		SET status = 'failed', error_message = 'Marked failed after restart', completed_at = CURRENT_TIMESTAMP
-		WHERE started_at < ? AND status IN (`+placeholders.String()+`)
-	`, args...)
+		SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP
+		WHERE status IN ('pending', 'scanning')
+	`, errorMessage)
 	return err
 }
 
