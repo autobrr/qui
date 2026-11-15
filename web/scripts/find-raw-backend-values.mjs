@@ -162,7 +162,7 @@ function scanFile(filePath) {
 
   for (let i = 0; i < lines.length; i++) {
     // React never renders a key prop, so it cannot show a raw value.
-    const line = lines[i].replace(/\bkey=\{(?:[^{}]|\{[^{}]*\})*\}/g, "");
+    const line = lines[i].replace(/(^|\s)key=\{(?:[^{}]|\{[^{}]*\})*\}/g, "$1");
     const lineNum = i + 1;
 
     // Check 1: Raw backend property rendered in JSX

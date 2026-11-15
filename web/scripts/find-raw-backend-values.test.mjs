@@ -40,16 +40,26 @@ function scan(t, source) {
   return result
 }
 
+// regression: #4178
 test("ignores a raw value that is only a key prop", (t) => {
   const result = scan(t, "<Row key={notice.kind} label={t(\"row\")} />\n<li key={`${issue.instanceId}-${issue.kind}`}>\n")
 
   assert.equal(result.status, 0, result.stdout + result.stderr)
 })
 
+// regression: #4178
 test("still reports a raw value rendered beside a key prop", (t) => {
   const result = scan(t, "<span key={notice.kind}>{notice.kind}</span>\n")
 
   assert.equal(result.status, 1, result.stdout + result.stderr)
   assert.match(result.stdout, /Line 1: \[RAW_BACKEND_VALUE\] \(kind\)/)
   assert.match(result.stdout, /Code: <span key=\{notice.kind\}>\{notice.kind\}<\/span>/)
+})
+
+// regression: #4178
+test("still reports key={...} that a tag renders as text", (t) => {
+  const result = scan(t, "<span>key={notice.kind}</span>\n")
+
+  assert.equal(result.status, 1, result.stdout + result.stderr)
+  assert.match(result.stdout, /Line 1: \[RAW_BACKEND_VALUE\] \(kind\)/)
 })

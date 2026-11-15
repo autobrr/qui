@@ -63,7 +63,7 @@ export function formatDuration(seconds: number): string {
   return parts.join(" ")
 }
 
-/** @deprecated Prints English units (s, m, h, d). For text that the user reads, use `formatNarrowAge` in `@/lib/dateTimeUtils`. */
+/** @deprecated Prints English units (s, m, h, d). For text that the user reads, use `formatNarrowAge` in `@/lib/dateTimeUtils`, which takes milliseconds and shows an age under one minute as one minute. */
 export function formatDurationCompact(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
