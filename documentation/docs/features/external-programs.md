@@ -183,7 +183,7 @@ When torrents match configured conditions, [automation rules](./automations.md) 
 1. Create and enable an external program in **Settings → External Programs**
 2. Go to **Automations** and create or edit a rule
 3. Add an **External Program** action and select your program
-4. Set the conditions of the rule. The program runs for each torrent that matches them
+4. Set the conditions of the rule. The program runs for each torrent that matches them, unless a later rule with an External Program action matches the same torrent. Then only the program of the later rule runs (see [External Program](./automations.md#external-program))
 
 ### Behavior
 
