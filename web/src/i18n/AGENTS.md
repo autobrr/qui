@@ -10,6 +10,10 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 
 Before you add a language, follow `docs/agents/adding-a-language.md`.
 
+## English Copy
+
+- Name an action with a word that fits a tap and a click, for example "Select a row". qui runs on phones too.
+
 ## Translation Rules
 
 - Read English namespace JSON and relevant UI first; translate in product context.
