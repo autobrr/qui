@@ -951,6 +951,34 @@ describe("Statistics", () => {
     expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("false")
   })
 
+  it("shows no rows of the last period while the rows of another period load", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket }) => bucket === "day" || bucket === "hour" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: bucket })] : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("a.test")
+    hold = new Promise(resolve => { release = resolve })
+    fireEvent.mouseDown(screen.getByText("periods.7d"), { button: 0 })
+
+    await vi.waitFor(() => expect(screen.queryByRole("table")).toBeNull())
+    release()
+    await within(await screen.findByRole("table")).findByText("a.test")
+  })
+
+  it("leaves the year of this year out of the custom range on a phone", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    const year = new Date().getFullYear()
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "periods.custom" }))
+    fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: `${year}-01-01` } })
+    fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: `${year}-01-01` } })
+    fireEvent.click(screen.getByText("customRange.apply"))
+
+    const day = new Date(year, 0, 1).toLocaleDateString("en", { day: "numeric", month: "short" })
+    expect(await screen.findByText(`customRange.range from=${day} to=${day}`)).toBeTruthy()
+  })
+
   it("loads the rows of the other groupings once when the pointer reaches the grouping tabs", async () => {
     const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
     renderPage()

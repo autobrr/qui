@@ -184,12 +184,12 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                     <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
                     <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
                       <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />
-                      <div className="flex items-center gap-2 text-xs font-normal text-muted-foreground @2xl:hidden">
-                        <span className="min-w-0 flex-1 truncate">{displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}</span>
-                        <span className="shrink-0 tabular-nums @xl:hidden">{time}</span>
+                      <div className="flex flex-wrap items-center gap-x-2 text-xs font-normal text-muted-foreground @2xl:hidden">
+                        <span className="min-w-0 max-w-full truncate">{displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}</span>
+                        <span className="tabular-nums @xl:hidden">{time}</span>
                       </div>
                       <div className="text-xs font-normal @xl:hidden">{cause}</div>
-                      <div className="truncate text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
+                      <div className="text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
                       {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(event.instanceId)}</div>}
                     </TableCell>
                     <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @2xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>

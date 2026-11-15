@@ -251,7 +251,9 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   }, [displayName, incognitoMode, t])
 
   const formatDay = (date: Date) => date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
-  const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatDay(period.from), to: formatDay(new Date(period.to.getTime() - 1)) }) : undefined
+  // A phone leaves out the year of this year, so that the range leaves room for the instances.
+  const formatRangeDay = (date: Date) => narrow && date.getFullYear() === new Date().getFullYear() ? date.toLocaleDateString(locale, { day: "numeric", month: "short" }) : formatDay(date)
+  const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatRangeDay(period.from), to: formatRangeDay(new Date(period.to.getTime() - 1)) }) : undefined
   const formatChange = new Intl.NumberFormat(locale, { style: "percent", signDisplay: "exceptZero", maximumFractionDigits: 0 })
   const error = statusQuery.error ?? (chart.error ? undefined : allTime.error ?? compared.error ?? before.error)
   const loading = statusQuery.isPending || (!keep && (chart.pending || allTime.pending))

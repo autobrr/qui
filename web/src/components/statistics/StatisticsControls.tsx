@@ -46,7 +46,7 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
     return (
       <>
         <Select value={value} onValueChange={next => onPreset(next as PeriodPreset)}>
-          <SelectTrigger className="h-9 min-w-0">
+          <SelectTrigger className="h-9 min-w-0 max-w-[50%]">
             <SelectValue>{custom ? customLabel ?? t("periods.custom") : t(`periods.${value}`)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -113,11 +113,11 @@ function CustomRange({ onCustom, children }: { onCustom: (firstDay: Date, lastDa
         >
           <div className="space-y-1.5">
             <Label htmlFor="statistics-first-day">{t("customRange.from")}</Label>
-            <Input id="statistics-first-day" type="date" max={today} value={firstDay} onChange={event => setFirstDay(event.target.value)} />
+            <Input id="statistics-first-day" type="date" className="pointer-coarse:appearance-none" max={today} value={firstDay} onChange={event => setFirstDay(event.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="statistics-last-day">{t("customRange.to")}</Label>
-            <Input id="statistics-last-day" type="date" value={lastDay} onChange={event => setLastDay(event.target.value)} />
+            <Input id="statistics-last-day" type="date" className="pointer-coarse:appearance-none" value={lastDay} onChange={event => setLastDay(event.target.value)} />
           </div>
           <Button type="submit" size="sm" className="w-full" disabled={!valid}>{t("customRange.apply")}</Button>
         </form>
