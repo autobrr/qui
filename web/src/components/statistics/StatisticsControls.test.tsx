@@ -38,6 +38,7 @@ afterEach(() => {
 })
 
 describe("PeriodPicker", () => {
+  // regression: #4179
   it("opens the custom range on a touch screen without focus on a day field, so that iOS opens no date picker over it", async () => {
     renderPicker("phone")
 
@@ -48,6 +49,7 @@ describe("PeriodPicker", () => {
     expect(document.activeElement).not.toBe(firstDay)
   })
 
+  // regression: #4179
   it("puts the focus on the first day of the custom range on a screen with hover", async () => {
     renderPicker("desktop")
 

@@ -730,6 +730,7 @@ describe("Statistics", () => {
     expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
   })
 
+  // regression: #4179
   it("puts the numbers of a top torrent that a narrow table has no column for below its name, without an empty First 24 hours", async () => {
     torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 3072, { uploadFirst24h: 1024 }, { downloaded: 1024 }), torrentRow("h2", "Bravo", 2048)] : []
     renderPage()
@@ -742,6 +743,7 @@ describe("Statistics", () => {
     expect(await facts("Bravo")).toEqual(["table.columns.downloaded 0 B", "table.columns.ratio ∞"])
   })
 
+  // regression: #4179
   it("shows five top torrents on a phone, each after Show all, and five again after Show fewer", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
@@ -763,8 +765,9 @@ describe("Statistics", () => {
     expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 
+  // regression: #4179
   it("shows five top torrents on a phone turned sideways, which is wider than the phone layout", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse) and (max-height: 499px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse) and (max-height: 499px) and (max-width: 1023px)", addEventListener: () => {}, removeEventListener: () => {} }))
     torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
     renderPage()
 
@@ -772,6 +775,7 @@ describe("Statistics", () => {
     expect(within(screen.getByRole("table")).queryByText("Torrent 6")).toBeNull()
   })
 
+  // regression: #4179
   it("shows five top torrents again on a phone after another period", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     Element.prototype.scrollIntoView = vi.fn()
@@ -993,6 +997,7 @@ describe("Statistics", () => {
     await expectTile("tiles.unique", "– | tiles.uniqueNone")
   })
 
+  // regression: #4179
   it("keeps the description of the last grouping until the rows of the next grouping load", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1012,6 +1017,7 @@ describe("Statistics", () => {
     expect(await screen.findByText("table.descriptionRelease")).toBeTruthy()
   })
 
+  // regression: #4179
   it("shows ten rows of the table again on a phone after another custom range", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     const now = new Date()
@@ -1039,6 +1045,7 @@ describe("Statistics", () => {
     expect(within(screen.getByRole("table")).queryByText("t11.test")).toBeNull()
   })
 
+  // regression: #4179
   it("keeps the rows of the last grouping, dimmed, until the rows of the next grouping load", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1059,6 +1066,7 @@ describe("Statistics", () => {
     expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("false")
   })
 
+  // regression: #4179
   it("puts the live numbers of a Tracker group in its detail band, for a narrow table that has no column for them", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1075,6 +1083,7 @@ describe("Statistics", () => {
     expect(within(facts).getByText("table.columns.seeded").nextElementSibling?.textContent).toBe("table.seededValue value=2.00")
   })
 
+  // regression: #4179
   it("puts the Buffer of a group in its detail band, for a phone row that has no room for it", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1087,6 +1096,7 @@ describe("Statistics", () => {
     expect(within(facts).getByText("table.columns.buffer").nextElementSibling?.textContent).toBe("+4 KiB")
   })
 
+  // regression: #4179
   it("shows no rows of the last period while the rows of another period load", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1102,6 +1112,7 @@ describe("Statistics", () => {
     await within(await screen.findByRole("table")).findByText("a.test")
   })
 
+  // regression: #4179
   it("leaves the year of this year out of the custom range on a phone", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     const year = new Date().getFullYear()
@@ -1115,6 +1126,7 @@ describe("Statistics", () => {
     expect(await screen.findByText(`customRange.range from=${day} to=${day}`)).toBeTruthy()
   })
 
+  // regression: #4179
   it("loads the rows of a grouping once when the pointer reaches its tab", async () => {
     const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
     const { queryClient } = renderPage()
@@ -1138,6 +1150,7 @@ describe("Statistics", () => {
     expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"])
   })
 
+  // regression: #4179
   it("loads the rows of each other grouping when a phone opens the grouping picker", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     Element.prototype.scrollIntoView = vi.fn()
@@ -1152,6 +1165,7 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(preloads()).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
   })
 
+  // regression: #4179
   it("shows ten rows of the table on a phone, each row after Show all, and ten again after Show fewer", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     const now = new Date()
@@ -1177,6 +1191,7 @@ describe("Statistics", () => {
     expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 
+  // regression: #4179
   it("keeps each row of the last grouping on a phone after Show all until the next grouping loads, then shows ten of it", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     Element.prototype.scrollIntoView = vi.fn()

@@ -220,6 +220,7 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
   })
 
+  // regression: #4179
   it("shows the deletes that a phone loaded on Show more, also after a reload failed", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -240,6 +241,7 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toHaveLength(15)
   })
 
+  // regression: #4179
   it("shows five deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -261,6 +263,7 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("deletes.more")).toBeNull()
   })
 
+  // regression: #4179
   it("shows the next loaded deletes on a phone at once, also while the loaded pages load again", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -281,6 +284,7 @@ describe("DeletedTorrents", () => {
     release()
   })
 
+  // regression: #4179
   it("shows five deletes again on a phone after Show fewer, and keeps its button in view", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
@@ -300,6 +304,7 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("table.showFewer")).toBeNull()
   })
 
+  // regression: #4179
   it("opens a delete on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
