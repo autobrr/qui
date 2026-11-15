@@ -115,6 +115,12 @@ import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
 import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { useCopyGroupRows } from "@/hooks/useCopyGroupRows"
 import { GroupCopiesToolbar } from "./table/GroupCopiesToolbar"
+import { actions as prototypeActions, PROTOTYPE_ENABLED, usePrototype } from "./prototype-display-profiles/store"
+import { PrototypeNotice } from "./prototype-display-profiles/PrototypeNotice"
+import { VariantAToolbarButton } from "./prototype-display-profiles/VariantA"
+import { VariantBColumnsLabel, VariantBMenuSection } from "./prototype-display-profiles/VariantB"
+import { VariantCStatusChip } from "./prototype-display-profiles/VariantC"
+import { DisplayProfilesPrototypeOverlay } from "./prototype-display-profiles/PrototypeOverlay"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
@@ -232,6 +238,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { t } = useTranslation("torrents")
   const [statusBarContainer, setStatusBarContainer] = useState<HTMLElement | null>(null)
+  const prototypeVariant = usePrototype((s) => (PROTOTYPE_ENABLED ? s.variant : null))
+  const prototypePickerOpen = usePrototype((s) => s.pickerOpen)
   useLayoutEffect(() => {
     setStatusBarContainer(document.getElementById("qui-status-bar-container"))
   }, [])
@@ -1094,6 +1102,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       </Tooltip>
                     )}
 
+                    {prototypeVariant === "A" && <VariantAToolbarButton />}
+
                     {desktopViewMode !== "compact" && (
                       <>
                         <Tooltip disableHoverableContent={true}>
@@ -1119,29 +1129,34 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           </TooltipContent>
                         </Tooltip>
 
-                        <DropdownMenu>
+                        <DropdownMenu
+                          {...(prototypeVariant === "B" ? { open: prototypePickerOpen, onOpenChange: prototypeActions.setPickerOpen } : {})}
+                        >
                           <Tooltip disableHoverableContent={true}>
-                            <TooltipTrigger
-                              asChild
-                              onFocus={(e) => {
-                                // Prevent tooltip from showing on focus - only show on hover
-                                e.preventDefault()
-                              }}
-                            >
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                >
-                                  <Columns3 className="h-4 w-4" />
-                                  <span className="sr-only">{t("tableView.toggleColumns")}</span>
-                                </Button>
-                              </DropdownMenuTrigger>
-                            </TooltipTrigger>
+                            <PrototypeNotice enabled={prototypeVariant === "B"}>
+                              <TooltipTrigger
+                                asChild
+                                onFocus={(e) => {
+                                  // Prevent tooltip from showing on focus - only show on hover
+                                  e.preventDefault()
+                                }}
+                              >
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                  >
+                                    <Columns3 className="h-4 w-4" />
+                                    <span className="sr-only">{t("tableView.toggleColumns")}</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                              </TooltipTrigger>
+                            </PrototypeNotice>
                             <TooltipContent>{t("tableView.toggleColumns")}</TooltipContent>
                           </Tooltip>
-                          <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>
+                          <DropdownMenuContent align="end" className={prototypeVariant === "B" ? "w-64" : "w-52"}>
+                            {prototypeVariant === "B" && <VariantBMenuSection />}
+                            {prototypeVariant === "B" ? <VariantBColumnsLabel /> : <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>}
                             <DropdownMenuSeparator />
                             <ColumnOrderMenu
                               table={table}
@@ -1464,6 +1479,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     )}
                   </div>
                   <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                    {prototypeVariant === "C" && <VariantCStatusChip />}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1562,6 +1578,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             instanceName={instance.name}
           />
         )}
+
+        <DisplayProfilesPrototypeOverlay />
 
         {/* Scroll to top button*/}
         <div className="hidden lg:block">
