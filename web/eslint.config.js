@@ -187,6 +187,7 @@ export default tseslint.config([
         ...gazelleSiteSelectors,
         { selector: 'Program:not(:has(ImportDeclaration[source.value="@/components/layout/Page"]))', message: pageShellMessage },
         { selector: 'Program:not(:has(JSXOpeningElement[name.name="Page"]))', message: pageShellMessage },
+        { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name="Page"]', message: 'Render Page as the root of the page, with no HTML element around it.' },
       ],
     },
   },
