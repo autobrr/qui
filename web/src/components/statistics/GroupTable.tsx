@@ -436,7 +436,7 @@ function GroupTorrents({ group, grouping, name, period, series, instances }: { g
         <ol className="space-y-1 text-sm">
           {torrents.map(torrent => (
             <li key={`${torrent.instanceId}:${torrent.hash}`} className="flex min-w-0 items-center gap-2">
-              <TorrentName name={torrentName(torrent)} className="min-w-0 flex-1 line-clamp-2 @2xl:line-clamp-1" />
+              <TorrentName name={torrentName(torrent)} className="min-w-0 flex-1 @2xl:line-clamp-1" />
               <TorrentMarks torrent={torrent} />
               <span className="ml-auto shrink-0 pl-4 tabular-nums">{formatBytes(torrent.uploaded)}</span>
             </li>

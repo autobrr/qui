@@ -67,7 +67,7 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
                   <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6">
                     <button type="button" aria-expanded={expanded} className="flex w-full min-w-0 items-center gap-2 text-left">
                       {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
-                      <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />
+                      <TorrentName name={name} className={expanded ? undefined : "line-clamp-2 @2xl:line-clamp-1"} />
                       <span className="hidden shrink-0 items-center gap-2 @2xl:flex"><TorrentMarks torrent={torrent} /></span>
                     </button>
                     <div className="flex min-w-0 items-center gap-2 pl-5.5 text-xs font-normal text-muted-foreground @2xl:hidden">
@@ -155,7 +155,7 @@ function TorrentDays({ torrent, name, instances, period, since }: TorrentDaysPro
   return (
     <div className="sticky left-0 w-[100cqw] space-y-2 border-l-2 bg-muted/30 px-4 py-5 sm:px-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="min-w-0 truncate font-medium text-foreground">{t("detail.chartDay", { group: name })}</span>
+        <span className="min-w-0 font-medium whitespace-normal text-foreground [overflow-wrap:anywhere]">{t("detail.chartDay", { group: name })}</span>
         <span>{t("detail.chartLegend")}</span>
       </div>
       {transfer.error ? (

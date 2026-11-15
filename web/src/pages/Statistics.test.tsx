@@ -1029,6 +1029,21 @@ describe("Statistics", () => {
     expect(preloads()).toHaveLength(4)
   })
 
+  it("loads the rows of each other grouping when a phone opens the grouping picker", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    // jsdom has no layout, so it lacks scrollIntoView, which the open picker calls.
+    Element.prototype.scrollIntoView = vi.fn()
+    const preloads = () => new Set(requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent").map(request => request.groupBy))
+    renderPage()
+    await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
+    expect(preloads().size).toBe(0)
+
+    const picker = screen.getByText("table.groupBy").parentElement!.querySelector("[role=combobox]")!
+    fireEvent.keyDown(picker, { key: "Enter" })
+
+    await vi.waitFor(() => expect(preloads()).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
+  })
+
   it("shows ten rows of the table on a phone, and each row after Show all", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
     const now = new Date()

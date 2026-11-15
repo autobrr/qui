@@ -106,6 +106,8 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const [incognitoMode] = useIncognitoMode()
   const narrow = useIsMobile()
   const [cause, setCause] = useState<TransferHistoryCauseFilter>("")
+  // The rows whose whole name the user opened with a tap, as a touch screen cannot show the title of a cut name.
+  const [fullNames, setFullNames] = useState<ReadonlySet<string>>(new Set())
   const [paging, setPaging] = useState({ scope, cause, pages: 1 })
   const pages = paging.scope === scope && paging.cause === cause ? paging.pages : 1
   const loaded = useDeletesPages(instances, period, cause, pages)
@@ -175,15 +177,32 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
             <TableBody>
               {rows.map(event => {
                 const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
+                const key = `${event.instanceId}:${event.hash}:${event.time}`
+                const full = fullNames.has(key)
                 const cause = <Cause kind={event.cause.kind} name={event.cause.name} />
                 const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
                 const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
                 const time = formatISOTimestamp(event.time)
                 return (
-                  <TableRow key={`${event.instanceId}:${event.hash}:${event.time}`}>
+                  <TableRow key={key}>
                     <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
                     <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
-                      <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />
+                      <button
+                        type="button"
+                        aria-expanded={full}
+                        className="block w-full text-left"
+                        onClick={() => setFullNames(names => {
+                          const next = new Set(names)
+                          if (full) {
+                            next.delete(key)
+                          } else {
+                            next.add(key)
+                          }
+                          return next
+                        })}
+                      >
+                        <TorrentName name={name} className={full ? undefined : "line-clamp-2 @2xl:line-clamp-1"} />
+                      </button>
                       <div className="truncate text-xs font-normal text-muted-foreground @2xl:hidden">
                         {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
                       </div>

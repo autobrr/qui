@@ -76,7 +76,7 @@ function renderTable(instances: TransferHistoryInstance[]) {
 }
 
 function shownNames(): string[] {
-  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title]")].map(node => node.getAttribute("title") ?? "")
+  return [...document.querySelectorAll("tbody tr td:nth-child(2) > button > span[title]")].map(node => node.getAttribute("title") ?? "")
 }
 
 beforeEach(() => {
@@ -235,6 +235,19 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
     expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(1)
     expect(screen.queryByText("deletes.more")).toBeNull()
+  })
+
+  it("opens the whole name of a delete on a tap, and closes it on the next tap", async () => {
+    deletesOf.set(1, [event(1, 0, 5_000, "user")])
+    renderTable([instance(1, "Seedbox")])
+    const name = (await screen.findByTitle("Built.Name.1.0-GRP")).closest("button")!
+    expect(name.getAttribute("aria-expanded")).toBe("false")
+
+    fireEvent.click(name)
+    expect(name.getAttribute("aria-expanded")).toBe("true")
+
+    fireEvent.click(name)
+    expect(name.getAttribute("aria-expanded")).toBe("false")
   })
 
   it("masks the torrent names in incognito mode", async () => {
