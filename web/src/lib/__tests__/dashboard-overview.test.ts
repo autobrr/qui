@@ -54,6 +54,11 @@ describe("buildLiveLayers", () => {
     expect(buildLiveLayers(live({ 1: [[60, 1, 0]] }), instanceLayers([1]))).toEqual([])
   })
 
+  it("does not join two samples more than 6 seconds apart, also when their slots are 3 apart", () => {
+    // Slots 86 and 89, 7.8 seconds apart.
+    expect(buildLiveLayers(live({ 1: [[7.9, 1, 0], [0.1, 2, 0]] }), instanceLayers([1]))).toEqual([])
+  })
+
   it("adds the instances of one layer together, and ignores an instance outside the list", () => {
     const ids = [1, 2, 3, 4, 5, 6, 7]
     const layers = buildLiveLayers(live({ 6: [[3, 10, 0], [1, 10, 0]], 7: [[1, 5, 0], [5, 5, 0]], 9: [[3, 100, 0], [1, 100, 0]] }), instanceLayers(ids))

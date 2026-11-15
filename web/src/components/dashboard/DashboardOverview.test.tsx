@@ -306,6 +306,7 @@ describe("DashboardOverview, Live", () => {
     })
     await vi.waitFor(() => expect(screen.getByText(/^stream.loadError/)).toBeTruthy())
     expect(screen.queryAllByTestId("chart-layer")).toEqual([])
+    expect(screen.queryAllByText(/^stream.peakSpeed/)).toEqual([])
   })
 })
 

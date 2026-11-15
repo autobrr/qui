@@ -110,7 +110,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   // With no history, the page shows Live and keeps the saved view.
   const range: DashboardChartView = noHistory ? "live" : chosen
   const live = useLiveSamples(range === "live")
-  const liveLayers = useMemo(() => live.data ? buildLiveLayers(live.data, layerOf) : [], [live.data, layerOf])
+  const liveLayers = useMemo(() => live.data && !live.error ? buildLiveLayers(live.data, layerOf) : [], [live.data, live.error, layerOf])
 
   const totalUp = statsData.reduce((sum, d) => sum + (d.stats?.totalUploadSpeed ?? 0), 0)
   const totalDown = statsData.reduce((sum, d) => sum + (d.stats?.totalDownloadSpeed ?? 0), 0)

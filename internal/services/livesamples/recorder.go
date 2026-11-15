@@ -46,6 +46,7 @@ type Window struct {
 
 // Recorder takes a sample of an instance each second in which the instance
 // had a successful sync, with the speeds and the time of the last such sync.
+// The next second updates the speeds of that sample if they changed.
 // It never sends a request to qBittorrent: an instance that nothing syncs
 // gives no sample.
 type Recorder struct {
@@ -84,7 +85,11 @@ func (r *Recorder) take() {
 	defer r.mu.Unlock()
 	for _, speed := range speeds {
 		samples := r.instances[speed.InstanceID]
-		if len(samples) > 0 && !speed.SyncedAt.After(samples[len(samples)-1].Time) {
+		if n := len(samples); n > 0 && !speed.SyncedAt.After(samples[n-1].Time) {
+			// The pool moves the sync time before the speeds of that sync reach its cache.
+			if speed.SyncedAt.Equal(samples[n-1].Time) {
+				samples[n-1].Up, samples[n-1].Down = speed.Up, speed.Down
+			}
 			continue
 		}
 		r.instances[speed.InstanceID] = append(samples, Sample{Time: speed.SyncedAt, Up: speed.Up, Down: speed.Down})

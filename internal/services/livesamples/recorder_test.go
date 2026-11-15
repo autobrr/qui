@@ -39,6 +39,24 @@ func (p *fakePool) sync(instanceID int, up, down int64) {
 	p.speeds[instanceID] = qbittorrent.SyncedSpeed{InstanceID: instanceID, SyncedAt: time.Now(), Up: up, Down: down}
 }
 
+// syncTimeOnly moves the sync time before the speeds of that sync reach the
+// cache, as the real pool does for a moment after each sync.
+func (p *fakePool) syncTimeOnly(instanceID int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	speed := p.speeds[instanceID]
+	speed.SyncedAt = time.Now()
+	p.speeds[instanceID] = speed
+}
+
+func (p *fakePool) setSpeeds(instanceID int, up, down int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	speed := p.speeds[instanceID]
+	speed.Up, speed.Down = up, down
+	p.speeds[instanceID] = speed
+}
+
 func (p *fakePool) remove(instanceID int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -155,6 +173,23 @@ func TestRecorderTakesNoSampleWhileASyncFails(t *testing.T) {
 		wait(2 * time.Second)
 
 		require.Equal(t, [][3]int64{{0, 100, 0}, {12, 300, 0}}, samplesOf(recorder.Samples(), 1, start))
+	})
+}
+
+func TestRecorderTakesTheSpeedsThatReachTheCacheAfterTheSyncTime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		pool := &fakePool{}
+		recorder := run(t, pool)
+
+		pool.sync(1, 100, 0)
+		wait(2 * time.Second)
+		pool.syncTimeOnly(1)
+		wait(time.Second)
+		pool.setSpeeds(1, 300, 0)
+		wait(time.Second)
+
+		require.Equal(t, [][3]int64{{0, 100, 0}, {2, 300, 0}}, samplesOf(recorder.Samples(), 1, start))
 	})
 }
 

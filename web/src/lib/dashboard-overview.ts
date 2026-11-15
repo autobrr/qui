@@ -174,17 +174,17 @@ export function buildDayChart(rowsByInstance: TransferHistoryRow[][], instanceId
 /** The Live chart has LIVE_SLOTS slots of LIVE_SLOT_MS each: 3 minutes. */
 export const LIVE_SLOTS = 90
 export const LIVE_SLOT_MS = 2000
-// A sample with no other sample of its instance within this many slots is a single read, and the chart hides it.
-const SINGLE_READ_SLOTS = 3
+// Two samples of an instance at most this far apart are joined. A sample with no other sample this close is a single read.
+const LIVE_JOIN_MS = 3 * LIVE_SLOT_MS
 
 type LiveSample = LiveSamples["instances"][number]["samples"][number]
 
 /**
  * Builds the layers of the live chart from the samples of the server, in the layers of layerOf. The last slot ends at
  * the now of the samples. A sample fills the slots after it up to the next sample of its instance, or up to now, when
- * that is at most SINGLE_READ_SLOTS slots away, because the syncs of qui come a little more than 2 seconds apart.
- * A longer stretch with no sample is a hole (null). The chart leaves out the instances that layerOf does not hold,
- * single reads, and a layer with no value.
+ * that is at most LIVE_JOIN_MS later, because the syncs of qui come a little more than 2 seconds apart. A longer
+ * stretch with no sample is a hole (null). The chart leaves out the instances that layerOf does not hold, single reads
+ * (a sample with no other sample within LIVE_JOIN_MS), and a layer with no value.
  */
 export function buildLiveLayers(live: LiveSamples, layerOf: Map<number, number>): ChartLayer[] {
   const now = Date.parse(live.now)
@@ -197,21 +197,21 @@ export function buildLiveLayers(live: LiveSamples, layerOf: Map<number, number>)
       const index = LIVE_SLOTS - 1 - Math.floor((now - Date.parse(sample.time)) / LIVE_SLOT_MS)
       if (index >= 0 && index < LIVE_SLOTS) slots[index] = sample
     }
-    const placed = slots.flatMap((sample, index) => sample ? [index] : [])
-    const kept = placed.filter((index, at) => (placed[at - 1] ?? -Infinity) >= index - SINGLE_READ_SLOTS || (placed[at + 1] ?? Infinity) <= index + SINGLE_READ_SLOTS)
+    const placed = slots.flatMap((sample, index) => sample ? [{ index, time: Date.parse(sample.time), sample }] : [])
+    const joined = (from: number | undefined, to: number | undefined) => from !== undefined && to !== undefined && to - from <= LIVE_JOIN_MS
+    const kept = placed.filter((point, at) => joined(placed[at - 1]?.time, point.time) || joined(point.time, placed[at + 1]?.time))
     if (kept.length === 0) continue
     let into = layers.get(layer)
     if (!into) {
       into = { layer, up: Array(LIVE_SLOTS).fill(null), down: Array(LIVE_SLOTS).fill(null) }
       layers.set(layer, into)
     }
-    kept.forEach((index, at) => {
-      const sample = slots[index]!
-      const next = kept[at + 1] ?? LIVE_SLOTS
-      const end = next - index <= SINGLE_READ_SLOTS ? next : index + 1
-      for (let slot = index; slot < end; slot++) {
-        into.up[slot] = (into.up[slot] ?? 0) + sample.up
-        into.down[slot] = (into.down[slot] ?? 0) + sample.down
+    kept.forEach((point, at) => {
+      const next = kept[at + 1]
+      const end = next ? (joined(point.time, next.time) ? next.index : point.index + 1) : joined(point.time, now) ? LIVE_SLOTS : point.index + 1
+      for (let slot = point.index; slot < end; slot++) {
+        into.up[slot] = (into.up[slot] ?? 0) + point.sample.up
+        into.down[slot] = (into.down[slot] ?? 0) + point.sample.down
       }
     })
   }
