@@ -63,3 +63,18 @@ test("still reports key={...} that a tag renders as text", (t) => {
   assert.equal(result.status, 1, result.stdout + result.stderr)
   assert.match(result.stdout, /Line 1: \[RAW_BACKEND_VALUE\] \(kind\)/)
 })
+
+// regression: #4178
+test("still reports key={...} after a space in tag text", (t) => {
+  const result = scan(t, "<span> key={notice.kind}</span>\n")
+
+  assert.equal(result.status, 1, result.stdout + result.stderr)
+  assert.match(result.stdout, /Line 1: \[RAW_BACKEND_VALUE\] \(kind\)/)
+})
+
+// regression: #4178
+test("ignores a key prop on its own line", (t) => {
+  const result = scan(t, "<Row\n  key={notice.kind}\n/>\n")
+
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+})

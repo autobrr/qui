@@ -155,14 +155,24 @@ function isInJsxContext(line) {
   );
 }
 
+// React never renders a key prop, so it cannot show a raw value. A key= counts as a prop
+// only inside an open tag, or on a line with no tag before it (an attribute on its own line).
+function withoutKeyProps(line) {
+  return line.replace(/(^|\s)key=\{(?:[^{}]|\{[^{}]*\})*\}/g, (match, space, offset) => {
+    const before = line.slice(0, offset);
+    const inTag = before.lastIndexOf("<") > before.lastIndexOf(">");
+    const ownLine = !/[<>]/.test(before);
+    return inTag || ownLine ? space : match;
+  });
+}
+
 function scanFile(filePath) {
   const content = fs.readFileSync(filePath, "utf8");
   const lines = content.split(/\r?\n/);
   const findings = [];
 
   for (let i = 0; i < lines.length; i++) {
-    // React never renders a key prop, so it cannot show a raw value.
-    const line = lines[i].replace(/(^|\s)key=\{(?:[^{}]|\{[^{}]*\})*\}/g, "$1");
+    const line = withoutKeyProps(lines[i]);
     const lineNum = i + 1;
 
     // Check 1: Raw backend property rendered in JSX
