@@ -49,7 +49,7 @@ type AutomationPayload struct {
 	Notify          *bool                    `json:"notify" doc:"When 'true', qui sends a notification when the rule acts. Default 'true'."`
 	SortOrder       *int                     `json:"sortOrder" doc:"Position of the rule in the list. Import puts the rule at the end. Edit as JSON keeps the current value."`
 	IntervalSeconds *int                     `json:"intervalSeconds,omitempty" doc:"How often the rule runs, in seconds. At least '60'. Default '900' (15 minutes)."`
-	Conditions      *models.ActionConditions `json:"conditions" doc:"The actions of the rule, each with its condition. Required."`
+	Conditions      *models.ActionConditions `json:"conditions" doc:"The actions of the rule, each with its condition. All running actions must have the same condition, or qui refuses to save the rule. An action runs when its 'enabled' is 'true', and 'autoManagement' runs whenever it is present. Required."`
 	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty" doc:"Where the 'FREE_SPACE' condition field reads free space. Default: the free space that qBittorrent reports."`
 	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty" doc:"The order in which the rule processes torrents. Default: oldest first."`
 	PreviewLimit    *int                     `json:"previewLimit" doc:"-"`
@@ -121,7 +121,7 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil, true)
 	if payload == nil {
 		RespondError(w, status, msg)
 		return
@@ -161,7 +161,7 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, existing)
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, existing, true)
 	if payload == nil {
 		RespondError(w, status, msg)
 		return
@@ -328,7 +328,7 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil)
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil, false)
 	if payload == nil {
 		RespondError(w, status, msg)
 		return
@@ -391,8 +391,8 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 }
 
 // decodeAndCheckPayload decodes and checks the rule in the request body, and checks that the instances and the external program it names exist.
-// On failure it returns a nil payload with the HTTP status code and message.
-func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.Automation) (*AutomationPayload, int, string) {
+// saves tells whether the request stores the rule. On failure it returns a nil payload with the HTTP status code and message.
+func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.Automation, saves bool) (*AutomationPayload, int, string) {
 	ctx := r.Context()
 	var instance *models.Instance
 	if h.instanceStore != nil {
@@ -407,7 +407,7 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 		}
 	}
 
-	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored)
+	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored, saves)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: invalid rule payload")
 		return nil, http.StatusBadRequest, err.Error()

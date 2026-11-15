@@ -13,7 +13,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `notify` | boolean |  | When `true`, qui sends a notification when the rule acts. Default `true`. |
 | `sortOrder` | integer |  | Position of the rule in the list. Import puts the rule at the end. Edit as JSON keeps the current value. |
 | `intervalSeconds` | integer |  | How often the rule runs, in seconds. At least `60`. Default `900` (15 minutes). |
-| `conditions` | object |  | The actions of the rule, each with its condition. Required. See `conditions`. |
+| `conditions` | object |  | The actions of the rule, each with its condition. All running actions must have the same condition, or qui refuses to save the rule. An action runs when its `enabled` is `true`, and `autoManagement` runs whenever it is present. Required. See `conditions`. |
 | `freeSpaceSource` | object |  | Where the `FREE_SPACE` condition field reads free space. Default: the free space that qBittorrent reports. See `freeSpaceSource`. |
 | `sortingConfig` | object |  | The order in which the rule processes torrents. Default: oldest first. See `sortingConfig`. |
 
@@ -60,7 +60,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `enabled` | boolean |  | Whether the action runs. |
 | `uploadKiB` | integer |  | Upload limit in KiB/s. `0` removes the limit. Leave it out to keep the current limit. |
 | `downloadKiB` | integer |  | Download limit in KiB/s. `0` removes the limit. Leave it out to keep the current limit. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.shareLimits`
 
@@ -71,35 +71,35 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `seedingTimeMinutes` | integer |  | Seeding time limit in minutes. `-2` uses the global setting, `-1` means no limit. Leave it out to keep the current limit. |
 | `shareLimitAction` | string | `Stop`, `Remove`, `RemoveWithContent`, `EnableSuperSeeding` | What qBittorrent does when a limit is reached. Needs qBittorrent Web API 2.15.1+. Leave it out to use the global setting. |
 | `shareLimitsMode` | string | `MatchAny`, `MatchAll` | Whether any limit or all limits must be reached. Needs qBittorrent Web API 2.16.0+. Leave it out to use the global setting. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.pause`
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | Whether the action runs. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.resume`
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | Whether the action runs. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.recheck`
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | Whether the action runs. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.reannounce`
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | Whether the action runs. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.delete`
 
@@ -123,7 +123,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `useTrackerAsTag` | boolean |  | Use the tracker domain of each torrent as its tag. |
 | `useDisplayName` | boolean |  | With `useTrackerAsTag`: use the tracker display name in place of the domain. |
 | `includeCrossSeeds` | boolean |  | Also apply the tag changes to the cross-seeds of each matching torrent. Ignored with `useTrackerAsTag`. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.category`
 
@@ -134,7 +134,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `includeCrossSeeds` | boolean |  | Also move the cross-seeds of each matching torrent to the category. |
 | `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Change the category of each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
 | `blockIfCrossSeedInCategories` | array of string |  | Skip a torrent when one of its cross-seeds is in one of these categories. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.move`
 
@@ -145,7 +145,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `blockIfCrossSeed` | boolean |  | Skip a torrent when one of its cross-seeds does not match `condition`. Not used when `groupId` is set. |
 | `groupId` | string | `cross_seed_content_path`, `cross_seed_content_save_path`, `release_item`, `tracker_release_item`, `hardlink_signature` | Move each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in `conditions.grouping`. |
 | `atomic` | string | `all` | With `groupId`: `all` moves the group only when every torrent in it matches. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.externalProgram`
 
@@ -153,14 +153,14 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | Whether the action runs. |
 | `programId` | integer |  | The ID of the external program in this qui. An export keeps the ID of the qui that made it. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `conditions.autoManagement`
 
 | Key | Type | Values | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean |  | `true` turns automatic torrent management on, `false` turns it off. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. This action runs whenever it is present, also with `enabled` set to `false`. See Condition object. |
 
 ### `conditions.exportToInstance`
 
@@ -174,7 +174,7 @@ This section lists every key of a rule as JSON, the condition fields and their o
 | `paused` | boolean |  | Add the torrent paused. |
 | `skipChecking` | boolean |  | Skip the hash check on the target instance. Default `true`. |
 | `contentLayout` | string | `Original`, `Subfolder`, `NoSubfolder` | The content layout on the target instance. Leave it out to use the default layout of the target instance. |
-| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. See Condition object. |
+| `condition` | condition |  | Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. See Condition object. |
 
 ### `freeSpaceSource`
 

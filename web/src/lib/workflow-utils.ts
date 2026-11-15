@@ -54,32 +54,23 @@ export function getRuleActions(rule: Automation): ActionType[] {
   })
 }
 
-/** Returns the condition that the rule editor shows: the first condition of any action, enabled or not. */
-export function firstActionCondition(conditions: ActionConditions): RuleCondition | null {
-  return conditions.speedLimits?.condition
-    ?? conditions.shareLimits?.condition
-    ?? conditions.pause?.condition
-    ?? conditions.resume?.condition
-    ?? conditions.recheck?.condition
-    ?? conditions.reannounce?.condition
-    ?? conditions.autoManagement?.condition
-    ?? conditions.delete?.condition
-    ?? conditions.tags?.[0]?.condition
-    ?? conditions.tag?.condition
-    ?? conditions.category?.condition
-    ?? conditions.move?.condition
-    ?? conditions.externalProgram?.condition
-    ?? conditions.exportToInstance?.condition
-    ?? null
+/** Returns the condition of each action that a saved workflow has turned on, null for an action without one. */
+function runningActionConditions(rule: Automation): (RuleCondition | null)[] {
+  return getRuleActions(rule).flatMap(action => {
+    const entries = action === "tag" ? getRuleTagActions(rule).filter(tag => tag.enabled) : [rule.conditions[action]]
+    return entries.map(entry => entry?.condition ?? null)
+  })
+}
+
+/** Returns the condition that the rule editor shows: the first condition of an action that the workflow has turned on. */
+export function firstActionCondition(rule: Automation): RuleCondition | null {
+  return runningActionConditions(rule).find(condition => condition != null) ?? null
 }
 
 /** Reports whether a save from the rule editor changes the condition of an action that the rule turns on. A save writes the shown condition onto every action. */
 export function hasMixedActionConditions(rule: Automation): boolean {
-  const shown = JSON.stringify(firstActionCondition(rule.conditions))
-  return getRuleActions(rule).some(action => {
-    const actions = action === "tag" ? getRuleTagActions(rule).filter(tag => tag.enabled) : [rule.conditions[action]]
-    return actions.some(entry => JSON.stringify(entry?.condition ?? null) !== shown)
-  })
+  const shown = JSON.stringify(firstActionCondition(rule))
+  return runningActionConditions(rule).some(condition => JSON.stringify(condition) !== shown)
 }
 
 /**

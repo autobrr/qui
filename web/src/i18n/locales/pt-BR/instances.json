@@ -1173,7 +1173,7 @@
         "notSupportedForScoreMultiplier": "Não suportado nos multiplicadores de pontuação"
       },
       "conditionsLabel": "Condições (Quando a regra vai agir?)",
-      "mixedActionConditions": "As ações desta regra têm condições diferentes. O editor mostra apenas uma delas, e salvar a aplica a todas as ações.",
+      "mixedActionConditions": "Cada ação deste workflow tem sua própria condição. O qui agora usa uma condição por workflow. Se você salvar, todas as ações recebem a condição acima. Para manter as outras, crie antes um workflow para cada condição.",
       "actions": {
         "title": "Ações (O que a regra fará?)",
         "addAction": "Criar ação",
