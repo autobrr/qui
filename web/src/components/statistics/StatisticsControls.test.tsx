@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { PeriodPicker } from "@/components/statistics/StatisticsControls"
+import { stubPhone } from "@/test/stubPhone"
 
 const mocks = vi.hoisted(() => ({
   i18n: { t: (key: string) => key, i18n: { resolvedLanguage: "en", language: "en" } },
@@ -17,18 +18,13 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => mocks.i18n,
 }))
 
-function renderPicker(screenKind: "phone" | "desktop") {
+function renderPicker(screenKind: "upright" | "desktop") {
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
     unobserve() {}
     disconnect() {}
   })
-  // A phone has no hover and a narrow viewport. A desktop has neither.
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: screenKind === "phone" && (query === "(hover: none)" || query === "(max-width: 639px)"),
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  }))
+  stubPhone(screenKind)
   render(<PeriodPicker value="30d" onPreset={() => {}} onCustom={() => {}} />)
 }
 
@@ -40,7 +36,7 @@ afterEach(() => {
 describe("PeriodPicker", () => {
   // regression: #4179
   it("opens the custom range on a touch screen without focus on a day field, so that iOS opens no date picker over it", async () => {
-    renderPicker("phone")
+    renderPicker("upright")
 
     fireEvent.click(screen.getByRole("button", { name: "periods.custom" }))
 

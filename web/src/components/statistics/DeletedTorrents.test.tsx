@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "@/i18n"
 import { DELETES_PAGE, DeletedTorrents } from "@/components/statistics/DeletedTorrents"
 import { server } from "@/test/msw/server"
+import { stubPhone } from "@/test/stubPhone"
 import type { TransferHistoryCauseKind, TransferHistoryDeleteEvent, TransferHistoryInstance } from "@/types"
 
 const mocks = vi.hoisted(() => {
@@ -224,7 +225,7 @@ describe("DeletedTorrents", () => {
 
   // regression: #4179
   it("shows the deletes that a phone loaded on Show more, also after a reload failed", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     let failing = false
     server.use(http.get("*/api/instances/:id/transfer-history/deletes", () => failing ? HttpResponse.json({ error: "database is locked" }, { status: 500 }) : undefined))
@@ -245,7 +246,7 @@ describe("DeletedTorrents", () => {
 
   // regression: #4179
   it("shows five deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
 
@@ -267,7 +268,7 @@ describe("DeletedTorrents", () => {
 
   // regression: #4179
   it("shows the next loaded deletes on a phone at once, also while the loaded pages load again", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
@@ -288,7 +289,7 @@ describe("DeletedTorrents", () => {
 
   // regression: #4179
   it("shows five deletes again on a phone after Show fewer, and keeps its button in view", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
@@ -355,7 +356,7 @@ describe("DeletedTorrents", () => {
 
   // regression: #4179
   it("shows five deletes again on a phone after a return to an earlier filter", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    stubPhone("upright")
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
     await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
@@ -373,7 +374,7 @@ describe("DeletedTorrents", () => {
 
   // regression: #4179
   it("opens a delete with a cut name on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    stubPhone("upright")
     // jsdom has no layout. A name that needs more lines than the row shows has a larger scroll height.
     vi.spyOn(Element.prototype, "scrollHeight", "get").mockReturnValue(60)
     vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(40)
@@ -391,7 +392,7 @@ describe("DeletedTorrents", () => {
 
   // regression: #4179
   it("offers no opener on a phone for a delete whose name and cause show in full", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    stubPhone("upright")
     deletesOf.set(1, [event(1, 0, 5_000, "automation", "Tidy up")])
     renderTable([instance(1, "Seedbox")])
     const name = await screen.findByTitle("Built.Name.1.0-GRP")

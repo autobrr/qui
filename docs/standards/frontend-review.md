@@ -43,6 +43,14 @@
 - The page root uses `p-4 lg:p-6`. Below `lg`, `AppLayout` pads `main` for the bottom nav, so the page root adds no bottom padding of its own. Do not put a page in a centered `container`.
 - A page with more than one section uses `SectionedPage` from `@/components/layout/SectionedPage`. The page translates every nav label before it passes the groups. Keep the section in the `tab` URL search parameter, and drop an unknown value to the default section, as `components/cross-seed/tabs.ts` does.
 - A page that works on one instance puts the instance picker in the actions of `PageHeader`.
+- On a phone, when the actions do not fit the title row together, a page can render `PageHeader` without actions and put its controls in one row below it. Then the controls wrap as one group, not one by one. The fragment rule covers only the actions that a page passes to `PageHeader`.
 - In a card footer, Save is at the right. Run controls (Run now, Start run, Cancel, Dry run) are at the left. A section that runs a job builds its `RunState` in a pure function in `lib/run-state.ts` and renders `RunFooter`. Cancel always asks first.
 - A switch row has the label and its help at the left and the switch at the right, as `AutoResumeSwitch` in `components/cross-seed/SourceCardFields.tsx` does.
 - A top-level card uses `CardTitle` without a size class. Only a small card inside a card can change its title size.
+
+## Touch screens
+
+A phone has no pointer that hovers, so a phone user never sees what only a hover starts.
+
+- A preload that a hover starts must also start on focus, or when the list that holds the item opens. The router `Link` already preloads on a touch, because `router.tsx` sets `defaultPreload: "intent"`.
+- A `title` attribute does not show on a touch screen. When a cell cuts its text with an ellipsis and only its `title` holds the full text, a tap on the row must open a detail with the full text, or the cell must wrap the text. The `Tooltip` from `@/components/ui/tooltip` already opens on a tap.
