@@ -98,7 +98,6 @@
   },
   "attention": {
     "title": "需要注意",
-    "none": "无。所有实例均有响应，且没有种子报告问题。",
     "offline": "{{name}} 已离线",
     "lowDisk": "{{name}}：剩余 {{free}}",
     "firewalled": "{{name}} 受防火墙限制"

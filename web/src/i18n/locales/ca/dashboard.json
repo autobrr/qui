@@ -102,7 +102,6 @@
   },
   "attention": {
     "title": "Requereix atenció",
-    "none": "Res. Totes les instàncies responen i cap torrent no informa d’un problema.",
     "offline": "{{name}} és fora de línia",
     "lowDisk": "{{name}}: {{free}} lliures",
     "firewalled": "{{name}} és darrere d’un tallafoc"

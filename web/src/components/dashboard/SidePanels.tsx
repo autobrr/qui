@@ -34,49 +34,50 @@ function Section({ id, title, className, children }: { id: string; title: string
   )
 }
 
-/** The instances that are offline, are firewalled, or have a disk that is almost full, and the torrent counts with a problem. */
+/**
+ * The instances that are offline, are firewalled, or have a disk that is almost full, and the torrent counts with a
+ * problem. Nothing when no item needs an action.
+ */
 export function NeedsAttention({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
   const { t } = useTranslation("dashboard")
   const offline = statsData.filter(d => instanceHealth(d) === "offline")
   const lowDisk = statsData.filter(d => instanceHealth(d) === "ok" && isLowDisk(d))
   const firewalled = statsData.filter(isFirewalled)
   const issues = statsData.flatMap(instanceIssues).sort((a, b) => b.count - a.count)
-  const empty = offline.length + lowDisk.length + firewalled.length + issues.length === 0
+  if (offline.length + lowDisk.length + firewalled.length + issues.length === 0) return null
   const item = "-mx-2 flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5"
 
   return (
     <Section id="dashboard-attention" title={t("attention.title")} className={className}>
-      {empty ? <p className="text-sm text-muted-foreground">{t("attention.none")}</p> : (
-        <ul className="space-y-0.5 text-sm" data-testid="attention-list">
-          {offline.map(d => (
-            <li key={`offline-${d.instance.id}`} data-tone="red">
-              <Link to="/settings" search={{ tab: "instances" as const }} className={cn(item, "text-destructive hover:bg-muted")}>
-                <Unplug className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{t("attention.offline", { name: d.instance.name })}</span>
-              </Link>
-            </li>
-          ))}
-          {lowDisk.map(d => (
-            <li key={`disk-${d.instance.id}`} data-tone="red" className={cn(item, "text-destructive")}>
-              <HardDrive className="size-4 shrink-0" aria-hidden="true" />
-              <span className="truncate">{t("attention.lowDisk", { name: d.instance.name, free: formatBytes(d.serverState?.free_space_on_disk ?? 0) })}</span>
-            </li>
-          ))}
-          {firewalled.map(d => (
-            <li key={`firewalled-${d.instance.id}`} data-tone="yellow" className={cn(item, "text-yellow-600 dark:text-yellow-500")}>
-              <ShieldAlert className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{t("attention.firewalled", { name: d.instance.name })}</span>
-            </li>
-          ))}
-          {issues.map(issue => (
-            <li key={`${issue.instanceId}-${issue.kind}`}>
-              <IssueLink issue={issue} className={cn(item, "hover:bg-muted")}>
-                <IssueIcon issue={issue} className="size-4" />
-                <span className={cn("shrink-0 tabular-nums", issueClass(issue))}>{t(`issues.${issue.kind}`, { count: issue.count })}</span>
-                <span className="ml-auto truncate text-muted-foreground">{issue.instanceName}</span>
-              </IssueLink>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="space-y-0.5 text-sm" data-testid="attention-list">
+        {offline.map(d => (
+          <li key={`offline-${d.instance.id}`} data-tone="red">
+            <Link to="/settings" search={{ tab: "instances" as const }} className={cn(item, "text-destructive hover:bg-muted")}>
+              <Unplug className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{t("attention.offline", { name: d.instance.name })}</span>
+            </Link>
+          </li>
+        ))}
+        {lowDisk.map(d => (
+          <li key={`disk-${d.instance.id}`} data-tone="red" className={cn(item, "text-destructive")}>
+            <HardDrive className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{t("attention.lowDisk", { name: d.instance.name, free: formatBytes(d.serverState?.free_space_on_disk ?? 0) })}</span>
+          </li>
+        ))}
+        {firewalled.map(d => (
+          <li key={`firewalled-${d.instance.id}`} data-tone="yellow" className={cn(item, "text-yellow-600 dark:text-yellow-500")}>
+            <ShieldAlert className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{t("attention.firewalled", { name: d.instance.name })}</span>
+          </li>
+        ))}
+        {issues.map(issue => (
+          <li key={`${issue.instanceId}-${issue.kind}`}>
+            <IssueLink issue={issue} className={cn(item, "hover:bg-muted")}>
+              <IssueIcon issue={issue} className="size-4" />
+              <span className={cn("shrink-0 tabular-nums", issueClass(issue))}>{t(`issues.${issue.kind}`, { count: issue.count })}</span>
+              <span className="ml-auto truncate text-muted-foreground">{issue.instanceName}</span>
+            </IssueLink>
+          </li>
+        ))}
+      </ul>
     </Section>
   )
 }
