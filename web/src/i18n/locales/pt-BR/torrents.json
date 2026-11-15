@@ -1731,5 +1731,23 @@
       "description": "Mostra as cópias de um torrent em uma única linha.",
       "action": "Experimentar"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Perfil de exibição: {{name}}",
+    "menuLabel": "Perfil de exibição",
+    "manage": "Gerenciar perfis…",
+    "panel": {
+      "title": "Perfis de exibição",
+      "description": "Este navegador usa um perfil. Uma mudança nas colunas, na densidade das linhas ou nas barras laterais vale só para esse perfil.",
+      "thisBrowser": "Este navegador",
+      "use": "Usar",
+      "newName": "Novo perfil a partir desta configuração",
+      "create": "Criar"
+    },
+    "nameErrors": {
+      "empty": "Digite um nome.",
+      "tooLong": "Use no máximo {{max}} caracteres.",
+      "duplicate": "Outro perfil já tem este nome."
+    }
   }
 }

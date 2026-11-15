@@ -1731,5 +1731,23 @@
       "description": "Show the copies of one torrent as a single row.",
       "action": "Try it"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Display profile: {{name}}",
+    "menuLabel": "Display profile",
+    "manage": "Manage profiles…",
+    "panel": {
+      "title": "Display profiles",
+      "description": "This browser uses one profile. A change to the columns, the row density, or the sidebars goes only to that profile.",
+      "thisBrowser": "This browser",
+      "use": "Use",
+      "newName": "New profile from this setup",
+      "create": "Create"
+    },
+    "nameErrors": {
+      "empty": "Enter a name.",
+      "tooLong": "Use {{max}} characters or fewer.",
+      "duplicate": "Another profile has this name."
+    }
   }
 }

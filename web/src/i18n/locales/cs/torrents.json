@@ -1815,5 +1815,23 @@
       "description": "Zobrazí kopie jednoho torrentu jako jeden řádek.",
       "action": "Vyzkoušet"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Profil zobrazení: {{name}}",
+    "menuLabel": "Profil zobrazení",
+    "manage": "Spravovat profily…",
+    "panel": {
+      "title": "Profily zobrazení",
+      "description": "Tento prohlížeč používá jeden profil. Změna sloupců, hustoty řádků nebo postranních panelů platí jen pro tento profil.",
+      "thisBrowser": "Tento prohlížeč",
+      "use": "Použít",
+      "newName": "Nový profil z tohoto nastavení",
+      "create": "Vytvořit"
+    },
+    "nameErrors": {
+      "empty": "Zadejte název.",
+      "tooLong": "Použijte nejvýše {{max}} znaků.",
+      "duplicate": "Tento název už má jiný profil."
+    }
   }
 }

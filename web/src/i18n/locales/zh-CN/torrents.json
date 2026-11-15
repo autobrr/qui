@@ -1647,5 +1647,23 @@
       "description": "将同一种子的多个副本显示为一行。",
       "action": "试试看"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "显示配置：{{name}}",
+    "menuLabel": "显示配置",
+    "manage": "管理配置…",
+    "panel": {
+      "title": "显示配置",
+      "description": "此浏览器使用一个配置。对列、行密度或侧边栏的更改只作用于该配置。",
+      "thisBrowser": "此浏览器",
+      "use": "使用",
+      "newName": "从当前设置新建配置",
+      "create": "创建"
+    },
+    "nameErrors": {
+      "empty": "请输入名称。",
+      "tooLong": "最多 {{max}} 个字符。",
+      "duplicate": "已有其他配置使用此名称。"
+    }
   }
 }

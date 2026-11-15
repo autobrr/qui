@@ -67,8 +67,6 @@ const clientSettingAllowlist = [
   'src/hooks/useThemeSettingsSync.ts',
   // The dismissed protocol banner stays in one browser.
   'src/lib/protocol-handler.ts',
-  // The legacy migration of column widths. A later ticket sends its write through the module.
-  'src/hooks/usePersistedColumnSizing.ts',
   // i18n boots from the cached language before React mounts.
   'src/i18n/index.ts',
   // The sync hook moves raw values between the server and the module.

@@ -1731,5 +1731,23 @@
       "description": "Affiche les copies d'un torrent sur une seule ligne.",
       "action": "Essayer"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Profil d’affichage : {{name}}",
+    "menuLabel": "Profil d’affichage",
+    "manage": "Gérer les profils…",
+    "panel": {
+      "title": "Profils d’affichage",
+      "description": "Ce navigateur utilise un profil. Une modification des colonnes, de la densité des lignes ou des barres latérales ne s’applique qu’à ce profil.",
+      "thisBrowser": "Ce navigateur",
+      "use": "Utiliser",
+      "newName": "Nouveau profil à partir de cette configuration",
+      "create": "Créer"
+    },
+    "nameErrors": {
+      "empty": "Saisissez un nom.",
+      "tooLong": "Utilisez {{max}} caractères au maximum.",
+      "duplicate": "Un autre profil porte ce nom."
+    }
   }
 }

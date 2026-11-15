@@ -1731,5 +1731,23 @@
       "description": "Mostra les còpies d'un torrent en una sola fila.",
       "action": "Prova-ho"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Perfil de visualització: {{name}}",
+    "menuLabel": "Perfil de visualització",
+    "manage": "Gestiona els perfils…",
+    "panel": {
+      "title": "Perfils de visualització",
+      "description": "Aquest navegador fa servir un perfil. Un canvi a les columnes, la densitat de files o les barres laterals només afecta aquest perfil.",
+      "thisBrowser": "Aquest navegador",
+      "use": "Fes servir",
+      "newName": "Perfil nou a partir d'aquesta configuració",
+      "create": "Crea"
+    },
+    "nameErrors": {
+      "empty": "Introdueix un nom.",
+      "tooLong": "Fes servir {{max}} caràcters o menys.",
+      "duplicate": "Un altre perfil ja té aquest nom."
+    }
   }
 }
