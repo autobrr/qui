@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Facts } from "@/components/statistics/Facts"
+import { Facts, type FactItem } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -78,7 +78,7 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
                       items={[
                         [t("table.columns.downloaded"), formatBytes(torrent.downloaded), "@xl:hidden"],
                         [t("table.columns.ratio"), formatRatio(torrent) ?? "–", "@xl:hidden"],
-                        [t("topTorrents.columns.first24h"), torrent.uploadFirst24h === null ? "–" : formatBytes(torrent.uploadFirst24h)],
+                        ...(torrent.uploadFirst24h === null ? [] : [[t("topTorrents.columns.first24h"), formatBytes(torrent.uploadFirst24h)] satisfies FactItem]),
                       ]}
                       className="@2xl:hidden"
                     />

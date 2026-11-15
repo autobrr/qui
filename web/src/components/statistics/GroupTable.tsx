@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Facts, type Fact } from "@/components/statistics/Facts"
+import { Facts, type FactItem } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
-import { TorrentMarks } from "@/components/statistics/TopTorrents"
+import { TorrentMarks, TorrentName } from "@/components/statistics/TopTorrents"
 import { Button } from "@/components/ui/button"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -116,12 +116,12 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
       values && values.size > 0 ? t("table.seededValue", { value: formatSeeded.format(values.uploaded / values.size) }) : "–",
     ]
   }
-  const periodFacts = (bytes: TransferHistoryBytes): Fact[] => [
+  const periodFacts = (bytes: TransferHistoryBytes): FactItem[] => [
     [t("table.columns.downloaded"), formatBytes(bytes.downloaded)],
     [t("table.columns.ratio"), formatRatio(bytes) ?? "–"],
     [t("table.columns.buffer"), formatBuffer(bytes) ?? "–"],
   ]
-  const liveFacts = (live: Live | undefined): Fact[] => {
+  const liveFacts = (live: Live | undefined): FactItem[] => {
     const [torrents, size, seeded] = liveValues(live)
     return [[t("table.columns.torrents"), torrents], [t("table.columns.size"), size], [t("table.columns.seeded"), seeded]]
   }
@@ -213,7 +213,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
                           <span className="shrink-0 tabular-nums @xl:hidden" data-narrow>{formatBytes(row.uploaded)}</span>
                         </button>
                         <Facts items={periodFacts(row)} className="@xl:hidden" />
-                        {tracker && <Facts items={liveFacts(row.live)} className="@4xl:hidden" />}
+                        {tracker && <Facts items={liveFacts(row.live)} className="hidden @xl:flex @4xl:hidden" />}
                       </TableCell>
                       <PeriodCells bytes={row} trailing={!tracker} />
                       {tracker && liveValues(row.live).map((value, index) => (
@@ -234,6 +234,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
                             instances={instances}
                             seriesIndex={seriesIndex}
                             name={name}
+                            liveFacts={tracker ? liveFacts(row.live) : undefined}
                           />
                         </TableCell>
                       </TableRow>
@@ -301,6 +302,8 @@ interface GroupDetailProps {
   // The index of the series color of the group, or -1.
   seriesIndex: number
   name: string
+  // The live numbers of a Tracker group, which a narrow table shows only here.
+  liveFacts?: FactItem[]
 }
 
 interface ShownRows {
@@ -310,7 +313,7 @@ interface ShownRows {
 }
 
 /** The band below an open row: the share of the upload, the upload from cross-seeds, the best and the average bucket, and the chart of the group. */
-function GroupDetail({ group, grouping, row, total, period, since, series, instances, seriesIndex, name }: GroupDetailProps) {
+function GroupDetail({ group, grouping, row, total, period, since, series, instances, seriesIndex, name, liveFacts }: GroupDetailProps) {
   const colors = useSeriesColors()
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -380,6 +383,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
           label={unit === "hour" ? t("detail.averageHour") : t("detail.averageDay")}
           value={recordedBars === undefined ? undefined : recordedBars > 0 ? formatBytes(uploaded / recordedBars) : "–"}
         />
+        {liveFacts?.map(([label, value]) => <Fact key={label} label={label} value={value} className="@xl:hidden" />)}
       </dl>
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -428,7 +432,7 @@ function GroupTorrents({ group, grouping, name, period, series, instances }: { g
         <ol className="space-y-1 text-sm">
           {torrents.map(torrent => (
             <li key={`${torrent.instanceId}:${torrent.hash}`} className="flex min-w-0 items-center gap-2">
-              <span className="truncate" title={torrentName(torrent)}>{torrentName(torrent)}</span>
+              <TorrentName name={torrentName(torrent)} className="min-w-0 flex-1 line-clamp-2 @2xl:line-clamp-1" />
               <TorrentMarks torrent={torrent} />
               <span className="ml-auto shrink-0 pl-4 tabular-nums">{formatBytes(torrent.uploaded)}</span>
             </li>
@@ -440,9 +444,9 @@ function GroupTorrents({ group, grouping, name, period, series, instances }: { g
   )
 }
 
-function Fact({ label, value, detail }: { label: string; value?: string; detail?: ReactNode }) {
+function Fact({ label, value, detail, className }: { label: string; value?: string; detail?: ReactNode; className?: string }) {
   return (
-    <div>
+    <div className={className}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 text-base font-semibold tabular-nums">{value ?? "–"}</dd>
       {detail && <dd className="text-xs text-muted-foreground">{detail}</dd>}

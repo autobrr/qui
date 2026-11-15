@@ -274,7 +274,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
 
   return (
-    <div className="space-y-6 p-4 lg:p-6">
+    <div className="space-y-4 p-4 sm:space-y-6 lg:p-6">
       <PageHeader
         title={t("title")}
         description={
@@ -284,7 +284,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
           </span>
         }
         actions={narrow ? (
-          <div className="flex w-full min-w-0 items-center gap-2">
+          <div className="flex w-full min-w-0 items-center gap-1.5">
             {periodPicker}
             {instanceFilter}
             <SeriesColorPicker />
@@ -323,7 +323,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         />
       </div>
 
-      <Card>
+      <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
         <CardHeader className="px-4 sm:px-6">
           <CardTitle>{yearView ? t("yearView.title") : t("chart.title")}</CardTitle>
           <CardDescription>{yearView ? t("yearView.description") : period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
@@ -351,7 +351,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         </CardContent>
       </Card>
 
-      <Card className="gap-0 overflow-hidden pb-4">
+      <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
         <CardHeader className="px-4 pb-4 sm:px-6">
           <CardTitle>{t("table.title")}</CardTitle>
           <CardDescription>{grouping === "tracker" ? t("table.descriptionTracker") : grouping === "category" ? t("table.descriptionCategory") : t("table.descriptionRelease")}</CardDescription>
@@ -373,7 +373,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         />
       </Card>
 
-      <Card className="gap-0 overflow-hidden pb-4">
+      <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
         <CardHeader className="px-4 pb-4 sm:px-6">
           <CardTitle>{t("topTorrents.title")}</CardTitle>
           <CardDescription>{t("topTorrents.description")}</CardDescription>
@@ -391,8 +391,8 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         </div>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+        <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
           <CardHeader className="px-4 sm:px-6">
             <CardTitle>{t("growth.title")}</CardTitle>
             <CardDescription>{newestCount !== undefined ? t("growth.description", { torrents: newestCount.toLocaleString(locale) }) : t("growth.descriptionEmpty")}</CardDescription>
@@ -412,7 +412,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
             )}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
           <CardHeader className="px-4 sm:px-6">
             <CardTitle>{t("events.title")}</CardTitle>
             <CardDescription>{t("events.description")}</CardDescription>
@@ -431,7 +431,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         </Card>
       </div>
 
-      <Card className="gap-0 overflow-hidden pb-4">
+      <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
         <CardHeader className="px-4 pb-4 sm:px-6">
           <CardTitle>{t("deletes.title")}</CardTitle>
           <CardDescription>{t("deletes.description")}</CardDescription>

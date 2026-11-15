@@ -727,13 +727,16 @@ describe("Statistics", () => {
     expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
   })
 
-  it("puts the numbers of a top torrent that a narrow table has no column for below its name", async () => {
-    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 3072, { uploadFirst24h: 1024 }, { downloaded: 1024 })] : []
+  it("puts the numbers of a top torrent that a narrow table has no column for below its name, without an empty First 24 hours", async () => {
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 3072, { uploadFirst24h: 1024 }, { downloaded: 1024 }), torrentRow("h2", "Bravo", 2048)] : []
     renderPage()
+    const facts = async (name: string) => {
+      const node = await within(await screen.findByRole("table")).findByText(name)
+      return [...node.closest("td")?.querySelector("[data-narrow]")?.children ?? []].map(fact => fact.textContent)
+    }
 
-    const name = await within(await screen.findByRole("table")).findByText("Alpha")
-    const facts = name.closest("td")?.querySelector("[data-narrow]")
-    expect([...facts?.children ?? []].map(fact => fact.textContent)).toEqual(["table.columns.downloaded 1 KiB", "table.columns.ratio 3.00", "topTorrents.columns.first24h 1 KiB"])
+    expect(await facts("Alpha")).toEqual(["table.columns.downloaded 1 KiB", "table.columns.ratio 3.00", "topTorrents.columns.first24h 1 KiB"])
+    expect(await facts("Bravo")).toEqual(["table.columns.downloaded 0 B", "table.columns.ratio ∞"])
   })
 
   // regression: #4113
@@ -958,6 +961,22 @@ describe("Statistics", () => {
     release()
     await vi.waitFor(() => expect(cells(screen.getByRole("table"), "1080p")[1]).toBe("2 KiB"))
     expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it("puts the live numbers of a Tracker group in its detail band, for a narrow table that has no column for them", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    liveGroups = () => [{ group: "a.test", torrents: 2, size: 2048, uploaded: 4096 }]
+    renderPage()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "a.test")[5]).toBe("4"))
+    fireEvent.click(within(table).getByText("a.test"))
+
+    const facts = (await screen.findByText("detail.share")).closest("dl")!
+    expect(within(facts).getByText("table.columns.torrents").nextElementSibling?.textContent).toBe("4")
+    expect(within(facts).getByText("table.columns.size").nextElementSibling?.textContent).toBe("4 KiB")
+    expect(within(facts).getByText("table.columns.seeded").nextElementSibling?.textContent).toBe("table.seededValue value=2.00")
   })
 
   it("shows no rows of the last period while the rows of another period load", async () => {

@@ -40,10 +40,10 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
 
   return (
-    <div className="space-y-8" data-chart={CHART_ID}>
+    <div className="space-y-6 sm:space-y-8" data-chart={CHART_ID}>
       <ChartStyle id={CHART_ID} config={config} />
       <Calendar days={days} />
-      <dl className="grid gap-6 sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6">
         <YearFact
           label={t("yearView.bestDay")}
           value={summary.bestDay && formatBytes(summary.bestDay.uploaded)}

@@ -184,9 +184,8 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                     <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
                     <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
                       <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />
-                      <div className="flex flex-wrap items-center gap-x-2 text-xs font-normal text-muted-foreground @2xl:hidden">
-                        <span className="min-w-0 max-w-full truncate">{displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}</span>
-                        <span className="tabular-nums @xl:hidden">{time}</span>
+                      <div className="truncate text-xs font-normal text-muted-foreground @2xl:hidden">
+                        {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
                       </div>
                       <div className="text-xs font-normal @xl:hidden">{cause}</div>
                       <div className="text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
@@ -194,7 +193,10 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                     </TableCell>
                     <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @2xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
                     <TableCell className="hidden max-w-64 align-top @xl:table-cell">{cause}</TableCell>
-                    <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @2xl:pr-2">{formatBytes(event.uploaded)}</TableCell>
+                    <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @2xl:pr-2">
+                      {formatBytes(event.uploaded)}
+                      <div className="ml-auto max-w-24 whitespace-normal text-xs text-muted-foreground @xl:hidden">{time}</div>
+                    </TableCell>
                     <TableCell className="hidden text-right align-top tabular-nums @2xl:table-cell">{ratio}</TableCell>
                     <TableCell className="hidden pr-6 text-right align-top tabular-nums @2xl:table-cell">{seeded}</TableCell>
                   </TableRow>

@@ -46,7 +46,7 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
     return (
       <>
         <Select value={value} onValueChange={next => onPreset(next as PeriodPreset)}>
-          <SelectTrigger className="h-9 min-w-0 max-w-[50%]">
+          <SelectTrigger className="h-9 min-w-0 max-w-[50%] gap-1 px-2.5">
             <SelectValue>{custom ? customLabel ?? t("periods.custom") : t(`periods.${value}`)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -146,7 +146,7 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 min-w-0 max-w-[14rem] max-md:max-w-none max-md:flex-1">
+        <Button variant="outline" size="sm" className="h-9 min-w-0 max-w-[14rem] max-md:max-w-none max-md:flex-1 max-md:gap-1 max-md:px-2.5">
           <span className="truncate">{label}</span>
           <ChevronDown className="size-4 opacity-60" />
         </Button>
