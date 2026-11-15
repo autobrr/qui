@@ -171,11 +171,11 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
 
   const queryClient = useQueryClient()
   const prefetchRows = usePrefetchTransferHistoryRows()
-  const prefetchGroupings = () => {
+  const prefetchGroupings = (only?: TableGrouping) => {
     if (!ready) {
       return
     }
-    for (const other of TABLE_GROUPINGS) {
+    for (const other of only ? [only] : TABLE_GROUPINGS) {
       if (other === grouping) {
         continue
       }
@@ -338,15 +338,15 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         </CardHeader>
         <CardContent className="px-4 sm:px-6">
           {chart.error ? (
-            <div className="flex h-[300px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: chart.error.message })}</div>
+            <div className="flex h-[260px] items-center justify-center text-sm text-destructive sm:h-[300px]">{t("errors.load", { message: chart.error.message })}</div>
           ) : loading ? (
-            <div className="flex h-[300px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            <div className="flex h-[260px] items-center justify-center sm:h-[300px]"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           ) : bars.some(bar => bar.bytes.size > 0) ? yearView ? (
             <YearView bars={bars} groups={groups} to={shown.period.to} since={since} displayName={displayName} />
           ) : (
             <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
           ) : (
-            <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">{t("chart.empty")}</div>
+            <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground sm:h-[300px]">{t("chart.empty")}</div>
           )}
         </CardContent>
       </Card>

@@ -187,7 +187,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                       <div className="truncate text-xs font-normal text-muted-foreground @2xl:hidden">
                         {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
                       </div>
-                      <div className="text-xs font-normal @xl:hidden">{cause}</div>
+                      <div className="text-xs font-normal @xl:hidden"><Cause kind={event.cause.kind} name={event.cause.name} wrap /></div>
                       <div className="text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
                       {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(event.instanceId)}</div>}
                     </TableCell>
@@ -220,9 +220,19 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   )
 }
 
-function Cause({ kind, name }: { kind: TransferHistoryCauseKind; name?: string }) {
+// A touch screen cannot show the title of a cut name, so a narrow row lets the line wrap.
+function Cause({ kind, name, wrap = false }: { kind: TransferHistoryCauseKind; name?: string; wrap?: boolean }) {
   const { t } = useTranslation("statistics")
   const { icon: Icon, labelKey } = CAUSES[kind]
+  if (wrap) {
+    return (
+      <span className="block whitespace-normal">
+        <Icon className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" />
+        {t(labelKey)}
+        {name && <span className="text-muted-foreground"> · {name}</span>}
+      </span>
+    )
+  }
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />

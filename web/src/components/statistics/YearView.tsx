@@ -160,7 +160,7 @@ function YearFact({ label, value, detail, className }: { label: string; value?: 
   return (
     <div className={cn("min-w-0 border-l-2 pl-3", className)} style={{ borderLeftColor: "var(--color-heat)" }}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-lg font-semibold tabular-nums sm:text-xl" title={value}>{value ?? "–"}</dd>
+      <dd className="mt-0.5 text-lg font-semibold tabular-nums sm:truncate sm:text-xl" title={value}>{value ?? "–"}</dd>
       {detail && <dd className="truncate text-sm text-muted-foreground" title={detail}>{detail}</dd>}
     </div>
   )

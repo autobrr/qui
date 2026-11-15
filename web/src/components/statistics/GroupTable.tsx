@@ -66,8 +66,8 @@ interface GroupTableProps {
   // The Tracker groups that have a series color in the chart, in series order.
   seriesGroups: string[]
   displayName: (group: string, grouping: TransferHistoryGrouping) => string
-  // Loads the rows of the other groupings, when the user is about to pick one.
-  onPrefetch?: () => void
+  // Loads the rows of a grouping, or of each other grouping, when the user is about to pick one.
+  onPrefetch?: (grouping?: TableGrouping) => void
 }
 
 /**
@@ -161,8 +161,12 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
         <div className="flex items-center gap-3 overflow-x-auto px-6">
           <span className="shrink-0 text-xs text-muted-foreground">{t("table.groupBy")}</span>
           <Tabs value={grouping} onValueChange={pick}>
-            <TabsList onPointerEnter={onPrefetch} onFocus={onPrefetch}>
-              {TABLE_GROUPINGS.map(value => <TabsTrigger key={value} value={value} className="px-3">{groupingLabel(value)}</TabsTrigger>)}
+            <TabsList>
+              {TABLE_GROUPINGS.map(value => (
+                <TabsTrigger key={value} value={value} className="px-3" onPointerEnter={() => onPrefetch?.(value)} onFocus={() => onPrefetch?.(value)}>
+                  {groupingLabel(value)}
+                </TabsTrigger>
+              ))}
             </TabsList>
           </Tabs>
           {stale && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}

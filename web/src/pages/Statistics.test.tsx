@@ -1007,25 +1007,26 @@ describe("Statistics", () => {
     expect(await screen.findByText(`customRange.range from=${day} to=${day}`)).toBeTruthy()
   })
 
-  it("loads the rows of the other groupings once when the pointer reaches the grouping tabs", async () => {
+  it("loads the rows of a grouping once when the pointer reaches its tab", async () => {
     const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
     renderPage()
     // The chart asks for its rows once the status loaded.
     await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
     expect(preloads()).toHaveLength(0)
-    const tabs = screen.getByText("table.groupings.category").closest("[role=tablist]")!
+    const category = screen.getByText("table.groupings.category")
 
-    fireEvent.pointerEnter(tabs)
+    fireEvent.pointerEnter(category)
 
-    await vi.waitFor(() => expect(new Set(preloads().map(request => request.groupBy))).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
-    // Five groupings for each of the two instances.
-    await vi.waitFor(() => expect(preloads()).toHaveLength(10))
+    // One query for each of the two instances, and none for the other groupings.
+    await vi.waitFor(() => expect(preloads().map(request => request.groupBy)).toEqual(["category", "category"]))
 
-    fireEvent.pointerLeave(tabs)
-    fireEvent.pointerEnter(tabs)
+    fireEvent.pointerLeave(category)
+    fireEvent.pointerEnter(category)
+    fireEvent.pointerEnter(screen.getByText("table.groupings.source"))
 
+    await vi.waitFor(() => expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"]))
     await act(() => new Promise(resolve => setTimeout(resolve, 50)))
-    expect(preloads()).toHaveLength(10)
+    expect(preloads()).toHaveLength(4)
   })
 
   it("shows ten rows of the table on a phone, and each row after Show all", async () => {
