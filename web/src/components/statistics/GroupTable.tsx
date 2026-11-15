@@ -86,13 +86,14 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
 
   // Only a switch of the grouping keeps the old rows, so that the table never shows the numbers of another period or selection.
   const scope = `${period.from?.getTime()}:${period.to.getTime()}:${instances.map(instance => instance.instanceId).join(",")}`
-  const [kept, setKept] = useState<{ scope: string; grouping: TableGrouping; rows: GroupTotals[] }>()
-  if (rows && (kept?.rows !== rows || kept.grouping !== grouping || kept.scope !== scope)) {
-    setKept({ scope, grouping, rows })
+  const [kept, setKept] = useState<{ scope: string; grouping: TableGrouping; series: string; rows: GroupTotals[] }>()
+  if (rows && (kept?.rows !== rows || kept.grouping !== grouping || kept.scope !== scope || kept.series !== series)) {
+    setKept({ scope, grouping, series, rows })
   }
   const last = kept?.scope === scope ? kept : undefined
   const shownRows = rows ?? last?.rows
   const shownGrouping = rows ? grouping : last?.grouping ?? grouping
+  const shownSeries = rows ? series : last?.series ?? series
   const stale = !rows && last !== undefined
   const tracker = shownGrouping === "tracker"
 
@@ -141,7 +142,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
     onGroupingChange(value as TableGrouping)
   }
 
-  const allRows = !narrow || allRowsOf === series
+  const allRows = !narrow || allRowsOf === shownSeries
   const visible = shownRows && !allRows ? shownRows.slice(0, PHONE_ROWS) : shownRows
 
   return (
@@ -283,7 +284,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
                 >
                   {t("table.showFewer")}
                 </Button>
-              ) : <Button variant="outline" size="sm" onClick={() => setAllRowsOf(series)}>{t("table.showAll")}</Button>}
+              ) : <Button variant="outline" size="sm" onClick={() => setAllRowsOf(shownSeries)}>{t("table.showAll")}</Button>}
             </div>
           )}
         </div>

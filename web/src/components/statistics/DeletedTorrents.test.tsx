@@ -112,6 +112,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  // A test of Show fewer stubs it, as jsdom has no layout.
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
 })
 
 describe("DeletedTorrents", () => {
@@ -255,6 +257,45 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
     expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(1)
     expect(screen.queryByText("deletes.more")).toBeNull()
+  })
+
+  it("shows the next loaded deletes on a phone at once, also while the loaded pages load again", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
+    let release = () => {}
+    hold = new Promise(resolve => { release = resolve })
+    // A window that gets the focus again loads the page again.
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    await vi.waitFor(() => expect(requests).toHaveLength(2))
+
+    fireEvent.click(screen.getByText("deletes.more"))
+
+    expect(shownNames()).toHaveLength(20)
+    release()
+  })
+
+  it("shows ten deletes again on a phone after Show fewer, and keeps its button in view", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
+    expect(screen.queryByText("table.showFewer")).toBeNull()
+    fireEvent.click(screen.getByText("deletes.more"))
+    fireEvent.click(screen.getByText("deletes.more"))
+    expect(shownNames()).toHaveLength(30)
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+
+    fireEvent.click(screen.getByText("table.showFewer"))
+
+    expect(shownNames()).toHaveLength(10)
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+    expect(screen.queryByText("table.showFewer")).toBeNull()
   })
 
   it("opens a delete on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {

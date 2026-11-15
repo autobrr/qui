@@ -15,7 +15,8 @@ import { cn, formatBytes, formatDuration } from "@/lib/utils"
 import type { TransferHistoryCauseFilter, TransferHistoryCauseKind, TransferHistoryDeleteEvent, TransferHistoryDeletesAnswer, TransferHistoryInstance } from "@/types"
 import { useQueries, type UseQueryResult } from "@tanstack/react-query"
 import { ArchiveRestore, ChevronDown, ChevronRight, KeyRound, Loader2, Unplug, User, Zap } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
+import { flushSync } from "react-dom"
 import { useTranslation } from "react-i18next"
 
 export const DELETES_PAGE = 50
@@ -126,9 +127,12 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const [phoneRows, setPhoneRows] = useState({ view, count: PHONE_ROWS })
   const limit = narrow ? phoneRows.view === view ? phoneRows.count : PHONE_ROWS : Infinity
   const rows = deletes?.slice(0, limit)
+  const footer = useRef<HTMLDivElement>(null)
+  const next = (rows?.length ?? 0) + (narrow ? PHONE_ROWS : DELETES_PAGE)
+  // A background reload keeps the loaded rows, so only a Show more that needs a new page waits for it.
+  const waiting = loadingMore && next > (deletes?.length ?? 0)
   const showMore = () => {
     const loaded = deletes?.length ?? 0
-    const next = (rows?.length ?? 0) + (narrow ? PHONE_ROWS : DELETES_PAGE)
     if (narrow) {
       setPhoneRows({ view, count: next })
     }
@@ -226,15 +230,30 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
               })}
             </TableBody>
           </Table>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+          <div ref={footer} className="flex flex-wrap items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground sm:px-6">
             <span>{t("deletes.shown", { shown: formatCount.format(rows.length), total: formatCount.format(total ?? rows.length) })}</span>
             {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
-            {total !== undefined && rows.length < total && (
-              <Button variant="outline" size="sm" disabled={loadingMore} onClick={showMore}>
-                {loadingMore && <Loader2 className="size-3.5 animate-spin" />}
-                {t("deletes.more")}
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {narrow && rows.length > PHONE_ROWS && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    flushSync(() => setPhoneRows({ view, count: PHONE_ROWS }))
+                    // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
+                    footer.current?.scrollIntoView({ block: "nearest" })
+                  }}
+                >
+                  {t("table.showFewer")}
+                </Button>
+              )}
+              {total !== undefined && rows.length < total && (
+                <Button variant="outline" size="sm" disabled={waiting} onClick={showMore}>
+                  {waiting && <Loader2 className="size-3.5 animate-spin" />}
+                  {t("deletes.more")}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -284,7 +284,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
           </span>
         }
         actions={narrow ? (
-          <div className="flex w-full min-w-0 items-center gap-1.5">
+          <div className={cn("flex min-w-0 items-center gap-1.5", instanceFilter && "w-full")}>
             {periodPicker}
             {instanceFilter}
             <SeriesColorPicker />

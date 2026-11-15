@@ -46,7 +46,7 @@ export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodP
     return (
       <>
         <Select value={value} onValueChange={next => onPreset(next as PeriodPreset)}>
-          <SelectTrigger className="h-9 min-w-0 max-w-[50%] gap-1 px-2.5">
+          <SelectTrigger className="h-9 min-w-0 max-w-[50vw] gap-1 px-2.5">
             <SelectValue>{custom ? customLabel ?? t("periods.custom") : t(`periods.${value}`)}</SelectValue>
           </SelectTrigger>
           <SelectContent>

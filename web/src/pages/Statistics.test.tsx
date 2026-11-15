@@ -112,11 +112,12 @@ function recordedDaysAgo(instanceId: number, name: string, days: number): Transf
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <Statistics />
     </QueryClientProvider>
   )
+  return { ...view, queryClient }
 }
 
 async function expectTile(label: string, expected: string) {
@@ -200,6 +201,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
 })
 
 describe("Statistics", () => {
@@ -1009,7 +1012,7 @@ describe("Statistics", () => {
 
   it("loads the rows of a grouping once when the pointer reaches its tab", async () => {
     const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
-    renderPage()
+    const { queryClient } = renderPage()
     // The chart asks for its rows once the status loaded.
     await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
     expect(preloads()).toHaveLength(0)
@@ -1019,19 +1022,19 @@ describe("Statistics", () => {
 
     // One query for each of the two instances, and none for the other groupings.
     await vi.waitFor(() => expect(preloads().map(request => request.groupBy)).toEqual(["category", "category"]))
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
 
     fireEvent.pointerLeave(category)
     fireEvent.pointerEnter(category)
     fireEvent.pointerEnter(screen.getByText("table.groupings.source"))
 
-    await vi.waitFor(() => expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"]))
-    await act(() => new Promise(resolve => setTimeout(resolve, 50)))
-    expect(preloads()).toHaveLength(4)
+    // A preload starts its request at once, so no running query means that each request reached the server.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"])
   })
 
   it("loads the rows of each other grouping when a phone opens the grouping picker", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
-    // jsdom has no layout, so it lacks scrollIntoView, which the open picker calls.
     Element.prototype.scrollIntoView = vi.fn()
     const preloads = () => new Set(requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent").map(request => request.groupBy))
     renderPage()
@@ -1060,7 +1063,6 @@ describe("Statistics", () => {
     expect(within(table).getByText("t12.test")).toBeTruthy()
     expect(screen.queryByText("table.showAll")).toBeNull()
 
-    // jsdom has no layout, so it lacks scrollIntoView, which Show fewer calls to keep the button in view.
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     fireEvent.click(screen.getByText("table.showFewer"))
@@ -1068,6 +1070,32 @@ describe("Statistics", () => {
     expect(within(table).queryByText("t11.test")).toBeNull()
     expect(screen.getByText("table.shown shown=10 total=12")).toBeTruthy()
     expect(scrollIntoView).toHaveBeenCalledOnce()
+  })
+
+  it("keeps each row of the last grouping on a phone after Show all until the next grouping loads, then shows ten of it", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    Element.prototype.scrollIntoView = vi.fn()
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution"
+      ? Array.from({ length: 12 }, (_, index) => row(`r${index + 1}`, (12 - index) * 1024, 0, { width: "total" }))
+      : bucket === "day" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: "day" })) : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("t10.test")
+    fireEvent.click(screen.getByText("table.showAll"))
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+
+    fireEvent.keyDown(screen.getByText("table.groupBy").parentElement!.querySelector("[role=combobox]")!, { key: "Enter" })
+    fireEvent.click(await screen.findByRole("option", { name: "table.groupings.resolution" }))
+
+    await vi.waitFor(() => expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("true"))
+    expect(within(screen.getByRole("table")).getByText("t12.test")).toBeTruthy()
+
+    release()
+    await within(screen.getByRole("table")).findByText("r10")
+    expect(within(screen.getByRole("table")).queryByText("r11")).toBeNull()
   })
 })
 
