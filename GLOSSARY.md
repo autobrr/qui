@@ -183,6 +183,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Condition**: A test of one torrent field against a value with an operator. Conditions combine with AND and OR into the condition tree of a rule. _Avoid_: Filter, criterion.
 - **Sort value**: What a workflow sorts or scores torrents by for one field, a number or text. It can differ from what a Condition compares. ADDED_ON sorts by date added, while a Condition compares age. _Avoid_: sort key.
 - **Action**: What a rule does to each torrent that its conditions match, for example tag, delete, pause or move. A rule has one or more actions. Delete runs alone. _Avoid_: Effect, step.
+- **Export to Instance**: The Action that adds a torrent to another instance from its `.torrent` file and skips the hash check by default. It copies no files, so the target must already hold the data. _Avoid_: transfer, move (a move changes the save path on one instance).
 - **Shared-file group**: Torrents connected by shared file paths, directly or through another member. _Avoid_: Duplicate group.
 - **Delete trigger**: A torrent whose own delete condition matched. This is different from a torrent that a Shared-file group or cross-seed expansion pulls in. _Avoid_: Direct match.
 - **Deletion selection**: The torrents that the delete rules of a run choose to remove: the Delete triggers and the torrents that their expansion pulls in. The preview shows the Deletion selection of one rule. _Avoid_: Shared-file group (when referring to selected torrents).
@@ -214,6 +215,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Settings**: Configuration that qui stores itself, for example the tracker reannounce and orphan scan configuration. _Avoid_: Preferences (when qui stores the value).
 - **Preference catalog**: The qui list of qBittorrent preferences that says, for each key, where qui shows it and whether a user can change it. _Avoid_: Preference schema, field registry.
 - **Network binding**: The network interface and the IP address that qBittorrent uses for peer connections. _Avoid_: Bind interface, outgoing interface.
+- **Filesystem access**: How qui reaches the files of an instance: local, remote over SSH after the user confirms the host key, or none. The access mode decides which file operations qui may run on the instance, for example reading file contents or writing. _Avoid_: Capability (that comes from the qBittorrent version), remote instance (for an instance without SSH access).
 - **Capability**: something an instance can do or send because of its qBittorrent version, for example editing trackers or sending Popularity in the torrent list. A field that the instance does not send is unknown, not zero. _Avoid_: support flag, feature flag.
 
 ## Allowed Hosts
