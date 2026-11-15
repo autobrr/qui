@@ -13,7 +13,6 @@ import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { YearView } from "@/components/statistics/YearView"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
@@ -200,7 +199,6 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   const shown: PageRows = keep && lastComplete ? lastComplete : { series, period, chart: chart.rows, allTime: allTime.rows, compared: compared.rows, before: before.rows, grouped: grouped.rows, torrents: top.torrents, library: library.rows }
 
   const since = useMemo(() => recordingSince(selected), [selected])
-  const partial = period.from !== undefined && selected.length > 0 && !recordedFrom(selected, period.from)
   const totals = useMemo<TransferHistoryBytes | undefined>(
     () => shown.period.from ? shown.chart && sumBytes(shown.chart.flat(), false) : shown.allTime && sumBytes(shown.allTime.flat(), true),
     [shown.period.from, shown.chart, shown.allTime]
@@ -272,33 +270,35 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
     />
   )
   const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
+  const recording = since ? t("recordingSince", { date: formatDay(since) }) : !statusQuery.isPending && t("notRecording")
   // The period choice and the instance selection. A new one starts the lists of deletes and of top torrents again at their first rows.
   const listScope = `${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`
 
   return (
     <div className="space-y-4 p-4 sm:space-y-6 lg:p-6">
-      <PageHeader
-        title={t("title")}
-        description={
-          <span className="inline-flex flex-wrap items-center gap-2">
-            {since ? t("recordingSince", { date: formatDay(since) }) : !statusQuery.isPending && t("notRecording")}
-            {partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-yellow-600 dark:text-yellow-500">{t("partial")}</Badge>}
-          </span>
-        }
-        actions={narrow ? (
+      {narrow ? (
+        // On a phone, the controls take a row below the description, so that the description stays under the title.
+        <div className="space-y-3">
+          <PageHeader title={t("title")} description={recording} />
           <div className={cn("flex min-w-0 items-center gap-1.5", instanceFilter && "max-sm:w-full")}>
             {periodPicker}
             {instanceFilter}
             <SeriesColorPicker />
           </div>
-        ) : (
-          <>
-            <SeriesColorPicker />
-            {instanceFilter}
-            {periodPicker}
-          </>
-        )}
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title={t("title")}
+          description={recording}
+          actions={(
+            <>
+              <SeriesColorPicker />
+              {instanceFilter}
+              {periodPicker}
+            </>
+          )}
+        />
+      )}
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
