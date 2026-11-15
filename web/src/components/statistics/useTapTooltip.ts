@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type 
 
 export interface TapTooltip {
   // Spread on the element around the chart.
-  wrapper: { ref: RefObject<HTMLDivElement | null>; onClick?: (event: MouseEvent) => void; onKeyDown?: () => void }
+  wrapper: { ref: RefObject<HTMLDivElement | null>; onClick?: (event: MouseEvent) => void; onKeyDown?: () => void; style?: CSSProperties }
   // Spread on the recharts Tooltip. Without active, recharts shows the tooltip on hover.
   tooltip: { active?: boolean; wrapperStyle: CSSProperties }
 }
@@ -16,13 +16,16 @@ export interface TapTooltip {
 /**
  * On a screen without hover, a tap on the plot of the chart opens its tooltip at the tapped point, or moves it there. A
  * tap on the tooltip, a tap outside the plot, or a scroll closes it. A finger that scrolls the page across the chart
- * opens nothing. A screen with hover keeps the tooltip of recharts, and so does a key on the chart, until the next tap.
+ * opens nothing. A tap that opens the tooltip scrolls the whole chart into view above the bottom nav. A screen with hover
+ * keeps the tooltip of recharts, and so does a key on the chart, until the next tap.
  */
 export function useTapTooltip(): TapTooltip {
   const touch = useMediaQuery("(hover: none)")
   const ref = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [keyboard, setKeyboard] = useState(false)
+  // The scroll that a tap starts ends before this time, and does not close the tooltip that the tap opened.
+  const ownScrollUntil = useRef(0)
 
   useEffect(() => {
     if (!open) {
@@ -33,7 +36,11 @@ export function useTapTooltip(): TapTooltip {
         setOpen(false)
       }
     }
-    const close = () => setOpen(false)
+    const close = () => {
+      if (Date.now() >= ownScrollUntil.current) {
+        setOpen(false)
+      }
+    }
     document.addEventListener("pointerdown", outside)
     window.addEventListener("scroll", close, { capture: true, passive: true })
     return () => {
@@ -57,9 +64,16 @@ export function useTapTooltip(): TapTooltip {
       ref,
       onClick: event => {
         setKeyboard(false)
-        setOpen(!onTooltip(event) && onPlot(event))
+        const opens = !onTooltip(event) && onPlot(event)
+        setOpen(opens)
+        if (opens) {
+          ownScrollUntil.current = Date.now() + 600
+          ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+        }
       },
       onKeyDown: () => setKeyboard(true),
+      // The bottom nav of a phone covers the end of the screen, so the chart scrolls into view above it.
+      style: { scrollMarginBottom: "calc(4rem + env(safe-area-inset-bottom))" },
     },
     // recharts lets taps pass through its tooltip, so the tooltip takes them here to close on a tap.
     tooltip: { active: keyboard ? undefined : open, wrapperStyle: { zIndex: 1, pointerEvents: "auto" } },

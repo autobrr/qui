@@ -30,6 +30,8 @@ function Chart() {
 
 function renderChart(hover: boolean): HTMLElement {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: !hover && query === "(hover: none)", addEventListener: () => {}, removeEventListener: () => {} }))
+  // jsdom has no layout, so it has no scrollIntoView.
+  Element.prototype.scrollIntoView = vi.fn()
   render(<Chart />)
   screen.getByTestId("grid").getBoundingClientRect = () => ({ ...PLOT, x: PLOT.left, y: PLOT.top, width: PLOT.right - PLOT.left, height: PLOT.bottom - PLOT.top, toJSON: () => PLOT })
   return screen.getByTestId("chart")
@@ -43,6 +45,8 @@ function tap(element: Element, at: { clientX: number; clientY: number } = ON_PLO
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
 })
 
 describe("useTapTooltip", () => {
@@ -110,9 +114,24 @@ describe("useTapTooltip", () => {
   })
 
   // regression: #4179
+  it("scrolls the chart into view above the bottom nav on a tap that opens the tooltip, and keeps it open through that scroll", () => {
+    const chart = renderChart(false)
+
+    tap(chart)
+
+    expect(chart.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" })
+    expect(chart.style.scrollMarginBottom).toBe("calc(4rem + env(safe-area-inset-bottom))")
+    fireEvent.scroll(window)
+    expect(chart.getAttribute("data-active")).toBe("true")
+  })
+
+  // regression: #4179
   it("closes the tooltip when the page scrolls", () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
     const chart = renderChart(false)
     tap(chart)
+    // A scroll after the scroll of the tap is one of the user.
+    vi.setSystemTime(Date.now() + 1000)
 
     fireEvent.scroll(window)
 
