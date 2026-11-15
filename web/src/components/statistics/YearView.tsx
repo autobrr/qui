@@ -55,6 +55,7 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
           detail={summary.bestMonth && formatBytes(summary.bestMonth.uploaded)}
         />
         <YearFact
+          className="col-span-2 sm:col-span-1"
           label={t("yearView.weekends")}
           value={summary.weekendShare === undefined ? undefined : formatPercent.format(summary.weekendShare)}
           detail={t("yearView.weekendsDetail")}
@@ -155,11 +156,11 @@ function Calendar({ days }: { days: CalendarDay[] }) {
   )
 }
 
-function YearFact({ label, value, detail }: { label: string; value?: string; detail?: string }) {
+function YearFact({ label, value, detail, className }: { label: string; value?: string; detail?: string; className?: string }) {
   return (
-    <div className="border-l-2 pl-3" style={{ borderLeftColor: "var(--color-heat)" }}>
+    <div className={cn("min-w-0 border-l-2 pl-3", className)} style={{ borderLeftColor: "var(--color-heat)" }}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-xl font-semibold tabular-nums" title={value}>{value ?? "–"}</dd>
+      <dd className="mt-0.5 truncate text-lg font-semibold tabular-nums sm:text-xl" title={value}>{value ?? "–"}</dd>
       {detail && <dd className="truncate text-sm text-muted-foreground" title={detail}>{detail}</dd>}
     </div>
   )
