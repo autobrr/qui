@@ -1208,7 +1208,7 @@
         "notSupportedForScoreMultiplier": "Nepodporováno pro násobitele skóre"
       },
       "conditionsLabel": "Podmínky (volitelné)",
-      "mixedActionConditions": "Akce v tomto pravidle mají různé podmínky. Editor zobrazuje jen jednu z nich a uložení ji použije pro všechny akce.",
+      "mixedActionConditions": "Každá akce v tomto postupu automatizace má vlastní podmínku. qui nyní používá jednu podmínku pro každý postup automatizace. Pokud uložíte, každá akce dostane podmínku uvedenou výše. Chcete-li zachovat ostatní, vytvořte nejprve jeden postup automatizace pro každou podmínku.",
       "actions": {
         "title": "Akce",
         "addAction": "Přidat akci",

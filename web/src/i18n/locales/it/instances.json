@@ -1173,7 +1173,7 @@
         "notSupportedForScoreMultiplier": "Non supportato per i moltiplicatori di punteggio"
       },
       "conditionsLabel": "Condizioni (facoltativo)",
-      "mixedActionConditions": "Le azioni di questa regola hanno condizioni diverse. L'editor ne mostra solo una e il salvataggio la applica a tutte le azioni.",
+      "mixedActionConditions": "Ogni azione di questo workflow ha la propria condizione. Ora qui usa una sola condizione per workflow. Se salvi, ogni azione riceve la condizione qui sopra. Per conservare le altre, crea prima un workflow per ogni condizione.",
       "actions": {
         "title": "Azione",
         "addAction": "Aggiungi un'azione",

@@ -825,7 +825,7 @@
         "notSupportedForScoreMultiplier": "No compatible amb els multiplicadors de puntuació"
       },
       "conditionsLabel": "Condicions (opcional)",
-      "mixedActionConditions": "Les accions d'aquesta regla tenen condicions diferents. L'editor només en mostra una, i en desar s'aplica a totes les accions.",
+      "mixedActionConditions": "Cada acció d'aquest workflow té la seva pròpia condició. Ara qui fa servir una sola condició per workflow. Si deses, totes les accions rebran la condició de dalt. Per conservar les altres, crea abans un workflow per a cada condició.",
       "actions": {
         "title": "Acció",
         "addAction": "Afegeix una acció",

@@ -1004,7 +1004,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         if (conditions) {
           exprGrouping = conditions.grouping
-          actionCondition = firstActionCondition(conditions)
+          actionCondition = firstActionCondition(rule)
 
           if (conditions.speedLimits?.enabled) {
             speedLimitsEnabled = true
