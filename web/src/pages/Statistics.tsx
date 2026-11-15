@@ -354,11 +354,8 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
       </Card>
 
       <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
-        <CardHeader className="px-4 pb-4 sm:px-6">
-          <CardTitle>{t("table.title")}</CardTitle>
-          <CardDescription>{grouping === "tracker" ? t("table.descriptionTracker") : grouping === "category" ? t("table.descriptionCategory") : t("table.descriptionRelease")}</CardDescription>
-        </CardHeader>
         <GroupTable
+          listScope={listScope}
           grouping={grouping}
           onGroupingChange={setGrouping}
           rows={loading ? undefined : tableRows}

@@ -7,6 +7,7 @@ import { Facts, type FactItem } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
 import { RowLimit } from "@/components/statistics/RowLimit"
 import { TorrentMarks, TorrentName } from "@/components/statistics/TopTorrents"
+import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -62,6 +63,8 @@ interface GroupTableProps {
   since?: Date
   // The period choice and the instance selection, so that the detail band keeps its chart only for the same series.
   series: string
+  // The period choice with the days of a custom range, and the instance selection. A new one shows ten rows on a phone again.
+  listScope: string
   instances: TransferHistoryInstance[]
   // The Tracker groups that have a series color in the chart, in series order.
   seriesGroups: string[]
@@ -74,7 +77,7 @@ interface GroupTableProps {
  * The table of the period by Tracker group, category, or release attribute. A click on a row opens its detail band below
  * it. A narrow table shows each row as a line with the upload, and the other numbers below the name.
  */
-export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded, liveError, period, since, series, instances, seriesGroups, displayName, onPrefetch }: GroupTableProps) {
+export function GroupTable({ listScope, grouping, onGroupingChange, rows, error, liveLoaded, liveError, period, since, series, instances, seriesGroups, displayName, onPrefetch }: GroupTableProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const narrow = useIsPhone()
@@ -84,14 +87,15 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
 
   // Only a switch of the grouping keeps the old rows, so that the table never shows the numbers of another period or selection.
   const scope = `${period.from?.getTime()}:${period.to.getTime()}:${instances.map(instance => instance.instanceId).join(",")}`
-  const [kept, setKept] = useState<{ scope: string; grouping: TableGrouping; series: string; rows: GroupTotals[] }>()
-  if (rows && (kept?.rows !== rows || kept.grouping !== grouping || kept.scope !== scope || kept.series !== series)) {
-    setKept({ scope, grouping, series, rows })
+  const limitKey = `${listScope}:${grouping}`
+  const [kept, setKept] = useState<{ scope: string; grouping: TableGrouping; limitKey: string; rows: GroupTotals[] }>()
+  if (rows && (kept?.rows !== rows || kept.grouping !== grouping || kept.scope !== scope || kept.limitKey !== limitKey)) {
+    setKept({ scope, grouping, limitKey, rows })
   }
   const last = kept?.scope === scope ? kept : undefined
   const shownRows = rows ?? last?.rows
   const shownGrouping = rows ? grouping : last?.grouping ?? grouping
-  const shownSeries = rows ? series : last?.series ?? series
+  const shownLimitKey = rows ? limitKey : last?.limitKey ?? limitKey
   const stale = !rows && last !== undefined
   const tracker = shownGrouping === "tracker"
 
@@ -141,144 +145,150 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
     onGroupingChange(value as TableGrouping)
   }
 
-  const allRows = !narrow || allRowsOf === shownSeries
+  const allRows = !narrow || allRowsOf === shownLimitKey
   const visible = shownRows && !allRows ? shownRows.slice(0, PHONE_ROWS) : shownRows
 
   return (
-    <div className="space-y-3">
-      {narrow ? (
-        <div className="flex items-center gap-2 px-4 sm:px-6">
-          <span className="shrink-0 text-xs text-muted-foreground">{t("table.groupBy")}</span>
-          <Select value={grouping} onValueChange={pick} onOpenChange={opened => opened && onPrefetch?.()}>
-            <SelectTrigger size="sm" className="min-w-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TABLE_GROUPINGS.map(value => <SelectItem key={value} value={value}>{groupingLabel(value)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {stale && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-        </div>
-      ) : (
-        <div className="flex items-center gap-3 overflow-x-auto px-6">
-          <span className="shrink-0 text-xs text-muted-foreground">{t("table.groupBy")}</span>
-          <Tabs value={grouping} onValueChange={pick}>
-            <TabsList>
-              {TABLE_GROUPINGS.map(value => (
-                <TabsTrigger key={value} value={value} className="px-3" onPointerEnter={() => onPrefetch?.(value)} onFocus={() => onPrefetch?.(value)}>
-                  {groupingLabel(value)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          {stale && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
-        </div>
-      )}
-      {error ? (
-        <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: error.message })}</div>
-      ) : !shownRows || !visible ? (
-        <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-      ) : shownRows.length === 0 ? (
-        <div className="flex h-24 items-center justify-center px-4 text-sm text-muted-foreground sm:px-6">{t("chart.empty")}</div>
-      ) : (
-        <div className={cn("@container border-t transition-opacity", stale && "pointer-events-none opacity-60")} aria-busy={stale} data-chart={CHART_ID}>
-          <ChartStyle id={CHART_ID} config={config} />
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-full pl-4 @max-xl:pr-4 sm:pl-6">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>{groupingLabel(shownGrouping)}</span>
-                    <span className="@xl:hidden">{t("table.columns.uploaded")}</span>
-                  </div>
-                </TableHead>
-                <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.uploaded")}</TableHead>
-                <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.downloaded")}</TableHead>
-                <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.ratio")}</TableHead>
-                <TableHead className={cn("hidden pr-6 text-right @xl:table-cell", tracker && "@4xl:pr-2")}>{t("table.columns.buffer")}</TableHead>
-                {tracker && <>
-                  <TableHead className="hidden text-right @4xl:table-cell">{t("table.columns.torrents")}</TableHead>
-                  <TableHead className="hidden text-right @4xl:table-cell">{t("table.columns.size")}</TableHead>
-                  <TableHead className="hidden pr-6 text-right @4xl:table-cell">{t("table.columns.seeded")}</TableHead>
-                </>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visible.map(row => {
-                const expanded = open === row.group
-                const seriesIndex = tracker ? seriesGroups.indexOf(row.group) : -1
-                const name = displayName(row.group, shownGrouping)
-                return (
-                  <Fragment key={row.group}>
-                    <TableRow className={cn("cursor-pointer", expanded && "bg-muted hover:bg-muted")} onClick={() => setOpen(expanded ? undefined : row.group)}>
-                      <TableCell className="w-full max-w-0 pl-4 font-medium @max-xl:pr-4 sm:pl-6">
-                        <button type="button" aria-expanded={expanded} className="flex w-full min-w-0 items-center gap-2 text-left">
-                          {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
-                          {tracker && <span className="size-2 shrink-0 rounded-[2px]" style={{ background: seriesIndex >= 0 ? `var(--color-s${seriesIndex})` : "var(--muted-foreground)", opacity: seriesIndex >= 0 ? 1 : 0.45 }} />}
-                          <span className="min-w-0 flex-1 truncate">{name}</span>
-                          <span className="shrink-0 tabular-nums @xl:hidden" data-narrow>{formatBytes(row.uploaded)}</span>
-                        </button>
-                        <Facts items={periodFacts(row, "hidden @md:inline")} className="@xl:hidden" />
-                        {tracker && <Facts items={liveFacts(row.live)} className="hidden @xl:flex @4xl:hidden" />}
-                      </TableCell>
-                      <PeriodCells bytes={row} trailing={!tracker} />
-                      {tracker && liveValues(row.live).map((value, index) => (
-                        <TableCell key={index} className={cn("hidden text-right tabular-nums text-muted-foreground @4xl:table-cell", index === 2 && "pr-6")}>{value}</TableCell>
-                      ))}
-                    </TableRow>
-                    {expanded && total && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={columns} className="p-0">
-                          <GroupDetail
-                            group={row.group}
-                            grouping={shownGrouping}
-                            row={row}
-                            total={total}
-                            period={period}
-                            since={since}
-                            series={series}
-                            instances={instances}
-                            seriesIndex={seriesIndex}
-                            name={name}
-                            liveFacts={tracker ? liveFacts(row.live) : undefined}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                )
-              })}
-            </TableBody>
-            {total && (
-              <TableFooter>
+    <>
+      <CardHeader className="px-4 pb-4 sm:px-6">
+        <CardTitle>{t("table.title")}</CardTitle>
+        <CardDescription>{tracker ? t("table.descriptionTracker") : shownGrouping === "category" ? t("table.descriptionCategory") : t("table.descriptionRelease")}</CardDescription>
+      </CardHeader>
+      <div className="space-y-3">
+        {narrow ? (
+          <div className="flex items-center gap-2 px-4 sm:px-6">
+            <span className="shrink-0 text-xs text-muted-foreground">{t("table.groupBy")}</span>
+            <Select value={grouping} onValueChange={pick} onOpenChange={opened => opened && onPrefetch?.()}>
+              <SelectTrigger size="sm" className="min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TABLE_GROUPINGS.map(value => <SelectItem key={value} value={value}>{groupingLabel(value)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {stale && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 overflow-x-auto px-6">
+            <span className="shrink-0 text-xs text-muted-foreground">{t("table.groupBy")}</span>
+            <Tabs value={grouping} onValueChange={pick}>
+              <TabsList>
+                {TABLE_GROUPINGS.map(value => (
+                  <TabsTrigger key={value} value={value} className="px-3" onPointerEnter={() => onPrefetch?.(value)} onFocus={() => onPrefetch?.(value)}>
+                    {groupingLabel(value)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            {stale && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
+          </div>
+        )}
+        {error ? (
+          <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: error.message })}</div>
+        ) : !shownRows || !visible ? (
+          <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+        ) : shownRows.length === 0 ? (
+          <div className="flex h-24 items-center justify-center px-4 text-sm text-muted-foreground sm:px-6">{t("chart.empty")}</div>
+        ) : (
+          <div className={cn("@container border-t transition-opacity", stale && "pointer-events-none opacity-60")} aria-busy={stale} data-chart={CHART_ID}>
+            <ChartStyle id={CHART_ID} config={config} />
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell className="pl-4 @max-xl:pr-4 sm:pl-6">
+                  <TableHead className="w-full pl-4 @max-xl:pr-4 sm:pl-6">
                     <div className="flex items-center justify-between gap-2">
-                      <span>{t("table.total")}</span>
-                      <span className="tabular-nums @xl:hidden" data-narrow>{formatBytes(total.uploaded)}</span>
+                      <span>{groupingLabel(shownGrouping)}</span>
+                      <span className="@xl:hidden">{t("table.columns.uploaded")}</span>
                     </div>
-                    <Facts items={periodFacts(total)} className="pl-0 @xl:hidden" />
-                    {tracker && <Facts items={liveFacts(liveTotal)} className="pl-0 @4xl:hidden" />}
-                  </TableCell>
-                  <PeriodCells bytes={total} trailing={!tracker} />
-                  {tracker && liveValues(liveTotal).map((value, index) => (
-                    <TableCell key={index} className={cn("hidden text-right tabular-nums @4xl:table-cell", index === 2 && "pr-6")}>{value}</TableCell>
-                  ))}
+                  </TableHead>
+                  <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.uploaded")}</TableHead>
+                  <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.downloaded")}</TableHead>
+                  <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.ratio")}</TableHead>
+                  <TableHead className={cn("hidden pr-6 text-right @xl:table-cell", tracker && "@4xl:pr-2")}>{t("table.columns.buffer")}</TableHead>
+                  {tracker && <>
+                    <TableHead className="hidden text-right @4xl:table-cell">{t("table.columns.torrents")}</TableHead>
+                    <TableHead className="hidden text-right @4xl:table-cell">{t("table.columns.size")}</TableHead>
+                    <TableHead className="hidden pr-6 text-right @4xl:table-cell">{t("table.columns.seeded")}</TableHead>
+                  </>}
                 </TableRow>
-              </TableFooter>
+              </TableHeader>
+              <TableBody>
+                {visible.map(row => {
+                  const expanded = open === row.group
+                  const seriesIndex = tracker ? seriesGroups.indexOf(row.group) : -1
+                  const name = displayName(row.group, shownGrouping)
+                  return (
+                    <Fragment key={row.group}>
+                      <TableRow className={cn("cursor-pointer", expanded && "bg-muted hover:bg-muted")} onClick={() => setOpen(expanded ? undefined : row.group)}>
+                        <TableCell className="w-full max-w-0 pl-4 font-medium @max-xl:pr-4 sm:pl-6">
+                          <button type="button" aria-expanded={expanded} className="flex w-full min-w-0 items-center gap-2 text-left">
+                            {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
+                            {tracker && <span className="size-2 shrink-0 rounded-[2px]" style={{ background: seriesIndex >= 0 ? `var(--color-s${seriesIndex})` : "var(--muted-foreground)", opacity: seriesIndex >= 0 ? 1 : 0.45 }} />}
+                            <span className="min-w-0 flex-1 truncate">{name}</span>
+                            <span className="shrink-0 tabular-nums @xl:hidden" data-narrow>{formatBytes(row.uploaded)}</span>
+                          </button>
+                          <Facts items={periodFacts(row, "hidden @md:inline")} className="@xl:hidden" />
+                          {tracker && <Facts items={liveFacts(row.live)} className="hidden @xl:flex @4xl:hidden" />}
+                        </TableCell>
+                        <PeriodCells bytes={row} trailing={!tracker} />
+                        {tracker && liveValues(row.live).map((value, index) => (
+                          <TableCell key={index} className={cn("hidden text-right tabular-nums text-muted-foreground @4xl:table-cell", index === 2 && "pr-6")}>{value}</TableCell>
+                        ))}
+                      </TableRow>
+                      {expanded && total && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={columns} className="p-0">
+                            <GroupDetail
+                              group={row.group}
+                              grouping={shownGrouping}
+                              row={row}
+                              total={total}
+                              period={period}
+                              since={since}
+                              series={series}
+                              instances={instances}
+                              seriesIndex={seriesIndex}
+                              name={name}
+                              liveFacts={tracker ? liveFacts(row.live) : undefined}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </TableBody>
+              {total && (
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="pl-4 @max-xl:pr-4 sm:pl-6">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{t("table.total")}</span>
+                        <span className="tabular-nums @xl:hidden" data-narrow>{formatBytes(total.uploaded)}</span>
+                      </div>
+                      <Facts items={periodFacts(total)} className="pl-0 @xl:hidden" />
+                      {tracker && <Facts items={liveFacts(liveTotal)} className="pl-0 @4xl:hidden" />}
+                    </TableCell>
+                    <PeriodCells bytes={total} trailing={!tracker} />
+                    {tracker && liveValues(liveTotal).map((value, index) => (
+                      <TableCell key={index} className={cn("hidden text-right tabular-nums @4xl:table-cell", index === 2 && "pr-6")}>{value}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableFooter>
+              )}
+            </Table>
+            {narrow && shownRows.length > PHONE_ROWS && (
+              <RowLimit shown={visible.length} total={shownRows.length} all={allRows} onAllChange={all => setAllRowsOf(all ? shownLimitKey : undefined)} />
             )}
-          </Table>
-          {narrow && shownRows.length > PHONE_ROWS && (
-            <RowLimit shown={visible.length} total={shownRows.length} all={allRows} onAllChange={all => setAllRowsOf(all ? shownSeries : undefined)} />
-          )}
+          </div>
+        )}
+        <div className="space-y-1 px-4 text-xs text-muted-foreground sm:px-6">
+          {tracker && liveError && <p className="text-destructive">{t("table.liveError", { message: liveError.message })}</p>}
+          {tracker ? <p>{t("table.liveNote")}</p> : shownGrouping === "category" ? <p>{t("table.categoryNote")}</p> : <p>{t("table.releaseNote")}</p>}
+          {withBaseline && <p>{t("table.baselineNote")}</p>}
         </div>
-      )}
-      <div className="space-y-1 px-4 text-xs text-muted-foreground sm:px-6">
-        {tracker && liveError && <p className="text-destructive">{t("table.liveError", { message: liveError.message })}</p>}
-        {tracker ? <p>{t("table.liveNote")}</p> : shownGrouping === "category" ? <p>{t("table.categoryNote")}</p> : <p>{t("table.releaseNote")}</p>}
-        {withBaseline && <p>{t("table.baselineNote")}</p>}
       </div>
-    </div>
+    </>
   )
 }
 

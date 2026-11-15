@@ -993,6 +993,52 @@ describe("Statistics", () => {
     await expectTile("tiles.unique", "– | tiles.uniqueNone")
   })
 
+  it("keeps the description of the last grouping until the rows of the next grouping load", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" ? [row("1080p", 1024, 0, { width: "total" })] : bucket === "day" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("a.test")
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+    fireEvent.mouseDown(screen.getByText("table.groupings.resolution"), { button: 0 })
+
+    await vi.waitFor(() => expect(requests.some(request => request.groupBy === "resolution" && request.bucket === "total")).toBe(true))
+    expect(screen.getByText("table.descriptionTracker")).toBeTruthy()
+    expect(screen.queryByText("table.descriptionRelease")).toBeNull()
+
+    release()
+    expect(await screen.findByText("table.descriptionRelease")).toBeTruthy()
+  })
+
+  it("shows ten rows of the table again on a phone after another custom range", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    const day = (daysAgo: number) => {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo)
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+    }
+    const applyRange = async (firstDaysAgo: number) => {
+      fireEvent.click(screen.getByRole("button", { name: "periods.custom" }))
+      fireEvent.change(await screen.findByLabelText("customRange.from"), { target: { value: day(firstDaysAgo) } })
+      fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: day(0) } })
+      fireEvent.click(screen.getByText("customRange.apply"))
+    }
+    answer = ({ bucket }) => bucket === "day" || bucket === "hour" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: bucket })) : []
+    renderPage()
+    await applyRange(10)
+    await within(await screen.findByRole("table")).findByText("t10.test")
+    fireEvent.click(screen.getByText("table.showAll"))
+    expect(within(screen.getByRole("table")).getByText("t12.test")).toBeTruthy()
+
+    await applyRange(5)
+
+    await vi.waitFor(() => expect(screen.getByText("table.shown shown=10 total=12")).toBeTruthy())
+    expect(within(screen.getByRole("table")).queryByText("t11.test")).toBeNull()
+  })
+
   it("keeps the rows of the last grouping, dimmed, until the rows of the next grouping load", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
