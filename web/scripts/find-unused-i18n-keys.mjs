@@ -229,8 +229,9 @@ function loadEnglishBundles() {
   return bundles
 }
 
-// A path through a symlink, such as /var on macOS, resolves before the compare.
-if (fs.realpathSync(process.argv[1]) === scriptPath) {
+// A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
+// names no file.
+if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const localeKeys = collectLocaleKeys(loadEnglishBundles())
   const references = mergeReferences(
     walkFiles(srcRoot).map((file) => collectKeyReferencesFromSource(

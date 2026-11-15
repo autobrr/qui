@@ -459,8 +459,9 @@ function printMatches(matches) {
   console.log(`\nFound ${matches.length} hardcoded string matches across ${grouped.size} files.`)
 }
 
-// A path through a symlink, such as /var on macOS, resolves before the compare.
-if (fs.realpathSync(process.argv[1]) === scriptPath) {
+// A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
+// names no file.
+if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const files = walkFiles(srcRoot)
   const matches = findHardcodedStringsInFiles(files)
 
