@@ -78,3 +78,10 @@ test("ignores a key prop on its own line", (t) => {
 
   assert.equal(result.status, 0, result.stdout + result.stderr)
 })
+
+// regression: #4178
+test("ignores a key prop after an arrow function prop", (t) => {
+  const result = scan(t, "<Row onOpen={() => open(notice)} key={notice.kind} />\n")
+
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+})
