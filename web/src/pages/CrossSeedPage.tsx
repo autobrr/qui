@@ -45,7 +45,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }))
 
   return (
-    <div className="space-y-6 p-4 lg:p-6 pb-16">
+    <div className="space-y-6 p-4 lg:p-6">
       <PageHeader
         title={t("pageTitle")}
         description={t("pageDescription")}

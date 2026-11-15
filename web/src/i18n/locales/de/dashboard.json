@@ -102,7 +102,6 @@
   },
   "attention": {
     "title": "Braucht Aufmerksamkeit",
-    "none": "Nichts. Jede Instanz antwortet, und kein Torrent meldet ein Problem.",
     "offline": "{{name}} ist offline",
     "lowDisk": "{{name}}: {{free}} frei",
     "firewalled": "{{name}} ist hinter einer Firewall"

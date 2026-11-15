@@ -6,13 +6,20 @@
 import { api } from "@/lib/api"
 import { HISTORY_WRITE_MS } from "@/lib/statistics"
 import type { TransferHistoryInstance, TransferHistoryQuery, TransferHistoryRow } from "@/types"
-import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
 import { useCallback } from "react"
 
 export interface InstanceRows {
   rows?: TransferHistoryRow[][]
   error?: Error
   pending: boolean
+}
+
+function transferQuery(instanceId: number, query: TransferHistoryQuery | undefined) {
+  return {
+    queryKey: ["transfer-history", instanceId, query?.groupBy, query?.groupOf, query?.group, query?.limit, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
+    queryFn: () => api.getTransferHistory(instanceId, query!),
+  }
 }
 
 /** Reads one transfer query for each instance. The rows are undefined while a query is pending or when no query runs. */
@@ -24,13 +31,20 @@ export function useTransferHistoryRows(instances: TransferHistoryInstance[], que
     pending: enabled && results.some(result => result.isPending),
   }), [enabled])
   return useQueries({
-    queries: instances.map(instance => ({
-      queryKey: ["transfer-history", instance.instanceId, query?.groupBy, query?.groupOf, query?.group, query?.limit, query?.bucket, query?.timeZone, query?.from?.toISOString(), query?.to.toISOString()],
-      queryFn: () => api.getTransferHistory(instance.instanceId, query!),
-      enabled,
-    })),
+    queries: instances.map(instance => ({ ...transferQuery(instance.instanceId, query), enabled })),
     combine,
   })
+}
+
+/** Loads the rows of a query into the cache, so that a later useTransferHistoryRows with the same query has them at once. */
+export function usePrefetchTransferHistoryRows() {
+  const queryClient = useQueryClient()
+  return useCallback((instances: TransferHistoryInstance[], query: TransferHistoryQuery) => {
+    for (const instance of instances) {
+      // The rows change only when qui writes the history, so a second preload in that time asks for nothing.
+      void queryClient.prefetchQuery({ ...transferQuery(instance.instanceId, query), staleTime: HISTORY_WRITE_MS })
+    }
+  }, [queryClient])
 }
 
 /** Reads the instances that have Transfer history, again each time qui writes the history. */

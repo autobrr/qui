@@ -241,7 +241,7 @@ export function RSSPage({
   // No instances view
   if (!hasInstances) {
     return (
-      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6 pb-16">
+      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6">
         <PageHeader title={t("pageTitle")} description={t("pageDescription")} />
         <div className="flex flex-1 items-center justify-center">
           <Card className="w-full max-w-md">
@@ -261,7 +261,7 @@ export function RSSPage({
   // No instance selected view
   if (!instanceId) {
     return (
-      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6 pb-16">
+      <div className="flex flex-1 flex-col space-y-6 p-4 lg:p-6">
         <PageHeader title={t("pageTitle")} description={t("pageDescription")} actions={renderInstanceSelector()} />
         <div className="flex flex-1 items-center justify-center">
           <Card className="w-full max-w-md">

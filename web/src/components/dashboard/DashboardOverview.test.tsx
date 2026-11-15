@@ -323,6 +323,14 @@ describe("DashboardOverview instances", () => {
     ])
   })
 
+  // regression: #4179
+  it("leaves out Needs attention when nothing needs an action", () => {
+    renderOverview([stats(1), stats(2)])
+
+    expect(screen.getByRole("region", { name: "library.title" })).toBeTruthy()
+    expect(screen.queryByRole("region", { name: "attention.title" })).toBeNull()
+  })
+
   // regression: #4141
   it("shows a free space that qBittorrent cannot read as unknown, not as an amount", async () => {
     renderOverview([stats(1, {}, {}, { free_space_on_disk: -1 })])

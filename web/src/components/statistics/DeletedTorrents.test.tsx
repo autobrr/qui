@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -72,11 +72,12 @@ function renderTable(instances: TransferHistoryInstance[]) {
     </QueryClientProvider>
   )
   const view = render(table(1e12))
-  return { moveTo: (to: number) => view.rerender(table(to)) }
+  return { queryClient, moveTo: (to: number) => view.rerender(table(to)) }
 }
 
 function shownNames(): string[] {
-  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title]")].map(node => node.getAttribute("title") ?? "")
+  // A phone row puts the name in a button when the row opens, and in a div when it has nothing more to show.
+  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title], tbody tr td:nth-child(2) > button > span[title], tbody tr td:nth-child(2) > div > span[title]")].map(node => node.getAttribute("title") ?? "")
 }
 
 beforeEach(() => {
@@ -112,6 +113,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  // A test of Show fewer stubs it, as jsdom has no layout.
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
 })
 
 describe("DeletedTorrents", () => {
@@ -188,7 +192,7 @@ describe("DeletedTorrents", () => {
       release = resolve
     })
     moveTo(1e12 + 300_000)
-    await vi.waitFor(() => expect(requests).toHaveLength(2))
+    await vi.waitFor(() => expect(requests.filter(request => request.cause === null)).toHaveLength(2))
     expect(shownNames()).toEqual(["Built.Name.1.0-GRP"])
 
     deletesOf.set(1, [event(1, 1, 6_000, "user"), event(1, 0, 5_000, "user")])
@@ -216,6 +220,185 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(button.disabled).toBe(false))
     fireEvent.click(button)
     await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
+  })
+
+  // regression: #4179
+  it("shows the deletes that a phone loaded on Show more, also after a reload failed", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    let failing = false
+    server.use(http.get("*/api/instances/:id/transfer-history/deletes", () => failing ? HttpResponse.json({ error: "database is locked" }, { status: 500 }) : undefined))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
+    failing = true
+    // A window that gets the focus again loads the page again.
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    await vi.waitFor(() => expect(screen.getByText(/database is locked/)).toBeTruthy())
+
+    fireEvent.click(screen.getByText("deletes.more"))
+
+    expect(shownNames()).toHaveLength(15)
+  })
+
+  // regression: #4179
+  it("shows five deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
+    expect(screen.getByText("deletes.shown shown=5 total=60")).toBeTruthy()
+    for (const shown of [15, 25, 35, 45]) {
+      fireEvent.click(screen.getByText("deletes.more"))
+      await vi.waitFor(() => expect(shownNames()).toHaveLength(shown))
+    }
+    expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(0)
+
+    fireEvent.click(screen.getByText("deletes.more"))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(55))
+    expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(1)
+    fireEvent.click(screen.getByText("deletes.more"))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
+    expect(screen.queryByText("deletes.more")).toBeNull()
+  })
+
+  // regression: #4179
+  it("shows the next loaded deletes on a phone at once, also while the loaded pages load again", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
+    let release = () => {}
+    hold = new Promise(resolve => { release = resolve })
+    // A window that gets the focus again loads the page again.
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    await vi.waitFor(() => expect(requests.filter(request => request.cause === null)).toHaveLength(2))
+
+    fireEvent.click(screen.getByText("deletes.more"))
+
+    expect(shownNames()).toHaveLength(15)
+    release()
+  })
+
+  // regression: #4179
+  it("shows five deletes again on a phone after Show fewer, and keeps its button in view", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
+    expect(screen.queryByText("table.showFewer")).toBeNull()
+    fireEvent.click(screen.getByText("deletes.more"))
+    fireEvent.click(screen.getByText("deletes.more"))
+    expect(shownNames()).toHaveLength(25)
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+
+    fireEvent.click(screen.getByText("table.showFewer"))
+
+    expect(shownNames()).toHaveLength(5)
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+    expect(screen.queryByText("table.showFewer")).toBeNull()
+  })
+
+  // regression: #4179
+  it("loads the first page of the other filters of each instance after the first filter", async () => {
+    deletesOf.set(1, [event(1, 0, 5_000, "user")])
+    deletesOf.set(2, [event(2, 0, 4_000, "automation")])
+    const { queryClient } = renderTable([instance(1, "Seedbox"), instance(2, "Home")])
+
+    await vi.waitFor(() => expect(requests.filter(request => request.cause !== null).map(request => `${request.instanceId} ${request.cause} ${request.offset}`).sort()).toEqual([
+      "1 automation 0", "1 other 0", "1 user 0", "2 automation 0", "2 other 0", "2 user 0",
+    ]))
+    // The rows of a switch come from the preload only when each preload answered.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
+    fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
+
+    expect(shownNames()).toEqual(["Built.Name.1.0-GRP"])
+  })
+
+  // regression: #4179
+  it("keeps the rows of the last filter, dimmed, until the rows of the next filter load", async () => {
+    deletesOf.set(1, [event(1, 0, 5_000, "user"), event(1, 1, 4_000, "automation")])
+    let release = () => {}
+    let preloading = false
+    const automation = new Promise<void>(resolve => {
+      release = resolve
+    })
+    server.use(http.get("*/api/instances/:id/transfer-history/deletes", async ({ request }) => {
+      if (new URL(request.url).searchParams.get("cause") === "automation") {
+        preloading = true
+        await automation
+      }
+      return undefined
+    }))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(2))
+    // The preload of the filter Automations still waits, so a switch has no rows of its own yet.
+    await vi.waitFor(() => expect(preloading).toBe(true))
+    const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
+
+    fireEvent.mouseDown(trigger("deletes.filters.automation"), { button: 0 })
+
+    expect(shownNames()).toHaveLength(2)
+    expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("true")
+    release()
+    await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.1-GRP"]))
+    expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("false")
+  })
+
+  // regression: #4179
+  it("shows five deletes again on a phone after a return to an earlier filter", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
+    fireEvent.click(screen.getByText("deletes.more"))
+    expect(shownNames()).toHaveLength(15)
+    const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
+
+    fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
+    await vi.waitFor(() => expect(trigger("deletes.filters.user").getAttribute("aria-selected")).toBe("true"))
+    fireEvent.mouseDown(trigger("deletes.filters.all"), { button: 0 })
+
+    await vi.waitFor(() => expect(trigger("deletes.filters.all").getAttribute("aria-selected")).toBe("true"))
+    expect(shownNames()).toHaveLength(5)
+  })
+
+  // regression: #4179
+  it("opens a delete with a cut name on a tap anywhere on its row on a phone, and closes it on the next tap", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    // jsdom has no layout. A name that needs more lines than the row shows has a larger scroll height.
+    vi.spyOn(Element.prototype, "scrollHeight", "get").mockReturnValue(60)
+    vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(40)
+    deletesOf.set(1, [event(1, 0, 5_000, "user")])
+    renderTable([instance(1, "Seedbox")])
+    const name = (await screen.findByTitle("Built.Name.1.0-GRP")).closest("button")!
+    expect(name.getAttribute("aria-expanded")).toBe("false")
+
+    fireEvent.click(name)
+    expect(name.getAttribute("aria-expanded")).toBe("true")
+
+    fireEvent.click(name.closest("td")!.querySelector("div")!)
+    expect(name.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  // regression: #4179
+  it("offers no opener on a phone for a delete whose name and cause show in full", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, [event(1, 0, 5_000, "automation", "Tidy up")])
+    renderTable([instance(1, "Seedbox")])
+    const name = await screen.findByTitle("Built.Name.1.0-GRP")
+
+    expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
+    fireEvent.click(name)
+    expect(name.closest("tr")!.querySelector("[aria-expanded]")).toBeNull()
   })
 
   it("masks the torrent names in incognito mode", async () => {
