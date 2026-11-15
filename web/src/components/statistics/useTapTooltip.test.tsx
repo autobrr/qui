@@ -126,6 +126,17 @@ describe("useTapTooltip", () => {
   })
 
   // regression: #4179
+  it("closes the tooltip on a scroll of the user right after the tap that opened it", () => {
+    const chart = renderChart(false)
+    tap(chart)
+
+    fireEvent.touchStart(chart)
+    fireEvent.scroll(window)
+
+    expect(chart.getAttribute("data-active")).toBe("false")
+  })
+
+  // regression: #4179
   it("closes the tooltip when the page scrolls", () => {
     vi.useFakeTimers({ toFake: ["Date"] })
     const chart = renderChart(false)

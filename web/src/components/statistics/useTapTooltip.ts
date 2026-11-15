@@ -24,7 +24,8 @@ export function useTapTooltip(): TapTooltip {
   const ref = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [keyboard, setKeyboard] = useState(false)
-  // The scroll that a tap starts ends before this time, and does not close the tooltip that the tap opened.
+  // The scroll that a tap starts ends before this time, and does not close the tooltip that the tap opened. A touch or a
+  // wheel of the user ends this time at once, so that the scroll of the user closes the tooltip.
   const ownScrollUntil = useRef(0)
 
   useEffect(() => {
@@ -41,11 +42,18 @@ export function useTapTooltip(): TapTooltip {
         setOpen(false)
       }
     }
+    const userScrolls = () => {
+      ownScrollUntil.current = 0
+    }
     document.addEventListener("pointerdown", outside)
     window.addEventListener("scroll", close, { capture: true, passive: true })
+    window.addEventListener("touchstart", userScrolls, { capture: true, passive: true })
+    window.addEventListener("wheel", userScrolls, { capture: true, passive: true })
     return () => {
       document.removeEventListener("pointerdown", outside)
       window.removeEventListener("scroll", close, { capture: true })
+      window.removeEventListener("touchstart", userScrolls, { capture: true })
+      window.removeEventListener("wheel", userScrolls, { capture: true })
     }
   }, [open])
 
