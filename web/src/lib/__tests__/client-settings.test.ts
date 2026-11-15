@@ -10,8 +10,10 @@ import {
   _resetClientSettingsForTests,
   applyServerSettings,
   parseJsonBoolean,
+  readClientSetting,
   seedAndMarkReady,
   useClientSetting,
+  writeClientSetting,
   writeRaw
 } from "@/lib/client-settings"
 
@@ -72,6 +74,26 @@ describe("useClientSetting", () => {
     })
 
     expect(result.current[0]).toBe(true)
+  })
+})
+
+describe("writeClientSetting", () => {
+  it("updates a live hook and readClientSetting, and pushes the value like the hook setter", async () => {
+    seedAndMarkReady({})
+    const { result } = renderHook(() => useClientSetting("qui-test-bool", boolSetting))
+
+    act(() => writeClientSetting("qui-test-bool", true))
+
+    expect(result.current[0]).toBe(true)
+    expect(readClientSetting("qui-test-bool", boolSetting)).toBe(true)
+    await vi.runAllTimersAsync()
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
+  })
+
+  it("encodes the value with a custom serializer", () => {
+    writeClientSetting("qui-test-mode", "dense", (mode) => mode)
+
+    expect(readClientSetting("qui-test-mode", { defaultValue: "", parse: (raw) => raw })).toBe("dense")
   })
 })
 

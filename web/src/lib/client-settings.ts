@@ -398,6 +398,11 @@ export function readClientSetting<T>(key: string, options: ClientSettingOptions<
   return decode(readRaw(key), options)
 }
 
+/** Stores one setting and queues it for the server, for code outside a component. The setter of useClientSetting calls it too. */
+export function writeClientSetting<T>(key: string, value: T, serialize: (value: T) => string = defaultSerialize): void {
+  writeRaw(key, serialize(value))
+}
+
 /** Calls back after any setting changes, in this tab or another one. Returns the unsubscribe. */
 export function subscribeClientSettings(callback: () => void): () => void {
   window.addEventListener("storage", callback)
@@ -450,7 +455,7 @@ export function useClientSetting<T>(
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
       const resolved = typeof next === "function" ? (next as (prev: T) => T)(valueRef.current) : next
-      writeRaw(key, serialize(resolved))
+      writeClientSetting(key, resolved, serialize)
     },
     [key, serialize]
   )
