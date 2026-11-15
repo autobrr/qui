@@ -27,12 +27,27 @@ func TestTheTorrentDaysOfAnInstanceReadInTheOrderOfTheKey(t *testing.T) {
 		query, args := models.TorrentTransferQuery("sqlite", 1, nil, 20_000, 20_030, total)
 		rows, err := db.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+query, args...)
 		require.NoError(t, err)
+		// The second branch of the statement reads the recent days. They hold a
+		// few days, so that branch can sort its groups, and the plan leaves it out.
 		var plan strings.Builder
+		compound, branches := -1, 0
+		branchOf := make(map[int]int)
 		for rows.Next() {
 			var id, parent, notused int
 			var detail string
 			require.NoError(t, rows.Scan(&id, &parent, &notused, &detail))
-			plan.WriteString(detail + "\n")
+			switch {
+			case detail == "COMPOUND QUERY":
+				compound = id
+			case parent == compound:
+				branches++
+				branchOf[id] = branches
+			default:
+				branchOf[id] = branchOf[parent]
+			}
+			if branchOf[id] != 2 {
+				plan.WriteString(detail + "\n")
+			}
 		}
 		require.NoError(t, rows.Err())
 		require.NoError(t, rows.Close())

@@ -4,6 +4,7 @@
 package models
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -347,6 +348,11 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 		}
 		return ids[r.Hash]
 	}
+	// Rows in the order of the primary key change fewer pages of a large table.
+	slices.SortFunc(w.Counters, func(a, b *TransferHistoryRecord) int { return cmp.Compare(idOf(a), idOf(b)) })
+	slices.SortFunc(w.TorrentDays, func(a, b TransferHistoryTorrentDay) int {
+		return cmp.Or(cmp.Compare(a.Day, b.Day), cmp.Compare(idOf(a.Record), idOf(b.Record)))
+	})
 
 	if err := execTransferHistoryChunks(ctx, tx, w.Counters, 3, `
 		INSERT INTO transfer_history_counters (torrent_id, uploaded, downloaded)
@@ -360,14 +366,14 @@ func (s *TransferHistoryStore) Write(ctx context.Context, w *TransferHistoryWrit
 		return nil, fmt.Errorf("write transfer history counters: %w", err)
 	}
 
-	if err := execTransferHistoryChunks(ctx, tx, w.TorrentDays, 4, `
-		INSERT INTO transfer_history_torrent_days (torrent_id, day, uploaded, downloaded)
+	if err := execTransferHistoryChunks(ctx, tx, w.TorrentDays, 5, `
+		INSERT INTO transfer_history_recent_torrent_days (day, instance_id, torrent_id, uploaded, downloaded)
 		VALUES %s
-		ON CONFLICT (torrent_id, day) DO UPDATE SET
-			uploaded = transfer_history_torrent_days.uploaded + excluded.uploaded,
-			downloaded = transfer_history_torrent_days.downloaded + excluded.downloaded`,
+		ON CONFLICT (day, torrent_id) DO UPDATE SET
+			uploaded = transfer_history_recent_torrent_days.uploaded + excluded.uploaded,
+			downloaded = transfer_history_recent_torrent_days.downloaded + excluded.downloaded`,
 		func(d TransferHistoryTorrentDay) []any {
-			return []any{idOf(d.Record), d.Day, d.Uploaded, d.Downloaded}
+			return []any{d.Day, w.InstanceID, idOf(d.Record), d.Uploaded, d.Downloaded}
 		}); err != nil {
 		return nil, fmt.Errorf("write transfer history torrent days: %w", err)
 	}
@@ -990,6 +996,9 @@ const (
 	// foldTorrents is the number of torrents whose daily bytes one write of a
 	// fold moves into yearly rows.
 	foldTorrents = 50
+	// recentMoveRows is the number of rows that one write of
+	// MoveRecentTorrentDays moves.
+	recentMoveRows = 500
 )
 
 // Settings returns the stored Statistics settings, or the defaults.
@@ -1264,13 +1273,13 @@ const torrentTransferChunk = 500
 
 // TorrentTransfer returns the daily bytes of the torrents of an instance in
 // UTC days [fromDay, toDay), and the yearly rows of a fold for each year that
-// overlaps that period. It gives one row
-// for each torrent and day, or one row for the days of each torrent when
-// total is set, and always one row for each torrent and year. A non-nil
-// torrentIDs limits the rows to those torrents. Each statement reads the days
-// and the years of its torrents together, and a fold moves the days of one
-// torrent in one transaction, so a fold at the same time moves no byte into
-// the answer twice.
+// overlaps that period. It gives one or two rows for each torrent and day, or
+// for the days of each torrent when total is set, and the caller adds them up.
+// It gives one row for each torrent and year. A non-nil torrentIDs limits the
+// rows to those torrents. Each statement reads the days and the years of its
+// torrents together, and a fold or a move of the recent days moves each byte
+// in one transaction, so a fold at the same time moves no byte into the
+// answer twice.
 func (s *TransferHistoryStore) TorrentTransfer(ctx context.Context, instanceID int, torrentIDs []int64, fromDay, toDay int64, total bool) ([]TransferHistoryTorrentBytes, error) {
 	if torrentIDs == nil {
 		return s.torrentTransfer(ctx, instanceID, nil, fromDay, toDay, total)
@@ -1324,9 +1333,11 @@ func torrentTransferQuery(dialect string, instanceID int, torrentIDs []int64, fr
 		instance = "t.instance_id = ?"
 	}
 	join, id, where := "transfer_history_torrents t JOIN %s r ON r.torrent_id = t.id", "t.id", instance
+	recentWhere := "r.instance_id = ?"
 	ids := []any{instanceID}
 	if torrentIDs != nil {
 		join, id, where = "%s r", "r.torrent_id", "r.torrent_id IN ("+placeholders(len(torrentIDs))+")"
+		recentWhere = where
 		ids = int64Args(torrentIDs)
 	}
 	// A year row holds only days before the fold day, so the years count only
@@ -1337,11 +1348,18 @@ func torrentTransferQuery(dialect string, instanceID int, torrentIDs []int64, fr
 		WHERE ` + where + ` AND r.day >= ? AND r.day < ?
 		GROUP BY ` + id + groupBy + `
 		UNION ALL
+		SELECT 0, r.torrent_id, ` + day + `, CAST(SUM(r.uploaded) AS BIGINT), CAST(SUM(r.downloaded) AS BIGINT)
+		FROM transfer_history_recent_torrent_days r
+		WHERE ` + recentWhere + ` AND r.day >= ? AND r.day < ?
+		GROUP BY r.torrent_id` + groupBy + `
+		UNION ALL
 		SELECT 1, ` + id + `, r.year, r.uploaded, r.downloaded
 		FROM ` + fmt.Sprintf(join, "transfer_history_torrent_years") + `
 		WHERE ` + where + ` AND r.year >= ? AND r.year <= ?
 			AND EXISTS (SELECT 1 FROM transfer_history_folds f WHERE f.id = 1 AND f.torrent_days_before > ?)`
 	args := append(slices.Clone(ids), fromDay, toDay)
+	args = append(args, ids...)
+	args = append(args, fromDay, toDay)
 	args = append(args, ids...)
 	args = append(args, time.Unix(fromDay*86400, 0).UTC().Year(), time.Unix((toDay-1)*86400, 0).UTC().Year(), fromDay)
 	return query, args
@@ -1402,6 +1420,80 @@ func (s *TransferHistoryStore) deleteInstanceHoursBefore(ctx context.Context, in
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transfer history instance hour delete: %w", err)
+	}
+	return nil
+}
+
+// MoveRecentTorrentDays moves the daily bytes of the torrents on the UTC days
+// before beforeDay to the place that holds the older days, a few rows in each
+// write. A reader sees each byte once, and a write at the same time loses no
+// byte: it adds to a row before the move of that row, or after it to a new row
+// that the next move takes.
+func (s *TransferHistoryStore) MoveRecentTorrentDays(ctx context.Context, beforeDay int64) error {
+	for {
+		var first sql.NullInt64
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT MIN(day) FROM transfer_history_recent_torrent_days WHERE day < ?`, beforeDay).Scan(&first); err != nil {
+			return fmt.Errorf("read transfer history days to move: %w", err)
+		}
+		if !first.Valid {
+			return nil
+		}
+		if err := s.moveRecentTorrentDays(ctx, beforeDay); err != nil {
+			return err
+		}
+	}
+}
+
+type recentTorrentDay struct {
+	torrentID, day, uploaded, downloaded int64
+}
+
+func (s *TransferHistoryStore) moveRecentTorrentDays(ctx context.Context, beforeDay int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transfer history move: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		DELETE FROM transfer_history_recent_torrent_days
+		WHERE (day, torrent_id) IN (
+			SELECT day, torrent_id FROM transfer_history_recent_torrent_days
+			WHERE day < ?
+			ORDER BY day, torrent_id
+			LIMIT ?)
+		RETURNING torrent_id, day, uploaded, downloaded`, beforeDay, recentMoveRows)
+	if err != nil {
+		return fmt.Errorf("read transfer history days to move: %w", err)
+	}
+	var days []recentTorrentDay
+	for rows.Next() {
+		var d recentTorrentDay
+		if err := rows.Scan(&d.torrentID, &d.day, &d.uploaded, &d.downloaded); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan transfer history day to move: %w", err)
+		}
+		days = append(days, d)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read transfer history days to move: %w", err)
+	}
+
+	if err := execTransferHistoryChunks(ctx, tx, days, 4, `
+		INSERT INTO transfer_history_torrent_days (torrent_id, day, uploaded, downloaded)
+		VALUES %s
+		ON CONFLICT (torrent_id, day) DO UPDATE SET
+			uploaded = transfer_history_torrent_days.uploaded + excluded.uploaded,
+			downloaded = transfer_history_torrent_days.downloaded + excluded.downloaded`,
+		func(d recentTorrentDay) []any {
+			return []any{d.torrentID, d.day, d.uploaded, d.downloaded}
+		}); err != nil {
+		return fmt.Errorf("move transfer history torrent days: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transfer history move: %w", err)
 	}
 	return nil
 }
@@ -1810,6 +1902,10 @@ func (s *TransferHistoryStore) deleteTorrentDaysBefore(ctx context.Context, ids 
 
 	in, idArgs := placeholders(len(ids)), int64Args(ids)
 	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM transfer_history_recent_torrent_days WHERE torrent_id IN (`+in+`) AND day < ?`, append(idArgs, beforeDay)...); err != nil {
+		return fmt.Errorf("delete transfer history recent torrent days: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM transfer_history_torrent_days WHERE torrent_id IN (`+in+`) AND day < ?`, append(idArgs, beforeDay)...); err != nil {
 		return fmt.Errorf("delete transfer history torrent days: %w", err)
 	}
@@ -1829,6 +1925,7 @@ func (s *TransferHistoryStore) deleteTorrentDaysBefore(ctx context.Context, ids 
 		WHERE id IN (`+in+`) AND deleted = TRUE
 			AND baseline_uploaded = 0 AND baseline_downloaded = 0
 			AND NOT EXISTS (SELECT 1 FROM transfer_history_torrent_days d WHERE d.torrent_id = transfer_history_torrents.id)
+			AND NOT EXISTS (SELECT 1 FROM transfer_history_recent_torrent_days d WHERE d.torrent_id = transfer_history_torrents.id)
 			AND NOT EXISTS (SELECT 1 FROM transfer_history_torrent_years y WHERE y.torrent_id = transfer_history_torrents.id)
 			AND NOT EXISTS (SELECT 1 FROM transfer_history_events e WHERE e.torrent_id = transfer_history_torrents.id)`,
 		idArgs...); err != nil {
