@@ -4,3 +4,5 @@
 package models
 
 const BackupItemsLockClass = backupItemsLockClass
+
+var TorrentTransferQuery = torrentTransferQuery
