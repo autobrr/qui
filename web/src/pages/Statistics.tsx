@@ -272,7 +272,10 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
     />
   )
   const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
+  // The period choice and the instance selection. A new one starts the lists of deletes and of top torrents again at their first rows.
+  const listScope = `${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`
 
+  // Below lg, main already pads 4rem for the nav, so this page leaves out the pb-16 of the Page layout rule in docs/standards/frontend-review.md.
   return (
     <div className="space-y-4 p-4 sm:space-y-6 lg:p-6">
       <PageHeader
@@ -381,7 +384,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         {statusQuery.error ? (
           <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
         ) : ready ? (
-          <TopTorrents torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
+          <TopTorrents scope={listScope} torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
         ) : (
           <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
         )}
@@ -440,7 +443,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
           <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
         ) : ready ? (
           <DeletedTorrents
-            scope={`${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`}
+            scope={listScope}
             instances={selected}
             period={period}
             displayGroup={displayName}

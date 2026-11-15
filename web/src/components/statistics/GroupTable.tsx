@@ -117,10 +117,11 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
       values && values.size > 0 ? t("table.seededValue", { value: formatSeeded.format(values.uploaded / values.size) }) : "–",
     ]
   }
-  const periodFacts = (bytes: TransferHistoryBytes): FactItem[] => [
+  // A table under 28rem has no room for the three numbers on one line, so a row shows its Buffer in its detail band.
+  const periodFacts = (bytes: TransferHistoryBytes, bufferClassName?: string): FactItem[] => [
     [t("table.columns.downloaded"), formatBytes(bytes.downloaded)],
     [t("table.columns.ratio"), formatRatio(bytes) ?? "–"],
-    [t("table.columns.buffer"), formatBuffer(bytes) ?? "–"],
+    [t("table.columns.buffer"), formatBuffer(bytes) ?? "–", bufferClassName],
   ]
   const liveFacts = (live: Live | undefined): FactItem[] => {
     const [torrents, size, seeded] = liveValues(live)
@@ -217,7 +218,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
                           <span className="min-w-0 flex-1 truncate">{name}</span>
                           <span className="shrink-0 tabular-nums @xl:hidden" data-narrow>{formatBytes(row.uploaded)}</span>
                         </button>
-                        <Facts items={periodFacts(row)} className="@xl:hidden" />
+                        <Facts items={periodFacts(row, "hidden @md:inline")} className="@xl:hidden" />
                         {tracker && <Facts items={liveFacts(row.live)} className="hidden @xl:flex @4xl:hidden" />}
                       </TableCell>
                       <PeriodCells bytes={row} trailing={!tracker} />
@@ -385,6 +386,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
           label={unit === "hour" ? t("detail.averageHour") : t("detail.averageDay")}
           value={recordedBars === undefined ? undefined : recordedBars > 0 ? formatBytes(uploaded / recordedBars) : "–"}
         />
+        <Fact label={t("table.columns.buffer")} value={formatBuffer(row) ?? "–"} className="@md:hidden" />
         {liveFacts?.map(([label, value]) => <Fact key={label} label={label} value={value} className="@xl:hidden" />)}
       </dl>
       <div>

@@ -763,6 +763,23 @@ describe("Statistics", () => {
     expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 
+  it("shows five top torrents again on a phone after another period", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    Element.prototype.scrollIntoView = vi.fn()
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("Torrent 5")
+    fireEvent.click(screen.getByText("table.showAll"))
+    expect(within(screen.getByRole("table")).getByText("Torrent 7")).toBeTruthy()
+
+    fireEvent.keyDown(screen.getAllByRole("combobox").find(picker => picker.textContent === "periods.30d")!, { key: "Enter" })
+    fireEvent.click(await screen.findByRole("option", { name: "periods.7d" }))
+
+    await within(await screen.findByRole("table")).findByText("Torrent 5")
+    expect(within(screen.getByRole("table")).queryByText("Torrent 6")).toBeNull()
+    expect(screen.getByText("table.showAll")).toBeTruthy()
+  })
+
   // regression: #4113
   it("keeps the top torrents on the period of the other numbers while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
@@ -1001,6 +1018,18 @@ describe("Statistics", () => {
     expect(within(facts).getByText("table.columns.torrents").nextElementSibling?.textContent).toBe("4")
     expect(within(facts).getByText("table.columns.size").nextElementSibling?.textContent).toBe("4 KiB")
     expect(within(facts).getByText("table.columns.seeded").nextElementSibling?.textContent).toBe("table.seededValue value=2.00")
+  })
+
+  it("puts the Buffer of a group in its detail band, for a phone row that has no room for it", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 1024, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
+
+    const facts = (await screen.findByText("detail.share")).closest("dl")!
+    // Each of the two instances adds 2 KiB.
+    expect(within(facts).getByText("table.columns.buffer").nextElementSibling?.textContent).toBe("+4 KiB")
   })
 
   it("shows no rows of the last period while the rows of another period load", async () => {

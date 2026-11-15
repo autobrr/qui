@@ -22,7 +22,8 @@ import { useTranslation } from "react-i18next"
 export const DELETES_PAGE = 50
 
 // The number of rows that a phone shows at first, and adds for each Show more.
-const PHONE_ROWS = 10
+const PHONE_ROWS = 5
+const PHONE_MORE = 10
 
 const FILTERS = [
   { cause: "", labelKey: "deletes.filters.all" },
@@ -128,7 +129,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const limit = narrow ? phoneRows.view === view ? phoneRows.count : PHONE_ROWS : Infinity
   const rows = deletes?.slice(0, limit)
   const footer = useRef<HTMLDivElement>(null)
-  const next = (rows?.length ?? 0) + (narrow ? PHONE_ROWS : DELETES_PAGE)
+  const next = (rows?.length ?? 0) + (narrow ? PHONE_MORE : DELETES_PAGE)
   // A background reload keeps the loaded rows, so only a Show more that needs a new page waits for it.
   const waiting = loadingMore && next > (deletes?.length ?? 0)
   const showMore = () => {

@@ -226,7 +226,7 @@ describe("DeletedTorrents", () => {
     let failing = false
     server.use(http.get("*/api/instances/:id/transfer-history/deletes", () => failing ? HttpResponse.json({ error: "database is locked" }, { status: 500 }) : undefined))
     renderTable([instance(1, "Seedbox")])
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
     failing = true
     // A window that gets the focus again loads the page again.
     act(() => {
@@ -237,25 +237,27 @@ describe("DeletedTorrents", () => {
 
     fireEvent.click(screen.getByText("deletes.more"))
 
-    expect(shownNames()).toHaveLength(20)
+    expect(shownNames()).toHaveLength(15)
   })
 
-  it("shows ten deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
+  it("shows five deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
 
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
-    expect(screen.getByText("deletes.shown shown=10 total=60")).toBeTruthy()
-    for (const shown of [20, 30, 40, 50]) {
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
+    expect(screen.getByText("deletes.shown shown=5 total=60")).toBeTruthy()
+    for (const shown of [15, 25, 35, 45]) {
       fireEvent.click(screen.getByText("deletes.more"))
       await vi.waitFor(() => expect(shownNames()).toHaveLength(shown))
     }
     expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(0)
 
     fireEvent.click(screen.getByText("deletes.more"))
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(55))
     expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(1)
+    fireEvent.click(screen.getByText("deletes.more"))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
     expect(screen.queryByText("deletes.more")).toBeNull()
   })
 
@@ -263,7 +265,7 @@ describe("DeletedTorrents", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
     let release = () => {}
     hold = new Promise(resolve => { release = resolve })
     // A window that gets the focus again loads the page again.
@@ -275,25 +277,25 @@ describe("DeletedTorrents", () => {
 
     fireEvent.click(screen.getByText("deletes.more"))
 
-    expect(shownNames()).toHaveLength(20)
+    expect(shownNames()).toHaveLength(15)
     release()
   })
 
-  it("shows ten deletes again on a phone after Show fewer, and keeps its button in view", async () => {
+  it("shows five deletes again on a phone after Show fewer, and keeps its button in view", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
-    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(5))
     expect(screen.queryByText("table.showFewer")).toBeNull()
     fireEvent.click(screen.getByText("deletes.more"))
     fireEvent.click(screen.getByText("deletes.more"))
-    expect(shownNames()).toHaveLength(30)
+    expect(shownNames()).toHaveLength(25)
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
 
     fireEvent.click(screen.getByText("table.showFewer"))
 
-    expect(shownNames()).toHaveLength(10)
+    expect(shownNames()).toHaveLength(5)
     expect(scrollIntoView).toHaveBeenCalledOnce()
     expect(screen.queryByText("table.showFewer")).toBeNull()
   })

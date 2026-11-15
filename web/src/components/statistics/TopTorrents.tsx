@@ -21,6 +21,8 @@ import { useTranslation } from "react-i18next"
 const PHONE_ROWS = 5
 
 interface TopTorrentsProps {
+  // A new scope, another period choice or instance selection, shows five rows on a phone again.
+  scope: string
   // Undefined while the rows load.
   torrents?: TopTorrent[]
   error?: Error
@@ -32,12 +34,13 @@ interface TopTorrentsProps {
 }
 
 /** The torrents with the most upload in the period. A click on a row shows the upload of that torrent for each day. */
-export function TopTorrents({ torrents: shown, error, period, instances, since, displayGroup }: TopTorrentsProps) {
+export function TopTorrents({ scope, torrents: shown, error, period, instances, since, displayGroup }: TopTorrentsProps) {
   const { t } = useTranslation("statistics")
   const torrentName = useTorrentName()
   const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
-  const [all, setAll] = useState(false)
+  const [allOf, setAllOf] = useState<string>()
+  const all = allOf === scope
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
 
   if (error) {
@@ -108,7 +111,7 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
           })}
         </TableBody>
       </Table>
-      {narrow && shown.length > PHONE_ROWS && <RowLimit shown={all ? shown.length : PHONE_ROWS} total={shown.length} all={all} onAllChange={setAll} />}
+      {narrow && shown.length > PHONE_ROWS && <RowLimit shown={all ? shown.length : PHONE_ROWS} total={shown.length} all={all} onAllChange={next => setAllOf(next ? scope : undefined)} />}
     </div>
   )
 }
