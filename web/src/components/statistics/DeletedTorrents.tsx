@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { formatBytes, formatDuration } from "@/lib/utils"
@@ -104,9 +104,9 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [incognitoMode] = useIncognitoMode()
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
   const [cause, setCause] = useState<TransferHistoryCauseFilter>("")
-  // The rows whose whole name the user opened with a tap, as a touch screen cannot show the title of a cut name.
+  // The phone rows that the user opened with a tap, to read the whole name and cause, as a touch screen cannot show a title.
   const [fullNames, setFullNames] = useState<ReadonlySet<string>>(new Set())
   const [paging, setPaging] = useState({ scope, cause, pages: 1 })
   const pages = paging.scope === scope && paging.cause === cause ? paging.pages : 1
@@ -127,15 +127,18 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const limit = narrow ? phoneRows.view === view ? phoneRows.count : PHONE_ROWS : Infinity
   const rows = deletes?.slice(0, limit)
   const showMore = () => {
-    if (error) {
-      retry()
-      return
-    }
+    const loaded = deletes?.length ?? 0
     const next = (rows?.length ?? 0) + (narrow ? PHONE_ROWS : DELETES_PAGE)
     if (narrow) {
       setPhoneRows({ view, count: next })
     }
-    if (deletes && total !== undefined && next > deletes.length && deletes.length < total) {
+    // A phone first shows the rows that it loaded, also when a later page failed.
+    if (next <= loaded) {
+      return
+    }
+    if (error) {
+      retry()
+    } else if (total !== undefined && loaded < total) {
       setPaging({ scope, cause, pages: pages + 1 })
     }
   }
@@ -187,26 +190,28 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                   <TableRow key={key}>
                     <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
                     <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
-                      <button
-                        type="button"
-                        aria-expanded={full}
-                        className="block w-full text-left"
-                        onClick={() => setFullNames(names => {
-                          const next = new Set(names)
-                          if (full) {
-                            next.delete(key)
-                          } else {
-                            next.add(key)
-                          }
-                          return next
-                        })}
-                      >
-                        <TorrentName name={name} className={full ? undefined : "line-clamp-2 @2xl:line-clamp-1"} />
-                      </button>
+                      {narrow ? (
+                        <button
+                          type="button"
+                          aria-expanded={full}
+                          className="block w-full text-left"
+                          onClick={() => setFullNames(names => {
+                            const next = new Set(names)
+                            if (full) {
+                              next.delete(key)
+                            } else {
+                              next.add(key)
+                            }
+                            return next
+                          })}
+                        >
+                          <TorrentName name={name} className={full ? undefined : "line-clamp-2"} />
+                        </button>
+                      ) : <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />}
                       <div className="truncate text-xs font-normal text-muted-foreground @2xl:hidden">
                         {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
                       </div>
-                      <div className="text-xs font-normal @xl:hidden"><Cause kind={event.cause.kind} name={event.cause.name} wrap /></div>
+                      <div className="text-xs font-normal @xl:hidden"><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
                       <div className="text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
                       {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(event.instanceId)}</div>}
                     </TableCell>
@@ -239,13 +244,13 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   )
 }
 
-// A touch screen cannot show the title of a cut name, so a narrow row lets the line wrap.
+// An open phone row wraps the cause, as a touch screen cannot show the title of a cut name.
 function Cause({ kind, name, wrap = false }: { kind: TransferHistoryCauseKind; name?: string; wrap?: boolean }) {
   const { t } = useTranslation("statistics")
   const { icon: Icon, labelKey } = CAUSES[kind]
   if (wrap) {
     return (
-      <span className="block whitespace-normal">
+      <span className="block whitespace-normal [overflow-wrap:anywhere]">
         <Icon className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" />
         {t(labelKey)}
         {name && <span className="text-muted-foreground"> · {name}</span>}

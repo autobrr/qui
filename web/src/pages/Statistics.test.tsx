@@ -995,7 +995,7 @@ describe("Statistics", () => {
   })
 
   it("leaves the year of this year out of the custom range on a phone", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     const year = new Date().getFullYear()
     renderPage()
     fireEvent.click(await screen.findByRole("button", { name: "periods.custom" }))
@@ -1030,7 +1030,7 @@ describe("Statistics", () => {
   })
 
   it("loads the rows of each other grouping when a phone opens the grouping picker", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     // jsdom has no layout, so it lacks scrollIntoView, which the open picker calls.
     Element.prototype.scrollIntoView = vi.fn()
     const preloads = () => new Set(requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent").map(request => request.groupBy))
@@ -1045,7 +1045,7 @@ describe("Statistics", () => {
   })
 
   it("shows ten rows of the table on a phone, and each row after Show all", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
     answer = ({ bucket }) => bucket === "day" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: "day" })) : []

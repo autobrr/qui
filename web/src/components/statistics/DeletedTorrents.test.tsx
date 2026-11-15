@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -76,7 +76,7 @@ function renderTable(instances: TransferHistoryInstance[]) {
 }
 
 function shownNames(): string[] {
-  return [...document.querySelectorAll("tbody tr td:nth-child(2) > button > span[title]")].map(node => node.getAttribute("title") ?? "")
+  return [...document.querySelectorAll("tbody tr td:nth-child(2) > span[title], tbody tr td:nth-child(2) > button > span[title]")].map(node => node.getAttribute("title") ?? "")
 }
 
 beforeEach(() => {
@@ -218,8 +218,28 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
   })
 
+  it("shows the deletes that a phone loaded on Show more, also after a reload failed", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    let failing = false
+    server.use(http.get("*/api/instances/:id/transfer-history/deletes", () => failing ? HttpResponse.json({ error: "database is locked" }, { status: 500 }) : undefined))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
+    failing = true
+    // A window that gets the focus again loads the page again.
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    await vi.waitFor(() => expect(screen.getByText(/database is locked/)).toBeTruthy())
+
+    fireEvent.click(screen.getByText("deletes.more"))
+
+    expect(shownNames()).toHaveLength(20)
+  })
+
   it("shows ten deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
     renderTable([instance(1, "Seedbox")])
 
@@ -237,7 +257,8 @@ describe("DeletedTorrents", () => {
     expect(screen.queryByText("deletes.more")).toBeNull()
   })
 
-  it("opens the whole name of a delete on a tap, and closes it on the next tap", async () => {
+  it("opens the whole name of a delete on a tap on a phone, and closes it on the next tap", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
     renderTable([instance(1, "Seedbox")])
     const name = (await screen.findByTitle("Built.Name.1.0-GRP")).closest("button")!

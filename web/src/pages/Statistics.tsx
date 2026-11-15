@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { usePrefetchTransferHistoryRows, useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
 import { useTrackerGroupName } from "@/hooks/useTrackerGroupName"
@@ -109,7 +109,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
   const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: initialPreset, period: presetPeriod(initialPreset, new Date()), moved: false }))
   const { choice } = periodState
 

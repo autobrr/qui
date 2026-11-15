@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useIsMobile, useMediaQuery } from "@/hooks/useMediaQuery"
+import { useIsPhone, useMediaQuery } from "@/hooks/useMediaQuery"
 import { SERIES_COLOR_SETS, useSeriesColorSet, type SeriesColorSet } from "@/hooks/useSeriesColors"
 import { PERIOD_PRESETS, type PeriodPreset } from "@/lib/statistics"
 import { CalendarRange, ChevronDown, Palette } from "lucide-react"
@@ -39,7 +39,7 @@ function parseDay(value: string): Date | undefined {
 
 export function PeriodPicker({ value, customLabel, onPreset, onCustom }: PeriodPickerProps) {
   const { t } = useTranslation("statistics")
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
   const custom = value === "custom"
 
   if (narrow) {
@@ -146,7 +146,7 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 min-w-0 max-w-[14rem] max-md:max-w-none max-md:flex-1 max-md:gap-1 max-md:px-2.5">
+        <Button variant="outline" size="sm" className="h-9 min-w-0 max-w-[14rem] max-sm:max-w-none max-sm:flex-1 max-sm:gap-1 max-sm:px-2.5">
           <span className="truncate">{label}</span>
           <ChevronDown className="size-4 opacity-60" />
         </Button>
@@ -176,7 +176,7 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
 export function SeriesColorPicker() {
   const { t } = useTranslation("statistics")
   const [set, setSet] = useSeriesColorSet()
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
 
   return (
     <Select value={set} onValueChange={value => setSet(value as SeriesColorSet)}>

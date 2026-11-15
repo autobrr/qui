@@ -6,7 +6,7 @@
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { useTapTooltip } from "@/components/statistics/useTapTooltip"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { barBytes, byteTicks, formatGapLength, type BarWidth, type ChartUnit, type StatisticsBar } from "@/lib/statistics"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
@@ -35,7 +35,7 @@ export function GroupChart({ bars, unit, color }: GroupChartProps) {
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatStart, formatTick } = useBucketFormat(unit)
   const tooltip = useTapTooltip()
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
 
   const config = useMemo<ChartConfig>(() => ({
     uploaded: color ? { label: t("chart.upload"), theme: color } : { label: t("chart.upload"), color: "var(--foreground)" },

@@ -43,6 +43,13 @@ export function useMediaQuery(query: string): boolean {
 }
 
 /**
+ * Returns true when the viewport is phone-sized (< 640px), where the Tailwind max-sm styles apply.
+ */
+export function useIsPhone(): boolean {
+  return useMediaQuery("(max-width: 639px)")
+}
+
+/**
  * Returns true when viewport is mobile-sized (< 768px / md breakpoint).
  */
 export function useIsMobile(): boolean {

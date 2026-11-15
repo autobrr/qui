@@ -25,7 +25,7 @@ function renderPicker(screenKind: "phone" | "desktop") {
   })
   // A phone has no hover and a narrow viewport. A desktop has neither.
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: screenKind === "phone" && (query === "(hover: none)" || query === "(max-width: 767px)"),
+    matches: screenKind === "phone" && (query === "(hover: none)" || query === "(max-width: 639px)"),
     addEventListener: () => {},
     removeEventListener: () => {},
   }))

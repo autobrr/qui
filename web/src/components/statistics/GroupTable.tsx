@@ -11,7 +11,7 @@ import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTopTorrents, useTorrentName } from "@/hooks/useTopTorrents"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
@@ -77,7 +77,7 @@ interface GroupTableProps {
 export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded, liveError, period, since, series, instances, seriesGroups, displayName, onPrefetch }: GroupTableProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
   const [allRowsOf, setAllRowsOf] = useState<string>()
   const withBaseline = !period.from
@@ -366,7 +366,7 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
   const formatStart = (start: number, width: BarWidth) => width === "hour" ? new Date(start).toLocaleString(locale, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12 }) : new Date(start).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
 
   return (
-    <div className="sticky left-0 w-[100cqw] space-y-4 border-l-2 bg-muted/30 px-4 py-5 sm:px-6" style={{ borderLeftColor: seriesIndex >= 0 ? `var(--color-s${seriesIndex})` : "var(--border)" }}>
+    <div className="sticky left-0 w-[100cqw] space-y-4 border-l-2 bg-muted/30 px-4 py-5 whitespace-normal [overflow-wrap:anywhere] sm:px-6" style={{ borderLeftColor: seriesIndex >= 0 ? `var(--color-s${seriesIndex})` : "var(--border)" }}>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
         <Fact
           label={t("detail.share")}

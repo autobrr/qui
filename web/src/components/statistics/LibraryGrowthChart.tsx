@@ -6,7 +6,7 @@
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { useTapTooltip } from "@/components/statistics/useTapTooltip"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import type { LibraryPoint } from "@/lib/statistics-library"
 import { byteTicks } from "@/lib/statistics"
@@ -31,7 +31,7 @@ export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
   const { formatStart, formatTick } = useBucketFormat("day")
   const colors = useSeriesColors()
   const tooltip = useTapTooltip()
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
 
   const config = useMemo<ChartConfig>(() => {
     const labels = { totalSize: t("growth.totalSize"), uniqueSize: t("growth.uniqueSize") }

@@ -7,7 +7,7 @@ import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/c
 import { byteTicks, foldOther, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { useTapTooltip } from "@/components/statistics/useTapTooltip"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
@@ -39,7 +39,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const { formatStart, formatTick } = useBucketFormat(unit)
   const colors = useSeriesColors()
   const tooltip = useTapTooltip()
-  const narrow = useIsMobile()
+  const narrow = useIsPhone()
 
   const config = useMemo<ChartConfig>(() => {
     const entries: ChartConfig = {}
