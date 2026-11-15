@@ -322,29 +322,23 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
 
   return (
     <div className="space-y-4 p-4 sm:space-y-6 lg:p-6">
-      {narrow ? (
-        // On a phone, the controls take a row below the description, so that the description stays under the title.
-        <div className="space-y-3">
-          <PageHeader title={t("title")} description={recording} />
-          <div className={cn("flex min-w-0 items-center gap-1.5", instanceFilter && "max-sm:w-full")}>
+      <PageHeader
+        title={t("title")}
+        description={recording}
+        controls={narrow ? (
+          <>
             {periodPicker}
             {instanceFilter}
             <SeriesColorPicker />
-          </div>
-        </div>
-      ) : (
-        <PageHeader
-          title={t("title")}
-          description={recording}
-          actions={(
-            <>
-              <SeriesColorPicker />
-              {instanceFilter}
-              {periodPicker}
-            </>
-          )}
-        />
-      )}
+          </>
+        ) : (
+          <>
+            <SeriesColorPicker />
+            {instanceFilter}
+            {periodPicker}
+          </>
+        )}
+      />
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 

@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { createStreamKey, useSyncStreamManager, type StreamState } from "@/contexts/SyncStreamContext"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
@@ -602,12 +603,12 @@ function QuickActionsDropdown({ statsData, compact = false }: { statsData: Dashb
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {compact ? (
-          <Button variant="outline" className="h-11 gap-0.5 px-3" aria-label={t("quickActions.addTorrent")}>
+          <Button variant="outline" className="gap-0.5 px-3" aria-label={t("quickActions.addTorrent")}>
             <Plus className="h-4 w-4" />
             <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         ) : (
-          <Button variant="outline" size="sm">
+          <Button variant="outline">
             <Plus className="h-4 w-4 mr-2" />
             {t("quickActions.addTorrent")}
             <ChevronDown className="h-3 w-3 ml-1" />
@@ -650,6 +651,7 @@ export function Dashboard() {
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const { isHiddenDelayed } = useDelayedVisibility(3000)
+  const phone = useIsPhone()
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
@@ -703,11 +705,10 @@ export function Dashboard() {
     )
   }
 
-  const incognitoToggle = (className: string) => (
+  const incognitoToggle = (
     <Button
       variant="outline"
       size="icon"
-      className={className}
       aria-label={incognitoMode ? t("incognito.turnOff") : t("incognito.turnOn")}
       aria-pressed={incognitoMode}
       onClick={() => setIncognitoMode(!incognitoMode)}
@@ -722,30 +723,23 @@ export function Dashboard() {
         <PageHeader
           title={t("title")}
           description={t("description")}
-          actions={instances && instances.length > 0 && (
+          controls={instances && instances.length > 0 && (
             <>
-              {/* On a phone, Add torrent, Add instance, and the incognito switch are icons in the title row. */}
-              <div className="flex items-center gap-1 sm:hidden">
-                <QuickActionsDropdown statsData={statsData} compact />
-                <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
-                  <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
+              {/* On a phone, Add torrent and Add instance are icons. */}
+              <QuickActionsDropdown statsData={statsData} compact={phone} />
+              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
+                {phone ? (
+                  <Button variant="outline" size="icon" aria-label={t("addInstance")}>
                     <HardDrive className="h-4 w-4" />
                   </Button>
-                </Link>
-                {incognitoToggle("size-11")}
-              </div>
-              <div className="hidden sm:block">
-                <QuickActionsDropdown statsData={statsData} />
-              </div>
-              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="hidden sm:block">
-                <Button variant="outline" size="sm">
-                  <HardDrive className="h-4 w-4 mr-2" />
-                  {t("addInstance")}
-                </Button>
+                ) : (
+                  <Button variant="outline">
+                    <HardDrive className="h-4 w-4 mr-2" />
+                    {t("addInstance")}
+                  </Button>
+                )}
               </Link>
-              <div className="hidden sm:block">
-                {incognitoToggle("size-8")}
-              </div>
+              {incognitoToggle}
             </>
           )}
         />
