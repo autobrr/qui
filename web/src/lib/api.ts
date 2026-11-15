@@ -152,6 +152,7 @@ import type {
   SSHTestResponse,
   LiveTrackerGroup,
   TransferHistoryInstance,
+  LiveSamples,
   TransferHistoryLibraryRow,
   TransferHistoryQuery,
   TransferHistoryRow,
@@ -922,6 +923,10 @@ class ApiClient {
   async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {
     const response = await this.request<{ instances: TransferHistoryInstance[] }>("/transfer-history/status")
     return response.instances
+  }
+
+  async getLiveSamples(): Promise<LiveSamples> {
+    return this.request<LiveSamples>("/live-samples")
   }
 
   async getInstanceReannounceActivity(

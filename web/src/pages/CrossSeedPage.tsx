@@ -14,7 +14,7 @@ import { RssTab } from "@/components/cross-seed/RssTab"
 import { SeasonPacksTab } from "@/components/cross-seed/SeasonPacksTab"
 import { CROSS_SEED_NAV_GROUPS, type CrossSeedTab } from "@/components/cross-seed/tabs"
 import { WebhookTab } from "@/components/cross-seed/WebhookTab"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -45,17 +45,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }))
 
   return (
-    <div className="space-y-6 p-4 lg:p-6">
-      <PageHeader
-        title={t("pageTitle")}
-        description={t("pageDescription")}
-        actions={
-          <Badge variant={automationEnabled ? "default" : "secondary"}>
-            {t(automationEnabled ? "automationOnBadge" : "automationOffBadge")}
-          </Badge>
-        }
-      />
-
+    <Page
+      title={t("pageTitle")}
+      description={t("pageDescription")}
+      badge={(
+        <Badge variant={automationEnabled ? "default" : "secondary"}>
+          {t(automationEnabled ? "automationOnBadge" : "automationOffBadge")}
+        </Badge>
+      )}
+    >
       {!hasEnabledIndexers && (
         <Alert className="border-border rounded-xl bg-card">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -88,6 +86,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         {activeTab === "directories" && <DirScanTab instances={instances ?? []} />}
         {activeTab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
       </SectionedPage>
-    </div>
+    </Page>
   )
 }

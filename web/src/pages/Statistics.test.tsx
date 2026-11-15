@@ -9,7 +9,8 @@ import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
-import { Statistics } from "@/pages/Statistics"
+import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady, writeRaw } from "@/lib/client-settings"
+import { Statistics, StatisticsRoute } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
 import { stubPhone } from "@/test/stubPhone"
 import type { StatisticsBar } from "@/lib/statistics"
@@ -25,8 +26,15 @@ const mocks = vi.hoisted(() => {
   return {
     i18n: { t, i18n: { resolvedLanguage: "en", language: "en" } },
     incognitoMode: [false, () => {}] as [boolean, () => void],
+    search: {} as { period?: string },
+    navigate: vi.fn(),
   }
 })
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@tanstack/react-router")>(),
+  getRouteApi: () => ({ useSearch: () => mocks.search, useNavigate: () => mocks.navigate }),
+}))
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
@@ -204,6 +212,104 @@ afterEach(() => {
   vi.unstubAllGlobals()
   // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+  localStorage.clear()
+  _resetClientSettingsForTests()
+  mocks.search = {}
+  mocks.navigate.mockReset()
+})
+
+function renderRoute() {
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <StatisticsRoute />
+    </QueryClientProvider>
+  )
+}
+
+// The two calls that useClientSettingsSync makes for the first server snapshot.
+function loadServerSnapshot(settings: Record<string, string> = {}) {
+  act(() => {
+    applyServerSettings(settings)
+    seedAndMarkReady(settings)
+  })
+}
+
+function selectedPeriod(): string | undefined {
+  return screen.getAllByRole("tab").find(tab => tab.textContent?.startsWith("periods.") && tab.getAttribute("aria-selected") === "true")?.textContent ?? undefined
+}
+
+describe("Statistics period", () => {
+  it("opens on the preset period that the user picked last", async () => {
+    localStorage.setItem("qui-statistics-period", JSON.stringify("7d"))
+    renderPage()
+
+    await screen.findByText("periods.7d")
+    expect(selectedPeriod()).toBe("periods.7d")
+  })
+
+  it("saves a picked preset, and keeps it when the user then applies a custom range", async () => {
+    const { unmount } = renderPage()
+    fireEvent.mouseDown(await screen.findByText("periods.24h"), { button: 0 })
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+
+    fireEvent.click(screen.getByText("periods.custom"))
+    fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: "2026-01-05" } })
+    fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: "2026-01-06" } })
+    fireEvent.click(screen.getByText("customRange.apply"))
+    expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+    unmount()
+
+    renderPage()
+    await screen.findByText("periods.24h")
+    expect(selectedPeriod()).toBe("periods.24h")
+  })
+
+  // regression: #4192
+  it("moves to a preset that the server or another tab saves after the page opened", async () => {
+    renderPage()
+    await screen.findByText("periods.7d")
+    expect(selectedPeriod()).toBe("periods.30d")
+
+    act(() => writeRaw("qui-statistics-period", JSON.stringify("7d")))
+    expect(selectedPeriod()).toBe("periods.7d")
+  })
+
+  // regression: #4192
+  it("waits for the saved period from the server before it shows the periods, so that a tap is not lost", async () => {
+    renderRoute()
+    expect(screen.queryByText("periods.30d")).toBeNull()
+
+    loadServerSnapshot({ "qui-statistics-period": JSON.stringify("7d") })
+    await screen.findByText("periods.7d")
+    expect(selectedPeriod()).toBe("periods.7d")
+  })
+
+  // regression: #4192
+  it("keeps the period of the address over an older server value when the local copy already holds it", async () => {
+    localStorage.setItem("qui-statistics-period", JSON.stringify("24h"))
+    mocks.search = { period: "24h" }
+    renderRoute()
+    loadServerSnapshot({ "qui-statistics-period": JSON.stringify("7d") })
+
+    await screen.findByText("periods.24h")
+    expect(selectedPeriod()).toBe("periods.24h")
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+  })
+
+  it("opens on the period of the address, saves it, and removes it from the address", async () => {
+    localStorage.setItem("qui-statistics-period", JSON.stringify("7d"))
+    mocks.search = { period: "24h" }
+    renderRoute()
+    loadServerSnapshot()
+
+    await screen.findByText("periods.24h")
+    expect(selectedPeriod()).toBe("periods.24h")
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+    expect(mocks.navigate).toHaveBeenCalledWith(expect.objectContaining({ replace: true }))
+    const { search } = mocks.navigate.mock.calls[0][0] as { search: (previous: { period?: string }) => { period?: string } }
+    expect(search({ period: "24h" }).period).toBeUndefined()
+  })
 })
 
 describe("Statistics", () => {

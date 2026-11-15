@@ -10,6 +10,7 @@ import type {
   CacheMetadata,
   InstanceMeta,
   InstanceResponse,
+  LiveSamples,
   QBittorrentAppInfo,
   ServerState,
   TorrentCounts,
@@ -128,11 +129,11 @@ export function layerColor(layer: number): string {
     : `color-mix(in oklab, var(--foreground) ${SHADES[layer]}%, transparent)`
 }
 
-/** One layer of a chart: the bytes or the speed of each slot, upload and download. */
+/** One layer of a chart: the bytes or the speed of each slot, upload and download. A null slot is a hole, with no value. */
 export interface ChartLayer {
   layer: number
-  up: number[]
-  down: number[]
+  up: (number | null)[]
+  down: (number | null)[]
 }
 
 export interface DayChart {
@@ -148,7 +149,7 @@ export interface DayChart {
 export function buildDayChart(rowsByInstance: TransferHistoryRow[][], instanceIds: number[], layerOf: Map<number, number>, range: { from: Date; to: Date }): DayChart {
   const bars = buildBars(rowsByInstance, range, "hour")
   const slot = new Map(bars.map((bar, index) => [bar.start, index]))
-  const layers = new Map<number, ChartLayer>()
+  const layers = new Map<number, { layer: number; up: number[]; down: number[] }>()
   rowsByInstance.forEach((rows, index) => {
     const layer = layerOf.get(instanceIds[index]) ?? OTHER_LAYER
     let into = layers.get(layer)
@@ -170,27 +171,50 @@ export function buildDayChart(rowsByInstance: TransferHistoryRow[][], instanceId
   }
 }
 
-/** The speeds of each instance at one time, in bytes per second. */
-export interface LiveSample {
-  time: number
-  speeds: Map<number, { up: number; down: number }>
-}
+/** The Live chart has LIVE_SLOTS slots of LIVE_SLOT_MS each: 3 minutes. */
+export const LIVE_SLOTS = 90
+export const LIVE_SLOT_MS = 2000
+// Two samples of an instance at most this far apart are joined. A sample with no other sample this close is a single read.
+const LIVE_JOIN_MS = 3 * LIVE_SLOT_MS
 
-/** Builds the layers of the live chart from the samples, oldest first, in the layers of layerOf. */
-export function buildLiveLayers(samples: LiveSample[], layerOf: Map<number, number>): ChartLayer[] {
+type LiveSample = LiveSamples["instances"][number]["samples"][number]
+
+/**
+ * Builds the layers of the live chart from the samples of the server, in the layers of layerOf. The last slot ends at
+ * the now of the samples. A sample fills the slots after it up to the next sample of its instance, or up to now, when
+ * that is at most LIVE_JOIN_MS later, because the syncs of qui come a little more than 2 seconds apart. A longer
+ * stretch with no sample is a hole (null). The chart leaves out the instances that layerOf does not hold, single reads
+ * (a sample with no other sample within LIVE_JOIN_MS), and a layer with no value.
+ */
+export function buildLiveLayers(live: LiveSamples, layerOf: Map<number, number>): ChartLayer[] {
+  const now = Date.parse(live.now)
   const layers = new Map<number, ChartLayer>()
-  samples.forEach((sample, index) => {
-    for (const [id, speed] of sample.speeds) {
-      const layer = layerOf.get(id) ?? OTHER_LAYER
-      let into = layers.get(layer)
-      if (!into) {
-        into = { layer, up: samples.map(() => 0), down: samples.map(() => 0) }
-        layers.set(layer, into)
-      }
-      into.up[index] += speed.up
-      into.down[index] += speed.down
+  for (const { instanceId, samples } of live.instances) {
+    const layer = layerOf.get(instanceId)
+    if (layer === undefined) continue
+    const slots: (LiveSample | undefined)[] = Array(LIVE_SLOTS).fill(undefined)
+    for (const sample of samples) {
+      const index = LIVE_SLOTS - 1 - Math.floor((now - Date.parse(sample.time)) / LIVE_SLOT_MS)
+      if (index >= 0 && index < LIVE_SLOTS) slots[index] = sample
     }
-  })
+    const placed = slots.flatMap((sample, index) => sample ? [{ index, time: Date.parse(sample.time), sample }] : [])
+    const joined = (from: number | undefined, to: number | undefined) => from !== undefined && to !== undefined && to - from <= LIVE_JOIN_MS
+    const kept = placed.filter((point, at) => joined(placed[at - 1]?.time, point.time) || joined(point.time, placed[at + 1]?.time))
+    if (kept.length === 0) continue
+    let into = layers.get(layer)
+    if (!into) {
+      into = { layer, up: Array(LIVE_SLOTS).fill(null), down: Array(LIVE_SLOTS).fill(null) }
+      layers.set(layer, into)
+    }
+    kept.forEach((point, at) => {
+      const next = kept[at + 1]
+      const end = next ? (joined(point.time, next.time) ? next.index : point.index + 1) : joined(point.time, now) ? LIVE_SLOTS : point.index + 1
+      for (let slot = point.index; slot < end; slot++) {
+        into.up[slot] = (into.up[slot] ?? 0) + point.sample.up
+        into.down[slot] = (into.down[slot] ?? 0) + point.sample.down
+      }
+    })
+  }
   return [...layers.values()].sort((a, b) => a.layer - b.layer)
 }
 
@@ -224,7 +248,7 @@ export function trackerGroupShares(rows: TransferHistoryRow[]): TrackerGroupShar
 /** The sum of the layers in each slot, for one half of the chart. */
 export function slotTotals(layers: ChartLayer[], half: "up" | "down"): number[] {
   const length = layers[0]?.[half].length ?? 0
-  return Array.from({ length }, (_, index) => layers.reduce((sum, layer) => sum + layer[half][index], 0))
+  return Array.from({ length }, (_, index) => layers.reduce((sum, layer) => sum + (layer[half][index] ?? 0), 0))
 }
 
 /** The highest total of each half of the layers. */

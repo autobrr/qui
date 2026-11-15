@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useIsAuthed } from "@/hooks/useIsAuthed"
-import { applyServerSettings, readRaw, seedAndMarkReady } from "@/lib/client-settings"
+import { applyServerSettings, markClientSettingsUnavailable, readRaw, seedAndMarkReady } from "@/lib/client-settings"
 import { changeLanguage, supportedLanguages, type AppLanguage } from "@/i18n"
 
 /**
@@ -23,11 +23,15 @@ export function useClientSettingsSync(): void {
 
   useActivityStream(isAuthed)
 
-  const { data } = useQuery({
+  const { data, error } = useQuery({
     queryKey: ["client-settings"],
     queryFn: () => api.getClientSettings(),
     enabled: isAuthed,
   })
+
+  useEffect(() => {
+    if (error) markClientSettingsUnavailable()
+  }, [error])
 
   useEffect(() => {
     if (!data) return

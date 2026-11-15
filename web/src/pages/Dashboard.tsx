@@ -6,7 +6,7 @@
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview"
 import { MigrationHint } from "@/components/instances/MigrationHint"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { createStreamKey, useSyncStreamManager, type StreamState } from "@/contexts/SyncStreamContext"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
@@ -602,12 +603,12 @@ function QuickActionsDropdown({ statsData, compact = false }: { statsData: Dashb
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {compact ? (
-          <Button variant="outline" className="h-11 gap-0.5 px-3" aria-label={t("quickActions.addTorrent")}>
+          <Button variant="outline" className="gap-0.5 px-3" aria-label={t("quickActions.addTorrent")}>
             <Plus className="h-4 w-4" />
             <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         ) : (
-          <Button variant="outline" size="sm">
+          <Button variant="outline">
             <Plus className="h-4 w-4 mr-2" />
             {t("quickActions.addTorrent")}
             <ChevronDown className="h-3 w-3 ml-1" />
@@ -650,6 +651,7 @@ export function Dashboard() {
   const hasInstances = allInstances.length > 0
   const hasActiveInstances = activeInstances.length > 0
   const { isHiddenDelayed } = useDelayedVisibility(3000)
+  const phone = useIsPhone()
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
@@ -691,23 +693,10 @@ export function Dashboard() {
     backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })
 
-  if (isLoading) {
-    return (
-      <div className="p-4 lg:p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-48"></div>
-          <div className="h-4 bg-muted rounded w-64"></div>
-          <div className="h-56 bg-muted rounded"></div>
-        </div>
-      </div>
-    )
-  }
-
-  const incognitoToggle = (className: string) => (
+  const incognitoToggle = (
     <Button
       variant="outline"
       size="icon"
-      className={className}
       aria-label={incognitoMode ? t("incognito.turnOff") : t("incognito.turnOn")}
       aria-pressed={incognitoMode}
       onClick={() => setIncognitoMode(!incognitoMode)}
@@ -716,41 +705,38 @@ export function Dashboard() {
     </Button>
   )
 
-  return (
-    <div className="p-4 lg:p-6">
-      <div className="mb-6">
-        <PageHeader
-          title={t("title")}
-          description={t("description")}
-          actions={instances && instances.length > 0 && (
-            <>
-              {/* On a phone, Add torrent, Add instance, and the incognito switch are icons in the title row. */}
-              <div className="flex items-center gap-1 sm:hidden">
-                <QuickActionsDropdown statsData={statsData} compact />
-                <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
-                  <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
-                    <HardDrive className="h-4 w-4" />
-                  </Button>
-                </Link>
-                {incognitoToggle("size-11")}
-              </div>
-              <div className="hidden sm:block">
-                <QuickActionsDropdown statsData={statsData} />
-              </div>
-              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="hidden sm:block">
-                <Button variant="outline" size="sm">
-                  <HardDrive className="h-4 w-4 mr-2" />
-                  {t("addInstance")}
-                </Button>
-              </Link>
-              <div className="hidden sm:block">
-                {incognitoToggle("size-8")}
-              </div>
-            </>
-          )}
-        />
-      </div>
+  if (isLoading) {
+    return (
+      <Page title={t("title")} description={t("description")}>
+        <div className="h-56 animate-pulse rounded bg-muted" />
+      </Page>
+    )
+  }
 
+  return (
+    <Page
+      title={t("title")}
+      description={t("description")}
+      controls={hasInstances && (
+        <>
+          {/* On a phone, Add torrent and Add instance are icons. */}
+          <QuickActionsDropdown statsData={statsData} compact={phone} />
+          <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
+            {phone ? (
+              <Button variant="outline" size="icon" aria-label={t("addInstance")}>
+                <HardDrive className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button variant="outline">
+                <HardDrive className="h-4 w-4 mr-2" />
+                {t("addInstance")}
+              </Button>
+            )}
+          </Link>
+          {incognitoToggle}
+        </>
+      )}
+    >
       <PasswordIssuesBanner instances={instances || []} />
 
       {/* The banner to register qui as the magnet handler, for Firefox */}
@@ -792,6 +778,6 @@ export function Dashboard() {
           <MigrationHint className="mt-10 sm:mt-12" />
         </Card>
       )}
-    </div>
+    </Page>
   )
 }

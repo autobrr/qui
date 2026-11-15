@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger
 } from "@/components/ui/alert-dialog"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -793,7 +793,7 @@ export function InstanceBackups() {
       value={instanceId !== undefined ? instanceId.toString() : undefined}
       onValueChange={handleInstanceSelection}
     >
-      <SelectTrigger className="!w-[240px] !max-w-[240px]">
+      <SelectTrigger className="min-w-0 !w-[240px] !max-w-[240px]">
         <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <HardDrive className="h-4 w-4 flex-shrink-0" />
           <span className="truncate">
@@ -826,8 +826,7 @@ export function InstanceBackups() {
 
     return (
       <TooltipProvider>
-        <div className="space-y-6 p-4 lg:p-6">
-          <PageHeader title={t("backups.pageTitle")} description={t("backups.pageDescription")} actions={instancePicker} />
+        <Page title={t("backups.pageTitle")} description={t("backups.pageDescription")} controls={instancePicker}>
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
               <HardDrive className="h-16 w-16 text-muted-foreground/40" />
@@ -844,13 +843,17 @@ export function InstanceBackups() {
               )}
             </CardContent>
           </Card>
-        </div>
+        </Page>
       </TooltipProvider>
     )
   }
 
   if (capabilitiesLoading) {
-    return <div className="p-6">{t("backups.loadingCapabilities")}</div>
+    return (
+      <Page title={t("backups.pageTitle")} description={t("backups.pageDescription")} controls={instancePicker}>
+        <p className="text-sm text-muted-foreground">{t("backups.loadingCapabilities")}</p>
+      </Page>
+    )
   }
 
   if (!supportsTorrentExport) {
@@ -858,7 +861,7 @@ export function InstanceBackups() {
     const reportedVersion = versionRaw && versionRaw.length > 0 ? versionRaw : t("backups.unsupported.olderApiVersion")
 
     return (
-      <div className="p-6 space-y-4">
+      <Page title={t("backups.pageTitle")} description={t("backups.pageDescription")} controls={instancePicker}>
         <Alert variant="destructive">
           <AlertTitle>{t("backups.unsupported.title")}</AlertTitle>
           <AlertDescription>
@@ -872,28 +875,26 @@ export function InstanceBackups() {
             </Link>
           </Button>
         )}
-      </div>
+      </Page>
     )
   }
 
   return (
     <TooltipProvider>
-      <div className="space-y-6 p-4 lg:p-6">
-        <PageHeader
-          title={t("backups.pageTitle")}
-          description={t("backups.pageDescription")}
-          actions={
-            <>
-              {instancePicker}
-              <Button variant="outline" asChild>
-                <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
-                  {t("backups.navigation.backToTorrents")}
-                </Link>
-              </Button>
-            </>
-          }
-        />
-
+      <Page
+        title={t("backups.pageTitle")}
+        description={t("backups.pageDescription")}
+        controls={
+          <>
+            {instancePicker}
+            <Button variant="outline" asChild>
+              <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
+                {t("backups.navigation.backToTorrents")}
+              </Link>
+            </Button>
+          </>
+        }
+      >
         <Card>
           <CardHeader>
             <CardTitle>{t("backups.settings.title")}</CardTitle>
@@ -1977,7 +1978,7 @@ export function InstanceBackups() {
             )}
           </DialogContent>
         </Dialog>
-      </div>
+      </Page>
     </TooltipProvider>
   )
 }

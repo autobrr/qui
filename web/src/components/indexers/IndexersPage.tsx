@@ -14,7 +14,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
-import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { ChevronDown, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -47,7 +47,6 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   const [editingIndexer, setEditingIndexer] = useState<TorznabIndexer | null>(null)
   const [deleteIndexerId, setDeleteIndexerId] = useState<number | null>(null)
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
-  const [indexersOpen, setIndexersOpen] = useState(true)
 
   const loadIndexers = async () => {
     try {
@@ -195,87 +194,75 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
   const content = (
     <>
-      {indexers.length > 0 && <SearchHistoryPanel />}
-      {indexers.length > 0 && <IndexerActivityPanel />}
-
-      <Collapsible open={indexersOpen} onOpenChange={setIndexersOpen}>
-        <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
-          <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{t("indexers.title")}</span>
-              {indexers.length > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {t("indexers.page.summary", { enabled: enabledCount, capabilities: capsCount })}
-                </span>
-              )}
-            </div>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${indexersOpen ? "rotate-180" : ""}`} />
-          </CollapsibleTrigger>
-
-          <CollapsibleContent>
-            <div className="px-4 pb-4 space-y-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <p className="text-sm text-muted-foreground">
-                  {t("indexers.page.description")}
-                </p>
-                <div className="flex flex-wrap gap-2 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDeleteAllDialog(true)}
-                    disabled={loading || indexers.length === 0}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {t("indexers.page.deleteAll")}
+      <Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1.5">
+            <CardTitle>{t("indexers.title")}</CardTitle>
+            <CardDescription>{t("indexers.page.description")}</CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDeleteAllDialog(true)}
+              disabled={loading || indexers.length === 0}
+            >
+              <Trash2 className="h-4 w-4" />
+              {t("indexers.page.deleteAll")}
+            </Button>
+            <div className="flex">
+              <Button
+                size="sm"
+                onClick={() => setAutodiscoveryOpen(true)}
+                className="rounded-r-none"
+              >
+                <RefreshCw className="h-4 w-4" />
+                {t("indexers.page.discover")}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" className="rounded-l-none border-l px-2">
+                    <ChevronDown className="h-4 w-4" />
                   </Button>
-                  <div className="flex">
-                    <Button
-                      size="sm"
-                      onClick={() => setAutodiscoveryOpen(true)}
-                      className="rounded-r-none"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      {t("indexers.page.discover")}
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" className="rounded-l-none border-l px-2">
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
-                          <Plus className="h-4 w-4 mr-2" />
-                          {t("indexers.page.addSingle")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              </div>
-              <IndexerTable
-                indexers={indexers}
-                loading={loading}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onTest={handleTest}
-                onTestAll={handleTestAll}
-                onSyncCaps={async (id) => {
-                  try {
-                    const updated = await api.syncTorznabCaps(id)
-                    toast.success(t("indexers.toast.capsSynced"))
-                    setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
-                  } catch (error) {
-                    const message = error instanceof Error ? error.message : t("indexers.toast.failedToSyncCaps")
-                    toast.error(message)
-                  }
-                }}
-              />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    {t("indexers.page.addSingle")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {indexers.length > 0 && <SearchHistoryPanel />}
+          {indexers.length > 0 && <IndexerActivityPanel />}
+          {indexers.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t("indexers.page.summary", { enabled: enabledCount, capabilities: capsCount })}
+            </p>
+          )}
+          <IndexerTable
+            indexers={indexers}
+            loading={loading}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onTest={handleTest}
+            onTestAll={handleTestAll}
+            onSyncCaps={async (id) => {
+              try {
+                const updated = await api.syncTorznabCaps(id)
+                toast.success(t("indexers.toast.capsSynced"))
+                setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
+              } catch (error) {
+                const message = error instanceof Error ? error.message : t("indexers.toast.failedToSyncCaps")
+                toast.error(message)
+              }
+            }}
+          />
+        </CardContent>
+      </Card>
 
       <IndexerDialog
         open={addDialogOpen}

@@ -184,6 +184,7 @@ func TestRoutesThatSpanInstancesRefuseInstanceLimit(t *testing.T) {
 		{http.MethodPost, "/api/torrents/export"}:                                    {},
 		{http.MethodPut, "/api/instances/order"}:                                     {},
 		{http.MethodPost, "/api/instances/{instanceID}/torrents/delete-cross-seeds"}: {},
+		{http.MethodGet, "/api/live-samples"}:                                        {},
 		{http.MethodGet, "/api/transfer-history/status"}:                             {},
 		{http.MethodPut, "/api/transfer-history/settings"}:                           {},
 		{http.MethodDelete, "/api/transfer-history"}:                                 {},

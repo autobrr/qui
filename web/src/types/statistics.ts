@@ -59,6 +59,12 @@ export interface TransferHistoryInstance {
   firstRecordedAt: string
 }
 
+/** The Live samples of the last 3 minutes that the server keeps. Speeds are in bytes per second, and the samples of each instance are oldest first. */
+export interface LiveSamples {
+  now: string
+  instances: { instanceId: number; samples: { time: string; up: number; down: number }[] }[]
+}
+
 /** The library of one instance on one UTC day. The sizes and the count are absent when qui stored no value for the day. */
 export interface TransferHistoryLibraryRow {
   day: string

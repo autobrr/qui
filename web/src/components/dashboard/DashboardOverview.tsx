@@ -11,14 +11,17 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { LIVE_SAMPLES, useLiveSpeedSamples } from "@/hooks/useLiveSpeedSamples"
+import { useDashboardChartView, type DashboardChartView } from "@/hooks/useDashboardChartView"
+import { useLiveSamples } from "@/hooks/useLiveSamples"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import { useClientSettingsSettled } from "@/lib/client-settings"
 import { useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import {
   buildDayChart,
   buildLiveLayers,
   instanceLayers,
   layerPeaks,
+  LIVE_SLOTS,
   slotTotals,
   trackerGroupShares,
   type DashboardInstanceStats
@@ -31,8 +34,6 @@ import type { TransferHistoryRow } from "@/types"
 import { ArrowDown, ArrowUp, Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-
-type Range = "day" | "live"
 
 /** The period of the last 24 hours. It moves forward each 5 minutes while the page is visible. */
 function useLastDayPeriod(): StatisticsPeriod {
@@ -106,13 +107,12 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   const layerOf = useMemo(() => instanceLayers(instanceIds), [instanceIds])
   const dayChart = useMemo(() => current && dayData && buildDayChart(current.rows, current.instanceIds, layerOf, dayData.range), [current, dayData, layerOf])
 
-  const [chosen, setChosen] = useState<Range>("day")
-  if (noHistory && chosen !== "live") {
-    setChosen("live")
-  }
-  const range: Range = noHistory ? "live" : chosen
-  const samples = useLiveSpeedSamples(statsData)
-  const liveLayers = useMemo(() => buildLiveLayers(samples, layerOf), [samples, layerOf])
+  const [chosen, setChosen] = useDashboardChartView()
+  const settingsLoaded = useClientSettingsSettled()
+  // With no history, the page shows Live and keeps the saved view.
+  const range: DashboardChartView = noHistory ? "live" : chosen
+  const live = useLiveSamples(settingsLoaded && range === "live")
+  const liveLayers = useMemo(() => live.data && !live.error ? buildLiveLayers(live.data, layerOf) : [], [live.data, live.error, layerOf])
 
   const totalUp = statsData.reduce((sum, d) => sum + (d.stats?.totalUploadSpeed ?? 0), 0)
   const totalDown = statsData.reduce((sum, d) => sum + (d.stats?.totalDownloadSpeed ?? 0), 0)
@@ -142,15 +142,22 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
 
   const hours = dayChart?.hours ?? []
   // A chart that is loading, failed, or has no sample yet has no peak to give.
-  const shownLayers = range === "day" ? dayChart?.layers : liveLayers.length > 0 ? liveLayers : undefined
+  const shownLayers = !settingsLoaded ? undefined : range === "day" ? dayChart?.layers : liveLayers.length > 0 ? liveLayers : undefined
   const peaks = shownLayers && layerPeaks(shownLayers)
   const peakUp = peaks && (range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.up) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.up, unit) }))
   const peakDown = peaks && (range === "day" ? t("stream.peakHour", { size: formatBytes(peaks.down) }) : t("stream.peakSpeed", { speed: formatSpeedWithUnit(peaks.down, unit) }))
 
+  const chartError = range === "live" ? live.error : failed
   let chart: ReactNode
-  if (range === "live") {
-    chart = <StreamChart layers={liveLayers} kind="areas" slots={LIVE_SAMPLES} label={t("stream.liveLabel")} className="h-36 lg:h-56" />
-  } else if (dayChart) {
+  if (!settingsLoaded) {
+    chart = (
+      <div className="flex h-36 items-center justify-center lg:h-56">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  } else if (range === "live" && !chartError) {
+    chart = <StreamChart layers={liveLayers} kind="areas" slots={LIVE_SLOTS} label={t("stream.liveLabel")} className="h-36 lg:h-56" />
+  } else if (range === "day" && dayChart) {
     const up = slotTotals(dayChart.layers, "up")
     const down = slotTotals(dayChart.layers, "down")
     const titles = hours.map((hour, index) => {
@@ -162,7 +169,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   } else {
     chart = (
       <div className="flex h-36 items-center justify-center text-sm lg:h-56">
-        {failed ? <span className="text-destructive">{t("stream.loadError", { message: failed.message })}</span> : <Loader2 className="size-6 animate-spin text-muted-foreground" />}
+        {chartError ? <span className="text-destructive">{t("stream.loadError", { message: chartError.message })}</span> : <Loader2 className="size-6 animate-spin text-muted-foreground" />}
       </div>
     )
   }
@@ -171,9 +178,9 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
     ? hours.length > 0 && [clock(hours[0].start), clock(hours[Math.floor(hours.length / 2)].start), clock(hours[hours.length - 1].start + 3_600_000)]
     : [t("stream.liveStart"), t("stream.now")]
 
-  const dayTrigger = <TabsTrigger value="day" disabled={noHistory} className="px-2.5 text-xs">{t("stream.day")}</TabsTrigger>
+  const dayTrigger = <TabsTrigger value="day" disabled={noHistory || !settingsLoaded} className="px-2.5 text-xs">{t("stream.day")}</TabsTrigger>
   const controls = (
-    <Tabs value={range} onValueChange={value => setChosen(value as Range)}>
+    <Tabs value={range} onValueChange={value => setChosen(value as DashboardChartView)}>
       <TabsList className="h-9 lg:h-7">
         {noHistory ? (
           <Tooltip>
@@ -181,7 +188,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
             <TooltipContent className="max-w-xs">{t("stream.noHistory")}</TooltipContent>
           </Tooltip>
         ) : dayTrigger}
-        <TabsTrigger value="live" className="px-2.5 text-xs">{t("stream.live")}</TabsTrigger>
+        <TabsTrigger value="live" disabled={!settingsLoaded} className="px-2.5 text-xs">{t("stream.live")}</TabsTrigger>
       </TabsList>
     </Tabs>
   )

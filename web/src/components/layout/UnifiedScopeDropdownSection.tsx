@@ -38,7 +38,7 @@ export function UnifiedScopeDropdownSection({
   const isSidebar = variant === "sidebar"
 
   const rowContainerClassName = isSidebar ? cn(
-    "flex items-stretch rounded-md text-sm transition-all duration-200 ease-out",
+    "flex items-stretch rounded-md text-sm",
     isAllInstancesRoute ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium" : "text-sidebar-foreground"
   ) : cn(
     "flex items-stretch rounded-sm text-sm",
@@ -46,16 +46,16 @@ export function UnifiedScopeDropdownSection({
   )
 
   const rowLinkClassName = isSidebar ? cn(
-    "flex min-w-0 flex-1 items-center gap-3 px-3 py-2 outline-hidden transition-all duration-200 ease-out",
-    isAllInstancesRoute ? "rounded-l-md" : "rounded-l-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground"
+    "flex min-w-0 flex-1 items-center gap-3 px-3 py-2 outline-hidden",
+    isAllInstancesRoute ? "rounded-l-md" : "rounded-l-md hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
   ) : cn(
     "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 outline-hidden transition-colors",
     isAllInstancesRoute ? "rounded-l-sm" : "rounded-l-sm hover:bg-accent/80 focus-visible:bg-accent/80"
   )
 
   const triggerClassName = isSidebar ? cn(
-    "flex items-center gap-1 rounded-r-md px-2.5 outline-hidden transition-all duration-200 ease-out",
-    isAllInstancesRoute ? "text-sidebar-primary-foreground/75 hover:bg-sidebar-primary/90 focus-visible:bg-sidebar-primary/90" : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground"
+    "flex items-center gap-1 rounded-r-md px-2.5 outline-hidden",
+    isAllInstancesRoute ? "text-sidebar-primary-foreground/75 hover:bg-sidebar-primary/90 focus-visible:bg-sidebar-primary/90" : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
   ) : cn(
     "flex items-center gap-1 rounded-r-sm px-2 outline-hidden transition-colors",
     isAllInstancesRoute ? "text-accent-foreground/70 hover:bg-accent/90 focus-visible:bg-accent/90" : "text-muted-foreground hover:bg-accent/80 hover:text-foreground focus-visible:bg-accent/80 focus-visible:text-foreground"

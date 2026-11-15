@@ -12,9 +12,21 @@ const W = 600
 const UP_H = 120
 const DOWN_H = 80
 
+/** The index ranges [start, end) of the runs of slots that hold a value. */
+function filledRuns(values: (number | null)[]): [number, number][] {
+  const runs: [number, number][] = []
+  values.forEach((value, index) => {
+    if (value === null) return
+    const last = runs.at(-1)
+    if (last && last[1] === index) last[1] = index + 1
+    else runs.push([index, index + 1])
+  })
+  return runs
+}
+
 /**
  * Paths of the stacked layers of one half. dir is -1 for upload, which grows up from the zero line, and 1 for download.
- * An area chart of fewer values than slots ends at the right edge.
+ * An area chart of fewer values than slots ends at the right edge. A hole in a layer draws nothing in that slot.
  */
 function stackPaths(layers: ChartLayer[], half: "up" | "down", bars: boolean, slots: number): string[] {
   const height = half === "up" ? UP_H : DOWN_H
@@ -27,12 +39,15 @@ function stackPaths(layers: ChartLayer[], half: "up" | "down", bars: boolean, sl
   const x = (index: number) => ((Math.max(slots, length) - length + index) / (Math.max(slots, length) - 1)) * W
   const y = (value: number) => UP_H + dir * (value / Math.max(peak, 1)) * (height - 6)
   return layers.map(layer => {
-    const top = layer[half].map((value, index) => base[index] + value)
+    const top = layer[half].map((value, index) => value === null ? null : base[index] + value)
     const d = bars
-      ? top.map((value, index) => value === base[index] ? "" : `M${(index * step + 1.5).toFixed(1)},${y(base[index]).toFixed(1)}H${((index + 1) * step - 1.5).toFixed(1)}V${y(value).toFixed(1)}H${(index * step + 1.5).toFixed(1)}Z`).join("")
-      : `${top.map((value, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join("")}${base.map((value, index) => `L${x(index).toFixed(1)},${y(value).toFixed(1)}`).reverse().join("")}Z`
+      ? top.map((value, index) => value === null || value === base[index] ? "" : `M${(index * step + 1.5).toFixed(1)},${y(base[index]).toFixed(1)}H${((index + 1) * step - 1.5).toFixed(1)}V${y(value).toFixed(1)}H${(index * step + 1.5).toFixed(1)}Z`).join("")
+      : filledRuns(top).filter(([start, end]) => end - start > 1).map(([start, end]) => {
+        const indexes = Array.from({ length: end - start }, (_, offset) => start + offset)
+        return `${indexes.map((index, at) => `${at ? "L" : "M"}${x(index).toFixed(1)},${y(top[index] ?? 0).toFixed(1)}`).join("")}${indexes.reverse().map(index => `L${x(index).toFixed(1)},${y(base[index]).toFixed(1)}`).join("")}Z`
+      }).join("")
     top.forEach((value, index) => {
-      base[index] = value
+      if (value !== null) base[index] = value
     })
     return d
   })
