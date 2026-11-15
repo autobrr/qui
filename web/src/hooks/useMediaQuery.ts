@@ -44,11 +44,11 @@ export function useMediaQuery(query: string): boolean {
 
 /**
  * Returns true on a phone: a viewport under 640px wide, where the Tailwind max-sm styles apply, or a touch screen
- * under 500px tall, which is a phone turned sideways.
+ * under 500px tall and under 1024px wide, which is a phone turned sideways. From 1024px, the sidebar replaces the bottom nav.
  */
 export function useIsPhone(): boolean {
   const narrow = useMediaQuery("(max-width: 639px)")
-  const sideways = useMediaQuery("(pointer: coarse) and (max-height: 499px)")
+  const sideways = useMediaQuery("(pointer: coarse) and (max-height: 499px) and (max-width: 1023px)")
   return narrow || sideways
 }
 
