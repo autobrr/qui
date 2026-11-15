@@ -10,12 +10,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
+import { HISTORY_WRITE_MS } from "@/lib/statistics"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { cn, formatBytes, formatDuration } from "@/lib/utils"
 import type { TransferHistoryCauseFilter, TransferHistoryCauseKind, TransferHistoryDeleteEvent, TransferHistoryDeletesAnswer, TransferHistoryInstance } from "@/types"
-import { useQueries, type UseQueryResult } from "@tanstack/react-query"
+import { useQueries, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
 import { ArchiveRestore, ChevronDown, ChevronRight, KeyRound, Loader2, Unplug, User, Zap } from "lucide-react"
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { useTranslation } from "react-i18next"
 
@@ -55,6 +56,13 @@ interface DeletesPages {
   retry: () => void
 }
 
+function deletesQuery(instanceId: number, period: { from?: Date; to: Date }, cause: TransferHistoryCauseFilter, page: number) {
+  return {
+    queryKey: ["transfer-history", "deletes", instanceId, cause, period.from?.toISOString(), period.to.toISOString(), page],
+    queryFn: () => api.getTransferHistoryDeletes(instanceId, { from: period.from, to: period.to, cause, limit: DELETES_PAGE, offset: page * DELETES_PAGE }),
+  }
+}
+
 /**
  * Reads the first pages of deletes of each instance. The newest pages * DELETES_PAGE deletes of all instances are among
  * the first pages of each instance, so the merge of those pages holds them in full.
@@ -84,10 +92,7 @@ function useDeletesPages(instances: TransferHistoryInstance[], period: { from?: 
     }
   }, [instances, pages])
   return useQueries({
-    queries: instances.flatMap(instance => Array.from({ length: pages }, (_, page) => ({
-      queryKey: ["transfer-history", "deletes", instance.instanceId, cause, period.from?.toISOString(), period.to.toISOString(), page],
-      queryFn: () => api.getTransferHistoryDeletes(instance.instanceId, { from: period.from, to: period.to, cause, limit: DELETES_PAGE, offset: page * DELETES_PAGE }),
-    }))),
+    queries: instances.flatMap(instance => Array.from({ length: pages }, (_, page) => deletesQuery(instance.instanceId, period, cause, page))),
     combine,
   })
 }
@@ -113,23 +118,27 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const [paging, setPaging] = useState({ scope, cause, pages: 1 })
   const pages = paging.scope === scope && paging.cause === cause ? paging.pages : 1
   const loaded = useDeletesPages(instances, period, cause, pages)
-  // A preset period moves forward each 5 minutes. The rows of the same view stay until the rows of the new period load.
-  const view = `${scope}:${cause}`
-  const [kept, setKept] = useState<{ view: string; pages: DeletesPages }>()
-  if (loaded.deletes && kept?.pages !== loaded) {
-    setKept({ view, pages: loaded })
+  const [kept, setKept] = useState<{ scope: string; cause: TransferHistoryCauseFilter; pages: DeletesPages }>()
+  if (loaded.deletes && (kept?.pages !== loaded || kept.cause !== cause || kept.scope !== scope)) {
+    setKept({ scope, cause, pages: loaded })
   }
-  const { deletes, counts, error, loadingMore, retry } = !loaded.deletes && !loaded.error && kept?.view === view ? kept.pages : loaded
+  // A preset period moves forward each 5 minutes, and another filter can still load. The rows of the same scope stay
+  // until the new rows load, dimmed when they are of another filter.
+  const keep = !loaded.deletes && !loaded.error && kept?.scope === scope
+  const shownCause = keep ? kept.cause : cause
+  const shownView = `${scope}:${shownCause}`
+  const stale = shownCause !== cause
+  const { deletes, counts, error, loadingMore, retry } = keep ? kept.pages : loaded
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
   const formatCount = useMemo(() => new Intl.NumberFormat(locale), [locale])
 
   const countOf = (filter: TransferHistoryCauseFilter) => counts && (filter === "" ? counts.automation + counts.user + counts.other : counts[filter])
-  const total = countOf(cause)
-  const [phoneRows, setPhoneRows] = useState({ view, count: PHONE_ROWS })
-  if (phoneRows.view !== view) {
-    setPhoneRows({ view, count: PHONE_ROWS })
+  const total = countOf(shownCause)
+  const [phoneRows, setPhoneRows] = useState({ view: shownView, count: PHONE_ROWS })
+  if (phoneRows.view !== shownView) {
+    setPhoneRows({ view: shownView, count: PHONE_ROWS })
   }
-  const limit = narrow ? phoneRows.view === view ? phoneRows.count : PHONE_ROWS : Infinity
+  const limit = narrow ? phoneRows.view === shownView ? phoneRows.count : PHONE_ROWS : Infinity
   const rows = deletes?.slice(0, limit)
   const footer = useRef<HTMLDivElement>(null)
   const next = (rows?.length ?? 0) + (narrow ? PHONE_MORE : DELETES_PAGE)
@@ -138,7 +147,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const showMore = () => {
     const loaded = deletes?.length ?? 0
     if (narrow) {
-      setPhoneRows({ view, count: next })
+      setPhoneRows({ view: shownView, count: next })
     }
     // A phone first shows the rows that it loaded, also when a later page failed.
     if (next <= loaded) {
@@ -151,10 +160,57 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     }
   }
 
+  // The first page of the other filters loads after the first filter, so that a switch shows its rows at once.
+  const queryClient = useQueryClient()
+  const preloaded = useRef<string>(undefined)
+  const firstLoaded = loaded.deletes !== undefined
+  useEffect(() => {
+    if (!firstLoaded || preloaded.current === scope) {
+      return
+    }
+    preloaded.current = scope
+    for (const filter of FILTERS) {
+      for (const instance of filter.cause === cause ? [] : instances) {
+        void queryClient.prefetchQuery({ ...deletesQuery(instance.instanceId, period, filter.cause, 0), staleTime: HISTORY_WRITE_MS })
+      }
+    }
+  }, [firstLoaded, scope, cause, instances, period, queryClient])
+
+  // Deleted torrents ends the page. A shorter list after a filter switch keeps the height of the last list, so that the
+  // page does not end higher and move the tabs away from the pointer. The space goes when it is below the screen.
+  const body = useRef<HTMLDivElement>(null)
+  const content = useRef<HTMLDivElement>(null)
+  const [held, setHeld] = useState<{ scope: string; height: number }>()
+  const minHeight = held?.scope === scope ? held.height : undefined
+  useEffect(() => {
+    if (minHeight === undefined) {
+      return
+    }
+    const release = () => {
+      const node = content.current
+      if (!node || node.getBoundingClientRect().bottom >= window.innerHeight || node.offsetHeight >= minHeight) {
+        setHeld(undefined)
+      }
+    }
+    release()
+    window.addEventListener("scroll", release, { capture: true, passive: true })
+    window.addEventListener("resize", release)
+    return () => {
+      window.removeEventListener("scroll", release, { capture: true })
+      window.removeEventListener("resize", release)
+    }
+  }, [minHeight])
+
   return (
     <>
       <div className="overflow-x-auto px-4 pb-4 sm:px-6">
-        <Tabs value={cause} onValueChange={value => setCause(value as TransferHistoryCauseFilter)}>
+        <Tabs
+          value={cause}
+          onValueChange={value => {
+            setHeld(body.current ? { scope, height: body.current.offsetHeight } : undefined)
+            setCause(value as TransferHistoryCauseFilter)
+          }}
+        >
           <TabsList className="max-sm:w-max max-sm:min-w-full">
             {FILTERS.map(filter => (
               <TabsTrigger key={filter.cause} value={filter.cause} className="gap-1.5 px-3 max-sm:gap-1 max-sm:px-1.5 max-sm:text-xs">
@@ -165,102 +221,106 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
           </TabsList>
         </Tabs>
       </div>
-      {error && !rows ? (
-        <div className="flex h-24 items-center justify-center border-t px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: error.message })}</div>
-      ) : !rows ? (
-        <div className="flex h-24 items-center justify-center border-t"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-      ) : rows.length === 0 ? (
-        <div className="flex h-24 items-center justify-center border-t px-4 text-sm text-muted-foreground sm:px-6">{t("deletes.empty")}</div>
-      ) : (
-        <div className="@container border-t">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="hidden pl-6 @xl:table-cell">{t("deletes.columns.time")}</TableHead>
-                <TableHead className="w-full pl-4 sm:pl-6 @xl:pl-2">{t("topTorrents.columns.torrent")}</TableHead>
-                <TableHead className="hidden @4xl:table-cell">{t("table.columns.tracker")}</TableHead>
-                <TableHead className="hidden @2xl:table-cell">{t("deletes.columns.cause")}</TableHead>
-                <TableHead className="pr-4 text-right sm:pr-6 @4xl:pr-2">{t("deletes.columns.uploaded")}</TableHead>
-                <TableHead className="hidden text-right @4xl:table-cell">{t("deletes.columns.ratio")}</TableHead>
-                <TableHead className="hidden pr-6 text-right @4xl:table-cell">{t("deletes.columns.seeded")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map(event => {
-                const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
-                const key = `${event.instanceId}:${event.hash}:${event.time}`
-                const full = fullNames.has(key)
-                const cause = <Cause kind={event.cause.kind} name={event.cause.name} wrap={full} />
-                const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
-                const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
-                const time = formatISOTimestamp(event.time)
-                const toggle = () => setFullNames(names => {
-                  const next = new Set(names)
-                  if (full) {
-                    next.delete(key)
-                  } else {
-                    next.add(key)
-                  }
-                  return next
-                })
-                const line = narrow ? "pl-5.5" : undefined
-                return (
-                  <TableRow key={key} className={cn(narrow && "cursor-pointer", full && "bg-muted hover:bg-muted")} onClick={narrow ? toggle : undefined}>
-                    <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
-                    <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
-                      {narrow ? (
-                        <button type="button" aria-expanded={full} className="flex w-full min-w-0 items-start gap-2 text-left">
-                          {full ? <ChevronDown className="mt-1 size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />}
-                          <TorrentName name={name} className={cn("min-w-0", !full && "line-clamp-2")} />
-                        </button>
-                      ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
-                      <div className={cn("truncate text-xs font-normal text-muted-foreground @4xl:hidden", line)}>
-                        {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
-                      </div>
-                      <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
-                      <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
-                      {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @4xl:block">{instanceNames.get(event.instanceId)}</div>}
-                    </TableCell>
-                    <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @4xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
-                    <TableCell className="hidden max-w-64 align-top @2xl:table-cell">{cause}</TableCell>
-                    <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @4xl:pr-2">
-                      {formatBytes(event.uploaded)}
-                      <div className="ml-auto max-w-24 whitespace-normal text-xs text-muted-foreground @xl:hidden">{time}</div>
-                    </TableCell>
-                    <TableCell className="hidden text-right align-top tabular-nums @4xl:table-cell">{ratio}</TableCell>
-                    <TableCell className="hidden pr-6 text-right align-top tabular-nums @4xl:table-cell">{seeded}</TableCell>
+      <div ref={body} style={{ minHeight }}>
+        <div ref={content} aria-busy={stale} className={cn("transition-opacity", stale && "pointer-events-none opacity-60")}>
+          {error && !rows ? (
+            <div className="flex h-24 items-center justify-center border-t px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: error.message })}</div>
+          ) : !rows ? (
+            <div className="flex h-24 items-center justify-center border-t"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+          ) : rows.length === 0 ? (
+            <div className="flex h-24 items-center justify-center border-t px-4 text-sm text-muted-foreground sm:px-6">{t("deletes.empty")}</div>
+          ) : (
+            <div className="@container border-t">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="hidden pl-6 @xl:table-cell">{t("deletes.columns.time")}</TableHead>
+                    <TableHead className="w-full pl-4 sm:pl-6 @xl:pl-2">{t("topTorrents.columns.torrent")}</TableHead>
+                    <TableHead className="hidden @4xl:table-cell">{t("table.columns.tracker")}</TableHead>
+                    <TableHead className="hidden @2xl:table-cell">{t("deletes.columns.cause")}</TableHead>
+                    <TableHead className="pr-4 text-right sm:pr-6 @4xl:pr-2">{t("deletes.columns.uploaded")}</TableHead>
+                    <TableHead className="hidden text-right @4xl:table-cell">{t("deletes.columns.ratio")}</TableHead>
+                    <TableHead className="hidden pr-6 text-right @4xl:table-cell">{t("deletes.columns.seeded")}</TableHead>
                   </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-          <div ref={footer} className="flex flex-wrap items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground sm:px-6">
-            <span>{t("deletes.shown", { shown: formatCount.format(rows.length), total: formatCount.format(total ?? rows.length) })}</span>
-            {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
-            <div className="flex gap-2">
-              {narrow && rows.length > PHONE_ROWS && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    flushSync(() => setPhoneRows({ view, count: PHONE_ROWS }))
-                    // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
-                    footer.current?.scrollIntoView({ block: "nearest" })
-                  }}
-                >
-                  {t("table.showFewer")}
-                </Button>
-              )}
-              {total !== undefined && rows.length < total && (
-                <Button variant="outline" size="sm" disabled={waiting} onClick={showMore}>
-                  {waiting && <Loader2 className="size-3.5 animate-spin" />}
-                  {t("deletes.more")}
-                </Button>
-              )}
+                </TableHeader>
+                <TableBody>
+                  {rows.map(event => {
+                    const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
+                    const key = `${event.instanceId}:${event.hash}:${event.time}`
+                    const full = fullNames.has(key)
+                    const cause = <Cause kind={event.cause.kind} name={event.cause.name} wrap={full} />
+                    const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
+                    const seeded = event.seedingSeconds === undefined ? "–" : formatDuration(event.seedingSeconds)
+                    const time = formatISOTimestamp(event.time)
+                    const toggle = () => setFullNames(names => {
+                      const next = new Set(names)
+                      if (full) {
+                        next.delete(key)
+                      } else {
+                        next.add(key)
+                      }
+                      return next
+                    })
+                    const line = narrow ? "pl-5.5" : undefined
+                    return (
+                      <TableRow key={key} className={cn(narrow && "cursor-pointer", full && "bg-muted hover:bg-muted")} onClick={narrow ? toggle : undefined}>
+                        <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
+                        <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
+                          {narrow ? (
+                            <button type="button" aria-expanded={full} className="flex w-full min-w-0 items-start gap-2 text-left">
+                              {full ? <ChevronDown className="mt-1 size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" />}
+                              <TorrentName name={name} className={cn("min-w-0", !full && "line-clamp-2")} />
+                            </button>
+                          ) : <TorrentName name={name} className="line-clamp-2 @4xl:line-clamp-1" />}
+                          <div className={cn("truncate text-xs font-normal text-muted-foreground @4xl:hidden", line)}>
+                            {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
+                          </div>
+                          <div className={cn("text-xs font-normal @2xl:hidden", line)}><Cause kind={event.cause.kind} name={event.cause.name} wrap={full} /></div>
+                          <div className={cn("text-xs font-normal text-muted-foreground tabular-nums @4xl:hidden", line)}>{t("deletes.final", { ratio, seeded })}</div>
+                          {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @4xl:block">{instanceNames.get(event.instanceId)}</div>}
+                        </TableCell>
+                        <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @4xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
+                        <TableCell className="hidden max-w-64 align-top @2xl:table-cell">{cause}</TableCell>
+                        <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @4xl:pr-2">
+                          {formatBytes(event.uploaded)}
+                          <div className="ml-auto max-w-24 whitespace-normal text-xs text-muted-foreground @xl:hidden">{time}</div>
+                        </TableCell>
+                        <TableCell className="hidden text-right align-top tabular-nums @4xl:table-cell">{ratio}</TableCell>
+                        <TableCell className="hidden pr-6 text-right align-top tabular-nums @4xl:table-cell">{seeded}</TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+              <div ref={footer} className="flex flex-wrap items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+                <span>{t("deletes.shown", { shown: formatCount.format(rows.length), total: formatCount.format(total ?? rows.length) })}</span>
+                {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
+                <div className="flex gap-2">
+                  {narrow && rows.length > PHONE_ROWS && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        flushSync(() => setPhoneRows({ view: shownView, count: PHONE_ROWS }))
+                        // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
+                        footer.current?.scrollIntoView({ block: "nearest" })
+                      }}
+                    >
+                      {t("table.showFewer")}
+                    </Button>
+                  )}
+                  {total !== undefined && rows.length < total && (
+                    <Button variant="outline" size="sm" disabled={waiting} onClick={showMore}>
+                      {waiting && <Loader2 className="size-3.5 animate-spin" />}
+                      {t("deletes.more")}
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </>
   )
 }

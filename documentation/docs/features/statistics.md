@@ -208,6 +208,8 @@ The cause is one of these:
 
 The buttons above the table select **All**, **Automations**, **You**, or **Other**. Other is a backup restore, a Client Proxy key, and outside qui. Each button shows the number of deletes of that kind in the period.
 
+After the first list loads, qui also loads the first rows of the other buttons, so a switch shows its rows at once. While the rows of a button load, the table keeps the last rows, dimmed. If a switch makes the list shorter, the table keeps its height until that space is below the screen. Thus, the buttons stay where you clicked them.
+
 The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table shows 5 rows first, and **Show more** shows 10 more rows. **Show fewer** goes back to 5 rows.
 
 On a narrow screen, such as a phone, the table hides some columns. It shows the time below the final upload. It shows the tracker, the cause, the final ratio, and the seeding time below the name. On a phone, tap a row to see the whole name and the whole cause. Tap the row again to cut them to one line.

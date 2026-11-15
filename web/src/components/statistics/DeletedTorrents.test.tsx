@@ -190,7 +190,7 @@ describe("DeletedTorrents", () => {
       release = resolve
     })
     moveTo(1e12 + 300_000)
-    await vi.waitFor(() => expect(requests).toHaveLength(2))
+    await vi.waitFor(() => expect(requests.filter(request => request.cause === null)).toHaveLength(2))
     expect(shownNames()).toEqual(["Built.Name.1.0-GRP"])
 
     deletesOf.set(1, [event(1, 1, 6_000, "user"), event(1, 0, 5_000, "user")])
@@ -276,7 +276,7 @@ describe("DeletedTorrents", () => {
       focusManager.setFocused(false)
       focusManager.setFocused(true)
     })
-    await vi.waitFor(() => expect(requests).toHaveLength(2))
+    await vi.waitFor(() => expect(requests.filter(request => request.cause === null)).toHaveLength(2))
 
     fireEvent.click(screen.getByText("deletes.more"))
 
@@ -302,6 +302,51 @@ describe("DeletedTorrents", () => {
     expect(shownNames()).toHaveLength(5)
     expect(scrollIntoView).toHaveBeenCalledOnce()
     expect(screen.queryByText("table.showFewer")).toBeNull()
+  })
+
+  // regression: #4179
+  it("loads the first page of the other filters of each instance after the first filter", async () => {
+    deletesOf.set(1, [event(1, 0, 5_000, "user")])
+    deletesOf.set(2, [event(2, 0, 4_000, "automation")])
+    renderTable([instance(1, "Seedbox"), instance(2, "Home")])
+
+    await vi.waitFor(() => expect(requests.filter(request => request.cause !== null).map(request => `${request.instanceId} ${request.cause} ${request.offset}`).sort()).toEqual([
+      "1 automation 0", "1 other 0", "1 user 0", "2 automation 0", "2 other 0", "2 user 0",
+    ]))
+    const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
+    fireEvent.mouseDown(trigger("deletes.filters.user"), { button: 0 })
+
+    expect(shownNames()).toEqual(["Built.Name.1.0-GRP"])
+  })
+
+  // regression: #4179
+  it("keeps the rows of the last filter, dimmed, until the rows of the next filter load", async () => {
+    deletesOf.set(1, [event(1, 0, 5_000, "user"), event(1, 1, 4_000, "automation")])
+    let release = () => {}
+    let preloading = false
+    const automation = new Promise<void>(resolve => {
+      release = resolve
+    })
+    server.use(http.get("*/api/instances/:id/transfer-history/deletes", async ({ request }) => {
+      if (new URL(request.url).searchParams.get("cause") === "automation") {
+        preloading = true
+        await automation
+      }
+      return undefined
+    }))
+    renderTable([instance(1, "Seedbox")])
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(2))
+    // The preload of the filter Automations still waits, so a switch has no rows of its own yet.
+    await vi.waitFor(() => expect(preloading).toBe(true))
+    const trigger = (labelKey: string) => screen.getByText(labelKey).closest("button")!
+
+    fireEvent.mouseDown(trigger("deletes.filters.automation"), { button: 0 })
+
+    expect(shownNames()).toHaveLength(2)
+    expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("true")
+    release()
+    await vi.waitFor(() => expect(shownNames()).toEqual(["Built.Name.1.1-GRP"]))
+    expect(document.querySelector("table")!.closest("[aria-busy]")!.getAttribute("aria-busy")).toBe("false")
   })
 
   // regression: #4179
