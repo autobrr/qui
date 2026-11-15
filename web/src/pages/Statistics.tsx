@@ -300,8 +300,8 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-      {/* A phone shows the five numbers as lines of one card. Six tracks give rows of 3 and 2 without an empty cell. */}
-      <div className="grid max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5">
+      {/* A phone shows the five numbers in two columns of one card, the last across both. Six tracks give rows of 3 and 2 without an empty cell. */}
+      <div className="grid grid-cols-2 max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5">
         <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
         <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
         <Tile
@@ -458,13 +458,13 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
 function Tile({ label, value, hint, wide = false }: { label: string; value?: string; hint?: ReactNode; wide?: boolean }) {
   return (
     <Card className={cn(
-      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:first:border-t-0 xl:col-span-1",
+      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:nth-[-n+2]:border-t-0 max-sm:even:border-l max-sm:last:col-span-2 xl:col-span-1",
       wide ? "sm:col-span-3" : "sm:col-span-2"
     )}>
-      <CardContent className="flex items-center justify-between gap-3 px-4 sm:block">
-        <div className="min-w-0 text-sm text-muted-foreground">{label}</div>
-        <div className="shrink-0 text-right sm:text-left">
-          <div className="whitespace-nowrap text-xl font-semibold tabular-nums sm:mt-1 sm:text-2xl">{value ?? "–"}</div>
+      <CardContent className="px-4">
+        <div className="text-xs text-muted-foreground sm:text-sm">{label}</div>
+        <div>
+          <div className="mt-0.5 whitespace-nowrap text-lg font-semibold tabular-nums sm:mt-1 sm:text-2xl">{value ?? "–"}</div>
           <div className="text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:empty:block">{hint}</div>
         </div>
       </CardContent>

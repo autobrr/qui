@@ -5,8 +5,8 @@
 
 import { Facts, type FactItem } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
+import { RowLimit } from "@/components/statistics/RowLimit"
 import { TorrentMarks, TorrentName } from "@/components/statistics/TopTorrents"
-import { Button } from "@/components/ui/button"
 import { ChartStyle, type ChartConfig } from "@/components/ui/chart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -40,8 +40,7 @@ import {
 import { cn, formatBytes } from "@/lib/utils"
 import type { TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryInstance, TransferHistoryRow } from "@/types"
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
-import { Fragment, useMemo, useRef, useState, type ReactNode } from "react"
-import { flushSync } from "react-dom"
+import { Fragment, useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-table"
@@ -81,7 +80,6 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
   const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
   const [allRowsOf, setAllRowsOf] = useState<string>()
-  const rowLimit = useRef<HTMLDivElement>(null)
   const withBaseline = !period.from
 
   // Only a switch of the grouping keeps the old rows, so that the table never shows the numbers of another period or selection.
@@ -270,22 +268,7 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
             )}
           </Table>
           {narrow && shownRows.length > PHONE_ROWS && (
-            <div ref={rowLimit} className="flex items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground">
-              <span>{t("table.shown", { shown: formatCount.format(visible.length), total: formatCount.format(shownRows.length) })}</span>
-              {allRows ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    flushSync(() => setAllRowsOf(undefined))
-                    // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
-                    rowLimit.current?.scrollIntoView({ block: "nearest" })
-                  }}
-                >
-                  {t("table.showFewer")}
-                </Button>
-              ) : <Button variant="outline" size="sm" onClick={() => setAllRowsOf(shownSeries)}>{t("table.showAll")}</Button>}
-            </div>
+            <RowLimit shown={visible.length} total={shownRows.length} all={allRows} onAllChange={all => setAllRowsOf(all ? shownSeries : undefined)} />
           )}
         </div>
       )}

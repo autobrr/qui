@@ -5,8 +5,10 @@
 
 import { Facts, type FactItem } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
+import { RowLimit } from "@/components/statistics/RowLimit"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useTorrentName } from "@/hooks/useTopTorrents"
 import { useTransferHistoryRows } from "@/hooks/useTransferHistoryRows"
 import { buildTorrentBars, formatRatio, type StatisticsPeriod, type TopTorrent } from "@/lib/statistics"
@@ -15,6 +17,8 @@ import type { TransferHistoryInstance, TransferHistoryRow } from "@/types"
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { Fragment, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+
+const PHONE_ROWS = 5
 
 interface TopTorrentsProps {
   // Undefined while the rows load.
@@ -31,7 +35,9 @@ interface TopTorrentsProps {
 export function TopTorrents({ torrents: shown, error, period, instances, since, displayGroup }: TopTorrentsProps) {
   const { t } = useTranslation("statistics")
   const torrentName = useTorrentName()
+  const narrow = useIsPhone()
   const [open, setOpen] = useState<string>()
+  const [all, setAll] = useState(false)
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
 
   if (error) {
@@ -57,7 +63,7 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
           </TableRow>
         </TableHeader>
         <TableBody>
-          {shown.map(torrent => {
+          {(narrow && !all ? shown.slice(0, PHONE_ROWS) : shown).map(torrent => {
             const key = `${torrent.instanceId}:${torrent.hash}`
             const expanded = open === key
             const name = torrentName(torrent)
@@ -102,6 +108,7 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
           })}
         </TableBody>
       </Table>
+      {narrow && shown.length > PHONE_ROWS && <RowLimit shown={all ? shown.length : PHONE_ROWS} total={shown.length} all={all} onAllChange={setAll} />}
     </div>
   )
 }

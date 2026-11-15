@@ -742,6 +742,27 @@ describe("Statistics", () => {
     expect(await facts("Bravo")).toEqual(["table.columns.downloaded 0 B", "table.columns.ratio ∞"])
   })
 
+  it("shows five top torrents on a phone, each after Show all, and five again after Show fewer", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 639px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await within(table).findByText("Torrent 5")
+    expect(within(table).queryByText("Torrent 6")).toBeNull()
+    expect(screen.getByText("table.shown shown=5 total=7")).toBeTruthy()
+
+    fireEvent.click(screen.getByText("table.showAll"))
+
+    expect(within(table).getByText("Torrent 7")).toBeTruthy()
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    fireEvent.click(screen.getByText("table.showFewer"))
+
+    expect(within(table).queryByText("Torrent 6")).toBeNull()
+    expect(screen.getByText("table.shown shown=5 total=7")).toBeTruthy()
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+  })
+
   // regression: #4113
   it("keeps the top torrents on the period of the other numbers while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
