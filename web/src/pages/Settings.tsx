@@ -15,6 +15,8 @@ import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { GazelleSettingsCard } from "@/components/settings/GazelleSettingsCard"
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_GROUPS, type SettingsTab } from "@/components/settings/tabs"
+import { DisplayProfilesSettings } from "@/components/torrents/prototype-display-profiles/DisplayProfilesSettings"
+import { isDemo } from "@/lib/demo"
 import { PageHeader } from "@/components/layout/PageHeader"
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
@@ -866,7 +868,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   const activeTab: SettingsTab = search.tab ?? DEFAULT_SETTINGS_TAB
   const navGroups: SectionNavGroup<SettingsTab>[] = SETTINGS_NAV_GROUPS.map(group => ({
     label: "labelKey" in group ? t(group.labelKey) : undefined,
-    sections: group.tabs.map(entry => ({ value: entry.tab, label: t(entry.labelKey) })),
+    sections: group.tabs.map(entry => ({ value: entry.tab, label: entry.tab === "display-profiles" ? "Display profiles" : t(entry.labelKey) })),
   }))
   const appInfoQuery = useQuery({
     queryKey: ["application-info"],
@@ -878,13 +880,27 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
     onSearchChange({ tab })
   }
 
+  // PROTOTYPE (throwaway): sections that wait forever on a backend the demo lacks.
+  const demoStub = isDemo && (["application", "integrations", "notifications", "external-programs", "client-api", "api"] as SettingsTab[]).includes(activeTab)
+
   return (
     <div className="space-y-6 p-4 lg:p-6">
       <PageHeader title={t("title")} description={t("description")} />
 
       <SectionedPage navLabel={t("title")} groups={navGroups} activeSection={activeTab} onSectionChange={handleTabChange}>
-        {activeTab === "application" && (
+        {!demoStub && activeTab === "application" && (
           <ApplicationInfoPanel openUpdate={search.modal === "install-update"} onUpdateOpened={() => onSearchChange({ ...search, modal: undefined })} />
+        )}
+
+        {activeTab === "display-profiles" && <DisplayProfilesSettings />}
+
+        {demoStub && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Not in the prototype</CardTitle>
+              <CardDescription>This section needs a qui server. The demo build has none.</CardDescription>
+            </CardHeader>
+          </Card>
         )}
 
         {activeTab === "instances" && (
@@ -916,7 +932,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           <TorznabSearchCachePanel />
         )}
 
-        {activeTab === "integrations" && (
+        {!demoStub && activeTab === "integrations" && (
           <Card>
             <CardHeader>
               <CardTitle>{t("integrations.title")}</CardTitle>
@@ -930,7 +946,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           </Card>
         )}
 
-        {activeTab === "client-api" && (
+        {!demoStub && activeTab === "client-api" && (
           <Card>
             <CardHeader>
               <CardTitle>{t("clientApiKeys.cardTitle")}</CardTitle>
@@ -944,7 +960,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           </Card>
         )}
 
-        {activeTab === "api" && (
+        {!demoStub && activeTab === "api" && (
           <Card>
             <CardHeader>
               <div className="flex items-start justify-between">
@@ -972,7 +988,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           </Card>
         )}
 
-        {activeTab === "external-programs" && (
+        {!demoStub && activeTab === "external-programs" && (
           <Card>
             <CardHeader>
               <CardTitle>{t("externalPrograms.cardTitle")}</CardTitle>
@@ -986,7 +1002,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           </Card>
         )}
 
-        {activeTab === "notifications" && (
+        {!demoStub && activeTab === "notifications" && (
           <Card>
             <CardHeader>
               <CardTitle>{t("notifications.cardTitle")}</CardTitle>

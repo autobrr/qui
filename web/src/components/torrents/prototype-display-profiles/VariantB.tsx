@@ -8,6 +8,7 @@
 // belongs to the active profile.
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
+import { useNavigate } from "@tanstack/react-router"
 import { Plus, Settings2 } from "lucide-react"
 import { useState } from "react"
 
@@ -17,21 +18,12 @@ import { cn } from "@/lib/utils"
 import { NewProfileForm } from "./NewProfileForm"
 import { actions, useActiveProfile, usePrototype } from "./store"
 
-/** Replaces the "Toggle columns" label: the list below belongs to the active profile. */
-export function VariantBColumnsLabel() {
-  const active = useActiveProfile()
-  return (
-    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-      Columns in <span className="text-foreground">{active.name}</span>
-    </div>
-  )
-}
-
 /** Rendered as the first children of the Toggle columns DropdownMenuContent. */
 export function VariantBMenuSection() {
   const profiles = usePrototype((s) => s.profiles)
   const active = useActiveProfile()
   const [creating, setCreating] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <>
@@ -96,10 +88,10 @@ export function VariantBMenuSection() {
               {active.ownSortAndFilters ? "Only for this profile" : "Shared with every profile"}
             </span>
           </span>
-          <Switch checked={active.ownSortAndFilters} tabIndex={-1} className="pointer-events-none mt-0.5" />
+          <Switch checked={!!active.ownSortAndFilters} tabIndex={-1} className="pointer-events-none mt-0.5" />
         </DropdownMenuItem>
       )}
-      <DropdownMenuItem onSelect={() => actions.setManageOpen(true)} className="text-muted-foreground">
+      <DropdownMenuItem onSelect={() => void navigate({ to: "/settings", search: { tab: "display-profiles" } })} className="text-muted-foreground">
         <Settings2 />
         Manage profiles…
       </DropdownMenuItem>

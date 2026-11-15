@@ -115,12 +115,12 @@ import { usePersistedStretchMode } from "@/hooks/usePersistedStretchMode"
 import { usePersistedGroupCopies } from "@/hooks/usePersistedGroupCopies"
 import { useCopyGroupRows } from "@/hooks/useCopyGroupRows"
 import { GroupCopiesToolbar } from "./table/GroupCopiesToolbar"
-import { actions as prototypeActions, PROTOTYPE_ENABLED, usePrototype } from "./prototype-display-profiles/store"
+import { actions as prototypeActions, PROTOTYPE_ENABLED, usePrototype, usePrototypeColumns } from "./prototype-display-profiles/store"
+import { ColumnsMenuHeader } from "./prototype-display-profiles/ColumnsMenuHeader"
 import { PrototypeNotice } from "./prototype-display-profiles/PrototypeNotice"
 import { VariantAToolbarButton } from "./prototype-display-profiles/VariantA"
-import { VariantBColumnsLabel, VariantBMenuSection } from "./prototype-display-profiles/VariantB"
+import { VariantBMenuSection } from "./prototype-display-profiles/VariantB"
 import { VariantCStatusChip } from "./prototype-display-profiles/VariantC"
-import { DisplayProfilesPrototypeOverlay } from "./prototype-display-profiles/PrototypeOverlay"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 import { DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_VISIBILITY, DEFAULT_UNIFIED_COLUMN_ORDER } from "@/lib/torrent-table/default-columns"
@@ -259,8 +259,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
   // Column visibility with persistence
-  const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY, instanceId)
-  const [stretchNameColumn, toggleStretchNameColumn] = usePersistedStretchMode(instanceId)
+  const persistedColumnVisibility = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY, instanceId)
+  const persistedStretchMode = usePersistedStretchMode(instanceId)
+  const prototypeColumns = usePrototypeColumns(instanceId)
+  const [columnVisibility, setColumnVisibility] = PROTOTYPE_ENABLED ? prototypeColumns.visibility : persistedColumnVisibility
+  const [stretchNameColumn, toggleStretchNameColumn] = PROTOTYPE_ENABLED ? prototypeColumns.stretch : persistedStretchMode
   // Column order with persistence
   // Latest accessor for the table's leaf column ids — reassigned after the table
   // is created below; useColumnDnd reads it lazily at drag time.
@@ -1154,9 +1157,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             </PrototypeNotice>
                             <TooltipContent>{t("tableView.toggleColumns")}</TooltipContent>
                           </Tooltip>
-                          <DropdownMenuContent align="end" className={prototypeVariant === "B" ? "w-64" : "w-52"}>
+                          <DropdownMenuContent align="end" className={prototypeVariant ? "w-72" : "w-52"}>
                             {prototypeVariant === "B" && <VariantBMenuSection />}
-                            {prototypeVariant === "B" ? <VariantBColumnsLabel /> : <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>}
+                            {prototypeVariant ? <ColumnsMenuHeader instanceId={instanceId} /> : <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>}
                             <DropdownMenuSeparator />
                             <ColumnOrderMenu
                               table={table}
@@ -1578,8 +1581,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             instanceName={instance.name}
           />
         )}
-
-        <DisplayProfilesPrototypeOverlay />
 
         {/* Scroll to top button*/}
         <div className="hidden lg:block">

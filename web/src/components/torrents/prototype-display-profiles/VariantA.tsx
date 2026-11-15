@@ -6,6 +6,7 @@
 // PROTOTYPE (throwaway). Variant A: a toolbar button that names the active
 // profile ("Laptop ▾"), left of Name stretch and Toggle columns, with a popover.
 
+import { useNavigate } from "@tanstack/react-router"
 import { Check, ChevronDown, MonitorSmartphone, Plus, Settings2 } from "lucide-react"
 import { useState } from "react"
 
@@ -24,6 +25,7 @@ export function VariantAToolbarButton() {
   const profiles = usePrototype((s) => s.profiles)
   const active = useActiveProfile()
   const [creating, setCreating] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <Popover
@@ -102,7 +104,7 @@ export function VariantAToolbarButton() {
               </div>
               <Switch
                 id="proto-a-own"
-                checked={active.ownSortAndFilters}
+                checked={!!active.ownSortAndFilters}
                 onCheckedChange={(on) => actions.setOwnSortAndFilters(active.id, on)}
               />
             </div>
@@ -113,7 +115,10 @@ export function VariantAToolbarButton() {
         <div className="p-1.5">
           <button
             type="button"
-            onClick={() => actions.setManageOpen(true)}
+            onClick={() => {
+              actions.setPickerOpen(false)
+              void navigate({ to: "/settings", search: { tab: "display-profiles" } })
+            }}
             className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:bg-accent"
           >
             <Settings2 className="h-4 w-4" />

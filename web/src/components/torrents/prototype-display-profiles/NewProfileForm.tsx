@@ -10,7 +10,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { actions, summarize, useActiveProfile, validateName } from "./store"
+import { actions, sameColumns, useActiveProfile, validateName } from "./store"
 
 interface NewProfileFormProps {
   onDone: () => void
@@ -22,6 +22,8 @@ export function NewProfileForm({ onDone, className }: NewProfileFormProps) {
   const [name, setName] = useState("")
   const [touched, setTouched] = useState(false)
   const error = validateName(name)
+  // Check a typed name live; an empty field shows its error only after Create.
+  const showError = name.trim() || touched ? error : null
 
   const submit = () => {
     setTouched(true)
@@ -53,16 +55,18 @@ export function NewProfileForm({ onDone, className }: NewProfileFormProps) {
           onChange={(e) => setName(e.target.value)}
           placeholder="Profile name, e.g. Workstation"
           aria-label="New profile name"
-          aria-invalid={touched && error ? true : undefined}
+          aria-invalid={showError ? true : undefined}
           className="h-8 text-sm"
         />
         <Button type="submit" size="sm" disabled={!name.trim()}>Create</Button>
       </div>
-      {touched && error ? (
-        <p className="text-xs text-destructive">{error}</p>
+      {showError ? (
+        <p className="text-xs text-destructive">{showError}</p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Copies {active.name}: {summarize(active.setup)}.
+          Copies {active.name}: {sameColumns(active) ? "the same columns on every instance" : "the columns of each instance"},{" "}
+          {active.rowDensity.toLowerCase()} rows, the sidebars, and {active.ownSortAndFilters ? "its own sort and filters" : "shared sort and filters"}.
+          This browser then uses the copy.
         </p>
       )}
     </form>

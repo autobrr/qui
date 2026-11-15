@@ -19,6 +19,7 @@ import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { DatabaseShrinkProvider } from "@/components/database/DatabaseShrinkProvider"
+import { DisplayProfilesPrototypeOverlay } from "@/components/torrents/prototype-display-profiles/PrototypeOverlay"
 
 function AppLayoutContent() {
   const { t } = useTranslation("common")
@@ -72,6 +73,7 @@ function AppLayoutContent() {
 
       {/* Mobile Footer Navigation */}
       <MobileFooterNav />
+      <DisplayProfilesPrototypeOverlay />
     </div>
   )
 }

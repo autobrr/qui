@@ -12,7 +12,8 @@ import { useTranslation } from "react-i18next"
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: ({ location }) => {
     // The demo has no backend behind any page but the torrent list.
-    if (isDemo && !location.pathname.includes("/instances")) {
+    // PROTOTYPE (throwaway): Settings stays open for the Display profiles section.
+    if (isDemo && !location.pathname.includes("/instances") && !location.pathname.includes("/settings")) {
       throw redirect({ to: "/instances/$instanceId", params: { instanceId: "1" } })
     }
   },

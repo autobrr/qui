@@ -7,6 +7,7 @@
 // Table/Dense view toggle (row density is part of a profile). It opens upward into
 // a popover where each profile row says what it holds.
 
+import { useNavigate } from "@tanstack/react-router"
 import { ChevronUp, MonitorSmartphone, Plus, Settings2 } from "lucide-react"
 import { useState } from "react"
 
@@ -15,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { NewProfileForm } from "./NewProfileForm"
+import { ProfileName } from "./ProfileName"
 import { PrototypeNotice } from "./PrototypeNotice"
 import { actions, summarize, useActiveProfile, usePrototype } from "./store"
 
@@ -23,6 +25,7 @@ export function VariantCStatusChip() {
   const profiles = usePrototype((s) => s.profiles)
   const active = useActiveProfile()
   const [creating, setCreating] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <Popover
@@ -49,7 +52,7 @@ export function VariantCStatusChip() {
           </Button>
         </PopoverTrigger>
       </PrototypeNotice>
-      <PopoverContent side="top" align="end" sideOffset={8} className="w-[22rem] p-0" data-prototype-picker="">
+      <PopoverContent side="top" align="end" sideOffset={8} className="w-[min(23rem,calc(100vw-1rem))] p-0 [overflow-wrap:anywhere]" data-prototype-picker="">
         <div className="border-b px-3 py-2.5">
           <p className="text-sm font-semibold">Display profiles</p>
           <p className="text-xs text-muted-foreground">
@@ -83,17 +86,14 @@ export function VariantCStatusChip() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className={cn("truncate text-sm", isActive && "font-medium")}>{profile.name}</span>
+                    <ProfileName profile={profile} className={cn("text-sm", isActive && "font-medium")} />
                     {isActive && (
                       <span className="shrink-0 rounded bg-primary/15 px-1 text-[10px] font-medium uppercase tracking-wide text-primary">
                         This browser
                       </span>
                     )}
                   </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {summarize(profile.setup)}
-                    {profile.isDefault ? " · shares sort" : profile.ownSortAndFilters ? " · own sort and filters" : " · shares sort"}
-                  </span>
+                  <span className="block text-xs text-muted-foreground">{summarize(profile, { stretch: false })}</span>
                 </span>
               </button>
             )
@@ -101,33 +101,46 @@ export function VariantCStatusChip() {
         </div>
 
         {!active.isDefault && (
-          <label className="flex cursor-pointer items-center gap-3 border-t px-3 py-2.5">
-            <span className="flex-1">
-              <span className="block text-sm">Own sort and filters for {active.name}</span>
-              <span className="block text-xs text-muted-foreground">Off: sort and filters follow every profile.</span>
-            </span>
-            <Switch
-              checked={active.ownSortAndFilters}
-              onCheckedChange={(on) => actions.setOwnSortAndFilters(active.id, on)}
-            />
-          </label>
+          <div className="border-t px-3 py-2.5">
+            <label className="flex cursor-pointer items-center gap-3">
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm">Own sort and filters for {active.name}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {active.ownSortAndFilters ? "Turning this off deletes them." : "Off: sort and filters follow every profile."}
+                </span>
+              </span>
+              <Switch
+                checked={!!active.ownSortAndFilters}
+                onCheckedChange={(on) => actions.setOwnSortAndFilters(active.id, on)}
+              />
+            </label>
+          </div>
         )}
 
-        <div className="border-t p-2">
+        <div className="flex flex-col border-t p-1.5">
           {creating ? (
-            <NewProfileForm className="px-1 py-0.5" onDone={() => setCreating(false)} />
+            <NewProfileForm className="p-1.5" onDone={() => setCreating(false)} />
           ) : (
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setCreating(true)}>
-                <Plus className="h-3.5 w-3.5" />
-                New profile from this setup…
-              </Button>
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => actions.setManageOpen(true)}>
-                <Settings2 className="h-3.5 w-3.5" />
-                Manage profiles…
-              </Button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              <span className="truncate">New profile from this setup…</span>
+            </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              actions.setPickerOpen(false)
+              void navigate({ to: "/settings", search: { tab: "display-profiles" } })
+            }}
+            className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:bg-accent"
+          >
+            <Settings2 className="h-4 w-4 shrink-0" />
+            <span className="truncate">Manage profiles…</span>
+          </button>
         </div>
       </PopoverContent>
     </Popover>
