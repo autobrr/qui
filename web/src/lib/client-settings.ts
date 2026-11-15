@@ -144,6 +144,24 @@ export function useClientSettingsLoaded(): boolean {
   return useSyncExternalStore(subscribeSyncReady, () => syncReady)
 }
 
+// Set when the first read of the server failed. The push gate stays closed.
+let snapshotFailed = false
+
+/** Records that the first read of the server failed, so that pages stop waiting for it and use the local values. */
+export function markClientSettingsUnavailable(): void {
+  if (snapshotFailed) return
+  snapshotFailed = true
+  for (const listener of syncReadyListeners) listener()
+}
+
+/**
+ * True once the first read of the server ended, with or without success. Before that, a setting can show the default
+ * or an old local value that the read then replaces, so a pick of the value that looks selected is lost.
+ */
+export function useClientSettingsSettled(): boolean {
+  return useSyncExternalStore(subscribeSyncReady, () => syncReady || snapshotFailed)
+}
+
 // Durable outbox: the dirty key list mirrored to localStorage. The pagehide
 // keepalive PUT is not reliable (Chrome drops keepalive fetches from
 // service-worker-controlled pages on unload), so unacked writes must survive
@@ -324,6 +342,7 @@ export function _resetClientSettingsForTests(): void {
   flushTimer = null
   flushInFlight = false
   flushRequestedInFlight = false
+  snapshotFailed = false
   setSyncReady(false)
   loadPersistedPending()
 }

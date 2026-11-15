@@ -11,7 +11,7 @@ import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, t
 import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
 import { useStatisticsPeriod } from "@/hooks/useStatisticsPeriod"
-import { useClientSettingsLoaded } from "@/lib/client-settings"
+import { useClientSettingsSettled } from "@/lib/client-settings"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { YearView } from "@/components/statistics/YearView"
@@ -109,19 +109,19 @@ const statisticsRoute = getRouteApi("/_authenticated/statistics")
 
 /**
  * Opens on the period of the address, saves it, and removes it from the address, so that a reload opens on the saved
- * period. The page waits for the first read of the server, because until then the saved period can be the default or
- * an old local copy, and a tap on it is lost.
+ * period. The page waits until the first read of the saved settings ends (see useClientSettingsSettled), and saves the
+ * address period after it, so that the read does not replace that period.
  */
 export function StatisticsRoute() {
   const { period } = statisticsRoute.useSearch()
   const navigate = statisticsRoute.useNavigate()
   const [, savePreset] = useStatisticsPeriod()
+  const settingsLoaded = useClientSettingsSettled()
   useEffect(() => {
-    if (!period) return
+    if (!period || !settingsLoaded) return
     savePreset(period)
     void navigate({ search: previous => ({ ...previous, period: undefined }), replace: true })
-  }, [period, savePreset, navigate])
-  const settingsLoaded = useClientSettingsLoaded()
+  }, [period, settingsLoaded, savePreset, navigate])
   if (!settingsLoaded) {
     return (
       <div className="flex h-64 items-center justify-center p-4 lg:p-6">

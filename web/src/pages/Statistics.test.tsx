@@ -284,6 +284,17 @@ describe("Statistics period", () => {
     expect(selectedPeriod()).toBe("periods.7d")
   })
 
+  it("keeps the period of the address over an older server value when the local copy already holds it", async () => {
+    localStorage.setItem("qui-statistics-period", JSON.stringify("24h"))
+    mocks.search = { period: "24h" }
+    renderRoute()
+    loadServerSnapshot({ "qui-statistics-period": JSON.stringify("7d") })
+
+    await screen.findByText("periods.24h")
+    expect(selectedPeriod()).toBe("periods.24h")
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+  })
+
   it("opens on the period of the address, saves it, and removes it from the address", async () => {
     localStorage.setItem("qui-statistics-period", JSON.stringify("7d"))
     mocks.search = { period: "24h" }

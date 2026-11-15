@@ -14,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useDashboardChartView, type DashboardChartView } from "@/hooks/useDashboardChartView"
 import { useLiveSamples } from "@/hooks/useLiveSamples"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
-import { useClientSettingsLoaded } from "@/lib/client-settings"
+import { useClientSettingsSettled } from "@/lib/client-settings"
 import { useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import {
   buildDayChart,
@@ -108,8 +108,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
   const dayChart = useMemo(() => current && dayData && buildDayChart(current.rows, current.instanceIds, layerOf, dayData.range), [current, dayData, layerOf])
 
   const [chosen, setChosen] = useDashboardChartView()
-  // Until the first read of the server, the saved view can be the default or an old local copy. A tap then is lost.
-  const settingsLoaded = useClientSettingsLoaded()
+  const settingsLoaded = useClientSettingsSettled()
   // With no history, the page shows Live and keeps the saved view.
   const range: DashboardChartView = noHistory ? "live" : chosen
   const live = useLiveSamples(settingsLoaded && range === "live")

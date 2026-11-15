@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "@/i18n"
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, applyServerSettings, markClientSettingsUnavailable, readRaw, seedAndMarkReady } from "@/lib/client-settings"
 import type { DashboardInstanceStats } from "@/lib/dashboard-overview"
 import { formatBytes } from "@/lib/utils"
 import { server } from "@/test/msw/server"
@@ -299,6 +299,18 @@ describe("DashboardOverview, Live", () => {
     expect(live.getAttribute("aria-selected")).toBe("true")
     expect(live.hasAttribute("disabled")).toBe(false)
     expect(screen.getByRole("tab", { name: "stream.day" }).hasAttribute("disabled")).toBe(false)
+  })
+
+  it("offers 24 h and Live with the local view when the saved settings cannot load", async () => {
+    _resetClientSettingsForTests()
+    localStorage.setItem("qui-dashboard-chart-view", JSON.stringify("live"))
+    renderOverview([stats(1)])
+    expect(screen.getByRole("tab", { name: "stream.live" }).hasAttribute("disabled")).toBe(true)
+
+    act(() => markClientSettingsUnavailable())
+    const live = screen.getByRole("tab", { name: "stream.live" })
+    expect(live.hasAttribute("disabled")).toBe(false)
+    expect(live.getAttribute("aria-selected")).toBe("true")
   })
 
   it("draws the samples of the server for the instances of the list", async () => {
