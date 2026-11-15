@@ -139,6 +139,8 @@
     },
     "seededValue": "{{value}}x",
     "total": "合计",
+    "shown": "{{shown}} / {{total}}",
+    "showAll": "显示全部",
     "noCategory": "无分类",
     "none": "无",
     "liveError": "无法加载 qBittorrent 中当前的种子：{{message}}",

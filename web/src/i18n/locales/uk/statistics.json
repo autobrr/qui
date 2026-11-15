@@ -142,6 +142,8 @@
     },
     "seededValue": "{{value}}×",
     "total": "Усього",
+    "shown": "{{shown}} з {{total}}",
+    "showAll": "Показати все",
     "noCategory": "Без категорії",
     "none": "Немає",
     "liveError": "Не вдалося завантажити торенти, які зараз є в qBittorrent: {{message}}",

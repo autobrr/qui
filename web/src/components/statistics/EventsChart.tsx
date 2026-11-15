@@ -5,6 +5,7 @@
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
+import { useTapTooltip } from "@/components/statistics/useTapTooltip"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { EVENTS, type EventDay, type EventKind } from "@/lib/statistics-events"
 import { useMemo } from "react"
@@ -27,6 +28,7 @@ export function EventsChart({ days }: EventsChartProps) {
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatStart, formatTick } = useBucketFormat("day")
   const formatCount = useMemo(() => new Intl.NumberFormat(locale), [locale])
+  const tooltip = useTapTooltip()
 
   const colors = useSeriesColors()
   const config = useMemo<ChartConfig>(() => Object.fromEntries(EVENTS.map((kind, index) => [
@@ -37,13 +39,14 @@ export function EventsChart({ days }: EventsChartProps) {
   const totals = useMemo(() => Object.fromEntries(EVENTS.map(kind => [kind, days.reduce((sum, day) => sum + day[kind], 0)])) as Record<EventKind, number>, [days])
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[240px] w-full">
+    <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[240px] w-full">
       <BarChart data={rows} stackOffset="sign" margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value))} />
         <YAxis tickLine={false} axisLine={false} width={40} allowDecimals={false} tickFormatter={value => formatCount.format(Math.abs(Number(value)))} />
         <ReferenceLine y={0} stroke="var(--border)" />
         <ChartTooltip
+          {...tooltip.tooltip}
           cursor={{ fill: "var(--muted)", opacity: 0.5 }}
           isAnimationActive={false}
           content={({ active, payload }) => {

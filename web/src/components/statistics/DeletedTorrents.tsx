@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TorrentName } from "@/components/statistics/TopTorrents"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { formatBytes, formatDuration } from "@/lib/utils"
@@ -17,6 +19,9 @@ import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 export const DELETES_PAGE = 50
+
+// The number of rows that a phone shows at first, and adds for each Show more.
+const PHONE_ROWS = 10
 
 const FILTERS = [
   { cause: "", labelKey: "deletes.filters.all" },
@@ -99,6 +104,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [incognitoMode] = useIncognitoMode()
+  const narrow = useIsMobile()
   const [cause, setCause] = useState<TransferHistoryCauseFilter>("")
   const [paging, setPaging] = useState({ scope, cause, pages: 1 })
   const pages = paging.scope === scope && paging.cause === cause ? paging.pages : 1
@@ -115,14 +121,30 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
 
   const countOf = (filter: TransferHistoryCauseFilter) => counts && (filter === "" ? counts.automation + counts.user + counts.other : counts[filter])
   const total = countOf(cause)
+  const [phoneRows, setPhoneRows] = useState({ view, count: PHONE_ROWS })
+  const limit = narrow ? phoneRows.view === view ? phoneRows.count : PHONE_ROWS : Infinity
+  const rows = deletes?.slice(0, limit)
+  const showMore = () => {
+    if (error) {
+      retry()
+      return
+    }
+    const next = (rows?.length ?? 0) + (narrow ? PHONE_ROWS : DELETES_PAGE)
+    if (narrow) {
+      setPhoneRows({ view, count: next })
+    }
+    if (deletes && total !== undefined && next > deletes.length && deletes.length < total) {
+      setPaging({ scope, cause, pages: pages + 1 })
+    }
+  }
 
   return (
     <>
-      <div className="overflow-x-auto px-6 pb-4">
+      <div className="overflow-x-auto px-4 pb-4 sm:px-6">
         <Tabs value={cause} onValueChange={value => setCause(value as TransferHistoryCauseFilter)}>
-          <TabsList>
+          <TabsList className="max-sm:w-full">
             {FILTERS.map(filter => (
-              <TabsTrigger key={filter.cause} value={filter.cause} className="gap-1.5 px-3">
+              <TabsTrigger key={filter.cause} value={filter.cause} className="gap-1.5 px-3 max-sm:gap-1 max-sm:px-1.5 max-sm:text-xs">
                 {t(filter.labelKey)}
                 {counts && <span className="tabular-nums text-muted-foreground">{formatCount.format(countOf(filter.cause)!)}</span>}
               </TabsTrigger>
@@ -130,28 +152,28 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
           </TabsList>
         </Tabs>
       </div>
-      {error && !deletes ? (
-        <div className="flex h-24 items-center justify-center border-t px-6 text-sm text-destructive">{t("errors.load", { message: error.message })}</div>
-      ) : !deletes ? (
+      {error && !rows ? (
+        <div className="flex h-24 items-center justify-center border-t px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: error.message })}</div>
+      ) : !rows ? (
         <div className="flex h-24 items-center justify-center border-t"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-      ) : deletes.length === 0 ? (
-        <div className="flex h-24 items-center justify-center border-t px-6 text-sm text-muted-foreground">{t("deletes.empty")}</div>
+      ) : rows.length === 0 ? (
+        <div className="flex h-24 items-center justify-center border-t px-4 text-sm text-muted-foreground sm:px-6">{t("deletes.empty")}</div>
       ) : (
         <div className="@container border-t">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="hidden pl-6 @xl:table-cell">{t("deletes.columns.time")}</TableHead>
-                <TableHead className="w-full pl-6 @xl:pl-2">{t("topTorrents.columns.torrent")}</TableHead>
+                <TableHead className="w-full pl-4 sm:pl-6 @xl:pl-2">{t("topTorrents.columns.torrent")}</TableHead>
                 <TableHead className="hidden @2xl:table-cell">{t("table.columns.tracker")}</TableHead>
                 <TableHead className="hidden @xl:table-cell">{t("deletes.columns.cause")}</TableHead>
-                <TableHead className="text-right">{t("deletes.columns.uploaded")}</TableHead>
+                <TableHead className="pr-4 text-right sm:pr-6 @2xl:pr-2">{t("deletes.columns.uploaded")}</TableHead>
                 <TableHead className="hidden text-right @2xl:table-cell">{t("deletes.columns.ratio")}</TableHead>
                 <TableHead className="hidden pr-6 text-right @2xl:table-cell">{t("deletes.columns.seeded")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {deletes.map(event => {
+              {rows.map(event => {
                 const name = incognitoMode ? getLinuxIsoName(event.hash) : event.name
                 const cause = <Cause kind={event.cause.kind} name={event.cause.name} />
                 const ratio = event.ratio === undefined ? "–" : event.ratio.toFixed(2)
@@ -160,19 +182,19 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                 return (
                   <TableRow key={`${event.instanceId}:${event.hash}:${event.time}`}>
                     <TableCell className="hidden whitespace-nowrap pl-6 align-top text-muted-foreground @xl:table-cell">{time}</TableCell>
-                    <TableCell className="w-full max-w-0 pl-6 font-medium @xl:pl-2">
-                      <span className="line-clamp-2 break-all whitespace-normal @2xl:line-clamp-1" title={name}>{name}</span>
-                      <div className="truncate text-xs font-normal text-muted-foreground @2xl:hidden">
-                        {displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}
+                    <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6 @xl:pl-2">
+                      <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />
+                      <div className="flex items-center gap-2 text-xs font-normal text-muted-foreground @2xl:hidden">
+                        <span className="min-w-0 flex-1 truncate">{displayGroup(event.trackerGroup)}{instanceNames && ` · ${instanceNames.get(event.instanceId)}`}</span>
+                        <span className="shrink-0 tabular-nums @xl:hidden">{time}</span>
                       </div>
                       <div className="text-xs font-normal @xl:hidden">{cause}</div>
-                      <div className="truncate text-xs font-normal text-muted-foreground tabular-nums @xl:hidden">{time}</div>
                       <div className="truncate text-xs font-normal text-muted-foreground tabular-nums @2xl:hidden">{t("deletes.final", { ratio, seeded })}</div>
                       {instanceNames && <div className="hidden truncate text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(event.instanceId)}</div>}
                     </TableCell>
                     <TableCell className="hidden max-w-48 truncate align-top text-muted-foreground @2xl:table-cell">{displayGroup(event.trackerGroup)}</TableCell>
                     <TableCell className="hidden max-w-64 align-top @xl:table-cell">{cause}</TableCell>
-                    <TableCell className="text-right align-top tabular-nums">{formatBytes(event.uploaded)}</TableCell>
+                    <TableCell className="pr-4 text-right align-top tabular-nums sm:pr-6 @2xl:pr-2">{formatBytes(event.uploaded)}</TableCell>
                     <TableCell className="hidden text-right align-top tabular-nums @2xl:table-cell">{ratio}</TableCell>
                     <TableCell className="hidden pr-6 text-right align-top tabular-nums @2xl:table-cell">{seeded}</TableCell>
                   </TableRow>
@@ -180,11 +202,11 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
               })}
             </TableBody>
           </Table>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 pt-3 text-xs text-muted-foreground">
-            <span>{t("deletes.shown", { shown: formatCount.format(deletes.length), total: formatCount.format(total ?? deletes.length) })}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+            <span>{t("deletes.shown", { shown: formatCount.format(rows.length), total: formatCount.format(total ?? rows.length) })}</span>
             {error && <span className="text-destructive">{t("errors.load", { message: error.message })}</span>}
-            {total !== undefined && deletes.length < total && (
-              <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => error ? retry() : setPaging({ scope, cause, pages: pages + 1 })}>
+            {total !== undefined && rows.length < total && (
+              <Button variant="outline" size="sm" disabled={loadingMore} onClick={showMore}>
                 {loadingMore && <Loader2 className="size-3.5 animate-spin" />}
                 {t("deletes.more")}
               </Button>

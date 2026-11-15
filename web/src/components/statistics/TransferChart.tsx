@@ -6,6 +6,8 @@
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { byteTicks, foldOther, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
+import { useTapTooltip } from "@/components/statistics/useTapTooltip"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import { formatBytes } from "@/lib/utils"
 import { useMemo } from "react"
@@ -36,6 +38,8 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatStart, formatTick } = useBucketFormat(unit)
   const colors = useSeriesColors()
+  const tooltip = useTapTooltip()
+  const narrow = useIsMobile()
 
   const config = useMemo<ChartConfig>(() => {
     const entries: ChartConfig = {}
@@ -76,11 +80,11 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
   const keys = [...groups.map((_, index) => `s${index}`), ...(hasOther ? [OTHER] : [])]
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[300px] w-full">
-      <BarChart data={rows} margin={{ top: 16, right: 24, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
+    <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[260px] w-full sm:h-[300px]">
+      <BarChart data={rows} margin={{ top: 16, right: narrow ? 4 : 24, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />
-        <YAxis tickLine={false} axisLine={false} width={72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
+        <YAxis tickLine={false} axisLine={false} width={narrow ? "auto" : 72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
         {rows.map((row, index) => row.gapSeconds > 0 && (
           <ReferenceLine
             key={row.start}
@@ -91,6 +95,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
           />
         ))}
         <ChartTooltip
+          {...tooltip.tooltip}
           cursor={{ fill: "var(--muted)", opacity: 0.5 }}
           isAnimationActive={false}
           content={({ active, payload }) => {
@@ -99,7 +104,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
               return null
             }
             return (
-              <div className="min-w-48 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+              <div className="min-w-48 max-w-64 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
                 <div className="mb-1.5 font-medium">
                   {formatStart(row.start, row.width)}
                   {row.width === "day" && unit === "hour" && <span className="ml-1 font-normal text-muted-foreground">{t("chart.foldedDay")}</span>}
@@ -108,8 +113,8 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
                   {keys.map(key => (
                     <div key={key} className="flex items-center gap-2">
                       <span className="size-2 shrink-0 rounded-[2px]" style={{ background: `var(--color-${key})` }} />
-                      <span className="truncate text-muted-foreground">{config[key]?.label}</span>
-                      <span className="ml-auto pl-4 font-medium tabular-nums">{formatBytes(row[key] as number)}</span>
+                      <span className="min-w-0 truncate text-muted-foreground">{config[key]?.label}</span>
+                      <span className="ml-auto shrink-0 whitespace-nowrap pl-4 font-medium tabular-nums">{formatBytes(row[key] as number)}</span>
                     </div>
                   ))}
                   <div className="flex items-center gap-2 border-t pt-1">

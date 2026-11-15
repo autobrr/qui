@@ -140,6 +140,8 @@
     },
     "seededValue": "{{value}}x",
     "total": "Total",
+    "shown": "{{shown}} of {{total}}",
+    "showAll": "Show all",
     "noCategory": "No category",
     "none": "None",
     "liveError": "Could not load the torrents that are in qBittorrent now: {{message}}",

@@ -34,24 +34,24 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
   const instanceNames = instances.length > 1 ? new Map(instances.map(instance => [instance.instanceId, instance.name])) : undefined
 
   if (error) {
-    return <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: error.message })}</div>
+    return <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: error.message })}</div>
   }
   if (!shown) {
     return <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
   }
   if (shown.length === 0) {
-    return <div className="flex h-24 items-center justify-center px-6 text-sm text-muted-foreground">{t("chart.empty")}</div>
+    return <div className="flex h-24 items-center justify-center px-4 text-sm text-muted-foreground sm:px-6">{t("chart.empty")}</div>
   }
   return (
     <div className="@container border-t">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-full pl-6">{t("topTorrents.columns.torrent")}</TableHead>
+            <TableHead className="w-full pl-4 sm:pl-6">{t("topTorrents.columns.torrent")}</TableHead>
             <TableHead className="hidden @2xl:table-cell">{t("table.columns.tracker")}</TableHead>
-            <TableHead className="text-right">{t("table.columns.uploaded")}</TableHead>
+            <TableHead className="pr-4 text-right sm:pr-6 @xl:pr-2">{t("table.columns.uploaded")}</TableHead>
             <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.downloaded")}</TableHead>
-            <TableHead className="hidden text-right @xl:table-cell">{t("table.columns.ratio")}</TableHead>
+            <TableHead className="hidden text-right @xl:table-cell @xl:pr-6 @2xl:pr-2">{t("table.columns.ratio")}</TableHead>
             <TableHead className="hidden pr-6 text-right @2xl:table-cell">{t("topTorrents.columns.first24h")}</TableHead>
           </TableRow>
         </TableHeader>
@@ -63,10 +63,10 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
             return (
               <Fragment key={key}>
                 <TableRow className={cn("cursor-pointer", expanded && "bg-muted hover:bg-muted")} onClick={() => setOpen(expanded ? undefined : key)}>
-                  <TableCell className="w-full max-w-0 pl-6 font-medium">
+                  <TableCell className="w-full max-w-0 pl-4 font-medium sm:pl-6">
                     <button type="button" aria-expanded={expanded} className="flex w-full min-w-0 items-center gap-2 text-left">
                       {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
-                      <span className="line-clamp-2 break-all whitespace-normal @2xl:line-clamp-1" title={name}>{name}</span>
+                      <TorrentName name={name} className="line-clamp-2 @2xl:line-clamp-1" />
                       <span className="hidden shrink-0 items-center gap-2 @2xl:flex"><TorrentMarks torrent={torrent} /></span>
                     </button>
                     <div className="flex min-w-0 items-center gap-2 pl-5.5 text-xs font-normal text-muted-foreground @2xl:hidden">
@@ -76,9 +76,9 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
                     {instanceNames && <div className="hidden truncate pl-5.5 text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(torrent.instanceId)}</div>}
                   </TableCell>
                   <TableCell className="hidden max-w-48 truncate text-muted-foreground @2xl:table-cell">{displayGroup(torrent.trackerGroup)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatBytes(torrent.uploaded)}</TableCell>
+                  <TableCell className="pr-4 text-right tabular-nums sm:pr-6 @xl:pr-2">{formatBytes(torrent.uploaded)}</TableCell>
                   <TableCell className="hidden text-right tabular-nums @xl:table-cell">{formatBytes(torrent.downloaded)}</TableCell>
-                  <TableCell className="hidden text-right tabular-nums @xl:table-cell">{formatRatio(torrent) ?? "–"}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums @xl:table-cell @xl:pr-6 @2xl:pr-2">{formatRatio(torrent) ?? "–"}</TableCell>
                   <TableCell className="hidden pr-6 text-right tabular-nums text-muted-foreground @2xl:table-cell">{torrent.uploadFirst24h === null ? "–" : formatBytes(torrent.uploadFirst24h)}</TableCell>
                 </TableRow>
                 {expanded && (
@@ -94,6 +94,15 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
         </TableBody>
       </Table>
     </div>
+  )
+}
+
+/** A torrent name that wraps after a dot, a dash, or an underscore, and inside a word only when the word does not fit. */
+export function TorrentName({ name, className }: { name: string; className?: string }) {
+  return (
+    <span className={cn("whitespace-normal [overflow-wrap:anywhere]", className)} title={name}>
+      {name.split(/([._-])/).map((part, index) => <Fragment key={index}>{part}{index % 2 === 1 && <wbr />}</Fragment>)}
+    </span>
   )
 }
 
@@ -132,7 +141,7 @@ function TorrentDays({ torrent, name, instances, period, since }: TorrentDaysPro
   }, [transfer.rows, period, last, since])
 
   return (
-    <div className="sticky left-0 w-[100cqw] space-y-2 border-l-2 bg-muted/30 px-6 py-5">
+    <div className="sticky left-0 w-[100cqw] space-y-2 border-l-2 bg-muted/30 px-4 py-5 sm:px-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="min-w-0 truncate font-medium text-foreground">{t("detail.chartDay", { group: name })}</span>
         <span>{t("detail.chartLegend")}</span>

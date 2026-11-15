@@ -17,7 +17,8 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
-import { useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
+import { useIsMobile } from "@/hooks/useMediaQuery"
+import { usePrefetchTransferHistoryRows, useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
 import { useTrackerGroupName } from "@/hooks/useTrackerGroupName"
 import { getLinuxCategoryName, getLinuxReleaseGroup, useIncognitoMode } from "@/lib/incognito"
@@ -37,6 +38,7 @@ import {
   recordingSince,
   showsYearView,
   sumBytes,
+  TABLE_GROUPINGS,
   topGroups,
   type Metric,
   type PeriodPreset,
@@ -47,7 +49,7 @@ import { buildEventDays } from "@/lib/statistics-events"
 import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
 import { cn, formatBytes } from "@/lib/utils"
 import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
-import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
 import { getRouteApi } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
@@ -107,6 +109,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
+  const narrow = useIsMobile()
   const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: initialPreset, period: presetPeriod(initialPreset, new Date()), moved: false }))
   const { choice } = periodState
 
@@ -160,15 +163,29 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
   const activeIds = useMemo(() => new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id)), [instancesQuery.data])
   const liveIds = useMemo(() => selected.map(status => status.instanceId).filter(id => activeIds.has(id)), [activeIds, selected])
+  const liveQuery = (instanceId: number) => ({ queryKey: ["tracker-groups", instanceId], queryFn: () => api.getTrackerGroups(instanceId) })
   const live = useQueries({
-    queries: liveIds.map(instanceId => ({
-      queryKey: ["tracker-groups", instanceId],
-      queryFn: () => api.getTrackerGroups(instanceId),
-      enabled: byTracker,
-      refetchInterval: HISTORY_WRITE_MS,
-    })),
+    queries: liveIds.map(instanceId => ({ ...liveQuery(instanceId), enabled: byTracker, refetchInterval: HISTORY_WRITE_MS })),
     combine: combineLiveGroups,
   })
+
+  const queryClient = useQueryClient()
+  const prefetchRows = usePrefetchTransferHistoryRows()
+  const prefetchGroupings = () => {
+    if (!ready) {
+      return
+    }
+    for (const other of TABLE_GROUPINGS) {
+      if (other === grouping) {
+        continue
+      }
+      if (other === "tracker") {
+        liveIds.forEach(instanceId => void queryClient.prefetchQuery({ ...liveQuery(instanceId), staleTime: HISTORY_WRITE_MS }))
+      } else {
+        prefetchRows(selected, { from: period.from, to: period.to, bucket: "total", groupBy: other })
+      }
+    }
+  }
 
   // A new period gives new query keys, so the queries hold no previous data to show while they load. After a move,
   // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
@@ -244,6 +261,16 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
     return change === undefined ? undefined : t("tiles.change", { change: formatChange.format(change) })
   }
 
+  const periodPicker = (
+    <PeriodPicker
+      value={periodState.choice}
+      customLabel={customLabel}
+      onPreset={preset => setPeriodState({ choice: preset, period: presetPeriod(preset, new Date()), moved: false })}
+      onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
+    />
+  )
+  const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
+
   return (
     <div className="space-y-6 p-4 pb-16 lg:p-6">
       <PageHeader
@@ -254,22 +281,19 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
             {partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-yellow-600 dark:text-yellow-500">{t("partial")}</Badge>}
           </span>
         }
-        actions={
+        actions={narrow ? (
+          <div className="flex w-full min-w-0 items-center gap-2">
+            {periodPicker}
+            {instanceFilter}
+            <SeriesColorPicker />
+          </div>
+        ) : (
           <>
             <SeriesColorPicker />
-            {options.length > 1 && <InstanceFilter
-              options={options}
-              selected={selectedIds}
-              onChange={setSelectedIds}
-            />}
-            <PeriodPicker
-              value={periodState.choice}
-              customLabel={customLabel}
-              onPreset={preset => setPeriodState({ choice: preset, period: presetPeriod(preset, new Date()), moved: false })}
-              onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
-            />
+            {instanceFilter}
+            {periodPicker}
           </>
-        }
+        )}
       />
 
       {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
@@ -298,19 +322,19 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="px-4 sm:px-6">
           <CardTitle>{yearView ? t("yearView.title") : t("chart.title")}</CardTitle>
           <CardDescription>{yearView ? t("yearView.description") : period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
           {!yearView && <CardAction>
             <Tabs value={metric} onValueChange={value => setMetric(value as Metric)}>
-              <TabsList>
-                <TabsTrigger value="uploaded" className="px-3">{t("chart.upload")}</TabsTrigger>
-                <TabsTrigger value="downloaded" className="px-3">{t("chart.download")}</TabsTrigger>
+              <TabsList className="max-sm:h-8">
+                <TabsTrigger value="uploaded" className="px-3 max-sm:px-2 max-sm:text-xs">{t("chart.upload")}</TabsTrigger>
+                <TabsTrigger value="downloaded" className="px-3 max-sm:px-2 max-sm:text-xs">{t("chart.download")}</TabsTrigger>
               </TabsList>
             </Tabs>
           </CardAction>}
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4 sm:px-6">
           {chart.error ? (
             <div className="flex h-[300px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: chart.error.message })}</div>
           ) : loading ? (
@@ -326,7 +350,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
       </Card>
 
       <Card className="gap-0 overflow-hidden pb-4">
-        <CardHeader className="pb-4">
+        <CardHeader className="px-4 pb-4 sm:px-6">
           <CardTitle>{t("table.title")}</CardTitle>
           <CardDescription>{grouping === "tracker" ? t("table.descriptionTracker") : grouping === "category" ? t("table.descriptionCategory") : t("table.descriptionRelease")}</CardDescription>
         </CardHeader>
@@ -343,22 +367,23 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
           instances={selected}
           seriesGroups={groups}
           displayName={tableName}
+          onPrefetch={prefetchGroupings}
         />
       </Card>
 
       <Card className="gap-0 overflow-hidden pb-4">
-        <CardHeader className="pb-4">
+        <CardHeader className="px-4 pb-4 sm:px-6">
           <CardTitle>{t("topTorrents.title")}</CardTitle>
           <CardDescription>{t("topTorrents.description")}</CardDescription>
         </CardHeader>
         {statusQuery.error ? (
-          <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
+          <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
         ) : ready ? (
           <TopTorrents torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
         ) : (
           <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
         )}
-        <div className="space-y-1 px-6 pt-3 text-xs text-muted-foreground">
+        <div className="space-y-1 px-4 pt-3 text-xs text-muted-foreground sm:px-6">
           <p>{t("topTorrents.note")}</p>
           {!period.from && <p>{t("table.baselineNote")}</p>}
         </div>
@@ -366,11 +391,11 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="px-4 sm:px-6">
             <CardTitle>{t("growth.title")}</CardTitle>
             <CardDescription>{newestCount !== undefined ? t("growth.description", { torrents: newestCount.toLocaleString(locale) }) : t("growth.descriptionEmpty")}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6">
             {growthError ? (
               <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
             ) : !libraryPoints ? (
@@ -386,11 +411,11 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
           </CardContent>
         </Card>
         <Card>
-          <CardHeader>
+          <CardHeader className="px-4 sm:px-6">
             <CardTitle>{t("events.title")}</CardTitle>
             <CardDescription>{t("events.description")}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 sm:px-6">
             {growthError ? (
               <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
             ) : !eventDays ? (
@@ -405,12 +430,12 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
       </div>
 
       <Card className="gap-0 overflow-hidden pb-4">
-        <CardHeader className="pb-4">
+        <CardHeader className="px-4 pb-4 sm:px-6">
           <CardTitle>{t("deletes.title")}</CardTitle>
           <CardDescription>{t("deletes.description")}</CardDescription>
         </CardHeader>
         {statusQuery.error ? (
-          <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
+          <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
         ) : ready ? (
           <DeletedTorrents
             scope={`${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`}
@@ -436,10 +461,12 @@ function Tile({ label, value, hint, wide = false }: { label: string; value?: str
       "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:first:border-t-0 xl:col-span-1",
       wide ? "sm:col-span-3" : "sm:col-span-2"
     )}>
-      <CardContent className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 px-4 sm:block">
-        <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="whitespace-nowrap text-right text-xl font-semibold tabular-nums sm:mt-1 sm:text-left sm:text-2xl">{value ?? "–"}</div>
-        <div className="col-start-2 text-right text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:text-left sm:empty:block">{hint}</div>
+      <CardContent className="flex items-center justify-between gap-3 px-4 sm:block">
+        <div className="min-w-0 text-sm text-muted-foreground">{label}</div>
+        <div className="shrink-0 text-right sm:text-left">
+          <div className="whitespace-nowrap text-xl font-semibold tabular-nums sm:mt-1 sm:text-2xl">{value ?? "–"}</div>
+          <div className="text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:empty:block">{hint}</div>
+        </div>
       </CardContent>
     </Card>
   )

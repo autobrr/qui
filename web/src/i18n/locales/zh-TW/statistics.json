@@ -139,6 +139,8 @@
     },
     "seededValue": "{{value}}x",
     "total": "合計",
+    "shown": "{{shown}} / {{total}}",
+    "showAll": "顯示全部",
     "noCategory": "無分類",
     "none": "無",
     "liveError": "無法載入 qBittorrent 中目前的種子：{{message}}",

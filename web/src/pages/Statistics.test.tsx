@@ -122,19 +122,26 @@ function renderPage() {
 async function expectTile(label: string, expected: string) {
   const labelNode = await screen.findByText(label)
   await vi.waitFor(() => {
-    const value = labelNode.nextElementSibling
+    const value = labelNode.nextElementSibling?.firstElementChild
     expect(`${value?.textContent} | ${value?.nextElementSibling?.textContent}`).toBe(expected)
   })
+}
+
+/** The text of a node as a wide table shows it, without the numbers that a narrow table puts below the name. */
+function wideText(node: Element): string {
+  const copy = node.cloneNode(true) as Element
+  copy.querySelectorAll("[data-narrow]").forEach(narrow => narrow.remove())
+  return copy.textContent ?? ""
 }
 
 /** Returns the text of each cell of the table row whose first cell holds name. */
 function cells(table: HTMLElement, name: string): string[] {
   const nameNode = within(table).getByText(name)
-  return [...(nameNode.closest("tr")?.querySelectorAll("td") ?? [])].map(cell => cell.textContent ?? "")
+  return [...(nameNode.closest("tr")?.querySelectorAll("td") ?? [])].map(wideText)
 }
 
 function expandedRows(table: HTMLElement): string[] {
-  return [...table.querySelectorAll("button[aria-expanded=true]")].map(button => button.textContent ?? "")
+  return [...table.querySelectorAll("button[aria-expanded=true]")].map(wideText)
 }
 
 async function expectFact(label: string, expected: string) {
@@ -922,6 +929,64 @@ describe("Statistics", () => {
     renderPage()
 
     await expectTile("tiles.unique", "– | tiles.uniqueNone")
+  })
+
+  it("keeps the rows of the last grouping, dimmed, until the rows of the next grouping load", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" ? [row("1080p", 1024, 0, { width: "total" })] : bucket === "day" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("a.test")
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+    fireEvent.mouseDown(screen.getByText("table.groupings.resolution"), { button: 0 })
+
+    await vi.waitFor(() => expect(requests.some(request => request.groupBy === "resolution" && request.bucket === "total")).toBe(true))
+    expect(within(screen.getByRole("table")).getByText("a.test")).toBeTruthy()
+    expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("true")
+
+    release()
+    await vi.waitFor(() => expect(cells(screen.getByRole("table"), "1080p")[1]).toBe("2 KiB"))
+    expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it("loads the rows of the other groupings once when the pointer reaches the grouping tabs", async () => {
+    const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
+    renderPage()
+    // The chart asks for its rows once the status loaded.
+    await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
+    expect(preloads()).toHaveLength(0)
+    const tabs = screen.getByText("table.groupings.category").closest("[role=tablist]")!
+
+    fireEvent.pointerEnter(tabs)
+
+    await vi.waitFor(() => expect(new Set(preloads().map(request => request.groupBy))).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
+    // Five groupings for each of the two instances.
+    await vi.waitFor(() => expect(preloads()).toHaveLength(10))
+
+    fireEvent.pointerLeave(tabs)
+    fireEvent.pointerEnter(tabs)
+
+    await act(() => new Promise(resolve => setTimeout(resolve, 50)))
+    expect(preloads()).toHaveLength(10)
+  })
+
+  it("shows ten rows of the table on a phone, and each row after Show all", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: "day" })) : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await within(table).findByText("t10.test")
+    expect(within(table).queryByText("t11.test")).toBeNull()
+    expect(screen.getByText("table.shown shown=10 total=12")).toBeTruthy()
+
+    fireEvent.click(screen.getByText("table.showAll"))
+
+    expect(within(table).getByText("t12.test")).toBeTruthy()
+    expect(screen.queryByText("table.showAll")).toBeNull()
   })
 })
 

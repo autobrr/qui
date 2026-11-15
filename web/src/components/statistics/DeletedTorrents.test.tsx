@@ -218,6 +218,25 @@ describe("DeletedTorrents", () => {
     await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
   })
 
+  it("shows ten deletes on a phone, ten more for each Show more, and loads the next page after the loaded ones", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+    deletesOf.set(1, Array.from({ length: 60 }, (_, index) => event(1, index, 1_000_000 - index * 10, "user")))
+    renderTable([instance(1, "Seedbox")])
+
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(10))
+    expect(screen.getByText("deletes.shown shown=10 total=60")).toBeTruthy()
+    for (const shown of [20, 30, 40, 50]) {
+      fireEvent.click(screen.getByText("deletes.more"))
+      await vi.waitFor(() => expect(shownNames()).toHaveLength(shown))
+    }
+    expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(0)
+
+    fireEvent.click(screen.getByText("deletes.more"))
+    await vi.waitFor(() => expect(shownNames()).toHaveLength(60))
+    expect(requests.filter(request => request.offset === DELETES_PAGE)).toHaveLength(1)
+    expect(screen.queryByText("deletes.more")).toBeNull()
+  })
+
   it("masks the torrent names in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     deletesOf.set(1, [event(1, 0, 5_000, "user")])
