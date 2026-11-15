@@ -146,7 +146,7 @@ export function InstanceFilter({ options, selected, onChange }: InstanceFilterPr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 min-w-0 max-w-[14rem] max-sm:max-w-none max-sm:flex-1 max-sm:gap-1 max-sm:px-2.5">
+        <Button variant="outline" size="sm" className="h-9 min-w-0 max-w-[14rem] max-sm:ml-auto max-sm:gap-1 max-sm:px-2.5">
           <span className="truncate">{label}</span>
           <ChevronDown className="size-4 opacity-60" />
         </Button>
