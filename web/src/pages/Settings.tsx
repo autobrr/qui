@@ -15,7 +15,7 @@ import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { GazelleSettingsCard } from "@/components/settings/GazelleSettingsCard"
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_GROUPS, type SettingsTab } from "@/components/settings/tabs"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
@@ -477,7 +477,7 @@ function TorznabSearchCachePanel() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="space-y-1.5">
             <CardTitle>{t("searchCache.title")}</CardTitle>
             <CardDescription>{t("searchCache.description")}</CardDescription>
           </div>
@@ -613,7 +613,7 @@ function ApplicationSection({ title, description, fields, headerAction }: Applic
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="space-y-1.5">
           <CardTitle>{title}</CardTitle>
           <CardDescription>{description}</CardDescription>
         </div>
@@ -879,9 +879,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   }
 
   return (
-    <div className="space-y-6 p-4 lg:p-6">
-      <PageHeader title={t("title")} description={t("description")} />
-
+    <Page title={t("title")} description={t("description")}>
       <SectionedPage navLabel={t("title")} groups={navGroups} activeSection={activeTab} onSectionChange={handleTabChange}>
         {activeTab === "application" && (
           <ApplicationInfoPanel openUpdate={search.modal === "install-update"} onUpdateOpened={() => onSearchChange({ ...search, modal: undefined })} />
@@ -1098,6 +1096,6 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
           <LogSettingsPanel />
         )}
       </SectionedPage>
-    </div>
+    </Page>
   )
 }

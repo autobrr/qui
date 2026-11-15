@@ -6,7 +6,7 @@
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview"
 import { MigrationHint } from "@/components/instances/MigrationHint"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -693,18 +693,6 @@ export function Dashboard() {
     backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })
 
-  if (isLoading) {
-    return (
-      <div className="p-4 lg:p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-48"></div>
-          <div className="h-4 bg-muted rounded w-64"></div>
-          <div className="h-56 bg-muted rounded"></div>
-        </div>
-      </div>
-    )
-  }
-
   const incognitoToggle = (
     <Button
       variant="outline"
@@ -717,34 +705,38 @@ export function Dashboard() {
     </Button>
   )
 
-  return (
-    <div className="p-4 lg:p-6">
-      <div className="mb-6">
-        <PageHeader
-          title={t("title")}
-          description={t("description")}
-          controls={instances && instances.length > 0 && (
-            <>
-              {/* On a phone, Add torrent and Add instance are icons. */}
-              <QuickActionsDropdown statsData={statsData} compact={phone} />
-              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
-                {phone ? (
-                  <Button variant="outline" size="icon" aria-label={t("addInstance")}>
-                    <HardDrive className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button variant="outline">
-                    <HardDrive className="h-4 w-4 mr-2" />
-                    {t("addInstance")}
-                  </Button>
-                )}
-              </Link>
-              {incognitoToggle}
-            </>
-          )}
-        />
-      </div>
+  if (isLoading) {
+    return (
+      <Page title={t("title")} description={t("description")}>
+        <div className="h-56 animate-pulse rounded bg-muted" />
+      </Page>
+    )
+  }
 
+  return (
+    <Page
+      title={t("title")}
+      description={t("description")}
+      controls={hasInstances && (
+        <>
+          {/* On a phone, Add torrent and Add instance are icons. */}
+          <QuickActionsDropdown statsData={statsData} compact={phone} />
+          <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
+            {phone ? (
+              <Button variant="outline" size="icon" aria-label={t("addInstance")}>
+                <HardDrive className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button variant="outline">
+                <HardDrive className="h-4 w-4 mr-2" />
+                {t("addInstance")}
+              </Button>
+            )}
+          </Link>
+          {incognitoToggle}
+        </>
+      )}
+    >
       <PasswordIssuesBanner instances={instances || []} />
 
       {/* The banner to register qui as the magnet handler, for Firefox */}
@@ -786,6 +778,6 @@ export function Dashboard() {
           <MigrationHint className="mt-10 sm:mt-12" />
         </Card>
       )}
-    </div>
+    </Page>
   )
 }

@@ -206,7 +206,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
+            <div className="space-y-1.5">
               <CardTitle className="flex items-center gap-2">
                 <FolderSearch className="size-5" />
                 {t("dirScan.title")}
@@ -253,7 +253,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
       {/* Directories List */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+          <div className="space-y-1.5">
             <CardTitle>{t("dirScan.scanDirectories")}</CardTitle>
             <CardDescription>
               {t("dirScan.scanDirectoriesDescription")}
@@ -705,7 +705,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between">
-        <div>
+        <div className="space-y-1.5">
           <CardTitle>{t("dirScan.recentScanRuns")}</CardTitle>
           <CardDescription>{t("dirScan.recentScanRunsDescription")}</CardDescription>
         </div>

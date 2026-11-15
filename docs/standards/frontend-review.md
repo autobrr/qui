@@ -39,14 +39,13 @@
 
 ## Page layout
 
-- Each authenticated page, except the torrent list and the instance pages, starts with `PageHeader` from `@/components/layout/PageHeader`. It renders the title, the description, and the page actions. Pass several actions as a fragment, so that each action wraps below the title on its own when the row has no room.
-- The page root uses `p-4 lg:p-6`. Below `lg`, `AppLayout` pads `main` for the bottom nav, so the page root adds no bottom padding of its own. Do not put a page in a centered `container`.
+- Each authenticated page, except the torrent list and the instance pages, renders one `Page` from `@/components/layout/Page`, also while it loads and in its empty states. `Page` owns the padding, the title, the description, the place of the controls, and the gap to the content. A page writes none of these itself, and it does not put itself in a centered `container`.
+- The controls of a page, for example the instance picker or a period picker, go in `controls` of `Page`, each at the default height (`h-9`). They stay together: beside the title when they fit there, and in one row below the description when they do not, and always on a phone. The title row is as high as a control, so the controls never move the title or the description. A status that is not a control, for example a badge, goes in `badge`.
+- `Page` puts its direct children 24 px apart. A page that fills the height and scrolls inside itself, as RSS does, sets `fill`.
 - A page with more than one section uses `SectionedPage` from `@/components/layout/SectionedPage`. The page translates every nav label before it passes the groups. Keep the section in the `tab` URL search parameter, and drop an unknown value to the default section, as `components/cross-seed/tabs.ts` does.
-- A page that works on one instance puts the instance picker in the actions of `PageHeader`.
-- When the controls of a page must stay together, for example a period picker and its filters, pass them as `controls` of `PageHeader`, not as `actions`. They share the title row on a wide screen and take one row below the description on a phone, so the title and the description stay in the same place on each page. Give each control the default height (`h-9`). The fragment rule covers only `actions`.
 - In a card footer, Save is at the right. Run controls (Run now, Start run, Cancel, Dry run) are at the left. A section that runs a job builds its `RunState` in a pure function in `lib/run-state.ts` and renders `RunFooter`. Cancel always asks first.
 - A switch row has the label and its help at the left and the switch at the right, as `AutoResumeSwitch` in `components/cross-seed/SourceCardFields.tsx` does.
-- A top-level card uses `CardTitle` without a size class. Only a small card inside a card can change its title size.
+- A top-level card uses `CardHeader` and `CardTitle` without a size or a spacing class, so that the title and the description of each section are the same distance apart. Only a small card inside a card can change its title size.
 
 ## Touch screens
 

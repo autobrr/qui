@@ -189,7 +189,7 @@ export function ReannounceOverview({
   return (
     <>
       <Card>
-        <CardHeader className="space-y-2">
+        <CardHeader>
           <div className="flex items-center gap-2">
             <CardTitle>{t("preferences.reannounceOverview.title")}</CardTitle>
             <Tooltip>
