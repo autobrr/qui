@@ -101,7 +101,7 @@ jobs:
             -f q="repo:${{ github.repository }} is:open label:needs-info updated:<$cutoff" -F n=50 \
             -f query='query($q:String!,$n:Int!){search(query:$q,type:DISCUSSION,first:$n){nodes{... on Discussion{id number category{slug} comments(last:20){nodes{author{__typename} authorAssociation body url createdAt}}}}}}' \
             --jq '.data.search.nodes[]
-              | ([.comments.nodes[] | select((.author.__typename == "Bot" or (.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))) and (.body | contains("<!-- qui-triage:needs-info -->")))] | last) as $asked
+              | ([.comments.nodes[] | select((.author.__typename == "Bot" or (.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR"))) and (.body | rtrimstr("\n") | endswith("<!-- qui-triage:needs-info -->")))] | last) as $asked
               | "\(.id) \(.number) \(.category.slug) \(($asked.createdAt // "")[:10]) \($asked.url // "")"' \
             | while read -r id number category asked_on asked_url; do
                 if [ -n "$asked_url" ]; then
