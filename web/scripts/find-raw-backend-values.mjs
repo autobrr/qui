@@ -156,7 +156,8 @@ function isInJsxContext(line) {
 }
 
 // React never renders a key prop, so it cannot show a raw value. A key= counts as a prop
-// only inside an open tag, or on a line with no tag before it (an attribute on its own line).
+// only inside a tag that opens on the same line. A line cannot tell a key prop on its own
+// line from text, so that case stays reported.
 // A < or > inside a {...} expression (() => x, count > 0) or a quoted attribute is not a tag bracket.
 function withoutKeyProps(line) {
   return line.replace(/(^|\s)key=\{(?:[^{}]|\{[^{}]*\})*\}/g, (match, space, offset) => {
@@ -174,9 +175,7 @@ function withoutKeyProps(line) {
       else if (depth === 0 && c === "<") lastOpen = i;
       else if (depth === 0 && c === ">") lastClose = i;
     }
-    const inTag = lastOpen > lastClose;
-    const ownLine = lastOpen === -1 && lastClose === -1;
-    return inTag || ownLine ? space : match;
+    return lastOpen > lastClose ? space : match;
   });
 }
 
