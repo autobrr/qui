@@ -99,6 +99,17 @@ describe("useTapTooltip", () => {
   })
 
   // regression: #4179
+  it("leaves the tooltip to recharts on a touch screen after a key on the chart, and opens it on the next tap again", () => {
+    const chart = renderChart(false)
+
+    fireEvent.keyDown(chart, { key: "ArrowRight" })
+    expect(chart.getAttribute("data-active")).toBe("undefined")
+
+    tap(chart)
+    expect(chart.getAttribute("data-active")).toBe("true")
+  })
+
+  // regression: #4179
   it("closes the tooltip when the page scrolls", () => {
     const chart = renderChart(false)
     tap(chart)

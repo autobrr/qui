@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type 
 
 export interface TapTooltip {
   // Spread on the element around the chart.
-  wrapper: { ref: RefObject<HTMLDivElement | null>; onClick?: (event: MouseEvent) => void }
+  wrapper: { ref: RefObject<HTMLDivElement | null>; onClick?: (event: MouseEvent) => void; onKeyDown?: () => void }
   // Spread on the recharts Tooltip. Without active, recharts shows the tooltip on hover.
   tooltip: { active?: boolean; wrapperStyle: CSSProperties }
 }
@@ -16,12 +16,13 @@ export interface TapTooltip {
 /**
  * On a screen without hover, a tap on the plot of the chart opens its tooltip at the tapped point, or moves it there. A
  * tap on the tooltip, a tap outside the plot, or a scroll closes it. A finger that scrolls the page across the chart
- * opens nothing. A screen with hover keeps the tooltip of recharts.
+ * opens nothing. A screen with hover keeps the tooltip of recharts, and so does a key on the chart, until the next tap.
  */
 export function useTapTooltip(): TapTooltip {
   const touch = useMediaQuery("(hover: none)")
   const ref = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  const [keyboard, setKeyboard] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -52,8 +53,15 @@ export function useTapTooltip(): TapTooltip {
   }
   const onTooltip = (event: MouseEvent) => event.target instanceof Element && event.target.closest(".recharts-tooltip-wrapper") !== null
   return {
-    wrapper: { ref, onClick: event => setOpen(!onTooltip(event) && onPlot(event)) },
+    wrapper: {
+      ref,
+      onClick: event => {
+        setKeyboard(false)
+        setOpen(!onTooltip(event) && onPlot(event))
+      },
+      onKeyDown: () => setKeyboard(true),
+    },
     // recharts lets taps pass through its tooltip, so the tooltip takes them here to close on a tap.
-    tooltip: { active: open, wrapperStyle: { zIndex: 1, pointerEvents: "auto" } },
+    tooltip: { active: keyboard ? undefined : open, wrapperStyle: { zIndex: 1, pointerEvents: "auto" } },
   }
 }
