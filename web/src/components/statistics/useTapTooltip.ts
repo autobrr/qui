@@ -14,9 +14,9 @@ export interface TapTooltip {
 }
 
 /**
- * On a screen without hover, a tap on the chart opens its tooltip at the tapped point, or moves it there. A tap on the
- * tooltip, a tap outside the chart, or a scroll closes it. A finger that scrolls the page across the chart opens
- * nothing. A screen with hover keeps the tooltip of recharts.
+ * On a screen without hover, a tap on the plot of the chart opens its tooltip at the tapped point, or moves it there. A
+ * tap on the tooltip, a tap outside the plot, or a scroll closes it. A finger that scrolls the page across the chart
+ * opens nothing. A screen with hover keeps the tooltip of recharts.
  */
 export function useTapTooltip(): TapTooltip {
   const touch = useMediaQuery("(hover: none)")
@@ -45,9 +45,14 @@ export function useTapTooltip(): TapTooltip {
   if (!touch) {
     return { wrapper: { ref }, tooltip: { wrapperStyle: { zIndex: 1 } } }
   }
+  // recharts moves its active point to a tap on the plot. Outside the plot it has no point, and shows the first one.
+  const onPlot = (event: MouseEvent) => {
+    const plot = ref.current?.querySelector(".recharts-cartesian-grid")?.getBoundingClientRect()
+    return plot !== undefined && event.clientX >= plot.left && event.clientX <= plot.right && event.clientY >= plot.top && event.clientY <= plot.bottom
+  }
+  const onTooltip = (event: MouseEvent) => event.target instanceof Element && event.target.closest(".recharts-tooltip-wrapper") !== null
   return {
-    // recharts moves its active point to the tap, so a tap on the chart opens the tooltip there.
-    wrapper: { ref, onClick: event => setOpen(!(event.target instanceof Element && event.target.closest(".recharts-tooltip-wrapper"))) },
+    wrapper: { ref, onClick: event => setOpen(!onTooltip(event) && onPlot(event)) },
     // recharts lets taps pass through its tooltip, so the tooltip takes them here to close on a tap.
     tooltip: { active: open, wrapperStyle: { zIndex: 1, pointerEvents: "auto" } },
   }
