@@ -161,7 +161,8 @@ function scanFile(filePath) {
   const findings = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    // React never renders a key prop, so it cannot show a raw value.
+    const line = lines[i].replace(/\bkey=\{(?:[^{}]|\{[^{}]*\})*\}/g, "");
     const lineNum = i + 1;
 
     // Check 1: Raw backend property rendered in JSX
@@ -191,7 +192,7 @@ function scanFile(filePath) {
           line: lineNum,
           type: "RAW_BACKEND_VALUE",
           property: prop,
-          code: line.trim(),
+          code: lines[i].trim(),
           suggestion: `Use t(\`namespace.${prop}Labels.\${variable.${prop}}\`, variable.${prop}) instead`,
         });
       }
@@ -203,7 +204,7 @@ function scanFile(filePath) {
         line: lineNum,
         type: "RUNTIME_CASE_TRANSFORM",
         property: null,
-        code: line.trim(),
+        code: lines[i].trim(),
         suggestion:
           "Use a dedicated i18n key (e.g. statusLabelsUpper) instead of runtime .toUpperCase()/.toLowerCase()",
       });
@@ -224,7 +225,7 @@ function scanFile(filePath) {
             line: lineNum,
             type: "RAW_INTERPOLATION",
             property: prop,
-            code: line.trim(),
+            code: lines[i].trim(),
             suggestion: `Backend value '${prop}' interpolated without t() - consider localizing`,
           });
         }

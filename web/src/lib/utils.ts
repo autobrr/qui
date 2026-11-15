@@ -46,6 +46,7 @@ export function getRatioColor(ratio: number): string {
   }
 }
 
+/** @deprecated Prints English units (d, h, m, s). For text that the user reads, use the formatters in `@/lib/dateTimeUtils`. */
 export function formatDuration(seconds: number): string {
   if (seconds === 0) return "0s"
   const days = Math.floor(seconds / 86400)
@@ -62,6 +63,7 @@ export function formatDuration(seconds: number): string {
   return parts.join(" ")
 }
 
+/** @deprecated Prints English units (s, m, h, d). For text that the user reads, use `formatNarrowAge` in `@/lib/dateTimeUtils`. */
 export function formatDurationCompact(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
