@@ -49,6 +49,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/livesamples"
 	"github.com/autobrr/qui/internal/services/lowdisk"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
@@ -690,6 +691,10 @@ func (app *Application) runServer() {
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
 	syncManager.SetDeleteNoter(transferHistoryAdapter)
+	liveSamples := livesamples.New(clientPool)
+	liveSamplesCtx, liveSamplesCancel := context.WithCancel(context.Background())
+	defer liveSamplesCancel()
+	go liveSamples.Run(liveSamplesCtx)
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
@@ -997,6 +1002,7 @@ func (app *Application) runServer() {
 		DiscScanStore:                    discScanStore,
 		DiscScanService:                  discScanService,
 		TransferHistory:                  transferHistory,
+		LiveSamples:                      liveSamples,
 		SystemNotices:                    systemNotices,
 		DatabaseShrink:                   databaseShrink,
 		BackendPool:                      backendPool,

@@ -16,7 +16,7 @@ import { readRaw } from "@/lib/client-settings"
 import type { DashboardInstanceStats } from "@/lib/dashboard-overview"
 import { formatBytes } from "@/lib/utils"
 import { server } from "@/test/msw/server"
-import type { InstanceResponse, ServerState, TransferHistoryInstance, TransferHistoryRow } from "@/types"
+import type { InstanceResponse, LiveSamples, ServerState, TransferHistoryInstance, TransferHistoryRow } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string | string[], options?: Record<string, unknown>) => {
@@ -53,6 +53,7 @@ let transferRequests: number[]
 let toggles: number[]
 let toggleFails: boolean
 let desktop: boolean
+let liveSamples: LiveSamples
 
 function hourRow(group: string, hoursAgo: number, uploaded: number, downloaded: number, extra: Partial<TransferHistoryRow> = {}): TransferHistoryRow {
   const start = Math.floor(Date.now() / HOUR) * HOUR - hoursAgo * HOUR
@@ -106,6 +107,7 @@ beforeEach(() => {
   toggleFails = false
   mocks.toastError.mockReset()
   desktop = false
+  liveSamples = { now: new Date().toISOString(), instances: [] }
   mocks.incognitoMode = [false, () => {}]
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
@@ -120,6 +122,7 @@ beforeEach(() => {
   }))
   server.use(
     http.get("*/api/transfer-history/status", () => HttpResponse.json({ instances: statuses })),
+    http.get("*/api/live-samples", () => HttpResponse.json(liveSamples)),
     http.get("*/api/instances/:id/transfer-history", ({ params }) => {
       transferRequests.push(Number(params.id))
       return HttpResponse.json({ rows: answer(Number(params.id)) })
@@ -256,6 +259,56 @@ describe("DashboardOverview after a failed read", () => {
   })
 })
 
+describe("DashboardOverview, Live", () => {
+  it("opens on the view that the user picked last, after a remount", async () => {
+    answer = () => [hourRow("a.test", 2, GiB, 0)]
+    const { unmount } = renderOverview([stats(1)])
+    await screen.findByTestId("tracker-row")
+    expect(screen.getByRole("tab", { name: "stream.day" }).getAttribute("aria-selected")).toBe("true")
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "stream.live" }), { button: 0 })
+    expect(readRaw("qui-dashboard-chart-view")).toBe(JSON.stringify("live"))
+    unmount()
+
+    renderOverview([stats(1)])
+    expect(screen.getByRole("tab", { name: "stream.live" }).getAttribute("aria-selected")).toBe("true")
+  })
+
+  it("draws the samples of the server for the instances of the list", async () => {
+    localStorage.setItem("qui-dashboard-chart-view", JSON.stringify("live"))
+    const now = Date.now()
+    const sample = (ago: number, up: number) => ({ time: new Date(now - ago * 1000).toISOString(), up, down: 0 })
+    liveSamples = {
+      now: new Date(now).toISOString(),
+      instances: [
+        { instanceId: 1, samples: [sample(5, 1024), sample(3, 4096), sample(1, 2048)] },
+        // Not in the list of the Dashboard.
+        { instanceId: 9, samples: [sample(3, 1024 ** 3), sample(1, 1024 ** 3)] },
+      ],
+    }
+    renderOverview([stats(1)])
+
+    await vi.waitFor(() => expect(screen.getAllByTestId("chart-layer").map(layer => layer.getAttribute("data-layer"))).toEqual(["0"]))
+    expect(screen.getAllByText(/^stream.peakSpeed/).map(peak => peak.textContent)).toEqual(["stream.peakSpeed speed=4 KiB/s", "stream.peakSpeed speed=0 B/s"])
+  })
+
+  it("shows the error in place of the Live chart when a later read of the samples fails", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
+    localStorage.setItem("qui-dashboard-chart-view", JSON.stringify("live"))
+    const now = Date.now()
+    liveSamples = { now: new Date(now).toISOString(), instances: [{ instanceId: 1, samples: [3, 1].map(ago => ({ time: new Date(now - ago * 1000).toISOString(), up: 1024, down: 0 })) }] }
+    renderOverview([stats(1)])
+    await vi.waitFor(() => expect(screen.getAllByTestId("chart-layer")).toHaveLength(1))
+
+    server.use(http.get("*/api/live-samples", () => HttpResponse.json({ error: "qui is restarting" }, { status: 500 })))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    await vi.waitFor(() => expect(screen.getByText(/^stream.loadError/)).toBeTruthy())
+    expect(screen.queryAllByTestId("chart-layer")).toEqual([])
+  })
+})
+
 describe("DashboardOverview without history", () => {
   it("opens on Live, turns 24 h off with its reason, and shows no tracker list", async () => {
     statuses = []
@@ -270,6 +323,7 @@ describe("DashboardOverview without history", () => {
 
     fireEvent.click(day.parentElement!)
     expect((await screen.findAllByText("stream.noHistory")).length).toBeGreaterThan(0)
+    expect(readRaw("qui-dashboard-chart-view")).toBeNull()
   })
 
   // regression: #4141

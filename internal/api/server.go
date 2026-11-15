@@ -43,6 +43,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/livesamples"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
@@ -107,6 +108,7 @@ type Server struct {
 	discScanStore                    *models.DiscScanStore
 	discScanService                  *discscan.Service
 	transferHistory                  *transferhistory.Module
+	liveSamples                      *livesamples.Recorder
 	systemNotices                    *systemnotice.Module
 	databaseShrink                   *dbshrink.Service
 	backendPool                      *fsops.Pool
@@ -165,6 +167,7 @@ type Dependencies struct {
 	DiscScanStore                    *models.DiscScanStore
 	DiscScanService                  *discscan.Service
 	TransferHistory                  *transferhistory.Module
+	LiveSamples                      *livesamples.Recorder
 	SystemNotices                    *systemnotice.Module
 	DatabaseShrink                   *dbshrink.Service
 	BackendPool                      *fsops.Pool
@@ -247,6 +250,7 @@ func NewServer(deps *Dependencies) *Server {
 		discScanStore:                    deps.DiscScanStore,
 		discScanService:                  deps.DiscScanService,
 		transferHistory:                  deps.TransferHistory,
+		liveSamples:                      deps.LiveSamples,
 		systemNotices:                    deps.SystemNotices,
 		databaseShrink:                   deps.DatabaseShrink,
 		backendPool:                      deps.BackendPool,
@@ -435,6 +439,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	transferHistoryHandler := handlers.NewTransferHistoryHandler(s.transferHistory)
+	liveSamplesHandler := handlers.NewLiveSamplesHandler(s.liveSamples)
 	systemNoticeHandler := handlers.NewSystemNoticeHandler(s.systemNotices)
 	databaseShrinkHandler := handlers.NewDatabaseShrinkHandler(s.databaseShrink)
 	trackerGroupsHandler := handlers.NewTrackerGroupsHandler(s.syncManager, s.trackerCustomizationStore)
@@ -850,6 +855,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.With(allInstances, torrents.Write).Post("/export", torrentsHandler.ExportTorrentArchive)
 			})
 
+			r.With(allInstances, instances.Read).Get("/live-samples", liveSamplesHandler.List)
 			r.With(allInstances, torrents.Read).Get("/transfer-history/status", transferHistoryHandler.Status)
 			r.With(allInstances, settings.Write).Put("/transfer-history/settings", transferHistoryHandler.UpdateSettings)
 			r.With(allInstances, settings.Write).Delete("/transfer-history", transferHistoryHandler.DeleteHistory)

@@ -39,6 +39,7 @@ import (
 	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/livesamples"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/systemnotice"
@@ -245,6 +246,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		DiscScanStore:             discScanStore,
 		DiscScanService:           discscan.NewService(discScanStore),
 		TransferHistory:           transferHistory,
+		LiveSamples:               livesamples.New(clientPool),
 		SystemNotices:             systemNotices,
 		DatabaseShrink:            databaseShrink,
 		DirScanService:            dirScanService,

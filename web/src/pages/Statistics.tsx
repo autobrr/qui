@@ -10,6 +10,7 @@ import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
+import { useStatisticsPeriod } from "@/hooks/useStatisticsPeriod"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { YearView } from "@/components/statistics/YearView"
@@ -98,19 +99,41 @@ function relativeChange(now: number, before: number): number | undefined {
   return before > 0 ? (now - before) / before : undefined
 }
 
+/** The state of a preset period that the user picked, which ends now. */
+function presetState(preset: PeriodPreset): PeriodState {
+  return { choice: preset, period: presetPeriod(preset, new Date()), moved: false }
+}
+
 const statisticsRoute = getRouteApi("/_authenticated/statistics")
 
+/** Opens on the period of the address, saves it, and removes it from the address, so that a reload opens on the saved period. */
 export function StatisticsRoute() {
   const { period } = statisticsRoute.useSearch()
+  const navigate = statisticsRoute.useNavigate()
+  const [, savePreset] = useStatisticsPeriod()
+  useEffect(() => {
+    if (!period) return
+    savePreset(period)
+    void navigate({ search: previous => ({ ...previous, period: undefined }), replace: true })
+  }, [period, savePreset, navigate])
   return <Statistics initialPreset={period} />
 }
 
-export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPreset }) {
+export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
   const narrow = useIsPhone()
-  const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: initialPreset, period: presetPeriod(initialPreset, new Date()), moved: false }))
+  const [savedPreset, savePreset] = useStatisticsPeriod()
+  const [periodState, setPeriodState] = useState<PeriodState>(() => presetState(initialPreset ?? savedPreset))
+  // A preset saved after the page opened, by the first read of the server or by another tab or device, opens here too, except over a custom range.
+  const [followedPreset, setFollowedPreset] = useState(savedPreset)
+  if (followedPreset !== savedPreset) {
+    setFollowedPreset(savedPreset)
+    if (periodState.choice !== "custom" && periodState.choice !== savedPreset) {
+      setPeriodState(presetState(savedPreset))
+    }
+  }
   const { choice } = periodState
 
   useEffect(() => {
@@ -267,7 +290,10 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
     <PeriodPicker
       value={periodState.choice}
       customLabel={customLabel}
-      onPreset={preset => setPeriodState({ choice: preset, period: presetPeriod(preset, new Date()), moved: false })}
+      onPreset={preset => {
+        savePreset(preset)
+        setPeriodState(presetState(preset))
+      }}
       onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
     />
   )

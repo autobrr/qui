@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -590,6 +591,33 @@ func (cp *ClientPool) performHealthChecks() {
 			}
 		}(client, instanceID)
 	}
+}
+
+// SyncedSpeed is the speed of one instance in its cached server state, as of
+// its last successful sync. Up and Down are in bytes per second.
+type SyncedSpeed struct {
+	InstanceID int
+	SyncedAt   time.Time
+	Up, Down   int64
+}
+
+// SyncedSpeeds returns the SyncedSpeed of each client that has synced and
+// holds a server state. It sends no request to qBittorrent.
+func (cp *ClientPool) SyncedSpeeds() []SyncedSpeed {
+	cp.mu.RLock()
+	clients := slices.Collect(maps.Values(cp.clients))
+	cp.mu.RUnlock()
+
+	speeds := make([]SyncedSpeed, 0, len(clients))
+	for _, client := range clients {
+		syncedAt := client.GetLastSyncUpdate()
+		state := client.GetCachedServerState()
+		if syncedAt.IsZero() || state == nil {
+			continue
+		}
+		speeds = append(speeds, SyncedSpeed{InstanceID: client.GetInstanceID(), SyncedAt: syncedAt, Up: state.UpInfoSpeed, Down: state.DlInfoSpeed})
+	}
+	return speeds
 }
 
 // GetCache returns the cache instance for external use

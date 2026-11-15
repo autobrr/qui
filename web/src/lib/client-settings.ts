@@ -60,6 +60,8 @@ const SYNCED_KEYS = new Set<string>([
   "qui-theme-visibility",
   "qui-group-copies",
   "qui-statistics-series-colors",
+  "qui-statistics-period",
+  "qui-dashboard-chart-view",
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",

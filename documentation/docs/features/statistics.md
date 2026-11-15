@@ -36,6 +36,8 @@ A day starts at midnight in the timezone of your browser.
 
 On a phone, the periods are in a list at the top of the page. To set a custom range, tap the calendar button next to the list.
 
+The page opens on the last preset period that it showed. This includes a period that a link opened, for example the **Statistics** link of the Dashboard. qui keeps this period on the server, so it applies in each browser and on each device. qui does not keep a custom range. After a custom range, the page opens on the last preset period that it showed.
+
 While the page stays open and in view, it moves a period that ends now forward each 5 minutes and loads the new transfer. qui writes the transfer each 5 minutes. A custom range does not move.
 
 If a period starts before the first recording of a selected instance, the page shows the label "Partial period". The numbers of such a period are too small, because qui did not record the start of the period for that instance.
