@@ -728,6 +728,15 @@ describe("Statistics", () => {
   })
 
   // regression: #4113
+  it("puts the numbers of a top torrent that a narrow table has no column for below its name", async () => {
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 3072, { uploadFirst24h: 1024 }, { downloaded: 1024 })] : []
+    renderPage()
+
+    const name = await within(await screen.findByRole("table")).findByText("Alpha")
+    const facts = name.closest("td")?.querySelector("[data-narrow]")
+    expect([...facts?.children ?? []].map(fact => fact.textContent)).toEqual(["table.columns.downloaded 1 KiB", "table.columns.ratio 3.00", "topTorrents.columns.first24h 1 KiB"])
+  })
+
   it("keeps the top torrents on the period of the other numbers while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Facts, type Fact } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
 import { TorrentMarks } from "@/components/statistics/TopTorrents"
 import { Button } from "@/components/ui/button"
@@ -115,12 +116,12 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
       values && values.size > 0 ? t("table.seededValue", { value: formatSeeded.format(values.uploaded / values.size) }) : "–",
     ]
   }
-  const periodFacts = (bytes: TransferHistoryBytes): [string, string][] => [
+  const periodFacts = (bytes: TransferHistoryBytes): Fact[] => [
     [t("table.columns.downloaded"), formatBytes(bytes.downloaded)],
     [t("table.columns.ratio"), formatRatio(bytes) ?? "–"],
     [t("table.columns.buffer"), formatBuffer(bytes) ?? "–"],
   ]
-  const liveFacts = (live: Live | undefined): [string, string][] => {
+  const liveFacts = (live: Live | undefined): Fact[] => {
     const [torrents, size, seeded] = liveValues(live)
     return [[t("table.columns.torrents"), torrents], [t("table.columns.size"), size], [t("table.columns.seeded"), seeded]]
   }
@@ -273,16 +274,6 @@ export function GroupTable({ grouping, onGroupingChange, rows, error, liveLoaded
         {tracker ? <p>{t("table.liveNote")}</p> : shownGrouping === "category" ? <p>{t("table.categoryNote")}</p> : <p>{t("table.releaseNote")}</p>}
         {withBaseline && <p>{t("table.baselineNote")}</p>}
       </div>
-    </div>
-  )
-}
-
-function Facts({ items, className }: { items: [string, string][]; className?: string }) {
-  return (
-    <div className={cn("flex flex-wrap gap-x-3 pl-5.5 text-xs font-normal text-muted-foreground", className)} data-narrow>
-      {items.map(([label, value]) => (
-        <span key={label} className="whitespace-nowrap">{label} <span className="tabular-nums text-foreground">{value}</span></span>
-      ))}
     </div>
   )
 }

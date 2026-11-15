@@ -274,7 +274,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
 
   return (
-    <div className="space-y-6 p-4 pb-16 lg:p-6">
+    <div className="space-y-6 p-4 lg:p-6">
       <PageHeader
         title={t("title")}
         description={
@@ -450,9 +450,7 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
         )}
       </Card>
 
-      <div className="space-y-1 text-xs text-muted-foreground">
-        {!period.from && <p>{t("allTimeNote")}</p>}
-      </div>
+      {!period.from && <p className="text-xs text-muted-foreground">{t("allTimeNote")}</p>}
     </div>
   )
 }

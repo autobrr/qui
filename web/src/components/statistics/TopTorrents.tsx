@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Facts } from "@/components/statistics/Facts"
 import { GroupChart } from "@/components/statistics/GroupChart"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -73,6 +74,14 @@ export function TopTorrents({ torrents: shown, error, period, instances, since, 
                       <span className="truncate">{displayGroup(torrent.trackerGroup)}{instanceNames && ` · ${instanceNames.get(torrent.instanceId)}`}</span>
                       <TorrentMarks torrent={torrent} />
                     </div>
+                    <Facts
+                      items={[
+                        [t("table.columns.downloaded"), formatBytes(torrent.downloaded), "@xl:hidden"],
+                        [t("table.columns.ratio"), formatRatio(torrent) ?? "–", "@xl:hidden"],
+                        [t("topTorrents.columns.first24h"), torrent.uploadFirst24h === null ? "–" : formatBytes(torrent.uploadFirst24h)],
+                      ]}
+                      className="@2xl:hidden"
+                    />
                     {instanceNames && <div className="hidden truncate pl-5.5 text-xs font-normal text-muted-foreground @2xl:block">{instanceNames.get(torrent.instanceId)}</div>}
                   </TableCell>
                   <TableCell className="hidden max-w-48 truncate text-muted-foreground @2xl:table-cell">{displayGroup(torrent.trackerGroup)}</TableCell>
