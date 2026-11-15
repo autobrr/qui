@@ -738,3 +738,83 @@ describe("WorkflowDialog mixed action conditions", () => {
     client.clear()
   })
 })
+
+// regression: #4188
+describe("WorkflowDialog switched-off actions", () => {
+  const shown: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "shown" }
+  const other: RuleCondition = { field: "RATIO", operator: "GREATER_THAN", value: "3" }
+  const runningTag = { enabled: true, tags: ["running"], mode: "full" as const, condition: shown }
+  const switchedOffTag = { enabled: false, tags: ["later"], mode: "add" as const, useDisplayName: true, condition: other }
+  const switchedOffSpeedLimits = { enabled: false, uploadKiB: 512, downloadKiB: 0, condition: other }
+  const tagRule: Automation = {
+    ...rule,
+    conditions: { schemaVersion: "1", tags: [runningTag, switchedOffTag], speedLimits: switchedOffSpeedLimits },
+  }
+
+  const pick = async (trigger: string, option: string) => {
+    fireEvent.keyDown(screen.getAllByText(key(trigger))[0], { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key(option) }))
+  }
+  const save = async (label = "save") => {
+    fireEvent.click(screen.getByRole("button", { name: key(label) }))
+    await waitFor(() => expect(mocks.save.mock.calls.length + mocks.create.mock.calls.length).toBe(1))
+    return (mocks.save.mock.calls[0]?.[2] ?? mocks.create.mock.calls[0][1]).conditions
+  }
+
+  beforeEach(() => {
+    mocks.save.mockResolvedValue(rule)
+    mocks.create.mockResolvedValue(rule)
+  })
+
+  it("keeps each switched-off action with its own keys and condition on a rename", async () => {
+    const client = renderDialog(tagRule)
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    const conditions = await save()
+
+    expect(conditions.speedLimits).toEqual(switchedOffSpeedLimits)
+    expect(conditions.tags).toEqual([{ ...runningTag, includeCrossSeeds: false, deleteFromClient: false, useTrackerAsTag: false, useDisplayName: false }, switchedOffTag])
+    client.clear()
+  })
+
+  it("saves the speed limits of the form when the user switches them on", async () => {
+    const client = renderDialog(tagRule)
+
+    await pick("actions.addAction", "actions.speedLimits")
+    await pick("option.noChange", "option.unlimited")
+    const conditions = await save()
+
+    expect(conditions.speedLimits).toEqual({ enabled: true, uploadKiB: 0, condition: shown })
+    client.clear()
+  })
+
+  it("leaves out the switched-off tags when the user switches on Delete, and keeps the other switched-off actions", async () => {
+    const client = renderDialog({
+      ...rule,
+      conditions: { schemaVersion: "1", pause: { enabled: true, condition: shown }, tags: [switchedOffTag], speedLimits: switchedOffSpeedLimits },
+    })
+
+    const pauseSection = screen.getByText(key("actions.pause")).parentElement!
+    fireEvent.click(within(pauseSection).getByRole("button"))
+    await pick("actions.selectAction", "actions.deleteStandalone")
+    const conditions = await save()
+
+    expect(conditions.delete).toEqual(expect.objectContaining({ enabled: true, condition: shown }))
+    expect(conditions.tags).toBeUndefined()
+    expect(conditions.tag).toBeUndefined()
+    expect(conditions.speedLimits).toEqual(switchedOffSpeedLimits)
+    client.clear()
+  })
+
+  it("saves a new rule with only the actions of the form", async () => {
+    const client = renderDialog(null)
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "New" } })
+    fireEvent.click(screen.getByRole("switch", { name: key("allTrackers") }))
+    await pick("actions.selectAction", "actions.pause")
+    const conditions = await save("create")
+
+    expect(conditions).toEqual({ schemaVersion: "1", pause: { enabled: true } })
+    client.clear()
+  })
+})

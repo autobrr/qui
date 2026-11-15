@@ -483,7 +483,9 @@ You can combine actions, except Delete. Delete must be standalone.
 
 All actions of a workflow use the same condition. qui does not save a workflow if two of its enabled actions have different conditions, and the error names the two actions. An Auto Management action counts as enabled also when it turns the mode off. To run an action on a different condition, make a second workflow.
 
-A workflow that an earlier version of qui saved with different conditions continues to run as saved. You can still rename it, switch it on and off, reorder it, and run it. A change to its actions or conditions must leave one condition. When you open such a workflow in the editor, a warning shows below the conditions. If you save in the editor, every action gets the condition that the editor shows. To keep the other conditions, make one workflow for each condition before you save.
+A workflow that an earlier version of qui saved with different conditions continues to run as saved. You can still rename it, switch it on and off, reorder it, and run it. A change to its actions or conditions must leave one condition. When you open such a workflow in the editor, a warning shows below the conditions. If you save in the editor, every enabled action gets the condition that the editor shows. To keep the other conditions, make one workflow for each condition before you save.
+
+The editor does not show a disabled action. When you save in the editor, qui keeps each disabled action as saved, with its own condition. If you add Delete in the editor, the save removes the disabled tag actions. qui does not save Delete together with a tag action, also when the tag action is disabled.
 
 ### Speed limits
 

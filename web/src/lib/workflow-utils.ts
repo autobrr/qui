@@ -54,6 +54,23 @@ export function getRuleActions(rule: Automation): ActionType[] {
   })
 }
 
+/** The actions of a saved workflow that are switched off, each as stored. tags holds only the entries that are switched off. */
+export type SwitchedOffActions = Omit<ActionConditions, "schemaVersion" | "grouping" | "tag" | "autoManagement">
+
+/** Returns the actions that a saved workflow has switched off, as stored. autoManagement never counts: getRuleActions always runs it. */
+export function getSwitchedOffActions(rule: Automation): SwitchedOffActions {
+  const running = getRuleActions(rule)
+  const actions = (Object.keys(ACTION_LABEL_KEYS) as ActionType[])
+    .filter(action => action !== "tag" && !running.includes(action) && rule.conditions?.[action] != null)
+    .map(action => [action, rule.conditions[action]])
+  const switchedOff: SwitchedOffActions = Object.fromEntries(actions)
+  const tags = getRuleTagActions(rule).filter(tag => !tag.enabled)
+  if (tags.length > 0) {
+    switchedOff.tags = tags
+  }
+  return switchedOff
+}
+
 /** Returns the condition of each action that a saved workflow has turned on, null for an action without one. */
 function runningActionConditions(rule: Automation): (RuleCondition | null)[] {
   return getRuleActions(rule).flatMap(action => {
