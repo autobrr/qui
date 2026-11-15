@@ -826,7 +826,7 @@ export function InstanceBackups() {
 
     return (
       <TooltipProvider>
-        <div className="space-y-6 p-4 lg:p-6 pb-16">
+        <div className="space-y-6 p-4 lg:p-6">
           <PageHeader title={t("backups.pageTitle")} description={t("backups.pageDescription")} actions={instancePicker} />
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
@@ -878,7 +878,7 @@ export function InstanceBackups() {
 
   return (
     <TooltipProvider>
-      <div className="space-y-6 p-4 lg:p-6 pb-16">
+      <div className="space-y-6 p-4 lg:p-6">
         <PageHeader
           title={t("backups.pageTitle")}
           description={t("backups.pageDescription")}

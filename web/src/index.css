@@ -55,6 +55,8 @@
 }
 
 @custom-variant dark (&:is(.dark *));
+/* A phone turned sideways, as useIsPhone in hooks/useMediaQuery.ts reads it. */
+@custom-variant sideways (@media (pointer: coarse) and (max-height: 499px) and (max-width: 1023px));
 
 :root {
   --background: oklch(1 0 0);
@@ -279,7 +281,7 @@
 
   /* Icon transitions */
   .theme-transition svg:not([class*="lucide"]) {
-    transition: color 300ms cubic-bezier(0.4, 0.0, 0.2, 1), 
+    transition: color 300ms cubic-bezier(0.4, 0.0, 0.2, 1),
                 transform 300ms cubic-bezier(0.4, 0.0, 0.2, 1);
   }
 

@@ -117,9 +117,9 @@
   "allTimeNote": "Des de l’inici inclou la base inicial: els bytes que tenien els torrents quan qui els va enregistrar per primera vegada. El gràfic no mostra la base inicial, perquè no té data.",
   "table": {
     "title": "Per grup",
-    "descriptionTracker": "La transferència del període per a cada tracker. Feu clic en una fila per obrir-ne el detall.",
-    "descriptionCategory": "La transferència del període per a cada categoria, sota la categoria que tenia cada torrent quan es van moure els bytes. Feu clic en una fila per obrir-ne el detall.",
-    "descriptionRelease": "La transferència del període per a cada valor que qui llegeix dels noms dels torrents. Feu clic en una fila per obrir-ne el detall.",
+    "descriptionTracker": "La transferència del període per a cada tracker. Seleccioneu una fila per obrir-ne el detall.",
+    "descriptionCategory": "La transferència del període per a cada categoria, sota la categoria que tenia cada torrent quan es van moure els bytes. Seleccioneu una fila per obrir-ne el detall.",
+    "descriptionRelease": "La transferència del període per a cada valor que qui llegeix dels noms dels torrents. Seleccioneu una fila per obrir-ne el detall.",
     "groupBy": "Agrupa per",
     "groupings": {
       "tracker": "Tracker",
@@ -141,6 +141,9 @@
     },
     "seededValue": "{{value}}x",
     "total": "Total",
+    "shown": "{{shown}} de {{total}}",
+    "showAll": "Mostra-ho tot",
+    "showFewer": "Mostra'n menys",
     "noCategory": "Cap categoria",
     "none": "Cap",
     "liveError": "No s’han pogut carregar els torrents que ara són a qBittorrent: {{message}}",
@@ -167,7 +170,7 @@
   },
   "topTorrents": {
     "title": "Torrents principals",
-    "description": "Els torrents amb més pujada del període. Feu clic en una fila per veure'n la pujada de cada dia.",
+    "description": "Els torrents amb més pujada del període. Seleccioneu una fila per veure'n la pujada de cada dia.",
     "columns": {
       "torrent": "Torrent",
       "first24h": "Primeres 24 hores"

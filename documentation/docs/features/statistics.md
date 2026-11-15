@@ -34,6 +34,8 @@ Select the period at the top of the page:
 
 A day starts at midnight in the timezone of your browser.
 
+On a phone, the periods are in a list at the top of the page. To set a custom range, tap the calendar button next to the list.
+
 While the page stays open and in view, it moves a period that ends now forward each 5 minutes and loads the new transfer. qui writes the transfer each 5 minutes. A custom range does not move.
 
 If a period starts before the first recording of a selected instance, the page shows the label "Partial period". The numbers of such a period are too small, because qui did not record the start of the period for that instance.
@@ -58,6 +60,8 @@ If qui recorded the period before in full, Uploaded and Downloaded also show the
 
 The chart shows the upload or the download of each bar. Use the switch above the chart to select **Upload** or **Download**. The bars stack by tracker. The five trackers with the most bytes in the period each get a color. The other trackers are in the gray series Other.
 
+To see the bytes of each tracker in a bar, hold the pointer on the bar. On a touch screen, tap the bar. To close the numbers on a touch screen, tap them, tap below the bars, tap outside the chart, or scroll the page.
+
 The page counts each torrent toward one tracker. Thus, the tracker series of the chart add up to the Uploaded or Downloaded number of the period. All time is the exception, because its numbers also hold the Baseline. A torrent that is not private counts toward Public. A torrent with no tracker counts toward No tracker. Tracker customizations apply: a merged tracker is one series under its display name. A rename or a merge also changes the past.
 
 ## Year view
@@ -76,7 +80,9 @@ The best day, the best month, and the weekend share count the whole period, also
 
 ## Table
 
-The table below the chart shows the numbers of the period for each tracker, each category, or each value of a release attribute. Use the **Group by** switch above the table to select **Tracker**, **Category**, **Release group**, **Resolution**, **Source**, or **Content type**.
+The table below the chart shows the numbers of the period for each tracker, each category, or each value of a release attribute. Use the **Group by** switch above the table to select **Tracker**, **Category**, **Release group**, **Resolution**, **Source**, or **Content type**. On a phone, **Group by** is a list.
+
+qui starts to load a grouping when you hold the pointer on its button, or when you open the list on a phone. Thus, the rows are often ready when you select the grouping. While the rows of the new grouping load, the table shows the rows of the last grouping, dimmed.
 
 ### By tracker
 
@@ -116,7 +122,9 @@ To answer, qui reads the bytes of each torrent in the period. For a year, this c
 
 ### Detail of a row
 
-Click a row to open its detail below that row. Click the row again to close it. One row is open at a time, and the table keeps all its columns. On a phone, the table scrolls sideways, and the detail stays in view at the full width of the screen.
+Click or tap a row to open its detail below that row. Click or tap the row again to close it. One row is open at a time.
+
+On a narrow screen, such as a phone, the table has one column. Each row shows the upload next to the name, and Downloaded and Ratio below the name. The detail of the row then also shows Buffer, and for a tracker Torrents, Size, and Seeded. On a phone, the table shows 10 rows first. Tap **Show all** to see each row, and **Show fewer** to go back to 10 rows.
 
 The detail shows:
 
@@ -146,15 +154,17 @@ The table below the table of trackers shows the ten torrents with the most uploa
 | Ratio | Uploaded divided by Downloaded |
 | First 24 hours | The upload of the torrent in the 24 hours after you added it. The cell is empty when qui first saw the torrent after those 24 hours |
 
-A deleted torrent stays in the list with its name. Thus, the list of a long period is complete. The table counts all the upload of a cross-seed, also the upload from before the torrent completed. For All time, the upload includes the Baseline of each torrent. On a phone, the table hides some columns and shows the tracker below the name.
+A deleted torrent stays in the list with its name. Thus, the list of a long period is complete. The table counts all the upload of a cross-seed, also the upload from before the torrent completed. For All time, the upload includes the Baseline of each torrent.
 
-Click a row to see the upload and download of that torrent for each day of the period. qui stores the bytes of a torrent for each UTC day, so each bar is a UTC day.
+On a narrow screen, such as a phone, the table hides some columns. It shows the tracker, Downloaded, Ratio, and First 24 hours below the name. On a phone, the table shows 5 rows first. Tap **Show all** to see the 10 rows, and **Show fewer** to go back to 5 rows.
+
+Click or tap a row to see the upload and download of that torrent for each day of the period. The open row shows the whole name. qui stores the bytes of a torrent for each UTC day, so each bar is a UTC day.
 
 ## Library growth
 
 The Library growth chart is below the top torrents. It shows the size of your library for each UTC day of the period. The Total size line counts each torrent in full. The Unique size line counts each Copy group one time inside an instance. A Copy group is a set of torrents that share the same files, for example a hardlinked or reflinked cross-seed.
 
-The text above the chart gives the torrent count of the newest day. To see the total size, the Unique size, and the torrent count of a day, hover over that day. The torrent count and the total size come from the last reading of that UTC day. The Unique size comes from the last reading of that day that had a Unique size.
+The text above the chart gives the torrent count of the newest day. To see the total size, the Unique size, and the torrent count of a day, hover over that day. On a touch screen, tap the day. The torrent count and the total size come from the last reading of that UTC day. The Unique size comes from the last reading of that day that had a Unique size.
 
 The page adds the selected instances together. The Unique size of two instances is the sum of the Unique size of each instance, because a Copy group stays inside one instance.
 
@@ -198,7 +208,11 @@ The cause is one of these:
 
 The buttons above the table select **All**, **Automations**, **You**, or **Other**. Other is a backup restore, a Client Proxy key, and outside qui. Each button shows the number of deletes of that kind in the period.
 
-The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table hides some columns. It shows the tracker, the cause, the final ratio, and the seeding time below the name.
+After the first list loads, qui also loads the first rows of the other buttons, so a switch shows its rows at once. While the rows of a button load, the table keeps the last rows, dimmed. If a switch makes the list shorter, the table keeps its height until that space is below the screen. Thus, the buttons stay where you clicked them.
+
+The table shows 50 rows first. Click **Show more** to see 50 more rows. On a phone, the table shows 5 rows first, and **Show more** shows 10 more rows. **Show fewer** goes back to 5 rows.
+
+On a narrow screen, such as a phone, the table hides some columns. It shows the time below the final upload. It shows the tracker, the cause, the final ratio, and the seeding time below the name. On a phone, a row whose name or cause is cut shows an arrow. Tap the row to see the whole name and the whole cause, and tap it again to cut them again. A row that shows its name and cause in full has no arrow.
 
 ## Baseline
 

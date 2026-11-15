@@ -116,9 +116,9 @@
   "allTimeNote": "Gesamt enthält die Ausgangsbasis: die Bytes, die die Torrents hatten, als qui sie zuerst aufgezeichnet hat. Das Diagramm zeigt die Ausgangsbasis nicht, da sie kein Datum hat.",
   "table": {
     "title": "Nach Gruppe",
-    "descriptionTracker": "Der Transfer des Zeitraums für jeden Tracker. Klicke auf eine Zeile, um ihre Details zu öffnen.",
-    "descriptionCategory": "Der Transfer des Zeitraums für jede Kategorie, unter der Kategorie, die jeder Torrent hatte, als die Bytes übertragen wurden. Klicke auf eine Zeile, um ihre Details zu öffnen.",
-    "descriptionRelease": "Der Transfer des Zeitraums für jeden Wert, den qui aus den Torrent-Namen liest. Klicke auf eine Zeile, um ihre Details zu öffnen.",
+    "descriptionTracker": "Der Transfer des Zeitraums für jeden Tracker. Wähle eine Zeile, um ihre Details zu öffnen.",
+    "descriptionCategory": "Der Transfer des Zeitraums für jede Kategorie, unter der Kategorie, die jeder Torrent hatte, als die Bytes übertragen wurden. Wähle eine Zeile, um ihre Details zu öffnen.",
+    "descriptionRelease": "Der Transfer des Zeitraums für jeden Wert, den qui aus den Torrent-Namen liest. Wähle eine Zeile, um ihre Details zu öffnen.",
     "groupBy": "Gruppieren nach",
     "groupings": {
       "tracker": "Tracker",
@@ -140,6 +140,9 @@
     },
     "seededValue": "{{value}}x",
     "total": "Gesamt",
+    "shown": "{{shown}} von {{total}}",
+    "showAll": "Alle anzeigen",
+    "showFewer": "Weniger anzeigen",
     "noCategory": "Keine Kategorie",
     "none": "Keine",
     "liveError": "Die Torrents, die jetzt in qBittorrent sind, konnten nicht geladen werden: {{message}}",
@@ -166,7 +169,7 @@
   },
   "topTorrents": {
     "title": "Top-Torrents",
-    "description": "Die Torrents mit dem meisten Upload im Zeitraum. Klicke auf eine Zeile, um ihren Upload pro Tag zu sehen.",
+    "description": "Die Torrents mit dem meisten Upload im Zeitraum. Wähle eine Zeile, um ihren Upload pro Tag zu sehen.",
     "columns": {
       "torrent": "Torrent",
       "first24h": "Erste 24 Stunden"

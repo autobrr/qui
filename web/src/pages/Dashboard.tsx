@@ -587,7 +587,8 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
 }
 
 
-function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats[] }) {
+/** The menu that adds a torrent to a connected instance. Compact, its button is an icon with an arrow, for a phone. */
+function QuickActionsDropdown({ statsData, compact = false }: { statsData: DashboardInstanceStats[]; compact?: boolean }) {
   const { t } = useTranslation("dashboard")
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
@@ -600,11 +601,18 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-11 w-full sm:h-8 sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
-          {t("quickActions.addTorrent")}
-          <ChevronDown className="h-3 w-3 ml-1" />
-        </Button>
+        {compact ? (
+          <Button variant="outline" className="h-11 gap-0.5 px-3" aria-label={t("quickActions.addTorrent")}>
+            <Plus className="h-4 w-4" />
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            {t("quickActions.addTorrent")}
+            <ChevronDown className="h-3 w-3 ml-1" />
+          </Button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>{t("quickActions.addTorrent")}</DropdownMenuLabel>
@@ -685,7 +693,7 @@ export function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-4 lg:p-6 pb-16">
+      <div className="p-4 lg:p-6">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-48"></div>
           <div className="h-4 bg-muted rounded w-64"></div>
@@ -709,15 +717,16 @@ export function Dashboard() {
   )
 
   return (
-    <div className="p-4 lg:p-6 pb-16">
+    <div className="p-4 lg:p-6">
       <div className="mb-6">
         <PageHeader
           title={t("title")}
           description={t("description")}
           actions={instances && instances.length > 0 && (
             <>
-              {/* On a phone, Add instance and the incognito switch go in the title row, so that only Add torrent takes a row of its own. */}
+              {/* On a phone, Add torrent, Add instance, and the incognito switch are icons in the title row. */}
               <div className="flex items-center gap-1 sm:hidden">
+                <QuickActionsDropdown statsData={statsData} compact />
                 <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
                   <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
                     <HardDrive className="h-4 w-4" />
@@ -725,7 +734,9 @@ export function Dashboard() {
                 </Link>
                 {incognitoToggle("size-11")}
               </div>
-              <QuickActionsDropdown statsData={statsData} />
+              <div className="hidden sm:block">
+                <QuickActionsDropdown statsData={statsData} />
+              </div>
               <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="hidden sm:block">
                 <Button variant="outline" size="sm">
                   <HardDrive className="h-4 w-4 mr-2" />
