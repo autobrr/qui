@@ -22,10 +22,9 @@ import { PreferencesFormShell } from "./PreferencesFormShell"
 
 interface InstanceSettingsPanelProps {
   instance: Instance
-  onSuccess?: () => void
 }
 
-export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsPanelProps) {
+export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) {
   const { t } = useTranslation("instances")
   const { updateInstance, isUpdating } = useInstances()
   const [incognitoMode] = useIncognitoMode()
@@ -102,7 +101,6 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         toast.success(t("preferences.settingsPanel.toast.updatedTitle"), {
           description: t("preferences.settingsPanel.toast.updatedDescription"),
         })
-        onSuccess?.()
       },
       onError: (error) => {
         toast.error(t("preferences.settingsPanel.toast.updateFailedTitle"), {

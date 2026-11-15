@@ -16,6 +16,7 @@ const activation = vi.hoisted(() => ({
 const licenses = vi.hoisted(() => ({
   data: [{ licenseKey: "TEST-KEY-0000", status: "invalid", productName: "premium" }],
 }))
+const invalidLicenses = licenses.data
 const deleteLicense = vi.hoisted(() => ({ mutate: vi.fn(), isPending: false }))
 const premiumAccess = vi.hoisted(() => ({ hasPremiumAccess: false, isLoading: false }))
 const formatters = vi.hoisted(() => ({ formatDate: () => "" }))
@@ -32,7 +33,9 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { status?: string }) => (options?.status ? `${key} ${options.status}` : key),
+  }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }))
 
@@ -43,6 +46,7 @@ afterEach(() => {
   vi.clearAllMocks()
   activation.isPending = false
   activation.isError = false
+  licenses.data = invalidLicenses
 })
 
 describe("LicenseManager", () => {
@@ -62,5 +66,27 @@ describe("LicenseManager", () => {
     fireEvent.click(screen.getByText("themes.license.actions.addLicense"))
 
     expect(activation.reset).toHaveBeenCalledOnce()
+  })
+
+  it("explains an offline license and offers no re-activation", () => {
+    licenses.data = [{ licenseKey: "TEST-KEY-0000", status: "offline", productName: "premium" }]
+    render(<LicenseManager />)
+
+    expect(screen.getByText("themes.license.status.offlineTitle")).not.toBeNull()
+    expect(screen.queryByText("themes.license.status.activationRequiredTitle")).toBeNull()
+    expect(screen.queryByText("themes.license.actions.reactivate")).toBeNull()
+    expect(screen.queryByText("themes.license.actions.addLicense")).toBeNull()
+    expect(screen.queryByText("themes.license.actions.getPremium")).toBeNull()
+  })
+
+  it.each([
+    ["invalid", "themes.license.details.statusLabels.invalid"],
+    ["offline", "themes.license.details.statusLabels.offline"],
+    ["expired", "themes.license.details.statusLabels.unknown"],
+  ])("shows a translated label for the %s status", (status, labelKey) => {
+    licenses.data = [{ licenseKey: "TEST-KEY-0000", status, productName: "premium" }]
+    render(<LicenseManager />)
+
+    expect(screen.getByText(`themes.license.details.productStatusAndAdded ${labelKey}`)).not.toBeNull()
   })
 })

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
 // RuleError is a validation failure. Message is safe to show the user.
@@ -25,8 +26,8 @@ func (e *RuleError) Error() string { return e.Message }
 func ruleError(msg string) error { return &RuleError{Message: msg} }
 
 const (
-	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows. Use the default qBittorrent free space instead."
-	errMsgPathSourceAccessRequired      = "Free space path source requires Local Filesystem Access. Enable it in instance settings first."
+	errMsgWindowsPathSourceNotSupported = "Path-based free space source is not supported on Windows with local filesystem access. Use the default qBittorrent free space instead."
+	errMsgPathSourceAccessRequired      = "Free space path source requires local or SSH filesystem access. Set it up in instance settings first."
 )
 
 // windowsLocalPathSource reports whether a path source would read a Windows
@@ -85,25 +86,53 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	}
 
 	if rule.SortingConfig != nil {
-		if err := rule.SortingConfig.Validate(); err != nil {
+		err := rule.SortingConfig.Validate()
+		if err == nil {
+			err = sortFieldsError(rule.SortingConfig, "unknown sort field")
+		}
+		if err != nil {
 			return ruleError(fmt.Sprintf("Invalid sorting config: %v", err))
 		}
 	}
 
-	// Validate regex patterns are valid RE2 (only when enabling the workflow)
+	// A disabled rule skips these, so one saved before a check existed stays editable.
 	if rule.Enabled {
+		if err := validateMovePath(conditions.Move); err != nil {
+			return err
+		}
 		if regexErrs := ConditionRegexErrors(conditions); len(regexErrs) > 0 {
 			firstErr := regexErrs[0]
 			return ruleError(fmt.Sprintf("Invalid regex pattern in %s: %s (Go/RE2 does not support Perl features like lookahead/lookbehind)", firstErr.Field, firstErr.Message))
 		}
 	}
 
-	hasIdentity := instance != nil && models.FilesystemCapabilitiesOf(instance).Identity
-	hasLocalAccess := instance != nil && instance.HasLocalFilesystemAccess
-	for field, data := range conditionFieldData {
-		if (data.fileIdentity && !hasIdentity || data.localAccess && !hasLocalAccess) && actionConditionsUseField(conditions, field) {
-			return ruleError("File conditions require local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+	var capabilities models.FilesystemCapabilities
+	if instance != nil {
+		capabilities = models.FilesystemCapabilitiesOf(instance)
+	}
+	// A remote instance cannot turn on local access without becoming a local
+	// one, so it gets the answer the UI gives, not that advice.
+	isRemote := instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeRemote
+	// Two passes over the map, so the answer does not depend on its order: a
+	// field that needs trusted identity decides first, since only local access
+	// grants that and advising SSH for a Read field beside it would mislead.
+	missing := func(want func(fieldData) bool) bool {
+		for field, data := range conditionFieldData {
+			if want(data) && actionConditionsUseField(conditions, field) {
+				return true
+			}
 		}
+		return false
+	}
+	needsTrusted := !capabilities.TrustedIdentity && missing(func(d fieldData) bool { return d.trustedIdentity })
+	needsRead := !capabilities.Read && missing(func(d fieldData) bool { return d.read })
+	switch {
+	case (needsTrusted || needsRead) && isRemote:
+		return ruleError("This file condition is not available on remote instances.")
+	case needsTrusted:
+		return ruleError("This file condition requires Local Filesystem Access. Enable it in instance settings first.")
+	case needsRead:
+		return ruleError("File conditions need access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first.")
 	}
 
 	// Keep-files mode doesn't free disk space, so a FREE_SPACE < X condition
@@ -130,7 +159,10 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		if del.Mode != models.DeleteModeWithFilesIncludeCrossSeeds {
 			return ruleError("includeHardlinks is only valid when delete mode is 'Remove with files (include cross-seeds)'")
 		}
-		if !hasIdentity {
+		if !capabilities.TrustedIdentity {
+			if isRemote {
+				return ruleError("includeHardlinks is not available on remote instances.")
+			}
 			return ruleError("includeHardlinks requires Local Filesystem Access to be enabled on this instance")
 		}
 	}
@@ -150,6 +182,30 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 	}
 
 	return nil
+}
+
+// validateMovePath rejects a move path that renders relative for a placeholder torrent.
+func validateMovePath(move *models.MoveAction) error {
+	if move == nil || !move.Enabled {
+		return nil
+	}
+	path := strings.TrimSpace(move.Path)
+	if path == "" {
+		return ruleError("Move path is required")
+	}
+	rendered, err := renderMovePathSample(path)
+	if err != nil {
+		return ruleError(fmt.Sprintf("Invalid move path template: %v", err))
+	}
+	// A conditional template can render empty for the placeholder yet be absolute for a real torrent.
+	if rendered == "" || pathcmp.IsAbsolute(rendered) {
+		return nil
+	}
+	msg := `Move path must be absolute, for example /data/archive or D:\Archive`
+	if rendered != path {
+		msg += fmt.Sprintf(". For a sample torrent it renders %q", rendered)
+	}
+	return ruleError(msg)
 }
 
 // conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.
@@ -375,8 +431,16 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 	switch source.Type {
 	case models.FreeSpaceSourcePath:
 		return validateFreeSpacePathSource(source, instance)
+	case models.FreeSpaceSourceQbitPath:
+		// qBittorrent resolves this path on its own host, so qui neither needs
+		// filesystem access nor knows the server's path syntax. Unsupported servers
+		// surface at read time as a failed source read, never as zero free space.
+		if strings.TrimSpace(source.Path) == "" {
+			return "Free space path source requires a path", errors.New("path required")
+		}
+		return "", nil
 	default:
-		return "Invalid free space source type. Use 'qbittorrent' or 'path'.", errors.New("invalid source type")
+		return "Invalid free space source type. Use 'qbittorrent', 'path' or 'qbitPath'.", errors.New("invalid source type")
 	}
 }
 

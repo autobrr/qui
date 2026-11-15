@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -30,7 +31,7 @@ func TestSelectEligibleRootWork_TVKeepsOnlyFreshEpisodeItems(t *testing.T) {
 		},
 	}
 
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
+	selection := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
 
 	require.Equal(t, now.AddDate(0, 0, -3), selection.cutoff)
 	require.Equal(t, 2, selection.discoveredFiles)
@@ -59,7 +60,7 @@ func TestSelectEligibleRootWork_IgnoresFreshSubtitleBumps(t *testing.T) {
 		},
 	}
 
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
+	selection := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
 
 	require.Equal(t, 2, selection.discoveredFiles)
 	require.Equal(t, 0, selection.eligibleFiles)
@@ -83,7 +84,7 @@ func TestSelectEligibleRootWork_TreatsAOBAsAudioContent(t *testing.T) {
 		},
 	}
 
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
+	selection := selectEligibleRootWork(fsops.HostPaths, scanResult, nil, NewParser(nil), 3, now, nil, false, nil)
 
 	require.Equal(t, 1, selection.discoveredFiles)
 	require.Equal(t, 0, selection.eligibleFiles)
@@ -104,7 +105,7 @@ func TestWorkItemIsStale_KeepsFreshSeasonPack(t *testing.T) {
 		},
 	}
 
-	items := buildSearcheeWorkItems(root, NewParser(nil))
+	items := buildSearcheeWorkItems(fsops.HostPaths, root, NewParser(nil))
 	// root + 2 episode work items
 	require.Len(t, items, 3)
 

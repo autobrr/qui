@@ -175,6 +175,67 @@ describe("push queue", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
   })
 
+  it("replays a cross-tab edit made after a server copy", async () => {
+    vi.resetModules()
+    const tabB = await import("@/lib/client-settings")
+    let resolvePut: (value: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolvePut = resolve }))
+    applyServerSettings({ "qui-test-bool": "false" })
+    seedAndMarkReady({ "qui-test-bool": "false" })
+    writeRaw("qui-test-bool", "true")
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    // Tab B edits mid-flight; its edit clears the mark of the server copy.
+    tabB.writeRaw("qui-test-bool", "false")
+    resolvePut({ ok: true, status: 200 })
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
+  })
+
+  // REGRESSION (#3424): another tab wrote a one-write-old server snapshot to
+  // the shared localStorage, and this tab's next flush pushed it back as an
+  // edit. Each PUT then caused the next, and the value flipped forever.
+  it.each([1, 3])("does not push a server copy back after two quick writes, with %i other tabs", async (otherTabCount) => {
+    const otherTabs: (typeof import("@/lib/client-settings"))[] = []
+    for (let i = 0; i < otherTabCount; i++) {
+      vi.resetModules()
+      otherTabs.push(await import("@/lib/client-settings"))
+    }
+    const key = "qui-sidebar-collapsed"
+    const server: Record<string, string> = {}
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      Object.assign(server, JSON.parse(String(init.body)))
+      const snapshot = { ...server }
+      // The activity event and the GET reach each tab after the PUT returns,
+      // a little later in each other tab.
+      setTimeout(() => applyServerSettings(snapshot), 50)
+      otherTabs.forEach((tab, i) => setTimeout(() => tab.applyServerSettings(snapshot), 50 + 20 * i))
+      return new Promise((resolve) => setTimeout(() => resolve({ ok: true, status: 200 }), 10))
+    })
+    seedAndMarkReady({})
+    for (const tab of otherTabs) tab.seedAndMarkReady({})
+
+    writeRaw(key, "true")
+    await vi.advanceTimersByTimeAsync(805)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    writeRaw(key, "false")
+    await vi.advanceTimersByTimeAsync(20_000)
+
+    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(3)
+    expect(server).toEqual({ [key]: "false" })
+    expect(localStorage.getItem(key)).toBe("false")
+
+    // A fresh boot of another tab seeds nothing new: the mark is never synced.
+    otherTabs[0]._resetClientSettingsForTests()
+    otherTabs[0].seedAndMarkReady(server)
+    await vi.runAllTimersAsync()
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(Object.keys(JSON.parse(init.body))).toEqual([key])
+    }
+  })
+
   // REGRESSION: a flush whose timer fired during an in-flight PUT was
   // swallowed; if that PUT then failed, the newer write stalled until the
   // next write or tab-hide.

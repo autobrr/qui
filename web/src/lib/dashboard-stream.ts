@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { CacheMetadata, InstanceMeta, InstanceResponse, TorrentCounts, TorrentResponse } from "@/types"
+import type { CacheMetadata, InstanceMeta, InstanceResponse, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 
 export const DASHBOARD_STATS_FALLBACK_SORT = "added_on"
 export const DASHBOARD_STATS_FALLBACK_ORDER = "desc"
@@ -154,4 +154,24 @@ export function mergeDashboardStatsSnapshot(
     cacheMetadata: incoming.cacheMetadata ?? cached.cacheMetadata,
     instanceMeta: incoming.instanceMeta ?? cached.instanceMeta,
   }
+}
+
+/**
+ * Adds the sizes that the Dashboard shows for a set of instances. An instance
+ * gives its Unique size once its first Copy groups build ends. Until then it
+ * gives the size that counts a linked cross-seed in full, and sets calculating.
+ */
+export function resolveDashboardSizes(statsList: ReadonlyArray<TorrentStats | null | undefined>) {
+  let totalSize = 0
+  let seedingSize = 0
+  let calculating = false
+  for (const stats of statsList) {
+    if (!stats) {
+      continue
+    }
+    totalSize += stats.uniqueSize ?? stats.totalSize ?? 0
+    seedingSize += stats.uniqueSeedingSize ?? stats.totalSeedingSize ?? 0
+    calculating ||= stats.uniqueSize === undefined
+  }
+  return { totalSize, seedingSize, calculating }
 }

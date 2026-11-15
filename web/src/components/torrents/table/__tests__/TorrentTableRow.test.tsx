@@ -32,6 +32,7 @@ function makeProps(overrides: Partial<TorrentTableRowProps> = {}): TorrentTableR
     compact: {} as TorrentTableRowProps["compact"],
     onRowClick: () => {},
     onRowContextMenu: () => {},
+    onToggleCopyGroup: () => {},
     ...overrides,
   }
 }

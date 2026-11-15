@@ -216,7 +216,7 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.completionOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.completionOverview.noInstancesDescription")}
           </CardDescription>
@@ -229,7 +229,7 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.completionOverview.title")}</CardTitle>
           <CardDescription>
             {t("preferences.completionOverview.noActiveInstances")}
           </CardDescription>
@@ -242,7 +242,7 @@ export function CompletionOverview() {
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
+          <CardTitle>{t("preferences.completionOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />

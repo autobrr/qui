@@ -16,14 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/activity"
-)
-
-// Rate limiting constants and types
-
-const (
-	defaultMinRequestInterval = 60 * time.Second
 )
 
 const (
@@ -50,191 +46,10 @@ type RateLimitOptions struct {
 // see the indexer finish instead of blocking forever.
 var errRSSDeduplicated = errors.New("rss search deduplicated: identical fetch already pending")
 
-type indexerRateState struct {
-	lastCompleted time.Duration
-	cooldowns     map[string]time.Duration
-}
-
 type taskExecResult struct {
 	results  []Result
 	coverage []int
 	err      error
-}
-
-// RateLimiter tracks per-indexer request timing and computes wait times.
-// It does not block; the scheduler queries it to make dispatch decisions.
-type RateLimiter struct {
-	mu          sync.Mutex
-	minInterval time.Duration
-	states      map[int]*indexerRateState
-	startTime   time.Time
-}
-
-func NewRateLimiter(minInterval time.Duration) *RateLimiter {
-	if minInterval <= 0 {
-		minInterval = defaultMinRequestInterval
-	}
-	return &RateLimiter{
-		minInterval: minInterval,
-		states:      make(map[int]*indexerRateState),
-		startTime:   time.Now(),
-	}
-}
-
-func (r *RateLimiter) setMinInterval(d time.Duration) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.minInterval = d
-}
-
-func (r *RateLimiter) RecordRequestComplete(indexerID int, ts time.Time) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var dur time.Duration
-	if ts.IsZero() {
-		dur = time.Since(r.startTime)
-	} else {
-		dur = ts.Sub(r.startTime)
-	}
-	state := r.getStateLocked(indexerID)
-	state.lastCompleted = dur
-}
-
-// WaitForMinInterval blocks until a native Torznab request slot is available,
-// then reserves it for callers that do not report completion separately.
-//
-// Note: this intentionally does NOT wait for cooldown windows. Callers that care about cooldowns should
-// check IsInCooldown separately (downloads typically return immediately when in cooldown).
-func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.TorznabIndexer) error {
-	if r == nil || indexer == nil || indexer.Backend != models.TorznabBackendNative {
-		return nil
-	}
-
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	for {
-		r.mu.Lock()
-		state := r.getStateLocked(indexer.ID)
-		now := time.Since(r.startTime)
-
-		wait := time.Duration(0)
-		if r.minInterval > 0 && state.lastCompleted >= 0 {
-			next := state.lastCompleted + r.minInterval
-			if next > now {
-				wait = next - now
-			}
-		}
-
-		if wait <= 0 {
-			if ctx.Err() != nil {
-				r.mu.Unlock()
-				return ctx.Err()
-			}
-			state.lastCompleted = now
-			r.mu.Unlock()
-			return nil
-		}
-		r.mu.Unlock()
-
-		timer := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
-	}
-}
-
-func (r *RateLimiter) SetCooldown(indexerID int, scope string, until time.Time) time.Time {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	state := r.getStateLocked(indexerID)
-	cooldownDur := until.Sub(r.startTime)
-	if cooldownDur > state.cooldowns[scope] {
-		state.cooldowns[scope] = cooldownDur
-	}
-	return r.startTime.Add(state.cooldowns[scope])
-}
-
-// IsInCooldown checks if an indexer is currently in cooldown without blocking
-func (r *RateLimiter) IsInCooldown(indexerID int, scope string) (bool, time.Time) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	state := r.getStateLocked(indexerID)
-	now := time.Since(r.startTime)
-	until := state.cooldowns[scope]
-	if until > now {
-		return true, r.startTime.Add(until)
-	}
-	return false, time.Time{}
-}
-
-// GetCooldownIndexers returns a list of indexer IDs that are currently in cooldown
-func (r *RateLimiter) GetCooldownIndexers(scope string) map[int]time.Time {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	cooldowns := make(map[int]time.Time)
-	now := time.Since(r.startTime)
-	for indexerID, state := range r.states {
-		until := state.cooldowns[scope]
-		if until > now {
-			cooldowns[indexerID] = r.startTime.Add(until)
-		}
-	}
-	return cooldowns
-}
-
-func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Duration, minInterval time.Duration) time.Duration {
-	if indexer.Backend != models.TorznabBackendNative {
-		return 0
-	}
-	if minInterval <= 0 {
-		minInterval = r.minInterval
-	}
-	state := r.getStateLocked(indexer.ID)
-
-	var wait time.Duration
-
-	if minInterval > 0 && state.lastCompleted >= 0 {
-		next := state.lastCompleted + minInterval
-		if next > now {
-			delay := next - now
-			if delay > wait {
-				wait = delay
-			}
-		}
-	}
-
-	return wait
-}
-
-func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
-	state, ok := r.states[indexerID]
-	if !ok {
-		state = &indexerRateState{lastCompleted: -1, cooldowns: make(map[string]time.Duration)}
-		r.states[indexerID] = state
-	}
-	return state
-}
-
-// NextWait returns the amount of time the caller would need to wait before a request could be made
-// against the provided indexer using the supplied options. This is a non-blocking helper used by
-// the job scheduler to decide if a request can run immediately.
-func (r *RateLimiter) NextWait(indexer *models.TorznabIndexer) time.Duration {
-	if indexer == nil {
-		return 0
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	now := time.Since(r.startTime)
-	return r.computeWaitLocked(indexer, now, r.minInterval)
 }
 
 // Scheduler constants and types
@@ -291,6 +106,8 @@ type taskItem struct {
 	created  time.Time
 	index    int
 	started  time.Time // When execution began (for duration tracking)
+	detached bool      // exec ran detachedExecWarnAfter past its deadline; guarded by s.mu
+	ticket   *slotTicket
 }
 
 type taskHeap []*taskItem
@@ -336,8 +153,8 @@ type jobState struct {
 // searchScheduler coordinates Torznab searches with dispatch-time rate limiting.
 // Jobs are submitted asynchronously and results delivered via callbacks.
 type searchScheduler struct {
-	mu          sync.Mutex
-	rateLimiter *RateLimiter
+	mu    sync.Mutex
+	slots *requestSlots
 
 	taskQueue  taskHeap
 	pendingRSS map[int]struct{}
@@ -388,26 +205,35 @@ func (s *searchScheduler) publishActivity(kind activity.Kind) {
 	}
 }
 
-func newSearchScheduler(rl *RateLimiter, maxWorkers int) *searchScheduler {
-	if rl == nil {
-		rl = NewRateLimiter(defaultMinRequestInterval)
+func newSearchScheduler(slots *requestSlots, maxWorkers int) *searchScheduler {
+	if slots == nil {
+		slots = newRequestSlots(defaultRequestGap, nil, nil)
 	}
 	if maxWorkers <= 0 {
 		maxWorkers = defaultMaxWorkers
 	}
 	s := &searchScheduler{
-		pendingRSS:  make(map[int]struct{}),
-		rateLimiter: rl,
-		workerPool:  make(chan struct{}, maxWorkers),
-		inFlight:    make(map[int]*taskItem),
-		jobs:        make(map[uint64]*jobState),
-		submitCh:    make(chan []workerTask, 128),
-		completeCh:  make(chan struct{}, 128),
-		stopCh:      make(chan struct{}),
+		pendingRSS: make(map[int]struct{}),
+		slots:      slots,
+		workerPool: make(chan struct{}, maxWorkers),
+		inFlight:   make(map[int]*taskItem),
+		jobs:       make(map[uint64]*jobState),
+		submitCh:   make(chan []workerTask, 128),
+		completeCh: make(chan struct{}, 128),
+		stopCh:     make(chan struct{}),
 	}
 	heap.Init(&s.taskQueue)
+	slots.setOnFree(s.wake)
 	go s.loop()
 	return s
+}
+
+// wake makes the loop dispatch again, for example when a Request slot frees.
+func (s *searchScheduler) wake() {
+	select {
+	case s.completeCh <- struct{}{}:
+	default:
+	}
 }
 
 // Submit enqueues all indexer tasks for this search and returns immediately.
@@ -568,6 +394,7 @@ func (s *searchScheduler) dispatchTasks() {
 	}
 
 	var blocked []*taskItem
+	slotWait := time.Duration(-1)
 
 	// Track whether any task completed (so we emit a single queue-state signal)
 	// and whether any of them recorded a search-history entry, so we can emit the
@@ -586,15 +413,25 @@ func (s *searchScheduler) dispatchTasks() {
 			}
 			continue
 		}
-		if inCooldown, retryAt := s.rateLimiter.IsInCooldown(item.task.indexer.ID, rateLimitScopeQuery); inCooldown {
+		if err := s.slots.refusal(item.task.indexer, requestSearch); err != nil {
 			item.started = time.Now()
 			taskCompleted = true
-			err := &RateLimitError{
-				IndexerID:   item.task.indexer.ID,
-				IndexerName: item.task.indexer.Name,
-				Scope:       rateLimitScopeQuery,
-				RetryAt:     retryAt,
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
 			}
+			continue
+		}
+		// Check if indexer already has in-flight task
+		if running, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
+			if !running.detached {
+				blocked = append(blocked, item)
+				continue
+			}
+			// Fail fast: the stuck exec can hold the indexer until restart.
+			item.started = time.Now()
+			taskCompleted = true
+			err := fmt.Errorf("indexer %s is still running a timed-out search", item.task.indexer.Name)
 			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
@@ -602,29 +439,34 @@ func (s *searchScheduler) dispatchTasks() {
 			continue
 		}
 
-		// Check if indexer already has in-flight task
-		if _, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
+		// Only this loop sends to workerPool, so a free worker stays free until the send below.
+		if len(s.workerPool) == cap(s.workerPool) {
 			blocked = append(blocked, item)
 			continue
 		}
 
-		wait := s.rateLimiter.NextWait(item.task.indexer)
-
-		if wait > 0 {
-			// Blocked - re-queue for later
+		ticket, wait, err := s.slots.tryAcquire(item.task.indexer, requestSearch)
+		if err != nil {
+			item.started = time.Now()
+			taskCompleted = true
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
+			}
+			continue
+		}
+		if ticket == nil {
 			blocked = append(blocked, item)
+			if slotWait < 0 || wait < slotWait {
+				slotWait = wait
+			}
 			continue
 		}
 
-		// Ready - try to acquire worker
-		select {
-		case s.workerPool <- struct{}{}:
-			s.inFlight[item.task.indexer.ID] = item
-			go s.executeTask(item)
-		default:
-			// No worker available - re-queue
-			blocked = append(blocked, item)
-		}
+		item.ticket = ticket
+		s.workerPool <- struct{}{}
+		s.inFlight[item.task.indexer.ID] = item
+		go s.executeTask(item)
 	}
 
 	// Re-queue blocked items
@@ -632,8 +474,7 @@ func (s *searchScheduler) dispatchTasks() {
 		heap.Push(&s.taskQueue, item)
 	}
 
-	// Schedule retry timer for blocked tasks
-	s.scheduleRetryTimerLocked()
+	s.scheduleRetryTimerLocked(slotWait)
 
 	s.mu.Unlock()
 
@@ -649,36 +490,30 @@ func (s *searchScheduler) dispatchTasks() {
 	}
 }
 
+// executeTask reports completion on the first of the exec result or the end of
+// its context, but keeps the indexer and its worker until exec returns. An exec
+// that ignores its context otherwise frees the indexer for another one that blocks
+// the same way, and goroutines pile up without limit (#2817).
 func (s *searchScheduler) executeTask(item *taskItem) {
 	task := item.task
-	var panicked bool
-	var requestCompleted bool
+	reported := false
 
 	defer func() {
-		if !requestCompleted {
-			s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
+		if !reported {
+			err := fmt.Errorf("scheduler worker panic: %v", recover())
+			_ = item.ticket.done(task.ctx, err)
+			s.reportTaskComplete(item, nil, nil, err)
 		}
 
-		if r := recover(); r != nil {
-			panicked = true
-			err := fmt.Errorf("scheduler worker panic: %v", r)
-			s.mu.Lock()
-			historyRecorded := s.handleTaskCompleteLocked(item, nil, nil, err)
-			delete(s.inFlight, task.indexer.ID)
-			if task.isRSS {
-				delete(s.pendingRSS, task.indexer.ID)
-			}
-			s.mu.Unlock()
-
-			// A task finished (via panic recovery), changing the scheduler's visible
-			// activity. Emitted after releasing the lock, mirroring the success path.
-			s.publishActivity(activity.KindIndexerActivity)
-			if historyRecorded {
-				s.publishActivity(activity.KindSearchHistory)
-			}
+		s.mu.Lock()
+		delete(s.inFlight, task.indexer.ID)
+		// A detached exec released its RSS marker, which a later RSS run may own now.
+		if task.isRSS && !item.detached {
+			delete(s.pendingRSS, task.indexer.ID)
 		}
+		s.mu.Unlock()
+		s.publishActivity(activity.KindIndexerActivity)
 
-		// Release worker
 		<-s.workerPool
 
 		// Notify loop - may unblock other tasks
@@ -710,38 +545,70 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 		done <- taskExecResult{results: results, coverage: coverage, err: err}
 	}()
 
-	var (
-		results  []Result
-		coverage []int
-		err      error
-	)
 	select {
 	case result := <-done:
-		results = result.results
-		coverage = result.coverage
-		err = result.err
+		err := item.ticket.done(task.ctx, result.err)
+		s.reportTaskComplete(item, result.results, result.coverage, err)
+		reported = true
 	case <-execCtx.Done():
-		err = execCtx.Err()
-	}
-	s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
-	requestCompleted = true
-
-	// Handle completion (only if we didn't panic)
-	if !panicked {
-		s.mu.Lock()
-		historyRecorded := s.handleTaskCompleteLocked(item, results, coverage, err)
-		delete(s.inFlight, task.indexer.ID)
-		if task.isRSS {
-			delete(s.pendingRSS, task.indexer.ID)
-		}
-		s.mu.Unlock()
-
-		// A task finished, changing the scheduler's visible activity. Published
-		// after releasing the lock so the publisher never blocks the scheduler.
+		_ = item.ticket.done(task.ctx, execCtx.Err())
+		s.reportTaskComplete(item, nil, nil, execCtx.Err())
+		reported = true
+		// The job may be done while the indexer stays held; the activity panel
+		// refreshes only on this signal.
 		s.publishActivity(activity.KindIndexerActivity)
-		if historyRecorded {
-			s.publishActivity(activity.KindSearchHistory)
-		}
+		s.awaitDetachedExec(item, done)
+	}
+}
+
+// detachedExecWarnAfter is how long a timed-out exec may keep running before
+// the scheduler logs it as stuck and fails the tasks queued for its indexer.
+var detachedExecWarnAfter = 30 * time.Second
+
+// awaitDetachedExec waits for an exec whose context has ended. A late 429
+// still starts the Rate-limit cooldown; the caller already got the context error.
+func (s *searchScheduler) awaitDetachedExec(item *taskItem, done <-chan taskExecResult) {
+	warnAfter := detachedExecWarnAfter
+	timer := time.NewTimer(warnAfter)
+	defer timer.Stop()
+	select {
+	case result := <-done:
+		_ = item.ticket.done(item.task.ctx, result.err)
+		return
+	case <-timer.C:
+	}
+	s.mu.Lock()
+	item.detached = true
+	// A pending RSS fetch would make Submit skip later RSS runs for this
+	// indexer before they reach the stuck-indexer error.
+	if item.task.isRSS {
+		delete(s.pendingRSS, item.task.indexer.ID)
+	}
+	s.mu.Unlock()
+	// Wake the loop: a queued task with no deadline and no pacing wait has no
+	// retry timer, so it would wait for the stuck exec otherwise.
+	select {
+	case s.completeCh <- struct{}{}:
+	default:
+	}
+	log.Warn().
+		Int("indexerID", item.task.indexer.ID).
+		Str("indexer", item.task.indexer.Name).
+		Dur("pastDeadline", warnAfter).
+		Msg("Torznab search still running after its context ended; indexer stays held and its queued searches fail until it returns")
+	result := <-done
+	_ = item.ticket.done(item.task.ctx, result.err)
+}
+
+// reportTaskComplete delivers the task outcome to the caller and search history.
+func (s *searchScheduler) reportTaskComplete(item *taskItem, results []Result, coverage []int, err error) {
+	s.mu.Lock()
+	historyRecorded := s.handleTaskCompleteLocked(item, results, coverage, err)
+	s.mu.Unlock()
+
+	// Published after releasing the lock so the publisher never blocks the scheduler.
+	if historyRecorded {
+		s.publishActivity(activity.KindSearchHistory)
 	}
 }
 
@@ -838,19 +705,16 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 	return historyRecorded
 }
 
-func (s *searchScheduler) scheduleRetryTimerLocked() {
+// scheduleRetryTimerLocked wakes the loop at the first end of slotWait or of a
+// queued deadline. A negative slotWait means no task waits for a Request slot.
+func (s *searchScheduler) scheduleRetryTimerLocked(slotWait time.Duration) {
 	if s.taskQueue.Len() == 0 {
 		return
 	}
 
-	// Find minimum wait among queued tasks
-	minWait := time.Duration(-1)
+	minWait := slotWait
 	for i := 0; i < s.taskQueue.Len(); i++ {
 		item := s.taskQueue[i]
-		wait := s.rateLimiter.NextWait(item.task.indexer)
-		if wait > 0 && (minWait < 0 || wait < minWait) {
-			minWait = wait
-		}
 		if deadline, ok := item.task.ctx.Deadline(); ok {
 			untilDeadline := max(time.Until(deadline), 0)
 			if minWait < 0 || untilDeadline < minWait {

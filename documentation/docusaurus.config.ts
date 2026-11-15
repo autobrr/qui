@@ -199,8 +199,8 @@ const config: Config = {
               href: "https://discord.autobrr.com/qui",
             },
             {
-              label: "GitHub Issues",
-              href: "https://github.com/autobrr/qui/issues",
+              label: "GitHub Discussions",
+              href: "https://github.com/autobrr/qui/discussions",
             },
           ],
         },

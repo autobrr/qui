@@ -12,11 +12,11 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestIsWebSourceRelabel covers the cross-tracker relabel detector that lets the
+// TestWebSourceRelabel covers the cross-tracker relabel rule that lets the
 // same web encode through when only its WEBRip/WEB-DL label differs. The real
 // motivating case is "Law & Order: SVU" S05, which trackers list as both
 // WEBRip (the seeded copy) and WEB-DL (the relabel) at the same content size.
-func TestIsWebSourceRelabel(t *testing.T) {
+func TestWebSourceRelabel(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	const (
@@ -25,10 +25,13 @@ func TestIsWebSourceRelabel(t *testing.T) {
 		webdlSpaced  = "Law & Order: Special Victims Unit S05 1080p AMZN WEB-DL DD+ 2.0 H.264-NTb"
 	)
 
+	const size int64 = 50_000_000_000
+
 	tests := []struct {
 		name          string
 		sourceName    string
 		candidateName string
+		noSizes       bool
 		want          bool
 	}{
 		{
@@ -36,6 +39,13 @@ func TestIsWebSourceRelabel(t *testing.T) {
 			sourceName:    webripDotted,
 			candidateName: webdlDotted,
 			want:          true,
+		},
+		{
+			name:          "a relabel needs both sizes",
+			sourceName:    webripDotted,
+			candidateName: webdlDotted,
+			noSizes:       true,
+			want:          false,
 		},
 		{
 			name:          "symmetric: WEB-DL source vs WEBRip relabel",
@@ -73,17 +83,26 @@ func TestIsWebSourceRelabel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidateName)
-			got := s.isWebSourceRelabel(&source, &candidate, tt.sourceName, tt.candidateName, nil, nil, false)
-			require.Equal(t, tt.want, got)
+			evidence := matchEvidence{SourceSize: size, CandidateSize: size}
+			if tt.noSizes {
+				evidence = matchEvidence{}
+			}
+			verdict := s.matchVerdict(
+				namedRelease{release: &source, rawName: tt.sourceName},
+				namedRelease{release: &candidate, rawName: tt.candidateName},
+				evidence,
+				matchPolicy{SizeTolerancePercent: 5},
+			)
+			require.Equal(t, tt.want, verdict.Class == searchCandidateClassWebSourceRelabel)
 		})
 	}
 }
 
-// TestShouldAcceptWebSourceRelabel covers the relabel-acceptance gate, including
+// TestWebSourceRelabelSizeGate covers the size gate of the relabel, including
 // the regression where a single-episode WEB relabel of a season-pack source was
 // dropped on the full-pack vs episode size mismatch before the episode-size
 // bypass could apply (P1). The pack is ~100GB, the episode ~5GB.
-func TestShouldAcceptWebSourceRelabel(t *testing.T) {
+func TestWebSourceRelabelSizeGate(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	const (
@@ -99,70 +118,46 @@ func TestShouldAcceptWebSourceRelabel(t *testing.T) {
 	)
 
 	tests := []struct {
-		name            string
-		sourceName      string
-		candidateName   string
-		findEpisodes    bool
-		ignoreSizeCheck bool
-		sourceSize      int64
-		candidateSize   int64
-		mismatchReason  string
-		want            bool
+		name          string
+		sourceName    string
+		candidateName string
+		findEpisodes  bool
+		sourceSize    int64
+		candidateSize int64
+		want          bool
 	}{
 		{
-			name:            "episode relabel accepted when episode-size bypass is active",
-			sourceName:      packWebrip,
-			candidateName:   episodeWebdl,
-			findEpisodes:    true,
-			ignoreSizeCheck: true,
-			sourceSize:      packSize,
-			candidateSize:   episodeSize,
-			mismatchReason:  sourceMismatchReason,
-			want:            true,
+			name:          "episode relabel accepted when episode-size bypass is active",
+			sourceName:    packWebrip,
+			candidateName: episodeWebdl,
+			findEpisodes:  true,
+			sourceSize:    packSize,
+			candidateSize: episodeSize,
+			want:          true,
 		},
 		{
-			name:            "episode relabel dropped without the bypass on full-size mismatch",
-			sourceName:      packWebrip,
-			candidateName:   episodeWebdl,
-			findEpisodes:    true,
-			ignoreSizeCheck: false,
-			sourceSize:      packSize,
-			candidateSize:   episodeSize,
-			mismatchReason:  sourceMismatchReason,
-			want:            false,
+			name:          "pack relabel dropped on full-size mismatch",
+			sourceName:    packWebrip,
+			candidateName: packWebdl,
+			sourceSize:    packSize,
+			candidateSize: episodeSize,
+			want:          false,
 		},
 		{
-			name:            "full-pack relabel accepted within size tolerance",
-			sourceName:      packWebrip,
-			candidateName:   packWebdl,
-			findEpisodes:    false,
-			ignoreSizeCheck: false,
-			sourceSize:      packSize,
-			candidateSize:   packSize,
-			mismatchReason:  sourceMismatchReason,
-			want:            true,
+			name:          "full-pack relabel accepted within size tolerance",
+			sourceName:    packWebrip,
+			candidateName: packWebdl,
+			sourceSize:    packSize,
+			candidateSize: packSize,
+			want:          true,
 		},
 		{
-			name:            "non-source mismatch reason is never treated as a relabel",
-			sourceName:      packWebrip,
-			candidateName:   packWebdl,
-			findEpisodes:    false,
-			ignoreSizeCheck: false,
-			sourceSize:      packSize,
-			candidateSize:   packSize,
-			mismatchReason:  "resolution mismatch",
-			want:            false,
-		},
-		{
-			name:            "different show within size tolerance is not a relabel",
-			sourceName:      packWebrip,
-			candidateName:   otherShow,
-			findEpisodes:    false,
-			ignoreSizeCheck: false,
-			sourceSize:      packSize,
-			candidateSize:   packSize,
-			mismatchReason:  sourceMismatchReason,
-			want:            false,
+			name:          "different show within size tolerance is not a relabel",
+			sourceName:    packWebrip,
+			candidateName: otherShow,
+			sourceSize:    packSize,
+			candidateSize: packSize,
+			want:          false,
 		},
 	}
 
@@ -170,15 +165,13 @@ func TestShouldAcceptWebSourceRelabel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidateName)
-			got := s.shouldAcceptWebSourceRelabel(
-				&source, &candidate,
-				tt.sourceName, tt.candidateName,
-				nil, nil,
-				tt.findEpisodes, tt.ignoreSizeCheck,
-				tt.sourceSize, tt.candidateSize,
-				5.0, tt.mismatchReason,
+			verdict := s.matchVerdict(
+				namedRelease{release: &source, rawName: tt.sourceName},
+				namedRelease{release: &candidate, rawName: tt.candidateName},
+				matchEvidence{SourceSize: tt.sourceSize, CandidateSize: tt.candidateSize},
+				matchPolicy{IndividualEpisodes: tt.findEpisodes, SizeTolerancePercent: 5},
 			)
-			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want, verdict.Class == searchCandidateClassWebSourceRelabel)
 		})
 	}
 }

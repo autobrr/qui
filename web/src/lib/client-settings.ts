@@ -57,9 +57,11 @@ const SYNCED_KEYS = new Set<string>([
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
   "qui-log-levels",
+  "qui-theme-visibility",
+  "qui-group-copies",
+  "qui-statistics-series-colors",
 ])
 const SYNCED_PREFIXES = [
-  "qui-start-paused-instance-",
   "qui-cross-seed-blocklist-",
   // "qui-filters-" covers "qui-filters-global" and the per-instance keys.
   "qui-column-visibility:",
@@ -73,6 +75,7 @@ const SYNCED_PREFIXES = [
   "qui:torrent-mobile-sort:",
   "qui-show-empty-",
   "qui-selected-instance-",
+  "qui-feature-notice-seen:",
 ]
 
 function isSyncedKey(key: string): boolean {
@@ -87,8 +90,16 @@ export function readRaw(key: string): string | null {
   }
 }
 
-function writeLocal(key: string, raw: string): boolean {
+// Marks a value that a tab copied from the server into the shared
+// localStorage, so another tab's flush does not push it back as an edit.
+// Local-only: the prefix matches no synced key.
+const SERVER_COPY_PREFIX = "qui-client-settings-server-copy:"
+
+function writeLocal(key: string, raw: string, fromServer = false): boolean {
   try {
+    // Mark before value, so another tab never reads a server copy without its mark.
+    if (fromServer) localStorage.setItem(SERVER_COPY_PREFIX + key, "1")
+    else localStorage.removeItem(SERVER_COPY_PREFIX + key)
     localStorage.setItem(key, raw)
   } catch (error) {
     console.error("Failed to write client setting to localStorage:", error)
@@ -113,6 +124,23 @@ const pending = new Map<string, string>()
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 // Opens after the first successful GET, so nothing fires while logged out.
 let syncReady = false
+const syncReadyListeners = new Set<() => void>()
+
+function setSyncReady(ready: boolean): void {
+  if (syncReady === ready) return
+  syncReady = ready
+  for (const listener of syncReadyListeners) listener()
+}
+
+function subscribeSyncReady(callback: () => void): () => void {
+  syncReadyListeners.add(callback)
+  return () => syncReadyListeners.delete(callback)
+}
+
+/** True once the first server snapshot is in localStorage, so a read returns the server value. */
+export function useClientSettingsLoaded(): boolean {
+  return useSyncExternalStore(subscribeSyncReady, () => syncReady)
+}
 
 // Durable outbox: the dirty key list mirrored to localStorage. The pagehide
 // keepalive PUT is not reliable (Chrome drops keepalive fetches from
@@ -195,16 +223,20 @@ async function flushPending(): Promise<void> {
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     // Drop what this PUT delivered. Entries replaced in this tab stay queued;
-    // a newer value from another tab is copied from the shared localStorage.
+    // a newer edit from another tab is copied from the shared localStorage.
+    // A server copy is not an edit: pushing it back can be one write old, and
+    // two tabs then flip the value forever (#3424).
     for (const [key, raw] of Object.entries(batch)) {
       const latest = readRaw(key)
-      if (latest !== null && latest !== raw) {
+      if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
         pending.set(key, latest)
         flushRequestedInFlight = true
       } else if (pending.get(key) === raw) pending.delete(key)
     }
     persistPending()
   } catch (error) {
+    // No self-retry, on purpose: a failed batch stays pending until the next write
+    // or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
     console.error("Failed to push client settings:", error)
   } finally {
     flushInFlight = false
@@ -245,7 +277,7 @@ export function applyServerSettings(settings: Record<string, string>): string[] 
   for (const [key, raw] of Object.entries(settings)) {
     if (pending.has(key)) continue
     if (readRaw(key) === raw) continue
-    if (writeLocal(key, raw)) changed.push(key)
+    if (writeLocal(key, raw, true)) changed.push(key)
   }
   return changed
 }
@@ -278,7 +310,7 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
   } catch (error) {
     console.error("Failed to scan localStorage for client settings seed:", error)
   }
-  syncReady = true
+  setSyncReady(true)
   scheduleFlush()
 }
 
@@ -290,7 +322,7 @@ export function _resetClientSettingsForTests(): void {
   flushTimer = null
   flushInFlight = false
   flushRequestedInFlight = false
-  syncReady = false
+  setSyncReady(false)
   loadPersistedPending()
 }
 
@@ -330,6 +362,31 @@ interface ClientSettingOptions<T> {
   serialize?: (value: T) => string
 }
 
+function decode<T>(raw: string | null, { defaultValue, parse }: ClientSettingOptions<T>): T {
+  // "" is the cleared sentinel (settings never remove their key).
+  if (raw == null || raw === "") return defaultValue
+  try {
+    return parse(raw)
+  } catch {
+    return defaultValue
+  }
+}
+
+/** The current value of one setting, for code outside a component. */
+export function readClientSetting<T>(key: string, options: ClientSettingOptions<T>): T {
+  return decode(readRaw(key), options)
+}
+
+/** Calls back after any setting changes, in this tab or another one. Returns the unsubscribe. */
+export function subscribeClientSettings(callback: () => void): () => void {
+  window.addEventListener("storage", callback)
+  window.addEventListener(CHANGE_EVENT, callback)
+  return () => {
+    window.removeEventListener("storage", callback)
+    window.removeEventListener(CHANGE_EVENT, callback)
+  }
+}
+
 /**
  * One DB-backed setting as React state. All hook instances for a key stay in
  * sync in the same tab (change event) and across tabs (storage event); writes
@@ -361,19 +418,14 @@ export function useClientSetting<T>(
 
   const raw = useSyncExternalStore(subscribe, () => readRaw(key))
 
-  const value = useMemo(() => {
-    // "" is the cleared sentinel (settings never remove their key).
-    if (raw == null || raw === "") return defaultValue
-    try {
-      return parse(raw)
-    } catch {
-      return defaultValue
-    }
-  }, [raw, parse, defaultValue])
+  const value = useMemo(() => decode(raw, { defaultValue, parse }), [raw, parse, defaultValue])
 
   const valueRef = useRef(value)
   valueRef.current = value
 
+  // valueRef changes only on render, so two functional updates of one key in the
+  // same tick both read the old value and the last one wins. Nothing writes on
+  // mount: corrupt stored JSON renders as the default until the first edit.
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
       const resolved = typeof next === "function" ? (next as (prev: T) => T)(valueRef.current) : next

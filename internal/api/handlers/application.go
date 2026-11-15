@@ -62,7 +62,7 @@ func (h *ApplicationHandler) GetInfo(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	cfg := h.appConfig.Config
+	cfg := h.appConfig.Config.Live()
 	commit := strings.TrimSpace(buildinfo.Commit)
 
 	response := ApplicationInfoResponse{

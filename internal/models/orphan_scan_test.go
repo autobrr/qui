@@ -6,6 +6,7 @@ package models_test
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -82,11 +83,15 @@ func runFilesystemModeRoundTrip(t *testing.T, newDB func(testing.TB, string) *da
 	created, err := store.GetRun(ctx, completedID)
 	require.NoError(t, err)
 	require.Equal(t, models.FilesystemModeNone, created.FilesystemMode, "a new run is not local until the scan says so")
-	require.NoError(t, store.UpdateRunFilesystemMode(ctx, completedID, models.FilesystemModeRemote))
+	require.False(t, created.IdentityComplete, "a run has no identity until its walk says so")
+	const endpoint = "qui@box.example:22"
+	require.NoError(t, store.UpdateRunFilesystemMode(ctx, completedID, models.FilesystemModeRemote, endpoint))
+	require.NoError(t, store.UpdateRunIdentityComplete(ctx, completedID, true))
 	require.NoError(t, store.UpdateRunCompleted(ctx, completedID, 0, 0, 0, ""))
 	activeID, err := store.CreateRunIfNoActive(ctx, instance.ID, "manual")
 	require.NoError(t, err)
-	require.NoError(t, store.UpdateRunFilesystemMode(ctx, activeID, models.FilesystemModeRemote))
+	require.NoError(t, store.UpdateRunFilesystemMode(ctx, activeID, models.FilesystemModeRemote, endpoint))
+	require.NoError(t, store.UpdateRunIdentityComplete(ctx, activeID, true))
 
 	reads := map[string]func() ([]*models.OrphanScanRun, error){
 		"GetRun": func() ([]*models.OrphanScanRun, error) {
@@ -115,6 +120,8 @@ func runFilesystemModeRoundTrip(t *testing.T, newDB func(testing.TB, string) *da
 		for _, run := range runs {
 			require.NotNil(t, run, name)
 			require.Equal(t, models.FilesystemModeRemote, run.FilesystemMode, "%s run %d", name, run.ID)
+			require.Equal(t, endpoint, run.FilesystemEndpoint, "%s run %d", name, run.ID)
+			require.True(t, run.IdentityComplete, "%s run %d", name, run.ID)
 		}
 	}
 }
@@ -147,6 +154,8 @@ func runLegacyRunBackfill(t *testing.T, newDB func(testing.TB, string) *database
 	run, err := models.NewOrphanScanStore(db).GetRun(ctx, runID)
 	require.NoError(t, err)
 	require.Equal(t, models.FilesystemModeLocal, run.FilesystemMode)
+	require.False(t, run.IdentityComplete, "an old remote preview must read as refused")
+	require.Empty(t, run.FilesystemEndpoint)
 }
 
 func TestOrphanScanStore_FailPreviewReadyRunLeavesOtherStatusesAlone(t *testing.T) {
@@ -200,13 +209,17 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		require.NoError(t, err)
 		return instance.ID
 	}
-	preview := func(instanceID int, mode models.FilesystemMode) int64 {
+	previewWithIdentity := func(instanceID int, mode models.FilesystemMode, identityComplete bool) int64 {
 		runID, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
 		require.NoError(t, err)
-		require.NoError(t, store.UpdateRunFilesystemMode(ctx, runID, mode))
+		require.NoError(t, store.UpdateRunFilesystemMode(ctx, runID, mode, ""))
+		require.NoError(t, store.UpdateRunIdentityComplete(ctx, runID, identityComplete))
 		require.NoError(t, store.UpdateRunFoundStats(ctx, runID, 3, false, 30))
 		require.NoError(t, store.UpdateRunStatus(ctx, runID, "preview_ready"))
 		return runID
+	}
+	preview := func(instanceID int, mode models.FilesystemMode) int64 {
+		return previewWithIdentity(instanceID, mode, false)
 	}
 	status := func(runID int64) string {
 		run, err := store.GetRun(ctx, runID)
@@ -214,7 +227,7 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		return run.Status
 	}
 
-	t.Run("remote preview is canceled", func(t *testing.T) {
+	t.Run("remote preview without identity is canceled", func(t *testing.T) {
 		instanceID := newInstance()
 		old := preview(instanceID, models.FilesystemModeRemote)
 		active, err := store.GetMostRecentActiveRun(ctx, instanceID)
@@ -225,6 +238,27 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		require.NoError(t, err)
 		require.Equal(t, "canceled", status(old))
 		require.Equal(t, "pending", status(runID))
+	})
+
+	// A remote preview that read every identity can be confirmed, so it blocks like a local one.
+	t.Run("remote preview with complete identity blocks", func(t *testing.T) {
+		instanceID := newInstance()
+		old := previewWithIdentity(instanceID, models.FilesystemModeRemote, true)
+		_, err := store.CreateRunIfNoActive(ctx, instanceID, "scheduled")
+		require.ErrorIs(t, err, models.ErrRunAlreadyActive)
+		require.Equal(t, "preview_ready", status(old))
+		active, err := store.GetMostRecentActiveRun(ctx, instanceID)
+		require.NoError(t, err)
+		require.NotNil(t, active)
+		require.Equal(t, old, active.ID)
+	})
+
+	t.Run("local preview with incomplete identity still blocks", func(t *testing.T) {
+		instanceID := newInstance()
+		old := previewWithIdentity(instanceID, models.FilesystemModeLocal, false)
+		_, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
+		require.ErrorIs(t, err, models.ErrRunAlreadyActive)
+		require.Equal(t, "preview_ready", status(old))
 	})
 
 	t.Run("local preview still blocks", func(t *testing.T) {
@@ -331,4 +365,179 @@ func runLastFinishedScan(t *testing.T, newDB func(testing.TB, string) *database.
 	// A deletion that finished after a later preview started is the newer result.
 	late := insert("completed", "2026-01-01 12:00:00", "2026-01-02 06:00:00")
 	require.Equal(t, late, lastID())
+}
+
+func TestOrphanScanStore_RemotePreviewRunIDs(t *testing.T) {
+	t.Parallel()
+	runRemotePreviewRunIDs(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_RemotePreviewRunIDsPostgresIntegration(t *testing.T) {
+	runRemotePreviewRunIDs(t, testdb.NewMigratedPostgres)
+}
+
+// Only the instance's remote runs that are still a preview are listed.
+func runRemotePreviewRunIDs(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-remote-preview-ids")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "test", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	other, err := instances.Create(ctx, "other", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	// files_found stays 0, so none of these blocks the next one.
+	insert := func(instanceID int, mode models.FilesystemMode, status string) int64 {
+		t.Helper()
+		id, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
+		require.NoError(t, err)
+		require.NoError(t, store.UpdateRunFilesystemMode(ctx, id, mode, "qui@box.example:22"))
+		require.NoError(t, store.UpdateRunStatus(ctx, id, status))
+		return id
+	}
+	want := insert(instance.ID, models.FilesystemModeRemote, "preview_ready")
+	insert(instance.ID, models.FilesystemModeLocal, "preview_ready")
+	// Last, since a deletion blocks the instance's next run.
+	insert(instance.ID, models.FilesystemModeRemote, "deleting")
+	insert(other.ID, models.FilesystemModeRemote, "preview_ready")
+
+	ids, err := store.RemotePreviewRunIDs(ctx, instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{want}, ids)
+}
+
+func TestOrphanScanStore_HasDeletingRun(t *testing.T) {
+	t.Parallel()
+	runHasDeletingRun(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_HasDeletingRunPostgresIntegration(t *testing.T) {
+	runHasDeletingRun(t, testdb.NewMigratedPostgres)
+}
+
+func runHasDeletingRun(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-has-deleting")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "test", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	other, err := instances.Create(ctx, "other", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	runID, err := store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+	require.NoError(t, err)
+	for _, status := range []string{"scanning", "preview_ready", "completed"} {
+		require.NoError(t, store.UpdateRunStatus(ctx, runID, status))
+		deleting, err := store.HasDeletingRun(ctx, instance.ID)
+		require.NoError(t, err)
+		require.False(t, deleting, status)
+	}
+
+	require.NoError(t, store.UpdateRunStatus(ctx, runID, "deleting"))
+	deleting, err := store.HasDeletingRun(ctx, instance.ID)
+	require.NoError(t, err)
+	require.True(t, deleting)
+	deleting, err = store.HasDeletingRun(ctx, other.ID)
+	require.NoError(t, err)
+	require.False(t, deleting, "another instance's deletion")
+}
+
+func TestOrphanScanStore_ListRunsCountsScanPaths(t *testing.T) {
+	t.Parallel()
+	runListRunsScanPathCount(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_ListRunsCountsScanPathsPostgresIntegration(t *testing.T) {
+	runListRunsScanPathCount(t, testdb.NewMigratedPostgres)
+}
+
+func runListRunsScanPathCount(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-scan-path-count")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "test", "http://example.invalid", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	newRun := func(paths []string, write bool) int64 {
+		id, err := store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+		require.NoError(t, err)
+		if write {
+			require.NoError(t, store.UpdateRunScanPaths(ctx, id, paths))
+		}
+		require.NoError(t, store.UpdateRunCompleted(ctx, id, 0, 0, 0, ""))
+		return id
+	}
+	want := map[int64]int{
+		newRun([]string{"/data/tv", "/data/movies", "/srv/music"}, true): 3,
+		newRun([]string{}, true): 0,
+		newRun(nil, true):        0,
+		newRun(nil, false):       0,
+	}
+
+	runs, err := store.ListRuns(ctx, instance.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, len(want))
+	for _, run := range runs {
+		require.Equal(t, want[run.ID], run.ScanPathCount, "run %d", run.ID)
+		require.Nil(t, run.ScanPaths, "run %d: the list must not read the paths", run.ID)
+	}
+
+	for id, count := range want {
+		run, err := store.GetRun(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, count, run.ScanPathCount, "run %d", id)
+		require.Len(t, run.ScanPaths, count, "run %d", id)
+	}
+}
+
+func TestOrphanScanStore_MarkStuckRunsFailedKeepsRunsInsideTheThreshold(t *testing.T) {
+	t.Parallel()
+	runMarkStuckRunsFailed(t, testdb.NewMigratedSQLite)
+}
+
+func TestOrphanScanStore_MarkStuckRunsFailedKeepsRunsInsideTheThresholdPostgresIntegration(t *testing.T) {
+	runMarkStuckRunsFailed(t, testdb.NewMigratedPostgres)
+}
+
+func runMarkStuckRunsFailed(t *testing.T, newDB func(testing.TB, string) *database.DB) {
+	t.Helper()
+	ctx := t.Context()
+	db := newDB(t, "orphan-stuck-runs")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	store := models.NewOrphanScanStore(db)
+
+	const threshold = time.Hour
+	now := time.Now().UTC()
+	runIDs := map[string]int64{}
+	// The store writes started_at with the database clock, which has this form.
+	for name, startedAt := range map[string]time.Time{
+		"stuck":  now.Add(-threshold - time.Minute),
+		"recent": now.Add(-threshold + time.Minute),
+	} {
+		instance, err := instances.Create(ctx, name, "http://example.invalid", "user", "pass", nil, nil, false, nil)
+		require.NoError(t, err)
+		runIDs[name], err = store.CreateRunIfNoActive(ctx, instance.ID, "manual")
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `UPDATE orphan_scan_runs SET started_at = ? WHERE id = ?`, startedAt.Format(time.DateTime), runIDs[name])
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, store.MarkStuckRunsFailed(ctx, threshold, []string{"pending", "scanning"}))
+
+	stuck, err := store.GetRun(ctx, runIDs["stuck"])
+	require.NoError(t, err)
+	require.Equal(t, "failed", stuck.Status)
+	recent, err := store.GetRun(ctx, runIDs["recent"])
+	require.NoError(t, err)
+	require.Equal(t, "pending", recent.Status)
 }

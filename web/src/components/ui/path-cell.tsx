@@ -3,11 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Copy } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
-import { cn, copyTextToClipboard } from "@/lib/utils"
+import { cn } from "@/lib/utils"
+import { CopyButton } from "@/components/ui/copy-button"
 import { TruncatedText } from "@/components/ui/truncated-text"
 
 interface PathCellProps {
@@ -21,36 +20,13 @@ interface PathCellProps {
  */
 export function PathCell({ path, className }: PathCellProps) {
   const { t } = useTranslation("common")
-  const hasPath = path != null && path !== ""
-
-  const handleCopy = async () => {
-    if (!hasPath) return
-    try {
-      await copyTextToClipboard(path)
-      toast.success(t("contextMenu.toast.torrentCopied", { ns: "torrents", label: t("actions.copyPath") }))
-    } catch {
-      toast.error(t("contextMenu.toast.failedToCopy", { ns: "torrents" }))
-    }
-  }
 
   return (
     <div className={cn("flex items-center gap-1.5 min-w-0", className)}>
       <TruncatedText className="flex-1 min-w-0 text-sm">
-        {hasPath ? path : "-"}
+        {path || "-"}
       </TruncatedText>
-      <button
-        type="button"
-        onClick={handleCopy}
-        disabled={!hasPath}
-        className={cn(
-          "flex-shrink-0 p-0.5 rounded transition-colors",
-          hasPath? "text-muted-foreground hover:text-foreground cursor-pointer": "text-muted-foreground/40 cursor-not-allowed"
-        )}
-        aria-label={t("actions.copyPath")}
-        title={hasPath ? t("actions.copyPath") : undefined}
-      >
-        <Copy className="size-3.5" />
-      </button>
+      {path && <CopyButton value={path} label={t("labels.path")} className="size-5 text-muted-foreground hover:text-foreground" />}
     </div>
   )
 }

@@ -29,6 +29,7 @@ const (
 	EventCrossSeedWebhookFailed       EventType = "cross_seed_webhook_failed"
 	EventAutomationsActionsApplied    EventType = "automations_actions_applied"
 	EventAutomationsRunFailed         EventType = "automations_run_failed"
+	EventSystemNotice                 EventType = "system_notice"
 )
 
 type EventDefinition struct {
@@ -56,6 +57,13 @@ var eventDefinitions = []EventDefinition{
 	{Type: EventCrossSeedWebhookFailed, Label: "Cross-seed webhook failed", Description: "A webhook check or apply fails."},
 	{Type: EventAutomationsActionsApplied, Label: "Automations actions applied", Description: "Automation rules applied actions (summary counts and samples; only when actions occur)."},
 	{Type: EventAutomationsRunFailed, Label: "Automations run failed", Description: "Automation rules failed to run for an instance (system error)."},
+	{Type: EventSystemNotice, Label: "System notice", Description: "A fault in qui needs an action from you, for example when qui cannot record the Transfer history."},
+}
+
+// optIn reports whether a target must pick the event type. Targets from
+// before a new event type existed then do not get it at the upgrade.
+func optIn(eventType EventType) bool {
+	return eventType == EventSystemNotice
 }
 
 var eventTypeIndex = func() map[string]int {

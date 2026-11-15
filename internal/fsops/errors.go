@@ -6,6 +6,7 @@ package fsops
 import (
 	"errors"
 	"fmt"
+	"syscall"
 )
 
 // Sentinel errors returned by Backend implementations.
@@ -13,10 +14,6 @@ var (
 	// ErrNoFilesystemAccess is returned by the NoopBackend for instances that
 	// have no filesystem access configured (neither local nor remote).
 	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
-
-	// ErrNotLocal is returned by Pool.LocalBackend for an instance that no
-	// longer has local filesystem access.
-	ErrNotLocal = errors.New("instance does not have local filesystem access")
 
 	// ErrNotCapable is returned by Pool.Require for an instance whose
 	// filesystem mode does not grant the capability asked for.
@@ -41,3 +38,15 @@ var (
 	// Distinct from ErrNoFilesystemAccess, which means nothing was configured.
 	ErrUnsupported = fmt.Errorf("operation is not supported by this filesystem backend: %w", errors.ErrUnsupported)
 )
+
+// IsDirNotEmpty reports whether err comes from removing a folder that is not
+// empty. It reads only error codes, never message text: Windows translates
+// its messages, and a folder named "Not Empty" puts those words in the path.
+// Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY there,
+// so that code is checked on Windows. Every caller passes an error from a
+// backend's Remove, and both backends report the code: the local one from
+// os.Remove, the remote one as syscall.ENOTEMPTY when a listing shows the
+// folder still holds entries.
+func IsDirNotEmpty(err error) bool {
+	return errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err)
+}

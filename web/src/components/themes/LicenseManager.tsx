@@ -82,16 +82,25 @@ export function LicenseManager({
   const primaryLicense = licenses?.[0]
   const hasStoredLicense = Boolean(primaryLicense)
 
-  // Check if we have an invalid license (exists but not active)
-  const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
+  // An offline license comes back without user action when the license server answers, so it needs no re-activation.
+  const isOfflineLicense = primaryLicense?.status === "offline"
+  const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" && !isOfflineLicense : false
+  const showPurchase = !hasPremiumAccess && !hasInvalidLicense && !isOfflineLicense
   let accessTitle = t("themes.license.status.unlockTitle")
   let accessDescription = t("themes.license.status.unlockDescription")
   if (hasPremiumAccess) {
     accessTitle = t("themes.license.status.activeTitle")
     accessDescription = t("themes.license.status.activeDescription")
+  } else if (isOfflineLicense) {
+    accessTitle = t("themes.license.status.offlineTitle")
+    accessDescription = t("themes.license.status.offlineDescription")
   } else if (hasInvalidLicense) {
     accessTitle = t("themes.license.status.activationRequiredTitle")
     accessDescription = t("themes.license.status.activationRequiredDescription")
+  }
+  const statusLabels: Record<string, string> = {
+    invalid: t("themes.license.details.statusLabels.invalid"),
+    offline: t("themes.license.details.statusLabels.offline"),
   }
   const canAddLicense = !hasStoredLicense || hasInvalidLicense
   const checkoutUrl = useMemo(() => {
@@ -174,7 +183,7 @@ export function LicenseManager({
         <CardHeader className="px-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <CardTitle className="flex items-center gap-2">
                 <Key className="h-4 w-4 sm:h-5 sm:w-5" />
                 {t("themes.license.managementTitle")}
               </CardTitle>
@@ -206,7 +215,7 @@ export function LicenseManager({
                 <div className="space-y-1">
                   <p className="font-medium text-base">{accessTitle}</p>
                   <p className="text-sm text-muted-foreground">{accessDescription}</p>
-                  {!hasPremiumAccess && !hasInvalidLicense && (
+                  {showPurchase && (
                     <p className="text-xs text-muted-foreground">
                       {t("themes.license.portalHelp.prefix")}{" "}
                       <a
@@ -234,7 +243,7 @@ export function LicenseManager({
                     {t("themes.license.actions.remove")}
                   </Button>
                 )}
-                {!hasPremiumAccess && !hasInvalidLicense && (
+                {showPurchase && (
                   <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
                     <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
                     <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 -ml-1 mr-1 sm:mr-2" />
@@ -292,7 +301,7 @@ export function LicenseManager({
                 <div className="text-xs text-muted-foreground">
                   {primaryLicense.status !== "active"? t("themes.license.details.productStatusAndAdded", {
                     productName: primaryLicense.productName,
-                    status: primaryLicense.status,
+                    status: statusLabels[primaryLicense.status] ?? t("themes.license.details.statusLabels.unknown"),
                     date: formatDate(new Date(primaryLicense.createdAt)),
                   }): t("themes.license.details.productAdded", {
                     productName: primaryLicense.productName,

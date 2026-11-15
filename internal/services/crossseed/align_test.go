@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"context"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -1120,4 +1121,77 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			}
 		})
 	}
+}
+
+type rootlessFolderAlignmentSyncManager struct {
+	*alignmentFailureSyncManager
+	files   qbt.TorrentFiles
+	renames []fileRenameInstruction
+}
+
+func (m *rootlessFolderAlignmentSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		cp := make(qbt.TorrentFiles, len(m.files))
+		copy(cp, m.files)
+		result[normalizeHash(hash)] = cp
+	}
+	return result, nil
+}
+
+func (m *rootlessFolderAlignmentSyncManager) RenameTorrentFile(_ context.Context, _ int, _, oldPath, newPath string) error {
+	m.renames = append(m.renames, fileRenameInstruction{oldPath: oldPath, newPath: newPath})
+	for i := range m.files {
+		if m.files[i].Name == oldPath {
+			m.files[i].Name = newPath
+		}
+	}
+	return nil
+}
+
+func TestAlignCrossSeed_RootlessSourceIntoMatchedFolderRenamesBasenameOnly(t *testing.T) {
+	t.Parallel()
+
+	const (
+		hash         = "newhash"
+		sourceName   = "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
+		sourcePath   = "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
+		candidateDir = "Movie.2015.LIMITED.1080p.BluRay.x264-GROUP"
+		targetName   = "Movie.2015.LIMITED.1080p.BluRay.x264-GROUP.mkv"
+	)
+
+	sync := &rootlessFolderAlignmentSyncManager{
+		alignmentFailureSyncManager: &alignmentFailureSyncManager{},
+		files:                       qbt.TorrentFiles{{Name: sourcePath, Size: 4096}},
+	}
+	service := &Service{
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		aligner:          testAligner(sync),
+	}
+
+	sourceFiles := qbt.TorrentFiles{{Name: sourcePath, Size: 4096}}
+	candidateFiles := qbt.TorrentFiles{{Name: candidateDir + "/" + targetName, Size: 4096}}
+	matchedTorrent := qbt.Torrent{Hash: "matchedhash", Name: candidateDir}
+	plan := buildCrossSeedAddPlan(
+		matchedTorrent,
+		candidateFiles,
+		"single-file",
+		service.releaseCache.Parse(sourceName),
+		service.releaseCache.Parse(candidateDir),
+		sourceFiles,
+	)
+	ok, activeHash := service.alignCrossSeed(
+		t.Context(),
+		1,
+		hash,
+		"",
+		sourceName,
+		&plan,
+	)
+
+	require.True(t, ok)
+	require.Equal(t, hash, activeHash)
+	require.Equal(t, []fileRenameInstruction{{oldPath: sourcePath, newPath: targetName}}, sync.renames)
 }

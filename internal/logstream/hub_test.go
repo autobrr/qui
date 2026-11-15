@@ -88,8 +88,8 @@ func TestHub_Subscribe(t *testing.T) {
 		if line != "test line" {
 			t.Errorf("expected 'test line', got %q", line)
 		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("timeout waiting for line")
+	default:
+		t.Error("expected the line on the subscriber channel")
 	}
 }
 
@@ -128,8 +128,15 @@ func TestHub_ContextCancel(t *testing.T) {
 
 	cancel()
 
-	// Give time for the goroutine to process the cancellation
-	time.Sleep(50 * time.Millisecond)
+	// The auto-unsubscribe closes the channel. No line was written.
+	select {
+	case _, ok := <-sub.Channel():
+		if ok {
+			t.Error("expected channel to be closed")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for the auto-unsubscribe")
+	}
 
 	if hub.SubscriberCount() != 0 {
 		t.Errorf("expected 0 subscribers after context cancel, got %d", hub.SubscriberCount())

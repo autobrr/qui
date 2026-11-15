@@ -18,6 +18,7 @@ export type ActivityEventKind =
   | "search.history"
   | "tracker.icons"
   | "theme.settings"
+  | "theme.custom"
   | "client.settings"
 
 // ActivityEvent is a small qui-owned server signal. It carries identifiers only

@@ -72,7 +72,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
     refetch: refetchSeasonPackRuns,
   } = useQuery({
     queryKey: ["cross-seed", "season-pack", "runs"],
-    queryFn: () => api.listSeasonPackRuns({ limit: 50 }),
+    queryFn: () => api.listSeasonPackRuns({ limit: 400 }),
   })
 
   const fallbackCategorySelectOptions = useMemo(

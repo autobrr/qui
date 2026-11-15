@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,7 +41,7 @@ func NewOrphanScanHandler(store *models.OrphanScanStore, instanceStore *models.I
 func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
 			return false
 		}
@@ -52,7 +51,7 @@ func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *ht
 	}
 
 	if !models.FilesystemCapabilitiesOf(instance).Has(models.CapabilityRead) {
-		RespondError(w, http.StatusForbidden, "Orphan scanning requires local filesystem access. Enable 'Local Filesystem Access' in instance settings first.")
+		RespondError(w, http.StatusForbidden, "Orphan scanning needs access to the instance's files. Enable Local Filesystem Access, or set up SSH access, in instance settings first.")
 		return false
 	}
 
@@ -158,65 +157,9 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// Apply updates
-	if payload.Enabled != nil {
-		settings.Enabled = *payload.Enabled
-	}
-	if payload.GracePeriodMinutes != nil {
-		if *payload.GracePeriodMinutes < 0 {
-			RespondError(w, http.StatusBadRequest, "Grace period must be non-negative")
-			return
-		}
-		settings.GracePeriodMinutes = *payload.GracePeriodMinutes
-	}
-	if payload.IgnorePaths != nil {
-		settings.IgnorePaths = payload.IgnorePaths
-	}
-	if payload.ScanIntervalHours != nil {
-		if *payload.ScanIntervalHours < 1 {
-			RespondError(w, http.StatusBadRequest, "Scan interval must be at least 1 hour")
-			return
-		}
-		settings.ScanIntervalHours = *payload.ScanIntervalHours
-	}
-	if payload.PreviewSort != nil {
-		// Empty is treated as default.
-		if *payload.PreviewSort != "" && *payload.PreviewSort != previewSortSizeDesc && *payload.PreviewSort != previewSortDirectorySizeDesc {
-			RespondError(w, http.StatusBadRequest, "Invalid preview sort: must be 'size_desc' or 'directory_size_desc'")
-			return
-		}
-		if *payload.PreviewSort == "" {
-			settings.PreviewSort = previewSortSizeDesc
-		} else {
-			settings.PreviewSort = *payload.PreviewSort
-		}
-	}
-	if payload.MaxFilesPerRun != nil {
-		if *payload.MaxFilesPerRun < 1 {
-			RespondError(w, http.StatusBadRequest, "Max files per run must be at least 1")
-			return
-		}
-		settings.MaxFilesPerRun = *payload.MaxFilesPerRun
-	}
-	if payload.AutoCleanupEnabled != nil {
-		settings.AutoCleanupEnabled = *payload.AutoCleanupEnabled
-	}
-	if payload.AutoCleanupMaxFiles != nil {
-		if *payload.AutoCleanupMaxFiles < 1 {
-			RespondError(w, http.StatusBadRequest, "Auto-cleanup max files threshold must be at least 1")
-			return
-		}
-		settings.AutoCleanupMaxFiles = *payload.AutoCleanupMaxFiles
-	}
-	if payload.ScanDefaultSavePath != nil {
-		settings.ScanDefaultSavePath = *payload.ScanDefaultSavePath
-	}
-	if payload.ScanCategoryPaths != nil {
-		settings.ScanCategoryPaths = *payload.ScanCategoryPaths
-	}
-	settings.ScanCategoryPaths = settings.ScanDefaultSavePath && settings.ScanCategoryPaths
-	if payload.DeleteAbandonedDirs != nil {
-		settings.DeleteAbandonedDirs = *payload.DeleteAbandonedDirs
+	if msg := applyOrphanScanSettingsPayload(settings, &payload); msg != "" {
+		RespondError(w, http.StatusBadRequest, msg)
+		return
 	}
 
 	// Validate and normalize ignore paths
@@ -248,6 +191,65 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 	}
 
 	RespondJSON(w, http.StatusOK, savedSettings)
+}
+
+// It returns a validation error message, or "" when every field is valid.
+func applyOrphanScanSettingsPayload(settings *models.OrphanScanSettings, payload *OrphanScanSettingsPayload) string {
+	if payload.Enabled != nil {
+		settings.Enabled = *payload.Enabled
+	}
+	if payload.GracePeriodMinutes != nil {
+		if *payload.GracePeriodMinutes < 0 {
+			return "Grace period must be non-negative"
+		}
+		settings.GracePeriodMinutes = *payload.GracePeriodMinutes
+	}
+	if payload.IgnorePaths != nil {
+		settings.IgnorePaths = payload.IgnorePaths
+	}
+	if payload.ScanIntervalHours != nil {
+		if *payload.ScanIntervalHours < 1 {
+			return "Scan interval must be at least 1 hour"
+		}
+		settings.ScanIntervalHours = *payload.ScanIntervalHours
+	}
+	if payload.PreviewSort != nil {
+		// Empty is treated as default.
+		if *payload.PreviewSort != "" && *payload.PreviewSort != previewSortSizeDesc && *payload.PreviewSort != previewSortDirectorySizeDesc {
+			return "Invalid preview sort: must be 'size_desc' or 'directory_size_desc'"
+		}
+		if *payload.PreviewSort == "" {
+			settings.PreviewSort = previewSortSizeDesc
+		} else {
+			settings.PreviewSort = *payload.PreviewSort
+		}
+	}
+	if payload.MaxFilesPerRun != nil {
+		if *payload.MaxFilesPerRun < 1 {
+			return "Max files per run must be at least 1"
+		}
+		settings.MaxFilesPerRun = *payload.MaxFilesPerRun
+	}
+	if payload.AutoCleanupEnabled != nil {
+		settings.AutoCleanupEnabled = *payload.AutoCleanupEnabled
+	}
+	if payload.AutoCleanupMaxFiles != nil {
+		if *payload.AutoCleanupMaxFiles < 1 {
+			return "Auto-cleanup max files threshold must be at least 1"
+		}
+		settings.AutoCleanupMaxFiles = *payload.AutoCleanupMaxFiles
+	}
+	if payload.ScanDefaultSavePath != nil {
+		settings.ScanDefaultSavePath = *payload.ScanDefaultSavePath
+	}
+	if payload.ScanCategoryPaths != nil {
+		settings.ScanCategoryPaths = *payload.ScanCategoryPaths
+	}
+	settings.ScanCategoryPaths = settings.ScanDefaultSavePath && settings.ScanCategoryPaths
+	if payload.DeleteAbandonedDirs != nil {
+		settings.DeleteAbandonedDirs = *payload.DeleteAbandonedDirs
+	}
+	return ""
 }
 
 // TriggerScan starts a manual orphan scan for an instance.
@@ -455,7 +457,7 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if errors.Is(err, fsops.ErrNotCapable) {
-			RespondError(w, http.StatusConflict, "Deleting orphan files is not supported yet for remote instances. The preview is kept.")
+			RespondError(w, http.StatusConflict, orphanscan.RemoteNoIdentityMessage)
 			return
 		}
 		if errors.Is(err, orphanscan.ErrFilesystemModeChanged) {

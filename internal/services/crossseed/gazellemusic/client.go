@@ -97,29 +97,6 @@ func (s TrackerSpec) TargetHashes(torrentBytes []byte) ([]string, error) {
 	return out, nil
 }
 
-var KnownTrackers = map[string]TrackerSpec{
-	"redacted.sh": {
-		Host:        "redacted.sh",
-		RateLimit:   10,
-		RatePeriod:  10,
-		SourceFlag:  "RED",
-		LegacyFlags: []string{"PTH"},
-	},
-	"orpheus.network": {
-		Host:        "orpheus.network",
-		RateLimit:   5,
-		RatePeriod:  10,
-		SourceFlag:  "OPS",
-		LegacyFlags: []string{"APL"},
-	},
-}
-
-// TrackerToSite maps announce tracker hosts to their API site hosts.
-var TrackerToSite = map[string]string{
-	"flacsfor.me":    "redacted.sh",
-	"home.opsfet.ch": "orpheus.network",
-}
-
 type AjaxResponse struct {
 	Status   string          `json:"status"`
 	Response json.RawMessage `json:"response"`
@@ -217,16 +194,16 @@ func sharedLimiterForTracker(spec TrackerSpec) (*rate.Limiter, error) {
 	return actual.(*rate.Limiter), nil
 }
 
-// NewClient builds a client for one of the KnownTrackers. trackerHost is the
-// tracker's identity: it selects the rate limit and the source flag. baseURL is
-// the address to talk to, and is empty outside tests, where it means the
-// tracker's own site.
+// NewClient builds a client for one of the Sites. trackerHost is the API host
+// of the site: it selects the rate limit and the source flag. baseURL is the
+// address to talk to, and is empty outside tests, where it means the site
+// itself.
 func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
-	host := strings.ToLower(strings.TrimSpace(trackerHost))
-	spec, ok := KnownTrackers[host]
+	site, ok := SiteByHost(trackerHost)
 	if !ok {
 		return nil, fmt.Errorf("unsupported gazelle host: %s", trackerHost)
 	}
+	host, spec := site.Host, site.TrackerSpec
 	limiter, err := sharedLimiterForTracker(spec)
 	if err != nil {
 		return nil, err
@@ -257,6 +234,10 @@ func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
 
 func (c *Client) request(ctx context.Context, method, endpoint string, params url.Values) ([]byte, int, error) {
 	if err := c.limiter.Wait(ctx); err != nil {
+		if ctx.Err() == nil {
+			// Wait fails at once when the queue would pass the deadline of ctx.
+			err = fmt.Errorf("%w: %w", context.DeadlineExceeded, err)
+		}
 		return nil, 0, fmt.Errorf("rate limit wait failed: %w", err)
 	}
 	reqURL := fmt.Sprintf("%s/%s", strings.TrimSuffix(c.baseURL, "/"), endpoint)
@@ -337,6 +318,8 @@ func isAccessDeniedText(text string) bool {
 	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
+// SearchByHash looks up one hash. The Gazelle torrent action takes one hash per
+// call and browse has no hash param, so each legacy flag costs one more request.
 func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
 	params := url.Values{}
 	params.Set("hash", strings.ToUpper(hash))

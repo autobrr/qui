@@ -54,7 +54,7 @@ describe("parseCustomThemes", () => {
 
     expect(themes).toHaveLength(1)
     expect(themes[0].id).toBe(`${CUSTOM_THEME_PREFIX}ocean`)
-    expect(errors).toEqual([{ filename: "broken.css" }])
+    expect(errors).toEqual([{ id: "broken", filename: "broken.css", css: invalidCss }])
   })
 
   it("falls back to a default name when @name is absent", () => {

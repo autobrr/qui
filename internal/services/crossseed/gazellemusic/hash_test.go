@@ -86,7 +86,11 @@ func TestLooksLikeTorrentPayload_ValidatesInfoDict(t *testing.T) {
 // TestTargetHashes_CurrentThenLegacy pins the lookup order: the hash an
 // upload gets today, then the hash a pre-rename upload still carries.
 func TestTargetHashes_CurrentThenLegacy(t *testing.T) {
-	hashes, err := KnownTrackers["redacted.sh"].TargetHashes(legacyFlagTorrent(t))
+	site, ok := SiteByHost("redacted.sh")
+	if !ok {
+		t.Fatal("no site for redacted.sh")
+	}
+	hashes, err := site.TargetHashes(legacyFlagTorrent(t))
 	if err != nil {
 		t.Fatalf("TargetHashes: %v", err)
 	}

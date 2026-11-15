@@ -3,7 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DeleteHistoryCheckbox } from "@/components/instances/DeleteHistoryCheckbox"
+import { CrossSeedDeleteNotice, useCrossSeedDeleteCheck } from "@/components/cross-seed/RouteProtectionConfirm"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
+import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,7 +44,6 @@ import {
   Edit,
   Eye,
   EyeOff,
-  HardDrive,
   MoreVertical,
   Power,
   RefreshCw,
@@ -82,6 +84,8 @@ export function InstanceCard({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteHistory, setDeleteHistory] = useState(false)
+  const deleteCheck = useCrossSeedDeleteCheck(instance.id, showDeleteDialog)
   const displayUrl = instance.host
 
   const statusBadge = !instance.isActive? { label: t("card.status.disabled"), variant: "secondary" as const }: instance.connected? { label: t("card.status.connected"), variant: "default" as const }: { label: t("card.status.disconnected"), variant: "destructive" as const }
@@ -137,7 +141,7 @@ export function InstanceCard({
   }
 
   const handleDelete = () => {
-    deleteInstance({ id: instance.id, name: instance.name }, {
+    deleteInstance({ id: instance.id, name: instance.name, deleteHistory }, {
       onSuccess: () => {
         toast.success(t("card.toast.instanceDeletedTitle"), {
           description: t("card.toast.instanceDeletedDescription", { name: instance.name }),
@@ -255,7 +259,10 @@ export function InstanceCard({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => setShowDeleteDialog(true)}
+                  onClick={() => {
+                    setDeleteHistory(false)
+                    setShowDeleteDialog(true)
+                  }}
                   disabled={isDeleting}
                   className="text-destructive"
                 >
@@ -311,14 +318,8 @@ export function InstanceCard({
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">{t("card.labels.localFileAccess")}</span>
-            <span className={cn(
-              "flex items-center gap-1",
-              instance.hasLocalFilesystemAccess ? "text-primary" : "text-muted-foreground"
-            )}>
-              <HardDrive className="h-3 w-3" />
-              {instance.hasLocalFilesystemAccess ? t("card.status.enabled") : t("card.status.disabled")}
-            </span>
+            <span className="text-muted-foreground">{t("card.labels.fileAccess")}</span>
+            <RemoteAccessIndicator instance={instance} variant="value" />
           </div>
         </div>
 
@@ -354,11 +355,14 @@ export function InstanceCard({
               {t("card.deleteDialog.description", { name: instance.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <CrossSeedDeleteNotice check={deleteCheck} />
+          <DeleteHistoryCheckbox checked={deleteHistory} onCheckedChange={setDeleteHistory} disabled={isDeleting} />
           <AlertDialogFooter>
             <AlertDialogCancel>{t("card.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteCheck.pending}
             >
               {t("card.deleteDialog.confirm")}
             </AlertDialogAction>

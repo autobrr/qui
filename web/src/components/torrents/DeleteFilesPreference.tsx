@@ -16,6 +16,7 @@ type DeleteFilesPreferenceProps = {
   onCheckedChange: (checked: boolean) => void
   isLocked: boolean
   onToggleLock: () => void
+  disabled?: boolean
   className?: string
 }
 
@@ -25,6 +26,7 @@ export function DeleteFilesPreference({
   onCheckedChange,
   isLocked,
   onToggleLock,
+  disabled,
   className,
 }: DeleteFilesPreferenceProps) {
   const { t } = useTranslation("torrents")
@@ -34,6 +36,7 @@ export function DeleteFilesPreference({
         id={id}
         checked={checked}
         onCheckedChange={(value) => onCheckedChange(value === true)}
+        disabled={disabled}
       />
       <div className="flex items-center gap-2">
         <label htmlFor={id} className="text-sm font-medium">

@@ -26,19 +26,17 @@ func writeWideTree(t *testing.T, root string, dirs int) {
 	}
 }
 
-// Each directory costs opendir, readdir, the readdir that answers EOF and
-// close, every one a round trip, so a serial walk of n directories cannot
-// beat about 3n round trips. Walking siblings concurrently has to.
+// The latency gives the workers time to overlap their round trips, which the
+// server counts.
 func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	const dirs, latency = 48, 25 * time.Millisecond
+	const dirs = 16
 	b, server := newBackend(t)
-	server.SetLatency(latency)
+	server.SetLatency(25 * time.Millisecond)
 	dir := t.TempDir()
 	writeWideTree(t, dir, dirs)
 
-	start := time.Now()
 	ch, err := b.WalkDir(t.Context(), remotePath(dir), fsops.WalkOptions{})
 	require.NoError(t, err)
 	n := 0
@@ -46,12 +44,10 @@ func TestWalkDir_SiblingDirectoriesOverlapRoundTrips(t *testing.T) {
 		require.NoError(t, entry.Err)
 		n++
 	}
-	elapsed := time.Since(start)
-	serialFloor := time.Duration(dirs) * 3 * latency
-	t.Logf("%d directories at %v latency: walked %d entries in %v (serial floor %v)", dirs, latency, n, elapsed.Round(time.Millisecond), serialFloor)
 
 	assert.Equal(t, 1+2*dirs, n)
-	assert.Less(t, elapsed, serialFloor/2, "siblings must be walked concurrently")
+	assert.Greater(t, server.MaxInFlight(), 1, "siblings must be walked concurrently")
+	assert.LessOrEqual(t, server.MaxInFlight(), walkWorkers, "one request in flight for each worker")
 }
 
 // The contract that survives concurrency: entries within one directory are
@@ -86,11 +82,13 @@ func TestWalkDir_OrderWithinDirectoryAndParentFirst(t *testing.T) {
 	assert.Equal(t, []string{"a", "z"}, byDir["b"])
 }
 
-// walkGoroutines counts goroutines still inside walk or the walker.
+// walkGoroutines counts goroutines still inside walk or the walker. The
+// context.AfterFunc callback of walk is left out: it only wakes the workers,
+// and it can still be running after walk returns.
 func walkGoroutines() int {
 	buf := make([]byte, 1<<20)
 	stacks := string(buf[:runtime.Stack(buf, true)])
-	return strings.Count(stacks, "fsops/remote.(*Backend).walk") + strings.Count(stacks, "fsops/remote.(*walker)")
+	return strings.Count(stacks, "fsops/remote.(*Backend).walk(") + strings.Count(stacks, "fsops/remote.(*walker)")
 }
 
 // A cancelled walk ends every goroutine it started, whether the consumer
@@ -107,9 +105,10 @@ func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			const dirs = 200
+			// Close the pool and server before TempDir cleanup removes open directories.
+			dir := t.TempDir()
 			b, server := newBackend(t)
 			server.SetLatency(5 * time.Millisecond)
-			dir := t.TempDir()
 			writeWideTree(t, dir, dirs)
 
 			ctx, cancel := context.WithCancel(t.Context())
@@ -122,7 +121,7 @@ func TestWalkDir_CancelLeavesNoGoroutines(t *testing.T) {
 			tt.stop(b, cancel)
 			for range ch { //nolint:revive // drain
 			}
-			assert.Eventually(t, func() bool { return walkGoroutines() == 0 }, 2*time.Second, 10*time.Millisecond, "walker goroutines left after the walk stopped")
+			assert.Zero(t, walkGoroutines(), "walker goroutines left after the walk closed its channel")
 		})
 	}
 }

@@ -1,0 +1,27 @@
+# The lint ratchet: checks that existing code does not pass yet.
+# `go run ./scripts/ratchet` runs them and compares the count of problems in
+# each file with allowlist.json. A file may only go down. See
+# scripts/ratchet/main.go.
+version: "2"
+
+run:
+  tests: false
+  relative-path-mode: gomod
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Count each report. With one per line, a fix can reveal a report that
+  # another linter hid on the same line, and the count goes up.
+  uniq-by-line: false
+
+linters:
+  default: none
+  enable:
+    - nilerr
+    - errchkjson
+    - gocognit
+    - contextcheck
+  settings:
+    gocognit:
+      min-complexity: 30

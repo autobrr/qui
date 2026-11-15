@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -49,7 +48,7 @@ func (c *Client) GetAppPreferences(ctx context.Context) (*qbt.AppPreferences, er
 	if err != nil {
 		// Mirror GetAppInfo: a saturated qBittorrent WebUI times out even cheap
 		// calls, so serve the last known preferences instead of failing the
-		// torrent stream tick; only surface the error when nothing is cached.
+		// caller; only surface the error when nothing is cached.
 		if cached != nil {
 			log.Debug().
 				Err(err).
@@ -76,32 +75,10 @@ func (c *Client) refreshAppPreferences(ctx context.Context) (*qbt.AppPreferences
 
 	c.preferencesMu.Lock()
 	c.preferencesCache = cloned
-	c.preferencesJSON = nil
 	c.preferencesFetchedAt = time.Now()
 	c.preferencesMu.Unlock()
 
 	return cloneAppPreferences(cloned), nil
-}
-
-// cachedAppPreferencesJSON returns the cached preferences already rendered to
-// JSON, or nil when nothing is cached. The ~150-field struct reflects to the
-// same bytes on every list response between refreshes, so it is rendered once
-// per refresh instead of once per response.
-func (c *Client) cachedAppPreferencesJSON() (json.RawMessage, error) {
-	c.preferencesMu.Lock()
-	defer c.preferencesMu.Unlock()
-
-	if c.preferencesCache == nil {
-		return nil, nil
-	}
-	if c.preferencesJSON == nil {
-		data, err := json.Marshal(c.preferencesCache)
-		if err != nil {
-			return nil, err
-		}
-		c.preferencesJSON = data
-	}
-	return c.preferencesJSON, nil
 }
 
 // GetCachedAppPreferences returns the last cached app preferences without triggering a refresh.
@@ -116,7 +93,6 @@ func (c *Client) GetCachedAppPreferences() *qbt.AppPreferences {
 func (c *Client) InvalidateAppPreferencesCache() {
 	c.preferencesMu.Lock()
 	c.preferencesCache = nil
-	c.preferencesJSON = nil
 	c.preferencesFetchedAt = time.Time{}
 	c.preferencesMu.Unlock()
 }

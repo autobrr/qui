@@ -19,6 +19,7 @@ qui sends notifications to the Notifiarr API and to Shoutrrr targets. Configure 
 Notes:
 
 - If a qui update adds new events, existing targets keep their saved event list.
+- A target that existed before the update does not get `system_notice`. To get it, select it on the target. A target with no saved event list does not get it either.
 - qui truncates long messages to stay within provider limits.
 - Discord and Notifiarr targets receive rich embeds with fields. Other services receive plain text.
 
@@ -44,6 +45,7 @@ Notes:
 | `cross_seed_webhook_failed` | Webhook check or apply fails. |
 | `automations_actions_applied` | Automation rules apply actions (summary counts and samples, only if actions occur). |
 | `automations_run_failed` | Automation rules fail to run for an instance (system error). |
+| `system_notice` | A fault in qui needs an action from you. qui sends it one time when the notice opens, for example "Recording stopped" when qui cannot write the transfer history, "Shrink failed" when qui cannot shrink the database file, "Low disk" when the disk of the SQLite database has little free space, or "Redacted rejected the API key" and "Orpheus rejected the API key" when a cross-seed search gets a refusal from that site. The message gives the cause and the fix. |
 
 ## Notifiarr API
 

@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
 // trigger is how a cross-seed was found.
@@ -19,14 +20,6 @@ const (
 	triggerCompletion
 	triggerInteractiveApply
 )
-
-// sourceFilter limits which local torrents a cross-seed can match.
-type sourceFilter struct {
-	categories        []string
-	tags              []string
-	excludeCategories []string
-	excludeTags       []string
-}
 
 // triggerDefaults holds the cross-seed settings for one trigger. Callers put
 // their own overrides on top.
@@ -42,7 +35,7 @@ type triggerDefaults struct {
 
 // defaultsFor returns the settings for one trigger. Tags, auto-resume, and
 // source filters are per trigger; the rest are shared. Seeded search and
-// completion take source filters from their run options, and interactive apply
+// completion fill sourceFilter from their own filters, and interactive apply
 // has none because the user picked the torrent.
 func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) triggerDefaults {
 	d := triggerDefaults{
@@ -82,18 +75,27 @@ func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) trigge
 // request builds the CrossSeedRequest these defaults describe.
 func (d triggerDefaults) request(torrentData, indexer string) *CrossSeedRequest {
 	return &CrossSeedRequest{
-		TorrentData:                   torrentData,
-		Tags:                          slices.Clone(d.addTags),
-		StartPaused:                   new(true),
-		InheritSourceTags:             d.inheritSourceTags,
-		IndexerName:                   indexer,
-		FindIndividualEpisodes:        d.findIndividualEpisodes,
-		SkipAutoResume:                d.skipAutoResume,
-		SkipRecheck:                   d.skipRecheck,
-		SkipPieceBoundarySafetyCheck:  d.skipPieceBoundarySafetyCheck,
-		SourceFilterCategories:        slices.Clone(d.sourceFilter.categories),
-		SourceFilterTags:              slices.Clone(d.sourceFilter.tags),
-		SourceFilterExcludeCategories: slices.Clone(d.sourceFilter.excludeCategories),
-		SourceFilterExcludeTags:       slices.Clone(d.sourceFilter.excludeTags),
+		TorrentData:                  torrentData,
+		Tags:                         slices.Clone(d.addTags),
+		StartPaused:                  new(true),
+		InheritSourceTags:            d.inheritSourceTags,
+		IndexerName:                  placementIndexerName(indexer),
+		FindIndividualEpisodes:       d.findIndividualEpisodes,
+		SkipAutoResume:               d.skipAutoResume,
+		SkipRecheck:                  d.skipRecheck,
+		SkipPieceBoundarySafetyCheck: d.skipPieceBoundarySafetyCheck,
+		sourceFilter:                 d.sourceFilter,
 	}
+}
+
+// placementIndexerName returns the indexer name that sets the category and the
+// link folder of a cross-seed. A match from a RED/OPS site keeps the
+// PlacementName of the site.
+func placementIndexerName(indexer string) string {
+	for _, site := range gazellemusic.Sites() {
+		if site.DisplayName == indexer {
+			return site.PlacementName
+		}
+	}
+	return indexer
 }

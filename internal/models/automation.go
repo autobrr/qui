@@ -43,12 +43,15 @@ const (
 	// FreeSpaceSourcePath reads free space at a path through the instance's
 	// filesystem backend, local or SSH.
 	FreeSpaceSourcePath FreeSpaceSourceType = "path"
+	// FreeSpaceSourceQbitPath reads free space at a path on the qBittorrent host.
+	// It needs Web API 2.15.2 and no filesystem access.
+	FreeSpaceSourceQbitPath FreeSpaceSourceType = "qbitPath"
 )
 
 // FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
 type FreeSpaceSource struct {
-	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'."`
-	Path string              `json:"path,omitempty" doc:"With type 'path': the path to read. Needs filesystem access on the instance."`
+	Type FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'qbitPath' asks qBittorrent for the free space at 'path' on its own host."`
+	Path string              `json:"path,omitempty" doc:"With type 'path' or 'qbitPath': the path to read. Type 'path' needs filesystem access on the instance. Type 'qbitPath' needs qBittorrent with Web API 2.15.2 or later."`
 }
 
 // ScoreRuleType defines the type of score rule.
@@ -124,9 +127,6 @@ func (c *SortingConfig) Validate() error {
 		if c.Field == "" {
 			return errors.New("simple sort requires field")
 		}
-		if !c.Field.IsNumeric() && !c.Field.IsString() {
-			return fmt.Errorf("unknown sort field: %s", c.Field)
-		}
 	case SortingTypeScore:
 
 		if len(c.ScoreRules) == 0 {
@@ -141,9 +141,6 @@ func (c *SortingConfig) Validate() error {
 				}
 				if r.FieldMultiplier.Field == "" {
 					return fmt.Errorf("score rule %d: field required for field multiplier", i)
-				}
-				if !r.FieldMultiplier.Field.IsNumeric() {
-					return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
 				}
 			case ScoreRuleTypeConditional:
 				if r.Conditional == nil {
@@ -761,22 +758,6 @@ const (
 	FieldHardlinkScopeCross ConditionField = "HARDLINK_SCOPE_CROSS"
 )
 
-//nolint:exhaustive // Only sortable numeric fields belong here.
-func (f ConditionField) IsNumeric() bool {
-	switch f {
-	case FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
-		FieldAddedOn, FieldCompletionOn, FieldLastActivity, FieldSeedingTime, FieldTimeActive,
-		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
-		FieldRatio, FieldProgress, FieldAvailability,
-		FieldDlSpeed, FieldUpSpeed,
-		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
-		FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemDay, FieldSystemMonth, FieldSystemYear:
-		return true
-	default:
-		return false
-	}
-}
-
 // WrapsBetween reports whether a BETWEEN range on this field wraps when the
 // minimum is greater than the maximum. Clock fields cycle, so 20 to 6 on the
 // hour means the night that crosses midnight. A wrapped range stops before its
@@ -787,16 +768,6 @@ func (f ConditionField) IsNumeric() bool {
 func (f ConditionField) WrapsBetween() bool {
 	switch f {
 	case FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemMonth:
-		return true
-	default:
-		return false
-	}
-}
-
-//nolint:exhaustive // Only sortable string fields belong here.
-func (f ConditionField) IsString() bool {
-	switch f {
-	case FieldName, FieldCategory, FieldTags, FieldTracker, FieldState, FieldSavePath, FieldContentPath, FieldComment:
 		return true
 	default:
 		return false
@@ -963,13 +934,14 @@ type DeleteAction struct {
 
 // TagAction configures tagging with smart add/remove logic.
 type TagAction struct {
-	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
-	Tags             []string       `json:"tags" doc:"The tags that this action manages. With 'useTrackerAsTag', qui uses them when a torrent has no tracker domain."`
-	Mode             string         `json:"mode" doc:"'full' adds the tags to matching torrents and removes them from the others. 'add' only adds. 'remove' only removes them from matching torrents."`
-	DeleteFromClient bool           `json:"deleteFromClient,omitempty" doc:"Delete the managed tags from qBittorrent before the rule tags the matches. Needs explicit tags."`
-	UseTrackerAsTag  bool           `json:"useTrackerAsTag,omitempty" doc:"Use the tracker domain of each torrent as its tag."`
-	UseDisplayName   bool           `json:"useDisplayName,omitempty" doc:"With 'useTrackerAsTag': use the tracker display name in place of the domain."`
-	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
+	Enabled           bool           `json:"enabled" doc:"Whether the action runs."`
+	Tags              []string       `json:"tags" doc:"The tags that this action manages. With 'useTrackerAsTag', qui uses them when a torrent has no tracker domain."`
+	Mode              string         `json:"mode" doc:"'full' adds the tags to matching torrents and removes them from the others. 'add' only adds. 'remove' only removes them from matching torrents."`
+	DeleteFromClient  bool           `json:"deleteFromClient,omitempty" doc:"Delete the managed tags from qBittorrent before the rule tags the matches. Needs explicit tags."`
+	UseTrackerAsTag   bool           `json:"useTrackerAsTag,omitempty" doc:"Use the tracker domain of each torrent as its tag."`
+	UseDisplayName    bool           `json:"useDisplayName,omitempty" doc:"With 'useTrackerAsTag': use the tracker display name in place of the domain."`
+	IncludeCrossSeeds bool           `json:"includeCrossSeeds,omitempty" doc:"Also apply the tag changes to the cross-seeds of each matching torrent. Ignored with 'useTrackerAsTag'."`
+	Condition         *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition."`
 }
 
 // CategoryAction configures category assignment with optional conditions.

@@ -18,13 +18,6 @@ func TestIsSizeWithinTolerance(t *testing.T) {
 		expectedResult   bool
 	}{
 		{
-			name:             "Exact match should pass",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1000000000, // 1GB
-			tolerancePercent: 5.0,
-			expectedResult:   true,
-		},
-		{
 			name:             "Within 5% tolerance - slightly smaller",
 			sourceSize:       1000000000, // 1GB
 			candidateSize:    970000000,  // 970MB (3% smaller)

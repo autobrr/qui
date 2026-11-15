@@ -31,6 +31,7 @@ type SyncInfo struct {
 	LastSyncedAt    time.Time
 	TorrentProgress float64
 	FileCount       int
+	MaindataPrint   *int64
 }
 
 // CacheStats provides statistics about the file cache

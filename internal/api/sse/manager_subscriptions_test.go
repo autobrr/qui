@@ -1,0 +1,392 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package sse
+
+import (
+	"bytes"
+	"context"
+	"encoding/json/v2"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/api/ctxkeys"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+)
+
+// changeStream is an open stream that also takes subscription changes.
+type changeStream struct {
+	*sseReader
+	connectionID string
+	transport    *http.Transport
+	close        func()
+}
+
+// openChangeStream serves the manager inside the bubble, opens one stream, and
+// reads its connection event. go-sse can still be writing the inits of the
+// stream and has not subscribed the session yet.
+func openChangeStream(t *testing.T, manager *StreamManager, payload []map[string]any) *changeStream {
+	t.Helper()
+	return openChangeStreamAs(t, manager, nil, payload)
+}
+
+// withAPIKey makes the request look authenticated by the key. A nil key is a session.
+func withAPIKey(r *http.Request, key *models.APIKey) *http.Request {
+	if key == nil {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), ctxkeys.APIKey, key))
+}
+
+func openChangeStreamAs(t *testing.T, manager *StreamManager, key *models.APIKey, payload []map[string]any) *changeStream {
+	t.Helper()
+
+	listener := &pipeListener{conns: make(chan net.Conn), closed: make(chan struct{})}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /stream", manager.Serve)
+	mux.HandleFunc("POST /stream/subscriptions", manager.ChangeSubscriptions)
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, withAPIKey(r, key))
+	})}
+	go func() { _ = srv.Serve(listener) }()
+	transport := &http.Transport{DialContext: listener.dial}
+	t.Cleanup(func() {
+		transport.CloseIdleConnections()
+		_ = srv.Close()
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://qui.test/stream?streams="+streamsQuery(t, payload), nil)
+	require.NoError(t, err)
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	// Cancel only. After resp.Body.Close, the transport can keep the connection open
+	// to drain the body until a timer fires, and the fake clock of the bubble does not
+	// move during synctest.Wait. The server then does not see the disconnect.
+	t.Cleanup(cancel)
+
+	reader := newSSEReader(resp.Body)
+	first := <-reader.events
+	require.Equal(t, streamEventConnection, first.event, "the connection event comes first")
+	id := decodeStreamPayloadData(t, first.data).ConnectionID
+	require.NotEmpty(t, id)
+
+	return &changeStream{sseReader: reader, connectionID: id, transport: transport, close: cancel}
+}
+
+// change sends a subscription change and returns the status code.
+func (s *changeStream) change(t *testing.T, body map[string]any) int {
+	t.Helper()
+	status, err := s.post(t.Context(), body)
+	require.NoError(t, err)
+	return status
+}
+
+// post sends a subscription change. It makes no assertions, so a goroutine can call it.
+func (s *changeStream) post(ctx context.Context, body map[string]any) (int, error) {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://qui.test/stream/subscriptions", bytes.NewReader(raw))
+	if err != nil {
+		return 0, err
+	}
+	resp, err := s.transport.RoundTrip(req)
+	if err != nil {
+		return 0, err
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode, nil
+}
+
+// dataFrames reads the stream for d and returns the event types of the data
+// frames for each stream key, in the order they came.
+func (s *changeStream) dataFrames(t *testing.T, d time.Duration) map[string][]string {
+	t.Helper()
+	frames := make(map[string][]string)
+	deadline := time.After(d)
+	for {
+		select {
+		case ev := <-s.events:
+			if ev.event != streamEventInit && !isTickEvent(ev.event) {
+				continue
+			}
+			key := decodeStreamPayloadData(t, ev.data).Meta.StreamKey
+			frames[key] = append(frames[key], ev.event)
+		case err := <-s.errc:
+			t.Fatalf("stream closed: %v", err)
+		case <-deadline:
+			return frames
+		}
+	}
+}
+
+func detailsStream(instanceID int, key, hash string) map[string]any {
+	payload := streamPayload(instanceID, key)[0]
+	payload["limit"] = 1
+	payload["filters"] = map[string]any{"hashes": []string{hash}}
+	return payload
+}
+
+func TestSubscriptionChangeOnOpenStream(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+		manager := newIdleTestManager(t, provider)
+		instanceID := 1
+
+		stream := openChangeStream(t, manager, streamPayload(instanceID, "main"))
+		stream.waitForEvent(t, streamEventInit, time.Second)
+
+		// A tick that races the change must not reach the new subscription first.
+		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
+			"connectionId": stream.connectionID,
+			"add":          []map[string]any{detailsStream(instanceID, "details-a", "aaa")},
+		}))
+		manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
+		frames := stream.dataFrames(t, time.Second)
+		require.Equal(t, streamEventInit, frames["details-a"][0], "the init comes first")
+		require.NotContains(t, frames["main"], streamEventInit)
+
+		// A switch from one torrent to another is one change.
+		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
+			"connectionId": stream.connectionID,
+			"remove":       []string{"details-a"},
+			"add":          []map[string]any{detailsStream(instanceID, "details-b", "bbb")},
+		}))
+		frames = stream.dataFrames(t, time.Second)
+		require.Equal(t, map[string][]string{"details-b": {streamEventInit}}, frames)
+
+		manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
+		frames = stream.dataFrames(t, time.Second)
+		require.NotEmpty(t, frames["main"])
+		require.NotEmpty(t, frames["details-b"])
+		require.NotContains(t, frames, "details-a")
+		require.NotContains(t, frames["main"], streamEventInit)
+		require.NotContains(t, frames["details-b"], streamEventInit)
+	})
+}
+
+// regression: #3845
+func TestSubscriptionChangeOnlyFromTheOpener(t *testing.T) {
+	logsRead := &models.APIKey{ID: 7, Permissions: []models.Permission{{Area: models.AreaLogs, Level: models.LevelRead}}}
+	torrentsRead := &models.APIKey{ID: 8, Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}}}
+
+	for _, tc := range []struct {
+		name           string
+		opener, caller *models.APIKey
+		wantStatus     int
+	}{
+		{"a key without Torrents: read cannot change a browser connection", nil, logsRead, http.StatusNotFound},
+		{"a key with Torrents: read cannot change a browser connection", nil, torrentsRead, http.StatusNotFound},
+		{"a browser session cannot change the connection of a key", torrentsRead, nil, http.StatusNotFound},
+		{"a key can change its own connection", torrentsRead, torrentsRead, http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				manager := newIdleTestManager(t, &fakeSyncProvider{torrentsResponse: cannedResponse()})
+				stream := openChangeStreamAs(t, manager, tc.opener, streamPayload(1, "main"))
+				stream.waitForEvent(t, streamEventInit, time.Second)
+				synctest.Wait()
+
+				body := `{"connectionId":"` + stream.connectionID + `","remove":["main"]}`
+				r := httptest.NewRequest(http.MethodPost, "/stream/subscriptions", strings.NewReader(body))
+				w := httptest.NewRecorder()
+				manager.ChangeSubscriptions(w, withAPIKey(r, tc.caller))
+				require.Equal(t, tc.wantStatus, w.Code)
+				synctest.Wait()
+
+				manager.HandleSyncUpdate(1, qbt.SyncUpdate{})
+				frames := stream.dataFrames(t, time.Second)
+				if tc.wantStatus == http.StatusNotFound {
+					require.NotEmpty(t, frames["main"], "the opener keeps its subscription")
+				} else {
+					require.Empty(t, frames["main"], "the opener removed its subscription")
+				}
+			})
+		})
+	}
+}
+
+func TestSubscriptionChangeCleanupOnDisconnect(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		manager := newIdleTestManager(t, &fakeSyncProvider{torrentsResponse: cannedResponse()})
+
+		stream := openChangeStream(t, manager, streamPayload(1, "main"))
+		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
+			"connectionId": stream.connectionID,
+			"add":          []map[string]any{detailsStream(2, "details", "aaa")},
+		}))
+		stream.waitForEvent(t, streamEventInit, time.Second)
+		require.Equal(t, 2, manager.Stats().ActiveSubscriptions)
+
+		stream.close()
+		synctest.Wait()
+
+		stats := manager.Stats()
+		require.Zero(t, stats.ActiveSubscriptions)
+		require.Zero(t, stats.ActiveSyncLoops, "the loop of the instance that joined later stops too")
+		require.Equal(t, http.StatusNotFound, stream.change(t, map[string]any{
+			"connectionId": stream.connectionID,
+			"remove":       []string{"main"},
+		}))
+	})
+}
+
+func TestSubscriptionChangeUnknownConnection(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		manager := newIdleTestManager(t, &fakeSyncProvider{torrentsResponse: cannedResponse()})
+
+		stream := openChangeStream(t, manager, streamPayload(1, "main"))
+		require.Equal(t, http.StatusNotFound, stream.change(t, map[string]any{
+			"connectionId": "qui-conn-404",
+			"add":          []map[string]any{detailsStream(1, "details", "aaa")},
+		}))
+		require.Equal(t, 1, manager.Stats().ActiveSubscriptions)
+	})
+}
+
+func TestRemovedSubscriptionGetsNoFrameFromBuildInFlight(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+		manager := newIdleTestManager(t, provider)
+		instanceID := 1
+
+		stream := openChangeStream(t, manager, streamPayload(instanceID, "main"))
+		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
+			"connectionId": stream.connectionID,
+			"add":          []map[string]any{detailsStream(instanceID, "details", "aaa")},
+		}))
+		stream.dataFrames(t, time.Second)
+
+		// The tick of the details view is in its build when the view leaves.
+		release := provider.gateTorrentBuilds()
+		manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
+		synctest.Wait()
+		require.Equal(t, http.StatusNoContent, stream.change(t, map[string]any{
+			"connectionId": stream.connectionID,
+			"remove":       []string{"details"},
+		}))
+		release()
+
+		frames := stream.dataFrames(t, time.Second)
+		require.NotEmpty(t, frames["main"])
+		require.NotContains(t, frames, "details")
+	})
+}
+
+func TestSubscriptionChangeBeforeSessionSubscribes(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+		manager := newIdleTestManager(t, provider)
+		instanceID := 1
+
+		// Hold the init build of the main view, so go-sse does not subscribe the
+		// session while the change runs. Later builds do not wait.
+		builds := provider.signalBuilds()
+		gate := make(chan struct{})
+		provider.mu.Lock()
+		provider.torrentsGate = gate
+		provider.mu.Unlock()
+		stream := openChangeStream(t, manager, streamPayload(instanceID, "main"))
+		receive(t, builds, "the init build of the main view")
+		provider.mu.Lock()
+		provider.torrentsGate = nil
+		provider.mu.Unlock()
+
+		type result struct {
+			status int
+			err    error
+		}
+		done := make(chan result, 1)
+		go func() {
+			status, err := stream.post(t.Context(), map[string]any{
+				"connectionId": stream.connectionID,
+				"add":          []map[string]any{detailsStream(instanceID, "details", "aaa")},
+			})
+			done <- result{status, err}
+		}()
+		synctest.Wait()
+		close(gate)
+
+		res := <-done
+		require.NoError(t, res.err)
+		require.Equal(t, http.StatusNoContent, res.status)
+		frames := stream.dataFrames(t, time.Second)
+		require.Equal(t, []string{streamEventInit}, frames["details"])
+	})
+}
+
+func TestStreamFrameReadsTheCacheWithThePasskeyAccessOfItsSubscriber(t *testing.T) {
+	torrentsRead := &models.APIKey{ID: 8, Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelRead}}}
+	torrentsWrite := &models.APIKey{ID: 9, Permissions: []models.Permission{{Area: models.AreaTorrents, Level: models.LevelWrite}}}
+
+	for _, tc := range []struct {
+		name     string
+		key      *models.APIKey
+		wantFull bool
+	}{
+		{"a browser session", nil, true},
+		{"a key with Torrents: read", torrentsRead, false},
+		{"a key with Torrents: write", torrentsWrite, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+				manager := newIdleTestManager(t, provider)
+				stream := openChangeStreamAs(t, manager, tc.key, streamPayload(1, "main"))
+				stream.waitForEvent(t, streamEventInit, time.Second)
+				synctest.Wait()
+				frameView := func() qbittorrent.TorrentListView {
+					provider.mu.Lock()
+					defer provider.mu.Unlock()
+					return provider.torrentsView
+				}
+				require.True(t, frameView().CacheOnly, "the init frame")
+				require.Equal(t, tc.wantFull, frameView().FullPasskeyAccess, "the init frame")
+				builds := provider.torrentsCallCount()
+
+				manager.HandleSyncUpdate(1, qbt.SyncUpdate{})
+				require.NotEmpty(t, stream.dataFrames(t, time.Second)["main"])
+				require.Greater(t, provider.torrentsCallCount(), builds)
+				require.True(t, frameView().CacheOnly, "the tick frame")
+				require.Equal(t, tc.wantFull, frameView().FullPasskeyAccess, "the tick frame")
+			})
+		})
+	}
+}
+
+func TestServeRejectsASummaryThatCannotBeRead(t *testing.T) {
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, fakeInstanceStore{})
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	for _, tc := range []struct {
+		name  string
+		entry map[string]any
+		want  string
+	}{
+		{"the Unified view", map[string]any{"instanceIds": []int{1, 2}, "summary": true}, "summary needs a single instance"},
+		{"Copy groups", map[string]any{"instanceId": 1, "summary": true, "groupCopies": true}, "summary has no rows to group"},
+		{"both rules apply and the Copy groups text wins, as before", map[string]any{"instanceIds": []int{1, 2}, "summary": true, "groupCopies": true}, "summary has no rows to group"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+streamsQuery(t, []map[string]any{tc.entry}), nil)
+
+			manager.Serve(recorder, request)
+
+			require.Equal(t, http.StatusBadRequest, recorder.Code)
+			require.Equal(t, tc.want+"\n", recorder.Body.String())
+		})
+	}
+}

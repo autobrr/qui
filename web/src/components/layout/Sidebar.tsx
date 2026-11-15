@@ -16,6 +16,7 @@ import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
@@ -30,8 +31,10 @@ import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
+import { themeArea } from "@/lib/theme-areas"
 import {
   Archive,
+  ChartColumn,
   Check,
   Code,
   Copyright,
@@ -67,6 +70,12 @@ const navigation: NavItem[] = [
     titleKey: "nav.dashboard",
     href: "/dashboard",
     icon: Home,
+  },
+  {
+    id: "statistics",
+    titleKey: "nav.statistics",
+    href: "/statistics",
+    icon: ChartColumn,
   },
   {
     id: "search",
@@ -186,7 +195,7 @@ export function Sidebar() {
   )
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
+    <div {...themeArea("app-sidebar")} className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
       <div className="p-6">
         <h2 className="flex items-center text-lg font-semibold text-sidebar-foreground">
           {isDemo ? (
@@ -325,6 +334,7 @@ export function Sidebar() {
         </div>
 
         <div className="mt-auto space-y-3 pt-3">
+          <SystemNoticeList />
           <UpdateBanner />
 
           {!isDemo && (

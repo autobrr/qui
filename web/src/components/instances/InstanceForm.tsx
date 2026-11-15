@@ -282,6 +282,9 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
             </div>
           )}
         </form.Field>
+        {!instance && (
+          <p className="text-sm text-muted-foreground">{t("form.sshAfterSave")}</p>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="auth-type" className="flex items-center gap-2">

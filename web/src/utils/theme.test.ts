@@ -4,7 +4,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { setTheme, setThemeMode } from "./theme"
+import { endCustomThemePreview, previewCustomTheme } from "@/lib/custom-theme-preview"
+import { getAppliedCustomThemeCss, setTheme, setThemeMode } from "./theme"
 import { parseCachedTheme, registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 
@@ -28,7 +29,8 @@ beforeEach(() => {
   ])
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await endCustomThemePreview()
   registerCustomThemes([])
   localStorage.clear()
   vi.restoreAllMocks()
@@ -111,5 +113,127 @@ describe("boot cache for custom themes", () => {
     expect(cached?.id).toBe("custom:ocean")
     expect(cached?.isCustom).toBe(true)
     expect(cached?.rawCss).toBe(":root { --background: navy; }")
+  })
+})
+
+const customTheme = {
+  id: "custom:ocean",
+  name: "Ocean",
+  isPremium: true,
+  isCustom: true,
+  rawCss: ":root { --background: teal; } .dark { --background: navy; }",
+  cssVars: { light: { "--background": "teal" }, dark: { "--background": "navy" } },
+}
+
+function bootCaches() {
+  return ["color-theme", "theme", "theme-cache", "theme-critical-vars", "theme-light-only"].map(key => localStorage.getItem(key))
+}
+
+function customStyle(): string | null {
+  return document.getElementById("custom-theme-style")?.textContent ?? null
+}
+
+describe("custom theme preview", () => {
+  it("shows the css without a write to the stored theme or the boot caches", async () => {
+    await setTheme("minimal")
+    const before = bootCaches()
+    const events: unknown[] = []
+    const listener = (event: Event) => events.push(event)
+    window.addEventListener("themechange", listener)
+
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
+
+    window.removeEventListener("themechange", listener)
+    expect(customStyle()).toContain("--background: red")
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("")
+    expect(document.documentElement.style.backgroundColor).toBe("")
+    expect(bootCaches()).toEqual(before)
+    expect(events).toEqual([])
+  })
+
+  it("ends by painting the active theme again", async () => {
+    registerCustomThemes([customTheme])
+    await setTheme("custom:ocean")
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
+
+    await endCustomThemePreview()
+
+    expect(customStyle()).toBe(customTheme.rawCss)
+    expect(document.documentElement.getAttribute("data-theme")).toBe("custom:ocean")
+  })
+
+  it("ends on a built-in theme without the preview style", async () => {
+    await setTheme("minimal")
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
+
+    await endCustomThemePreview()
+
+    expect(customStyle()).toBeNull()
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
+  })
+
+  // regression: #4124
+  it("stays on the page through a mode change and a theme change", async () => {
+    const draft = ":root { --background: red; } .dark { --background: maroon; }"
+    registerCustomThemes([customTheme])
+    await setTheme("minimal", "light")
+    previewCustomTheme(draft)
+
+    await setThemeMode("dark")
+    expect(customStyle()).toBe(draft)
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("")
+
+    await setTheme("custom:ocean")
+    expect(customStyle()).toBe(draft)
+
+    await endCustomThemePreview()
+    expect(customStyle()).toBe(customTheme.rawCss)
+  })
+
+  // regression: #4124
+  it("reports the css of the applied theme, not the draft", async () => {
+    registerCustomThemes([customTheme])
+    await setTheme("custom:ocean")
+
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
+
+    expect(getAppliedCustomThemeCss()).toBe(customTheme.rawCss)
+  })
+
+  it("leaves the page as it is for css that does not parse as a theme", async () => {
+    await setTheme("minimal")
+
+    expect(previewCustomTheme("body { color: red; }")).toEqual({ kind: "missing-root" })
+
+    expect(customStyle()).toBeNull()
+    expect(document.documentElement.style.getPropertyValue("--primary")).toBe("red")
+  })
+
+  // regression: #4124
+  it("keeps css that loads an outside file off the page, and keeps the last good preview", async () => {
+    const good = ":root { --background: red; } .dark { --background: maroon; }"
+    await setTheme("minimal")
+    expect(previewCustomTheme(good)).toBeNull()
+
+    const outside = `${good}
+body { background: url(https://example.invalid/a.png); }`
+    expect(previewCustomTheme(outside)).toEqual({ kind: "outside-file", line: 2 })
+
+    expect(customStyle()).toBe(good)
+  })
+})
+
+describe("custom theme preview mode", () => {
+  // regression: #4124
+  it("shows a light-only theme in light mode and an ordinary theme in the selected mode", async () => {
+    await setTheme("minimal", "dark")
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
+
+    previewCustomTheme("/* @lightOnly: true */ :root { --background: red; } .dark { --background: maroon; }")
+    expect(document.documentElement.classList.contains("dark")).toBe(false)
+
+    previewCustomTheme(":root { --background: red; } .dark { --background: maroon; }")
+    expect(document.documentElement.classList.contains("dark")).toBe(true)
   })
 })

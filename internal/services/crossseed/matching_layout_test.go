@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -25,19 +26,19 @@ func TestGetMatchType_EnforcesLayoutCompatibility(t *testing.T) {
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	sourceRelease := rls.Release{Title: "Example", Year: 2024}
-	candidateRelease := rls.Release{Title: "Example", Year: 2024}
+	localRelease := rls.Release{Title: "Example", Year: 2024}
+	newRelease := rls.Release{Title: "Example", Year: 2024}
 
-	sourceFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
+	mkvFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
 	archiveFiles := qbt.TorrentFiles{{Name: "Example.part01.rar", Size: 2 << 30}, {Name: "Example.part02.r00", Size: 2 << 30}}
 
-	match := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, archiveFiles, 0).MatchType
-	require.Empty(t, match, "mkv torrent should not match rar-only candidate")
+	match := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, mkvFiles, archiveFiles, 0).MatchType
+	require.Empty(t, match, "local mkv torrent should not match a new rar-only torrent")
 
-	archiveMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, archiveFiles, archiveFiles, 0).MatchType
+	archiveMatch := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, archiveFiles, archiveFiles, 0).MatchType
 	require.NotEmpty(t, archiveMatch, "identical archive layouts should match")
 
-	fileMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, sourceFiles, 0).MatchType
+	fileMatch := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, mkvFiles, mkvFiles, 0).MatchType
 	require.Equal(t, "exact", fileMatch, "identical file layouts should be exact matches")
 }
 
@@ -60,7 +61,7 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "rar", Name: "Example.RAR.Release", Progress: 1.0},
 			{Hash: "mkv", Name: "Example.2024.1080p.GRP", Progress: 1.0},
 		},
@@ -96,15 +97,16 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibilityBeforeTopLevelFolder(t
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "single", Name: "Minimal.Payload", Progress: 1.0},
 			{Hash: "folder", Name: "Minimal.Payload", Progress: 1.0},
 		},
 	}
 
-	singleRelease := svc.releaseCache.Parse("Minimal.Payload")
-	singleMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["single"], 0).MatchType
-	folderMatch := svc.matcher().getMatchTypeWithReason(&sourceRelease, singleRelease, sourceFiles, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], 0).MatchType
+	// The candidate torrents are local, and the source is the new torrent.
+	localRelease := svc.releaseCache.Parse("Minimal.Payload")
+	singleMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["single"], sourceFiles, 0).MatchType
+	folderMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], sourceFiles, 0).MatchType
 	require.Equal(t, singleMatch, folderMatch, "test setup should create identical match priorities")
 	require.Equal(t, "size", singleMatch)
 
@@ -135,7 +137,7 @@ func TestFindBestCandidateMatch_FolderIncomingPrefersFolderExisting(t *testing.T
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "rootless", Name: "Payload.Rootless", Progress: 1.0},
 			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
 		},
@@ -169,7 +171,7 @@ func TestFindBestCandidateMatch_FilenameAlignmentBeatsRootFolderAlignment(t *tes
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
 			{Hash: "filename", Name: "Payload.Rootless", Progress: 1.0},
 		},
@@ -211,7 +213,7 @@ func TestFindBestCandidateMatch_UploadCXRootlessRegression(t *testing.T) {
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "folder", Name: "Some.Release.2017.LIMITED.1080p.BluRay.x264-DRONES", Progress: 1.0},
 			{Hash: "rootless", Name: "some.release.2017.limited.1080p.bluray.x264-drones.mkv", Progress: 1.0},
 		},
@@ -248,7 +250,7 @@ func TestFindBestCandidateMatch_RejectsSeasonPackAgainstEpisodeCandidate(t *test
 
 	candidate := CrossSeedCandidate{
 		InstanceID: 1,
-		Torrents: []qbt.Torrent{
+		Torrents: []*qbt.Torrent{
 			{Hash: "ep", Name: "The.Show.S01E01.2160p.WEB-DL-GRP", Progress: 1.0},
 		},
 	}
@@ -265,7 +267,7 @@ type candidateSelectionSyncManager struct {
 	files map[string]qbt.TorrentFiles
 }
 
-func (c *candidateSelectionSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (c *candidateSelectionSyncManager) GetTorrentRefs(context.Context, int, internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -322,7 +324,7 @@ func (c *candidateSelectionSyncManager) ExtractDomainFromURL(string) string {
 	return ""
 }
 
-func (c *candidateSelectionSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (c *candidateSelectionSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -357,18 +359,16 @@ func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	targetName := "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]"
-	candidateName := "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]"
-	targetRelease := rls.Release{Title: "Example Show"}
-	candidateRelease := rls.Release{Title: "Example Show"}
+	targetRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
+	candidateRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
 
 	// Use a filename that won't produce any usable release keys when parsed.
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "random_data_file.bin", Size: 1024},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
-	require.Equal(t, "partial-in-pack", match, "fallback should treat matching titles as candidates when parsing fails")
+	match := svc.matcher().getMatchTypeFromTitle(targetRelease, candidateRelease, candidateFiles)
+	require.Equal(t, "partial-in-pack", match, "fallback should match the same absolute episode when the files give no release keys")
 }
 
 func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.T) {
@@ -381,13 +381,11 @@ func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.
 
 	// Non-episodic content with different years should not match purely because
 	// candidate files have some parsed metadata.
-	targetName := "Movie.2020.1080p.BluRay.x264-GROUP"
 	targetRelease := rls.Release{
 		Title: "Movie 2020",
 		Year:  2020,
 	}
 
-	candidateName := "Completely.Different.Movie.2012.1080p.BluRay.x264-OTHER"
 	candidateRelease := rls.Release{
 		Title: "Different Movie 2012",
 		Year:  2012,
@@ -397,7 +395,7 @@ func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.
 		{Name: "Different.Movie.2012.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
 	require.Empty(t, match, "non-episodic candidates with mismatched release keys should not match")
 }
 
@@ -409,13 +407,11 @@ func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	targetName := "Movie.2020.1080p.BluRay.x264-GROUP"
 	targetRelease := rls.Release{
 		Title: "Movie 2020",
 		Year:  2020,
 	}
 
-	candidateName := "Another.Movie.2020.1080p.BluRay.x264-OTHER"
 	candidateRelease := rls.Release{
 		Title: "Another Movie 2020",
 		Year:  2020,
@@ -425,7 +421,7 @@ func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
 		{Name: "Another.Movie.2020.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
 	require.Equal(t, "partial-in-pack", match, "non-episodic candidates with matching release keys should match")
 }
 
@@ -439,14 +435,12 @@ func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
 
 	// Game scene releases have RAR files with group prefixes, no year, no episode info.
 	// These should match based on title alone when the titles match.
-	targetName := "Oddsparks.An.Automation.Adventure.Coaster.Rush-RUNE"
 	targetRelease := rls.Release{
 		Title: "Oddsparks An Automation Adventure Coaster Rush",
 		Group: "RUNE",
 		Type:  rls.Game,
 	}
 
-	candidateName := "Oddsparks.An.Automation.Adventure.Coaster.Rush-RUNE"
 	candidateRelease := rls.Release{
 		Title: "Oddsparks An Automation Adventure Coaster Rush",
 		Group: "RUNE",
@@ -462,7 +456,7 @@ func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
 		{Name: "rune-oddsparks.nfo", Size: 4096},
 	}
 
-	match := svc.matcher().getMatchTypeFromTitle(targetName, candidateName, &targetRelease, &candidateRelease, candidateFiles)
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
 	require.Equal(t, "release-match", match, "game scene releases with RAR files should match when titles match")
 }
 
@@ -473,17 +467,17 @@ func TestGetMatchType_FileNameFallback(t *testing.T) {
 		releaseCache:     releases.NewDefaultParser(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	sourceRelease := rls.Release{Title: "Example Show"}
-	candidateRelease := rls.Release{Title: "Example Show"}
+	localRelease := rls.Release{Title: "Example Show"}
+	newRelease := rls.Release{Title: "Example Show"}
 
-	sourceFiles := qbt.TorrentFiles{
+	localFiles := qbt.TorrentFiles{
 		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
 	}
-	candidateFiles := qbt.TorrentFiles{
+	newFiles := qbt.TorrentFiles{
 		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]/[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
 	}
 
-	match := svc.matcher().getMatchTypeWithReason(&sourceRelease, &candidateRelease, sourceFiles, candidateFiles, 0).MatchType
+	match := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, localFiles, newFiles, 0).MatchType
 	require.Equal(t, "size", match, "single-file torrents with matching base names should fallback to size match")
 }
 
@@ -519,8 +513,45 @@ func TestGetMatchTypeFromTitle_SeasonlessBatchAgainstSeasonPack(t *testing.T) {
 			t.Parallel()
 			target := svc.releaseCache.Parse(test.target)
 			local := svc.releaseCache.Parse(localName)
-			match := svc.matcher().getMatchTypeFromTitle(test.target, localName, target, local, test.files)
+			match := svc.matcher().getMatchTypeFromTitle(target, local, test.files)
 			require.Equal(t, test.want, match)
 		})
 	}
+}
+
+func TestGetMatchTypeFromTitle_SeasonlessBatchRanges(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const localName = "[GRP] Kaiju Squad - 04 - 06 (1080p)"
+	files := qbt.TorrentFiles{
+		{Name: localName + "/[GRP] Kaiju Squad - 04 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 05 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 06 (1080p).mkv", Size: 1 << 30},
+	}
+
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "same batch", target: localName, want: "release-match"},
+		{name: "other batch", target: "[GRP] Kaiju Squad - 01 - 03 (1080p)", want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			target := svc.releaseCache.Parse(test.target)
+			local := svc.releaseCache.Parse(localName)
+			require.Equal(t, test.want, svc.matcher().getMatchTypeFromTitle(target, local, files))
+		})
+	}
+}
+
+func (*candidateSelectionSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

@@ -33,6 +33,14 @@ const (
 	fileBegin                   = 0
 )
 
+type fileIntegrityInformation struct {
+	ChecksumAlgorithm        uint16
+	Reserved                 uint16
+	Flags                    uint32
+	ChecksumChunkSizeInBytes uint32
+	ClusterSizeInBytes       uint32
+}
+
 type duplicateExtentsData struct {
 	FileHandle       windows.Handle
 	SourceFileOffset int64
@@ -52,6 +60,8 @@ var (
 	isSparseFileFn         = isSparseFile
 	markFileSparseFn       = markFileSparse
 	setFileEndFn           = setFileEnd
+	getFileIntegrityFn     = getFileIntegrity
+	setFileIntegrityFn     = setFileIntegrity
 	volumeRootForPathFn    = getVolumeRoot
 	sameFilesystemFn       = fsutil.SameFilesystem
 	filesystemNameForVolFn = getFilesystemName
@@ -187,6 +197,9 @@ func cloneFile(src, dst string) (retErr error) {
 		if err := markFileSparseFn(dstHandle, dst); err != nil {
 			return fmt.Errorf("mark destination sparse: %w", err)
 		}
+	}
+	if err := matchFileIntegrity(srcHandle, dstHandle); err != nil {
+		return err
 	}
 	if err := setFileEndFn(dstHandle, dst, srcInfo.Size()); err != nil {
 		return fmt.Errorf("resize destination: %w", err)
@@ -385,6 +398,46 @@ func markFileSparse(fileHandle windows.Handle, path string) error {
 	}
 
 	return nil
+}
+
+func matchFileIntegrity(source, destination windows.Handle) error {
+	src, err := getFileIntegrityFn(source)
+	if err != nil {
+		return fmt.Errorf("query source Integrity Streams: %w", err)
+	}
+	dst, err := getFileIntegrityFn(destination)
+	if err != nil {
+		return fmt.Errorf("query destination Integrity Streams: %w", err)
+	}
+	if src.ChecksumAlgorithm == dst.ChecksumAlgorithm && src.Flags == dst.Flags {
+		return nil
+	}
+
+	// ReFS block cloning requires matching Integrity Streams settings.
+	// https://learn.microsoft.com/en-us/windows/win32/fileio/block-cloning
+	if err := setFileIntegrityFn(destination, src); err != nil {
+		return fmt.Errorf("set destination integrity: Integrity Streams settings differ: %w", err)
+	}
+	return nil
+}
+
+func getFileIntegrity(handle windows.Handle) (fileIntegrityInformation, error) {
+	var info fileIntegrityInformation
+	var returned uint32
+	err := windows.DeviceIoControl(handle, windows.FSCTL_GET_INTEGRITY_INFORMATION,
+		nil, 0, (*byte)(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)), &returned, nil)
+	return info, err
+}
+
+func setFileIntegrity(handle windows.Handle, info fileIntegrityInformation) error {
+	input := struct {
+		ChecksumAlgorithm uint16
+		Reserved          uint16
+		Flags             uint32
+	}{ChecksumAlgorithm: info.ChecksumAlgorithm, Flags: info.Flags}
+	var returned uint32
+	return windows.DeviceIoControl(handle, windows.FSCTL_SET_INTEGRITY_INFORMATION,
+		(*byte)(unsafe.Pointer(&input)), uint32(unsafe.Sizeof(input)), nil, 0, &returned, nil)
 }
 
 func setFileEnd(fileHandle windows.Handle, path string, size int64) error {

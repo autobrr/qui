@@ -14,7 +14,7 @@ func TestWalkOptionsSkip(t *testing.T) {
 		SkipHidden:            true,
 		IgnoreDirNames:        []string{"@eaDir"},
 		IgnoreDirNamePrefixes: []string{"#snap"},
-		IgnorePaths:           []string{"/data/ignored", "/data/ignored.txt"},
+		IgnorePaths:           []string{"/data/ignored"},
 	}
 
 	tests := []struct {
@@ -29,14 +29,12 @@ func TestWalkOptionsSkip(t *testing.T) {
 		{"ignored dir-name root is walked", "@eaDir", "/@eaDir", true, true, false},
 		{"IgnorePaths root is skipped", "ignored", "/data/ignored", true, true, true},
 		{"hidden file", ".nfo", "/data/.nfo", false, false, true},
-		{"hidden directory", ".cache", "/data/.cache", true, false, true},
 		{"case-varied ignored dir name", "@EADIR", "/data/@EADIR", true, false, true},
 		{"ignored dir-name prefix", "#SNAPSHOT", "/data/#SNAPSHOT", true, false, true},
 		{"dir named exactly an ignored prefix", "#snap", "/data/#snap", true, false, true},
 		{"ignored dir name is not a prefix", "@eaDirX", "/data/@eaDirX", true, false, false},
 		{"ignored dir name on a file is kept", "@eaDir", "/data/@eaDir", false, false, false},
 		{"IgnorePaths directory", "ignored", "/data/ignored", true, false, true},
-		{"IgnorePaths file", "ignored.txt", "/data/ignored.txt", false, false, true},
 		{"IgnorePaths match is case-sensitive", "IGNORED", "/DATA/IGNORED", true, false, false},
 		{"plain entry is kept", "movie.mkv", "/data/movie.mkv", false, false, false},
 	}

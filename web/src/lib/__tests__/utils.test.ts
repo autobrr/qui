@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { formatBytesOrFallback, joinPath, parseTrackerDomains } from "@/lib/utils"
+import { formatBytesOrFallback, joinPath, parseTrackerDomains, takeTurns } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { describe, expect, it } from "vitest"
 import "@/i18n"
@@ -62,5 +62,13 @@ describe("formatBytesOrFallback", () => {
     [1024, "1 KiB"],
   ])("formats the available byte value %s", (value, expected) => {
     expect(formatBytesOrFallback(value, "Unknown")).toBe(expected)
+  })
+})
+
+// regression: #3764, the Unified tracker URL sample
+describe("takeTurns", () => {
+  it("takes one item from each list in turn, so a long list cannot fill a sample", () => {
+    expect(takeTurns([["a1", "a2", "a3"], ["b1"], [], ["c1", "c2"]]).slice(0, 4)).toEqual(["a1", "b1", "c1", "a2"])
+    expect(takeTurns([])).toEqual([])
   })
 })

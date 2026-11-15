@@ -10,16 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 )
 
 const appInfoCacheTTL = 5 * time.Minute
 const appInfoRequestTimeout = 10 * time.Second
-
-// processInfoMinWebAPIVersion is the lowest Web API version that exposes process info (launch time).
-var processInfoMinWebAPIVersion = semver.MustParse("2.15.1")
 
 // AppBuildInfo represents the qBittorrent build information reported by the API.
 type AppBuildInfo struct {
@@ -62,26 +58,16 @@ func cloneAppInfo(info *AppInfo) *AppInfo {
 	return &clone
 }
 
-// supportsProcessInfo reports whether the given Web API version exposes process info.
-func supportsProcessInfo(webAPIVersion string) bool {
-	version, err := semver.NewVersion(strings.TrimSpace(webAPIVersion))
-	if err != nil {
-		return false
-	}
-
-	return !version.LessThan(processInfoMinWebAPIVersion)
-}
-
-// buildProcessInfo fetches process info when the Web API version supports it,
+// buildProcessInfo fetches process info when the instance supports it,
 // returning nil when unsupported or when the lookup fails (best-effort metadata).
-func buildProcessInfo(webAPIVersion string, fetch func() (qbt.ProcessInfo, error)) *AppProcessInfo {
-	if !supportsProcessInfo(webAPIVersion) {
+func buildProcessInfo(supported bool, fetch func() (qbt.ProcessInfo, error)) *AppProcessInfo {
+	if !supported {
 		return nil
 	}
 
 	processInfo, err := fetch()
 	if err != nil {
-		log.Debug().Err(err).Str("webAPIVersion", webAPIVersion).Msg("Failed to get qBittorrent process info")
+		log.Debug().Err(err).Msg("Failed to get qBittorrent process info")
 		return nil
 	}
 
@@ -149,14 +135,8 @@ func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 		return nil, fmt.Errorf("get app version: %w", err)
 	}
 
-	webAPIVersion, err := c.GetWebAPIVersionCtx(requestCtx)
-	if err != nil {
+	if err := c.RefreshCapabilities(requestCtx); err != nil {
 		return nil, fmt.Errorf("get web API version: %w", err)
-	}
-
-	webAPIVersion = strings.TrimSpace(webAPIVersion)
-	if webAPIVersion == "" {
-		return nil, errors.New("web API version is empty")
 	}
 
 	buildInfo, err := c.GetBuildInfoCtx(requestCtx)
@@ -166,7 +146,7 @@ func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 
 	info := &AppInfo{
 		Version:       strings.TrimSpace(version),
-		WebAPIVersion: webAPIVersion,
+		WebAPIVersion: c.GetWebAPIVersion(),
 		BuildInfo: &AppBuildInfo{
 			Qt:         buildInfo.Qt,
 			Libtorrent: buildInfo.Libtorrent,
@@ -176,22 +156,9 @@ func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 			Bitness:    buildInfo.Bitness,
 			Platform:   buildInfo.Platform,
 		},
-		ProcessInfo: buildProcessInfo(webAPIVersion, func() (qbt.ProcessInfo, error) {
+		ProcessInfo: buildProcessInfo(c.Supports(CapProcessInfo), func() (qbt.ProcessInfo, error) {
 			return c.GetProcessInfoCtx(requestCtx)
 		}),
-	}
-
-	c.mu.Lock()
-	previousVersion := c.webAPIVersion
-	c.applyCapabilitiesLocked(webAPIVersion)
-	c.mu.Unlock()
-
-	if previousVersion != webAPIVersion {
-		log.Trace().
-			Int("instanceID", c.instanceID).
-			Str("previousWebAPIVersion", previousVersion).
-			Str("webAPIVersion", webAPIVersion).
-			Msg("Updated qBittorrent capabilities from app info refresh")
 	}
 
 	c.appInfoMu.Lock()

@@ -12,9 +12,16 @@
     "externalPrograms": "外部程序",
     "notifications": "通知",
     "dateTime": "时间与语言",
-    "premiumThemes": "高级主题",
+    "statistics": "统计",
+    "trackers": "Tracker 自定义",
+    "premiumThemes": "主题",
     "security": "安全",
     "logs": "日志"
+  },
+  "nav": {
+    "general": "常规",
+    "connections": "连接",
+    "access": "访问"
   },
   "language": {
     "cardTitle": "语言",
@@ -97,7 +104,6 @@
       "proxyUrl": "代理 URL",
       "showProxyUrl": "显示代理 URL",
       "hideProxyUrl": "隐藏代理 URL",
-      "copyProxyUrl": "复制代理 URL",
       "done": "完成"
     },
     "deleteDialog": {
@@ -113,9 +119,7 @@
       "deleted": "客户端 API 密钥已删除",
       "deleteFailed": "删除客户端 API 密钥失败：{{error}}",
       "clientNameRequired": "客户端名称为必填项",
-      "selectInstance": "请选择一个 qBittorrent 实例",
-      "proxyCopied": "代理 URL 已复制到剪贴板",
-      "copyFailed": "复制到剪贴板失败"
+      "selectInstance": "请选择一个 qBittorrent 实例"
     }
   },
   "apiKeys": {
@@ -127,21 +131,77 @@
     "apiDocs": "API 文档",
     "description": "API 密钥允许外部应用访问您的 qBittorrent 实例。",
     "createButton": "创建 API 密钥",
+    "editButton": "编辑 {{name}}",
+    "deleteButton": "删除 {{name}}",
     "loading": "正在加载 API 密钥...",
     "empty": "尚未创建任何 API 密钥",
     "createDialog": {
       "title": "创建 API 密钥",
-      "description": "为您的 API 密钥取一个描述性名称，以便记住其用途。",
+      "description": "为密钥命名，并只选择它需要的访问权限。",
       "nameLabel": "名称",
       "namePlaceholder": "例如：自动化脚本",
       "nameRequired": "名称为必填项",
       "submit": "创建 API 密钥",
       "creating": "创建中..."
     },
+    "editDialog": {
+      "title": "编辑 API 密钥",
+      "description": "更改从此密钥的下一个请求起生效。qui 不会再次显示密钥本身。",
+      "submit": "保存更改",
+      "saving": "正在保存..."
+    },
+    "permissions": {
+      "title": "权限",
+      "help": "写入包含读取和运行。运行不包含读取，因为设置中保存着凭据。",
+      "required": "请至少选择一项权限。",
+      "access": "访问",
+      "allAreas": "全部区域",
+      "allAreasExcept": "除{{areas}}外的全部区域",
+      "refusedByLimit": "辅种和目录扫描器拒绝带实例限制的密钥，因此 qui 不会保存这些权限。",
+      "entry": "{{area}}：{{level}}",
+      "showByArea": "按区域显示 {{name}} 的访问权限",
+      "partialArea": "{{area}}（仅{{levels}}）",
+      "legend": {
+        "title": "每个权限区域一个方块：",
+        "none": "无权限"
+      },
+      "levels": {
+        "read": "读取",
+        "run": "运行",
+        "write": "写入"
+      },
+      "areas": {
+        "instances": "实例",
+        "torrents": "种子",
+        "crossSeed": "辅种",
+        "dirScan": "目录扫描器",
+        "automations": "自动化",
+        "rss": "RSS",
+        "backups": "备份",
+        "orphanScan": "孤立项目扫描",
+        "externalPrograms": "外部程序",
+        "indexers": "索引器",
+        "arr": "Arr",
+        "notifications": "通知",
+        "settings": "设置",
+        "logs": "日志",
+        "system": "系统"
+      }
+    },
+    "instanceLimit": {
+      "title": "实例限制",
+      "help": "选择此密钥可以访问的实例。不选择表示所有实例，包括以后添加的实例。",
+      "reaches": "可访问",
+      "all": "所有实例",
+      "only": "仅 {{instances}}",
+      "none": "无实例。该限制只包含已删除的实例。",
+      "deleted": "已删除的实例 {{id}}"
+    },
     "newKey": {
       "label": "您的新 API 密钥",
       "warning": "请立即保存此密钥。之后将无法再次查看。",
-      "done": "完成"
+      "done": "完成",
+      "apiKey": "API 密钥"
     },
     "deleteDialog": {
       "title": "删除 API 密钥？",
@@ -154,8 +214,8 @@
       "createFailed": "创建 API 密钥失败",
       "deleted": "API 密钥已删除",
       "deleteFailed": "删除 API 密钥失败",
-      "copied": "API 密钥已复制到剪贴板",
-      "copyFailed": "复制到剪贴板失败"
+      "updated": "API 密钥更新成功",
+      "updateFailed": "更新 API 密钥失败"
     }
   },
   "externalPrograms": {
@@ -239,7 +299,7 @@
     "loading": "正在加载通知目标…",
     "loadFailed": "加载通知目标失败",
     "empty": "尚未配置通知目标。添加一个以开始接收警报。",
-    "allEvents": "全部事件",
+    "allEvents": "除系统通知外的全部事件",
     "showList": "显示列表",
     "hideList": "隐藏列表",
     "badges": {
@@ -338,6 +398,56 @@
       "error": "保存日期和时间偏好失败"
     }
   },
+  "statistics": {
+    "cardTitle": "统计",
+    "cardDescription": "qui 会在数据库中记录每个种子的上传和下载。这些设置适用于所有实例。",
+    "recording": {
+      "label": "记录传输历史",
+      "description": "关闭时，qui 不记录任何内容，并保留已存储的历史。关闭期间会成为记录空缺。"
+    },
+    "retention": {
+      "label": "保留每日详情",
+      "description": "超过此时间后，qui 会把每小时的合计合并为天，并把每个种子的每日字节合并为每年一行。合计保持不变。选择更短的时间后，qui 会在下一次读取时合并较早的详情，且无法恢复。",
+      "days90": "90 天",
+      "days400": "400 天",
+      "forever": "永久"
+    },
+    "size": {
+      "label": "历史大小"
+    },
+    "deleteHistory": {
+      "label": "删除历史",
+      "description": "删除一个实例或所有实例的传输历史。删除后无法恢复。",
+      "instance": "实例",
+      "allInstances": "所有实例",
+      "unnamedInstance": "实例 {{id}}",
+      "everything": "全部",
+      "before": "某日期之前的全部",
+      "date": "日期",
+      "button": "删除历史",
+      "confirmTitle": "删除历史？",
+      "confirmEverything": "qui 将删除 {{name}} 的全部历史。记录将以新的基线重新开始。此操作无法撤销。",
+      "confirmBefore": "qui 将删除 {{name}} 在 {{date}} 之前的历史。如果记录在该日期之前开始，首次记录之前的字节也会删除，“自…起记录”会改为该日期。此操作无法撤销。",
+      "sqliteSpace": "数据库文件大小不变。SQLite 会将空闲空间重新用于新的历史。",
+      "postgresSpace": "删除所有实例的全部历史会立即将空间归还给磁盘。其他删除之后，Postgres 会将空闲空间重新用于新的历史。",
+      "cancel": "取消",
+      "confirm": "删除",
+      "deleted": "历史已删除",
+      "failed": "删除历史失败",
+      "shrink": {
+        "label": "同时压缩数据库文件",
+        "restart": "qui 会重启并缩小文件，以便收回磁盘空间。qui 会短暂不可用。",
+        "nextStart": "在此安装方式下，qui 无法自行重启。压缩将在 qui 下次启动时执行。",
+        "tooLittleSpace": "磁盘可用空间为 {{free}}，压缩最多需要 {{need}}。不勾选此项是安全的：SQLite 会将空闲空间重新用于新的历史记录。",
+        "manualDocs": "手动压缩文件"
+      }
+    },
+    "loadFailed": "无法加载统计设置",
+    "toasts": {
+      "saved": "统计设置已保存",
+      "saveFailed": "无法保存统计设置"
+    }
+  },
   "security": {
     "changePassword": {
       "title": "修改密码",
@@ -415,38 +525,65 @@
   },
   "themes": {
     "selector": {
-      "title": "主题选择",
+      "title": "主题",
       "loadingDescription": "正在加载可用主题...",
-      "description": "从可用主题中选择。高级主题需要有效的许可证。",
-      "verificationUnavailable": "许可证验证不可用。高级主题切换暂时禁用。",
-      "notLoaded": "高级主题未加载",
-      "notLoadedDescription": "配置",
-      "notLoadedAnd": "并运行",
-      "premium": "高级",
-      "pro": "Pro",
+      "description": "点击主题即可使用。",
+      "verificationUnavailable": "许可证验证不可用。切换到需要许可证的主题暂时禁用。",
+      "notLoaded": "需要许可证的主题未加载",
+      "notLoadedDescription": "运行",
+      "defaultThemeVisit": "由于地址中包含 ?theme=default，qui 在本次访问中显示默认主题。选择一个主题即可结束。",
+      "search": "搜索主题",
+      "filterLabel": "筛选主题",
+      "noMatch": "没有与“{{query}}”匹配的主题。",
+      "needsLicense": "需要许可证",
+      "lockedCount_other": "{{count}} 个主题需要许可证。",
+      "showAll_other": "显示全部 {{count}} 个主题",
+      "showFewer": "显示较少主题",
+      "variationCount_other": "{{count}} 种颜色变体"
+    },
+    "current": {
+      "label": "使用中",
+      "colors": "颜色变体"
+    },
+    "groups": {
+      "all": "全部",
       "free": "免费",
-      "locked": "已锁定",
-      "lock": "锁定"
+      "licensed": "需许可证",
+      "custom": "自定义"
+    },
+    "menu": {
+      "button": "选择菜单主题",
+      "title": "选择菜单主题",
+      "description": "选择主题菜单（顶部栏和手机底部栏）中列出的主题。正在使用的主题始终在菜单中。",
+      "groupCount": "{{shown}}/{{total}}",
+      "groupsLocked": "清除搜索后才能使用分组复选框。",
+      "inUse": "使用中",
+      "summary": "菜单中有 {{shown}}/{{total}} 个主题",
+      "reset": "恢复默认",
+      "undo": "撤销重置",
+      "done": "完成"
     },
     "toasts": {
-      "premiumRequired": "需要高级许可证",
-      "premiumRequiredDescription": "添加有效的高级许可证以解锁高级主题。"
+      "premiumRequired": "需要许可证",
+      "premiumRequiredDescription": "添加有效的许可证以解锁所有主题。"
     },
     "license": {
       "loadingTitle": "许可证管理",
       "loadingDescription": "正在加载主题许可证...",
       "managementTitle": "许可证管理",
-      "managementDescription": "管理您的主题许可证和高级访问权限",
+      "managementDescription": "管理您的主题许可证",
       "providers": {
         "licensePortal": "许可证门户"
       },
       "status": {
-        "unlockTitle": "解锁高级主题",
+        "unlockTitle": "解锁所有主题",
         "unlockDescription": "随心付费（最低 $9.99）· 终身许可证 · 所有主题",
-        "activeTitle": "高级访问已激活",
-        "activeDescription": "您可以访问所有当前和未来的高级主题",
+        "activeTitle": "许可证已激活",
+        "activeDescription": "您可以使用所有当前和未来的主题",
         "activationRequiredTitle": "需要激活许可证",
-        "activationRequiredDescription": "您的许可证需要在此设备上激活"
+        "activationRequiredDescription": "您的许可证需要在此设备上激活",
+        "offlineTitle": "无法连接许可证服务",
+        "offlineDescription": "qui 已有 7 天无法连接许可证服务，因此需要许可证的主题已锁定。qui 会在启动时及每天检查一次。许可证服务响应后，主题会再次解锁。您无需重新激活许可证。"
       },
       "portalHelp": {
         "prefix": "在 DodoPayments 购买，然后在此输入您的许可证密钥。如果丢失了密钥，可通过",
@@ -468,7 +605,12 @@
       },
       "details": {
         "productAdded": "{{productName}} · 添加于 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}"
+        "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}",
+        "statusLabels": {
+          "invalid": "无效",
+          "offline": "离线",
+          "unknown": "未知"
+        }
       },
       "invalid": {
         "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请前往 <portal>licenses.getqui.com</portal>，使用购买许可证时的邮箱注册或登录，然后在 Machine Instances 中停用一台不再使用的设备。"
@@ -493,7 +635,7 @@
         "addLicense": "添加许可证",
         "remove": "移除",
         "removing": "移除中...",
-        "getPremium": "获取高级版",
+        "getPremium": "获取许可证",
         "reactivate": "重新激活许可证",
         "activating": "激活中...",
         "copyLicenseKey": "复制许可证密钥",
@@ -509,17 +651,17 @@
         "recoverPrefix": "如有需要，您可以稍后从"
       },
       "addDialog": {
-        "title": "添加高级许可证",
-        "description": "输入您的高级主题许可证密钥以解锁所有高级主题。",
+        "title": "添加许可证",
+        "description": "输入您的许可证密钥以解锁所有主题。",
         "label": "许可证密钥",
-        "placeholder": "输入您的高级主题许可证密钥",
+        "placeholder": "输入您的许可证密钥",
         "recoverKey": "找回密钥？",
         "validation": {
           "required": "许可证密钥为必填项"
         }
       },
       "paymentDialog": {
-        "title": "获取高级许可证",
+        "title": "获取许可证",
         "description": "随心付费（最低 $9.99）· 终身许可证 · 所有主题",
         "steps": {
           "choosePaymentMethod": {
@@ -551,35 +693,80 @@
       "copiedVerify": "验证命令已复制",
       "failedCopyVerify": "复制验证命令失败",
       "toasts": {
-        "activationSuccessPremium": "高级访问已激活！感谢您的支持！",
-        "paymentCompleted": "支付完成。请添加您的高级许可证密钥以完成设置。",
+        "activationSuccessPremium": "许可证已激活！感谢您的支持！",
+        "paymentCompleted": "支付完成。请添加您的许可证密钥以完成设置。",
         "paymentNotCompleted": "支付未成功完成。",
-        "returnedFromCheckout": "已从结账返回。准备好后请添加您的高级许可证密钥。",
+        "returnedFromCheckout": "已从结账返回。准备好后请添加您的许可证密钥。",
         "keyCopied": "许可证密钥已复制到剪贴板",
         "copyFailed": "复制许可证密钥失败",
         "removedFromMachine": "许可证已从此设备移除"
       }
     },
     "custom": {
-      "badge": "自定义",
       "title": "自定义主题",
-      "lockedTitle": "自定义主题是高级功能",
-      "lockedDescription": "解锁高级版即可从磁盘目录加载你自己的主题 CSS 文件。",
-      "unlockCta": "解锁高级版",
+      "description": "在主题编辑器中编写或粘贴主题，或将主题 CSS 文件放入服务器上的主题文件夹。",
+      "lockedDescription": "获取许可证即可添加你自己的主题：在主题编辑器中编写或粘贴主题，或将主题 CSS 文件放入服务器上的主题文件夹。",
+      "unlockCta": "获取许可证",
       "refresh": "刷新",
-      "detectedCount": "找到的主题：{{total}}",
-      "parseErrorsTitle": "无法解析以下文件：",
-      "noneFound": "未找到自定义主题。请将 .css 文件放入主题目录，然后点击刷新。",
-      "loadError": "无法加载自定义主题。请检查服务器日志和主题目录权限。"
+      "themeCount_other": "{{count}} 个主题",
+      "folderLabel": "主题文件夹",
+      "actionsFor": "{{theme}} 的操作",
+      "parseErrorsTitle": "无效的主题：",
+      "parseErrorsHint": "请编辑文件进行修复，或将其移除。",
+      "noneFound": "还没有自定义主题。点击新建主题，或将 .css 文件放入主题文件夹，然后点击刷新。",
+      "loadError": "无法加载自定义主题。请检查服务器日志和主题文件夹的权限。",
+      "newTheme": "新建主题",
+      "copyPrompt": "复制给 AI 的提示词",
+      "promptCopied": "提示词已复制。请将其粘贴到你的 AI 助手中，并描述你想要的外观。",
+      "promptCopyFailed": "无法复制提示词",
+      "edit": "编辑",
+      "remove": "移除",
+      "removeTitle": "要移除 {{theme}} 吗？",
+      "removeDescription": "qui 将从主题文件夹中删除此主题的文件。此操作无法撤销。使用此主题的设备将显示默认主题。",
+      "removeConfirm": "移除",
+      "removed": "主题已移除",
+      "removeFailed": "无法移除主题：{{message}}",
+      "editLoadFailed": "无法读取主题文件：{{message}}",
+      "editor": {
+        "newTitle": "新建主题",
+        "editTitle": "编辑主题",
+        "description": "在此浏览器中预览更改。点击保存会将主题存储到服务器。",
+        "name": "名称",
+        "namePlaceholder": "主题名称",
+        "savedAs": "文件名：{{filename}}",
+        "css": "CSS",
+        "cssHelp": "粘贴或编写主题的 CSS。它需要一个用于浅色模式的 :root 块和一个用于深色模式的 .dark 块，每个块至少包含一个设计令牌。“复制给 AI 的提示词”会向 AI 助手提供完整规则。",
+        "cssPlaceholder": "/* @name: 我的主题 */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "请输入包含字母或数字的名称。",
+        "nameRequired": "请输入名称，或在 CSS 中添加 @name 行。",
+        "save": "保存",
+        "saveFailed": "无法保存主题。",
+        "saved": "主题已保存",
+        "savedNotLoaded": "主题已保存，但 qui 无法加载主题列表。请点击主题文件夹旁的刷新。",
+        "replaceTitle": "要替换此主题吗？",
+        "replaceDescription": "已存在文件名为 {{filename}} 的自定义主题。要用此主题替换它吗？",
+        "replace": "替换",
+        "problems": {
+          "missingRoot": "qui 无法使用此 CSS：其中没有包含设计令牌的 :root 块。预览显示的是 qui 上次能够使用的 CSS。",
+          "missingDark": "qui 无法使用此 CSS：其中没有包含设计令牌的 .dark 块。预览显示的是 qui 上次能够使用的 CSS。",
+          "outsideFile": "第 {{line}} 行可能会从其他网站加载文件。预览将保留上次有效的 CSS，保存也会拒绝此 CSS。",
+          "unreadable": "qui 无法读取第 {{line}} 行：有引号字符串或 url() 未闭合。预览显示的是 qui 上次能够使用的 CSS。"
+        },
+        "previewing": "正在此浏览器中预览",
+        "previewWaits": "更改 CSS 后即开始预览。",
+        "emptyStatus": "粘贴或编写主题的 CSS 以查看预览。"
+      }
     },
     "layout": {
+      "title": "主题同步",
       "mobileSplit": "为移动布局使用单独的主题",
       "mobileSplitHelp": "移动布局（宽度小于 768 px 的窗口）和桌面布局各自保留自己的主题、模式和变体。此设置适用于所有浏览器。",
       "localOnly": "在此浏览器中本地保留主题",
       "localOnlyHelp": "此浏览器不从服务器获取主题，也不会将其主题更改发送到服务器。此设置仅适用于此浏览器。",
       "changesMobile": "更改移动主题",
       "changesDesktop": "更改桌面主题",
-      "changesLocal": "仅更改此浏览器的主题。要更改移动布局设置，请关闭本地设置。",
+      "changesLocal": "仅更改此浏览器的主题。",
+      "splitNeedsSync": "要更改移动布局设置，请关闭本地设置。",
       "saveError": "保存主题设置失败",
       "mobileSplitOffWarning": "关闭此设置会删除移动主题。"
     }
@@ -1092,11 +1279,72 @@
       "bind": "绑定地址",
       "configDir": "配置目录",
       "dataDir": "数据目录"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker 自定义",
+    "cardDescription": "重命名 Tracker，并将同一 Tracker 的多个域名合并为一个条目。qui 会在所有显示该 Tracker 的地方使用显示名称。",
+    "loading": "正在加载 Tracker…",
+    "empty": "暂无 Tracker。实例中有种子后，Tracker 会显示在这里。",
+    "importTooltip": "导入自定义配置",
+    "exportTooltip": "导出自定义配置",
+    "mergedFrom": "合并自：{{domains}}",
+    "original": "原始：{{domain}}",
+    "mergeTooltip": "将选中的 Tracker 合并到此分组",
+    "mergeIntoGroup": "合并到分组",
+    "addToMerge": "添加到合并",
+    "rename": "重命名",
+    "edit": "编辑",
+    "delete": "删除",
+    "customizeDialog": {
+      "editTitle": "编辑 Tracker 名称",
+      "renameTitle": "重命名 Tracker",
+      "mergeTitle": "合并 Tracker",
+      "editDescription": "更新此 Tracker 的显示名称。",
+      "renameDescription": "为此 Tracker 指定自定义显示名称。",
+      "mergeDescription": "将这些 Tracker 合并为一个条目并设置自定义名称。",
+      "displayName": "显示名称",
+      "displayNamePlaceholder": "例如 TorrentLeech",
+      "domains": "域名",
+      "selectedTrackers": "已选 Tracker",
+      "primary": "主要",
+      "removeDomain": "移除 {{domain}}",
+      "cancel": "取消",
+      "saving": "保存中……",
+      "save": "保存",
+      "renameAction": "重命名",
+      "mergeAction": "合并"
     },
-    "copyTitle": "复制 {{label}}",
+    "importDialog": {
+      "title": "导入 Tracker 自定义配置",
+      "description": "粘贴 JSON 以导入 Tracker 自定义配置（重命名与合并）。",
+      "jsonData": "JSON 数据",
+      "invalidFormat": "格式无效：需要 trackerCustomizations 数组",
+      "missingDisplayName": "条目无效：缺少 displayName",
+      "invalidDomains": "条目无效：domains 必须是非空数组",
+      "invalidJson": "JSON 格式无效",
+      "newCount": "{{count}} 个新增",
+      "conflictCount_other": "{{count}} 个冲突",
+      "unchangedCount": "{{count}} 个未变更",
+      "resolveConflicts": "解决冲突",
+      "conflictsWith": "与以下条目冲突：{{name}}",
+      "skip": "跳过",
+      "overwrite": "覆盖",
+      "cancel": "取消",
+      "importing": "导入中……",
+      "import": "导入"
+    },
     "toasts": {
-      "copied": "{{label}} 已复制到剪贴板",
-      "copyFailed": "复制 {{label}} 失败"
+      "noCustomizationsToExport": "没有可导出的自定义配置",
+      "copiedToClipboard": "已复制到剪贴板",
+      "failedToCopy": "复制到剪贴板失败",
+      "createFailed": "创建 Tracker 自定义配置失败",
+      "updateFailed": "更新 Tracker 自定义配置失败",
+      "deleteFailed": "删除 Tracker 自定义配置失败",
+      "failedToImport": "导入失败：{{names}}",
+      "importedAndSkipped": "已导入 {{imported}} 项，跳过 {{skipped}} 项",
+      "importedCount_other": "已导入 {{count}} 项自定义配置",
+      "noCustomizationsImported": "未导入任何自定义配置"
     }
   }
 }

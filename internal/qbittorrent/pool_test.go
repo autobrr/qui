@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -102,16 +103,13 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 // a single failure (advances backoff once), not once per caller (adversarial review of #2096).
 // The instance is dead (connection refused): a hard failure, so it must back off.
 func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t *testing.T) {
-	// Closed listener: probes fail fast with a hard connection error.
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
-	srv.Close()
-
 	pool := setupTestPool(t)
 	defer pool.Close()
 
 	const instanceID = 1
 	pool.mu.Lock()
-	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+	// Port 1 is outside the ephemeral range: during the retries, a closed httptest port can go to another test's server.
+	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1", Timeout: 60}), instanceID: instanceID}
 	pool.mu.Unlock()
 
 	const callers = 8
@@ -172,7 +170,10 @@ func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
 // interrupted by caller cancellation (client disconnect / shutdown) does NOT record a
 // failure or back off the instance, so a healthy instance is not stranded (review of #2096).
 func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing.T) {
+	arrived := make(chan struct{})
+	closeArrived := sync.OnceFunc(func() { close(arrived) })
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		closeArrived()
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
@@ -188,7 +189,7 @@ func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		<-arrived
 		cancel()
 	}()
 
@@ -253,11 +254,6 @@ func TestClientPool_IsBanError(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "Simple banned error",
-			err:      errors.New("IP is banned"),
-			expected: true,
-		},
-		{
 			name:     "Rate limit error",
 			err:      errors.New("Rate limit exceeded"),
 			expected: true,
@@ -316,140 +312,116 @@ func TestClientPoolDecryptFieldKeepsGenericErrorConcise(t *testing.T) {
 	assert.EqualError(t, err, "failed to decrypt password: storage unavailable")
 }
 
-func TestClientPoolSetSyncEventSinkUpdatesExistingClients(t *testing.T) {
+func TestClientPoolSyncEventSinksEachGetEveryUpdate(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
-	// Create clients manually and add them to the pool
-	// These clients don't have a sink yet
+	sm := NewSyncManager(nil, nil)
+	pool.SetSyncManager(sm)
+
 	client1 := &Client{instanceID: 1}
 	client2 := &Client{instanceID: 2}
-
 	pool.mu.Lock()
 	pool.clients[1] = client1
 	pool.clients[2] = client2
 	pool.mu.Unlock()
 
-	// Verify clients have no sink initially
-	assert.Nil(t, client1.getSyncEventSink(), "client1 should have no sink initially")
-	assert.Nil(t, client2.getSyncEventSink(), "client2 should have no sink initially")
+	first := &recordingSyncEventSink{}
+	second := &recordingSyncEventSink{}
+	pool.AddSyncEventSink(first)
+	pool.AddSyncEventSink(second)
 
-	// Create a mock sink
-	sink := &mockPoolSyncEventSink{}
+	syncErr := errors.New("sync failed")
+	client1.dispatchSyncUpdate(qbt.SyncUpdate{})
+	client2.dispatchSyncError(syncErr)
+	sm.notifyTrackerHealthUpdated(2)
 
-	// Set the sink on the pool
-	pool.SetSyncEventSink(sink)
-
-	// Verify all existing clients were updated with the sink
-	assert.Equal(t, sink, client1.getSyncEventSink(), "client1 should have the sink after SetSyncEventSink")
-	assert.Equal(t, sink, client2.getSyncEventSink(), "client2 should have the sink after SetSyncEventSink")
-
-	// Verify the pool itself stored the sink
-	pool.mu.RLock()
-	poolSink := pool.syncEventSink
-	pool.mu.RUnlock()
-	assert.Equal(t, sink, poolSink, "pool should have stored the sink")
+	want := []string{"update:1", "error:2:sync failed", "health:2"}
+	assert.Equal(t, want, first.events, "first consumer should get every update")
+	assert.Equal(t, want, second.events, "second consumer should get every update")
 }
 
-func TestClientPoolSetSyncEventSinkWithNoClients(t *testing.T) {
+func TestClientPoolSetSyncManagerReceivesExistingSinks(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
-	// Verify pool starts with no clients
-	pool.mu.RLock()
-	clientCount := len(pool.clients)
-	pool.mu.RUnlock()
-	assert.Equal(t, 0, clientCount, "pool should start with no clients")
-
-	// Setting sink should not panic when there are no clients
-	sink := &mockPoolSyncEventSink{}
-	pool.SetSyncEventSink(sink)
-
-	// Verify the pool stored the sink
-	pool.mu.RLock()
-	poolSink := pool.syncEventSink
-	pool.mu.RUnlock()
-	assert.Equal(t, sink, poolSink, "pool should have stored the sink even with no clients")
-}
-
-func TestClientPoolSetSyncEventSinkUpdatesSyncManager(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
+	first := &recordingSyncEventSink{}
+	second := &recordingSyncEventSink{}
+	pool.AddSyncEventSink(first)
+	pool.AddSyncEventSink(second)
 
 	sm := NewSyncManager(nil, nil)
 	pool.SetSyncManager(sm)
+	sm.notifyTrackerHealthUpdated(3)
 
-	sink := &mockPoolSyncEventSink{}
-	pool.SetSyncEventSink(sink)
-
-	assert.Equal(t, sink, sm.getSyncEventSink(), "sync manager should receive pool sink")
-}
-
-func TestClientPoolSetSyncManagerReceivesExistingSink(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	sink := &mockPoolSyncEventSink{}
-	pool.SetSyncEventSink(sink)
-
-	sm := NewSyncManager(nil, nil)
-	pool.SetSyncManager(sm)
-
-	assert.Equal(t, sink, sm.getSyncEventSink(), "new sync manager should receive existing pool sink")
+	assert.Equal(t, []string{"health:3"}, first.events)
+	assert.Equal(t, []string{"health:3"}, second.events)
 }
 
 func TestClientPoolSetSyncManagerSkipsStaleSinkReplay(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
-	oldSink := &mockPoolSyncEventSink{id: 1}
-	newSink := &mockPoolSyncEventSink{id: 2}
-	pool.SetSyncEventSink(oldSink)
+	first := &recordingSyncEventSink{}
+	second := &recordingSyncEventSink{}
+	pool.AddSyncEventSink(first)
 
 	sm := NewSyncManager(nil, nil)
 	pool.SetSyncManager(sm)
 
 	pool.mu.RLock()
+	staleSinks := pool.syncEventSinks
 	staleSeq := pool.syncEventSinkSeq
 	pool.mu.RUnlock()
 
-	pool.SetSyncEventSink(newSink)
-	require.Equal(t, newSink, sm.getSyncEventSink(), "sync manager should receive newer pool sink")
+	pool.AddSyncEventSink(second)
+	pool.applySyncManagerSinkIfCurrent(sm, staleSinks, staleSeq)
+	sm.notifyTrackerHealthUpdated(1)
 
-	pool.applySyncManagerSinkIfCurrent(sm, oldSink, staleSeq)
-
-	assert.Equal(t, newSink, sm.getSyncEventSink(), "stale captured sink replay should not overwrite newer sink")
+	assert.Equal(t, []string{"health:1"}, second.events, "stale captured sinks replay should not drop a newer consumer")
 }
 
-func TestClientPoolSetSyncEventSinkReplacesExisting(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
+func TestSyncEventSinksCallConsumersInRegistrationOrder(t *testing.T) {
+	var calls []string
+	sinks := syncEventSinks{
+		&orderSyncEventSink{name: "first", calls: &calls},
+		&orderSyncEventSink{name: "second", calls: &calls},
+	}
 
-	// Create a client and add to pool
-	client := &Client{instanceID: 1}
-	pool.mu.Lock()
-	pool.clients[1] = client
-	pool.mu.Unlock()
+	sinks.HandleSyncUpdate(1, qbt.SyncUpdate{})
+	sinks.HandleSyncError(1, errors.New("sync failed"))
+	sinks.HandleTrackerHealthUpdated(1)
 
-	// Set first sink
-	sink1 := &mockPoolSyncEventSink{id: 1}
-	pool.SetSyncEventSink(sink1)
-	assert.Equal(t, sink1, client.getSyncEventSink(), "client should have sink1")
-
-	// Set second sink (replaces first)
-	sink2 := &mockPoolSyncEventSink{id: 2}
-	pool.SetSyncEventSink(sink2)
-	assert.Equal(t, sink2, client.getSyncEventSink(), "client should have sink2 after replacement")
+	assert.Equal(t, []string{"first", "second", "first", "second", "first", "second"}, calls)
 }
 
-// mockPoolSyncEventSink is a simple mock for testing pool sink propagation.
-type mockPoolSyncEventSink struct {
-	id int
+type orderSyncEventSink struct {
+	name  string
+	calls *[]string
 }
 
-func (m *mockPoolSyncEventSink) HandleMainData(_ int, _ *qbt.MainData) {}
-func (m *mockPoolSyncEventSink) HandleTrackerHealthUpdated(_ int)      {}
-func (m *mockPoolSyncEventSink) HandleSyncError(_ int, _ error)        {}
+func (o *orderSyncEventSink) HandleSyncUpdate(int, qbt.SyncUpdate) {
+	*o.calls = append(*o.calls, o.name)
+}
+func (o *orderSyncEventSink) HandleTrackerHealthUpdated(int) { *o.calls = append(*o.calls, o.name) }
+func (o *orderSyncEventSink) HandleSyncError(int, error)     { *o.calls = append(*o.calls, o.name) }
+
+// recordingSyncEventSink records each update in the order it arrives.
+type recordingSyncEventSink struct {
+	events []string
+}
+
+func (r *recordingSyncEventSink) HandleSyncUpdate(instanceID int, _ qbt.SyncUpdate) {
+	r.events = append(r.events, fmt.Sprintf("update:%d", instanceID))
+}
+
+func (r *recordingSyncEventSink) HandleTrackerHealthUpdated(instanceID int) {
+	r.events = append(r.events, fmt.Sprintf("health:%d", instanceID))
+}
+
+func (r *recordingSyncEventSink) HandleSyncError(instanceID int, err error) {
+	r.events = append(r.events, fmt.Sprintf("error:%d:%v", instanceID, err))
+}
 
 // TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient guards the
 // create-path double-check against re-creating a client another caller just

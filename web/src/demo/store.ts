@@ -8,7 +8,7 @@
 // behind bulk actions. Built once from a fixed seed, so every visitor sees the
 // same library and a reload resets it.
 
-import type { AppPreferences } from "@/types/app"
+import type { PreferenceField } from "@/types/app"
 import type { InstanceCapabilities, InstanceResponse } from "@/types/instances"
 import type {
   Category,
@@ -111,9 +111,10 @@ const STATE_SORT_ORDER: Record<string, number> = {
   pausedDL: 50, pausedUP: 51, checkingUP: 60, checkingResumeData: 61, moving: 70, error: 80, missingFiles: 81,
 }
 
-// Mirrors torrentStateCategories in internal/qbittorrent/sync_manager.go.
+// Mirrors namedStatuses in internal/qbittorrent/torrent_list_query.go.
 const STATE_CATEGORIES: Record<string, readonly string[]> = {
-  downloading: ["downloading", "stalledDL", "metaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  downloading: ["downloading", "stalledDL", "metaDL", "forcedMetaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  completed: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP", "pausedUP", "stoppedUP"],
   uploading: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
   seeding: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
   paused: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
@@ -143,8 +144,6 @@ export function matchesStatus(t: Torrent, status: string): boolean {
       return t.tracker_health === status
     case "all":
       return true
-    case "completed":
-      return t.progress === 1
     case "inactive":
       return !inCategory(t.state, "active")
     case "running":
@@ -153,8 +152,6 @@ export function matchesStatus(t: Torrent, status: string): boolean {
     case "stopped":
     case "paused":
       return isPausedOrStopped(t.state)
-    case "error":
-      return inCategory(t.state, "errored")
   }
   if (STATE_CATEGORIES[status]) return inCategory(t.state, status)
   return t.state === status
@@ -293,7 +290,9 @@ function generateTorrent(rng: () => number, now: number, index: number): Torrent
   const active = state === "downloading" || (state === "uploading" && rng() < 0.08)
   const dlspeed = state === "downloading" ? Math.round((0.3 + rng() * 6) * MIB) : 0
   const upspeed = active && state === "uploading" ? Math.round((50 + rng() * 4000) * KIB) : 0
-  const health = rng() < 0.012 ? "unregistered" : rng() < 0.004 ? "tracker_down" : undefined
+  // The second roll splits between down and error, so the draws from rng() stay the same.
+  const healthRoll = rng() < 0.012 ? -1 : rng()
+  const health = healthRoll < 0 ? "unregistered" : healthRoll < 0.004 ? "tracker_down" : healthRoll < 0.008 ? "tracker_error" : undefined
   const savePath = `/data/torrents/${category.split("/")[0]}`
   return {
     added_on: added,
@@ -476,7 +475,6 @@ function computeCounts(torrents: readonly Torrent[]): TorrentCounts {
       if (name === "active" || name === "paused" || name === "stopped") continue
       if (states.includes(t.state)) status[name] = (status[name] ?? 0) + 1
     }
-    if (t.progress === 1) status.completed++
     if (t.tracker_health) status[t.tracker_health]++
     categories[t.category] = (categories[t.category] ?? 0) + 1
     categorySizes[t.category] = (categorySizes[t.category] ?? 0) + t.size
@@ -519,20 +517,21 @@ function computeStats(torrents: readonly Torrent[]): TorrentStats {
   return stats
 }
 
-export const PREFERENCES = {
-  save_path: "/data/torrents",
-  temp_path: "/data/incomplete",
-  temp_path_enabled: false,
-  use_subcategories: true,
-  queueing_enabled: true,
-  auto_tmm_enabled: true,
-  add_trackers_enabled: false,
-  add_trackers: "",
-  excluded_file_names_enabled: false,
-  excluded_file_names: "",
-  torrent_content_layout: "Original",
-  listen_port: 51413,
-}
+// The catalog view that GET /instances/{id}/preferences returns.
+export const PREFERENCE_VIEW: PreferenceField[] = [
+  { key: "torrent_content_layout", value: "Original", tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: ["Original", "Subfolder", "NoSubfolder"] },
+  { key: "auto_tmm_enabled", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "use_subcategories", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "save_path", value: "/data/torrents", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete" },
+  { key: "temp_path_enabled", value: false, tab: "downloads", section: "savingManagement", control: "switch" },
+  { key: "temp_path", value: "/data/incomplete", tab: "downloads", section: "savingManagement", control: "path", optionSource: "pathAutocomplete", dependsOn: "temp_path_enabled" },
+  { key: "excluded_file_names_enabled", value: false, tab: "downloads", section: "excludedFileNames", control: "switch", readOnly: true },
+  { key: "excluded_file_names", value: "", tab: "downloads", section: "excludedFileNames", control: "list", dependsOn: "excluded_file_names_enabled", readOnly: true },
+  { key: "listen_port", value: 51413, tab: "connection", section: "listeningPort", control: "number" },
+  { key: "queueing_enabled", value: true, tab: "bittorrent", section: "queueing", control: "switch" },
+  { key: "add_trackers_enabled", value: false, tab: "bittorrent", section: "autoAddTrackers", control: "switch", readOnly: true },
+  { key: "add_trackers", value: "", tab: "bittorrent", section: "autoAddTrackers", control: "list", dependsOn: "add_trackers_enabled", readOnly: true },
+]
 
 export const CAPABILITIES: InstanceCapabilities = {
   supportsTorrentCreation: false,
@@ -549,14 +548,29 @@ export const CAPABILITIES: InstanceCapabilities = {
   subcategoriesAlwaysEnabled: false,
   supportsTorrentTmpPath: true,
   supportsPathAutocomplete: false,
+  supportsTestEmail: false,
   supportsFreeSpacePathSource: false,
   supportsSetRSSFeedURL: false,
   supportsShareLimitsAction: true,
   supportsShareLimitsMode: true,
+  supportsLiveReannounce: true,
+  supportsListFieldsV5: true,
+  supportsListCreatedBy: false,
   webAPIVersion: "2.11.4",
 }
 
-const PEER_CLIENTS = ["qBittorrent 5.1.2", "qBittorrent 5.0.4", "Transmission 4.0.6", "Deluge 2.1.1", "rTorrent 0.9.8", "libtorrent 2.0.11"] as const
+// [client, peer_id_client] as qBittorrent reports them, so the demo shows each peer client rule.
+const PEER_CLIENTS = [
+  ["qBittorrent/5.1.2", "-qB5120-"], ["qBittorrent/5.1.2", "-qB5120-"], ["qBittorrent/5.0.4", "-qB5040-"], ["qBittorrent/4.6.7", "-qB4670-"],
+  ["Transmission 4.0.6", "-TR4060-"], ["Transmission 3.00", "-TR3000-"],
+  ["Deluge/2.1.1 libtorrent/2.0.10", "-DE211s-"],
+  ["libTorrent 0.16.27", "-lt101B-"], ["libTorrent 0.13.8", "-lt0D80-"], ["rTorrent 0.13.8", "-lt0D80-"],
+  ["libtorrent/2.0.11", "-LT20B0-"], ["porla/0.52.0 libtorrent/2.1.2.0", "-PO0k00-"],
+  ["µTorrent 3.5.5", "-UT355W-"], ["BitComet 2.10", "-BC0210-"], ["Tixati 3.29", "TIX0329-"],
+  ["BiglyBT 3.6.0.0", "-BI3600-"], ["PicoTorrent/3.0.0", "-PI3000-"], ["LibreTorrent 3.4", "-Lr3400-"],
+  ["KTorrent 24.08.0", "-KT5400-"], ["WebTorrent/2.5.1", "-WW0251-"], ["aria2/1.37.0", "A2-1-37-"],
+  ["Flud 1.10", "-FL1100-"], ["", "-qB5120-"],
+] as const
 const COUNTRIES = [["DE", "Germany"], ["NL", "Netherlands"], ["US", "United States"], ["FR", "France"], ["SE", "Sweden"], ["CA", "Canada"], ["GB", "United Kingdom"], ["FI", "Finland"]] as const
 
 function buildDetails(t: Torrent, now: number): TorrentDetails {
@@ -590,7 +604,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
   }
 
   const domain = trackerDomain(t)
-  const trackerStatus = t.tracker_health === "unregistered" ? 4 : t.tracker_health === "tracker_down" ? 4 : 2
+  const trackerStatus = t.tracker_health === "unregistered" ? 4 : t.tracker_health === "tracker_down" ? 4 : t.tracker_health === "tracker_error" ? 5 : 2
   const trackers: TorrentTracker[] = [
     { url: "** [DHT] **", status: t.private ? 0 : 2, num_peers: 0, num_seeds: 0, num_leeches: 0, num_downloaded: 0, msg: t.private ? "This torrent is private" : "" },
     { url: "** [PeX] **", status: t.private ? 0 : 2, num_peers: 0, num_seeds: 0, num_leeches: 0, num_downloaded: 0, msg: t.private ? "This torrent is private" : "" },
@@ -602,7 +616,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
       num_seeds: t.num_complete,
       num_leeches: t.num_incomplete,
       num_downloaded: Math.floor(rng() * 5000),
-      msg: t.tracker_health === "unregistered" ? "Unregistered torrent" : t.tracker_health === "tracker_down" ? `Connection to ${domain} timed out` : "",
+      msg: t.tracker_health === "unregistered" ? "Unregistered torrent" : t.tracker_health === "tracker_down" ? `Connection to ${domain} timed out` : t.tracker_health === "tracker_error" ? "Internal tracker error" : "",
     },
   ]
 
@@ -613,9 +627,9 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
     const ip = `${10 + Math.floor(rng() * 200)}.${Math.floor(rng() * 255)}.${Math.floor(rng() * 255)}.${1 + Math.floor(rng() * 254)}`
     const port = 6881 + Math.floor(rng() * 50000)
     const seed = i < t.num_seeds
+    const [client, peer_id_client] = pick(rng, PEER_CLIENTS)
     const peer = {
-      key: `${ip}:${port}`, ip, port,
-      client: pick(rng, PEER_CLIENTS),
+      key: `${ip}:${port}`, ip, port, client, peer_id_client,
       connection: rng() < 0.7 ? "uTP" : "BT",
       flags: seed ? "D" : "U",
       flags_desc: seed ? "D = interested (local) and unchoked (peer)" : "U = interested (peer) and unchoked (local)",
@@ -651,7 +665,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
     hash: t.hash,
     infohash_v1: t.infohash_v1,
     infohash_v2: t.infohash_v2,
-    is_private: t.private,
+    is_private: t.private ?? false,
     last_seen: t.seen_complete || -1,
     name: t.name,
     nb_connections: peerCount,
@@ -661,7 +675,7 @@ function buildDetails(t: Torrent, now: number): TorrentDetails {
     piece_size: pieceSize,
     pieces_have: piecesHave,
     pieces_num: piecesNum,
-    reannounce: t.reannounce,
+    reannounce: t.reannounce ?? 0,
     save_path: t.save_path,
     seeding_time: t.seeding_time,
     seeds: t.num_seeds,
@@ -859,7 +873,6 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         categories: primary ? { ...primary.categories } : {},
         tags: primary ? [...primary.tags].sort() : [],
         serverState: primary ? { ...primary.serverState } : undefined,
-        preferences: PREFERENCES as AppPreferences,
         useSubcategories: true,
         trackerHealthSupported: true,
         cacheMetadata: { source: "fresh", age: 0, isStale: false },
@@ -1066,7 +1079,7 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
         username: "admin",
         tlsSkipVerify: false,
         hasLocalFilesystemAccess: false,
-        capabilities: { read: false, identity: false, write: false, content: false },
+        capabilities: { read: false, identity: false, trustedIdentity: false, write: false, content: false },
         filesystemMode: "none",
         useHardlinks: false,
         hardlinkBaseDir: "",

@@ -178,19 +178,17 @@ describe("isHardlinkManaged", () => {
 })
 
 describe("local match type classification", () => {
-  it("classifies content-path matches as delete-relevant and breakable", () => {
+  it("classifies content-path matches as breakable", () => {
     expect(getLocalMatchTypeInfo("content_path")).toEqual({
-      deleteRelevant: true,
       independentlyUsable: false,
       breaksWhenSourceDeleted: true,
     })
   })
 
   it.each(["hardlink", "reflink"] as const)(
-    "classifies %s matches as delete-relevant and independently usable",
+    "classifies %s matches as independently usable",
     (matchType) => {
       expect(getLocalMatchTypeInfo(matchType)).toEqual({
-        deleteRelevant: true,
         independentlyUsable: true,
         breaksWhenSourceDeleted: false,
       })
@@ -198,9 +196,12 @@ describe("local match type classification", () => {
   )
 
   it.each(["name", "release"] as const)(
-    "excludes %s matches from delete suggestions",
+    "classifies %s matches as neither usable nor breakable",
     (matchType) => {
-      expect(getLocalMatchTypeInfo(matchType).deleteRelevant).toBe(false)
+      expect(getLocalMatchTypeInfo(matchType)).toEqual({
+        independentlyUsable: false,
+        breaksWhenSourceDeleted: false,
+      })
     }
   )
 
@@ -269,6 +270,20 @@ describe("useLocalCrossSeedMatches", () => {
     expect(result.current.matchingTorrents[0].total_size).toBe(12345)
     expect(result.current.allInstances).toEqual([{ id: 2, name: "seedbox" }])
     expect(result.current.pendingQueryCount).toBe(0)
+    expect(result.current.isLoadingMatches).toBe(false)
+  })
+
+  it("surfaces a rejected lookup instead of an empty match list", async () => {
+    mockedApi.getLocalCrossSeedMatches.mockRejectedValue(new Error("overlap check failed"))
+    const { result } = renderHook(
+      () => useLocalCrossSeedMatches(2, makeTorrent({ hash: "h" }), true),
+      { wrapper: makeWrapper() }
+    )
+
+    await waitFor(() => {
+      expect(result.current.matchesError).not.toBeNull()
+    })
+    expect(result.current.matchingTorrents).toEqual([])
     expect(result.current.isLoadingMatches).toBe(false)
   })
 

@@ -5,6 +5,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CopyButton } from "@/components/ui/copy-button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -13,10 +14,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { isHardlinkManaged, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { getMatchTypeLabel, isHardlinkManaged, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxFileName, getLinuxTracker } from "@/lib/incognito"
-import { getStateLabel } from "@/lib/torrent-state-utils"
-import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { cn, formatBytes } from "@/lib/utils"
 import type { Instance } from "@/types"
 import {
   createColumnHelper,
@@ -25,15 +26,14 @@ import {
   type SortingState
 } from "@tanstack/react-table"
 import { sortableDetailsTableFeatures } from "../tanstackTableFeatures"
-import type { TFunction } from "i18next"
-import { Copy, Loader2, Trash2 } from "lucide-react"
+import { Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
 
 interface CrossSeedTableProps {
   matches: CrossSeedTorrent[]
   loading: boolean
+  loadFailed: boolean
   incognitoMode: boolean
   selectedTorrents: Set<string>
   onToggleSelection: (key: string) => void
@@ -47,73 +47,10 @@ interface CrossSeedTableProps {
 
 const columnHelper = createColumnHelper<typeof sortableDetailsTableFeatures, CrossSeedTorrent>()
 
-function getStatusInfo(match: CrossSeedTorrent, t: TFunction): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
-  const trackerHealth = match.tracker_health ?? null
-  const label = getStateLabel(match.state, t)
-  let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
-  const className = ""
-
-  if (trackerHealth === "unregistered") {
-    return { label: t("crossSeedTable.statusLabels.unregistered"), variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
-  } else if (trackerHealth === "tracker_down") {
-    return { label: t("crossSeedTable.statusLabels.trackerDown"), variant: "outline", className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10" }
-  } else if (trackerHealth === "tracker_error") {
-    return { label: t("crossSeedTable.statusLabels.trackerError"), variant: "outline", className: "text-orange-500 border-orange-500/40 bg-orange-500/10" }
-  }
-
-  if (match.state === "downloading" || match.state === "uploading") {
-    variant = "default"
-  } else if (
-    match.state === "stalledDL" ||
-    match.state === "stalledUP" ||
-    match.state === "pausedDL" ||
-    match.state === "pausedUP" ||
-    match.state === "queuedDL" ||
-    match.state === "queuedUP"
-  ) {
-    variant = "secondary"
-  } else if (match.state === "error" || match.state === "missingFiles") {
-    variant = "destructive"
-  }
-
-  return { label, variant, className }
-}
-
-function getMatchTypeLabel(matchType: string, t: (key: string, options?: Record<string, unknown>) => string): { label: string; description: string } {
-  switch (matchType) {
-    case "content_path":
-      return {
-        label: t("crossSeedTable.matchTypes.contentPath.label"),
-        description: t("crossSeedTable.matchTypes.contentPath.description"),
-      }
-    case "name":
-      return {
-        label: t("crossSeedTable.matchTypes.name.label"),
-        description: t("crossSeedTable.matchTypes.name.description"),
-      }
-    case "release":
-      return {
-        label: t("crossSeedTable.matchTypes.release.label"),
-        description: t("crossSeedTable.matchTypes.release.description"),
-      }
-    case "hardlink":
-      return {
-        label: t("crossSeedTable.matchTypes.hardlink.label"),
-        description: t("crossSeedTable.matchTypes.hardlink.description"),
-      }
-    case "reflink":
-      return {
-        label: t("crossSeedTable.matchTypes.reflink.label"),
-        description: t("crossSeedTable.matchTypes.reflink.description"),
-      }
-    default:
-      return { label: matchType, description: matchType }
-  }
-}
-
 export const CrossSeedTable = memo(function CrossSeedTable({
   matches,
   loading,
+  loadFailed,
   incognitoMode,
   selectedTorrents,
   onToggleSelection,
@@ -250,7 +187,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     columnHelper.accessor("state", {
       header: t("crossSeedTable.status"),
       cell: (info) => {
-        const { label, variant, className } = getStatusInfo(info.row.original, t)
+        const { label, variant, className } = getStatusBadgeProps(info.row.original, true, t)
         return (
           <Badge variant={variant} className={cn("text-[10px] px-1.5 py-0", className)}>
             {label}
@@ -299,21 +236,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                 <p className="text-xs font-mono break-all">{path}</p>
               </TooltipContent>
             </Tooltip>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0"
-              onClick={(e) => {
-                e.stopPropagation()
-                copyTextToClipboard(path).then(() => {
-                  toast.success(t("crossSeedTable.toast.savePathCopied"))
-                }).catch(() => {
-                  toast.error(t("crossSeedTable.toast.copyFailed"))
-                })
-              }}
-            >
-              <Copy className="h-3 w-3" />
-            </Button>
+            <CopyButton value={path} label={t("crossSeedTable.savePath")} className="h-5 w-5" iconClassName="h-3 w-3" />
           </div>
         )
       },
@@ -333,6 +256,14 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
+    )
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="flex items-center justify-center h-full text-destructive text-sm">
+        {t("crossSeedTable.loadFailed")}
       </div>
     )
   }

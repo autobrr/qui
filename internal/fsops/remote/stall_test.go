@@ -15,9 +15,9 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// newStallBackend returns a backend whose connection is already open, so a
-// short deadline on the call under test covers the stalled readdir alone and
-// not the dial, the handshake and the sftp init.
+// newStallBackend returns a backend whose connection is already open, so the
+// call under test reaches the stalled readdir at once and not after the dial,
+// the handshake and the sftp init.
 func newStallBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	t.Helper()
 
@@ -28,6 +28,24 @@ func newStallBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	return backend, server
 }
 
+// cancelOnStall returns a context that is canceled once a request reaches a
+// stall of the server, so the cancel covers the stall and not something
+// before it.
+func cancelOnStall(t *testing.T, server *sshtest.Server) context.Context {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	go func() {
+		select {
+		case <-server.Stalled():
+		case <-ctx.Done():
+		}
+		cancel()
+	}()
+	return ctx
+}
+
 // pkg/sftp closes the directory handle with a background context, so without
 // await a readdir the server never answers holds the caller past its deadline.
 // Giving up must not cost the other callers their shared connection.
@@ -35,14 +53,14 @@ func TestReadDirHonoursContextOnAStalledServer(t *testing.T) {
 	t.Parallel()
 
 	backend, server := newStallBackend(t)
+	ctx := cancelOnStall(t, server)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-	defer cancel()
 	start := time.Now()
 	_, err := backend.ReadDir(ctx, "/")
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Less(t, time.Since(start), 2*time.Second, "ReadDir must return on its deadline")
-	require.Positive(t, server.StalledReadDirs(), "the readdir must have reached the stall")
+	require.ErrorIs(t, err, context.Canceled)
+	// The stall ends on its own after stallTimeout, and pkg/sftp then returns
+	// the same error, so only the time tells a ReadDir that ignored its cancel.
+	assert.Less(t, time.Since(start), 2*time.Second, "ReadDir must return on its cancel")
 
 	// The server answers requests in order, so the stall has to end before
 	// anything else can be answered on the session.
@@ -58,9 +76,8 @@ func TestWalkDirEndsOnCancelOnAStalledServer(t *testing.T) {
 	t.Parallel()
 
 	backend, server := newStallBackend(t)
+	ctx := cancelOnStall(t, server)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-	defer cancel()
 	start := time.Now()
 	entries, err := backend.WalkDir(ctx, "/", fsops.WalkOptions{})
 	require.NoError(t, err)
@@ -68,8 +85,9 @@ func TestWalkDirEndsOnCancelOnAStalledServer(t *testing.T) {
 	for entry := range entries {
 		got = append(got, entry)
 	}
-	assert.Less(t, time.Since(start), 2*time.Second, "the walk must end on its deadline")
-	require.Positive(t, server.StalledReadDirs(), "the walk must have reached the stall")
+	// The stall ends on its own after stallTimeout, and the entries are then
+	// the same, so only the time tells a walk that ignored its cancel.
+	assert.Less(t, time.Since(start), 2*time.Second, "the walk must end on its cancel")
 	require.Len(t, got, 1, "only the root is sent before the stalled readdir")
 	assert.NoError(t, got[0].Err, "a cancelled walk ends without an Err entry")
 }

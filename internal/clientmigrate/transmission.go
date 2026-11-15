@@ -123,10 +123,13 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
+		resumeFile.Destination = replacePath(resumeFile.Destination, i.opts.PathReplaces)
+
 		// a corrupt entry with an unusable download dir would import a torrent
-		// qBittorrent resolves against its own default download dir
+		// qBittorrent resolves against its own default download dir; a
+		// download dir from another OS needs --replace-path
 		if !filepath.IsAbs(filepath.Clean(resumeFile.Destination)) {
-			log.Warn().Msgf("(%d/%d) %s has an unusable download dir %q, skipping", positionNum, totalJobs, metaInfo.Name, resumeFile.Destination)
+			log.Warn().Msgf("(%d/%d) %s has an unusable download dir %q, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, resumeFile.Destination)
 			skipped++
 			continue
 		}
@@ -180,7 +183,7 @@ func (i *TransmissionImport) Migrate() error {
 			QbtCategory:               "",
 			QbtContentLayout:          "Original",
 			QbtFirstLastPiecePriority: 0,
-			QbtName:                   "",
+			QbtName:                   transmissionName(resumeFile, &metaInfo),
 			QbtRatioLimit:             transmissionRatioLimit(resumeFile.RatioLimit),
 			QbtSavePath:               resumeFile.Destination,
 			QbtSeedStatus:             1,
@@ -211,6 +214,10 @@ func (i *TransmissionImport) Migrate() error {
 
 		// handle trackers
 		newFastResume.Trackers = file.UpvertedAnnounceList()
+
+		// renames live only in the resume file; the .torrent keeps the
+		// original names, so the data on disk needs mapped_files
+		newFastResume.MappedFiles = transmissionMappedFiles(resumeFile, &metaInfo)
 
 		newFastResume.FilePriority = transmissionFilePriorities(resumeFile, len(metaInfo.UpvertedFiles()))
 
@@ -351,6 +358,46 @@ func transmissionFilePriorities(resume *TransmissionResumeFile, fileCount int) [
 	return prios
 }
 
+// transmissionName returns the renamed torrent name, or "" when the torrent
+// keeps its metainfo name
+func transmissionName(resume *TransmissionResumeFile, info *metainfo.Info) string {
+	if resume.Name == info.BestName() {
+		return ""
+	}
+	return resume.Name
+}
+
+// transmissionMappedFiles maps the resume file's per-file paths to libtorrent
+// mapped_files, or nil when no file differs from the metainfo path.
+// Transmission <=3.x writes "" for files it did not rename, 4.x writes every
+// path; both are relative to the download dir and start with the torrent name
+// for multi-file torrents
+func transmissionMappedFiles(resume *TransmissionResumeFile, info *metainfo.Info) []string {
+	files := info.UpvertedFiles()
+	if len(resume.Files) != len(files) {
+		return nil
+	}
+
+	name := info.BestName()
+	mapped := make([]string, len(files))
+	renamed := false
+	for i, f := range files {
+		original := name
+		if info.IsDir() {
+			original = strings.Join(append([]string{name}, f.BestPath()...), "/")
+		}
+		if p := resume.Files[i]; p != "" && p != original {
+			mapped[i] = p
+			renamed = true
+		}
+	}
+
+	if !renamed {
+		return nil
+	}
+	return mapped
+}
+
 func boolToInt(b bool) int64 {
 	if b {
 		return 1
@@ -416,7 +463,6 @@ type TransmissionResumeFile struct {
 	Labels                 []string                         `bencode:"labels"`
 	MaxPeers               int64                            `bencode:"max-peers"`
 	Paused                 bool                             `bencode:"paused"`
-	Peers                  string                           `bencode:"peers2"`
 	ActivityDate           int64                            `bencode:"activity-date"`
 	AddedDate              int64                            `bencode:"added-date"`
 	Dnd                    []int                            `bencode:"dnd"`

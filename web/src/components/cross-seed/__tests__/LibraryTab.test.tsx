@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
@@ -20,7 +20,9 @@ const mocks = vi.hoisted(() => ({
   },
   searchSettings: { instanceId: 1, categories: [], tags: [], indexerIds: [] as number[], intervalSeconds: 60, cooldownMinutes: 720 },
   instances: [{ id: 1, name: "main", isActive: true }],
+  searchRuns: [] as unknown[],
   indexers: [] as { id: number; indexer_id: string; name: string; base_url: string; enabled: boolean }[],
+  gazelleSites: [] as { site: string; name: string; shortName: string; indexerId: number; active: boolean; replacedIndexerIds: number[] }[],
   patchSearch: vi.fn(),
   patchSettings: vi.fn(),
   startRun: vi.fn(),
@@ -29,7 +31,16 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, unknown>) => {
+      if (opts && "crossSeed" in opts) return `${key}:${String(opts.source)}->${String(opts.crossSeed)}`
+      if (opts && "sites" in opts) return `${key}:${String(opts.sites)}`
+      if (opts && "asked" in opts) return `${key}:${String(opts.name)} ${String(opts.asked)}/${String(opts.matched)}/${String(opts.failed)}`
+      if (opts && "counts" in opts) return `${key}:${String(opts.counts)} +${String(opts.notAsked)} (${String(opts.reasons)})`
+      if (opts && "reason" in opts) return `${key}:${String(opts.count)} ${String(opts.reason)}`
+      return key
+    },
+  }),
 }))
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@tanstack/react-router", () => ({
@@ -46,8 +57,9 @@ vi.mock("@/lib/api", () => ({
     getCrossSeedSearchSettings: mocks.getSearchSettings,
     getInstances: () => Promise.resolve(mocks.instances),
     listTorznabIndexers: () => Promise.resolve(mocks.indexers),
+    getCrossSeedGazelleSites: () => Promise.resolve(mocks.gazelleSites),
     getCrossSeedSearchStatus: () => Promise.resolve({ running: false }),
-    listCrossSeedSearchRuns: () => Promise.resolve([]),
+    listCrossSeedSearchRuns: () => Promise.resolve(mocks.searchRuns),
     getCategories: () => Promise.resolve({}),
     getTags: () => Promise.resolve([]),
     patchCrossSeedSearchSettings: mocks.patchSearch,
@@ -59,13 +71,28 @@ vi.mock("@/lib/api", () => ({
 import type { CrossSeedAutomationSettings } from "@/types"
 import { LibraryTab } from "../LibraryTab"
 
+beforeEach(() => {
+  // Clicking Start opens its tooltip, and Radix measures the tooltip through ResizeObserver, which jsdom lacks.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
   Object.assign(mocks.settings, { gazelleEnabled: false, orpheusApiKey: "", redactedApiKey: "" })
   mocks.searchSettings.indexerIds = []
   mocks.indexers = []
+  mocks.gazelleSites = []
+  mocks.searchRuns = []
 })
+
+const redSite = { site: "redacted.sh", name: "Redacted (API)", shortName: "Redacted", indexerId: -1001 }
+const opsSite = { site: "orpheus.network", name: "Orpheus (API)", shortName: "Orpheus", indexerId: -1002 }
 
 function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -147,6 +174,10 @@ describe("LibraryTab save", () => {
       { id: 2, indexer_id: "redacted", name: "RED", base_url: "https://redacted.example.invalid", enabled: true },
       { id: 3, indexer_id: "other", name: "Other", base_url: "https://other.example.invalid", enabled: true },
     ]
+    mocks.gazelleSites = [
+      { ...redSite, active: true, replacedIndexerIds: [2] },
+      { ...opsSite, active: true, replacedIndexerIds: [1] },
+    ]
     mocks.searchSettings.indexerIds = [1, 2]
     mocks.startRun.mockResolvedValue({ id: 1 })
     renderTab()
@@ -156,5 +187,74 @@ describe("LibraryTab save", () => {
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
     expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], disableTorznab: false })
+  })
+
+  it("hides the Torznab indexer only of the site that has a key", async () => {
+    Object.assign(mocks.settings, { gazelleEnabled: true, redactedApiKey: "red" })
+    mocks.indexers = [
+      { id: 1, indexer_id: "orpheus", name: "OPS", base_url: "https://orpheus.example.invalid", enabled: true },
+      { id: 2, indexer_id: "redacted", name: "RED", base_url: "https://redacted.example.invalid", enabled: true },
+    ]
+    mocks.gazelleSites = [
+      { ...redSite, active: true, replacedIndexerIds: [2] },
+      { ...opsSite, active: false, replacedIndexerIds: [] },
+    ]
+    mocks.searchSettings.indexerIds = [1, 2]
+    mocks.startRun.mockResolvedValue({ id: 1 })
+    renderTab()
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "scan.startRun" })).toBeTruthy())
+    await waitFor(() => expect(screen.queryByText("scan.indexers.helpAllEnabledNonOpsRedQueried")).toBeNull())
+    fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
+
+    await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [1] })
+  })
+})
+
+describe("LibraryTab run results", () => {
+  const run = (results: unknown[]) => ({
+    id: 7, instanceId: 1, status: "success", startedAt: "2026-01-01T00:00:00Z", totalTorrents: 1, processed: 1,
+    torrentsWithCrossSeeds: 1, crossSeedsAdded: 1, torrentsFailed: 0, torrentsSkipped: 0, filters: {}, indexerIds: [],
+    createdAt: "2026-01-01T00:00:00Z", results,
+  })
+  const result = { torrentHash: "abc", torrentName: "Cedar.Harbor.S01E01", indexerName: "alpha", releaseTitle: "Cedar.Harbor.S01E01", processedAt: "2026-01-01T00:00:00Z" }
+
+  async function openRun() {
+    renderTab()
+    fireEvent.click(await screen.findByText("scan.recentRuns"))
+    fireEvent.click(await screen.findByText("scan.torrentsCount"))
+  }
+
+  it("shows one RED/OPS summary line on the run", async () => {
+    mocks.searchRuns = [{
+      ...run([]),
+      gazelleSummary: [
+        { site: "redacted.sh", name: "Redacted", asked: 180, matched: 12, failed: 3, notAsked: { not_music: 20 } },
+        { site: "orpheus.network", name: "Orpheus", asked: 4, matched: 0, failed: 0 },
+      ],
+    }]
+    renderTab()
+    fireEvent.click(await screen.findByText("scan.recentRuns"))
+
+    expect(await screen.findByText(
+      "scan.gazelleSummary.line:scan.gazelleSummary.siteWithNotAsked:scan.gazelleSummary.site:Redacted 180/12/3 +20 " +
+      "(scan.gazelleSummary.reasonCount:20 scan.gazelleSummary.reasons.notMusic); scan.gazelleSummary.site:Orpheus 4/0/0"
+    )).toBeTruthy()
+  })
+
+  it("names the Cross-seed instance that received a routed add", async () => {
+    mocks.searchRuns = [run([{ ...result, status: "added", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }])]
+    await openRun()
+
+    expect(await screen.findByText("crossseed:route.foundOnAddedTo:main->seeds")).toBeTruthy()
+  })
+
+  it("shows no instance on an add that is not routed", async () => {
+    mocks.searchRuns = [run([{ ...result, status: "added" }])]
+    await openRun()
+
+    expect(await screen.findByText("Cedar.Harbor.S01E01")).toBeTruthy()
+    expect(screen.queryByText(/route\./)).toBeNull()
   })
 })

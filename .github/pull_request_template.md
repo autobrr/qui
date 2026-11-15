@@ -6,7 +6,7 @@ Fixes # (issue)
 
 ## Breaking change
 
-<!--- Write "No breaking change." unless existing users must act after they update, or something they rely on stops working. Examples: an API field or a setting is removed, saved data can't go back to an older version. Otherwise say what they must do, and a maintainer adds the BREAKING CHANGE label. --->
+<!--- Write "No breaking change." unless existing users must act after they update, or something they rely on stops working. Examples: an API field or a setting is removed, saved data can't go back to an older version. Otherwise say what they must do. A maintainer then adds the BREAKING CHANGE label and puts ! in the title, for example feat(api)!: ... The PR title check fails until the PR has both. --->
 
 ## Behaviour change
 

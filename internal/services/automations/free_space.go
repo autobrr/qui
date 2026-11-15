@@ -27,33 +27,27 @@ func resolveFreeSpaceSource(src *models.FreeSpaceSource) models.FreeSpaceSource 
 }
 
 // GetFreeSpaceSourceKey returns a unique key for the given source.
-// Keys are "qbt" for qBittorrent source or "path:/cleaned/path" for path sources.
+// Keys are "qbt" for the qBittorrent default directory, "path:/cleaned/path" for
+// filesystem backend sources, and "qbitPath:<path>" for paths read on the qBittorrent host.
 func GetFreeSpaceSourceKey(src *models.FreeSpaceSource) string {
 	resolved := resolveFreeSpaceSource(src)
+	trimmed := strings.TrimSpace(resolved.Path)
+	if trimmed == "" {
+		return FreeSpaceSourceKeyQBittorrent
+	}
+
 	switch resolved.Type {
 	case models.FreeSpaceSourcePath:
-		trimmed := strings.TrimSpace(resolved.Path)
-		if trimmed == "" {
-			return FreeSpaceSourceKeyQBittorrent
-		}
-
 		// path, not filepath: the source is a POSIX path on the host that
 		// holds the disk, which is not the qui host when access is over SSH.
-		cleanPath := path.Clean(trimmed)
-		return "path:" + cleanPath
+		return "path:" + path.Clean(trimmed)
+	case models.FreeSpaceSourceQbitPath:
+		// Remote path: keep the qBittorrent host's separators, so a Windows host
+		// and a POSIX host never collapse onto the same key.
+		return "qbitPath:" + trimmed
 	default:
 		return FreeSpaceSourceKeyQBittorrent
 	}
-}
-
-// GetFreeSpaceRuleKey returns a unique key for the given rule's free space state.
-// The key includes both the source key and rule ID to ensure each rule has its own
-// projection state, even when multiple rules share the same disk/source.
-func GetFreeSpaceRuleKey(rule *models.Automation) string {
-	if rule == nil {
-		return FreeSpaceSourceKeyQBittorrent + "|rule:0"
-	}
-	return GetFreeSpaceSourceKey(rule.FreeSpaceSource) + fmt.Sprintf("|rule:%d", rule.ID)
 }
 
 // qbtFreeSpace returns qBittorrent's reported free space for the instance.
@@ -67,6 +61,23 @@ func qbtFreeSpace(ctx context.Context, syncManager *qbittorrent.SyncManager, ins
 	freeSpace, err := syncManager.GetFreeSpace(ctx, instance.ID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get free space from qBittorrent: %w", err)
+	}
+	return freeSpace, nil
+}
+
+// qbtFreeSpaceAtPath returns the free space qBittorrent reports at p on its own host.
+func qbtFreeSpaceAtPath(ctx context.Context, syncManager *qbittorrent.SyncManager, instance *models.Instance, p string) (int64, error) {
+	if syncManager == nil {
+		return 0, errors.New("syncManager is nil")
+	}
+	if instance == nil {
+		return 0, errors.New("instance required for qBittorrent path free space source")
+	}
+
+	// An unmeasurable path arrives as an error, so conditions never read it as zero free space.
+	freeSpace, err := syncManager.GetFreeSpaceAtPath(ctx, instance.ID, p)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get free space at %s from qBittorrent: %w", p, err)
 	}
 	return freeSpace, nil
 }
@@ -88,7 +99,7 @@ func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance,
 			return 0, fmt.Errorf("no filesystem backend for free space path: %w", err)
 		}
 		if windowsLocalPathSource(fsInstance) {
-			return 0, errors.New("path-based free space source is not supported on Windows")
+			return 0, errors.New("path-based free space source is not supported on Windows with local filesystem access")
 		}
 		p := backend.Paths().Clean(strings.TrimSpace(resolved.Path))
 		if p == "" || p == "." {
@@ -99,6 +110,14 @@ func (s *Service) freeSpaceBytes(ctx context.Context, instance *models.Instance,
 			return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", p, err)
 		}
 		return result.BytesAvailable, nil
+
+	case models.FreeSpaceSourceQbitPath:
+		// The path belongs to the qBittorrent host, so qui passes it through unchanged.
+		p := strings.TrimSpace(resolved.Path)
+		if p == "" {
+			return 0, errors.New("free space source path is empty")
+		}
+		return qbtFreeSpaceAtPath(ctx, s.syncManager, instance, p)
 
 	default:
 		return 0, fmt.Errorf("unsupported free space source type: %s", resolved.Type)

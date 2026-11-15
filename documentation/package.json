@@ -26,12 +26,12 @@
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@mdx-js/react": "^3.1.1",
     "clsx": "^2.1.1",
-    "docusaurus-plugin-llms": "^0.6.0",
-    "mdast-util-from-markdown": "2.0.3",
+    "docusaurus-plugin-llms": "^0.6.1",
+    "mdast-util-from-markdown": "2.1.0",
     "mdast-util-to-string": "4.0.0",
     "prism-react-renderer": "^2.4.1",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.10.2",

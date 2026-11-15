@@ -201,3 +201,51 @@ func TestDirScanStore_UpdateDirectory_ClearsFileIDsWhenTargetInstanceChanges(t *
 	require.Len(t, files, 1)
 	require.Empty(t, files[0].FileID)
 }
+
+func TestDirScanStore_UpdateDirectory_KeepsFileIDsWhenTheUpdateFails(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	first, err := instanceStore.Create(ctx, "First", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	second, err := instanceStore.Create(ctx, "Second", "http://localhost:8081", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    first.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	id := hardlink.UnixFileID(7, 42).Bytes()
+	require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
+		DirectoryID: dir.ID,
+		FilePath:    "/data/media/a.mkv",
+		FileSize:    1,
+		FileModTime: time.Now(),
+		FileID:      id,
+		Status:      models.DirScanFileStatusPending,
+	}))
+
+	// The handler validates the target instance but not the arr instance, so a
+	// missing arr instance reaches the store and the foreign key rejects the row.
+	missingArr := 999999
+	_, err = store.UpdateDirectory(ctx, dir.ID, &models.DirScanDirectoryUpdateParams{
+		TargetInstanceID: &second.ID,
+		ArrInstanceID:    &missingArr,
+	})
+	require.Error(t, err)
+
+	got, err := store.GetDirectory(ctx, dir.ID)
+	require.NoError(t, err)
+	require.Equal(t, first.ID, got.TargetInstanceID, "the rejected update keeps the old target")
+	files, err := store.ListFiles(ctx, dir.ID, nil, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, id, files[0].FileID, "the rejected update keeps the stored IDs")
+}

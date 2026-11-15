@@ -72,7 +72,7 @@ export function collectMissingKeysForSource({
 
   const localeCache = new Map()
   const missingKeys = new Set()
-  const keyPropertyPattern = /\b(labelKey|titleKey|placeholderKey|descriptionKey):\s*"([^"]+)"/g
+  const keyPropertyPattern = /\b(labelKey|titleKey|placeholderKey|descriptionKey|readOnlyNoteKey):\s*"([^"]+)"/g
   const translationCallPattern = /\b(?:i18n\.)?t\(\s*"([^"]+)"(?:\s*,\s*(\{[\s\S]*?\}))?\s*\)/g
 
   function getLocale(namespace) {
@@ -117,14 +117,13 @@ export function collectMissingKeysForSource({
     checkKey(namespace, key)
   }
 
-  if (!defaultNamespace) {
-    return [...missingKeys]
-  }
+  // A helper that takes t as a parameter names its namespace with the directive.
+  const callNamespace = defaultNamespace ?? directiveNamespace
 
   for (const match of source.matchAll(translationCallPattern)) {
     const rawKey = match[1]
     const optionsSource = match[2]
-    const { namespace, key } = resolveNamespaceAndKey(rawKey, optionsSource, defaultNamespace)
+    const { namespace, key } = resolveNamespaceAndKey(rawKey, optionsSource, callNamespace)
 
     if (!namespace) {
       continue
