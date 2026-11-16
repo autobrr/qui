@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { changeLanguage } from "@/i18n"
-import { _resetClientSettingsForTests, markClientSettingsUnavailable, getDisplayProfiles } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, createDisplayProfile, markClientSettingsUnavailable, getDisplayProfiles } from "@/lib/client-settings"
 
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
@@ -34,11 +34,12 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("NewDisplayProfileDialog", () => {
-  it("names the profile that it copies", () => {
+  it("names the profile of this browser as the one that it copies", () => {
+    createDisplayProfile("Laptop")
     renderDialog()
 
     expect(screen.getByText(/columns, density, sidebars, and filters/).textContent)
-      .toBe("Copies Default: columns, density, sidebars, and filters. This browser then uses it.")
+      .toBe("Copies Laptop: columns, density, sidebars, and filters. This browser then uses it.")
   })
 
   it("counts the characters of the name out of 32", () => {
