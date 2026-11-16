@@ -1,0 +1,129 @@
+/* @name: Kitsune
+ * @description: A mythical, intelligent fox spirit from Japanese folklore
+ */
+
+ :root {
+    /* Core surfaces - light mode */
+    --background: oklch(0.98 0.005 350);
+    --foreground: oklch(0.25 0.02 285);
+    --card: oklch(0.96 0.008 350);
+    --card-foreground: oklch(0.25 0.02 285);
+    --popover: oklch(0.99 0.003 350);
+    --popover-foreground: oklch(0.25 0.02 285);
+
+    /* Kitsune pink - slightly deeper for light mode contrast */
+    --primary: oklch(0.65 0.15 350);
+    --primary-foreground: oklch(1.00 0 0);
+
+    /* Muted surfaces */
+    --secondary: oklch(0.93 0.015 350);
+    --secondary-foreground: oklch(0.30 0.02 285);
+    --muted: oklch(0.93 0.015 350);
+    --muted-foreground: oklch(0.50 0.02 285);
+
+    /* Accent */
+    --accent: oklch(0.92 0.04 350);
+    --accent-foreground: oklch(0.25 0.02 285);
+
+    /* Status */
+    --destructive: oklch(0.55 0.22 25);
+    --destructive-foreground: oklch(1.00 0 0);
+
+    /* UI */
+    --border: oklch(0.88 0.02 350);
+    --input: oklch(0.94 0.01 350);
+    --ring: oklch(0.65 0.15 350);
+
+    /* Charts (pink-biased) */
+    --chart-1: oklch(0.65 0.15 350);
+    --chart-2: oklch(0.60 0.12 330);
+    --chart-3: oklch(0.58 0.10 300);
+    --chart-4: oklch(0.70 0.10 40);
+    --chart-5: oklch(0.55 0.18 25);
+
+    /* Sidebar */
+    --sidebar: oklch(0.97 0.008 350);
+    --sidebar-foreground: oklch(0.30 0.02 285);
+    --sidebar-primary: oklch(0.65 0.15 350);
+    --sidebar-primary-foreground: oklch(1.00 0 0);
+    --sidebar-accent: oklch(0.92 0.04 350);
+    --sidebar-accent-foreground: oklch(0.25 0.02 285);
+    --sidebar-border: oklch(0.88 0.02 350);
+    --sidebar-ring: oklch(0.65 0.15 350);
+
+    /* Typography */
+    --font-sans: Inter;
+    --font-serif: Inter;
+    --font-mono: JetBrains Mono;
+
+    /* Shape */
+    --radius: 0.5rem;
+
+    /* Shadows - visible in light mode */
+    --shadow-2xs: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.05);
+    --shadow-xs: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.05);
+    --shadow-sm: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.08), 0 1px 2px -1px oklch(0.50 0.05 350 / 0.08);
+    --shadow: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.10), 0 1px 2px -1px oklch(0.50 0.05 350 / 0.10);
+    --shadow-md: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.10), 0 2px 4px -1px oklch(0.50 0.05 350 / 0.10);
+    --shadow-lg: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.10), 0 4px 6px -1px oklch(0.50 0.05 350 / 0.10);
+    --shadow-xl: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.10), 0 8px 10px -1px oklch(0.50 0.05 350 / 0.10);
+    --shadow-2xl: 0 1px 3px 0px oklch(0.50 0.05 350 / 0.20);
+
+    --tracking-normal: 0rem;
+    --spacing: 0.25rem;
+}
+
+/* Dark mode - OLED black */
+.dark {
+    --background: oklch(0.00 0 0);
+    --foreground: oklch(0.92 0.01 285);
+    --card: oklch(0.10 0.01 285);
+    --card-foreground: oklch(0.92 0.01 285);
+    --popover: oklch(0.10 0.01 285);
+    --popover-foreground: oklch(0.92 0.01 285);
+
+    --primary: oklch(0.78 0.10 350);
+    --primary-foreground: oklch(0.00 0 0);
+
+    --secondary: oklch(0.18 0.01 285);
+    --secondary-foreground: oklch(0.85 0.01 285);
+    --muted: oklch(0.18 0.01 285);
+    --muted-foreground: oklch(0.65 0.01 285);
+
+    --accent: oklch(0.22 0.04 350);
+    --accent-foreground: oklch(0.98 0 0);
+
+    --destructive: oklch(0.62 0.21 25);
+    --destructive-foreground: oklch(0.98 0 0);
+
+    --border: oklch(0.22 0.01 285);
+    --input: oklch(0.18 0.01 285);
+    --ring: oklch(0.78 0.10 350);
+
+    /* Charts (pink-biased) */
+    --chart-1: oklch(0.78 0.10 350);
+    --chart-2: oklch(0.72 0.08 330);
+    --chart-3: oklch(0.70 0.07 300);
+    --chart-4: oklch(0.82 0.06 40);
+    --chart-5: oklch(0.65 0.18 25);
+
+    /* Sidebar */
+    --sidebar: oklch(0.02 0 0);
+    --sidebar-foreground: oklch(0.80 0.01 285);
+    --sidebar-primary: oklch(0.78 0.10 350);
+    --sidebar-primary-foreground: oklch(0.00 0 0);
+    --sidebar-accent: oklch(0.20 0.03 350);
+    --sidebar-accent-foreground: oklch(0.98 0 0);
+    --sidebar-border: oklch(0.22 0.01 285);
+    --sidebar-ring: oklch(0.78 0.10 350);
+
+    /* Shadows - subtle for OLED */
+    --shadow-2xs: 0 0 0 0 transparent;
+    --shadow-xs: 0 0 0 0 transparent;
+    --shadow-sm: 0 0 0 0 transparent;
+    --shadow: 0 0 0 0 transparent;
+    --shadow-md: 0 0 0 0 transparent;
+    --shadow-lg: 0 0 0 0 transparent;
+    --shadow-xl: 0 0 0 0 transparent;
+    --shadow-2xl: 0 0 0 0 transparent;
+}

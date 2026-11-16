@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help themes-fetch themes-clean lint lint-full lint-ratchet lint-version typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -42,26 +42,6 @@ build/docker:
 build/dockerx:
 	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
-# Fetch the community themes into the licensed folder. The repo is public, so no token.
-# Without network, warn and build with the free themes only.
-themes-fetch:
-	@echo "Fetching community themes..."
-	@rm -rf .themes-temp internal/themes/assets/premium/*.css internal/themes/assets/premium/LICENSE
-	@if git clone --quiet --depth=1 --branch main --filter=blob:none --sparse \
-			https://github.com/autobrr/qui-community-themes.git .themes-temp && \
-		git -C .themes-temp sparse-checkout set --cone themes; then \
-		cp .themes-temp/themes/[!_]*.css .themes-temp/LICENSE internal/themes/assets/premium/ && \
-		echo "Community themes fetched"; \
-	else \
-		echo "WARNING: could not fetch the community themes, building with the free themes only"; \
-	fi
-	@rm -rf .themes-temp
-
-# Clean community themes
-themes-clean:
-	@echo "Cleaning community themes..."
-	rm -f internal/themes/assets/premium/*.css internal/themes/assets/premium/LICENSE
-
 # Build frontend
 frontend:
 	@echo "Building frontend..."
@@ -71,7 +51,7 @@ frontend:
 	cp -r $(WEB_DIR)/dist $(INTERNAL_WEB_DIR)/
 
 # Build backend
-backend: themes-fetch
+backend:
 	@echo "Building backend..."
 	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/qui
 
@@ -101,7 +81,7 @@ dev-frontend-expose:
 	cd $(WEB_DIR) && pnpm dev --host
 
 # Clean build artifacts
-clean: themes-clean
+clean:
 	@echo "Cleaning..."
 	rm -rf $(WEB_DIR)/dist $(INTERNAL_WEB_DIR)/dist $(BINARY_NAME) $(BUILD_DIR)
 
@@ -382,8 +362,6 @@ help:
 	@echo "  make docs-build     - Build documentation for production"
 	@echo ""
 	@echo "Other:"
-	@echo "  make themes-fetch   - Fetch the community themes"
-	@echo "  make themes-clean   - Clean the community themes"
 	@echo "  make clean          - Clean build artifacts"
 	@echo "  make deps           - Install dependencies"
 	@echo "  make help           - Show this help message"

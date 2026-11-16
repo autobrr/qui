@@ -1,0 +1,83 @@
+/* @name: Flexoki Light
+ * @description: Port of Flexoki by Steph Ango (stephango.com/flexoki, MIT) via the Omarchy Flexoki Light theme, with an ink-black dark companion palette
+ */
+
+:root {
+  --background: oklch(0.9901 0.0161 95.2193);
+  --foreground: oklch(0.1696 0.0017 17.3207);
+  --card: oklch(0.9514 0.0149 94.2012);
+  --card-foreground: oklch(0.1696 0.0017 17.3207);
+  --popover: oklch(0.9124 0.0138 92.9914);
+  --popover-foreground: oklch(0.1696 0.0017 17.3207);
+  --primary: oklch(0.4818 0.1315 254.7892);
+  --primary-foreground: oklch(0.9901 0.0161 95.2193);
+  --secondary: oklch(0.8463 0.0137 102.0529);
+  --secondary-foreground: oklch(0.1696 0.0017 17.3207);
+  --muted: oklch(0.9174 0.0149 98.2979);
+  --muted-foreground: oklch(0.5100 0.0078 88.6736);
+  --accent: oklch(0.9300 0.0300 254.7892);
+  --accent-foreground: oklch(0.4818 0.1315 254.7892);
+  --destructive: oklch(0.5450 0.1650 28.3794);
+  --destructive-foreground: oklch(0.9901 0.0161 95.2193);
+  --border: oklch(0.8463 0.0137 102.0529);
+  --input: oklch(0.9124 0.0138 92.9914);
+  --ring: oklch(0.4818 0.1315 254.7892);
+  --chart-1: oklch(0.4818 0.1315 254.7892);
+  --chart-2: oklch(0.5750 0.1150 119.3840);
+  --chart-3: oklch(0.5800 0.0950 186.5778);
+  --chart-4: oklch(0.5900 0.1550 350.4747);
+  --chart-5: oklch(0.5900 0.1350 56.4442);
+  --sidebar: oklch(0.9514 0.0149 94.2012);
+  --sidebar-foreground: oklch(0.1696 0.0017 17.3207);
+  --sidebar-primary: oklch(0.4818 0.1315 254.7892);
+  --sidebar-primary-foreground: oklch(0.9901 0.0161 95.2193);
+  --sidebar-accent: oklch(0.9300 0.0300 254.7892);
+  --sidebar-accent-foreground: oklch(0.4818 0.1315 254.7892);
+  --sidebar-border: oklch(0.8463 0.0137 102.0529);
+  --sidebar-ring: oklch(0.4818 0.1315 254.7892);
+  --ratio-bad: oklch(0.5450 0.1650 28.3794);
+  --ratio-almost: oklch(0.6100 0.1350 87.4591);
+  --ratio-good: oklch(0.4818 0.1315 254.7892);
+  --ratio-best: oklch(0.5750 0.1150 119.3840);
+  --radius: 0.375rem;
+}
+
+.dark {
+  --background: oklch(0.1696 0.0017 17.3207);
+  --foreground: oklch(0.8463 0.0137 102.0529);
+  --card: oklch(0.2100 0.0045 94.2012);
+  --card-foreground: oklch(0.8463 0.0137 102.0529);
+  --popover: oklch(0.2400 0.0045 94.2012);
+  --popover-foreground: oklch(0.8463 0.0137 102.0529);
+  --primary: oklch(0.5988 0.1104 246.9964);
+  --primary-foreground: oklch(0.1696 0.0017 17.3207);
+  --secondary: oklch(0.3000 0.0055 94.2012);
+  --secondary-foreground: oklch(0.8463 0.0137 102.0529);
+  --muted: oklch(0.2650 0.0050 94.2012);
+  --muted-foreground: oklch(0.6169 0.0078 88.6736);
+  --accent: oklch(0.2400 0.0350 246.9964);
+  --accent-foreground: oklch(0.7000 0.0850 246.9964);
+  --destructive: oklch(0.6200 0.1650 28.3794);
+  --destructive-foreground: oklch(0.1696 0.0017 17.3207);
+  --border: oklch(0.3000 0.0055 94.2012);
+  --input: oklch(0.1450 0.0030 94.2012);
+  --ring: oklch(0.5988 0.1104 246.9964);
+  --chart-1: oklch(0.5988 0.1104 246.9964);
+  --chart-2: oklch(0.6513 0.1242 119.3840);
+  --chart-3: oklch(0.6701 0.0999 186.5778);
+  --chart-4: oklch(0.6348 0.1565 350.4747);
+  --chart-5: oklch(0.6554 0.1406 56.4442);
+  --sidebar: oklch(0.2100 0.0045 94.2012);
+  --sidebar-foreground: oklch(0.8463 0.0137 102.0529);
+  --sidebar-primary: oklch(0.5988 0.1104 246.9964);
+  --sidebar-primary-foreground: oklch(0.1696 0.0017 17.3207);
+  --sidebar-accent: oklch(0.2400 0.0350 246.9964);
+  --sidebar-accent-foreground: oklch(0.7000 0.0850 246.9964);
+  --sidebar-border: oklch(0.3000 0.0055 94.2012);
+  --sidebar-ring: oklch(0.5988 0.1104 246.9964);
+  --ratio-bad: oklch(0.6200 0.1650 28.3794);
+  --ratio-almost: oklch(0.7346 0.1462 87.4591);
+  --ratio-good: oklch(0.5988 0.1104 246.9964);
+  --ratio-best: oklch(0.6513 0.1242 119.3840);
+  --radius: 0.375rem;
+}

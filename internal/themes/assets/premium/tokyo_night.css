@@ -1,0 +1,109 @@
+/* @name: Tokyo Night
+ * @description: Blue neon on ink, with the Day palette for sunlight.
+ * Palette from Tokyo Night (github.com/enkia/tokyo-night-vscode-theme, MIT).
+ * Day background from tokyonight.nvim (github.com/folke/tokyonight.nvim, Apache-2.0).
+ */
+
+:root {
+  /* Tokyo Night Day: pale blue-gray paper */
+  --background: oklch(0.913 0.007 277);
+  --foreground: oklch(0.46 0.152 264);
+  --card: oklch(0.96 0.005 277);
+  --card-foreground: oklch(0.46 0.152 264);
+  --popover: oklch(0.96 0.005 277);
+  --popover-foreground: oklch(0.46 0.152 264);
+  /* Day blue */
+  --primary: oklch(0.53 0.18 258);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.87 0.022 276);
+  --secondary-foreground: oklch(0.46 0.152 264);
+  --muted: oklch(0.86 0.022 276);
+  --muted-foreground: oklch(0.465 0.062 276);
+  /* Day selection tint - stays under the paper, over the panels */
+  --accent: oklch(0.855 0.058 269);
+  --accent-foreground: oklch(0.4 0.13 264);
+  --destructive: oklch(0.52 0.2 12);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.776 0.042 276);
+  --input: oklch(0.776 0.042 276);
+  --ring: oklch(0.53 0.18 258);
+  /* Day hues: blue, cyan, green, purple, orange */
+  --chart-1: oklch(0.53 0.18 258);
+  --chart-2: oklch(0.514 0.103 230.5);
+  --chart-3: oklch(0.52 0.093 130);
+  --chart-4: oklch(0.604 0.225 299.5);
+  --chart-5: oklch(0.565 0.138 56.1);
+  --sidebar: oklch(0.873 0.02 270);
+  --sidebar-foreground: oklch(0.46 0.152 264);
+  --sidebar-primary: oklch(0.53 0.18 258);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.855 0.058 269);
+  --sidebar-accent-foreground: oklch(0.4 0.13 264);
+  --sidebar-border: oklch(0.79 0.032 274);
+  --sidebar-ring: oklch(0.53 0.18 258);
+  --font-sans: Inter, sans-serif;
+  --font-serif: "Source Serif 4", serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --radius: 0.5rem;
+  --shadow-2xs: 0 1px 2px 0 oklch(0.226 0.021 280 / 0.05);
+  --shadow-xs: 0 1px 2px 0 oklch(0.226 0.021 280 / 0.06);
+  --shadow-sm: 0 1px 3px 0 oklch(0.226 0.021 280 / 0.1);
+  --shadow: 0 1px 3px 0 oklch(0.226 0.021 280 / 0.1), 0 1px 2px -1px oklch(0.226 0.021 280 / 0.1);
+  --shadow-md: 0 2px 6px -1px oklch(0.226 0.021 280 / 0.12);
+  --shadow-lg: 0 6px 16px -4px oklch(0.226 0.021 280 / 0.14);
+  --shadow-xl: 0 12px 28px -6px oklch(0.226 0.021 280 / 0.16);
+  --shadow-2xl: 0 24px 48px -12px oklch(0.226 0.021 280 / 0.2);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  /* Tokyo Night night: ink background, storm panels */
+  --background: oklch(0.226 0.021 280);
+  --foreground: oklch(0.846 0.061 275);
+  --card: oklch(0.282 0.036 275);
+  --card-foreground: oklch(0.846 0.061 275);
+  --popover: oklch(0.204 0.016 285);
+  --popover-foreground: oklch(0.846 0.061 275);
+  /* The Tokyo Night blue */
+  --primary: oklch(0.719 0.132 264);
+  --primary-foreground: oklch(0.204 0.016 285);
+  --secondary: oklch(0.32 0.038 274);
+  --secondary-foreground: oklch(0.846 0.061 275);
+  --muted: oklch(0.306 0.037 273);
+  --muted-foreground: oklch(0.767 0.054 275.5);
+  /* Selected rows: a dark blue surface, never a light one */
+  --accent: oklch(0.39 0.09 266);
+  --accent-foreground: oklch(0.846 0.061 275);
+  --destructive: oklch(0.723 0.159 10.3);
+  --destructive-foreground: oklch(0.226 0.021 280);
+  --border: oklch(0.387 0.054 274);
+  --input: oklch(0.387 0.054 274);
+  --ring: oklch(0.719 0.132 264);
+  /* Night hues: blue, cyan, green, purple, orange */
+  --chart-1: oklch(0.719 0.132 264);
+  --chart-2: oklch(0.82 0.105 235.7);
+  --chart-3: oklch(0.795 0.14 130);
+  --chart-4: oklch(0.752 0.134 300);
+  --chart-5: oklch(0.787 0.137 51);
+  --sidebar: oklch(0.204 0.016 285);
+  --sidebar-foreground: oklch(0.846 0.061 275);
+  --sidebar-primary: oklch(0.719 0.132 264);
+  --sidebar-primary-foreground: oklch(0.204 0.016 285);
+  --sidebar-accent: oklch(0.39 0.09 266);
+  --sidebar-accent-foreground: oklch(0.846 0.061 275);
+  --sidebar-border: oklch(0.306 0.037 273);
+  --sidebar-ring: oklch(0.719 0.132 264);
+  --font-sans: Inter, sans-serif;
+  --font-serif: "Source Serif 4", serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --radius: 0.5rem;
+  --shadow-2xs: 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --shadow-xs: 0 1px 2px 0 oklch(0 0 0 / 0.32);
+  --shadow-sm: 0 1px 3px 0 oklch(0 0 0 / 0.36);
+  --shadow: 0 1px 3px 0 oklch(0 0 0 / 0.36), 0 1px 2px -1px oklch(0 0 0 / 0.36);
+  --shadow-md: 0 2px 6px -1px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 6px 16px -4px oklch(0 0 0 / 0.44);
+  --shadow-xl: 0 12px 28px -6px oklch(0 0 0 / 0.48);
+  --shadow-2xl: 0 24px 48px -12px oklch(0 0 0 / 0.55);
+}

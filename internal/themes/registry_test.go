@@ -4,16 +4,14 @@
 package themes
 
 import (
-	"io/fs"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-// TestRegistryIDsPinned pins the id of every committed free theme, and of the
-// licensed themes that users had before the community themes, when the build
-// fetched the licensed folder. These ids are stored in browsers and in the
+// TestRegistryIDsPinned pins the id of every built-in theme, free and licensed.
+// These ids are stored in browsers and in the
 // theme_settings table, so a change here breaks every user's saved selection.
 func TestRegistryIDsPinned(t *testing.T) {
 	want := map[string]struct{}{
@@ -39,14 +37,15 @@ func TestRegistryIDsPinned(t *testing.T) {
 	require.Empty(t, want, "missing free themes")
 
 	t.Run("licensed", func(t *testing.T) {
-		if paths, _ := fs.Glob(assetsFS, "assets/premium/*.css"); len(paths) == 0 {
-			t.Skip("licensed folder is empty: run make themes-fetch to pin the licensed ids")
-		}
-		// A subset: a new licensed theme needs no entry here, but these ids must stay.
+		// A new licensed theme needs no entry here, but these ids must stay.
 		for _, id := range []string{
-			"amber-minimal", "amethyst-haze", "bubblegum", "catppuccin", "claude",
-			"cyberpunk", "kitsune", "the-matrix", "nord", "perpetuity", "spreadsheet",
-			"spreadsheet-classic", "synthwave", "tangerine", "tokyo-night",
+			"amber-minimal", "amethyst-haze", "bubblegum", "catppuccin", "catppuccin-latte",
+			"claude", "cs-office", "cyberpunk", "darcula", "dracula", "ethereal", "everforest", //nolint:misspell // Darcula is a theme name
+			"flexoki-light", "gruvbox", "hackerman", "jade-horse", "kanagawa", "kanagawa-lotus",
+			"kitsune", "last-horizon", "lumon", "lupine", "matte-black", "miasma", "monokai",
+			"nord", "one-dark", "osaka-jade", "perpetuity", "retro-82", "ristretto", "rose-pine",
+			"solitude", "spreadsheet", "spreadsheet-classic", "synthwave", "tangerine",
+			"the-matrix", "tokyo-night", "vantablack", "white",
 		} {
 			require.True(t, Exists(id), "missing licensed theme id %q", id)
 		}

@@ -1,0 +1,83 @@
+/* @name: Everforest
+ * @description: Port of Everforest by sainnhe (github.com/sainnhe/everforest, MIT) via the Omarchy Everforest theme, with a warm paper light companion palette
+ */
+
+:root {
+  --background: oklch(0.9500 0.0230 92.0000);
+  --foreground: oklch(0.3400 0.0200 230.0000);
+  --card: oklch(0.9750 0.0150 92.0000);
+  --card-foreground: oklch(0.3400 0.0200 230.0000);
+  --popover: oklch(0.9900 0.0080 92.0000);
+  --popover-foreground: oklch(0.3400 0.0200 230.0000);
+  --primary: oklch(0.5000 0.0800 185.4950);
+  --primary-foreground: oklch(0.9750 0.0150 92.0000);
+  --secondary: oklch(0.9080 0.0270 92.0000);
+  --secondary-foreground: oklch(0.3400 0.0200 230.0000);
+  --muted: oklch(0.9080 0.0270 92.0000);
+  --muted-foreground: oklch(0.5400 0.0180 230.0000);
+  --accent: oklch(0.9150 0.0350 185.4950);
+  --accent-foreground: oklch(0.3400 0.0200 230.0000);
+  --destructive: oklch(0.5300 0.1600 19.6235);
+  --destructive-foreground: oklch(0.9750 0.0150 92.0000);
+  --border: oklch(0.8720 0.0300 92.0000);
+  --input: oklch(0.8720 0.0300 92.0000);
+  --ring: oklch(0.5000 0.0800 185.4950);
+  --chart-1: oklch(0.5000 0.0800 185.4950);
+  --chart-2: oklch(0.5300 0.1000 125.7833);
+  --chart-3: oklch(0.5900 0.1000 83.6956);
+  --chart-4: oklch(0.5500 0.1200 349.1762);
+  --chart-5: oklch(0.5600 0.1300 45.0063);
+  --sidebar: oklch(0.9330 0.0250 92.0000);
+  --sidebar-foreground: oklch(0.3400 0.0200 230.0000);
+  --sidebar-primary: oklch(0.5000 0.0800 185.4950);
+  --sidebar-primary-foreground: oklch(0.9750 0.0150 92.0000);
+  --sidebar-accent: oklch(0.9150 0.0350 185.4950);
+  --sidebar-accent-foreground: oklch(0.3400 0.0200 230.0000);
+  --sidebar-border: oklch(0.8720 0.0300 92.0000);
+  --sidebar-ring: oklch(0.5000 0.0800 185.4950);
+  --ratio-bad: oklch(0.5300 0.1600 19.6235);
+  --ratio-almost: oklch(0.5900 0.1000 83.6956);
+  --ratio-good: oklch(0.5000 0.0800 185.4950);
+  --ratio-best: oklch(0.5300 0.1000 125.7833);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.3239 0.0153 240.4222);
+  --foreground: oklch(0.8299 0.0405 86.0529);
+  --card: oklch(0.2689 0.0127 243.3375);
+  --card-foreground: oklch(0.8299 0.0405 86.0529);
+  --popover: oklch(0.2450 0.0110 238.7640);
+  --popover-foreground: oklch(0.8299 0.0405 86.0529);
+  --primary: oklch(0.7487 0.0631 185.4950);
+  --primary-foreground: oklch(0.2269 0.0095 234.1906);
+  --secondary: oklch(0.3938 0.0166 226.9781);
+  --secondary-foreground: oklch(0.8299 0.0405 86.0529);
+  --muted: oklch(0.3597 0.0169 227.0633);
+  --muted-foreground: oklch(0.7226 0.0186 153.4322);
+  --accent: oklch(0.3540 0.0300 185.4950);
+  --accent-foreground: oklch(0.7732 0.0906 125.7833);
+  --destructive: oklch(0.7086 0.1285 19.6235);
+  --destructive-foreground: oklch(0.2269 0.0095 234.1906);
+  --border: oklch(0.3938 0.0166 226.9781);
+  --input: oklch(0.2269 0.0095 234.1906);
+  --ring: oklch(0.7487 0.0631 185.4950);
+  --chart-1: oklch(0.7487 0.0631 185.4950);
+  --chart-2: oklch(0.7732 0.0906 125.7833);
+  --chart-3: oklch(0.8081 0.0863 83.6956);
+  --chart-4: oklch(0.7501 0.0818 349.1762);
+  --chart-5: oklch(0.7539 0.0907 45.0063);
+  --sidebar: oklch(0.2689 0.0127 243.3375);
+  --sidebar-foreground: oklch(0.8299 0.0405 86.0529);
+  --sidebar-primary: oklch(0.7487 0.0631 185.4950);
+  --sidebar-primary-foreground: oklch(0.2269 0.0095 234.1906);
+  --sidebar-accent: oklch(0.3540 0.0300 185.4950);
+  --sidebar-accent-foreground: oklch(0.7732 0.0906 125.7833);
+  --sidebar-border: oklch(0.3938 0.0166 226.9781);
+  --sidebar-ring: oklch(0.7487 0.0631 185.4950);
+  --ratio-bad: oklch(0.7086 0.1285 19.6235);
+  --ratio-almost: oklch(0.8081 0.0863 83.6956);
+  --ratio-good: oklch(0.7487 0.0631 185.4950);
+  --ratio-best: oklch(0.7732 0.0906 125.7833);
+  --radius: 0.5rem;
+}

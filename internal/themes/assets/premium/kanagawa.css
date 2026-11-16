@@ -1,0 +1,83 @@
+/* @name: Kanagawa
+ * @description: Port of Kanagawa by rebelot (github.com/rebelot/kanagawa.nvim, MIT) via the Omarchy Kanagawa theme, with a warm paper light companion palette
+ */
+
+:root {
+  --background: oklch(0.9450 0.0250 99.0857);
+  --foreground: oklch(0.3000 0.0250 285.0635);
+  --card: oklch(0.9700 0.0150 99.0857);
+  --card-foreground: oklch(0.3000 0.0250 285.0635);
+  --popover: oklch(0.9900 0.0080 99.0857);
+  --popover-foreground: oklch(0.3000 0.0250 285.0635);
+  --primary: oklch(0.4900 0.1100 263.6569);
+  --primary-foreground: oklch(0.9700 0.0150 99.0857);
+  --secondary: oklch(0.9050 0.0250 99.0857);
+  --secondary-foreground: oklch(0.3000 0.0250 285.0635);
+  --muted: oklch(0.9050 0.0250 99.0857);
+  --muted-foreground: oklch(0.5300 0.0200 100.9907);
+  --accent: oklch(0.9050 0.0300 263.6569);
+  --accent-foreground: oklch(0.3000 0.0250 285.0635);
+  --destructive: oklch(0.5000 0.1500 23.0867);
+  --destructive-foreground: oklch(0.9700 0.0150 99.0857);
+  --border: oklch(0.8700 0.0280 99.0857);
+  --input: oklch(0.8700 0.0280 99.0857);
+  --ring: oklch(0.4900 0.1100 263.6569);
+  --chart-1: oklch(0.4900 0.1100 263.6569);
+  --chart-2: oklch(0.4900 0.0900 136.9181);
+  --chart-3: oklch(0.5700 0.1000 82.0154);
+  --chart-4: oklch(0.4900 0.1100 301.6974);
+  --chart-5: oklch(0.5300 0.1300 38.1190);
+  --sidebar: oklch(0.9250 0.0280 99.0857);
+  --sidebar-foreground: oklch(0.3000 0.0250 285.0635);
+  --sidebar-primary: oklch(0.4900 0.1100 263.6569);
+  --sidebar-primary-foreground: oklch(0.9700 0.0150 99.0857);
+  --sidebar-accent: oklch(0.9050 0.0300 263.6569);
+  --sidebar-accent-foreground: oklch(0.3000 0.0250 285.0635);
+  --sidebar-border: oklch(0.8700 0.0280 99.0857);
+  --sidebar-ring: oklch(0.4900 0.1100 263.6569);
+  --ratio-bad: oklch(0.5000 0.1500 23.0867);
+  --ratio-almost: oklch(0.5700 0.1000 82.0154);
+  --ratio-good: oklch(0.4900 0.1100 263.6569);
+  --ratio-best: oklch(0.4900 0.0900 136.9181);
+  --radius: 0.375rem;
+}
+
+.dark {
+  --background: oklch(0.2433 0.0170 285.0635);
+  --foreground: oklch(0.8755 0.0391 99.0857);
+  --card: oklch(0.2079 0.0138 285.1384);
+  --card-foreground: oklch(0.8755 0.0391 99.0857);
+  --popover: oklch(0.2907 0.0236 284.8400);
+  --popover-foreground: oklch(0.8755 0.0391 99.0857);
+  --primary: oklch(0.6937 0.0951 263.6569);
+  --primary-foreground: oklch(0.1800 0.0102 285.3302);
+  --secondary: oklch(0.3396 0.0279 284.8179);
+  --secondary-foreground: oklch(0.8755 0.0391 99.0857);
+  --muted: oklch(0.3143 0.0467 257.4345);
+  --muted-foreground: oklch(0.6600 0.0200 100.9907);
+  --accent: oklch(0.2733 0.0300 263.6569);
+  --accent-foreground: oklch(0.7407 0.0640 225.7205);
+  --destructive: oklch(0.6250 0.1600 23.0867);
+  --destructive-foreground: oklch(0.1800 0.0102 285.3302);
+  --border: oklch(0.3396 0.0279 284.8179);
+  --input: oklch(0.1800 0.0102 285.3302);
+  --ring: oklch(0.6937 0.0951 263.6569);
+  --chart-1: oklch(0.6937 0.0951 263.6569);
+  --chart-2: oklch(0.7477 0.1125 128.3621);
+  --chart-3: oklch(0.8332 0.0899 81.6438);
+  --chart-4: oklch(0.6380 0.0870 301.6974);
+  --chart-5: oklch(0.6311 0.1082 38.1190);
+  --sidebar: oklch(0.2079 0.0138 285.1384);
+  --sidebar-foreground: oklch(0.8755 0.0391 99.0857);
+  --sidebar-primary: oklch(0.6937 0.0951 263.6569);
+  --sidebar-primary-foreground: oklch(0.1800 0.0102 285.3302);
+  --sidebar-accent: oklch(0.2733 0.0300 263.6569);
+  --sidebar-accent-foreground: oklch(0.7407 0.0640 225.7205);
+  --sidebar-border: oklch(0.3396 0.0279 284.8179);
+  --sidebar-ring: oklch(0.6937 0.0951 263.6569);
+  --ratio-bad: oklch(0.6250 0.1600 23.0867);
+  --ratio-almost: oklch(0.8332 0.0899 81.6438);
+  --ratio-good: oklch(0.6937 0.0951 263.6569);
+  --ratio-best: oklch(0.7477 0.1125 128.3621);
+  --radius: 0.375rem;
+}

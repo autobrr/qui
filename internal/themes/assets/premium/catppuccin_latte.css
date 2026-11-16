@@ -1,0 +1,83 @@
+/* @name: Catppuccin Latte
+ * @description: Port of Catppuccin Latte (catppuccin.com, MIT) via the Omarchy Catppuccin Latte theme, with a matching cool lavender dark companion palette
+ */
+
+:root {
+  --background: oklch(0.9578 0.0058 264.5321);
+  --foreground: oklch(0.4230 0.0430 279.3250);
+  --card: oklch(0.9800 0.0040 264.5321);
+  --card-foreground: oklch(0.4230 0.0430 279.3250);
+  --popover: oklch(0.9930 0.0025 264.5321);
+  --popover-foreground: oklch(0.4230 0.0430 279.3250);
+  --primary: oklch(0.5586 0.2255 262.0866);
+  --primary-foreground: oklch(0.9800 0.0040 264.5321);
+  --secondary: oklch(0.8575 0.0145 268.4756);
+  --secondary-foreground: oklch(0.4230 0.0430 279.3250);
+  --muted: oklch(0.9060 0.0117 264.5071);
+  --muted-foreground: oklch(0.4920 0.0385 279.2992);
+  --accent: oklch(0.9130 0.0400 262.0866);
+  --accent-foreground: oklch(0.4600 0.1700 262.0866);
+  --destructive: oklch(0.5300 0.2155 19.8095);
+  --destructive-foreground: oklch(0.9800 0.0040 264.5321);
+  --border: oklch(0.8575 0.0145 268.4756);
+  --input: oklch(0.8826 0.0056 274.9573);
+  --ring: oklch(0.5586 0.2255 262.0866);
+  --chart-1: oklch(0.5586 0.2255 262.0866);
+  --chart-2: oklch(0.5750 0.1600 140.4448);
+  --chart-3: oklch(0.6023 0.0981 201.1047);
+  --chart-4: oklch(0.6100 0.1800 338.4334);
+  --chart-5: oklch(0.6069 0.1801 35.1211);
+  --sidebar: oklch(0.9400 0.0055 274.9612);
+  --sidebar-foreground: oklch(0.4230 0.0430 279.3250);
+  --sidebar-primary: oklch(0.5586 0.2255 262.0866);
+  --sidebar-primary-foreground: oklch(0.9800 0.0040 264.5321);
+  --sidebar-accent: oklch(0.9130 0.0400 262.0866);
+  --sidebar-accent-foreground: oklch(0.4600 0.1700 262.0866);
+  --sidebar-border: oklch(0.8575 0.0145 268.4756);
+  --sidebar-ring: oklch(0.5586 0.2255 262.0866);
+  --ratio-bad: oklch(0.5300 0.2155 19.8095);
+  --ratio-almost: oklch(0.6000 0.1300 67.7767);
+  --ratio-good: oklch(0.5586 0.2255 262.0866);
+  --ratio-best: oklch(0.5750 0.1600 140.4448);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.2280 0.0200 274.9612);
+  --foreground: oklch(0.9060 0.0180 274.9612);
+  --card: oklch(0.2010 0.0190 274.9612);
+  --card-foreground: oklch(0.9060 0.0180 274.9612);
+  --popover: oklch(0.2560 0.0200 274.9612);
+  --popover-foreground: oklch(0.9060 0.0180 274.9612);
+  --primary: oklch(0.7200 0.1400 262.0866);
+  --primary-foreground: oklch(0.1800 0.0180 274.9612);
+  --secondary: oklch(0.3300 0.0230 274.9612);
+  --secondary-foreground: oklch(0.9060 0.0180 274.9612);
+  --muted: oklch(0.2900 0.0210 274.9612);
+  --muted-foreground: oklch(0.7200 0.0300 274.6008);
+  --accent: oklch(0.2580 0.0300 262.0866);
+  --accent-foreground: oklch(0.8200 0.1000 262.0866);
+  --destructive: oklch(0.6400 0.1900 19.8095);
+  --destructive-foreground: oklch(0.1800 0.0180 274.9612);
+  --border: oklch(0.3300 0.0230 274.9612);
+  --input: oklch(0.1800 0.0180 274.9612);
+  --ring: oklch(0.7200 0.1400 262.0866);
+  --chart-1: oklch(0.7200 0.1400 262.0866);
+  --chart-2: oklch(0.7600 0.1600 140.4448);
+  --chart-3: oklch(0.7500 0.1000 201.1047);
+  --chart-4: oklch(0.7800 0.1400 338.4334);
+  --chart-5: oklch(0.7100 0.1500 35.1211);
+  --sidebar: oklch(0.2010 0.0190 274.9612);
+  --sidebar-foreground: oklch(0.9060 0.0180 274.9612);
+  --sidebar-primary: oklch(0.7200 0.1400 262.0866);
+  --sidebar-primary-foreground: oklch(0.1800 0.0180 274.9612);
+  --sidebar-accent: oklch(0.2580 0.0300 262.0866);
+  --sidebar-accent-foreground: oklch(0.8200 0.1000 262.0866);
+  --sidebar-border: oklch(0.3300 0.0230 274.9612);
+  --sidebar-ring: oklch(0.7200 0.1400 262.0866);
+  --ratio-bad: oklch(0.6400 0.1900 19.8095);
+  --ratio-almost: oklch(0.8200 0.1400 67.7767);
+  --ratio-good: oklch(0.7200 0.1400 262.0866);
+  --ratio-best: oklch(0.7600 0.1600 140.4448);
+  --radius: 0.5rem;
+}

@@ -1,0 +1,111 @@
+/* @name: Spreadsheet Classic
+ * @description: The 2003 build. Blue chrome, orange highlights, zero rounded corners.
+ * @lightOnly: true
+ */
+
+:root {
+  /* White sheet, pure black text, like it's 2003 */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.15 0 0);
+  --card: oklch(0.96 0.015 258);
+  --card-foreground: oklch(0.15 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0 0);
+  /* Era-correct highlight blue */
+  --primary: oklch(0.53 0.14 262);
+  --primary-foreground: oklch(1 0 0);
+  /* XP-blue chrome */
+  --secondary: oklch(0.9 0.035 258);
+  --secondary-foreground: oklch(0.15 0 0);
+  --muted: oklch(0.93 0.025 258);
+  --muted-foreground: oklch(0.52 0.04 255);
+  /* Pale selection blue */
+  --accent: oklch(0.91 0.03 258);
+  --accent-foreground: oklch(0.42 0.13 262);
+  --destructive: oklch(0.5 0.19 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.76 0.04 250);
+  --input: oklch(0.76 0.04 250);
+  --ring: oklch(0.53 0.14 262);
+  /* Era chart palette: navy, maroon, gold, teal, purple */
+  --chart-1: oklch(0.3 0.15 264);
+  --chart-2: oklch(0.45 0.12 350);
+  --chart-3: oklch(0.85 0.16 90);
+  --chart-4: oklch(0.55 0.1 195);
+  --chart-5: oklch(0.45 0.15 300);
+  /* Nav pane as blue task pane */
+  --sidebar: oklch(0.9 0.035 258);
+  --sidebar-foreground: oklch(0.2 0.01 258);
+  --sidebar-primary: oklch(0.53 0.14 262);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.91 0.03 258);
+  --sidebar-accent-foreground: oklch(0.42 0.13 262);
+  --sidebar-border: oklch(0.72 0.045 252);
+  --sidebar-ring: oklch(0.53 0.14 262);
+  --font-sans: Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
+  --font-serif: "Times New Roman", Times, serif;
+  --font-mono: "Courier New", Courier, monospace;
+  --radius: 0rem;
+  /* Hard-edged era shadows, no blur */
+  --shadow-2xs: 1px 1px 0 oklch(0 0 0 / 0.08);
+  --shadow-xs: 1px 1px 0 oklch(0 0 0 / 0.1);
+  --shadow-sm: 1px 1px 0 oklch(0 0 0 / 0.14);
+  --shadow: 2px 2px 0 oklch(0 0 0 / 0.14);
+  --shadow-md: 2px 2px 0 oklch(0 0 0 / 0.18);
+  --shadow-lg: 3px 3px 0 oklch(0 0 0 / 0.2);
+  --shadow-xl: 4px 4px 0 oklch(0 0 0 / 0.22);
+  --shadow-2xl: 6px 6px 0 oklch(0 0 0 / 0.25);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+  color-scheme: light;
+}
+
+/* Light-only theme: the parser requires a .dark block, so mirror light. */
+.dark {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.15 0 0);
+  --card: oklch(0.96 0.015 258);
+  --card-foreground: oklch(0.15 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0 0);
+  --primary: oklch(0.53 0.14 262);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.9 0.035 258);
+  --secondary-foreground: oklch(0.15 0 0);
+  --muted: oklch(0.93 0.025 258);
+  --muted-foreground: oklch(0.52 0.04 255);
+  --accent: oklch(0.91 0.03 258);
+  --accent-foreground: oklch(0.42 0.13 262);
+  --destructive: oklch(0.5 0.19 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.76 0.04 250);
+  --input: oklch(0.76 0.04 250);
+  --ring: oklch(0.53 0.14 262);
+  --chart-1: oklch(0.3 0.15 264);
+  --chart-2: oklch(0.45 0.12 350);
+  --chart-3: oklch(0.85 0.16 90);
+  --chart-4: oklch(0.55 0.1 195);
+  --chart-5: oklch(0.45 0.15 300);
+  --sidebar: oklch(0.9 0.035 258);
+  --sidebar-foreground: oklch(0.2 0.01 258);
+  --sidebar-primary: oklch(0.53 0.14 262);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.91 0.03 258);
+  --sidebar-accent-foreground: oklch(0.42 0.13 262);
+  --sidebar-border: oklch(0.72 0.045 252);
+  --sidebar-ring: oklch(0.53 0.14 262);
+  --font-sans: Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
+  --font-serif: "Times New Roman", Times, serif;
+  --font-mono: "Courier New", Courier, monospace;
+  --radius: 0rem;
+  --shadow-2xs: 1px 1px 0 oklch(0 0 0 / 0.08);
+  --shadow-xs: 1px 1px 0 oklch(0 0 0 / 0.1);
+  --shadow-sm: 1px 1px 0 oklch(0 0 0 / 0.14);
+  --shadow: 2px 2px 0 oklch(0 0 0 / 0.14);
+  --shadow-md: 2px 2px 0 oklch(0 0 0 / 0.18);
+  --shadow-lg: 3px 3px 0 oklch(0 0 0 / 0.2);
+  --shadow-xl: 4px 4px 0 oklch(0 0 0 / 0.22);
+  --shadow-2xl: 6px 6px 0 oklch(0 0 0 / 0.25);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}

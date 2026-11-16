@@ -1,0 +1,83 @@
+/* @name: Gruvbox
+ * @description: Port of Gruvbox by morhetz (github.com/morhetz/gruvbox, MIT) via the Omarchy Gruvbox theme, with a cream light companion palette
+ */
+
+:root {
+  --background: oklch(0.9555 0.0555 96.1549);
+  --foreground: oklch(0.3441 0.0066 48.5229);
+  --card: oklch(0.9655 0.0394 100.8622);
+  --card-foreground: oklch(0.3441 0.0066 48.5229);
+  --popover: oklch(0.9820 0.0250 100.8622);
+  --popover-foreground: oklch(0.3441 0.0066 48.5229);
+  --primary: oklch(0.5000 0.0750 179.1857);
+  --primary-foreground: oklch(0.9655 0.0394 100.8622);
+  --secondary: oklch(0.8255 0.0507 85.1158);
+  --secondary-foreground: oklch(0.3441 0.0066 48.5229);
+  --muted: oklch(0.8941 0.0566 89.2405);
+  --muted-foreground: oklch(0.5380 0.0234 62.5672);
+  --accent: oklch(0.9150 0.0300 179.1857);
+  --accent-foreground: oklch(0.3441 0.0066 48.5229);
+  --destructive: oklch(0.5300 0.1500 25.4191);
+  --destructive-foreground: oklch(0.9655 0.0394 100.8622);
+  --border: oklch(0.8255 0.0507 85.1158);
+  --input: oklch(0.8255 0.0507 85.1158);
+  --ring: oklch(0.5000 0.0750 179.1857);
+  --chart-1: oklch(0.5000 0.0750 179.1857);
+  --chart-2: oklch(0.5200 0.0900 116.5273);
+  --chart-3: oklch(0.5800 0.1150 77.0419);
+  --chart-4: oklch(0.5400 0.1100 2.1895);
+  --chart-5: oklch(0.5500 0.1250 45.6939);
+  --sidebar: oklch(0.9220 0.0553 92.5258);
+  --sidebar-foreground: oklch(0.3441 0.0066 48.5229);
+  --sidebar-primary: oklch(0.5000 0.0750 179.1857);
+  --sidebar-primary-foreground: oklch(0.9655 0.0394 100.8622);
+  --sidebar-accent: oklch(0.9150 0.0300 179.1857);
+  --sidebar-accent-foreground: oklch(0.3441 0.0066 48.5229);
+  --sidebar-border: oklch(0.8255 0.0507 85.1158);
+  --sidebar-ring: oklch(0.5000 0.0750 179.1857);
+  --ratio-bad: oklch(0.5300 0.1500 25.4191);
+  --ratio-almost: oklch(0.5800 0.1150 77.0419);
+  --ratio-good: oklch(0.5000 0.0750 179.1857);
+  --ratio-best: oklch(0.5200 0.0900 116.5273);
+  --radius: 0.375rem;
+}
+
+.dark {
+  --background: oklch(0.2768 0 0);
+  --foreground: oklch(0.8106 0.0567 81.2261);
+  --card: oklch(0.2350 0 0);
+  --card-foreground: oklch(0.8106 0.0567 81.2261);
+  --popover: oklch(0.3080 0 0);
+  --popover-foreground: oklch(0.8106 0.0567 81.2261);
+  --primary: oklch(0.7128 0.0546 179.1857);
+  --primary-foreground: oklch(0.2002 0 0);
+  --secondary: oklch(0.4110 0.0115 51.8658);
+  --secondary-foreground: oklch(0.8106 0.0567 81.2261);
+  --muted: oklch(0.3441 0.0066 48.5229);
+  --muted-foreground: oklch(0.7564 0.0410 82.2840);
+  --accent: oklch(0.3070 0.0300 179.1857);
+  --accent-foreground: oklch(0.8106 0.0567 81.2261);
+  --destructive: oklch(0.6768 0.1615 25.4191);
+  --destructive-foreground: oklch(0.2002 0 0);
+  --border: oklch(0.4110 0.0115 51.8658);
+  --input: oklch(0.2002 0 0);
+  --ring: oklch(0.7128 0.0546 179.1857);
+  --chart-1: oklch(0.7128 0.0546 179.1857);
+  --chart-2: oklch(0.7478 0.1066 116.5273);
+  --chart-3: oklch(0.7558 0.1133 77.0419);
+  --chart-4: oklch(0.7054 0.0976 2.1895);
+  --chart-5: oklch(0.7101 0.1248 45.6939);
+  --sidebar: oklch(0.2350 0 0);
+  --sidebar-foreground: oklch(0.8106 0.0567 81.2261);
+  --sidebar-primary: oklch(0.7128 0.0546 179.1857);
+  --sidebar-primary-foreground: oklch(0.2002 0 0);
+  --sidebar-accent: oklch(0.3070 0.0300 179.1857);
+  --sidebar-accent-foreground: oklch(0.8106 0.0567 81.2261);
+  --sidebar-border: oklch(0.4110 0.0115 51.8658);
+  --sidebar-ring: oklch(0.7128 0.0546 179.1857);
+  --ratio-bad: oklch(0.6768 0.1615 25.4191);
+  --ratio-almost: oklch(0.7558 0.1133 77.0419);
+  --ratio-good: oklch(0.7128 0.0546 179.1857);
+  --ratio-best: oklch(0.7478 0.1066 116.5273);
+  --radius: 0.375rem;
+}

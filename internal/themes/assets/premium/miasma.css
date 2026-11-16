@@ -1,0 +1,83 @@
+/* @name: Miasma
+ * @description: Port of Miasma by xero (github.com/xero/miasma.nvim, CC0-1.0) via the Omarchy Miasma theme, with a warm linen light companion palette
+ */
+
+:root {
+  --background: oklch(0.9386 0.0189 96.8715);
+  --foreground: oklch(0.3181 0.0155 107.2477);
+  --card: oklch(0.9687 0.0147 98.2839);
+  --card-foreground: oklch(0.3181 0.0155 107.2477);
+  --popover: oklch(0.9905 0.0067 97.3493);
+  --popover-foreground: oklch(0.3181 0.0155 107.2477);
+  --primary: oklch(0.4901 0.0672 119.1933);
+  --primary-foreground: oklch(0.9687 0.0147 98.2839);
+  --secondary: oklch(0.9011 0.0243 99.1328);
+  --secondary-foreground: oklch(0.3181 0.0155 107.2477);
+  --muted: oklch(0.9011 0.0243 99.1328);
+  --muted-foreground: oklch(0.5433 0.0270 107.2669);
+  --accent: oklch(0.9040 0.0365 117.3130);
+  --accent-foreground: oklch(0.3181 0.0155 107.2477);
+  --destructive: oklch(0.5120 0.1045 48.1585);
+  --destructive-foreground: oklch(0.9687 0.0147 98.2839);
+  --border: oklch(0.8675 0.0286 98.1116);
+  --input: oklch(0.8675 0.0286 98.1116);
+  --ring: oklch(0.4901 0.0672 119.1933);
+  --chart-1: oklch(0.4901 0.0672 119.1933);
+  --chart-2: oklch(0.5072 0.0664 148.5842);
+  --chart-3: oklch(0.5943 0.0956 85.7740);
+  --chart-4: oklch(0.5445 0.1003 55.6404);
+  --chart-5: oklch(0.5120 0.1045 48.1585);
+  --sidebar: oklch(0.9177 0.0218 95.2986);
+  --sidebar-foreground: oklch(0.3181 0.0155 107.2477);
+  --sidebar-primary: oklch(0.4901 0.0672 119.1933);
+  --sidebar-primary-foreground: oklch(0.9687 0.0147 98.2839);
+  --sidebar-accent: oklch(0.9040 0.0365 117.3130);
+  --sidebar-accent-foreground: oklch(0.3181 0.0155 107.2477);
+  --sidebar-border: oklch(0.8675 0.0286 98.1116);
+  --sidebar-ring: oklch(0.4901 0.0672 119.1933);
+  --ratio-bad: oklch(0.5120 0.1045 48.1585);
+  --ratio-almost: oklch(0.5943 0.0956 85.7740);
+  --ratio-good: oklch(0.4901 0.0672 119.1933);
+  --ratio-best: oklch(0.5072 0.0664 148.5842);
+  --radius: 0.375rem;
+}
+
+.dark {
+  --background: oklch(0.2520 0 0);
+  --foreground: oklch(0.8091 0.0247 106.9390);
+  --card: oklch(0.2221 0 0);
+  --card-foreground: oklch(0.8091 0.0247 106.9390);
+  --popover: oklch(0.2850 0 0);
+  --popover-foreground: oklch(0.8091 0.0247 106.9390);
+  --primary: oklch(0.5848 0.0781 117.3082);
+  --primary-foreground: oklch(0.1730 0 0);
+  --secondary: oklch(0.3407 0 0);
+  --secondary-foreground: oklch(0.8091 0.0247 106.9390);
+  --muted: oklch(0.3012 0 0);
+  --muted-foreground: oklch(0.6299 0.0175 106.8928);
+  --accent: oklch(0.2833 0.0309 131.9809);
+  --accent-foreground: oklch(0.8213 0.0865 93.7216);
+  --destructive: oklch(0.6026 0.1060 50.5951);
+  --destructive-foreground: oklch(0.1730 0 0);
+  --border: oklch(0.3407 0 0);
+  --input: oklch(0.1957 0 0);
+  --ring: oklch(0.5848 0.0781 117.3082);
+  --chart-1: oklch(0.5848 0.0781 117.3082);
+  --chart-2: oklch(0.5826 0.0749 144.5383);
+  --chart-3: oklch(0.7380 0.1085 85.5906);
+  --chart-4: oklch(0.6310 0.1084 56.0689);
+  --chart-5: oklch(0.6026 0.1060 50.5951);
+  --sidebar: oklch(0.2221 0 0);
+  --sidebar-foreground: oklch(0.8091 0.0247 106.9390);
+  --sidebar-primary: oklch(0.5848 0.0781 117.3082);
+  --sidebar-primary-foreground: oklch(0.1730 0 0);
+  --sidebar-accent: oklch(0.2833 0.0309 131.9809);
+  --sidebar-accent-foreground: oklch(0.8213 0.0865 93.7216);
+  --sidebar-border: oklch(0.3407 0 0);
+  --sidebar-ring: oklch(0.5848 0.0781 117.3082);
+  --ratio-bad: oklch(0.6026 0.1060 50.5951);
+  --ratio-almost: oklch(0.7380 0.1085 85.5906);
+  --ratio-good: oklch(0.5848 0.0781 117.3082);
+  --ratio-best: oklch(0.5826 0.0749 144.5383);
+  --radius: 0.375rem;
+}

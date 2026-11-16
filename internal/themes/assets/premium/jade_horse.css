@@ -1,0 +1,83 @@
+/* @name: Jade Horse
+ * @description: Port of the Omarchy Jade Horse theme (omacom/omarchy, MIT), with a pale celadon light companion palette
+ */
+
+:root {
+  --background: oklch(0.9605 0.0099 155.0954);
+  --foreground: oklch(0.2507 0.0266 170.9261);
+  --card: oklch(0.9813 0.0058 153.7770);
+  --card-foreground: oklch(0.2507 0.0266 170.9261);
+  --popover: oklch(0.9923 0.0025 165.0774);
+  --popover-foreground: oklch(0.2507 0.0266 170.9261);
+  --primary: oklch(0.4914 0.0785 167.8008);
+  --primary-foreground: oklch(0.9813 0.0058 153.7770);
+  --secondary: oklch(0.9268 0.0150 158.2331);
+  --secondary-foreground: oklch(0.2507 0.0266 170.9261);
+  --muted: oklch(0.9268 0.0150 158.2331);
+  --muted-foreground: oklch(0.4948 0.0382 166.6100);
+  --accent: oklch(0.9026 0.0234 161.6959);
+  --accent-foreground: oklch(0.2507 0.0266 170.9261);
+  --destructive: oklch(0.5223 0.1318 18.6823);
+  --destructive-foreground: oklch(0.9813 0.0058 153.7770);
+  --border: oklch(0.8656 0.0245 159.0713);
+  --input: oklch(0.8656 0.0245 159.0713);
+  --ring: oklch(0.4914 0.0785 167.8008);
+  --chart-1: oklch(0.4914 0.0785 167.8008);
+  --chart-2: oklch(0.5160 0.0765 241.9274);
+  --chart-3: oklch(0.5340 0.1000 105.7970);
+  --chart-4: oklch(0.5319 0.0957 309.5686);
+  --chart-5: oklch(0.5450 0.0979 53.6618);
+  --sidebar: oklch(0.9376 0.0125 156.9926);
+  --sidebar-foreground: oklch(0.2507 0.0266 170.9261);
+  --sidebar-primary: oklch(0.4914 0.0785 167.8008);
+  --sidebar-primary-foreground: oklch(0.9813 0.0058 153.7770);
+  --sidebar-accent: oklch(0.9026 0.0234 161.6959);
+  --sidebar-accent-foreground: oklch(0.2507 0.0266 170.9261);
+  --sidebar-border: oklch(0.8656 0.0245 159.0713);
+  --sidebar-ring: oklch(0.4914 0.0785 167.8008);
+  --ratio-bad: oklch(0.5223 0.1318 18.6823);
+  --ratio-almost: oklch(0.5340 0.1000 105.7970);
+  --ratio-good: oklch(0.4914 0.0785 167.8008);
+  --ratio-best: oklch(0.5330 0.1032 163.7300);
+  --radius: 0.375rem;
+}
+
+.dark {
+  --background: oklch(0.2507 0.0266 170.9261);
+  --foreground: oklch(0.9334 0.0183 161.1027);
+  --card: oklch(0.2195 0.0230 170.9924);
+  --card-foreground: oklch(0.9334 0.0183 161.1027);
+  --popover: oklch(0.3272 0.0379 168.3232);
+  --popover-foreground: oklch(0.9334 0.0183 161.1027);
+  --primary: oklch(0.7915 0.0754 167.1640);
+  --primary-foreground: oklch(0.1909 0.0203 172.5118);
+  --secondary: oklch(0.3272 0.0379 168.3232);
+  --secondary-foreground: oklch(0.9334 0.0183 161.1027);
+  --muted: oklch(0.3272 0.0379 168.3232);
+  --muted-foreground: oklch(0.7223 0.0369 163.7272);
+  --accent: oklch(0.4033 0.0471 174.9230);
+  --accent-foreground: oklch(0.9760 0.0132 159.9215);
+  --destructive: oklch(0.7205 0.0917 16.1143);
+  --destructive-foreground: oklch(0.1909 0.0203 172.5118);
+  --border: oklch(0.4033 0.0471 174.9230);
+  --input: oklch(0.2195 0.0230 170.9924);
+  --ring: oklch(0.7915 0.0754 167.1640);
+  --chart-1: oklch(0.7915 0.0754 167.1640);
+  --chart-2: oklch(0.7635 0.0508 241.0166);
+  --chart-3: oklch(0.8254 0.0784 113.6350);
+  --chart-4: oklch(0.7410 0.0602 310.2728);
+  --chart-5: oklch(0.7687 0.0615 59.2534);
+  --sidebar: oklch(0.2195 0.0230 170.9924);
+  --sidebar-foreground: oklch(0.9334 0.0183 161.1027);
+  --sidebar-primary: oklch(0.7915 0.0754 167.1640);
+  --sidebar-primary-foreground: oklch(0.1909 0.0203 172.5118);
+  --sidebar-accent: oklch(0.4033 0.0471 174.9230);
+  --sidebar-accent-foreground: oklch(0.9760 0.0132 159.9215);
+  --sidebar-border: oklch(0.4033 0.0471 174.9230);
+  --sidebar-ring: oklch(0.7915 0.0754 167.1640);
+  --ratio-bad: oklch(0.7205 0.0917 16.1143);
+  --ratio-almost: oklch(0.8254 0.0784 113.6350);
+  --ratio-good: oklch(0.7915 0.0754 167.1640);
+  --ratio-best: oklch(0.8579 0.0680 164.6528);
+  --radius: 0.375rem;
+}
