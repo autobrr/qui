@@ -101,6 +101,8 @@ async function rig() {
   const instance = await api("POST", "/api/instances", {
     name: "Stub", host: stubURL, username: "admin", password: "adminadmin",
   })
+  // The "Group your cross-seeds" tip covers the top right of the torrent list in screenshots.
+  await api("PUT", "/api/client-settings", { "qui-feature-notice-seen:group-copies": "true" })
 
   let asserted = false
   const checked = new Proxy(assert, {
