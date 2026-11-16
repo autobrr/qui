@@ -540,6 +540,7 @@ function api(world, argv) {
   const ref = (o["raw-field"] ?? []).find((f) => f.startsWith("ref="))?.slice(4);
   if (!m || !ref || (o.method && o.method !== "GET")) fail("gh api is not available here");
   const code = world.code[QBIT];
+  if (!code) fail("the eval run has no qBittorrent clone (see --qbit in run.mjs)");
   let tagDate;
   try {
     tagDate = git(code.dir, ["log", "-1", "--format=%cI", `refs/tags/${ref}`]).trim();

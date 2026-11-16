@@ -1,6 +1,6 @@
 // Replays frozen discussions through the triage playbook and checks each outcome.
 //
-// Usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--claude <path>] [--keep]
+// Usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--claude <path>] [--qbit <dir>] [--keep]
 //
 // <evals-dir> holds cases/*.json and corpus/ (from snapshot.mjs). Each run uses
 // the Claude Code CLI on the signed-in subscription: --claude, or claude on
@@ -9,7 +9,9 @@
 // the triage scripts and the prompt come from this checkout, or from --ref.
 // The discussion-write.sh stand-in and the Bash permissions always come from
 // this checkout, so a --ref from before #4224 fails its writes.
-// --jobs is the most Claude sessions that run at the same time.
+// --jobs is the most Claude sessions that run at the same time. --qbit is a
+// qBittorrent clone with origin/master and the release tags, for the
+// qBittorrent source reads (default ~/github/oss/qBittorrent).
 // Results go to <evals-dir>/results/<time>/.
 import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -22,7 +24,6 @@ import { cutWorld, loadCorpus } from "./world.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = execFileSync("git", ["-C", here, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-const qbitDir = join(homedir(), "github/oss/qBittorrent");
 
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -32,14 +33,17 @@ const { values: opts, positionals } = parseArgs({
     runs: { type: "string", default: "2" },
     jobs: { type: "string", default: "2" },
     claude: { type: "string" },
+    qbit: { type: "string" },
     keep: { type: "boolean" },
   },
 });
 if (positionals.length !== 1) {
-  console.error("usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--claude <path>] [--keep]");
+  console.error("usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--claude <path>] [--qbit <dir>] [--keep]");
   process.exit(2);
 }
 const evalsDir = resolve(positionals[0]);
+const qbitDir = resolve(opts.qbit ?? join(homedir(), "github/oss/qBittorrent"));
+if (!existsSync(qbitDir)) console.error(`warning: no qBittorrent clone at ${qbitDir}, so each qBittorrent source read fails in the runs (see --qbit)`);
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const resultsDir = join(evalsDir, "results", stamp);
 const workDir = join(homedir(), ".cache/qui-triage-eval", stamp);
@@ -273,22 +277,31 @@ async function runCase(c) {
 
 const results = [];
 const queue = [...cases];
+// A case that fails to start is a row in the table, so that the other cases
+// finish and keep their results.
 const workers = Array.from({ length: jobs }, async () => {
-  while (queue.length) results.push(await runCase(queue.shift()));
+  while (queue.length) {
+    const c = queue.shift();
+    try {
+      results.push(await runCase(c));
+    } catch (err) {
+      console.error(`${c.id}: ${err.stack}`);
+      results.push({ id: c.id, source: c.source, verdict: "error", error: err.message, runs: [] });
+    }
+  }
 });
-// Wait for every worker before the cleanup: a failed case must not delete
-// the trees of the runs that still go.
-const settled = await Promise.allSettled(workers);
-if (!opts.keep) rmSync(workDir, { recursive: true, force: true });
-const failed = settled.find((s) => s.status === "rejected");
-if (failed) throw failed.reason;
+try {
+  await Promise.all(workers);
+} finally {
+  if (!opts.keep) rmSync(workDir, { recursive: true, force: true });
+}
 
 results.sort((a, b) => a.id.localeCompare(b.id));
 const fmtRun = (r) => `${r.pass ? "pass" : "fail"} (${r.turns ?? "?"} turns, $${r.costUsd?.toFixed(2) ?? "?"})`;
 const table = [
   "| Case | Source | Verdict | Runs |",
   "| --- | --- | --- | --- |",
-  ...results.map((s) => `| ${s.id} | ${s.source} | ${s.verdict} | ${s.runs.map(fmtRun).join("; ")} |`),
+  ...results.map((s) => `| ${s.id} | ${s.source} | ${s.verdict} | ${s.error ?? s.runs.map(fmtRun).join("; ")} |`),
 ].join("\n");
 writeFileSync(join(resultsDir, "summary.md"), `Playbook: ${opts.ref ?? "working tree"}\nClaude Code: ${claudeVersion}\n\n${table}\n`);
 writeFileSync(join(resultsDir, "summary.json"), JSON.stringify(results, null, 2));
