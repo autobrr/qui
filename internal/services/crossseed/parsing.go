@@ -364,7 +364,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	files = make(qbt.TorrentFiles, len(info.Files))
 	var offset int64
 	for i, f := range info.Files {
-		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(&info, &f))
+		displayPath := torrentDisplayPath(&info, &f)
 		if displayPath == "" && len(f.BestPath()) > 0 {
 			return nil
 		}

@@ -92,6 +92,10 @@ func TorrentPathComponent(component string) string {
 // from torrent names and file paths, preserving other Unicode characters. An empty
 // result must be refused: libtorrent 1.2 and 2.0 place filtered-empty names differently.
 func StripTorrentPathControls(name string) string {
+	// Every filtered rune starts with 0xe2; malformed UTF-8 still needs Map.
+	if strings.IndexByte(name, '\xe2') < 0 && utf8.ValidString(name) {
+		return name
+	}
 	// Both libtorrent 1.2 and 2.0 use this set in filter_path_character:
 	// https://github.com/arvidn/libtorrent/blob/RC_1_2/src/torrent_info.cpp
 	return strings.Map(func(r rune) rune {

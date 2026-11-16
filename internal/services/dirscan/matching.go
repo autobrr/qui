@@ -403,19 +403,18 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	} else {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
+		root := pathutil.TorrentPathComponent(name)
 		for i := range info.Files {
 			f := &info.Files[i]
 			rawPathParts := f.BestPath()
 			pathParts := make([]string, 0, len(rawPathParts)+1)
-			pathParts = append(pathParts, name)
+			pathParts = append(pathParts, root)
 			for _, part := range rawPathParts {
-				pathParts = append(pathParts, stringutils.SanitizeUTF8(part))
-			}
-			for j, part := range pathParts {
-				pathParts[j] = pathutil.TorrentPathComponent(part)
-				if pathParts[j] == "" {
+				component := pathutil.TorrentPathComponent(stringutils.SanitizeUTF8(part))
+				if component == "" {
 					return nil, errors.New("torrent path is empty after removing directional characters")
 				}
+				pathParts = append(pathParts, component)
 			}
 			tf := TorrentFile{
 				Path:   path.Join(pathParts...),
