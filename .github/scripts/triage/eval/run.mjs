@@ -226,6 +226,13 @@ async function session(start) {
 
 const qbitCommit = (at) => execFileSync("git", ["-C", qbitDir, "rev-list", "-1", `--before=${at}`, "origin/master"], { encoding: "utf8" }).trim();
 
+// Waits for every run of a case, so that a failed run cannot leave a sibling
+// running after the cleanup removes its tree.
+async function settleAll(promises) {
+  const failed = (await Promise.allSettled(promises)).find((s) => s.status === "rejected");
+  if (failed) throw failed.reason;
+}
+
 async function runCase(c) {
   const tree = join(workDir, "trees", c.id);
   const commit = buildTree(c, tree);
@@ -264,7 +271,7 @@ async function runCase(c) {
     console.log(`${c.id} run ${n}: ${slot.pass ? "pass" : "FAIL"}, ${slot.turns} turns, $${slot.costUsd?.toFixed(2)}${slot.pass ? "" : ` (${slot.failures.join("; ")})`}`);
   };
   const base = Number(opts.runs);
-  await Promise.all(Array.from({ length: base }, one));
+  await settleAll(Array.from({ length: base }, one));
   let v = verdict(runs.map((r) => r.pass));
   if (v === "rerun") {
     await one();

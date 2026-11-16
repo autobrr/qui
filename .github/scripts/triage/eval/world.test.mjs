@@ -179,7 +179,15 @@ test("an answer and an edit count only from their moment", () => {
     answerChosenAt: "2026-10-01T02:30:00Z",
     answerChosenBy: user,
     edits: [{ editedAt: d.createdAt, body: d.body }, { editedAt: "2026-10-01T02:45:00Z", body: d.body }],
-    comments: { nodes: [{ ...ask, replies: { nodes: [{ ...ask.replies.nodes[0], isAnswer: true }] } }] },
+    comments: {
+      nodes: [
+        {
+          ...ask,
+          edits: [{ editedAt: ask.createdAt, body: ask.body }, { editedAt: "2026-10-01T02:50:00Z", body: ask.body }],
+          replies: { nodes: [{ ...ask.replies.nodes[0], isAnswer: true, edits: [{ editedAt: "2026-10-01T02:00:00Z", body: "answer" }, { editedAt: "2026-10-05T00:00:00Z", body: "answer" }] }] },
+        },
+      ],
+    },
   };
   const c = { ...corpus, discussions: [answered, d20] };
   const before = cutWorld(c, { at: "2026-10-01T02:15:00Z", discussion: 10, labels: [] }).discussions[0];
@@ -190,6 +198,6 @@ test("an answer and an edit count only from their moment", () => {
   const after = w.discussions[0];
   assert.equal(after.answered, true);
   assert.equal(after.comments.nodes[0].replies.nodes[0].isAnswer, true);
-  assert.equal(after.updatedAt, "2026-10-01T02:45:00Z");
+  assert.equal(after.updatedAt, "2026-10-01T02:50:00Z");
   assert.deepEqual(search(w, "is:answered", { kinds: ["discussion"] }).map((h) => h.item.number), [10]);
 });

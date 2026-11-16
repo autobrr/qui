@@ -43,12 +43,10 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
         return { ...asAt(c), replies: { totalCount: replies.length, nodes: replies } };
       });
 
+  // Takes the snapshot nodes, which still hold their edits.
   const lastActivity = (item, comments) => {
-    const times = [
-      item.createdAt,
-      ...(item.edits ?? []).map((e) => e.editedAt).filter(existed),
-      ...comments.flatMap((c) => [c.createdAt, ...(c.replies?.nodes ?? []).map((r) => r.createdAt)]),
-    ];
+    const stamps = (x) => [x.createdAt, ...(x.edits ?? []).map((e) => e.editedAt)];
+    const times = [...stamps(item), ...comments.flatMap((c) => [...stamps(c), ...(c.replies?.nodes ?? []).flatMap(stamps)])].filter(existed);
     if (existed(item.closedAt)) times.push(item.closedAt);
     return times.reduce((a, b) => (ms(b) > ms(a) ? b : a));
   };
@@ -79,7 +77,7 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
         answered,
         answerChosenAt: answered ? d.answerChosenAt : null,
         answerChosenBy: answered ? d.answerChosenBy : null,
-        updatedAt: lastActivity(d, comments),
+        updatedAt: lastActivity(d, d.comments.nodes),
         labels: dLabels,
         comments: { totalCount: comments.length, nodes: comments },
       };
@@ -101,7 +99,7 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
         ...asAt(i),
         ...state,
         state: state.closed ? "CLOSED" : "OPEN",
-        updatedAt: lastActivity(i, comments),
+        updatedAt: lastActivity(i, i.comments.nodes),
         labels: [...names].filter((n) => labelByName.has(n)).map((n) => labelByName.get(n)),
         comments: { totalCount: comments.length, nodes: comments },
         timelineItems: undefined,
