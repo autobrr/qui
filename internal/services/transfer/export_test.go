@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 // exportPolls shortens the wait of an Export run for the target.
@@ -336,6 +337,34 @@ func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
 	require.Equal(t, 1, r.dst.Writes("torrents/recheck"))
 	require.True(t, r.dst.Has(s.hash))
 	require.True(t, r.dst.Stopped(s.hash), "the torrent stays paused")
+}
+
+// The cleanup of a failed Export run that resumes after a restart removes
+// nothing from a target that got a new address: the torrent there is not
+// the one that qui added.
+// regression: #4231
+func TestExportRemovesNothingFromATargetWithANewAddress(t *testing.T) {
+	r := newRig(t, exportPolls)
+	s := newShow(t, showName)
+	r.seed(s)
+	req := r.exportRequest(s)
+	runCrashChild(t, crash{DB: r.dbPath, Export: &req, At: "after:clean up"}, make(chan *os.Process, 1), false)
+	moved := qbtstub.New(t, r.dstDir)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+	moved.Seed(s.data, r.dstDir)
+	_, err := r.instances.Update(t.Context(), r.target.ID, "homelab", moved.URL, "", "", nil, nil, nil)
+	require.NoError(t, err)
+
+	r.restart()
+	r.svc.Wait()
+
+	var id int64
+	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+	record := r.get(id)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.False(t, record.FinishedAt.IsZero())
+	require.True(t, moved.Has(s.hash), "qui keeps the torrent of the new address")
+	require.Zero(t, moved.Writes("torrents/delete"))
 }
 
 // The add on the target gets the parameters that the old Export path sends

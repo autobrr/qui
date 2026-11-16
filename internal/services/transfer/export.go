@@ -12,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 )
@@ -57,6 +58,10 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 	if s.ctx.Err() != nil {
 		return 0, nil, errShutdown
 	}
+	target, err := s.deps.Instances.Get(ctx, req.TargetInstanceID)
+	if err != nil {
+		return 0, nil, err
+	}
 	record := &Record{
 		Kind:             KindExport,
 		State:            StateWaiting,
@@ -64,7 +69,9 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 		RuleID:           new(req.RuleID),
 		SourceInstanceID: req.SourceInstanceID,
 		TargetInstanceID: req.TargetInstanceID,
-		Options:          Options{After: AfterKeepSeeding, Paused: req.Paused, SkipChecking: new(req.SkipChecking)},
+		// The cleanup removes nothing from a target with a new address.
+		TargetEndpoint: fsops.EndpointOf(target),
+		Options:        Options{After: AfterKeepSeeding, Paused: req.Paused, SkipChecking: new(req.SkipChecking)},
 		// The start holds the name of the rule, for the delete of a resumed
 		// run.
 		Steps: []Step{{Name: "start", At: s.deps.Now(), Detail: req.RuleName}},
@@ -255,6 +262,17 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 
 func (e *exportJob) removeFromTarget(ctx context.Context) {
 	m := e.member()
+	target, err := e.svc.deps.Instances.Get(ctx, m.TargetInstanceID)
+	switch {
+	case err != nil:
+		e.logf("qui could not remove the torrent from the target: %v", err)
+		return
+	case fsops.EndpointOf(target).URL != e.rec.TargetEndpoint.URL:
+		// The torrent there is not the one that qui added. The delete goes
+		// through qBittorrent, so only its address counts.
+		e.logf("The target has a new address, so qui leaves the torrent there.")
+		return
+	}
 	actor := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: e.ruleName}
 	if err := e.svc.deps.Sync.DeleteTorrents(ctx, m.TargetInstanceID, []string{m.Hash}, false, actor); err != nil {
 		e.logf("qui could not remove the torrent from the target: %v", err)
