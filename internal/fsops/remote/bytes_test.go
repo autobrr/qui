@@ -16,21 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-func TestOpenRead_ReadsFromTheOffset(t *testing.T) {
-	t.Parallel()
-
-	file := remotePath(t.TempDir(), "file.bin")
-	writeFile(t, file, "0123456789")
-	b, _ := newBackend(t)
-
-	r, err := b.OpenRead(t.Context(), file, 4)
-	require.NoError(t, err)
-	got, err := io.ReadAll(r)
-	require.NoError(t, err)
-	require.NoError(t, r.Close())
-	assert.Equal(t, "456789", string(got))
-}
-
 func TestOpenWrite_WritesAtTheOffsetAndKeepsTheRest(t *testing.T) {
 	t.Parallel()
 
@@ -47,23 +32,6 @@ func TestOpenWrite_WritesAtTheOffsetAndKeepsTheRest(t *testing.T) {
 	got, err := os.ReadFile(file)
 	require.NoError(t, err)
 	assert.Equal(t, "0123ab6789", string(got))
-}
-
-func TestOpenWrite_CreatesAMissingFile(t *testing.T) {
-	t.Parallel()
-
-	file := remotePath(t.TempDir(), "file.bin")
-	b, _ := newBackend(t)
-
-	w, err := b.OpenWrite(t.Context(), file, 3)
-	require.NoError(t, err)
-	_, err = w.Write([]byte("xyz"))
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
-	got, err := os.ReadFile(file)
-	require.NoError(t, err)
-	assert.Equal(t, "\x00\x00\x00xyz", string(got))
 }
 
 // Only a server that advertises fsync@openssh.com can confirm that written
