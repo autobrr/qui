@@ -37,6 +37,10 @@ export function useDestinations(close: () => void): PaletteGroup[] {
 
   // The header of a torrent list of one instance has the Add torrent button, and this id is that instance.
   const listInstanceId = layoutRoute.showInstanceControls && layoutRoute.instanceId !== null && layoutRoute.instanceId > 0 ? layoutRoute.instanceId : null
+  // The list that is open keeps its search under the dialog.
+  const addTorrent = (instanceId: number) => go(() => instanceId === listInstanceId
+    ? navigateWithSearch({ navigate, search: { ...routeSearch, modal: "add-torrent" } })
+    : navigate({ to: "/instances/$instanceId", params: { instanceId: String(instanceId) }, search: { modal: "add-torrent" } }))
 
   const activeInstances = (instances ?? []).filter(instance => instance.isActive)
   const instanceEntries: PaletteEntry[] = activeInstances.map((instance, index) => {
@@ -62,7 +66,7 @@ export function useDestinations(close: () => void): PaletteGroup[] {
             trail: instance.name,
             // A search already finds the Add torrent action of the list that is open.
             ownListOnly: instance.id === listInstanceId,
-            run: go(() => navigate({ to: "/instances/$instanceId", params, search: { modal: "add-torrent" } })),
+            run: addTorrent(instance.id),
           },
         ],
       }],
@@ -161,7 +165,7 @@ export function useDestinations(close: () => void): PaletteGroup[] {
       label: t("common:header.addTorrent"),
       icon: Plus,
       note: listInstance.name,
-      run: go(() => navigateWithSearch({ navigate, search: { ...routeSearch, modal: "add-torrent" } })),
+      run: addTorrent(listInstance.id),
     })
   }
   actionEntries.push(
