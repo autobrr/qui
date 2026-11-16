@@ -141,6 +141,7 @@ type Server struct {
 	maxConns       int
 	fsync          bool
 	renameRefuses  bool
+	stderr         int
 	sftpMode       SFTPMode
 	dials          int
 	auths          int
@@ -472,7 +473,11 @@ func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 	latency := s.latency
 	cutter.fsync = s.fsync
 	renameRefuses := s.renameRefuses
+	stderr := s.stderr
 	s.mu.Unlock()
+	if _, err := channel.Stderr().Write(bytes.Repeat([]byte("x"), stderr)); err != nil {
+		return
+	}
 	if cutter.fsync || renameRefuses {
 		cutter.Channel = &requestRewriter{Channel: channel, fsync: cutter.fsync, renameRefuses: renameRefuses}
 	}
@@ -698,6 +703,17 @@ func (s *Server) SetFsync(advertise bool) {
 func (s *Server) SetRenameNoReplace(refuse bool) {
 	s.mu.Lock()
 	s.renameRefuses = refuse
+	s.mu.Unlock()
+}
+
+// SetStderr makes sftp sessions opened from now on write n bytes to stderr
+// before they serve, the way a server that logs to stderr does over a long
+// session. A client that never reads them gets no answer once they fill the
+// window of the channel. It applies to the modes that serve the host file
+// system.
+func (s *Server) SetStderr(n int) {
+	s.mu.Lock()
+	s.stderr = n
 	s.mu.Unlock()
 }
 

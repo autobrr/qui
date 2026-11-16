@@ -36,9 +36,16 @@ func newSFTPClient(client *ssh.Client, calls *sftpCalls) (*sftp.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
 	if err := session.RequestSubsystem("sftp"); err != nil {
 		return nil, err
 	}
+	// RequestSubsystem starts no copy of stderr, and stderr that nobody
+	// reads holds the window that the answers share.
+	go func() { _, _ = io.Copy(io.Discard, stderr) }()
 	return sftp.NewClientPipe(&answerReader{Reader: stdout, calls: calls}, &requestWriter{WriteCloser: stdin, calls: calls})
 }
 

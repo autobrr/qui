@@ -374,6 +374,30 @@ func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	assert.False(t, unused(calls, &lastUsed))
 }
 
+// regression: #4231
+// Stderr and the answers share the window of the channel, so stderr that
+// nobody reads stops the answers. The pool reads and drops it, as
+// sftp.NewClient does.
+func TestPoolSFTPAnswersPastTheStderrOfTheServer(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	// Twice the 2 MiB window of an x/crypto channel.
+	server.SetStderr(4 << 20)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	clients, err := pool.SFTPConns(t.Context(), inst, 2)
+	require.NoError(t, err)
+	require.Len(t, clients, 2, "the extra connection opens its sftp session the same way")
+	for _, client := range clients {
+		_, err = client.Getwd()
+		require.NoError(t, err)
+	}
+}
+
 // A caller giving up says nothing about the host: a dial cut short by the
 // caller's own ctx leaves no memo and no backoff behind.
 func TestPoolCancelledDialIsNotMemoised(t *testing.T) {
