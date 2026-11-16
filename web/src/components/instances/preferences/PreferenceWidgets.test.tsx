@@ -10,6 +10,8 @@ import type { PreferenceField } from "@/types"
 
 import { preferenceWidgets } from "./PreferenceWidgets"
 
+// i18n-namespace: instances
+
 const incognito = vi.hoisted(() => [false, () => {}] as const)
 const translation = vi.hoisted(() => ({ t: (key: string) => key }))
 
@@ -18,11 +20,11 @@ vi.mock("@/lib/incognito", () => ({ useIncognitoMode: () => incognito }))
 
 describe("the password widget of the qBittorrent preferences", () => {
   it("keeps the password managers away, because the password belongs to qBittorrent", () => {
-    const field: PreferenceField = { key: "web_ui_password", value: "", tab: "webui", section: "auth", control: "password" }
+    const field: PreferenceField = { key: "mail_notification_password", value: "", tab: "downloads", section: "mail", control: "password" }
     const Widget = preferenceWidgets.password
-    render(<Widget id="pw" instanceId={1} field={field} labels={{ labelKey: "password" }} value="" onChange={() => {}} disabled={false} />)
+    render(<Widget id="pw" instanceId={1} field={field} labels={{ labelKey: "preferences.fields.mailNotificationPassword" }} value="" onChange={() => {}} disabled={false} />)
 
-    const input = screen.getByLabelText("password")
+    const input = screen.getByLabelText("preferences.fields.mailNotificationPassword")
     expect(input.getAttribute("autocomplete")).toBe("new-password")
     expect(input.getAttribute("data-1p-ignore")).toBe("true")
     expect(input.getAttribute("data-lpignore")).toBe("true")
