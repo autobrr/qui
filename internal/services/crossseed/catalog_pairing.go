@@ -17,7 +17,10 @@ import (
 type catalogPairTier uint8
 
 const (
-	catalogPairExact catalogPairTier = iota
+	// catalogPairPath compares the full paths, so a renamed display name does
+	// not hide identical paths.
+	catalogPairPath catalogPairTier = iota
+	catalogPairExact
 	catalogPairBasename
 	catalogPairNormalized
 	catalogPairSize
@@ -35,7 +38,9 @@ type catalogPairKey struct {
 }
 
 func catalogPairName(name, root string, tier catalogPairTier) string {
-	switch tier { //nolint:exhaustive // the size-only tier has no name key
+	switch tier {
+	case catalogPairPath:
+		return name
 	case catalogPairExact:
 		if root != "" {
 			return strings.TrimPrefix(name, root+"/")
@@ -45,6 +50,10 @@ func catalogPairName(name, root string, tier catalogPairTier) string {
 		return strings.ToLower(path.Base(name))
 	case catalogPairNormalized:
 		return normalizeFileKey(name)
+	case catalogPairSize:
+		// Only files with the same extension can pair, so a renamed .cue and
+		// .log of the same size are not ambiguous.
+		return strings.ToLower(path.Ext(name))
 	}
 	return ""
 }
@@ -74,7 +83,7 @@ func completeCatalogPairing(incoming, existing qbt.TorrentFiles, incomingRoot, e
 	}
 	usedIncoming, usedExisting := make([]bool, len(incoming)), make([]bool, len(existing))
 	pairs := make([]catalogFilePair, 0, len(incoming))
-	for tier := catalogPairExact; tier <= catalogPairSize; tier++ {
+	for tier := catalogPairPath; tier <= catalogPairSize; tier++ {
 		left := catalogPairBuckets(incoming, usedIncoming, incomingRoot, tier)
 		right := catalogPairBuckets(existing, usedExisting, existingRoot, tier)
 		for i, file := range incoming {

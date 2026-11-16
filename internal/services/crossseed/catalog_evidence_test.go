@@ -63,6 +63,7 @@ func TestCatalogPairing(t *testing.T) {
 		{"mutual collision", qbt.TorrentFiles{{Name: "Left/CD1/track.flac", Size: 100}, {Name: "Left/CD2/track.flac", Size: 100}}, qbt.TorrentFiles{{Name: "Right/CD3/TRACK.FLAC", Size: 100}, {Name: "Right/other.flac", Size: 100}}, nil},
 		{"same total different lengths", qbt.TorrentFiles{{Name: "Left/a.flac", Size: 100}, {Name: "Left/b.flac", Size: 200}}, qbt.TorrentFiles{{Name: "Right/a.flac", Size: 110}, {Name: "Right/b.flac", Size: 190}}, nil},
 		{"missing booklet", qbt.TorrentFiles{{Name: "Left/a.flac", Size: 100}, {Name: "Left/booklet.pdf", Size: 10}}, qbt.TorrentFiles{{Name: "Right/a.flac", Size: 110}}, nil},
+		{"renamed sidecars of equal size", qbt.TorrentFiles{{Name: "Left/01.flac", Size: 100}, {Name: "Left/rip.cue", Size: 10}, {Name: "Left/rip.log", Size: 10}}, qbt.TorrentFiles{{Name: "Right/01.flac", Size: 100}, {Name: "Right/album.cue", Size: 10}, {Name: "Right/eac.log", Size: 10}}, []catalogPairTier{catalogPairExact, catalogPairSize, catalogPairSize}},
 		{"incompatible extension", qbt.TorrentFiles{{Name: "Left/a.flac", Size: 100}}, qbt.TorrentFiles{{Name: "Right/b.mp3", Size: 100}}, nil},
 		{"ancestor path collision", qbt.TorrentFiles{{Name: "Left/a.flac", Size: 100}, {Name: "Left/a.flac-extra.flac", Size: 100}, {Name: "Left/a.flac/track.flac", Size: 100}}, qbt.TorrentFiles{{Name: "Right/a.flac", Size: 100}, {Name: "Right/a.flac-extra.flac", Size: 100}, {Name: "Right/a.flac/track.flac", Size: 100}}, nil},
 		{"duplicate path", qbt.TorrentFiles{{Name: "Left/a.flac", Size: 100}, {Name: "Left/a.flac", Size: 100}}, qbt.TorrentFiles{{Name: "Right/a.flac", Size: 100}, {Name: "Right/b.flac", Size: 100}}, nil},
@@ -95,6 +96,22 @@ func TestCatalogPairing(t *testing.T) {
 			}
 			require.Equal(t, edges(pairs), edges(reversed))
 		})
+	}
+}
+
+// regression: #4181
+func TestCatalogPairingKeepsIdenticalPathsUnderRenamedDisplayName(t *testing.T) {
+	files := qbt.TorrentFiles{
+		{Name: "Album/CD1/01.flac", Size: 100},
+		{Name: "Album/CD1/cover.jpg", Size: 10},
+		{Name: "Album/CD2/01.flac", Size: 200},
+		{Name: "Album/CD2/cover.jpg", Size: 10},
+	}
+	pairs, err := completeCatalogPairing(files, slices.Clone(files), detectCommonRoot(files), catalogRoot(files, "Album [FLAC]"))
+	require.NoError(t, err)
+	require.Len(t, pairs, len(files))
+	for _, pair := range pairs {
+		require.Equal(t, pair.sourcePath, pair.candidatePath)
 	}
 }
 

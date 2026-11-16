@@ -24,24 +24,24 @@ import (
 // regression: #4181
 func TestCatalogApplyObligations(t *testing.T) {
 	for _, tt := range []struct {
-		name       string
-		listing    string
-		wantCheck  bool
-		kind       gazellemusic.MatchKind
-		mutate     func(*catalogReplaySync, *CrossSeedRequest)
-		wantAdd    bool
-		wantStatus string
+		name      string
+		listing   string
+		wantCheck bool
+		kind      gazellemusic.MatchKind
+		mutate    func(*catalogReplaySync, *CrossSeedRequest)
+		wantAdd   bool
+		wantErr   string
 	}{
 		{name: "full size evidence", kind: gazellemusic.MatchSize, wantAdd: true},
 		{name: "exact files ignore listing group", listing: "Artist-Album-FLAC-2024-SECOND", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
-		{name: "missing source", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.source.Hash = "other" }},
-		{name: "incomplete source", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.source.Progress = 0.5 }},
-		{name: "unwanted incomplete file", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.files[m.source.Hash][0].Progress = 0.5 }},
+		{name: "missing source", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.source.Hash = "other" }, wantErr: "bound source unavailable"},
+		{name: "incomplete source", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.source.Progress = 0.5 }, wantErr: "bound source incomplete or ineligible"},
+		{name: "unwanted incomplete file", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.files[m.source.Hash][0].Progress = 0.5 }, wantErr: "bound source has incomplete full-torrent files"},
 		{name: "source excluded", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) {
 			r.sourceFilter = sourceFilter{categories: []string{"other"}}
-		}},
-		{name: "source renamed", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.files[m.source.Hash][0].Name = "changed/track.flac" }},
-		{name: "target changed", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SearchDecision.Catalog.TargetHash = adderV1 }},
+		}, wantErr: "bound source incomplete or ineligible"},
+		{name: "source renamed", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.files[m.source.Hash][0].Name = "changed/track.flac" }, wantErr: "bound source file table, full size or content family changed"},
+		{name: "target changed", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SearchDecision.Catalog.TargetHash = adderV1 }, wantErr: "selected target hash or full size changed"},
 		{name: "size exact path skips check", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "filelist exact path skips check", kind: gazellemusic.MatchFileList, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "hash exact path exemption", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
@@ -94,9 +94,8 @@ func TestCatalogApplyObligations(t *testing.T) {
 					require.NotContains(t, sync.bulkActions, "recheck:"+meta.HashV1)
 				}
 			}
-			if tt.wantStatus != "" {
-				require.NoError(t, err)
-				require.Equal(t, tt.wantStatus, response.Results[0].Status)
+			if !tt.wantAdd {
+				require.ErrorContains(t, err, tt.wantErr)
 			}
 			if tt.wantCheck {
 				require.Len(t, svc.settler.queue, 1)

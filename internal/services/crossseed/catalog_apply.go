@@ -9,6 +9,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
+	"github.com/rs/zerolog/log"
 )
 
 func (s *Service) catalogAddPlan(candidate CrossSeedCandidate, incomingRelease *rls.Release, incoming qbt.TorrentFiles, filesByHash map[string]qbt.TorrentFiles, req *CrossSeedRequest) (*crossSeedAddPlan, string) {
@@ -53,6 +54,11 @@ func (s *Service) alignCatalogFiles(ctx context.Context, instanceID int, hash, h
 	}
 	alignment, err := catalogAlignment(plan, visible)
 	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("torrentHash", active).
+			Msg("Catalog file alignment rejected the added file table, leaving the torrent paused")
 		return false, active
 	}
 	return s.aligner.Align(ctx, instanceID, active, alignment), active
