@@ -13,7 +13,7 @@ qui serves interactive API documentation with Swagger UI at `/api/docs`. You can
 
 ## API keys
 
-API keys give programmatic access to the qui API without session cookies. Create and manage them in Settings → API Keys. Each key holds a list of Permissions and an optional Instance limit. See [API key permissions](./permissions.md).
+API keys give programmatic access to the qui API without session cookies. Create and manage them in Settings → API keys. Each key holds a list of Permissions and an optional Instance limit. See [API key permissions](./permissions.md).
 
 qui also has client proxy API keys. Those keys let external applications, for example Sonarr or autobrr, reach your qBittorrent instances through the qui proxy. They do not grant access to the qui API. See [Reverse Proxy](../features/reverse-proxy.md).
 

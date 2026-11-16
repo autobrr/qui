@@ -358,5 +358,12 @@
   },
   "labels": {
     "path": "Path"
+  },
+  "kit": {
+    "loadFailed": "This section did not load.",
+    "retry": "Try again",
+    "edit": "Edit",
+    "moreActions": "More actions",
+    "enabled": "Enabled"
   }
 }

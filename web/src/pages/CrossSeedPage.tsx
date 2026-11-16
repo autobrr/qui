@@ -12,9 +12,8 @@ import { LibraryTab } from "@/components/cross-seed/LibraryTab"
 import { MatchingTab } from "@/components/cross-seed/MatchingTab"
 import { RssTab } from "@/components/cross-seed/RssTab"
 import { SeasonPacksTab } from "@/components/cross-seed/SeasonPacksTab"
-import { CROSS_SEED_NAV_GROUPS, type CrossSeedTab } from "@/components/cross-seed/tabs"
+import { CROSS_SEED_NAV_GROUPS, DEFAULT_CROSS_SEED_TAB, type CrossSeedTab } from "@/components/cross-seed/tabs"
 import { WebhookTab } from "@/components/cross-seed/WebhookTab"
-import { Page } from "@/components/layout/Page"
 import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -25,8 +24,8 @@ import { AlertTriangle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 interface CrossSeedPageProps {
-  activeTab: CrossSeedTab
-  onTabChange: (tab: CrossSeedTab) => void
+  activeTab: CrossSeedTab | undefined
+  onTabChange: (tab: CrossSeedTab | undefined, options: { replace: boolean }) => void
 }
 
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
@@ -45,7 +44,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   }))
 
   return (
-    <Page
+    <SectionedPage
       title={t("pageTitle")}
       description={t("pageDescription")}
       badge={(
@@ -53,8 +52,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           {t(automationEnabled ? "automationOnBadge" : "automationOffBadge")}
         </Badge>
       )}
-    >
-      {!hasEnabledIndexers && (
+      notice={!hasEnabledIndexers && (
         <Alert className="border-border rounded-xl bg-card">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           <AlertTitle>{t("indexersMissing.title")}</AlertTitle>
@@ -69,23 +67,29 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           </AlertDescription>
         </Alert>
       )}
-
-      <SectionedPage navLabel={t("pageTitle")} groups={navGroups} activeSection={activeTab} onSectionChange={onTabChange}>
-        {settings && (
-          <>
-            {activeTab === "rss" && <RssTab settings={settings} />}
-            {activeTab === "webhook" && <WebhookTab settings={settings} />}
-            {activeTab === "completion" && <CompletionTab settings={settings} />}
-            {activeTab === "library" && <LibraryTab settings={settings} />}
-            {activeTab === "season-packs" && <SeasonPacksTab settings={settings} />}
-            {activeTab === "matching" && <MatchingTab settings={settings} />}
-            {activeTab === "categories" && <CategoriesTab settings={settings} />}
-            {activeTab === "after-injection" && <AfterInjectionTab settings={settings} />}
-          </>
-        )}
-        {activeTab === "directories" && <DirScanTab instances={instances ?? []} />}
-        {activeTab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
-      </SectionedPage>
-    </Page>
+      groups={navGroups}
+      section={activeTab}
+      defaultSection={DEFAULT_CROSS_SEED_TAB}
+      onSectionChange={onTabChange}
+    >
+      {(tab) => (
+        <>
+          {settings && (
+            <>
+              {tab === "rss" && <RssTab settings={settings} />}
+              {tab === "webhook" && <WebhookTab settings={settings} />}
+              {tab === "completion" && <CompletionTab settings={settings} />}
+              {tab === "library" && <LibraryTab settings={settings} />}
+              {tab === "season-packs" && <SeasonPacksTab settings={settings} />}
+              {tab === "matching" && <MatchingTab settings={settings} />}
+              {tab === "categories" && <CategoriesTab settings={settings} />}
+              {tab === "after-injection" && <AfterInjectionTab settings={settings} />}
+            </>
+          )}
+          {tab === "directories" && <DirScanTab instances={instances ?? []} />}
+          {tab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
+        </>
+      )}
+    </SectionedPage>
   )
 }

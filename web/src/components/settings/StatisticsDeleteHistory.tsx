@@ -3,16 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
+import { Field } from "@/components/kit/Field"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -102,20 +94,21 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
         <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.description")}</p>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="space-y-1.5">
-          <Label htmlFor="statistics-delete-instance">{t("statistics.deleteHistory.instance")}</Label>
-          <Select name="statistics-delete-instance" value={target} onValueChange={setTarget} disabled={mutation.isPending}>
-            <SelectTrigger id="statistics-delete-instance" className="h-9 w-full sm:w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>{t("statistics.deleteHistory.allInstances")}</SelectItem>
-              {instances.map(instance => (
-                <SelectItem key={instance.instanceId} value={String(instance.instanceId)}>{instanceName(instance)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Field label={t("statistics.deleteHistory.instance")}>
+          {(control) => (
+            <Select name="statistics-delete-instance" value={target} onValueChange={setTarget} disabled={mutation.isPending}>
+              <SelectTrigger {...control} className="h-9 w-full sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>{t("statistics.deleteHistory.allInstances")}</SelectItem>
+                {instances.map(instance => (
+                  <SelectItem key={instance.instanceId} value={String(instance.instanceId)}>{instanceName(instance)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </Field>
         <RadioGroup value={range} onValueChange={value => setRange(value as Range)} disabled={mutation.isPending} className="gap-2">
           <div className="flex items-center gap-2">
             <RadioGroupItem id="statistics-delete-everything" value="everything" />
@@ -142,37 +135,23 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
         {t("statistics.deleteHistory.button")}
       </Button>
 
-      <AlertDialog open={confirming} onOpenChange={open => !mutation.isPending && setConfirming(open)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("statistics.deleteHistory.confirmTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {range === "before" && date !== ""
-                ? t("statistics.deleteHistory.confirmBefore", { name, date: formatDate(date, i18n.resolvedLanguage ?? i18n.language) })
-                : t("statistics.deleteHistory.confirmEverything", { name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {engine === "sqlite" && !shrink && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.sqliteSpace")}</p>}
-          {engine === "sqlite" && shrinkStatus?.available && (
-            <ShrinkCheckbox status={shrinkStatus} checked={shrink} onCheckedChange={setShrinkTicked} disabled={mutation.isPending} />
-          )}
-          {engine === "postgres" && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.postgresSpace")}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={mutation.isPending}>{t("statistics.deleteHistory.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={mutation.isPending}
-              onClick={event => {
-                // The dialog stays open until the delete ends.
-                event.preventDefault()
-                mutation.mutate()
-              }}
-            >
-              {t("statistics.deleteHistory.confirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t("statistics.deleteHistory.confirmTitle")}
+        description={range === "before" && date !== ""
+          ? t("statistics.deleteHistory.confirmBefore", { name, date: formatDate(date, i18n.resolvedLanguage ?? i18n.language) })
+          : t("statistics.deleteHistory.confirmEverything", { name })}
+        confirmLabel={t("statistics.deleteHistory.confirm")}
+        // The mutation closes the dialog when it settles, also when the delete fails.
+        onConfirm={() => mutation.mutateAsync()}
+      >
+        {engine === "sqlite" && !shrink && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.sqliteSpace")}</p>}
+        {engine === "sqlite" && shrinkStatus?.available && (
+          <ShrinkCheckbox status={shrinkStatus} checked={shrink} onCheckedChange={setShrinkTicked} disabled={mutation.isPending} />
+        )}
+        {engine === "postgres" && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.postgresSpace")}</p>}
+      </ConfirmDialog>
     </div>
   )
 }

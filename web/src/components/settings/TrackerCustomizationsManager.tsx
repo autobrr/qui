@@ -4,21 +4,19 @@
  */
 
 import { useQueries } from "@tanstack/react-query"
-import { AlertTriangle, Download, Link2, Pencil, Trash2, Upload, X } from "lucide-react"
-import { useMemo, useState, type ReactNode } from "react"
+import { Download, Link2, Pencil, Trash2, Upload, X } from "lucide-react"
+import { useId, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { Editor } from "@/components/kit/Editor"
+import { Field } from "@/components/kit/Field"
+import { ResourceList, type ResourceRow } from "@/components/kit/ResourceList"
+import { Section } from "@/components/kit/Section"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { instanceTrackersQueryOptions } from "@/hooks/useInstanceTrackers"
 import { useInstances } from "@/hooks/useInstances"
@@ -30,9 +28,10 @@ import {
   exportTrackerCustomizations,
   parseTrackerCustomizationsImport,
   toCustomizationInput,
-  type ImportError
+  type ImportError,
+  type TrackerRow
 } from "@/lib/tracker-customizations-manage"
-import { copyTextToClipboard } from "@/lib/utils"
+import { cn, copyTextToClipboard } from "@/lib/utils"
 import type { TrackerCustomization } from "@/types"
 
 type CustomizeMode = "edit" | "rename" | "merge"
@@ -43,7 +42,8 @@ export function TrackerCustomizationsManager() {
   const [incognitoMode] = useIncognitoMode()
   const { instances } = useInstances()
 
-  const { data: customizations, isLoading: customizationsLoading } = useTrackerCustomizations()
+  const customizationsQuery = useTrackerCustomizations()
+  const customizations = customizationsQuery.data
   const createCustomization = useCreateTrackerCustomization()
   const updateCustomization = useUpdateTrackerCustomization()
   const deleteCustomization = useDeleteTrackerCustomization()
@@ -70,6 +70,8 @@ export function TrackerCustomizationsManager() {
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [editingCustomization, setEditingCustomization] = useState<{ id: number; displayName: string; domains: string[] } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  // A new key on each open gives the import form fresh state, and the form keeps its text while it fades out.
+  const [importSession, setImportSession] = useState(0)
 
   const toggleSelection = (domain: string) => {
     const next = new Set(selectedDomains)
@@ -108,11 +110,9 @@ export function TrackerCustomizationsManager() {
     })
   }
 
-  const handleDelete = (customizationId: number) => {
-    deleteCustomization.mutate(customizationId, {
-      onSuccess: () => setSelectedGroupId(prev => prev === customizationId ? null : prev),
-    })
-  }
+  // The confirm dialog waits for the promise, and stays open when the delete fails.
+  const handleDelete = (customizationId: number) =>
+    deleteCustomization.mutateAsync(customizationId).then(() => setSelectedGroupId(prev => prev === customizationId ? null : prev))
 
   const closeCustomizeDialog = () => {
     setCustomizeOpen(false)
@@ -199,133 +199,177 @@ export function TrackerCustomizationsManager() {
     }
   }
 
+  const openImport = () => {
+    setImportSession(session => session + 1)
+    setImportOpen(true)
+  }
+
   const saving = createCustomization.isPending || updateCustomization.isPending
   const customizeMode: CustomizeMode = editingCustomization ? "edit" : selectedDomains.size === 1 ? "rename" : "merge"
+  const empty = {
+    title: trackersLoading ? t("trackerCustomizations.loading") : t("trackerCustomizations.emptyTitle"),
+    description: trackersLoading ? undefined : t("trackerCustomizations.emptyDescription"),
+  }
+
+  const resourceRow = (row: TrackerRow): ResourceRow => {
+    const { domain, displayName, domains, customizationId } = row
+    const shownDomains = incognitoMode ? domains.map(getLinuxTrackerDomain) : domains
+    const base: ResourceRow = {
+      title: incognitoMode ? getLinuxTrackerDomain(displayName) : displayName,
+      icon: <TrackerIconImage tracker={incognitoMode ? getLinuxTrackerDomain(domain) : domain} trackerIcons={trackerIcons} />,
+      meta: domains.length > 1
+        ? [t("trackerCustomizations.mergedFrom", { domains: shownDomains.join(", ") })]
+        : customizationId !== undefined && displayName !== domain ? [t("trackerCustomizations.original", { domain: shownDomains[0] })] : undefined,
+      select: customizationId === undefined
+        ? { checked: selectedDomains.has(domain), onCheckedChange: () => toggleSelection(domain) }
+        // One customization at a time takes the merge, so the others hide their box while one is selected.
+        : selectedGroupId !== null && selectedGroupId !== customizationId
+          ? undefined
+          : { checked: selectedGroupId === customizationId, onCheckedChange: () => toggleGroupSelection(customizationId) },
+    }
+
+    if (customizationId === undefined) {
+      const merging = selectedGroupId !== null || selectedDomains.size > 0
+      return {
+        ...base,
+        actions: [{
+          label: selectedGroupId !== null ? t("trackerCustomizations.mergeIntoGroup") : merging ? t("trackerCustomizations.addToMerge") : t("trackerCustomizations.rename"),
+          icon: merging ? Link2 : Pencil,
+          disabled: saving && merging,
+          onSelect: () => selectedGroupId !== null ? handleMergeIntoGroup(selectedGroupId, domain) : openRenameDialog(domain),
+        }],
+      }
+    }
+
+    if (selectedDomains.size > 0 && (selectedGroupId === null || selectedGroupId === customizationId)) {
+      return {
+        ...base,
+        actions: [{ label: t("trackerCustomizations.mergeTooltip"), icon: Link2, disabled: saving, onSelect: () => handleMergeIntoGroup(customizationId) }],
+      }
+    }
+
+    return {
+      ...base,
+      onOpen: () => openEditDialog(customizationId, displayName, domains),
+      actions: [{
+        label: t("trackerCustomizations.delete"),
+        icon: Trash2,
+        destructive: true,
+        pending: deleteCustomization.isPending && deleteCustomization.variables === customizationId,
+        onSelect: () => handleDelete(customizationId),
+        confirm: {
+          title: t("trackerCustomizations.deleteDialog.title"),
+          description: t("trackerCustomizations.deleteDialog.description", { name: base.title }),
+          confirmLabel: t("trackerCustomizations.delete"),
+        },
+      }],
+    }
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 space-y-1.5">
-            <CardTitle>{t("trackerCustomizations.cardTitle")}</CardTitle>
-            <CardDescription>{t("trackerCustomizations.cardDescription")}</CardDescription>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <IconAction label={t("trackerCustomizations.importTooltip")} onClick={() => setImportOpen(true)} disabled={saving}>
-              <Download className="h-4 w-4" />
-            </IconAction>
-            <IconAction label={t("trackerCustomizations.exportTooltip")} onClick={handleExport} disabled={!customizations || customizations.length === 0}>
-              <Upload className="h-4 w-4" />
-            </IconAction>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <>
+      <Section
+        title={t("trackerCustomizations.cardTitle")}
+        description={t("trackerCustomizations.cardDescription")}
+        help={t("trackerCustomizations.cardHelp")}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={openImport} disabled={saving}>
+              <Download />
+              {t("trackerCustomizations.importButton")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={!customizations || customizations.length === 0}>
+              <Upload />
+              {t("trackerCustomizations.exportButton")}
+            </Button>
+          </>
+        }
+        queries={[customizationsQuery]}
+      >
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {customizationsLoading || trackersLoading ? t("trackerCustomizations.loading") : t("trackerCustomizations.empty")}
-          </p>
+          <ResourceList label={t("trackerCustomizations.cardTitle")} items={[]} itemKey={() => ""} row={resourceRow} empty={empty} />
         ) : (
-          <div className="divide-y rounded-md border">
-            {rows.map(row => {
-              const { domain, displayName, domains, customizationId } = row
-              const hasCustomization = customizationId !== undefined
-              const isSelected = !hasCustomization && selectedDomains.has(domain)
-              const isGroupSelected = hasCustomization && selectedGroupId === customizationId
-              const isMerged = domains.length > 1
-              const shownName = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
-              const shownDomains = incognitoMode ? domains.map(getLinuxTrackerDomain) : domains
-              const subtitle = isMerged ? t("trackerCustomizations.mergedFrom", { domains: shownDomains.join(", ") }) : hasCustomization && displayName !== domain ? t("trackerCustomizations.original", { domain: shownDomains[0] }) : ""
-              const showCheckbox = !hasCustomization || selectedGroupId === null || isGroupSelected
-              const canMergeIntoGroup = hasCustomization && selectedDomains.size > 0 && (selectedGroupId === null || selectedGroupId === customizationId)
-
-              return (
-                <div
-                  key={hasCustomization ? `c-${customizationId}` : `d-${domain}`}
-                  className={`group flex min-h-11 items-center gap-2 px-2 ${isSelected || isGroupSelected ? "bg-primary/5" : ""} hover:bg-muted/50`}
-                >
-                  <div className="flex h-11 w-8 shrink-0 items-center justify-center">
-                    {showCheckbox && (
-                      <Checkbox
-                        checked={hasCustomization ? isGroupSelected : isSelected}
-                        onCheckedChange={() => hasCustomization ? toggleGroupSelection(customizationId) : toggleSelection(domain)}
-                        aria-label={shownName}
-                        // the box is 16px; the pseudo-element grows the tap target to fill the 44px cell
-                        className="relative before:absolute before:-inset-3.5 before:content-[''] sm:opacity-0 sm:group-hover:opacity-100 sm:data-[state=checked]:opacity-100"
-                      />
-                    )}
-                  </div>
-                  <TrackerIconImage tracker={incognitoMode ? getLinuxTrackerDomain(domain) : domain} trackerIcons={trackerIcons} />
-                  <div className="min-w-0 flex-1 py-1.5">
-                    <div className="flex items-center gap-1">
-                      <span className="truncate text-sm font-medium">{shownName}</span>
-                      {isMerged && <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />}
-                    </div>
-                    {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
-                    {hasCustomization ? (
-                      canMergeIntoGroup ? (
-                        <IconAction label={t("trackerCustomizations.mergeTooltip")} onClick={() => handleMergeIntoGroup(customizationId)} disabled={saving}>
-                          <Link2 className="h-3.5 w-3.5 text-primary" />
-                        </IconAction>
-                      ) : (
-                        <>
-                          <IconAction label={t("trackerCustomizations.edit")} onClick={() => openEditDialog(customizationId, displayName, domains)}>
-                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                          </IconAction>
-                          <IconAction label={t("trackerCustomizations.delete")} onClick={() => handleDelete(customizationId)}>
-                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          </IconAction>
-                        </>
-                      )
-                    ) : (
-                      <IconAction
-                        label={selectedGroupId !== null ? t("trackerCustomizations.mergeIntoGroup") : selectedDomains.size > 0 ? t("trackerCustomizations.addToMerge") : t("trackerCustomizations.rename")}
-                        onClick={() => selectedGroupId !== null ? handleMergeIntoGroup(selectedGroupId, domain) : openRenameDialog(domain)}
-                        disabled={saving && (selectedGroupId !== null || selectedDomains.size > 0)}
-                      >
-                        {selectedGroupId !== null || selectedDomains.size > 0 ? <Link2 className="h-3.5 w-3.5 text-primary" /> : <Pencil className="h-3.5 w-3.5 text-muted-foreground" />}
-                      </IconAction>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+          <div className="space-y-3">
+            <SelectionBar
+              count={selectedDomains.size + (selectedGroupId === null ? 0 : 1)}
+              primary={
+                selectedGroupId !== null
+                  ? selectedDomains.size > 0
+                    ? { label: t("trackerCustomizations.mergeIntoGroup"), onClick: () => handleMergeIntoGroup(selectedGroupId) }
+                    : undefined
+                  : selectedDomains.size > 0
+                    ? {
+                      label: selectedDomains.size === 1 ? t("trackerCustomizations.rename") : t("trackerCustomizations.customizeDialog.mergeAction"),
+                      onClick: () => openRenameDialog([...selectedDomains][0]),
+                    }
+                    : undefined
+              }
+              disabled={saving}
+              onClear={clearSelection}
+            />
+            <ResourceList
+              label={t("trackerCustomizations.cardTitle")}
+              items={rows}
+              itemKey={row => row.customizationId !== undefined ? `c-${row.customizationId}` : `d-${row.domain}`}
+              row={resourceRow}
+              empty={empty}
+            />
           </div>
         )}
-      </CardContent>
+      </Section>
 
-      <Dialog open={customizeOpen} onOpenChange={(open) => !open && closeCustomizeDialog()}>
-        {customizeOpen && (
-          <CustomizeDialogContent
-            mode={customizeMode}
-            initialName={editingCustomization?.displayName ?? ""}
-            domains={editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)}
-            incognitoMode={incognitoMode}
-            saving={saving}
-            onRemoveDomain={handleRemoveDomainFromDialog}
-            onSave={handleSaveCustomization}
-            onCancel={closeCustomizeDialog}
-          />
-        )}
-      </Dialog>
+      {customizeOpen && (
+        <CustomizeEditor
+          mode={customizeMode}
+          initialName={editingCustomization?.displayName ?? ""}
+          domains={editingCustomization ? editingCustomization.domains : Array.from(selectedDomains)}
+          incognitoMode={incognitoMode}
+          saving={saving}
+          onRemoveDomain={handleRemoveDomainFromDialog}
+          onSave={handleSaveCustomization}
+          onClose={closeCustomizeDialog}
+        />
+      )}
 
-      <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        {importOpen && (
-          <ImportDialogContent
-            customizations={customizations ?? []}
-            createCustomization={createCustomization}
-            updateCustomization={updateCustomization}
-            onDone={() => setImportOpen(false)}
-          />
-        )}
-      </Dialog>
-    </Card>
+      <ImportEditor
+        key={importSession}
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        customizations={customizations ?? []}
+        createCustomization={createCustomization}
+        updateCustomization={updateCustomization}
+      />
+    </>
   )
 }
 
-interface CustomizeDialogContentProps {
+interface SelectionBarProps {
+  count: number
+  /** The step for the selection: rename, merge, or merge into the selected customization. */
+  primary?: { label: string; onClick: () => void }
+  disabled: boolean
+  onClear: () => void
+}
+
+/** The line above the list: a hint while nothing is selected, else the count and the steps for the selection. */
+function SelectionBar({ count, primary, disabled, onClear }: SelectionBarProps) {
+  const { t } = useTranslation("settings")
+  return (
+    <div className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/50 py-1 pr-1 pl-3 text-sm">
+      {count === 0 ? (
+        <span className="text-muted-foreground">{t("trackerCustomizations.selectionHint")}</span>
+      ) : (
+        <>
+          <span role="status" className="mr-auto font-medium">{t("trackerCustomizations.selectedCount", { count })}</span>
+          <Button variant="ghost" size="sm" className="max-sm:h-10" onClick={onClear}>{t("trackerCustomizations.clearSelection")}</Button>
+          {primary && <Button size="sm" className="max-sm:h-10" disabled={disabled} onClick={primary.onClick}>{primary.label}</Button>}
+        </>
+      )}
+    </div>
+  )
+}
+
+interface CustomizeEditorProps {
   mode: CustomizeMode
   initialName: string
   domains: string[]
@@ -333,83 +377,86 @@ interface CustomizeDialogContentProps {
   saving: boolean
   onRemoveDomain: (domain: string) => void
   onSave: (displayName: string) => void
-  onCancel: () => void
+  onClose: () => void
 }
 
-function CustomizeDialogContent({ mode, initialName, domains, incognitoMode, saving, onRemoveDomain, onSave, onCancel }: CustomizeDialogContentProps) {
+// Mounted only while open: the domains come from the selection, which a save clears, so a fade-out would show them change.
+function CustomizeEditor({ mode, initialName, domains, incognitoMode, saving, onRemoveDomain, onSave, onClose }: CustomizeEditorProps) {
   const { t } = useTranslation("settings")
+  const domainsLabelId = useId()
   const [displayName, setDisplayName] = useState(initialName)
+  // The mutations are shared with the import, so only a save from this form shows its spinner.
+  const [submitted, setSubmitted] = useState(false)
   const title = { edit: t("trackerCustomizations.customizeDialog.editTitle"), rename: t("trackerCustomizations.customizeDialog.renameTitle"), merge: t("trackerCustomizations.customizeDialog.mergeTitle") }[mode]
   const description = { edit: t("trackerCustomizations.customizeDialog.editDescription"), rename: t("trackerCustomizations.customizeDialog.renameDescription"), merge: t("trackerCustomizations.customizeDialog.mergeDescription") }[mode]
   const action = { edit: t("trackerCustomizations.customizeDialog.save"), rename: t("trackerCustomizations.customizeDialog.renameAction"), merge: t("trackerCustomizations.customizeDialog.mergeAction") }[mode]
 
   return (
-    <DialogContent className="max-h-[90dvh] flex flex-col">
-      <DialogHeader className="flex-shrink-0">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
-      <div className="space-y-4 py-4 min-h-0 flex-1 flex flex-col">
-        <div className="space-y-2">
-          <Label htmlFor="customize-name">{t("trackerCustomizations.customizeDialog.displayName")}</Label>
-          <Input
-            id="customize-name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder={t("trackerCustomizations.customizeDialog.displayNamePlaceholder")}
-          />
-        </div>
-        <div className="space-y-2 min-h-0 flex-1 flex flex-col overflow-hidden">
-          <Label>{mode === "edit" ? t("trackerCustomizations.customizeDialog.domains") : t("trackerCustomizations.customizeDialog.selectedTrackers")}</Label>
-          <ScrollArea className="h-[300px]">
-            <div className="text-sm text-muted-foreground space-y-1.5 pr-4">
-              {domains.map((domain, index) => {
-                const hasMultiple = domains.length > 1
-                const isPrimary = index === 0
-                const shownDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
-                return (
-                  <div key={domain} className={`grid items-center gap-2 ${hasMultiple ? "grid-cols-[1fr_auto_auto]" : "grid-cols-[1fr]"}`}>
-                    <span className={`truncate${isPrimary ? " font-medium" : ""}`} title={shownDomain}>{shownDomain}</span>
-                    {hasMultiple && (isPrimary ? <Badge variant="secondary" className="text-[10px]">{t("trackerCustomizations.customizeDialog.primary")}</Badge> : <span />)}
-                    {hasMultiple && (
-                      <button
-                        type="button"
-                        onClick={() => onRemoveDomain(domain)}
-                        aria-label={t("trackerCustomizations.customizeDialog.removeDomain", { domain: shownDomain })}
-                        className="text-muted-foreground hover:text-destructive cursor-pointer"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </ScrollArea>
-        </div>
+    <Editor
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={title}
+      description={description}
+      submitLabel={action}
+      onSubmit={() => {
+        setSubmitted(true)
+        onSave(displayName.trim())
+      }}
+      pending={submitted && saving}
+      submitDisabled={!displayName.trim() || saving}
+    >
+      <Field label={t("trackerCustomizations.customizeDialog.displayName")}>
+        <Input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder={t("trackerCustomizations.customizeDialog.displayNamePlaceholder")}
+          autoComplete="off"
+        />
+      </Field>
+      <div role="group" aria-labelledby={domainsLabelId} className="space-y-2">
+        <p id={domainsLabelId} className="text-sm font-medium leading-5">
+          {mode === "edit" ? t("trackerCustomizations.customizeDialog.domains") : t("trackerCustomizations.customizeDialog.selectedTrackers")}
+        </p>
+        <ul className="divide-y rounded-lg border">
+          {domains.map((domain, index) => {
+            const shownDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
+            return (
+              <li key={domain} className="flex min-h-11 items-center gap-2 py-1 pr-1 pl-3">
+                <span className={cn("min-w-0 flex-1 text-sm [overflow-wrap:anywhere]", index === 0 && "font-medium")}>{shownDomain}</span>
+                {domains.length > 1 && index === 0 && <Badge variant="secondary">{t("trackerCustomizations.customizeDialog.primary")}</Badge>}
+                {domains.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onRemoveDomain(domain)}
+                    aria-label={t("trackerCustomizations.customizeDialog.removeDomain", { domain: shownDomain })}
+                    className="size-8 shrink-0 text-muted-foreground hover:text-destructive max-sm:size-10"
+                  >
+                    <X />
+                  </Button>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       </div>
-      <DialogFooter className="flex-shrink-0">
-        <Button variant="outline" onClick={onCancel}>
-          {t("trackerCustomizations.customizeDialog.cancel")}
-        </Button>
-        <Button onClick={() => onSave(displayName.trim())} disabled={!displayName.trim() || saving}>
-          {saving ? t("trackerCustomizations.customizeDialog.saving") : action}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
+    </Editor>
   )
 }
 
-interface ImportDialogContentProps {
+interface ImportEditorProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   customizations: TrackerCustomization[]
-  // The mutations live in the parent, so a reopened dialog still sees a running import.
+  // The mutations live in the parent, so a reopened form still sees a running import.
   createCustomization: ReturnType<typeof useCreateTrackerCustomization>
   updateCustomization: ReturnType<typeof useUpdateTrackerCustomization>
-  onDone: () => void
 }
 
-function ImportDialogContent({ customizations, createCustomization, updateCustomization, onDone }: ImportDialogContentProps) {
+function ImportEditor({ open, onOpenChange, customizations, createCustomization, updateCustomization }: ImportEditorProps) {
   const { t } = useTranslation("settings")
+  const conflictsLabelId = useId()
   const [importJson, setImportJson] = useState("")
   const [conflictChoices, setConflictChoices] = useState<Map<number, "skip" | "overwrite">>(new Map())
 
@@ -425,6 +472,7 @@ function ImportDialogContent({ customizations, createCustomization, updateCustom
   const newCount = entries.filter(e => !e.conflict).length
   const unchangedCount = entries.filter(e => e.isIdentical).length
   const allConflictsResolved = parse.valid && conflicts.every(e => conflictChoices.has(e.index))
+  // The import keeps running when the user closes the form, so Cancel stays open to them.
   const importing = createCustomization.isPending || updateCustomization.isPending
 
   const handleImport = async () => {
@@ -450,7 +498,7 @@ function ImportDialogContent({ customizations, createCustomization, updateCustom
       }
     }
 
-    onDone()
+    onOpenChange(false)
 
     if (failed.length > 0) {
       toast.error(t("trackerCustomizations.toasts.failedToImport", { names: failed.join(", ") }))
@@ -465,104 +513,80 @@ function ImportDialogContent({ customizations, createCustomization, updateCustom
 
   const setChoice = (index: number, choice: "skip" | "overwrite") => setConflictChoices(prev => new Map(prev).set(index, choice))
 
+  const summaryParts = [
+    newCount > 0 && t("trackerCustomizations.importDialog.newCount", { count: newCount }),
+    conflicts.length > 0 && (
+      <span key="conflicts" className="text-amber-600 dark:text-amber-500">
+        {t("trackerCustomizations.importDialog.conflictCount", { count: conflicts.length })}
+      </span>
+    ),
+    unchangedCount > 0 && t("trackerCustomizations.importDialog.unchangedCount", { count: unchangedCount }),
+  ].filter(Boolean)
+  const summary = summaryParts.length > 0 ? <>{summaryParts.flatMap((part, index) => index === 0 ? [part] : [", ", part])}</> : undefined
+
   return (
-    <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
-      <DialogHeader className="flex-shrink-0">
-        <DialogTitle>{t("trackerCustomizations.importDialog.title")}</DialogTitle>
-        <DialogDescription>{t("trackerCustomizations.importDialog.description")}</DialogDescription>
-      </DialogHeader>
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4">
-        <div className="space-y-2">
-          <Label htmlFor="import-json">{t("trackerCustomizations.importDialog.jsonData")}</Label>
-          <Textarea
-            id="import-json"
-            value={importJson}
-            onChange={(e) => {
-              setImportJson(e.target.value)
-              setConflictChoices(new Map())
-            }}
-            placeholder={"{\n  \"trackerCustomizations\": [\n    { \"displayName\": \"Name\", \"domains\": [\"domain.com\"] }\n  ]\n}"}
-            className="font-mono text-xs h-32"
-          />
+    <Editor
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("trackerCustomizations.importDialog.title")}
+      description={t("trackerCustomizations.importDialog.description")}
+      submitLabel={importing ? t("trackerCustomizations.importDialog.importing") : t("trackerCustomizations.importDialog.import")}
+      onSubmit={() => void handleImport()}
+      submitDisabled={!allConflictsResolved || importing}
+    >
+      <Field
+        label={t("trackerCustomizations.importDialog.jsonData")}
+        error={!parse.valid && parse.error ? errorText[parse.error] : undefined}
+        description={summary}
+      >
+        <Textarea
+          value={importJson}
+          onChange={(e) => {
+            setImportJson(e.target.value)
+            setConflictChoices(new Map())
+          }}
+          placeholder={"{\n  \"trackerCustomizations\": [\n    { \"displayName\": \"Name\", \"domains\": [\"domain.com\"] }\n  ]\n}"}
+          autoCapitalize="off"
+          spellCheck={false}
+          className="max-h-72 min-h-32 font-mono md:text-xs"
+        />
+      </Field>
+      {conflicts.length > 0 && (
+        <div role="group" aria-labelledby={conflictsLabelId} className="space-y-2">
+          <p id={conflictsLabelId} className="text-sm font-medium leading-5">{t("trackerCustomizations.importDialog.resolveConflicts")}</p>
+          <ul className="divide-y rounded-lg border">
+            {conflicts.map(entry => {
+              const choice = conflictChoices.get(entry.index)
+              return (
+                <li key={entry.index} className="flex gap-3 px-3 py-2.5 max-sm:flex-col sm:items-center">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium [overflow-wrap:anywhere]">{entry.displayName}</p>
+                    <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{entry.domains.join(", ")}</p>
+                    <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-500 [overflow-wrap:anywhere]">
+                      {t("trackerCustomizations.importDialog.conflictsWith", { name: entry.conflict?.displayName })}
+                    </p>
+                  </div>
+                  <div role="group" aria-label={entry.displayName} className="flex shrink-0 gap-0.5 rounded-md border p-0.5 max-sm:*:flex-1">
+                    {(["skip", "overwrite"] as const).map(option => (
+                      <Button
+                        key={option}
+                        type="button"
+                        variant={choice === option ? "secondary" : "ghost"}
+                        size="sm"
+                        aria-pressed={choice === option}
+                        className="h-7 px-2.5 text-xs max-sm:h-9"
+                        onClick={() => setChoice(entry.index, option)}
+                      >
+                        {option === "skip" ? t("trackerCustomizations.importDialog.skip") : t("trackerCustomizations.importDialog.overwrite")}
+                      </Button>
+                    ))}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-
-        {!parse.valid && parse.error && (
-          <div className="flex items-center gap-2 text-destructive text-sm">
-            <AlertTriangle className="h-4 w-4" />
-            {errorText[parse.error]}
-          </div>
-        )}
-        {parse.valid && (
-          <div className="space-y-2">
-            <div className="text-sm text-muted-foreground">
-              {newCount > 0 && <span>{t("trackerCustomizations.importDialog.newCount", { count: newCount })}</span>}
-              {newCount > 0 && (conflicts.length > 0 || unchangedCount > 0) && <span>, </span>}
-              {conflicts.length > 0 && <span className="text-yellow-600">{t("trackerCustomizations.importDialog.conflictCount", { count: conflicts.length })}</span>}
-              {conflicts.length > 0 && unchangedCount > 0 && <span>, </span>}
-              {unchangedCount > 0 && <span>{t("trackerCustomizations.importDialog.unchangedCount", { count: unchangedCount })}</span>}
-            </div>
-            {conflicts.length > 0 && (
-              <>
-                <Label>{t("trackerCustomizations.importDialog.resolveConflicts")}</Label>
-                <div className="border rounded-md max-h-48 overflow-y-auto">
-                  {conflicts.map(entry => (
-                    <div key={entry.index} className="px-3 py-2 text-sm border-b last:border-b-0 bg-yellow-500/10">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium truncate">{entry.displayName}</div>
-                          <div className="text-xs text-muted-foreground truncate">{entry.domains.join(", ")}</div>
-                          <div className="text-xs text-yellow-600 mt-1">
-                            {t("trackerCustomizations.importDialog.conflictsWith", { name: entry.conflict?.displayName })}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button
-                            variant={conflictChoices.get(entry.index) === "skip" ? "secondary" : "ghost"}
-                            size="sm"
-                            className="h-6 px-2 text-xs"
-                            onClick={() => setChoice(entry.index, "skip")}
-                          >
-                            {t("trackerCustomizations.importDialog.skip")}
-                          </Button>
-                          <Button
-                            variant={conflictChoices.get(entry.index) === "overwrite" ? "secondary" : "ghost"}
-                            size="sm"
-                            className="h-6 px-2 text-xs"
-                            onClick={() => setChoice(entry.index, "overwrite")}
-                          >
-                            {t("trackerCustomizations.importDialog.overwrite")}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-      <DialogFooter className="flex-shrink-0">
-        <Button variant="outline" onClick={onDone}>
-          {t("trackerCustomizations.importDialog.cancel")}
-        </Button>
-        <Button onClick={handleImport} disabled={!allConflictsResolved || importing}>
-          {importing ? t("trackerCustomizations.importDialog.importing") : t("trackerCustomizations.importDialog.import")}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  )
-}
-
-function IconAction({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-11 sm:size-8" onClick={onClick} disabled={disabled} aria-label={label}>
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+      )}
+    </Editor>
   )
 }

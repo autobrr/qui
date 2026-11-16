@@ -7,24 +7,12 @@
       "disconnected": "Odpojeno"
     },
     "tooltips": {
-      "disableInstance": "Vypnout instanci",
-      "enableInstance": "Zapnout instanci",
       "moveUp": "Přesunout nahoru",
       "moveDown": "Přesunout dolů"
     },
     "actions": {
-      "edit": "Editovat",
       "testConnection": "Testovat připojení",
       "delete": "Smazat"
-    },
-    "labels": {
-      "username": "Uživatelské jméno:",
-      "basicAuth": "Základní autentizace:",
-      "tlsVerification": "TLS ověření:",
-      "tlsSkipped": "Přeskočit",
-      "tlsStrict": "Striktní",
-      "testingConnection": "Testuji připojení...",
-      "fileAccess": "Přístup k souborům:"
     },
     "deleteDialog": {
       "title": "Smazat instanci",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Instance vypnutá",
-      "testDisabledDescription": "Povolte instanci před testováním připojení.",
       "testSuccessTitle": "Test připojení úspěšný",
       "testSuccessDescription": "Úspěšně připojeno k instanci qBittorrentu",
       "testFailedTitle": "Test připojení selhal",
@@ -55,7 +42,13 @@
     "passwordRequired": "Heslo je povinné",
     "decryptionDescription": "Nepodařilo se dešifrovat uložené heslo. To obvykle nastane, když se změní session secret.",
     "reenterPassword": "Znovu zadat heslo",
-    "recentErrors": "Poslední Chyby ({{count}})"
+    "recentErrors": "Poslední Chyby ({{count}})",
+    "errorTypes": {
+      "connection": "Připojení",
+      "authentication": "Ověření",
+      "ban": "Zákaz",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "Název instance je povinný",
-      "basicAuthPasswordRequired": "Basic auth heslo je povinné, když je basic auth povoleno"
+      "basicAuthPasswordRequired": "Basic auth heslo je povinné, když je basic auth povoleno",
+      "usernameRequired": "Uživatelské jméno je povinné",
+      "passwordRequired": "Heslo je povinné",
+      "apiKeyRequired": "Klíč API je povinný"
     },
     "buttons": {
-      "saving": "Ukládám...",
       "updateInstance": "Aktualizovat instanci",
-      "addInstance": "Přidat instanci",
-      "cancel": "Zrušit"
+      "addInstance": "Přidat instanci"
     },
     "toast": {
-      "missingCredentialsTitle": "Chybí přihlašovací údaje",
       "instanceUpdatedTitle": "Instance aktualizována",
       "instanceUpdatedDescription": "Instance aktualizována úspěšně. Testování připojení probíhá v pozadí...",
-      "updateFailedTitle": "Aktualizace selhala",
       "updateFailedDescription": "Nepodařilo se aktualizovat instanci",
       "instanceCreatedTitle": "Instance vytvořena",
       "instanceCreatedDescription": "Instance vytvořena úspěšně. Testování připojení probíhá v pozadí...",
-      "createFailedTitle": "Vytvoření selhalo",
       "createFailedDescription": "Nepodařilo se vytvořit instanci"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Uživatelské jméno a heslo",
       "apiKey": "API klíč"
     },
-    "sshAfterSave": "Přístup přes SSH k souborům instance se nastavuje v nastavení instance po uložení."
+    "sshAfterSave": "Přístup přes SSH k souborům instance se nastavuje v nastavení instance po uložení.",
+    "addTitle": "Přidat instanci",
+    "addDescription": "Nastavte novou qBittorrent instanci",
+    "editTitle": "Upravit instanci"
   },
   "settingsButton": {
     "tooltip": "Nastavení instance"
@@ -2135,10 +2129,9 @@
     }
   },
   "access": {
-    "local": "Lokální",
-    "remote": "Přes SSH",
-    "none": "Žádný",
-    "localFull": "qui čte a zapisuje soubory této instance na tomto počítači.",
+    "local": "Místní soubory",
+    "remote": "Soubory přes SSH",
+    "none": "Bez přístupu k souborům",
     "limits": {
       "noIdentity": "Bez identity souborů: qui nepozná, že dvě cesty vedou ke stejnému souboru. Vyhledání sirotků zde nemůže mazat a existující cíl hardlinku zastaví přidání přes hardlink.",
       "noReflinks": "Na vzdálené instanci nejsou reflinky k dispozici.",
@@ -2149,5 +2142,12 @@
     "label": "Smazat i historii přenosů",
     "description": "Bez této volby qui ponechá historii pod názvem instance.",
     "failed": "Instance je smazaná, ale qui nedokázal smazat celou její historii. Podívejte se do Nastavení > Statistiky a smažte zbytek tam."
+  },
+  "list": {
+    "label": "Instance",
+    "emptyTitle": "Žádné instance nakonfigurovány",
+    "emptyDescription": "Přidejte klienta qBittorrent, aby qui mohl spravovat jeho torrenty.",
+    "tlsSkipped": "Bez kontroly TLS",
+    "reorderFailed": "Nepodařilo se změnit pořadí instance"
   }
 }

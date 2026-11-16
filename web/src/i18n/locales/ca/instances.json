@@ -7,24 +7,12 @@
       "disconnected": "Desconnectada"
     },
     "tooltips": {
-      "disableInstance": "Desactiva la instància",
-      "enableInstance": "Activa la instància",
       "moveUp": "Mou cap amunt",
       "moveDown": "Mou cap avall"
     },
     "actions": {
-      "edit": "Edita",
       "testConnection": "Prova la connexió",
       "delete": "Elimina"
-    },
-    "labels": {
-      "username": "Nom d'usuari:",
-      "basicAuth": "Autenticació bàsica:",
-      "tlsVerification": "Verificació TLS:",
-      "tlsSkipped": "Omesa",
-      "tlsStrict": "Estricta",
-      "testingConnection": "S'està provant la connexió...",
-      "fileAccess": "Accés als fitxers:"
     },
     "deleteDialog": {
       "title": "Elimina la instància",
@@ -34,7 +22,6 @@
     },
     "toast": {
       "instanceDisabledTitle": "Instància desactivada",
-      "testDisabledDescription": "Activa la instància abans de provar la connexió.",
       "testSuccessTitle": "La prova de connexió ha anat bé",
       "testSuccessDescription": "S'ha connectat correctament a la instància de qBittorrent",
       "testFailedTitle": "Ha fallat la prova de connexió",
@@ -55,7 +42,13 @@
     "passwordRequired": "Cal la contrasenya",
     "decryptionDescription": "No s'ha pogut desxifrar la contrasenya desada. Això sol passar quan ha canviat el secret de la sessió.",
     "reenterPassword": "Torna a introduir la contrasenya",
-    "recentErrors": "Errors recents ({{count}})"
+    "recentErrors": "Errors recents ({{count}})",
+    "errorTypes": {
+      "connection": "Connexió",
+      "authentication": "Autenticació",
+      "ban": "Bloqueig",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
@@ -87,23 +80,21 @@
     },
     "validation": {
       "nameRequired": "El nom de la instància és obligatori",
-      "basicAuthPasswordRequired": "La contrasenya de l'autenticació bàsica és obligatòria quan aquesta autenticació està activada"
+      "basicAuthPasswordRequired": "La contrasenya de l'autenticació bàsica és obligatòria quan aquesta autenticació està activada",
+      "usernameRequired": "Cal un nom d'usuari",
+      "passwordRequired": "Cal una contrasenya",
+      "apiKeyRequired": "Cal una clau d'API"
     },
     "buttons": {
-      "saving": "S'està desant...",
       "updateInstance": "Actualitza la instància",
-      "addInstance": "Afegeix la instància",
-      "cancel": "Cancel·la"
+      "addInstance": "Afegeix la instància"
     },
     "toast": {
-      "missingCredentialsTitle": "Falten credencials",
       "instanceUpdatedTitle": "Instància actualitzada",
       "instanceUpdatedDescription": "S'ha actualitzat la instància correctament. S'està provant la connexió en segon pla...",
-      "updateFailedTitle": "No s'ha pogut actualitzar",
       "updateFailedDescription": "No s'ha pogut actualitzar la instància",
       "instanceCreatedTitle": "Instància creada",
       "instanceCreatedDescription": "S'ha creat la instància correctament. S'està provant la connexió en segon pla...",
-      "createFailedTitle": "No s'ha pogut crear",
       "createFailedDescription": "No s'ha pogut crear la instància"
     },
     "authType": {
@@ -111,7 +102,10 @@
       "usernamePassword": "Nom d'usuari i contrasenya",
       "apiKey": "Clau API"
     },
-    "sshAfterSave": "L'accés SSH als fitxers de la instància es configura a la configuració de la instància després de desar."
+    "sshAfterSave": "L'accés SSH als fitxers de la instància es configura a la configuració de la instància després de desar.",
+    "addTitle": "Afegeix una instància",
+    "addDescription": "Configura una instància nova de qBittorrent",
+    "editTitle": "Edita la instància"
   },
   "settingsButton": {
     "tooltip": "Configuració de la instància"
@@ -2099,10 +2093,9 @@
     }
   },
   "access": {
-    "local": "Local",
-    "remote": "Per SSH",
-    "none": "Cap",
-    "localFull": "qui llegeix i escriu els fitxers d'aquesta instància en aquesta màquina.",
+    "local": "Fitxers locals",
+    "remote": "Fitxers per SSH",
+    "none": "Sense accés als fitxers",
     "limits": {
       "noIdentity": "Sense identitat dels fitxers: qui no pot saber quan dos camins són el mateix fitxer. L'exploració d'orfes no pot suprimir aquí, i una destinació de hardlink existent atura una addició per hardlink.",
       "noReflinks": "Sense reflinks en una instància remota.",
@@ -2113,5 +2106,12 @@
     "label": "Elimina també l'historial de transferències",
     "description": "Sense aquesta opció, qui conserva l'historial amb el nom de la instància.",
     "failed": "La instància s'ha eliminat, però qui no ha pogut eliminar tot el seu historial. Mira a Configuració > Estadístiques i elimina-hi la resta."
+  },
+  "list": {
+    "label": "Instàncies",
+    "emptyTitle": "Encara no hi ha cap instància configurada",
+    "emptyDescription": "Afegeix un client qBittorrent perquè qui en gestioni els torrents.",
+    "tlsSkipped": "Sense comprovació TLS",
+    "reorderFailed": "No s'han pogut reordenar les instàncies"
   }
 }
