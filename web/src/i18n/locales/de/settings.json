@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "Client-Name ist erforderlich",
       "selectInstance": "Bitte wähle eine qBittorrent-Instanz aus"
-    }
+    },
+    "created": "Erstellt {{date}}"
   },
   "apiKeys": {
     "cardTitle": "API-Keys",
@@ -1286,6 +1287,10 @@
     "selectionHint": "Wähle Tracker aus, um sie umzubenennen oder zusammenzuführen.",
     "selectedCount_one": "{{count}} ausgewählt",
     "selectedCount_other": "{{count}} ausgewählt",
-    "clearSelection": "Auswahl aufheben"
+    "clearSelection": "Auswahl aufheben",
+    "deleteDialog": {
+      "title": "Anpassung löschen?",
+      "description": "Die Tracker von {{name}} zeigen wieder ihre eigenen Domains. Das kann nicht rückgängig gemacht werden."
+    }
   }
 }

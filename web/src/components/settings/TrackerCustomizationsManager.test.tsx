@@ -67,6 +67,11 @@ function renderManager() {
   )
 }
 
+/** Answers the question that a delete asks first. */
+async function confirmDelete() {
+  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "trackerCustomizations.delete" }))
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -90,6 +95,7 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("checkbox", { name: "Bravo" })).toBeNull()
 
     fireEvent.click(screen.getAllByRole("button", { name: "trackerCustomizations.delete" })[0])
+    await confirmDelete()
 
     await waitFor(() => expect(screen.queryByText("Alpha")).toBeNull())
     expect(screen.queryByRole("checkbox", { name: "Bravo" })).not.toBeNull()
@@ -162,6 +168,7 @@ describe("TrackerCustomizationsManager", () => {
 
     // A delete of the imported customization gives the domain its row back, unselected.
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.delete" }))
+    await confirmDelete()
     const box = await screen.findByRole("checkbox", { name: "a.example.invalid" })
     expect(box.getAttribute("aria-checked")).toBe("false")
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()

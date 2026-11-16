@@ -25,7 +25,7 @@ export const AUTOMATIONS_TABS = AUTOMATIONS_NAV_GROUPS.flatMap(group => group.ta
 
 export const DEFAULT_AUTOMATIONS_TAB: AutomationsTab = "workflows"
 
-/** An unknown tab value drops to undefined, and the route then shows the default tab. */
+/** An unknown tab value drops to undefined, as with no tab: a wide screen shows the default tab, and a phone shows the menu. */
 export const automationsSearchSchema = z.object({
   tab: z.enum(AUTOMATIONS_TABS).optional().catch(undefined),
 })

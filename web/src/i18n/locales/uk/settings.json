@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "Потрібне ім'я клієнта",
       "selectInstance": "Виберіть екземпляр qBittorrent"
-    }
+    },
+    "created": "Створено: {{date}}"
   },
   "apiKeys": {
     "cardTitle": "API-ключі",
@@ -1310,6 +1311,10 @@
     "selectedCount_few": "Вибрано {{count}}",
     "selectedCount_many": "Вибрано {{count}}",
     "selectedCount_other": "Вибрано {{count}}",
-    "clearSelection": "Скасувати вибір"
+    "clearSelection": "Скасувати вибір",
+    "deleteDialog": {
+      "title": "Видалити налаштування?",
+      "description": "Трекери {{name}} знову показуватимуть власні домени. Цю дію не можна скасувати."
+    }
   }
 }

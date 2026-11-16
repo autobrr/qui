@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "O nome do cliente é obrigatório",
       "selectInstance": "Selecione uma instância do qBittorrent"
-    }
+    },
+    "created": "Criada: {{date}}"
   },
   "apiKeys": {
     "cardTitle": "Chaves API",
@@ -1286,6 +1287,10 @@
     "selectionHint": "Selecione trackers para renomeá-los ou mesclá-los.",
     "selectedCount_one": "{{count}} selecionado",
     "selectedCount_other": "{{count}} selecionados",
-    "clearSelection": "Limpar"
+    "clearSelection": "Limpar",
+    "deleteDialog": {
+      "title": "Excluir personalização?",
+      "description": "Os trackers de {{name}} voltarão a mostrar seus próprios domínios. Esta ação não pode ser desfeita."
+    }
   }
 }

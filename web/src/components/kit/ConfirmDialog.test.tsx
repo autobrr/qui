@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
 
@@ -20,5 +20,22 @@ describe("ConfirmDialog", () => {
 
     expect((screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(disabled)
     expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("stays open when the step fails, so the user can try again", async () => {
+    const onOpenChange = vi.fn()
+    let fail: (error: Error) => void = () => {}
+    const onConfirm = () => new Promise<void>((_resolve, reject) => {
+      fail = reject
+    })
+    render(<ConfirmDialog open onOpenChange={onOpenChange} title="Delete seedbox?" description="It goes away." confirmLabel="Delete" onConfirm={onConfirm} />)
+
+    const confirm = screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement
+    fireEvent.click(confirm)
+    await waitFor(() => expect(confirm.disabled).toBe(true))
+    fail(new Error("server down"))
+
+    await waitFor(() => expect(confirm.disabled).toBe(false))
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
 })

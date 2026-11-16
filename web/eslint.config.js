@@ -61,13 +61,26 @@ const gazelleSiteSelectors = [
   { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
 ]
 
-const settingsKitImportPattern = {
-  regex: '^@/components/ui/(card|dialog|alert-dialog|sheet|drawer)$',
-  allowTypeImports: true,
-  message: 'Settings builds on the kit in @/components/kit: Section for a card, Editor for a form in a dialog or a sheet, ConfirmDialog for a question before a step. Read src/components/kit/AGENTS.md.',
-}
+const settingsKitMessage = 'Settings builds on the kit in @/components/kit: Section for a card, Editor for a form in a dialog or a sheet, ConfirmDialog for a question before a step. Read src/components/kit/AGENTS.md.'
 
-// The tabs of Settings. Each file here builds its cards, forms, and questions from the kit.
+const settingsKitImportPatterns = [{
+  // Also a relative path, such as ../ui/card.
+  regex: '(^|/)ui/(card|dialog|alert-dialog|sheet|drawer)$',
+  allowTypeImports: true,
+  message: settingsKitMessage,
+}, {
+  // The package under the drawer. The Radix dialog has its own pattern.
+  regex: '^vaul$',
+  allowTypeImports: true,
+  message: settingsKitMessage,
+}, {
+  regex: '(^|/)ui/command$',
+  importNames: ['CommandDialog'],
+  message: settingsKitMessage,
+}]
+
+// The tabs of Settings. Each file here builds its cards, forms, and questions from the kit. The instance dialog in
+// instances/preferences/ stays out: the header and the torrent list open it too, and it moves with the Feature pages.
 const settingsFiles = [
   'src/pages/Settings.tsx',
   'src/components/settings/**',
@@ -239,7 +252,7 @@ export default tseslint.config([
     ignores: settingsKitAllowlist,
     rules: {
       'no-restricted-imports': ['error', {
-        patterns: [...torrentListImportPatterns, radixDialogImportPattern, bulkActionDialogImportPattern, settingsKitImportPattern],
+        patterns: [...torrentListImportPatterns, radixDialogImportPattern, bulkActionDialogImportPattern, ...settingsKitImportPatterns],
       }],
     },
   },

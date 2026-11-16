@@ -115,4 +115,21 @@ describe("ResourceList", () => {
 
     expect(onOpen).toHaveBeenCalledTimes(2)
   })
+
+  it("opens the details of a row under it on a press, and closes them on a second press", () => {
+    const onOpen = vi.fn()
+    renderList([{ id: 1, name: "search" }], (item) => ({ title: item.name, onOpen, expand: <p>the request</p> }))
+    const toggle = within(screen.getByRole("listitem", { name: "search" })).getByRole("button", { name: "search" })
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("false")
+    expect(screen.queryByText("the request")).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(document.getElementById(toggle.getAttribute("aria-controls") ?? "")?.textContent).toBe("the request")
+
+    fireEvent.click(toggle)
+    expect(screen.queryByText("the request")).toBeNull()
+    expect(onOpen).not.toHaveBeenCalled()
+  })
 })

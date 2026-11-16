@@ -1,6 +1,6 @@
 # AGENTS.md
 
-The kit holds the parts that every tab of Settings builds on. ESLint blocks `@/components/ui/{card,dialog,alert-dialog,sheet,drawer}` in the Settings folders (`settingsFiles` in `web/eslint.config.js`), so a tab gets its card, form, and question from here.
+The kit holds the parts that every tab of Settings builds on. ESLint blocks `@/components/ui/{card,dialog,alert-dialog,sheet,drawer}`, `vaul`, and `CommandDialog` in the Settings folders (`settingsFiles` in `web/eslint.config.js`), so a tab gets its card, form, and question from here.
 
 Pick the module by the job:
 

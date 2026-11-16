@@ -4,11 +4,11 @@
  */
 
 import { ChevronDown, CircleAlert, CircleCheck, CircleX, Clock, type LucideIcon } from "lucide-react"
-import { useId, useState } from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { EmptyTile } from "@/components/kit/EmptyTile"
 import { Facts, type Fact } from "@/components/kit/Facts"
+import { ResourceList, type ResourceRow } from "@/components/kit/ResourceList"
 import { Section } from "@/components/kit/Section"
 import { Button } from "@/components/ui/button"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
@@ -176,13 +176,21 @@ const STATUS_LABEL_KEY: Record<SearchHistoryEntry["status"], string> = {
 
 const formatDuration = (ms: number, digits: number) => ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(digits)}s`
 
+interface EntryLabels {
+  status: string
+  priority: string
+  /** An RSS search has no content type, and "unknown" says nothing. */
+  contentType?: string
+  /** The torrents that the search added for cross-seed. */
+  added: number
+}
+
 /** The latest searches that qui sent to the indexers. A row opens to show the details of its search. */
 export function SearchHistoryPanel() {
   const { t } = useTranslation("settings")
   // The stream sends the activity events that refresh the history, so it needs no polling.
   useActivityStream(true)
   const query = useSearchHistory({ limit: 50, enabled: true, refetchInterval: false })
-  const [openId, setOpenId] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
 
   const entries = query.data?.entries ?? []
@@ -196,6 +204,33 @@ export function SearchHistoryPanel() {
     query.data?.source && t("indexers.searchHistory.source", { source: query.data.source }),
   ].filter(Boolean).join(" · ")
 
+  const row = (entry: SearchHistoryEntry): ResourceRow => {
+    const status = STATUS_ICON[entry.status] ?? STATUS_ICON.error
+    const labels: EntryLabels = {
+      status: t(STATUS_LABEL_KEY[entry.status] ?? STATUS_LABEL_KEY.error),
+      priority: t([`indexers.priorityLabels.${entry.priority}`, "common:status.unknown"]),
+      contentType: entry.contentType && entry.contentType !== "unknown"
+        ? t([`indexers.contentTypeLabels.${entry.contentType}`, "common:status.unknown"])
+        : undefined,
+      added: entry.outcome === "added" ? entry.addedCount || 1 : 0,
+    }
+    return {
+      title: entry.indexerName,
+      icon: <status.icon className={cn("size-4", status.className)} />,
+      meta: [
+        entry.query && `"${entry.query}"`,
+        entry.status === "success" ? t("indexers.searchHistory.results", { count: entry.resultCount }) : labels.status,
+        labels.added > 0 && <span className="font-medium text-primary">{t("indexers.searchHistory.detail.added", { count: labels.added })}</span>,
+        entry.status !== "success" && entry.errorMessage,
+        labels.contentType,
+        labels.priority,
+        formatDuration(entry.durationMs, 1),
+        formatRelativeTime(new Date(entry.completedAt)),
+      ].filter(Boolean),
+      expand: <HistoryDetail entry={entry} labels={labels} />,
+    }
+  }
+
   return (
     <Section
       title={t("indexers.searchHistory.title")}
@@ -203,64 +238,43 @@ export function SearchHistoryPanel() {
       footer={entries.length > 0 ? summary : undefined}
       queries={[query]}
     >
-      {entries.length === 0 ? (
-        <EmptyTile title={t("indexers.searchHistory.noSearchesYet")} />
-      ) : (
-        <div className="space-y-2">
-          <ul aria-label={t("indexers.searchHistory.title")} className="flex flex-col gap-1.5">
-            {shown.map((entry) => (
-              <HistoryRow key={entry.id} entry={entry} open={openId === entry.id} onToggle={() => setOpenId(openId === entry.id ? null : entry.id)} />
-            ))}
-          </ul>
-          {entries.length > SHOWN && (
-            <Button variant="ghost" size="sm" className="w-full text-muted-foreground max-sm:h-10" onClick={() => setShowAll(!showAll)}>
-              {showAll ? t("indexers.searchHistory.showFewer") : t("indexers.searchHistory.showAll", { count: entries.length })}
-              <ChevronDown className={cn("transition-transform", showAll && "rotate-180")} />
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="space-y-2">
+        <ResourceList
+          label={t("indexers.searchHistory.title")}
+          items={shown}
+          itemKey={(entry) => entry.id}
+          row={row}
+          empty={{ title: t("indexers.searchHistory.noSearchesYet") }}
+        />
+        {entries.length > SHOWN && (
+          <Button variant="ghost" size="sm" className="w-full text-muted-foreground max-sm:h-10" onClick={() => setShowAll(!showAll)}>
+            {showAll ? t("indexers.searchHistory.showFewer") : t("indexers.searchHistory.showAll", { count: entries.length })}
+            <ChevronDown className={cn("transition-transform", showAll && "rotate-180")} />
+          </Button>
+        )}
+      </div>
     </Section>
   )
 }
 
-// A disclosure row, not a ResourceList row: it opens its details in place and has no steps, and no other list needs that yet.
-function HistoryRow({ entry, open, onToggle }: { entry: SearchHistoryEntry; open: boolean; onToggle: () => void }) {
+/** Every fact of one search, with the parameters that qui sent. */
+function HistoryDetail({ entry, labels }: { entry: SearchHistoryEntry; labels: EntryLabels }) {
   const { t } = useTranslation("settings")
-  const detailId = useId()
-  const status = STATUS_ICON[entry.status] ?? STATUS_ICON.error
-  const statusLabel = t(STATUS_LABEL_KEY[entry.status] ?? STATUS_LABEL_KEY.error)
-  const priority = t([`indexers.priorityLabels.${entry.priority}`, "common:status.unknown"])
-  // An RSS search has no content type, and "unknown" says nothing.
-  const contentType = entry.contentType && entry.contentType !== "unknown"
-    ? t([`indexers.contentTypeLabels.${entry.contentType}`, "common:status.unknown"])
-    : undefined
-  const added = entry.outcome === "added" ? entry.addedCount || 1 : 0
-
-  const meta = [
-    entry.status === "success" ? t("indexers.searchHistory.results", { count: entry.resultCount }) : statusLabel,
-    entry.status !== "success" && entry.errorMessage,
-    contentType,
-    priority,
-    formatDuration(entry.durationMs, 1),
-    formatRelativeTime(new Date(entry.completedAt)),
-  ].filter(Boolean).join(" · ")
-
   const params = entry.params ? transformParams(entry.params, t) : []
   const facts: (Fact | false | undefined)[] = [
-    { label: t("indexers.table.status"), value: statusLabel },
+    { label: t("indexers.table.status"), value: labels.status },
     entry.query ? { label: t("indexers.searchHistory.detail.query"), value: entry.query } : undefined,
     entry.releaseName ? { label: t("indexers.searchHistory.detail.release"), value: entry.releaseName, mono: true, copy: entry.releaseName } : undefined,
     { label: t("indexers.searchHistory.detail.results"), value: entry.resultCount },
-    added > 0 && { label: t("indexers.searchHistory.detail.crossSeed"), value: t("indexers.searchHistory.detail.added", { count: added }) },
+    labels.added > 0 && { label: t("indexers.searchHistory.detail.crossSeed"), value: t("indexers.searchHistory.detail.added", { count: labels.added }) },
     entry.errorMessage ? { label: t("indexers.searchHistory.detail.error"), value: <span className="text-destructive">{entry.errorMessage}</span> } : undefined,
     params.length > 0 && {
       label: t("indexers.searchHistory.detail.searchParameters"),
       value: params.map((param) => param.value ? `${param.label}: ${param.value}` : param.label).join(" · "),
     },
     entry.searchMode ? { label: t("indexers.searchHistory.detail.mode"), value: entry.searchMode, mono: true } : undefined,
-    contentType ? { label: t("indexers.searchHistory.detail.type"), value: contentType } : undefined,
-    { label: t("indexers.searchHistory.detail.priority"), value: priority },
+    labels.contentType ? { label: t("indexers.searchHistory.detail.type"), value: labels.contentType } : undefined,
+    { label: t("indexers.searchHistory.detail.priority"), value: labels.priority },
     { label: t("indexers.searchHistory.detail.duration"), value: formatDuration(entry.durationMs, 2) },
     {
       label: t("indexers.searchHistory.detail.finished"),
@@ -269,35 +283,5 @@ function HistoryRow({ entry, open, onToggle }: { entry: SearchHistoryEntry; open
     },
   ]
 
-  return (
-    <li className="rounded-lg border">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={open ? detailId : undefined}
-        onClick={onToggle}
-        className="flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-2 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      >
-        <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md bg-muted">
-          <status.icon className={cn("size-4", status.className)} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2">
-            <span className="text-sm font-medium [overflow-wrap:anywhere] sm:max-w-[50%] sm:shrink-0 sm:truncate">{entry.indexerName}</span>
-            {entry.query && <span className="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere] sm:truncate">"{entry.query}"</span>}
-          </span>
-          <span className="block text-xs text-muted-foreground [overflow-wrap:anywhere] max-sm:line-clamp-2 sm:truncate">{meta}</span>
-        </span>
-        {added > 0 && (
-          <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-xs font-medium tabular-nums text-primary">+{added}</span>
-        )}
-        <ChevronDown aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div id={detailId} className="border-t px-3 py-3">
-          <Facts items={facts.filter((fact): fact is Fact => Boolean(fact))} />
-        </div>
-      )}
-    </li>
-  )
+  return <Facts items={facts.filter((fact): fact is Fact => Boolean(fact))} />
 }

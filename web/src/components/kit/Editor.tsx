@@ -67,8 +67,10 @@ export function Editor({ open, onOpenChange, title, description, submitLabel, on
     event.preventDefault()
     returnFocus.remember()
     const content = event.currentTarget as HTMLElement
-    // The first focusable element can be a FieldHelp, whose tooltip would open on each open.
-    const field = phone ? null : content.querySelector<HTMLElement>("input:not([type=hidden]):not(:disabled), textarea:not(:disabled), [role=combobox]")
+    // The first focusable element can be a FieldHelp, whose tooltip would open on each open. On a touch screen, a focused
+    // field opens the keyboard over the form, so the editor itself takes the focus.
+    const touch = window.matchMedia?.("(pointer: coarse)").matches ?? false
+    const field = phone || touch ? null : content.querySelector<HTMLElement>("input:not([type=hidden]):not(:disabled), textarea:not(:disabled), [role=combobox]")
     ;(field ?? content).focus()
   }
 

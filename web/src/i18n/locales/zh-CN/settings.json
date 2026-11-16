@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "客户端名称为必填项",
       "selectInstance": "请选择一个 qBittorrent 实例"
-    }
+    },
+    "created": "创建时间：{{date}}"
   },
   "apiKeys": {
     "cardTitle": "API 密钥",
@@ -1274,6 +1275,10 @@
     "exportButton": "导出",
     "selectionHint": "选择 Tracker 以重命名或合并。",
     "selectedCount_other": "已选择 {{count}} 个",
-    "clearSelection": "清除选择"
+    "clearSelection": "清除选择",
+    "deleteDialog": {
+      "title": "删除自定义？",
+      "description": "{{name}} 的 Tracker 将重新显示其原始域名。此操作无法撤销。"
+    }
   }
 }

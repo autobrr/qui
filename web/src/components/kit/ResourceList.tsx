@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { ChevronRight, Loader2, MoreHorizontal, Pencil, type LucideIcon } from "lucide-react"
+import { ChevronDown, ChevronRight, Loader2, MoreHorizontal, Pencil, type LucideIcon } from "lucide-react"
 import { Fragment, isValidElement, useId, useState, type ReactElement, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -62,6 +62,11 @@ export interface ResourceRow {
   actions?: readonly ResourceAction[]
   /** More content under the row, for example the last errors of the item. */
   detail?: ReactNode
+  /**
+   * Details that a press on the row opens under it, and a second press closes. The row then shows an arrow that turns.
+   * With onOpen too, the item opens only from its Edit action.
+   */
+  expand?: ReactNode
 }
 
 interface ResourceListProps<T> {
@@ -139,6 +144,8 @@ export function ResourceList<T>({ label, items, itemKey, row, group, empty }: Re
 function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selectable: boolean; onRun: (action: ResourceAction) => void }) {
   const { t } = useTranslation("common")
   const titleId = useId()
+  const expandId = useId()
+  const [expanded, setExpanded] = useState(false)
   const off = row.enabled?.checked === false
   const open: ResourceAction | null = row.onOpen
     ? { label: row.openAction?.label ?? t("kit.edit"), icon: row.openAction?.icon ?? Pencil, onSelect: row.onOpen }
@@ -175,6 +182,7 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
           </span>
         )}
       </span>
+      {row.expand && <ChevronDown aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />}
     </>
   )
   const bodyClass = "flex min-w-0 flex-1 items-center gap-3 self-stretch rounded-lg px-3 py-2 text-left"
@@ -196,7 +204,17 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
       )}
       <div className={cn("min-w-0 flex-1 rounded-lg border transition-colors", row.select?.checked && "bg-primary/5")}>
         <div className="flex min-h-14 items-center gap-1 pr-1.5">
-          {row.onOpen ? (
+          {row.expand ? (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={expanded ? expandId : undefined}
+              onClick={() => setExpanded(!expanded)}
+              className={cn(bodyClass, "outline-none transition-colors hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50")}
+            >
+              {body}
+            </button>
+          ) : row.onOpen ? (
             <button
               type="button"
               onClick={row.onOpen}
@@ -285,6 +303,7 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
             </DropdownMenu>
           )}
         </div>
+        {row.expand && expanded && <div id={expandId} className="border-t px-3 py-3">{row.expand}</div>}
         {row.detail && <div className="border-t px-3 py-2.5">{row.detail}</div>}
       </div>
     </li>

@@ -5,6 +5,8 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { SIDEWAYS_PHONE_QUERY } from "@/hooks/useMediaQuery"
+
 import { SectionedPage } from "./SectionedPage"
 
 afterEach(() => {
@@ -16,9 +18,9 @@ afterEach(() => {
 const GROUPS = [{ label: "General", sections: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }] }] as const
 type Section = "a" | "b"
 
-function stubWidth(kind: "phone" | "desktop") {
+function stubWidth(kind: "phone" | "sideways" | "desktop") {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: kind === "phone" && query === "(max-width: 767px)",
+    matches: (kind === "phone" && query === "(max-width: 767px)") || (kind === "sideways" && query === SIDEWAYS_PHONE_QUERY),
     media: query,
     addEventListener: () => {},
     removeEventListener: () => {},
@@ -74,6 +76,28 @@ describe("SectionedPage", () => {
 
     expect(back).toHaveBeenCalledOnce()
     expect(onSectionChange).toHaveBeenCalledTimes(1)
+  })
+
+  it("returns to the menu in place when a link opened another section after the tap", () => {
+    stubWidth("phone")
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
+    const { onSectionChange, rerender } = renderPage(undefined)
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }))
+    rerender("b")
+    // A link in Beta opens Alpha with a new history entry, so the entry before Alpha is Beta, not the menu.
+    rerender("a")
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }))
+
+    expect(back).not.toHaveBeenCalled()
+    expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
+  })
+
+  it("shows the menu first on a phone turned sideways", () => {
+    stubWidth("sideways")
+    renderPage(undefined)
+
+    expect(screen.queryByText(/content of/)).toBeNull()
+    expect(screen.getByRole("button", { name: "Beta" })).not.toBeNull()
   })
 
   it("returns to the place in the menu where the user tapped", () => {

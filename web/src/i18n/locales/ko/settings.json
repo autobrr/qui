@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "클라이언트 이름은 필수입니다",
       "selectInstance": "qBittorrent 인스턴스를 선택해 주세요"
-    }
+    },
+    "created": "생성됨: {{date}}"
   },
   "apiKeys": {
     "cardTitle": "API 키",
@@ -1274,6 +1275,10 @@
     "exportButton": "내보내기",
     "selectionHint": "이름을 바꾸거나 병합할 트래커를 선택하세요.",
     "selectedCount_other": "{{count}}개 선택됨",
-    "clearSelection": "선택 해제"
+    "clearSelection": "선택 해제",
+    "deleteDialog": {
+      "title": "사용자 지정을 삭제하시겠습니까?",
+      "description": "{{name}}의 트래커가 다시 원래 도메인으로 표시됩니다. 이 작업은 취소할 수 없습니다."
+    }
   }
 }

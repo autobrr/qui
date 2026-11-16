@@ -110,11 +110,9 @@ export function TrackerCustomizationsManager() {
     })
   }
 
-  const handleDelete = (customizationId: number) => {
-    deleteCustomization.mutate(customizationId, {
-      onSuccess: () => setSelectedGroupId(prev => prev === customizationId ? null : prev),
-    })
-  }
+  // The confirm dialog waits for the promise, and stays open when the delete fails.
+  const handleDelete = (customizationId: number) =>
+    deleteCustomization.mutateAsync(customizationId).then(() => setSelectedGroupId(prev => prev === customizationId ? null : prev))
 
   const closeCustomizeDialog = () => {
     setCustomizeOpen(false)
@@ -259,6 +257,11 @@ export function TrackerCustomizationsManager() {
         destructive: true,
         pending: deleteCustomization.isPending && deleteCustomization.variables === customizationId,
         onSelect: () => handleDelete(customizationId),
+        confirm: {
+          title: t("trackerCustomizations.deleteDialog.title"),
+          description: t("trackerCustomizations.deleteDialog.description", { name: base.title }),
+          confirmLabel: t("trackerCustomizations.delete"),
+        },
       }],
     }
   }

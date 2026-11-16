@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "用戶端名稱為必填項",
       "selectInstance": "請選擇一個 qBittorrent 實例"
-    }
+    },
+    "created": "建立時間：{{date}}"
   },
   "apiKeys": {
     "cardTitle": "API 金鑰",
@@ -1274,6 +1275,10 @@
     "exportButton": "匯出",
     "selectionHint": "選擇 Tracker 以重新命名或合併。",
     "selectedCount_other": "已選擇 {{count}} 個",
-    "clearSelection": "清除選擇"
+    "clearSelection": "清除選擇",
+    "deleteDialog": {
+      "title": "刪除自訂？",
+      "description": "{{name}} 的 Tracker 將重新顯示其原始網域。此操作無法復原。"
+    }
   }
 }

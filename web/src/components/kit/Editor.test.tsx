@@ -11,7 +11,19 @@ import "@/i18n"
 
 import { Editor } from "./Editor"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
+
+function stubPointer(pointer: "fine" | "coarse") {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query === `(pointer: ${pointer})`,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }))
+}
 
 describe("Editor", () => {
   it("has no form and closes with Close when it has nothing to save", () => {
@@ -44,5 +56,18 @@ describe("Editor", () => {
     rerender(page(false))
 
     await waitFor(() => expect(document.activeElement).toBe(target.current))
+  })
+
+  it.each([["fine", true], ["coarse", false]] as const)("with a %s pointer, focuses the first field on open: %s", async (pointer, focusesField) => {
+    stubPointer(pointer)
+    render(
+      <Editor open onOpenChange={() => {}} title="New profile" submitLabel="Create" onSubmit={() => {}}>
+        <input aria-label="Name" />
+      </Editor>
+    )
+
+    const dialog = await screen.findByRole("dialog")
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    expect(document.activeElement === screen.getByRole("textbox", { name: "Name" })).toBe(focusesField)
   })
 })

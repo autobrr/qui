@@ -5,7 +5,7 @@
 
 import { Page } from "@/components/layout/Page"
 import { ShownSectionContext } from "@/components/layout/shown-section"
-import { useIsMobile } from "@/hooks/useMediaQuery"
+import { SIDEWAYS_PHONE_QUERY, useIsMobile, useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
 import { useLayoutEffect, useRef, type ReactNode } from "react"
@@ -39,14 +39,17 @@ interface SectionedPageProps<S extends string> {
 
 /**
  * A page with sections, for example Settings. A wide screen shows a side menu next to the section. A phone shows the
- * menu as a list first, then the section that the user taps, with a link back to the list.
+ * menu as a list first, then the section that the user taps, with a link back to the list. The side menu needs 768 px,
+ * more than the 640 px where the kit changes its cards and editors, so a small tablet gets the list with wide cards.
  */
 export function SectionedPage<S extends string>({ title, description, badge, notice, groups, section, defaultSection, onSectionChange, children }: SectionedPageProps<S>) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const phone = useIsMobile()
+  const sideways = useMediaQuery(SIDEWAYS_PHONE_QUERY)
+  const phone = useIsMobile() || sideways
   const showMenu = phone && section === undefined
-  // True after a tap in the menu of a phone, while the history entry before the section is the menu.
-  const openedFromMenu = useRef(false)
+  // The section that a tap in the menu of a phone opened. While it shows, the history entry before it is the menu.
+  // A link or the command palette can then open another section, and that one has no menu entry before it.
+  const openedFromMenu = useRef<S | undefined>(undefined)
   // Where the menu of a phone was scrolled to, so that a return to it, also with the back gesture, lands there again.
   const menuScrollTop = useRef(0)
 
@@ -64,13 +67,12 @@ export function SectionedPage<S extends string>({ title, description, badge, not
       if (fromMenu) menuScrollTop.current = main.scrollTop
       main.scrollTop = 0
     }
-    openedFromMenu.current = fromMenu
+    openedFromMenu.current = fromMenu ? next : undefined
     onSectionChange(next, { replace: !fromMenu })
   }
 
   const backToMenu = () => {
-    if (openedFromMenu.current) {
-      openedFromMenu.current = false
+    if (section !== undefined && openedFromMenu.current === section) {
       window.history.back()
     } else {
       onSectionChange(undefined, { replace: true })

@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "Název klienta je povinný",
       "selectInstance": "Vyberte qBittorrent instanci"
-    }
+    },
+    "created": "Vytvořeno {{date}}"
   },
   "apiKeys": {
     "cardTitle": "API klíče",
@@ -1298,6 +1299,10 @@
     "selectedCount_one": "{{count}} vybraný",
     "selectedCount_few": "{{count}} vybrané",
     "selectedCount_other": "{{count}} vybraných",
-    "clearSelection": "Zrušit výběr"
+    "clearSelection": "Zrušit výběr",
+    "deleteDialog": {
+      "title": "Smazat úpravu?",
+      "description": "Trackery {{name}} budou znovu zobrazovat své vlastní domény. Tuto akci nelze vrátit zpět."
+    }
   }
 }

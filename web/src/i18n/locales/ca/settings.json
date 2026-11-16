@@ -108,7 +108,8 @@
     "validation": {
       "clientNameRequired": "El nom del client és obligatori",
       "selectInstance": "Selecciona una instància de qBittorrent"
-    }
+    },
+    "created": "Creada: {{date}}"
   },
   "apiKeys": {
     "cardTitle": "Claus API",
@@ -1286,6 +1287,10 @@
     "selectionHint": "Selecciona trackers per canviar-los el nom o fusionar-los.",
     "selectedCount_one": "{{count}} seleccionat",
     "selectedCount_other": "{{count}} seleccionats",
-    "clearSelection": "Neteja"
+    "clearSelection": "Neteja",
+    "deleteDialog": {
+      "title": "Vols eliminar la personalització?",
+      "description": "Els trackers de {{name}} tornaran a mostrar els seus propis dominis. No es pot desfer."
+    }
   }
 }

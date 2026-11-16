@@ -128,7 +128,7 @@ export function ClientApiKeysManager() {
         title={t("clientApiKeys.cardTitle")}
         description={t("clientApiKeys.cardDescription")}
         actions={
-          <Button variant="outline" size="sm" disabled={!keysQuery.data} onClick={openEditor}>
+          <Button variant="outline" size="sm" disabled={!keysQuery.isSuccess} onClick={openEditor}>
             <Plus />
             {t("clientApiKeys.createButton")}
           </Button>
@@ -154,6 +154,8 @@ export function ClientApiKeysManager() {
               key.lastUsedAt
                 ? t("clientApiKeys.lastUsed", { date: formatDate(new Date(key.lastUsedAt)) })
                 : t("clientApiKeys.neverUsed"),
+              // Two keys of one client for one instance differ only here.
+              t("clientApiKeys.created", { date: formatDate(new Date(key.createdAt)) }),
             ],
             actions: [
               ...(key.instance?.host ? [hostAction] : []),
@@ -173,7 +175,7 @@ export function ClientApiKeysManager() {
           empty={{
             title: t("clientApiKeys.emptyTitle"),
             description: t("clientApiKeys.emptyDescription"),
-            onAdd: keysQuery.data ? openEditor : undefined,
+            onAdd: keysQuery.isSuccess ? openEditor : undefined,
           }}
         />
       </Section>
