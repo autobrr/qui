@@ -21,7 +21,7 @@ interface SameColumnsSwitchProps {
 /** Same columns on every instance for one profile, in a place with no instance on screen, such as Settings. */
 export function SameColumnsSwitch({ profileId, instances }: SameColumnsSwitchProps) {
   const { t, i18n } = useTranslation("torrents")
-  const { profiles, setSameColumns } = useDisplayProfiles()
+  const { profiles, settled, setSameColumns } = useDisplayProfiles()
   const lastInstanceId = useLastColumnSetupInstance()
   const switchId = useId()
   const profile = profiles.find((candidate) => candidate.id === profileId)
@@ -47,6 +47,7 @@ export function SameColumnsSwitch({ profileId, instances }: SameColumnsSwitchPro
       <Switch
         id={switchId}
         checked={profile.usesSameColumns}
+        disabled={!settled}
         onCheckedChange={(on) => setSameColumns(profile.id, on)}
         className="mt-0.5"
       />

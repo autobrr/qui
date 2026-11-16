@@ -1824,6 +1824,7 @@
   "displayProfiles": {
     "chipAriaLabel": "Profil zobrazení: {{name}}",
     "menuLabel": "Profil zobrazení",
+    "defaultName": "Výchozí",
     "manage": "Spravovat profily…",
     "sheetDescription": "Každý prohlížeč si vybírá vlastní profil.",
     "settings": {
@@ -1877,6 +1878,7 @@
     },
     "iconPicker": {
       "trigger": "Ikona: {{icon}}. Změnit ikonu a barvu",
+      "letter": "První písmeno názvu",
       "color": "Barva"
     },
     "iconGroups": {

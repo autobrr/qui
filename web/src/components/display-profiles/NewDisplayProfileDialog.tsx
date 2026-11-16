@@ -10,17 +10,11 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useDisplayProfiles } from "@/lib/client-settings"
-import {
-  DISPLAY_PROFILE_NAME_MAX_LENGTH,
-  guessDisplayProfileIcon,
-  validateDisplayProfileName,
-  type DisplayProfileColor,
-  type DisplayProfileNameError
-} from "@/lib/display-profiles"
+import { guessDisplayProfileIcon, type DisplayProfileColor } from "@/lib/display-profiles"
 import { cn } from "@/lib/utils"
 
 import { findDisplayProfileIcon } from "./display-profile-icons"
+import { useDisplayProfileNameCheck, useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
 import { DisplayProfileTile } from "./DisplayProfileTile"
 
@@ -65,7 +59,7 @@ interface NewDisplayProfileFormProps {
 
 function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfileFormProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active, create } = useDisplayProfiles()
+  const { active, settled, create } = useNamedDisplayProfiles()
   const [name, setName] = useState("")
   const [submitted, setSubmitted] = useState(false)
   // null while the icon still follows the name.
@@ -74,22 +68,15 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
   const nameId = useId()
   const messageId = useId()
 
+  // The guess and the picker give only icons of the list.
   const icon = pickedIcon ?? guessDisplayProfileIcon(name)
-  const iconLabelKey = findDisplayProfileIcon(icon)?.labelKey
-  const error = validateDisplayProfileName(name, profiles)
-  const shownError = name.trim() !== "" || submitted ? error : null
-  const length = [...name.trim()].length
-
-  const nameErrorText: Record<DisplayProfileNameError, string> = {
-    empty: t("displayProfiles.nameErrors.empty"),
-    tooLong: t("displayProfiles.nameErrors.tooLong", { max: DISPLAY_PROFILE_NAME_MAX_LENGTH }),
-    duplicate: t("displayProfiles.nameErrors.duplicate"),
-  }
+  const iconLabelKey = findDisplayProfileIcon(icon)!.labelKey
+  const { error, shownError, errorTexts, count } = useDisplayProfileNameCheck(name, submitted)
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     setSubmitted(true)
-    if (error) return
+    if (error || !settled) return
     onCreated(create(name, { icon, color }))
   }
 
@@ -111,7 +98,7 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
         <DisplayProfileIconPicker icon={icon} color={color} onIconChange={setPickedIcon} onColorChange={setColor}>
           <button
             type="button"
-            aria-label={t("displayProfiles.iconPicker.trigger", { icon: iconLabelKey ? t(iconLabelKey) : icon })}
+            aria-label={t("displayProfiles.iconPicker.trigger", { icon: t(iconLabelKey) })}
             className="mt-6 shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <DisplayProfileTile profile={{ icon, color, name }} size="lg" />
@@ -131,10 +118,10 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
           />
           <div id={messageId} className="flex gap-2 text-xs leading-4">
             <span className={cn("min-w-0 flex-1", shownError ? "text-destructive" : "text-muted-foreground")}>
-              {shownError && nameErrorText[shownError]}
+              {shownError && errorTexts[shownError]}
             </span>
-            <span className={cn("shrink-0 tabular-nums", length > DISPLAY_PROFILE_NAME_MAX_LENGTH ? "text-destructive" : "text-muted-foreground")}>
-              {t("displayProfiles.newDialog.nameCount", { length, max: DISPLAY_PROFILE_NAME_MAX_LENGTH })}
+            <span className={cn("shrink-0 tabular-nums", error === "tooLong" ? "text-destructive" : "text-muted-foreground")}>
+              {count}
             </span>
           </div>
         </div>
@@ -142,7 +129,7 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>{t("displayProfiles.newDialog.cancel")}</Button>
-        <Button type="submit">{t("displayProfiles.newDialog.create")}</Button>
+        <Button type="submit" disabled={!settled}>{t("displayProfiles.newDialog.create")}</Button>
       </DialogFooter>
     </form>
   )

@@ -144,7 +144,9 @@ Until you set the switch, qui selects its position. If you changed the columns o
 
 ## Group copies
 
-A copy is a torrent of the same release on another tracker or another instance. **Group copies** shows all copies of a release as one row. The switch is off by default. On a computer, it is the button next to the search bar. On phones, it is in the sort menu above the cards. qui saves the switch with your other settings, so it applies in each browser that you sign in to.
+A copy is a torrent of the same release on another tracker or another instance. **Group copies** shows all copies of a release as one row. The switch is off by default. On a computer, it is the button next to the search bar. On phones, it is in the sort menu above the cards.
+
+qui saves the switch with your other settings, so it applies in each browser that you sign in to. If a Display profile has [Own sort and filters](./dashboard.md#own-sort-and-filters) on, that profile keeps its own value of the switch.
 
 Two torrents are copies when qui matches them as cross-seeds and their files have the same sizes. Equal sizes keep a season pack apart from its episodes. A torrent with no file list, for example a magnet without metadata, stays a row of its own.
 

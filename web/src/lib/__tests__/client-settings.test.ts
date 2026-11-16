@@ -318,6 +318,7 @@ describe("push queue", () => {
   })
 })
 
+// regression: #4194
 describe("large batches", () => {
   const MAX_BODY_BYTES = 64 * 1024
 
@@ -389,6 +390,27 @@ describe("large batches", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][1].keepalive).toBeFalsy()
+  })
+
+  it("sends a debounced save that is still in flight at page hide again, with keepalive and the waiting saves", async () => {
+    const values = storeLargeLocalSetup()
+    const server = fakeServer()
+    const deliver = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementationOnce(() => new Promise(() => {}))
+    seedAndMarkReady({})
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    writeRaw("qui-test-bool", "true")
+    fetchMock.mockImplementation(deliver)
+
+    window.dispatchEvent(new Event("pagehide"))
+    await vi.runAllTimersAsync()
+
+    const resent = fetchMock.mock.calls.slice(1)
+    expect(resent.length).toBeGreaterThan(1)
+    for (const [, init] of resent) expect(init.keepalive).toBe(true)
+    for (const size of bodySizes().slice(1)) expect(size).toBeLessThanOrEqual(MAX_BODY_BYTES)
+    expect(server).toEqual({ ...values, "qui-test-bool": "true" })
   })
 
   it.each([
@@ -575,11 +597,11 @@ describe("display profiles", () => {
     expect(laptop).not.toBe(phone)
   })
 
-  it("a new profile starts with the bookmark icon, no color, Same columns unset, and Own sort and filters off", () => {
+  it("a new profile starts with the bookmark icon, no color, Same columns unset, and Own sort and filters off, and Default has no name of its own", () => {
     const laptop = createDisplayProfile("  Laptop ")
 
     const { profiles, active } = getDisplayProfiles()
-    expect(profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop"])
+    expect(profiles.map((profile) => profile.name)).toEqual(["", "Laptop"])
     expect(profiles[0]).toMatchObject({ isDefault: true, icon: "app-window", color: null, sameColumns: null, ownSortAndFilters: false })
     expect(active).toEqual({
       id: laptop,
@@ -603,7 +625,7 @@ describe("display profiles", () => {
 
     const byId = new Map(getDisplayProfiles().profiles.map((profile) => [profile.id, profile]))
     expect(byId.get(laptop)).toMatchObject({ name: "Laptop", icon: "laptop", color: "sky" })
-    expect(byId.get(DEFAULT_DISPLAY_PROFILE_ID)).toMatchObject({ name: "Default", icon: "app-window", color: "rose" })
+    expect(byId.get(DEFAULT_DISPLAY_PROFILE_ID)).toMatchObject({ name: "", icon: "app-window", color: "rose" })
     expect(byId.get(phone)).toMatchObject({ name: "Phone", icon: "smartphone", color: null })
 
     setDisplayProfileColor(laptop, null)
@@ -774,7 +796,7 @@ describe("display profiles", () => {
     expect(result.current.active.id).toBe(laptop)
   })
 
-  it("delete blanks the entry and every value of the profile, and pushes the blanks", async () => {
+  it("delete writes a tombstone, blanks the entry and every value of the profile, and pushes them", async () => {
     seedAndMarkReady({})
     localStorage.setItem("qui-column-visibility:1", "{\"ratio\":false}")
     const laptop = createDisplayProfile("Laptop")
@@ -787,6 +809,7 @@ describe("display profiles", () => {
     await vi.runAllTimersAsync()
 
     const blanked = {
+      [`qui-display-profile-deleted:${laptop}`]: "1",
       [`qui-display-profile-entry:${laptop}`]: "",
       [`qui-display-profile:${laptop}:qui-column-visibility:1`]: "",
       [`qui-display-profile:${laptop}:qui-sidebar-collapsed`]: "",
@@ -845,6 +868,48 @@ describe("display profiles", () => {
     expect(Object.keys(JSON.parse(fetchMock.mock.calls[0][1].body)).sort()).toEqual(["qui-sidebar-collapsed", "qui-speed-units"])
   })
 
+  describe("a second tab of the browser", () => {
+    async function openSecondTab() {
+      vi.resetModules()
+      return await import("@/lib/client-settings")
+    }
+
+    // The storage events that the first tab's writes send to the second tab.
+    function sendStorageEvents(keys: string[]) {
+      for (const key of keys) window.dispatchEvent(new StorageEvent("storage", { key }))
+    }
+
+    it("tells the user when the first tab applies a server delete of its profile", async () => {
+      const laptop = createDisplayProfile("Laptop")
+      const tabB = await openSecondTab()
+      expect(tabB.getDisplayProfiles().active.id).toBe(laptop)
+      const deletedInB = vi.fn()
+      tabB.onActiveDisplayProfileDeleted(deletedInB)
+
+      const snapshot = { [`qui-display-profile-deleted:${laptop}`]: "1", [`qui-display-profile-entry:${laptop}`]: "" }
+      applyServerSettings(snapshot)
+      sendStorageEvents([...Object.keys(snapshot), "qui-display-profile-active"])
+
+      expect(tabB.getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+      expect(deletedInB).toHaveBeenCalledTimes(1)
+      expect(deletedInB.mock.calls[0][0]).toMatchObject({ id: laptop, name: "Laptop" })
+    })
+
+    it("does not tell the user when the first tab deletes the profile itself", async () => {
+      const laptop = createDisplayProfile("Laptop")
+      const tabB = await openSecondTab()
+      expect(tabB.getDisplayProfiles().active.id).toBe(laptop)
+      const deletedInB = vi.fn()
+      tabB.onActiveDisplayProfileDeleted(deletedInB)
+
+      deleteDisplayProfile(laptop)
+      sendStorageEvents([`qui-display-profile-deleted:${laptop}`, `qui-display-profile-entry:${laptop}`, "qui-display-profile-active"])
+
+      expect(tabB.getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+      expect(deletedInB).not.toHaveBeenCalled()
+    })
+  })
+
   it("a browser that still has a local copy of a deleted profile does not bring it back on a page load", async () => {
     const server: Record<string, string> = {}
     fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
@@ -878,6 +943,26 @@ describe("display profiles", () => {
     expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
   })
 
+  it("an edit that reaches the server after a delete does not bring the profile back", async () => {
+    seedAndMarkReady({})
+    const laptop = createDisplayProfile("Laptop")
+    const laptopEntry = localStorage.getItem(`qui-display-profile-entry:${laptop}`)!
+    await vi.runAllTimersAsync()
+    fetchMock.mockClear()
+    deleteDisplayProfile(laptop)
+    await vi.runAllTimersAsync()
+    const deletion = JSON.parse(fetchMock.mock.calls[0][1].body) as Record<string, string>
+
+    // Browser B saw Laptop and then the delete. A browser that missed the delete renames Laptop after that.
+    localStorage.clear()
+    _resetClientSettingsForTests()
+    applyServerSettings({ [`qui-display-profile-entry:${laptop}`]: laptopEntry })
+    applyServerSettings(deletion)
+    applyServerSettings({ ...deletion, [`qui-display-profile-entry:${laptop}`]: JSON.stringify({ ...JSON.parse(laptopEntry), name: "Old laptop" }) })
+
+    expect(getDisplayProfiles().profiles.map((profile) => profile.id)).toEqual([DEFAULT_DISPLAY_PROFILE_ID])
+  })
+
   it("rename keeps the rest of the entry and refuses a name that the name rule rejects", () => {
     const laptop = createDisplayProfile("Laptop")
     createDisplayProfile("Phone")
@@ -893,6 +978,27 @@ describe("display profiles", () => {
       { id: laptop, name: "laptop 13", icon: "bookmark" },
       { id: expect.any(String), name: "Phone", icon: "bookmark" },
     ])
+  })
+
+  it("an edit keeps the fields of the entry that this version does not know", () => {
+    const laptop = createDisplayProfile("Laptop")
+    const entryKey = `qui-display-profile-entry:${laptop}`
+    localStorage.setItem(entryKey, JSON.stringify({ ...JSON.parse(localStorage.getItem(entryKey)!), pinned: true }))
+    _resetClientSettingsForTests()
+
+    renameDisplayProfile(laptop, "Old laptop")
+    setDisplayProfileIcon(laptop, "laptop")
+    setDisplayProfileOwnSortAndFilters(laptop, true)
+    setDisplayProfileSameColumns(laptop, true, 1)
+
+    expect(JSON.parse(localStorage.getItem(entryKey)!)).toEqual({
+      name: "Old laptop",
+      icon: "laptop",
+      color: null,
+      sameColumns: true,
+      ownSortAndFilters: true,
+      pinned: true,
+    })
   })
 
   it("a rename shows in another browser", async () => {
@@ -948,7 +1054,7 @@ describe("same columns on every instance", () => {
   it("is on when the profile has no stored Column setup, and off when it has one, until the user sets it", () => {
     expect(getDisplayProfiles().active.usesSameColumns).toBe(true)
 
-    localStorage.setItem("qui-column-sizing:2", "{\"name\":600}")
+    writeRaw("qui-column-sizing:2", "{\"name\":600}")
     expect(getDisplayProfiles().active.usesSameColumns).toBe(false)
 
     setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true)
@@ -976,6 +1082,18 @@ describe("same columns on every instance", () => {
     const { result } = renderHook(() => useClientSetting("qui-column-visibility:2", visibility))
 
     act(() => writeClientSetting("qui-column-visibility:1", { ratio: false }))
+
+    expect(result.current[0]).toEqual({ ratio: false })
+  })
+
+  it("with the switch off, a live hook of an instance without its own setup follows the shared setup", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: true }))
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
+    const { result } = renderHook(() => useClientSetting("qui-column-visibility:2", visibility))
+
+    act(() => {
+      applyServerSettings({ "qui-column-visibility:every-instance": JSON.stringify({ ratio: false }) })
+    })
 
     expect(result.current[0]).toEqual({ ratio: false })
   })
@@ -1044,6 +1162,40 @@ describe("same columns on every instance", () => {
 
     expect(sameColumnsOf(laptop)).toBe(true)
     expect(readClientSetting("qui-column-visibility:4", visibility)).toEqual({ ratio: false })
+  })
+
+  it("useDisplayProfiles follows the computed switch when the first Column setup of an instance arrives", () => {
+    const { result } = renderHook(() => useDisplayProfiles())
+    expect(result.current.active.usesSameColumns).toBe(true)
+
+    act(() => {
+      applyServerSettings({ "qui-column-sizing:2": "{\"name\":600}" })
+    })
+
+    expect(result.current.active.usesSameColumns).toBe(false)
+  })
+
+  it("a server snapshot reads localStorage a number of times that grows in step with its size", () => {
+    renderHook(() => [
+      useDisplayProfiles(),
+      useClientSetting("qui-column-visibility:1", visibility),
+      useClientSetting("qui-sidebar-collapsed", boolSetting),
+    ])
+    const snapshot: Record<string, string> = { "qui-display-profile-entry:laptop": JSON.stringify({ name: "Laptop" }) }
+    for (let instance = 0; instance < 50; instance++) {
+      for (const prefix of ["qui-column-visibility:", "qui-column-order:", "qui-column-sizing:", "qui-column-sorting:"]) {
+        snapshot[`${prefix}${instance}`] = "{}"
+        snapshot[`qui-display-profile:laptop:${prefix}${instance}`] = "{}"
+      }
+    }
+    const keyCount = Object.keys(snapshot).length
+    const reads = vi.spyOn(Storage.prototype, "key")
+
+    act(() => {
+      applyServerSettings(snapshot)
+    })
+
+    expect(reads.mock.calls.length).toBeLessThan(10 * keyCount)
   })
 
   it("useDisplayProfiles sets the switch", () => {

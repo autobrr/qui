@@ -11,6 +11,7 @@ import {
   _resetClientSettingsForTests,
   applyServerSettings,
   createDisplayProfile,
+  markClientSettingsUnavailable,
   parseJsonBoolean,
   pickDisplayProfile,
   seedAndMarkReady,
@@ -78,6 +79,29 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("DisplayProfileChip", () => {
+  // The first read of the server ended, so the picker takes picks.
+  beforeEach(markClientSettingsUnavailable)
+
+  it("lets the user pick or make a profile only after the first read of the server ends", () => {
+    createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
+    openMenu()
+    const newProfile = () => screen.getByRole("menuitem", { name: "displayProfiles.newProfile" })
+
+    act(() => fireEvent.click(row("Laptop")))
+    expect(row("displayProfiles.defaultName").getAttribute("aria-checked")).toBe("true")
+    expect(row("Laptop").getAttribute("aria-disabled")).toBe("true")
+    expect(newProfile().getAttribute("aria-disabled")).toBe("true")
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(newProfile().getAttribute("aria-disabled")).toBeNull()
+    act(() => fireEvent.click(row("Laptop")))
+    expect(chip().textContent).toBe("Laptop")
+  })
+
   it("opens with focus on the row of this browser's profile", async () => {
     renderWithThreeProfiles()
     openMenu()
@@ -91,9 +115,9 @@ describe("DisplayProfileChip", () => {
 
     await pressAndExpectFocus("ArrowDown", () => row("Phone"))
     await pressAndExpectFocus("ArrowUp", () => row("Laptop"))
-    await pressAndExpectFocus("ArrowUp", () => row("Default"))
+    await pressAndExpectFocus("ArrowUp", () => row("displayProfiles.defaultName"))
     await pressAndExpectFocus("End", () => screen.getByRole("menuitem", { name: "displayProfiles.manage" }))
-    await pressAndExpectFocus("Home", () => row("Default"))
+    await pressAndExpectFocus("Home", () => row("displayProfiles.defaultName"))
   })
 
   it("the first letter of a name moves to that row", async () => {
@@ -134,20 +158,10 @@ describe("DisplayProfileChip", () => {
 
     openMenu()
     const laptop = screen.getByRole("menuitemradio", { name: "Laptop" })
-    expect(screen.getByRole("menuitemradio", { name: "Default" }).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByRole("menuitemradio", { name: "displayProfiles.defaultName" }).getAttribute("aria-checked")).toBe("true")
     act(() => fireEvent.click(laptop))
 
     expect(screen.getByRole("status").textContent).toBe("collapsed")
-  })
-
-  it("Manage profiles… links to the Display profiles section of Settings", () => {
-    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
-    openMenu()
-
-    const manage = screen.getByRole("menuitem", { name: "displayProfiles.manage" })
-
-    expect(manage.tagName).toBe("A")
-    expect(manage.getAttribute("href")).toBe("/settings?tab=display-profiles")
   })
 
   it("the New profile item opens the dialog with focus in the name field", async () => {

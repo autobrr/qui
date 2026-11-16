@@ -22,17 +22,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { VIEW_MODE_SETTINGS } from "@/hooks/usePersistedCompactViewState"
 import { useInstances } from "@/hooks/useInstances"
-import { FILTER_SIDEBAR_COLLAPSED_KEY } from "@/hooks/usePersistedFilterSidebarState"
-import { parseJsonBoolean, useDisplayProfiles, useDisplayProfileSetting } from "@/lib/client-settings"
-import {
-  DISPLAY_PROFILE_NAME_MAX_LENGTH,
-  validateDisplayProfileName,
-  type DisplayProfile,
-  type DisplayProfileNameError
-} from "@/lib/display-profiles"
+import { FILTER_SIDEBAR_COLLAPSED_KEY, parseJsonBoolean, useDisplayProfileSetting } from "@/lib/client-settings"
+import { DISPLAY_PROFILE_NAME_MAX_LENGTH, type DisplayProfile } from "@/lib/display-profiles"
 import { cn } from "@/lib/utils"
 
 import { findDisplayProfileIcon } from "./display-profile-icons"
+import { useDisplayProfileNameCheck, useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
 import { DisplayProfileThumbnail, type DisplayProfileDensity } from "./DisplayProfileThumbnail"
 import { DisplayProfileTile } from "./DisplayProfileTile"
@@ -62,7 +57,7 @@ interface DisplayProfileEditorProps {
 /** One profile in Settings, in the style of the "In use" block of Themes. */
 export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick, setIcon, setColor, delete: deleteProfile } = useDisplayProfiles()
+  const { profiles, active, settled, pick, setIcon, setColor, delete: deleteProfile } = useNamedDisplayProfiles()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { instances } = useInstances()
   const view = useTableView(profile.id)
@@ -77,7 +72,7 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
   return (
     <section aria-labelledby={titleId} className="@container min-w-0 rounded-lg border">
       <div className="flex items-center gap-4 p-4">
-        <DisplayProfileThumbnail {...view} className="w-40 shrink-0 shadow-sm @max-lg:w-28 @max-md:hidden" />
+        <DisplayProfileThumbnail {...view} className="w-40 shrink-0 shadow-sm @max-lg:w-28 @max-md:w-24" />
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex items-start gap-3">
             <DisplayProfileIconPicker
@@ -88,8 +83,9 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
             >
               <button
                 type="button"
-                aria-label={t("displayProfiles.iconPicker.trigger", { icon: iconLabelKey ? t(iconLabelKey) : profile.icon })}
-                className="shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                disabled={!settled}
+                aria-label={t("displayProfiles.iconPicker.trigger", { icon: iconLabelKey ? t(iconLabelKey) : t("displayProfiles.iconPicker.letter") })}
+                className="shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
               >
                 <DisplayProfileTile profile={profile} size="lg" />
               </button>
@@ -101,6 +97,7 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
             <Button
               size="sm"
               variant="outline"
+              disabled={!settled}
               aria-disabled={isActive || undefined}
               onClick={() => !isActive && pick(profile.id)}
               className={cn(
@@ -115,7 +112,7 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
               </span>
             </Button>
             {!profile.isDefault && (
-              <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+              <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={!settled} onClick={() => setConfirmDelete(true)}>
                 {t("displayProfiles.settings.delete")}
               </Button>
             )}
@@ -156,21 +153,15 @@ interface NameFieldProps {
 /** The name of the profile with inline rename, and below it the look line, or the count and the errors while it renames. */
 function NameField({ profile, titleId, lookLine }: NameFieldProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, rename } = useDisplayProfiles()
+  const { settled, rename } = useNamedDisplayProfiles()
   const [draft, setDraft] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const pencilRef = useRef<HTMLButtonElement>(null)
   const lineId = useId()
 
   const renaming = draft !== null
-  const error = renaming ? validateDisplayProfileName(draft, profiles, profile.id) : null
-  const shownError = renaming && (draft.trim() !== "" || submitted) ? error : null
-  const length = [...(draft ?? "").trim()].length
-  const nameErrorText: Record<DisplayProfileNameError, string> = {
-    empty: t("displayProfiles.nameErrors.empty"),
-    tooLong: t("displayProfiles.nameErrors.tooLong", { max: DISPLAY_PROFILE_NAME_MAX_LENGTH }),
-    duplicate: t("displayProfiles.nameErrors.duplicate"),
-  }
+  const check = useDisplayProfileNameCheck(draft ?? "", submitted, profile.id)
+  const shownError = renaming ? check.shownError : null
 
   const finish = () => {
     // The pencil comes back in place of the field, so focus can go back to it.
@@ -184,8 +175,9 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     setSubmitted(true)
-    if (draft === null || error) return
-    rename(profile.id, draft)
+    if (draft === null || check.error) return
+    // An unchanged name stays unsaved, so Default keeps following the language of the app.
+    if (draft.trim() !== profile.name) rename(profile.id, draft)
     finish()
   }
 
@@ -197,8 +189,12 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
 
   return (
     <div className="min-w-0 flex-1">
-      <div className="flex h-10 items-center gap-1">
-        <h3 id={titleId} className={cn(renaming ? "sr-only" : "min-w-0 truncate text-lg font-semibold leading-tight")} title={profile.name}>
+      <div className="flex min-h-10 items-center gap-1">
+        <h3
+          id={titleId}
+          className={cn(renaming ? "sr-only" : "min-w-0 text-lg font-semibold leading-tight [overflow-wrap:anywhere] pointer-fine:truncate")}
+          title={profile.name}
+        >
           {profile.name}
         </h3>
         {renaming ? (
@@ -225,6 +221,7 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
             size="icon"
             variant="ghost"
             className="size-8 shrink-0 text-muted-foreground"
+            disabled={!settled}
             aria-label={t("displayProfiles.settings.renameAriaLabel", { name: profile.name })}
             onClick={() => setDraft(profile.name)}
           >
@@ -234,16 +231,16 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
       </div>
       <div id={lineId} className="mt-0.5 flex gap-2 text-xs leading-4">
         <StableText
-          reserve={[lookLine, ...Object.values(nameErrorText)]}
+          reserve={[lookLine, ...Object.values(check.errorTexts)]}
           className={cn("min-w-0 flex-1 [overflow-wrap:anywhere]", shownError ? "text-destructive" : "text-muted-foreground")}
         >
-          {shownError ? nameErrorText[shownError] : lookLine}
+          {shownError ? check.errorTexts[shownError] : lookLine}
         </StableText>
         <StableText
           reserve={[t("displayProfiles.newDialog.nameCount", { length: DISPLAY_PROFILE_NAME_MAX_LENGTH, max: DISPLAY_PROFILE_NAME_MAX_LENGTH })]}
-          className={cn("shrink-0 tabular-nums", length > DISPLAY_PROFILE_NAME_MAX_LENGTH ? "text-destructive" : "text-muted-foreground")}
+          className={cn("shrink-0 tabular-nums", renaming && check.error === "tooLong" ? "text-destructive" : "text-muted-foreground")}
         >
-          {renaming && t("displayProfiles.newDialog.nameCount", { length, max: DISPLAY_PROFILE_NAME_MAX_LENGTH })}
+          {renaming && check.count}
         </StableText>
       </div>
     </div>

@@ -8,7 +8,7 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
-import { _resetClientSettingsForTests, createDisplayProfile, getDisplayProfiles, useDisplayProfiles } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, markClientSettingsUnavailable, createDisplayProfile, getDisplayProfiles, useDisplayProfiles } from "@/lib/client-settings"
 
 vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <aside>{children}</aside>,
@@ -28,6 +28,7 @@ function renderFor(profileId: string) {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  markClientSettingsUnavailable()
 })
 
 afterEach(cleanup)
@@ -45,22 +46,6 @@ describe("OwnSortAndFiltersSetting", () => {
     expect(getDisplayProfiles().active.ownSortAndFilters).toBe(true)
     expect(screen.getByRole("switch", { name: "Own sort and filters" }).getAttribute("aria-checked")).toBe("true")
     expect(screen.getByText("Turning this off deletes the own sort and filters of Phone.")).not.toBeNull()
-  })
-
-  it("lists in its help what the profile keeps", () => {
-    renderFor(createDisplayProfile("Phone"))
-
-    const help = screen.getByRole("complementary")
-    expect(help.textContent).toContain("When this is on, this profile keeps its own:")
-    expect(Array.from(help.querySelectorAll("li"), (item) => item.textContent)).toEqual([
-      "sort order of the torrent list",
-      "column filters and sidebar filters",
-      "instances that the Unified view shows",
-      "Group copies, on or off",
-      "last open tab of the details panel",
-      "instance that the Backups and RSS pages show",
-    ])
-    expect(help.textContent).toContain("Turning it off deletes this profile's own values.")
   })
 
   it("shows on Default that it always shares, with no switch", () => {

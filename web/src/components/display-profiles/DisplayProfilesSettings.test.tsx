@@ -3,18 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import "@/i18n"
+import { changeLanguage } from "@/i18n"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   _resetClientSettingsForTests,
   createDisplayProfile,
   getDisplayProfiles,
+  markClientSettingsUnavailable,
   pickDisplayProfile,
+  setDisplayProfileIcon,
   setDisplayProfileOwnSortAndFilters,
   TORRENT_VIEW_MODE_KEYS,
   writeClientSetting
@@ -59,11 +61,43 @@ function editor(): HTMLElement {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  // The first read of the server ended, so the section takes changes.
+  markClientSettingsUnavailable()
 })
+
+/** The controls that change a profile, in the editor and in the header. */
+function profileActions(): HTMLButtonElement[] {
+  const inEditor = within(editor())
+  return [
+    screen.getByRole("button", { name: "New profile from this setup…" }),
+    inEditor.getByRole("button", { name: /^Icon:/ }),
+    inEditor.getByRole("button", { name: /^Rename/ }),
+    inEditor.getByRole("button", { name: "Use in this browser" }),
+    inEditor.getByRole("button", { name: "Delete…" }),
+    inEditor.getByRole("switch", { name: "Same columns on every instance" }),
+    inEditor.getByRole("switch", { name: "Own sort and filters" }),
+  ] as HTMLButtonElement[]
+}
 
 afterEach(cleanup)
 
 describe("DisplayProfilesSettings", () => {
+  it("takes a change only after the first read of the server ends, and shows the profiles before that", () => {
+    const laptop = createDisplayProfile("Laptop")
+    setDisplayProfileOwnSortAndFilters(createDisplayProfile("Phone"), true)
+    pickDisplayProfile(laptop)
+    _resetClientSettingsForTests()
+    renderSettings()
+    fireEvent.click(row("Phone"))
+
+    expect(screen.getByRole("region", { name: "Phone" })).toBe(editor())
+    expect(profileActions().map((control) => control.disabled)).toEqual(Array(7).fill(true))
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(profileActions().map((control) => control.disabled)).toEqual(Array(7).fill(false))
+  })
+
   it("lists every profile, marks the one of this browser, and opens the editor on it", () => {
     renderWithThreeProfiles()
 
@@ -142,7 +176,7 @@ describe("DisplayProfilesSettings", () => {
     await user.click(within(confirm).getByRole("button", { name: "Delete" }))
 
     expect(screen.queryByRole("alertdialog")).toBeNull()
-    expect(getDisplayProfiles().profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop"])
+    expect(getDisplayProfiles().profiles.map((profile) => profile.name)).toEqual(["", "Laptop"])
     expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Default", "LaptopThis browser"])
     expect(screen.getByRole("region", { name: "Laptop" })).toBe(editor())
   })
@@ -154,7 +188,7 @@ describe("DisplayProfilesSettings", () => {
     await user.click(within(editor()).getByRole("button", { name: "Delete…" }))
     await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }))
 
-    expect(getDisplayProfiles().profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop", "Phone"])
+    expect(getDisplayProfiles().profiles.map((profile) => profile.name)).toEqual(["", "Laptop", "Phone"])
   })
 
   it("holds both switches of a profile", () => {
@@ -197,6 +231,13 @@ describe("DisplayProfilesSettings", () => {
     expect(screen.getByRole("dialog", { name: "New profile" })).not.toBeNull()
   })
 
+  it("names the letter tile of an icon that this version does not know, not the stored icon name", () => {
+    setDisplayProfileIcon(createDisplayProfile("Laptop"), "icon-of-a-newer-version")
+    renderSettings()
+
+    expect(within(editor()).getByRole("button", { name: "Icon: First letter of the name. Change the icon and the color" })).not.toBeNull()
+  })
+
   it("sums up the row density and the filter sidebar of the profile in the editor", () => {
     createDisplayProfile("Laptop")
     writeClientSetting(TORRENT_VIEW_MODE_KEYS.desktop, "dense", String)
@@ -210,11 +251,40 @@ describe("DisplayProfilesSettings", () => {
     expect(screen.getByRole("region", { name: "Laptop" })).toBe(editor())
     expect(within(editor()).getByText("Dense rows · filter sidebar closed")).not.toBeNull()
   })
+})
 
-  it("links to Theme sync", () => {
+describe("DisplayProfilesSettings in another language", () => {
+  afterEach(async () => {
+    await changeLanguage("en")
+  })
+
+  it("names Default in the language of the app until the user renames it", async () => {
+    const user = userEvent.setup()
+    await changeLanguage("de")
+    createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    renderSettings()
+    expect(within(screen.getByRole("list")).getAllByRole("listitem")[0].textContent).toBe("StandardDieser Browser")
+
+    await user.click(within(editor()).getByRole("button", { name: "Standard umbenennen" }))
+    const field = within(editor()).getByRole("textbox", { name: "Standard umbenennen" })
+    await user.clear(field)
+    await user.type(field, "Werkstatt{Enter}")
+    await changeLanguage("en")
+
+    expect(await within(list()).findByText("Werkstatt")).not.toBeNull()
+  })
+
+  it("a rename of Default that keeps the shown name saves nothing, so Default keeps following the language", async () => {
+    const user = userEvent.setup()
+    await changeLanguage("de")
     renderSettings()
 
-    expect(screen.getByRole("link", { name: "Theme sync" }).getAttribute("href")).toBe("/settings?tab=themes#theme-sync")
+    await user.click(within(editor()).getByRole("button", { name: "Standard umbenennen" }))
+    await user.type(within(editor()).getByRole("textbox", { name: "Standard umbenennen" }), "{Enter}")
+    await changeLanguage("en")
+
+    expect(await within(list()).findByText("Default")).not.toBeNull()
   })
 })
 
@@ -225,6 +295,20 @@ describe("DisplayProfilesSettings below 768 px", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it("a tap on a row picks a profile only after the first read of the server ends", () => {
+    createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    renderSettings()
+
+    fireEvent.click(row("Laptop"))
+    expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+
+    act(() => markClientSettingsUnavailable())
+    fireEvent.click(row("Laptop"))
+    expect(getDisplayProfiles().active.name).toBe("Laptop")
   })
 
   it("shows the list with no editor, and a tap on a row picks that profile for this browser", () => {
@@ -254,6 +338,20 @@ describe("DisplayProfilesSettings below 768 px", () => {
 
     await user.click(within(list()).getByRole("button", { name: "Edit Default" }))
     expect(within(screen.getByRole("dialog", { name: "Edit profile" })).getByRole("region", { name: "Default" })).not.toBeNull()
+  })
+
+  it("the editor sheet opens with focus on the sheet, so no help tooltip opens while the controls wait for the server", async () => {
+    const user = userEvent.setup()
+    const laptop = createDisplayProfile("Laptop")
+    setDisplayProfileOwnSortAndFilters(laptop, true)
+    _resetClientSettingsForTests()
+    renderSettings()
+
+    await user.click(within(list()).getByRole("button", { name: "Edit Laptop" }))
+
+    const sheet = screen.getByRole("dialog", { name: "Edit profile" })
+    expect(document.activeElement).toBe(sheet)
+    expect(screen.queryByRole("tooltip")).toBeNull()
   })
 
   it("a delete in the sheet closes the sheet", async () => {

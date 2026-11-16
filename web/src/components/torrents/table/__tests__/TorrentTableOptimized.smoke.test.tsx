@@ -29,6 +29,7 @@ import { useBulkActions } from "@/components/torrents/bulk-actions/bulk-actions-
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { api } from "@/lib/api"
+import { _resetClientSettingsForTests } from "@/lib/client-settings"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, renderHook, waitFor, within } from "@testing-library/react"
@@ -278,6 +279,7 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
 describe("TorrentTableOptimized smoke", () => {
   beforeEach(() => {
     localStorage.clear()
+    _resetClientSettingsForTests()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
     scenario.totalCount = torrents.length
@@ -535,6 +537,7 @@ function renderGroups(rows: Torrent[], props: Partial<ComponentProps<typeof Torr
 describe("TorrentTableOptimized Copy groups", () => {
   beforeEach(() => {
     localStorage.clear()
+    _resetClientSettingsForTests()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
     scenario.rows = undefined
@@ -891,6 +894,7 @@ describe("TorrentTableOptimized Copy groups", () => {
 describe("TorrentTableOptimized Group copies switch", () => {
   beforeEach(() => {
     localStorage.clear()
+    _resetClientSettingsForTests()
     scenario.routeSearch = ""
     scenario.isCrossSeedFiltering = false
     scenario.totalCount = torrents.length

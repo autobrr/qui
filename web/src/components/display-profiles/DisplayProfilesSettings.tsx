@@ -13,8 +13,8 @@ import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader,
 import { FieldHelp } from "@/components/ui/field-help"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/useMediaQuery"
-import { useDisplayProfiles } from "@/lib/client-settings"
 
+import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileEditor } from "./DisplayProfileEditor"
 import { DisplayProfileList } from "./DisplayProfileList"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
@@ -25,7 +25,7 @@ import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
  */
 export function DisplayProfilesSettings() {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick } = useDisplayProfiles()
+  const { profiles, active, settled, pick } = useNamedDisplayProfiles()
   const narrow = useIsMobile()
   const [selectedId, setSelectedId] = useState(active.id)
   // The sheet keeps its profile after it closes, so the editor stays in the sheet while it slides out.
@@ -44,7 +44,7 @@ export function DisplayProfilesSettings() {
           <FieldHelp>{t("displayProfiles.settings.holdsHelp")}</FieldHelp>
         </CardDescription>
         <CardAction className="max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:mt-2 max-sm:justify-self-stretch">
-          <Button size="sm" variant="outline" className="max-sm:h-10 max-sm:w-full" onClick={() => setNewProfileOpen(true)}>
+          <Button size="sm" variant="outline" className="max-sm:h-10 max-sm:w-full" disabled={!settled} onClick={() => setNewProfileOpen(true)}>
             <Plus />
             {t("displayProfiles.newProfile")}
           </Button>
@@ -54,6 +54,7 @@ export function DisplayProfilesSettings() {
         {narrow ? (
           <DisplayProfileList
             selectedId={active.id}
+            rowsDisabled={!settled}
             onSelect={(profile) => pick(profile.id)}
             onEdit={(profile) => setSheet({ profileId: profile.id, open: true })}
             onNewProfile={() => setNewProfileOpen(true)}
@@ -82,7 +83,18 @@ export function DisplayProfilesSettings() {
         open={narrow && sheet?.open === true && sheetProfile !== undefined}
         onOpenChange={(open) => !open && setSheet((current) => current && { ...current, open: false })}
       >
-        <SheetContent side="bottom" aria-describedby={undefined} className="max-h-[90dvh] gap-0 overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        {/* Until the first read of the server ends, the first control that takes focus is a FieldHelp, whose tooltip
+            would open on each open. Focus the sheet itself so the focus trap keeps an anchor. */}
+        <SheetContent
+          side="bottom"
+          aria-describedby={undefined}
+          className="max-h-[90dvh] gap-0 overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            const sheet = event.currentTarget as HTMLElement
+            sheet.focus()
+          }}
+        >
           <SheetHeader className="pb-2">
             <SheetTitle>{t("displayProfiles.settings.editTitle")}</SheetTitle>
           </SheetHeader>

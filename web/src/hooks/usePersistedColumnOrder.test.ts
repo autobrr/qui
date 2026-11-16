@@ -6,7 +6,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { setDisplayProfileSameColumns } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, setDisplayProfileSameColumns } from "@/lib/client-settings"
 import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import { usePersistedColumnOrder } from "./usePersistedColumnOrder"
 
@@ -42,6 +42,7 @@ function readOrder(saved: unknown, defaultOrder: string[] = DEFAULT): string[] {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  _resetClientSettingsForTests()
 })
 
 describe("usePersistedColumnOrder", () => {

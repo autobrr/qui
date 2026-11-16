@@ -18,6 +18,7 @@ import {
   readRaw,
   seedAndMarkReady
 } from "@/lib/client-settings"
+import { displayProfileName } from "@/lib/display-profiles"
 import { changeLanguage, supportedLanguages, type AppLanguage } from "@/i18n"
 
 /**
@@ -45,7 +46,8 @@ export function useClientSettingsSync(): void {
 
   // Subscribed before the snapshot effect below runs, so the first snapshot can show the toast too.
   useEffect(() => onActiveDisplayProfileDeleted((profile) => {
-    toast.info(t("displayProfiles.deletedToast", { name: profile.name, defaultName: getDisplayProfiles().active.name }))
+    const defaultName = displayProfileName(getDisplayProfiles().active, t("displayProfiles.defaultName"))
+    toast.info(t("displayProfiles.deletedToast", { name: profile.name, defaultName }))
   }), [t])
 
   useEffect(() => {

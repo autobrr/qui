@@ -7,8 +7,9 @@ import { useTranslation } from "react-i18next"
 
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/ui/switch"
-import { useDisplayProfiles } from "@/lib/client-settings"
 import { isAllInstancesScope } from "@/lib/instances"
+
+import { useNamedDisplayProfiles } from "./display-profile-names"
 
 interface ColumnsMenuHeaderProps {
   instanceId: number
@@ -19,7 +20,7 @@ interface ColumnsMenuHeaderProps {
 /** The top of the Toggle columns menu: where a column change goes, and the Same columns on every instance switch. */
 export function ColumnsMenuHeader({ instanceId, instanceName }: ColumnsMenuHeaderProps) {
   const { t } = useTranslation("torrents")
-  const { active, setSameColumns } = useDisplayProfiles()
+  const { active, settled, setSameColumns } = useNamedDisplayProfiles()
   const same = active.usesSameColumns
   const instance = isAllInstancesScope(instanceId)? t("displayProfiles.columns.unifiedView"): instanceName ?? t("displayProfiles.columns.thisInstance")
 
@@ -31,6 +32,7 @@ export function ColumnsMenuHeader({ instanceId, instanceName }: ColumnsMenuHeade
       <DropdownMenuItem
         role="menuitemcheckbox"
         aria-checked={same}
+        disabled={!settled}
         className="items-start gap-3"
         onSelect={(event) => {
           event.preventDefault()

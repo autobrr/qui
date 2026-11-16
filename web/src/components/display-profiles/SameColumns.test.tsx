@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import "@/i18n"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { _resetClientSettingsForTests, createDisplayProfile, recordColumnSetupInstance } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, markClientSettingsUnavailable, createDisplayProfile, recordColumnSetupInstance } from "@/lib/client-settings"
 
 import { ColumnsMenuHeader } from "./ColumnsMenuHeader"
 import { SameColumnsSwitch } from "./SameColumnsSwitch"
@@ -31,6 +31,7 @@ const heading = () => screen.getByTestId("columns-menu-heading").textContent
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  markClientSettingsUnavailable()
   // A stored Column setup of an instance makes the computed switch start off.
   localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: true }))
 })
@@ -49,6 +50,19 @@ describe("ColumnsMenuHeader", () => {
     act(() => fireEvent.click(toggle))
 
     expect(heading()).toBe("Columns in Laptop · every instance")
+    expect(toggle.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("takes a change only after the first read of the server ends", () => {
+    _resetClientSettingsForTests()
+    renderMenu(1, "seedbox")
+    const toggle = screen.getByRole("menuitemcheckbox", { name: /Same columns on every instance/ })
+
+    act(() => fireEvent.click(toggle))
+    expect(toggle.getAttribute("aria-checked")).toBe("false")
+
+    act(() => markClientSettingsUnavailable())
+    act(() => fireEvent.click(toggle))
     expect(toggle.getAttribute("aria-checked")).toBe("true")
   })
 

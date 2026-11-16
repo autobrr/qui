@@ -31,11 +31,17 @@ export interface DisplayProfile extends DisplayProfileEntry {
 }
 
 export const DEFAULT_DISPLAY_PROFILE_ENTRY: DisplayProfileEntry = {
-  name: "Default",
+  // No name of its own until the user renames it. See displayProfileName.
+  name: "",
   icon: "app-window",
   color: null,
   sameColumns: null,
   ownSortAndFilters: false,
+}
+
+/** The name to show for a profile. Default without a name of its own shows defaultName, the translated "Default". */
+export function displayProfileName(profile: Pick<DisplayProfile, "name" | "isDefault">, defaultName: string): string {
+  return profile.isDefault && profile.name === "" ? defaultName : profile.name
 }
 
 /** The icon of a profile whose name matches no guess. */

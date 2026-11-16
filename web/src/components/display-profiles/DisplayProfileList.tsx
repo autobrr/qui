@@ -7,10 +7,10 @@ import { Check, ChevronRight, Funnel, Plus } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useDisplayProfiles } from "@/lib/client-settings"
 import type { DisplayProfile } from "@/lib/display-profiles"
 import { cn } from "@/lib/utils"
 
+import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileTile } from "./DisplayProfileTile"
 import { OwnSortAndFiltersHelp } from "./OwnSortAndFiltersSetting"
 
@@ -20,12 +20,14 @@ interface DisplayProfileListProps {
   onNewProfile: () => void
   /** Adds a › on each row that opens the profile in the editor. */
   onEdit?: (profile: DisplayProfile) => void
+  /** Disables the rows, for a list where a tap picks the profile of this browser. */
+  rowsDisabled?: boolean
 }
 
 /** The profiles in rows of 56 px. While only Default exists, a dashed tile below it opens the New profile dialog. */
-export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit }: DisplayProfileListProps) {
+export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit, rowsDisabled = false }: DisplayProfileListProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active } = useDisplayProfiles()
+  const { profiles, active, settled } = useNamedDisplayProfiles()
 
   return (
     <ul aria-label={t("displayProfiles.settings.title")} className="flex flex-col gap-1.5">
@@ -42,12 +44,14 @@ export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit 
             <button
               type="button"
               aria-current={selected || undefined}
+              disabled={rowsDisabled}
               onClick={() => onSelect(profile)}
-              className="flex min-w-0 flex-1 items-center gap-3 self-stretch rounded-lg px-3 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="flex min-w-0 flex-1 items-center gap-3 self-stretch rounded-lg px-3 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
             >
               <DisplayProfileTile profile={profile} size="md" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium" title={profile.name}>{profile.name}</span>
+                {/* A touch screen shows no title, so there the name wraps. */}
+                <span className="block text-sm font-medium [overflow-wrap:anywhere] pointer-fine:truncate" title={profile.name}>{profile.name}</span>
                 {profile.id === active.id && (
                   <span className="flex items-center gap-1 text-xs font-medium text-primary">
                     <Check aria-hidden="true" className="size-3 shrink-0" />
@@ -87,8 +91,9 @@ export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit 
         <li>
           <button
             type="button"
+            disabled={!settled}
             onClick={onNewProfile}
-            className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-dashed px-3 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-accent/50 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-dashed px-3 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-accent/50 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
           >
             <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md border border-dashed">
               <Plus className="size-4" />

@@ -9,6 +9,7 @@ import { Check, ChevronUp, Plus, Settings2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { markFeatureNoticeSeen } from "@/components/feature-notice/due-notice"
 import { FeatureNotice } from "@/components/feature-notice/FeatureNotice"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,16 +22,16 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
-import { useDisplayProfiles } from "@/lib/client-settings"
 import { cn } from "@/lib/utils"
 
+import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileGlyph, DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
 /** The Display profile of this browser in the status bar of the desktop torrent table, with a picker. */
 export function DisplayProfileChip() {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick } = useDisplayProfiles()
+  const { profiles, active, settled, pick } = useNamedDisplayProfiles()
   const wide = useMediaQuery("(min-width: 1024px)")
   const [menuOpen, setMenuOpen] = useState(false)
   const [newProfileOpen, setNewProfileOpen] = useState(false)
@@ -45,9 +46,15 @@ export function DisplayProfileChip() {
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          setMenuOpen(open)
+          if (open) markFeatureNoticeSeen("display-profiles")
+        }}
+      >
         <Tooltip disableHoverableContent>
-          <FeatureNotice id="display-profiles" side="top" controlOpen={menuOpen} onAction={() => setNewProfileOpen(true)}>
+          <FeatureNotice id="display-profiles" side="top" onAction={() => setNewProfileOpen(true)}>
             {/* Focus comes back to the chip after each pick, so only a hover shows the name. */}
             <TooltipTrigger asChild onFocus={(event) => event.preventDefault()}>
               <DropdownMenuTrigger asChild>
@@ -87,7 +94,8 @@ export function DisplayProfileChip() {
                 ref={profile.id === active.id ? activeRowRef : undefined}
                 value={profile.id}
                 textValue={profile.name}
-                className="flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[state=checked]:font-medium"
+                disabled={!settled}
+                className="flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:opacity-50 data-[state=checked]:font-medium"
               >
                 <DisplayProfileTile profile={profile} size="sm" />
                 <span className="min-w-0 flex-1 truncate" title={profile.name}>{profile.name}</span>
@@ -98,7 +106,7 @@ export function DisplayProfileChip() {
             ))}
           </DropdownMenuPrimitive.RadioGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setNewProfileOpen(true)}>
+          <DropdownMenuItem disabled={!settled} onSelect={() => setNewProfileOpen(true)}>
             <Plus />
             {t("displayProfiles.newProfile")}
           </DropdownMenuItem>
