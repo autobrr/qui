@@ -1,0 +1,206 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package transfer
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
+	"github.com/autobrr/qui/internal/services/crossseed"
+)
+
+// Config bounds the waits and the flushes of a Transfer.
+type Config struct {
+	// Polls and PollInterval bound each wait for qBittorrent. CheckPolls
+	// bounds the wait for the check of every piece on the target.
+	Polls        int
+	CheckPolls   int
+	PollInterval time.Duration
+	// FlushBytes is how many bytes qui copies between two flushes. A piece
+	// becomes a Proven piece at the confirmed flush after it.
+	FlushBytes int64
+}
+
+func DefaultConfig() Config {
+	return Config{Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20}
+}
+
+// GroupFinder finds the torrents that read the files of a torrent, with the
+// checks of the delete mode "keep files if qui detects cross-seeds".
+type GroupFinder interface {
+	OpenCrossMatchSession(ctx context.Context, instanceID int, needs crossseed.CrossMatchNeeds) (crossseed.CrossMatchSession, error)
+}
+
+type Deps struct {
+	Store     *Store
+	Instances *models.InstanceStore
+	Sync      *qbittorrent.SyncManager
+	Files     *fsops.Pool
+	Groups    GroupFinder
+	// Now is the clock of the steps and the log. Nil is time.Now.
+	Now    func() time.Time
+	Config Config
+}
+
+// Service runs Transfers: one at a time for each Transfer source, in the
+// order they started.
+type Service struct {
+	deps   Deps
+	adder  *torrentadd.Adder
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+
+	mu     sync.Mutex
+	closed bool
+	// queues holds the Transfers of each source, the running one first.
+	queues map[int][]int64
+	// reserved is the free space that the running Transfers need on each
+	// target.
+	reserved map[int]int64
+}
+
+// NewService returns a Service whose Transfers stop when ctx ends or at
+// Close. A stopped Transfer keeps its partial data and stays unfinished.
+func NewService(ctx context.Context, deps Deps) *Service {
+	if deps.Now == nil {
+		deps.Now = time.Now
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	return &Service{
+		deps:     deps,
+		adder:    torrentadd.New(deps.Sync),
+		ctx:      ctx,
+		cancel:   cancel,
+		queues:   map[int][]int64{},
+		reserved: map[int]int64{},
+	}
+}
+
+// Start checks the Transfer of one torrent, records it with its claim on the
+// torrent, and runs it after the Transfers from the same source that started
+// before it. A *Refusal says why qui does not start it, and ErrClaimed that
+// another Transfer holds the torrent.
+func (s *Service) Start(ctx context.Context, req Request) (int64, error) {
+	if s.ctx.Err() != nil {
+		return 0, errors.New("transfers are shutting down")
+	}
+	record, err := s.check(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.deps.Store.Create(ctx, record); err != nil {
+		return 0, err
+	}
+	s.enqueue(record)
+	return record.ID, nil
+}
+
+func (s *Service) enqueue(r *Record) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	queue := s.queues[r.SourceInstanceID]
+	s.queues[r.SourceInstanceID] = append(queue, r.ID)
+	if len(queue) == 0 {
+		s.wg.Go(func() { s.drain(r.SourceInstanceID) })
+	}
+}
+
+// drain runs the Transfers of one source until its queue is empty.
+func (s *Service) drain(sourceID int) {
+	for {
+		s.mu.Lock()
+		queue := s.queues[sourceID]
+		if len(queue) == 0 || s.ctx.Err() != nil {
+			delete(s.queues, sourceID)
+			s.mu.Unlock()
+			return
+		}
+		id := queue[0]
+		s.mu.Unlock()
+
+		s.runOne(id)
+
+		s.mu.Lock()
+		s.queues[sourceID] = s.queues[sourceID][1:]
+		s.mu.Unlock()
+	}
+}
+
+func (s *Service) runOne(id int64) {
+	record, err := s.deps.Store.Get(s.ctx, id)
+	if err != nil {
+		log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
+		return
+	}
+	j := &job{svc: s, rec: record}
+	err = j.run(s.ctx)
+	if s.ctx.Err() != nil {
+		j.release()
+		log.Info().Int64("transfer", id).Msg("transfer: stopped, the partial data stays")
+		return
+	}
+	j.end(err)
+}
+
+// Wait waits until every Transfer that started has ended or stopped.
+func (s *Service) Wait() {
+	s.wg.Wait()
+}
+
+// Close stops the running Transfers and waits for them. They keep their
+// partial data and stay unfinished.
+func (s *Service) Close() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	s.cancel()
+	s.wg.Wait()
+}
+
+// reserve claims bytes of the free space on a target, and fails when free
+// does not hold them next to what the running Transfers to it claimed.
+func (s *Service) reserve(targetID int, bytes, free int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if others := s.reserved[targetID]; free-others < bytes {
+		return fmt.Errorf("not enough free space on the target: the Transfer needs %s, and %s is free", formatBytes(bytes), formatBytes(max(free-others, 0)))
+	}
+	s.reserved[targetID] += bytes
+	return nil
+}
+
+func (s *Service) unreserve(targetID int, bytes int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reserved[targetID] -= bytes
+	if s.reserved[targetID] <= 0 {
+		delete(s.reserved, targetID)
+	}
+}
+
+func formatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
