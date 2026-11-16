@@ -7,6 +7,11 @@ set -euo pipefail
 
 die() { echo "Error: $*" >&2; exit 1; }
 
+read_body() {
+  body=$(cat)
+  [[ -n "$body" ]] || die "$1 body is empty: pass it on stdin with <<'EOF'"
+}
+
 ALLOWED_OPS="${DISCUSSION_WRITE_ALLOWED_OPS:-add-label,remove-label}"
 op_allowed() {
   case ",${ALLOWED_OPS}," in
@@ -57,9 +62,9 @@ case "$cmd" in
     ;;
   comment)
     op_allowed comment || die "comment is not permitted here (allowed: $ALLOWED_OPS)"
-    [[ $# -eq 1 ]] || die "comment requires exactly one body argument"
-    [[ -n "$1" ]] || die "comment body is empty"
-    record --arg body "$1" '{op: "comment", body: $body}'
+    [[ $# -eq 0 ]] || die "comment takes no arguments: pass the body on stdin with <<'EOF'"
+    read_body comment
+    record --arg body "$body" '{op: "comment", body: $body}'
     echo "https://github.com/autobrr/qui/discussions/$NUMBER#discussioncomment-1"
     ;;
   close)
@@ -74,10 +79,11 @@ case "$cmd" in
     ;;
   create-issue)
     op_allowed create-issue || die "create-issue is not permitted here (allowed: $ALLOWED_OPS)"
-    [[ $# -ge 3 ]] || die "create-issue requires a state, a title, and a body argument"
-    state=$1 title=$2 body=$3; shift 3
+    [[ $# -ge 2 ]] || die "create-issue requires a state and a title, and the body on stdin"
+    state=$1 title=$2; shift 2
     [[ "$state" == ready-for-agent || "$state" == ready-for-human ]] || die "create-issue state must be ready-for-agent or ready-for-human"
-    [[ -n "$title" && -n "$body" ]] || die "create-issue title and body must not be empty"
+    [[ -n "$title" ]] || die "create-issue title must not be empty"
+    read_body create-issue
     record --arg state "$state" --arg title "$title" --arg body "$body"$'\n\n'"From discussion #$NUMBER" \
       '{op: "create-issue", state: $state, title: $title, body: $body, labels: $ARGS.positional}' --args "$@"
     echo "https://github.com/autobrr/qui/issues/99999"
