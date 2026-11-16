@@ -309,6 +309,35 @@ func TestExportResumesAfterACrash(t *testing.T) {
 	}
 }
 
+// qBittorrent does not check a torrent that was added stopped. When qui
+// stops between a paused add and its recheck, the run sends the recheck
+// after the restart, and the torrent passes its check on the target.
+// regression: #4231
+func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
+	r := newRig(t, exportPolls)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+	req := r.exportRequest(s)
+	req.Paused, req.SkipChecking = true, false
+	child := make(chan *os.Process, 1)
+	r.dst.OnAdd = func(string) { require.NoError(t, (<-child).Kill()) }
+	runCrashChild(t, crash{DB: r.dbPath, Export: &req}, child, true)
+	require.Zero(t, r.dst.Writes("torrents/recheck"), "qui stopped before the recheck")
+
+	r.restart()
+	r.svc.Wait()
+
+	var id int64
+	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+	record := r.get(id)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, 1, r.dst.Writes("torrents/add"), "qui adds the torrent once")
+	require.Equal(t, 1, r.dst.Writes("torrents/recheck"))
+	require.True(t, r.dst.Has(s.hash))
+	require.True(t, r.dst.Stopped(s.hash), "the torrent stays paused")
+}
+
 // The add on the target gets the parameters that the old Export path sends
 // for the fields of the rule.
 func TestExportAddsWithTheFieldsOfTheRule(t *testing.T) {

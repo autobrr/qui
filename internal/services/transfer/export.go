@@ -6,6 +6,7 @@ package transfer
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -126,13 +127,27 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 	}
 	m := e.member()
 	if e.reached(stepAdd) {
-		has, err := e.svc.has(ctx, m.TargetInstanceID, m.Hash)
+		torrent, err := e.svc.torrent(ctx, m.TargetInstanceID, m.Hash)
 		switch {
 		case ctx.Err() != nil:
 			return ExportResult{}, false
-		case err == nil && has:
+		case err == nil && torrent != nil:
 			e.logf("Resumed: the target has the torrent, so qui checks it there.")
-			added := e.svc.adder.Confirm(ctx, e.addRequest(nil))
+			req := e.addRequest(nil)
+			unchecked := torrent.Progress == 0 &&
+				slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl}, torrent.State)
+			if req.Settings.Recheck && unchecked {
+				// qui stopped before the recheck of the paused add, and
+				// qBittorrent does not check a stopped torrent by itself.
+				err := e.svc.deps.Sync.BulkAction(ctx, m.TargetInstanceID, []string{m.Hash}, "recheck")
+				switch {
+				case ctx.Err() != nil:
+					return ExportResult{}, false
+				case err != nil:
+					return e.end(ctx, "Recheck on target failed: "+err.Error(), true), true
+				}
+			}
+			added := e.svc.adder.Confirm(ctx, req)
 			if ctx.Err() != nil {
 				return ExportResult{}, false
 			}
