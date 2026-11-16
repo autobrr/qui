@@ -4,15 +4,17 @@
  */
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { cn } from "@/lib/utils"
 import { AlertTriangle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import type { InstanceResponse } from "@/types"
 
 interface PasswordIssuesBannerProps {
-  instances: InstanceResponse[]
+  instances: readonly InstanceResponse[]
+  className?: string
 }
 
-export function PasswordIssuesBanner({ instances }: PasswordIssuesBannerProps) {
+export function PasswordIssuesBanner({ instances, className }: PasswordIssuesBannerProps) {
   const { t } = useTranslation("instances")
   const hasDecryptionErrors = instances.some(instance => instance.hasDecryptionError)
 
@@ -21,7 +23,7 @@ export function PasswordIssuesBanner({ instances }: PasswordIssuesBannerProps) {
   }
 
   return (
-    <Alert className="mb-6">
+    <Alert className={cn("mb-6", className)}>
       <AlertTriangle className="h-4 w-4" />
       <AlertTitle>{t("passwordBanner.title")}</AlertTitle>
       <AlertDescription>

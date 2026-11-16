@@ -6,6 +6,7 @@
 import { useId, useRef, useState, type FormEvent, type RefObject } from "react"
 import { Trans, useTranslation } from "react-i18next"
 
+import { useReturnFocus } from "@/components/kit/use-return-focus"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -17,7 +18,6 @@ import { findDisplayProfileIcon } from "./display-profile-icons"
 import { useDisplayProfileNameCheck, useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
 import { DisplayProfileTile } from "./DisplayProfileTile"
-import { useReturnFocus } from "./use-return-focus"
 
 interface NewDisplayProfileDialogProps {
   open: boolean

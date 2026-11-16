@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { remoteAccessLimits, type RemoteAccessLimit } from "@/lib/remote-access"
 import { cn } from "@/lib/utils"
 import type { Instance } from "@/types"
@@ -12,9 +11,9 @@ import { useTranslation } from "react-i18next"
 
 interface RemoteAccessIndicatorProps {
   instance: Pick<Instance, "filesystemMode" | "sshTier" | "sshHardlink">
-  // value: icon and label, for the instance card row. icon: the icon alone,
-  // for the dashboard. inline: the list of limits, for the SSH tab.
-  variant: "value" | "icon" | "inline"
+  // fact: an icon and a few words, for the row of the instance in Settings. It takes no focus, because the row is a
+  // button. inline: the list of limits, for the SSH tab.
+  variant: "fact" | "inline"
   className?: string
 }
 
@@ -22,9 +21,9 @@ interface RemoteAccessIndicatorProps {
 // leaves off: the degraded mode the design doc wants visible, not silent.
 export function RemoteAccessIndicator({ instance, variant, className }: RemoteAccessIndicatorProps) {
   const { t } = useTranslation("instances")
-  const limits = remoteAccessLimits(instance)
 
   if (variant === "inline") {
+    const limits = remoteAccessLimits(instance)
     if (limits.length === 0) {
       return null
     }
@@ -32,34 +31,15 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
   }
 
   const mode = instance.filesystemMode
-  // The dashboard shows nothing for an instance without file access.
-  if (mode === "none" && variant === "icon") {
-    return null
+  if (mode !== "local" && mode !== "remote") {
+    return <span className={className}>{t("access.none")}</span>
   }
   const Icon = mode === "remote" ? KeyRound : HardDrive
-  const label = mode === "local" ? t("access.local") : mode === "remote" ? t("access.remote") : t("access.none")
-  const content = (
-    <>
-      <Icon className={variant === "icon" ? "h-4 w-4" : "h-3 w-3"} aria-label={variant === "icon" ? label : undefined} />
-      {variant === "value" && label}
-    </>
-  )
-  const classes = cn("flex items-center gap-1", mode === "none" ? "text-muted-foreground" : "text-primary", className)
-  if (mode === "none") {
-    return <span className={classes}>{content}</span>
-  }
-  // A button, so the keyboard reaches the tooltip with the limits.
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button type="button" className={cn(classes, "cursor-help rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring")}>{content}</button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">
-        {variant === "icon" && <p className="font-medium">{label}</p>}
-        {mode === "local" && <p>{t("access.localFull")}</p>}
-        <LimitList limits={limits} />
-      </TooltipContent>
-    </Tooltip>
+    <span className={className}>
+      <Icon aria-hidden="true" className="mr-1 inline size-3 align-[-0.125em]" />
+      {mode === "local" ? t("access.local") : t("access.remote")}
+    </span>
   )
 }
 

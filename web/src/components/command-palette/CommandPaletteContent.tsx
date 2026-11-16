@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useReturnFocus } from "@/components/display-profiles/use-return-focus"
+import { useReturnFocus } from "@/components/kit/use-return-focus"
 import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command"
 import { DialogContent, DialogTitle } from "@/components/ui/dialog"

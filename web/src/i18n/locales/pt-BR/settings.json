@@ -33,7 +33,6 @@
     "newPassword": "Nova Senha",
     "confirmPassword": "Confirmar Nova Senha",
     "submit": "Alterar Senha",
-    "submitting": "Alterando...",
     "toasts": {
       "success": "Senha alterada com sucesso",
       "error": "Falha ao alterar a senha. Verifique sua senha atual."
@@ -44,81 +43,69 @@
       "minLength": "A senha deve ter pelo menos 8 caracteres",
       "confirmRequired": "Por favor, confirme sua senha",
       "mismatch": "As senhas não coincidem"
-    }
+    },
+    "newPasswordHint": "Pelo menos 8 caracteres."
   },
   "instances": {
     "title": "Instâncias",
     "description": "Gerencie suas configurações de conexão do qBittorrent",
     "addButton": "Adicionar Instância",
-    "loading": "Carregando instâncias...",
-    "empty": "Nenhuma instância configurada ainda",
-    "addFirst": "Adicione Sua Primeira Instância",
     "titleBarSpeeds": {
-      "label": "Velocidades na Barra de Título",
-      "description": "Mostrar velocidades de download/upload no título da aba do navegador"
+      "label": "Mostrar velocidades de transferência no título da aba"
     },
-    "addDialog": {
-      "title": "Adicionar Instância",
-      "description": "Configurar uma nova instância do qBittorrent",
-      "cancel": "Cancelar",
-      "submit": "Adicionar Instância",
-      "adding": "Adicionando..."
-    },
-    "toasts": {
-      "reorderFailed": "Falha ao reordenar as instâncias"
+    "browserTab": {
+      "title": "Aba do navegador"
     }
   },
   "integrations": {
-    "title": "Integrações ARR",
-    "description": "Configure instâncias do Sonarr e Radarr para buscas de cross-seed aprimoradas usando IDs externos"
+    "title": "Sonarr e Radarr",
+    "description": "O cross-seed busca aqui IDs do IMDb, TMDb e TVDb para correspondências mais exatas."
   },
   "clientApiKeys": {
-    "cardTitle": "Chaves API de Proxy de Cliente",
-    "cardDescription": "Gerencie as chaves de API para aplicativos externos se conectarem a instâncias do qBittorrent através do qui",
-    "createButton": "Criar Chave API de Cliente",
-    "loading": "Carregando chaves API de cliente...",
-    "loadFailed": "Não foi possível carregar as chaves API de cliente",
-    "featureUnavailable": "Recurso pode não estar disponível nesta versão",
+    "cardTitle": "Chaves do proxy de cliente",
+    "cardDescription": "Chaves que permitem que apps como o autobrr acessem o qBittorrent pelo qui.",
+    "createButton": "Criar chave",
     "unknownError": "Ocorreu um erro",
     "instanceDeleted": "Instância Excluída",
-    "empty": "Nenhuma chave API de cliente criada ainda",
     "idLabel": "ID: {{id}}",
     "labels": {
       "created": "Criada:",
       "lastUsed": "Último uso:",
-      "host": "Host:",
       "showHost": "Mostrar host",
       "hideHost": "Ocultar host"
     },
     "createDialog": {
-      "title": "Criar Chave API de Cliente",
-      "description": "Crie uma chave de API para que um cliente específico se conecte a uma instância do qBittorrent.",
+      "title": "Nova chave de proxy",
+      "description": "A chave acessa apenas a instância do qBittorrent que você escolher.",
       "clientNameLabel": "Nome do Cliente",
       "clientNamePlaceholder": "ex: autobrr, tqm, sonarr, radarr, cross-seed",
       "instanceLabel": "Instância qBittorrent",
-      "instancePlaceholder": "Selecione uma instância",
-      "creating": "Criando..."
+      "instancePlaceholder": "Selecione uma instância"
     },
     "newKey": {
-      "title": "Chave API Criada",
-      "warning": "Essas informações são exibidas apenas uma vez. Armazene-as em seu gerenciador de senhas antes de fechar a caixa de diálogo.",
+      "title": "Chave criada para {{name}}",
+      "warning": "Copie a URL do proxy agora. O qui a mostra apenas uma vez.",
       "proxyUrl": "URL do Proxy",
       "showProxyUrl": "Mostrar URL do proxy",
       "hideProxyUrl": "Ocultar URL do proxy",
       "done": "Concluído"
     },
     "deleteDialog": {
-      "title": "Excluir Chave API de Cliente?",
-      "description": "Essa ação não pode ser desfeita. Todos os aplicativos que usam esta chave perderão acesso à instância do qBittorrent.",
-      "cancel": "Cancelar",
-      "delete": "Excluir",
-      "deleteLabel": "Excluir chave API {{name}}"
+      "title": "Excluir chave?",
+      "description": "{{name}} perderá o acesso ao qBittorrent pelo qui. Esta ação não pode ser desfeita.",
+      "delete": "Excluir"
     },
     "toasts": {
       "created": "Chave API de cliente criada com sucesso",
       "createFailed": "Falha ao criar chave API de cliente",
       "deleted": "Chave API de cliente excluída com sucesso",
-      "deleteFailed": "Falha ao excluir chave API de cliente: {{error}}",
+      "deleteFailed": "Falha ao excluir chave API de cliente: {{error}}"
+    },
+    "emptyTitle": "Nenhuma chave ainda",
+    "emptyDescription": "Crie uma chave para cada app que se comunica com o qBittorrent.",
+    "lastUsed": "Último uso: {{date}}",
+    "neverUsed": "Nunca usada",
+    "validation": {
       "clientNameRequired": "O nome do cliente é obrigatório",
       "selectInstance": "Selecione uma instância do qBittorrent"
     }
@@ -220,54 +207,35 @@
     }
   },
   "externalPrograms": {
-    "cardTitle": "Programas Externos",
+    "cardTitle": "Programas externos",
     "cardDescription": "Configure programas ou scripts externos que podem ser executados no menu de contexto do torrent",
-    "createButton": "Criar Programa Externo",
-    "createTitle": "Criar Programa Externo",
+    "createButton": "Adicionar programa",
+    "createTitle": "Adicionar programa externo",
     "createDescription": "Configure um programa ou script externo que pode ser executado no menu de contexto do torrent.",
-    "loading": "Carregando programas externos...",
-    "loadFailed": "Falha ao carregar programas externos",
     "unknownError": "Erro desconhecido",
-    "empty": "Nenhum programa externo configurado. Crie um para começar.",
-    "enabled": "Ativado",
-    "disabled": "Desativado",
-    "created": "Criado {{date}}",
-    "updated": "Atualizado {{date}}",
-    "programPath": "Caminho do Programa:",
-    "argumentsTemplate": "Modelo de Argumentos:",
-    "editTitle": "Editar Programa Externo",
-    "deleteTitle": "Excluir Programa Externo",
+    "editTitle": "Editar programa externo",
+    "deleteTitle": "Excluir programa externo",
     "delete": "Excluir",
     "deleteConflictIntro": "Este programa é usado pelas seguintes regras de automação:",
     "deleteConflictDescription": "Se você prosseguir, a ação do programa externo será removida destas regras de automação.",
     "deleteDescription": "Tem certeza de que deseja excluir \"{{name}}\"? Esta ação não pode ser desfeita.",
-    "deleteAnyway": "Excluir Mesmo Assim",
-    "nameLabel": "Nome *",
+    "deleteAnyway": "Excluir mesmo assim",
+    "nameLabel": "Nome",
     "namePlaceholder": "Meu Programa Externo",
-    "pathLabel": "Caminho do Programa *",
+    "pathLabel": "Caminho do programa",
     "pathPlaceholder": "/usr/bin/meu-script.sh ou C:\\Scripts\\meu-script.bat",
-    "pathDescription": "Caminho completo para o executável",
-    "argumentsLabel": "Modelo de Argumentos",
+    "argumentsLabel": "Modelo de argumentos",
     "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
-    "argumentsDescription": "Caminho completo do script com argumentos",
-    "availablePlaceholders": "Marcadores disponíveis:",
-    "pathMappings": "Mapeamentos de Caminho",
-    "remotePathPlaceholder": "Caminho remoto (ex: /mnt/armazenamento-remoto)",
-    "localPathPlaceholder": "Caminho local (ex: /home/user/mounts/remote)",
+    "availablePlaceholders": "Marcadores disponíveis",
+    "pathMappings": "Mapeamentos de caminho",
+    "remotePathPlaceholder": "/mnt/armazenamento-remoto",
+    "localPathPlaceholder": "/home/user/mounts/remote",
     "removePathMapping": "Remover mapeamento de caminho",
-    "addPathMapping": "Adicionar Mapeamento de Caminho",
+    "addPathMapping": "Adicionar mapeamento de caminho",
     "pathMappingsDescription": "Os mapeamentos de caminho convertem caminhos remotos em pontos de montagem locais. Útil ao executar programas externos em um servidor local do qui enquanto o qBittorrent é remoto. Os caminhos são combinados pelo prefixo mais longo primeiro. Use o mesmo estilo de separador de caminho da instância remota do qBittorrent (/ para Linux, \\ para Windows).",
     "launchInTerminal": "Abrir em janela de terminal",
     "launchInTerminalDescription": "Quando ativado, o programa será aberto em uma nova janela de terminal. Desative para aplicativos GUI ou programas que não precisam de saída no terminal.",
-    "enableProgram": "Ativar este programa",
-    "cancel": "Cancelar",
-    "saving": "Salvando...",
-    "updateButton": "Atualizar",
-    "createSubmit": "Criar",
-    "ariaLabels": {
-      "edit": "Editar {{name}}",
-      "delete": "Excluir {{name}}"
-    },
+    "enableProgram": "Ativado",
     "toasts": {
       "created": "Programa externo criado com sucesso",
       "createFailed": "Falha ao criar programa externo: {{error}}",
@@ -291,29 +259,26 @@
       "size": "Tamanho em bytes",
       "progress": "Progresso (0-1)",
       "comment": "Comentário do Torrent"
-    }
+    },
+    "remotePath": "Caminho remoto",
+    "localPath": "Caminho local",
+    "save": "Salvar",
+    "emptyTitle": "Nenhum programa externo",
+    "emptyDescription": "Adicione um programa ou script para executá-lo pelo menu de contexto do torrent.",
+    "pathMappingsCount_one": "{{count}} mapeamento de caminho",
+    "pathMappingsCount_other": "{{count}} mapeamentos de caminho"
   },
   "notifications": {
     "cardTitle": "Notificações",
     "cardDescription": "Envie alertas e atualizações de status por meio de qualquer serviço compatível com Shoutrrr",
-    "addButton": "Adicionar Alvo de Notificação",
-    "loading": "Carregando alvos de notificação...",
-    "loadFailed": "Falha ao carregar alvos de notificação",
-    "empty": "Nenhum alvo de notificação configurado. Adicione um para começar a receber alertas.",
+    "addButton": "Adicionar destino",
     "allEvents": "Todos os eventos, exceto aviso do sistema",
-    "showList": "Mostrar lista",
-    "hideList": "Ocultar lista",
-    "badges": {
-      "enabled": "Ativado",
-      "disabled": "Desativado"
-    },
     "groups": {
       "torrent": "Torrent",
       "maintenance": "Manutenção",
       "crossSeed": "Cross-seed",
       "automations": "Automações",
-      "other": "Outros",
-      "unknown": "Desconhecido"
+      "other": "Outros"
     },
     "form": {
       "name": "Nome",
@@ -328,10 +293,8 @@
       },
       "enabled": "Ativado",
       "events": "Eventos",
-      "selectAll": "Selecionar todos",
-      "select": "Selecionar",
-      "clear": "Limpar",
-      "loadingEventTypes": "Carregando tipos de eventos..."
+      "allEvents": "Todos os eventos",
+      "selectGroup": "Todos os eventos: {{group}}"
     },
     "dialog": {
       "newTitle": "Novo Alvo de Notificação",
@@ -340,8 +303,6 @@
       "editDescription": "Atualize as configurações de entrega para este alvo.",
       "deleteTitle": "Excluir alvo de notificação?",
       "deleteDescription": "Isso removerá {{name}}. Você pode adicioná-lo novamente mais tarde, se necessário.",
-      "cancel": "Cancelar",
-      "saving": "Salvando...",
       "save": "Salvar",
       "delete": "Excluir"
     },
@@ -360,18 +321,17 @@
       "testSent": "Notificação de teste enviada com sucesso",
       "testFailed": "Falha ao enviar notificação de teste"
     },
-    "ariaLabels": {
-      "sendTest": "Enviar teste para {{name}}",
-      "edit": "Editar {{name}}",
-      "delete": "Excluir {{name}}"
+    "emptyTitle": "Nenhum destino de notificação ainda",
+    "emptyDescription": "Adicione um para receber alertas no Discord, Telegram, Notifiarr ou outro serviço Shoutrrr.",
+    "eventSummary": "{{selected}} de {{total}} eventos",
+    "actions": {
+      "sendTest": "Enviar teste"
     }
   },
   "dateTime": {
-    "cardTitle": "Preferências de Data e Hora",
+    "cardTitle": "Data e hora",
     "cardDescription": "Configure fuso horário, formato de data e preferências de exibição de hora",
     "timezone": "Fuso Horário",
-    "timezoneDescription": "Selecione seu fuso horário local para exibição de hora precisa",
-    "selectTimezone": "Selecionar fuso horário",
     "detected": "detectado",
     "regions": {
       "UTC": "UTC",
@@ -381,23 +341,14 @@
       "Africa": "África",
       "Oceania": "Oceania"
     },
-    "timeFormat": "Formato de Hora",
     "use12Hour": "Usar formato de 12 horas (AM/PM)",
-    "use12HourDescription": "Alternar entre exibição de 12 horas e 24 horas",
     "dateFormat": "Formato de Data",
-    "dateFormatDescription": "Escolha como as datas são exibidas em todo o aplicativo",
-    "selectDateFormat": "Selecionar formato de data",
     "isoFormat": "ISO 8601 (YYYY-MM-DD)",
     "usFormat": "Formato EUA (MM/DD/YYYY)",
     "euFormat": "Formato Europeu (DD/MM/YYYY)",
     "relativeFormat": "Relativo (ex: \"há 2 horas\")",
     "preview": "Visualização",
-    "previewDescription": "É assim que datas e horários aparecerão no aplicativo",
-    "savePreferences": "Salvar Preferências",
-    "toasts": {
-      "success": "Preferências de data e hora salvas",
-      "error": "Falha ao salvar preferências de data e hora"
-    }
+    "previewDescription": "É assim que datas e horários aparecerão no aplicativo"
   },
   "statistics": {
     "cardTitle": "Estatísticas",
@@ -431,7 +382,6 @@
       "confirmBefore": "O qui exclui o histórico de {{name}} antes de {{date}}. Se a gravação começou antes dessa data, os bytes de antes da primeira gravação também são excluídos, e \"Gravando desde\" passa para essa data. Não é possível desfazer.",
       "sqliteSpace": "O arquivo do banco de dados mantém o tamanho. O SQLite reutiliza o espaço livre para o novo histórico.",
       "postgresSpace": "Excluir tudo de todas as instâncias devolve o espaço ao disco na hora. Após outra exclusão, o Postgres reutiliza o espaço livre para o novo histórico.",
-      "cancel": "Cancelar",
       "confirm": "Excluir",
       "deleted": "Histórico excluído",
       "failed": "Falha ao excluir o histórico",
@@ -443,7 +393,6 @@
         "manualDocs": "Reduzir o arquivo manualmente"
       }
     },
-    "loadFailed": "Falha ao carregar as configurações de estatísticas",
     "toasts": {
       "saved": "Configurações de estatísticas salvas",
       "saveFailed": "Falha ao salvar as configurações de estatísticas"
@@ -456,7 +405,6 @@
     },
     "browserIntegration": {
       "title": "Integração com Navegador",
-      "description": "Configure como o navegador lida com links magnet",
       "registerDescription": "Registre o qui como gerenciador de links magnet do navegador. Isso permite abrir links magnet diretamente no qui.",
       "registerButton": "Registrar como Gerenciador",
       "toasts": {
@@ -466,50 +414,56 @@
     }
   },
   "logs": {
-    "title": "Logs",
     "description": "Exiba logs ao vivo e defina configurações de log",
-    "settingsSrOnly": "Abrir configurações de log",
     "configuration": {
-      "title": "Configuração",
+      "title": "Configurações de log",
       "description": "Ajuste o nível de log, o caminho de saída e as configurações de rotação.",
-      "level": "Nível de Log",
+      "level": "Nível de log",
       "levelPlaceholder": "Selecione o nível de log",
-      "path": "Caminho do Arquivo de Log",
+      "path": "Caminho do arquivo de log",
       "pathPlaceholder": "Deixe vazio para apenas stdout",
-      "maxSize": "Tamanho Máx (MB)",
-      "maxBackups": "Máx de Backups",
-      "saving": "Salvando...",
-      "saveSettings": "Salvar Configurações"
+      "maxSize": "Tamanho máx. (MB)",
+      "maxBackups": "Máx. de backups",
+      "saveSettings": "Salvar configurações",
+      "lockedByEnv": "Definido por uma variável de ambiente",
+      "lockedByEmptyEnv": "Definido por uma variável de ambiente vazia",
+      "configFile": "Arquivo de configuração"
     },
     "viewer": {
       "connected": "Conectado",
-      "disconnected": "Desconectado",
       "searchPlaceholder": "Pesquisar logs...",
-      "allLevels": "Todos os Níveis",
+      "allLevels": "Todos os níveis",
       "all": "Todos",
       "none": "Nenhum",
-      "levelCount_one": "{{count}} Nível",
-      "levelCount_other": "{{count}} Níveis",
-      "mutedCount_one": "{{count}} Silenciado",
-      "mutedCount_other": "{{count}} Silenciados",
-      "mutedMessages": "Mensagens Silenciadas",
+      "levelCount_one": "{{count}} nível",
+      "levelCount_other": "{{count}} níveis",
+      "mutedCount_one": "{{count}} silenciado",
+      "mutedCount_other": "{{count}} silenciados",
+      "mutedMessages": "Mensagens silenciadas",
       "clearAll": "Limpar tudo",
       "clear": "Limpar",
-      "autoScroll": "Rolagem automática",
       "noEntriesMatch": "Nenhuma entrada corresponde ao filtro atual",
       "waiting": "Aguardando entradas de log...",
       "showing": "Mostrando {{shown}} de {{total}} entradas ({{max}} {{mode}})",
       "maxLive": "máx",
       "maxPaused": "máx enquanto pausado",
       "oldestEntriesDropped": "• entradas mais antigas descartadas",
-      "muteSimilarEntries": "Silenciar entradas semelhantes"
+      "muteSimilarEntries": "Silenciar entradas semelhantes",
+      "title": "Log ao vivo",
+      "description": "Novas entradas aparecem conforme o qui as grava.",
+      "pause": "Pausar",
+      "follow": "Acompanhar",
+      "connecting": "Conectando…",
+      "reconnecting": "Conexão perdida. Reconectando…",
+      "levels": "Níveis",
+      "unmute": "Remover silêncio de {{message}}"
     },
     "entryDialog": {
-      "title": "Entrada de Log",
+      "title": "Entrada de log",
       "rawLine": "Linha bruta de log",
-      "copyRaw": "Copiar Bruto",
+      "copyRaw": "Copiar bruto",
       "copyJson": "Copiar JSON",
-      "close": "Fechar"
+      "mute": "Silenciar semelhantes"
     },
     "toasts": {
       "settingsUpdated": "Configurações de log atualizadas",
@@ -520,10 +474,17 @@
     },
     "files": {
       "title": "Arquivos de Log",
-      "downloadSrOnly": "Baixar {{filename}}",
       "toasts": {
         "downloadFailed": "Falha ao baixar {{filename}}"
-      }
+      },
+      "description": "O arquivo de log atual e suas cópias rotacionadas.",
+      "emptyTitle": "Nenhum arquivo de log",
+      "emptyDescription": "Defina um caminho de arquivo de log para salvar o log em disco.",
+      "download": "Baixar"
+    },
+    "validation": {
+      "maxSize": "Informe 1 ou mais",
+      "maxBackups": "Informe 0 ou mais"
     }
   },
   "themes": {
@@ -640,13 +601,11 @@
       "actions": {
         "addLicense": "Adicionar Licença",
         "remove": "Remover",
-        "removing": "Removendo...",
         "getPremium": "Obter uma licença",
         "reactivate": "Reativar Licença",
         "activating": "Ativando...",
         "copyLicenseKey": "Copiar Chave de Licença",
         "activate": "Ativar Licença",
-        "validating": "Validando...",
         "openDodoCheckout": "Abrir checkout DodoPayments",
         "openLicensePortal": "Abrir portal de licenças"
       },
@@ -779,60 +738,38 @@
     }
   },
   "arrInstances": {
-    "addButton": "Adicionar Instância ARR",
+    "addButton": "Adicionar instância",
     "addDialog": {
-      "title": "Adicionar Instância ARR",
-      "description": "Configure uma instância do Sonarr ou Radarr para pesquisas de ID durante as buscas de cross-seed."
+      "title": "Nova instância",
+      "description": "Um servidor Sonarr ou Radarr que o cross-seed consulta para obter IDs."
     },
     "editDialog": {
-      "title": "Editar Instância ARR"
+      "title": "Editar instância"
     },
     "deleteDialog": {
-      "title": "Excluir Instância ARR?",
-      "description": "Tem certeza de que deseja excluir \"{{name}}\"? Esta ação não pode ser desfeita."
+      "title": "Excluir instância?",
+      "description": "O qui deixará de usar {{name}} para buscar IDs. Esta ação não pode ser desfeita."
     },
-    "badges": {
-      "enabled": "Ativado",
-      "disabled": "Desativado",
-      "connected": "Conectado",
-      "failed": "Falhou"
-    },
-    "loading": "Carregando instâncias ARR...",
-    "loadFailed": "Falha ao carregar instâncias ARR",
-    "empty": "Nenhuma instância ARR configurada. Adicione uma instância Sonarr ou Radarr para permitir buscas de cross-seed baseadas em ID.",
-    "created": "Criada em {{date}}",
-    "sonarrInstances": "Instâncias Sonarr",
-    "radarrInstances": "Instâncias Radarr",
     "unknownError": "Erro desconhecido",
     "actions": {
       "testConnection": "Testar Conexão",
-      "testing": "Testando...",
-      "cancel": "Cancelar",
       "delete": "Excluir",
-      "create": "Criar",
-      "update": "Atualizar",
-      "saving": "Salvando..."
+      "save": "Salvar"
     },
     "form": {
-      "type": "Tipo *",
-      "selectType": "Selecione o tipo",
-      "name": "Nome *",
+      "type": "Tipo",
+      "name": "Nome",
       "namePlaceholder": "Meu {{type}}",
-      "baseUrl": "URL Base *",
-      "baseUrlDescription": "A URL base da sua instância {{type}}",
-      "apiKey": "Chave API *",
-      "apiKeyOptional": "Chave API (deixe em branco para manter a atual)",
+      "baseUrl": "URL Base",
+      "apiKey": "Chave API",
       "apiKeyPlaceholder": "Insira a chave API",
       "apiKeyPlaceholderEdit": "••••••••",
       "apiKeyDescription": "Encontrado em Configurações > Geral no {{type}}",
       "basicAuth": "Autenticação Básica (Basic Auth)",
       "basicAuthDescription": "Use autenticação básica HTTP para ARR atrás de um proxy reverso.",
-      "basicUsername": "Nome de Usuário",
-      "basicUsernamePlaceholder": "Usuário",
+      "basicUsername": "Usuário",
       "basicPassword": "Senha",
-      "basicPasswordPlaceholder": "Senha",
-      "basicPasswordPlaceholderEdit": "<redacted>",
-      "basicPasswordKeep": "Deixe como <redacted> para manter a senha existente.",
+      "basicPasswordKeep": "Deixe como está para manter a senha atual.",
       "priority": "Prioridade",
       "priorityDescription": "Instâncias de maior prioridade são consultadas primeiro",
       "timeoutSeconds": "Tempo limite (segundos)",
@@ -842,7 +779,8 @@
         "radarr": "Radarr (Filmes)",
         "sonarrShort": "Sonarr",
         "radarrShort": "Radarr"
-      }
+      },
+      "apiKeyKeep": "Deixe em branco para manter a chave atual."
     },
     "validation": {
       "nameRequired": "O nome é obrigatório",
@@ -854,11 +792,6 @@
       "basicPasswordRequiredSubmit": "A senha da autenticação básica é obrigatória",
       "basicPasswordKeepOrEnter": "Insira uma nova senha de autenticação básica ou mantenha a existente"
     },
-    "ariaLabels": {
-      "testConnection": "Testar conexão para {{name}}",
-      "edit": "Editar {{name}}",
-      "delete": "Excluir {{name}}"
-    },
     "toasts": {
       "created": "Instância ARR criada com sucesso",
       "createFailed": "Falha ao criar instância ARR: {{error}}",
@@ -869,7 +802,14 @@
       "connectionSuccess": "Conexão bem-sucedida",
       "connectionFailed": "Falha na conexão: {{error}}",
       "testFailed": "Falha ao testar conexão: {{error}}"
-    }
+    },
+    "status": {
+      "connected": "Conectado",
+      "failed": "Teste falhou"
+    },
+    "tested": "Último teste: {{date}}",
+    "emptyTitle": "Nenhum Sonarr ou Radarr ainda",
+    "emptyDescription": "Adicione um para que o cross-seed possa buscar por ID."
   },
   "indexers": {
     "title": "Indexadores Torznab",
@@ -878,7 +818,6 @@
     "deleteAllIndexers": "Excluir Todos os Indexadores",
     "deleteAllDescription": "Tem certeza de que deseja excluir todos os {{count}} indexadores? Esta ação não pode ser desfeita.",
     "toast": {
-      "loadFailed": "Falha ao carregar indexadores",
       "deletedSuccess": "Indexador excluído",
       "deleteFailed": "Falha ao excluir indexador",
       "deleteAllSuccess": "Excluídos todos os {{count}} indexadores",
@@ -890,7 +829,8 @@
       "testAllPartial": "{{success}} passaram, {{failed}} falharam",
       "failedIndexers": "Indexadores que falharam: {{names}}",
       "capsSynced": "Recursos (capabilities) sincronizados do servidor",
-      "failedToSyncCaps": "Falha ao sincronizar recursos (capabilities)"
+      "failedToSyncCaps": "Falha ao sincronizar recursos (capabilities)",
+      "testFailed": "Falha no teste de conexão"
     },
     "priorityLabels": {
       "interactive": "Interativo",
@@ -917,8 +857,10 @@
       "summary": "{{enabled}} ativados, {{capabilities}} com recursos suportados",
       "description": "Gerencie indexadores Torznab impulsionados pelo Jackett, Prowlarr ou endpoints de tracker nativos",
       "deleteAll": "Excluir Todos",
-      "discover": "Descobrir",
-      "addSingle": "Adicionar único"
+      "addMenu": {
+        "discover": "Descobrir no Jackett ou Prowlarr",
+        "manual": "Adicionar um por URL"
+      }
     },
     "dialog": {
       "addTitle": "Adicionar Indexador",
@@ -960,10 +902,7 @@
         "native": "Torznab Nativo"
       },
       "buttons": {
-        "save": "Salvar",
-        "add": "Adicionar",
-        "saving": "Salvando...",
-        "cancel": "Cancelar"
+        "save": "Salvar"
       },
       "toast": {
         "createdSuccess": "Indexador criado com sucesso",
@@ -975,6 +914,15 @@
         "basicUsernameRequired": "Nome de usuário da autenticação básica é obrigatório",
         "basicPasswordRequired": "A senha da autenticação básica é obrigatória",
         "basicPasswordRequiredOrKeep": "A senha da autenticação básica é obrigatória (ou mantenha <redacted>)"
+      },
+      "validation": {
+        "nameRequired": "Informe um nome.",
+        "baseUrlRequired": "Informe a URL base.",
+        "baseUrlInvalid": "Informe uma URL completa, por exemplo {{example}}.",
+        "indexerIdRequired": "Informe o ID do indexador no Prowlarr.",
+        "apiKeyRequired": "Informe a chave de API.",
+        "priorityInvalid": "Informe um número inteiro, 0 ou mais.",
+        "timeoutInvalid": "Informe um número inteiro de 5 a 120."
       }
     },
     "autodiscovery": {
@@ -999,11 +947,8 @@
         "indexerUrl": "O Prowlarr usa como padrão http://localhost:9696, Jackett http://localhost:9117."
       },
       "buttons": {
-        "cancel": "Cancelar",
         "discover": "Descobrir",
-        "discovering": "Descobrindo...",
         "back": "Voltar",
-        "importing": "Importando...",
         "import": "Importar {{count}} indexador",
         "importPlural": "Importar {{count}} indexadores",
         "selectAll": "Selecionar Todos",
@@ -1013,13 +958,11 @@
       "noIndexersFound": "Nenhum indexador encontrado",
       "willUpdate": "Será Atualizado",
       "typeLabel": "Tipo:",
-      "backendLabel": "Backend:",
-      "notConfigured": "(Não configurado)",
+      "notConfigured": "Não configurado",
       "unknownError": "Erro desconhecido",
       "toast": {
         "urlRequired": "A URL do indexador é obrigatória",
         "basicAuthRequired": "A autenticação básica requer nome de usuário e senha",
-        "urlRequiredBeforeImport": "Forneça uma URL do indexador antes de importar",
         "discoveredWithExisting": "Encontrados {{total}} indexadores ({{existing}} já existem)",
         "discovered": "Encontrados {{count}} indexadores",
         "discoverFailed": "Falha ao descobrir indexadores: {{error}}",
@@ -1045,44 +988,32 @@
       "backend": "Backend",
       "priority": "Prioridade",
       "status": "Status",
-      "testStatus": "Status do Teste",
       "capabilities": "Recursos (Capabilities)",
-      "timeout": "Tempo Limite",
-      "actions": "Ações",
-      "enabled": "Ativado",
-      "disabled": "Desativado",
       "working": "Funcionando",
       "failed": "Falhou",
       "untested": "Não Testado",
       "testAll": "Testar Todos",
-      "filters": "Filtros",
       "clearFilters": "Limpar filtros",
       "showingCount": "Mostrando {{shown}} de {{total}} indexadores",
-      "loading": "Carregando...",
-      "noIndexers": "Nenhum indexador configurado. Adicione um para começar.",
       "noMatch": "Nenhum indexador corresponde aos filtros atuais",
       "noCapabilities": "Sem recursos (capabilities)",
-      "sync": "Sincronizar",
-      "collapse": "Recolher",
       "filterStatus": "Status",
       "filterTestStatus": "Status do Teste",
       "filterBackend": "Backend",
       "filterAll": "Todos",
-      "filterEnabledOnly": "Apenas ativados",
-      "filterDisabledOnly": "Apenas desativados",
-      "filterWorkingOnly": "Apenas funcionando",
-      "filterFailedOnly": "Apenas falhados",
-      "filterUntestedOnly": "Apenas não testados",
       "filterJackett": "Jackett",
       "filterProwlarr": "Prowlarr",
       "filterNative": "Nativo",
       "tooltipTest": "Testar conexão",
       "tooltipSyncCaps": "Sincronizar capacidades",
-      "tooltipEdit": "Editar",
       "tooltipDelete": "Excluir",
-      "tooltipSyncCapsFromBackend": "Sincronizar capacidades a partir do backend",
-      "capability": "Recurso (Capability): {{name}}",
-      "clickToShowAllCapabilities": "Clique para mostrar todos os {{count}} recursos suportados"
+      "sortBy": "Ordenar por",
+      "sortAscending": "Crescente",
+      "sortDescending": "Decrescente",
+      "sortAndFilter": "Ordenar e filtrar",
+      "order": "Ordem",
+      "filterEnabled": "Ativados",
+      "filterDisabled": "Desativados"
     },
     "activity": {
       "title": "Atividade do Agendador (Scheduler)",
@@ -1092,16 +1023,13 @@
       "noActiveTasks": "Sem tarefas ativas ou limites de taxa",
       "andMore": "...e mais {{count}}",
       "workersStatus": "{{used}}/{{total}} workers",
-      "runningCount": "{{count}} em execução",
-      "queuedCount": "{{count}} na fila",
-      "cooldownCount": "{{count}} em espera (cooldown)",
       "ready": "Pronto",
-      "left": "{{time}} restantes"
+      "left": "{{time}} restantes",
+      "description": "Buscas em execução, na fila ou aguardando o fim de um limite de taxa."
     },
     "searchHistory": {
       "title": "Histórico de Buscas",
       "searches": "{{count}} buscas",
-      "searchesWithErrors": "{{count}} buscas, {{errors}} erros",
       "noSearchesYet": "Nenhuma busca ainda",
       "successful": "{{count}} bem-sucedidas",
       "failed": "{{count}} falharam",
@@ -1116,16 +1044,29 @@
         "added": "Adicionado {{count}}",
         "error": "Erro",
         "searchParameters": "Parâmetros da Busca",
-        "mode": "Modo:",
-        "type": "Tipo:",
+        "mode": "Modo",
+        "type": "Tipo",
         "job": "Tarefa {{id}}",
         "statusSuccess": "Sucesso",
         "statusFailed": "Falha",
         "statusSkipped": "Ignorada",
         "statusRateLimited": "Com Limite de Taxa",
         "season": "Temporada",
-        "episode": "Episódio"
-      }
+        "episode": "Episódio",
+        "query": "Consulta",
+        "finished": "Concluída"
+      },
+      "description": "As buscas mais recentes que o qui enviou aos seus indexadores.",
+      "showAll": "Mostrar todas ({{count}})",
+      "showFewer": "Mostrar menos"
+    },
+    "list": {
+      "testing": "Testando",
+      "priority": "Prioridade {{priority}}",
+      "emptyTitle": "Nenhum indexador ainda",
+      "emptyDescription": "Descubra-os no Jackett ou no Prowlarr, ou adicione um manualmente.",
+      "capabilities_one": "{{count}} recurso",
+      "capabilities_other": "{{count}} recursos"
     }
   },
   "gazelle": {
@@ -1149,33 +1090,26 @@
     "configTitle": "Configuração do Cache",
     "configDescription": "Ajuste por quanto tempo os resultados das buscas são armazenados no cache.",
     "cacheTTL": "Cache TTL (minutos)",
-    "saving": "Salvando...",
     "saveTTL": "Salvar",
     "ttlHelper": "Mínimo {{min}} minutos. Valores maiores reduzem a carga no indexador.",
     "entries": "Entradas",
     "hitCount": "Contagem de Acertos",
     "approxSize": "Tamanho Aprox.",
-    "ttl": "TTL",
     "newestEntry": "Entrada Mais Recente",
     "lastUsed": "Último Uso",
     "enabled": "Ativado",
     "disabled": "Desativado",
-    "ttlValue": "{{minutes}} minutos",
-    "timestamps": {
-      "justNow": "agora mesmo",
-      "ago": "há {{duration}}",
-      "inFuture": "em {{duration}}"
-    },
     "toasts": {
       "ttlUpdated": "TTL do cache atualizado para {{minutes}} minutos",
-      "ttlUpdateFailed": "Falha ao atualizar o TTL do cache",
+      "ttlUpdateFailed": "Falha ao atualizar o TTL do cache"
+    },
+    "validation": {
       "invalidNumber": "Por favor, insira um número válido",
       "ttlMinimum": "O TTL deve ter pelo menos {{min}} minutos"
-    }
+    },
+    "status": "Status"
   },
   "application": {
-    "loading": "Carregando...",
-    "loadFailed": "Falha ao carregar as informações do aplicativo",
     "build": {
       "title": "Build",
       "description": "Detalhes de versão e build.",
@@ -1185,8 +1119,6 @@
       "buildDate": "Data do Build",
       "updateStatus": "Status de Atualização",
       "statuses": {
-        "unknown": "Desconhecido",
-        "unknownDetail": "Não é possível determinar o status da atualização",
         "disabled": "Desativado",
         "disabledDetail": "A verificação de atualização está desativada",
         "devBuild": "Build de Desenvolvimento",
@@ -1265,15 +1197,13 @@
       "title": "Runtime",
       "description": "Informações do tempo de execução do servidor.",
       "uptime": "Tempo Ativo (Uptime)",
-      "runtime": "Runtime"
+      "runtime": "Runtime",
+      "bindAddress": "Endereço de Bind"
     },
     "auth": {
       "title": "Autenticação",
       "description": "Configuração de autenticação.",
       "currentSessionAuth": "Sessão Atual",
-      "unknown": "Desconhecido",
-      "loading": "Carregando...",
-      "unavailable": "Indisponível",
       "yes": "Sim",
       "no": "Não",
       "oidcEnabled": "OIDC Ativado",
@@ -1284,47 +1214,40 @@
       "title": "Armazenamento",
       "description": "Caminhos do banco de dados e do sistema de arquivos.",
       "database": "Banco de Dados",
-      "bind": "Endereço de Bind",
       "configDir": "Diretório de Configurações",
       "dataDir": "Diretório de Dados"
     }
   },
   "trackerCustomizations": {
     "cardTitle": "Personalização de trackers",
-    "cardDescription": "Renomeie trackers e mescle os domínios de um mesmo tracker em uma única entrada. O qui mostra o nome de exibição em todos os lugares onde mostra o tracker.",
+    "cardDescription": "Renomeie trackers e mescle os domínios de um mesmo tracker em uma única entrada.",
     "loading": "Carregando trackers…",
-    "empty": "Nenhum tracker ainda. Os trackers aparecem aqui quando uma instância tem torrents.",
-    "importTooltip": "Importar personalizações",
-    "exportTooltip": "Exportar personalizações",
     "mergedFrom": "Mesclado de: {{domains}}",
     "original": "Original: {{domain}}",
     "mergeTooltip": "Mesclar os trackers selecionados neste grupo",
     "mergeIntoGroup": "Mesclar no grupo",
     "addToMerge": "Adicionar à mesclagem",
     "rename": "Renomear",
-    "edit": "Editar",
     "delete": "Excluir",
     "customizeDialog": {
-      "editTitle": "Editar Nome do Tracker",
-      "renameTitle": "Renomear Tracker",
-      "mergeTitle": "Mesclar Trackers",
+      "editTitle": "Editar nome do tracker",
+      "renameTitle": "Renomear tracker",
+      "mergeTitle": "Mesclar trackers",
       "editDescription": "Atualize o nome de exibição deste tracker.",
       "renameDescription": "Dê a este tracker um nome de exibição personalizado.",
       "mergeDescription": "Combine esses trackers em uma única entrada com um nome personalizado.",
-      "displayName": "Nome de Exibição",
+      "displayName": "Nome de exibição",
       "displayNamePlaceholder": "ex., TorrentLeech",
-      "domains": "Domínio(s)",
-      "selectedTrackers": "Tracker(s) Selecionado(s)",
+      "domains": "Domínios",
+      "selectedTrackers": "Trackers selecionados",
       "primary": "Principal",
       "removeDomain": "Remover {{domain}}",
-      "cancel": "Cancelar",
-      "saving": "Salvando...",
       "save": "Salvar",
       "renameAction": "Renomear",
       "mergeAction": "Mesclar"
     },
     "importDialog": {
-      "title": "Importar Personalizações de Tracker",
+      "title": "Importar personalizações de tracker",
       "description": "Cole o JSON para importar personalizações (renomeações e mesclagens).",
       "jsonData": "Dados JSON",
       "invalidFormat": "Formato inválido: esperado um array de trackerCustomizations",
@@ -1339,7 +1262,6 @@
       "conflictsWith": "Em conflito com: {{name}}",
       "skip": "Ignorar",
       "overwrite": "Substituir",
-      "cancel": "Cancelar",
       "importing": "Importando...",
       "import": "Importar"
     },
@@ -1355,6 +1277,15 @@
       "importedCount_one": "{{count}} personalização importada",
       "importedCount_other": "{{count}} personalizações importadas",
       "noCustomizationsImported": "Nenhuma personalização importada"
-    }
+    },
+    "cardHelp": "O qui mostra o nome de exibição em todos os lugares onde mostra o tracker.",
+    "emptyTitle": "Nenhum tracker ainda",
+    "emptyDescription": "Os trackers aparecem aqui quando uma instância tem torrents.",
+    "importButton": "Importar",
+    "exportButton": "Exportar",
+    "selectionHint": "Selecione trackers para renomeá-los ou mesclá-los.",
+    "selectedCount_one": "{{count}} selecionado",
+    "selectedCount_other": "{{count}} selecionados",
+    "clearSelection": "Limpar"
   }
 }

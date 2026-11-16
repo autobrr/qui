@@ -6,14 +6,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import { server } from "@/test/msw/server"
 import type { InstanceResponse } from "@/types"
 
-import { InstanceCard } from "./InstanceCard"
+import { InstanceList } from "./InstanceList"
 
 const instances = vi.hoisted(() => ({
   instances: [
@@ -23,30 +23,46 @@ const instances = vi.hoisted(() => ({
   deleteInstance: () => {},
   testConnection: () => {},
   setInstanceStatus: () => {},
+  reorderInstances: () => {},
   isDeleting: false,
-  isTesting: false,
-  isUpdatingStatus: false,
-  updatingStatusId: undefined,
+  isReordering: false,
+  updatingStatusId: null,
 }))
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instances }))
 
-afterEach(cleanup)
 
-describe("InstanceCard", () => {
+// The switch of a row measures itself, and jsdom has no ResizeObserver.
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
+
+function renderList(instance: InstanceResponse) {
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <TooltipProvider>
+        <InstanceList instances={[instance]} onEdit={() => {}} onAdd={() => {}} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+}
+
+describe("InstanceList", () => {
   it.each([
-    ["local", "Local"],
-    ["remote", "Over SSH"],
-    ["none", "None"],
-  ] as const)("the file access row reads the %s mode", (filesystemMode, text) => {
-    const instance = { id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true, filesystemMode, sshTier: "sftp" } as InstanceResponse
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <TooltipProvider>
-          <InstanceCard instance={instance} onEdit={() => {}} />
-        </TooltipProvider>
-      </QueryClientProvider>
-    )
-    expect(screen.getByText("File access:").parentElement?.textContent).toContain(text)
+    ["local", "Local files"],
+    ["remote", "Files over SSH"],
+    ["none", "No file access"],
+  ] as const)("the row of an instance names the %s file access", (filesystemMode, text) => {
+    renderList({ id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true, filesystemMode, sshTier: "sftp" } as InstanceResponse)
+    expect(screen.getByRole("listitem").textContent).toContain(text)
   })
 
   it("names the Source instances that route to the instance in the delete dialog", async () => {
@@ -57,19 +73,9 @@ describe("InstanceCard", () => {
         sourceInstanceId: 2, crossSeedInstanceId: 1, rows: [{ baseDir: "/data/links", mappedPath: "", routedTorrents: null }],
       }))
     )
-    const instance = { id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true } as InstanceResponse
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <TooltipProvider>
-          <InstanceCard instance={instance} onEdit={() => {}} />
-        </TooltipProvider>
-      </QueryClientProvider>
-    )
+    renderList({ id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true } as InstanceResponse)
 
-    const menu = document.querySelector("[aria-haspopup='menu']")
-    if (!menu) throw new Error("no instance menu")
-    fireEvent.pointerDown(menu, { button: 0, ctrlKey: false })
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }))
     const deleteButton = await screen.findByRole<HTMLButtonElement>("button", { name: "Delete" })
     expect(deleteButton.disabled).toBe(true)
 

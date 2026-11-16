@@ -14,7 +14,8 @@ export interface NotificationTarget {
   name: string
   url: string
   enabled: boolean
-  eventTypes: string[]
+  /** Null on a target that an older qui saved with no list: it gets each event except the system notice. */
+  eventTypes: string[] | null
   createdAt: string
   updatedAt: string
 }
@@ -23,7 +24,8 @@ export interface NotificationTargetRequest {
   name: string
   url: string
   enabled: boolean
-  eventTypes: string[]
+  /** Left out, the server keeps the list that the target has. */
+  eventTypes?: string[]
 }
 
 export interface NotificationTestRequest {

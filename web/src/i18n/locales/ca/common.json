@@ -358,5 +358,12 @@
   },
   "labels": {
     "path": "Camí"
+  },
+  "kit": {
+    "loadFailed": "Aquesta secció no s'ha pogut carregar.",
+    "retry": "Torna-ho a provar",
+    "edit": "Edita",
+    "moreActions": "Més accions",
+    "enabled": "Activat"
   }
 }

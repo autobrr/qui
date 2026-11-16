@@ -4,7 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -102,7 +102,7 @@ describe("TrackerCustomizationsManager", () => {
     renderManager()
     await screen.findByText("Alpha")
 
-    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importButton" }))
     const input = await screen.findByLabelText("trackerCustomizations.importDialog.jsonData")
     const importButton = () => screen.getByRole("button", { name: "trackerCustomizations.importDialog.import" })
 
@@ -120,16 +120,16 @@ describe("TrackerCustomizationsManager", () => {
     mocks.listTrackerCustomizations.mockImplementation(() => Promise.resolve(mocks.customizations))
     mocks.createTrackerCustomization.mockImplementation(() => new Promise(() => {}))
     renderManager()
-    await screen.findByText("trackerCustomizations.empty")
+    await screen.findByText("trackerCustomizations.emptyTitle")
     const text = JSON.stringify({ trackerCustomizations: [{ displayName: "New", domains: ["n.example.invalid"] }] })
-    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importButton" }))
     fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), { target: { value: text } })
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.import" }))
     await waitFor(() => expect(mocks.createTrackerCustomization).toHaveBeenCalledTimes(1))
-    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.cancel" }))
+    fireEvent.click(screen.getByRole("button", { name: "actions.cancel" }))
     await waitFor(() => expect(screen.queryByLabelText("trackerCustomizations.importDialog.jsonData")).toBeNull())
 
-    expect(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("button", { name: "trackerCustomizations.importButton" }).hasAttribute("disabled")).toBe(true)
   })
 
   // regression: #4108
@@ -150,7 +150,7 @@ describe("TrackerCustomizationsManager", () => {
     renderManager()
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "a.example.invalid" }))
-    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importButton" }))
     fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), {
       target: { value: JSON.stringify({ trackerCustomizations: [{ displayName: "Alpha", domains: ["a.example.invalid"] }] }) },
     })
@@ -158,11 +158,12 @@ describe("TrackerCustomizationsManager", () => {
 
     await screen.findByText("Alpha")
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
-    expect(screen.getByRole("button", { name: "trackerCustomizations.rename" })).not.toBeNull()
+    expect(screen.queryByRole("listitem", { name: "a.example.invalid" })).toBeNull()
 
     // A delete of the imported customization gives the domain its row back, unselected.
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.delete" }))
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "trackerCustomizations.rename" })).toHaveLength(2))
+    const box = await screen.findByRole("checkbox", { name: "a.example.invalid" })
+    expect(box.getAttribute("aria-checked")).toBe("false")
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
   })
 
@@ -181,15 +182,16 @@ describe("TrackerCustomizationsManager", () => {
     renderManager()
     await screen.findByText("b.example.invalid")
 
-    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importTooltip" }))
+    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importButton" }))
     fireEvent.change(await screen.findByLabelText("trackerCustomizations.importDialog.jsonData"), {
       target: { value: JSON.stringify({ trackerCustomizations: [{ displayName: "Other", domains: ["x.example.invalid"] }] }) },
     })
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.import" }))
-    fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.importDialog.cancel" }))
+    fireEvent.click(screen.getByRole("button", { name: "actions.cancel" }))
     await waitFor(() => expect(screen.queryByLabelText("trackerCustomizations.importDialog.jsonData")).toBeNull())
 
-    fireEvent.click(screen.getAllByRole("button", { name: "trackerCustomizations.rename" })[1])
+    // A wide screen and a phone each have a Rename button in the row, and jsdom shows both.
+    fireEvent.click(within(screen.getByRole("listitem", { name: "b.example.invalid" })).getAllByRole("button", { name: "trackerCustomizations.rename" })[0])
     fireEvent.change(await screen.findByLabelText("trackerCustomizations.customizeDialog.displayName"), { target: { value: "Bravo" } })
     await act(async () => finishImport())
 

@@ -3,12 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useId } from "react"
 import { Trans, useTranslation } from "react-i18next"
 
+import { SwitchRow } from "@/components/kit/SwitchRow"
 import { FieldHelp } from "@/components/ui/field-help"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { useDisplayProfiles } from "@/lib/client-settings"
 import type { DisplayProfile } from "@/lib/display-profiles"
 
@@ -37,14 +35,13 @@ export function OwnSortAndFiltersHelp() {
 export function OwnSortAndFiltersSetting({ profile }: { profile: DisplayProfile }) {
   const { t } = useTranslation("torrents")
   const { settled, setOwnSortAndFilters } = useDisplayProfiles()
-  const switchId = useId()
   const label = t("displayProfiles.ownSortAndFilters.label")
   const offWarning = t("displayProfiles.ownSortAndFilters.offWarning", { name: profile.name })
 
   if (profile.isDefault) {
     return (
       <div className="grid [&>*]:col-start-1 [&>*]:row-start-1">
-        <div aria-hidden="true" className="invisible flex items-start gap-3">
+        <div aria-hidden="true" className="invisible flex items-start gap-4">
           <div className="min-w-0 flex-1">
             <StableText reserve={[label]} className="text-sm leading-5" />
             <StableText reserve={[offWarning]} className="mt-0.5 text-xs leading-4 [overflow-wrap:anywhere]" />
@@ -60,23 +57,13 @@ export function OwnSortAndFiltersSetting({ profile }: { profile: DisplayProfile 
   }
 
   return (
-    <div className="flex items-start gap-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <Label htmlFor={switchId} className="cursor-pointer leading-5">{label}</Label>
-          <FieldHelp><OwnSortAndFiltersHelp /></FieldHelp>
-        </div>
-        <p className="mt-0.5 text-xs leading-4 text-muted-foreground [overflow-wrap:anywhere]">
-          <StableText reserve={[offWarning]}>{profile.ownSortAndFilters && offWarning}</StableText>
-        </p>
-      </div>
-      <Switch
-        id={switchId}
-        checked={profile.ownSortAndFilters}
-        disabled={!settled}
-        onCheckedChange={(on) => setOwnSortAndFilters(profile.id, on)}
-        className="mt-0.5"
-      />
-    </div>
+    <SwitchRow
+      label={label}
+      help={<OwnSortAndFiltersHelp />}
+      description={<StableText reserve={[offWarning]}>{profile.ownSortAndFilters && offWarning}</StableText>}
+      checked={profile.ownSortAndFilters}
+      disabled={!settled}
+      onCheckedChange={(on) => setOwnSortAndFilters(profile.id, on)}
+    />
   )
 }

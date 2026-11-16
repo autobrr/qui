@@ -54,11 +54,41 @@ const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
 // "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
 const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
 const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
-const pageShellMessage = 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls.'
+const pageShellMessage = 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls. A page with sections renders SectionedPage, which renders Page.'
 const gazelleSiteSelectors = [
   { selector: 'Literal[regex.pattern=/orpheus|opsfet|flacsfor|redacted/i]', message: gazelleSiteMessage },
   { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
   { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+]
+
+const settingsKitImportPattern = {
+  regex: '^@/components/ui/(card|dialog|alert-dialog|sheet|drawer)$',
+  allowTypeImports: true,
+  message: 'Settings builds on the kit in @/components/kit: Section for a card, Editor for a form in a dialog or a sheet, ConfirmDialog for a question before a step. Read src/components/kit/AGENTS.md.',
+}
+
+// The tabs of Settings. Each file here builds its cards, forms, and questions from the kit.
+const settingsFiles = [
+  'src/pages/Settings.tsx',
+  'src/components/settings/**',
+  'src/components/instances/*.{ts,tsx}',
+  'src/components/indexers/**',
+  'src/components/display-profiles/**',
+  'src/components/themes/**',
+]
+
+// Files in the Settings folders that keep their own dialog or sheet, each for its reason.
+const settingsKitAllowlist = [
+  // The API keys tab stays as it is.
+  'src/components/settings/ApiKeysManager.tsx',
+  // The restart flow: the update banner shows InstallUpdateButton too, and the overlay covers the whole app.
+  'src/components/settings/{RestartButton,InstallUpdateButton,RestartOverlay}.tsx',
+  // The torrent list opens these.
+  'src/components/display-profiles/{NewDisplayProfileDialog,DisplayProfileSheet}.tsx',
+  // The theme editor is a sheet without a backdrop, so the page behind it shows the theme while the user edits it.
+  'src/components/themes/CustomThemeEditor.tsx',
+  // The picker of the themes in the theme menus, with its own trigger button.
+  'src/components/themes/ThemeMenuDialog.tsx',
 ]
 
 const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
@@ -203,15 +233,26 @@ export default tseslint.config([
     },
   },
   {
+    // The kit owns the cards, forms, and questions of Settings. The patterns of the first block repeat here, because
+    // this block replaces its rule for these files.
+    files: settingsFiles,
+    ignores: settingsKitAllowlist,
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns, radixDialogImportPattern, bulkActionDialogImportPattern, settingsKitImportPattern],
+      }],
+    },
+  },
+  {
     // Page owns the shell of a page: docs/standards/frontend-review.md, "Page layout".
     files: ['src/pages/*.tsx'],
     ignores: ['**/*.test.tsx', 'src/pages/{Login,NotFound,Setup,Torrents}.tsx'],
     rules: {
       'no-restricted-syntax': ['error',
         ...gazelleSiteSelectors,
-        { selector: 'Program:not(:has(ImportDeclaration[source.value="@/components/layout/Page"]))', message: pageShellMessage },
-        { selector: 'Program:not(:has(JSXOpeningElement[name.name="Page"]))', message: pageShellMessage },
-        { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name="Page"]', message: 'Render Page as the root of the page, with no HTML element around it.' },
+        { selector: 'Program:not(:has(ImportDeclaration[source.value=/^@.components.layout.(Page|SectionedPage)$/]))', message: pageShellMessage },
+        { selector: 'Program:not(:has(JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]))', message: pageShellMessage },
+        { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]', message: 'Render Page as the root of the page, with no HTML element around it.' },
       ],
     },
   },

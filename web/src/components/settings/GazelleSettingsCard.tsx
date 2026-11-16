@@ -3,104 +3,83 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { SaveFooter } from "@/components/ui/save-footer"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { FieldHelp } from "@/components/ui/field-help"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { useCrossSeedSettings, usePatchCrossSeedSettings } from "@/hooks/useCrossSeedSettings"
-import { changedSecret } from "@/lib/cross-seed-utils"
-import type { CrossSeedAutomationSettings } from "@/types"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
-/** Gazelle (OPS/RED) keys live on the cross-seed settings; this card saves only those three fields. */
+import { Field } from "@/components/kit/Field"
+import { Section } from "@/components/kit/Section"
+import { SwitchRow } from "@/components/kit/SwitchRow"
+import { Input } from "@/components/ui/input"
+import { useCrossSeedSettings, usePatchCrossSeedSettings } from "@/hooks/useCrossSeedSettings"
+import { changedSecret } from "@/lib/cross-seed-utils"
+import type { CrossSeedAutomationSettings } from "@/types"
+
+/** Gazelle (OPS/RED) keys live on the cross-seed settings; this section saves only those three fields. */
 export function GazelleSettingsCard() {
-  const { data: settings } = useCrossSeedSettings()
-  if (!settings) {
-    return null
+  const { t } = useTranslation("settings")
+  const query = useCrossSeedSettings()
+  if (query.data) {
+    return <GazelleSection settings={query.data} />
   }
-  return <GazelleCard settings={settings} />
+  return <Section title={t("gazelle.title")} description={t("gazelle.description")} queries={[query]} />
 }
 
-function GazelleCard({ settings }: { settings: CrossSeedAutomationSettings }) {
+function GazelleSection({ settings }: { settings: CrossSeedAutomationSettings }) {
   const { t } = useTranslation("settings")
   const patchSettings = usePatchCrossSeedSettings()
   const [gazelleEnabled, setGazelleEnabled] = useState(settings.gazelleEnabled)
   const [redactedApiKey, setRedactedApiKey] = useState(settings.redactedApiKey)
   const [orpheusApiKey, setOrpheusApiKey] = useState(settings.orpheusApiKey)
 
+  const save = () => patchSettings.mutate({
+    gazelleEnabled,
+    redactedApiKey: changedSecret(redactedApiKey, settings.redactedApiKey),
+    orpheusApiKey: changedSecret(orpheusApiKey, settings.orpheusApiKey),
+  }, {
+    // Take the placeholders back, so the next save does not check a saved key again.
+    onSuccess: (data) => {
+      setRedactedApiKey(data.redactedApiKey ?? "")
+      setOrpheusApiKey(data.orpheusApiKey ?? "")
+    },
+  })
+
+  const keyInput = {
+    type: "password",
+    autoComplete: "off",
+    "data-1p-ignore": "true",
+    disabled: !gazelleEnabled,
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("gazelle.title")}</CardTitle>
-        <CardDescription>{t("gazelle.description")}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            <Label htmlFor="gazelle-enabled" className="font-medium">{t("gazelle.enableMatching")}</Label>
-            <FieldHelp>{t("gazelle.enableDescription")}</FieldHelp>
-          </div>
-          <Switch
-            id="gazelle-enabled"
-            checked={gazelleEnabled}
-            onCheckedChange={setGazelleEnabled}
-          />
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="gazelle-red-api-key">{t("gazelle.redactedApiKey")}</Label>
-              <FieldHelp>{t("gazelle.redDescription")}</FieldHelp>
-            </div>
-            <Input
-              id="gazelle-red-api-key"
-              type="password"
-              value={redactedApiKey}
-              data-1p-ignore="true"
-              onChange={event => setRedactedApiKey(event.target.value)}
-              placeholder={gazelleEnabled ? t("gazelle.pasteRedKey") : t("gazelle.enableToConfigure")}
-              disabled={!gazelleEnabled}
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="gazelle-ops-api-key">{t("gazelle.orpheusApiKey")}</Label>
-              <FieldHelp>{t("gazelle.opsDescription")}</FieldHelp>
-            </div>
-            <Input
-              id="gazelle-ops-api-key"
-              type="password"
-              value={orpheusApiKey}
-              data-1p-ignore="true"
-              onChange={event => setOrpheusApiKey(event.target.value)}
-              placeholder={gazelleEnabled ? t("gazelle.pasteOpsKey") : t("gazelle.enableToConfigure")}
-              disabled={!gazelleEnabled}
-              autoComplete="off"
-            />
-          </div>
-        </div>
-      </CardContent>
-      <SaveFooter
-        pending={patchSettings.isPending}
-        onSave={() => patchSettings.mutate({
-          gazelleEnabled,
-          redactedApiKey: changedSecret(redactedApiKey, settings.redactedApiKey),
-          orpheusApiKey: changedSecret(orpheusApiKey, settings.orpheusApiKey),
-        }, {
-          // Take the placeholders back, so the next save does not check a saved key again.
-          onSuccess: (data) => {
-            setRedactedApiKey(data.redactedApiKey ?? "")
-            setOrpheusApiKey(data.orpheusApiKey ?? "")
-          },
-        })}
-        label={t("gazelle.save")}
+    <Section
+      title={t("gazelle.title")}
+      description={t("gazelle.description")}
+      submit={{ label: t("gazelle.save"), onSubmit: save, pending: patchSettings.isPending }}
+    >
+      <SwitchRow
+        label={t("gazelle.enableMatching")}
+        help={t("gazelle.enableDescription")}
+        checked={gazelleEnabled}
+        onCheckedChange={setGazelleEnabled}
       />
-    </Card>
+      <div className="grid gap-6 sm:grid-cols-2">
+        <Field label={t("gazelle.redactedApiKey")} help={t("gazelle.redDescription")}>
+          <Input
+            {...keyInput}
+            value={redactedApiKey}
+            onChange={(event) => setRedactedApiKey(event.target.value)}
+            placeholder={gazelleEnabled ? t("gazelle.pasteRedKey") : t("gazelle.enableToConfigure")}
+          />
+        </Field>
+        <Field label={t("gazelle.orpheusApiKey")} help={t("gazelle.opsDescription")}>
+          <Input
+            {...keyInput}
+            value={orpheusApiKey}
+            onChange={(event) => setOrpheusApiKey(event.target.value)}
+            placeholder={gazelleEnabled ? t("gazelle.pasteOpsKey") : t("gazelle.enableToConfigure")}
+          />
+        </Field>
+      </div>
+    </Section>
   )
 }

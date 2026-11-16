@@ -13,7 +13,7 @@ import "@/i18n"
 import { server } from "@/test/msw/server"
 import type { InstanceResponse } from "@/types"
 
-import { InstanceCard } from "./InstanceCard"
+import { InstanceList } from "./InstanceList"
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
@@ -25,6 +25,12 @@ let historyStatus: number
 let historyAnswer: Promise<void>
 
 beforeEach(() => {
+  // The switch of a row measures itself, and jsdom has no ResizeObserver.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
   requests = []
   historyStatus = 204
   historyAnswer = Promise.resolve()
@@ -46,20 +52,18 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 async function removeInstance(tick: boolean) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
-        <InstanceCard instance={instance} onEdit={() => {}} />
+        <InstanceList instances={[instance]} onEdit={() => {}} onAdd={() => {}} />
       </TooltipProvider>
     </QueryClientProvider>
   )
-  const menu = document.querySelector("[aria-haspopup='menu']")
-  if (!menu) throw new Error("no instance menu")
-  fireEvent.pointerDown(menu, { button: 0, ctrlKey: false })
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }))
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }))
 
   const checkbox = await screen.findByRole("checkbox", { name: "Also delete its transfer history" })
   expect(checkbox.getAttribute("aria-checked")).toBe("false")
@@ -98,14 +102,14 @@ describe("the instance removal dialog", () => {
   })
 
   // regression: #4101
-  it("warns about the history when the card is gone before the history delete fails", async () => {
+  it("warns about the history when the list is gone before the history delete fails", async () => {
     historyStatus = 500
     let answer = () => {}
     historyAnswer = new Promise(resolve => { answer = resolve })
     await removeInstance(true)
     await waitFor(() => expect(requests).toEqual(["DELETE /api/instances/1", "DELETE /api/transfer-history?instanceId=1"]))
 
-    // A refetch of the instance list removes the card of the removed instance.
+    // A refetch of the instance list removes the row and the dialog of the removed instance.
     cleanup()
     answer()
 
