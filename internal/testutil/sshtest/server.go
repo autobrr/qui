@@ -139,6 +139,7 @@ type Server struct {
 	auths          int
 	accepts        int
 	channels       int
+	keepalives     int
 	inFlight       int
 	maxInFlight    int
 	commands       [][]string
@@ -254,6 +255,14 @@ func (s *Server) Channels() int {
 	return s.channels
 }
 
+// Keepalives returns the number of keepalive@openssh.com requests the
+// clients sent.
+func (s *Server) Keepalives() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.keepalives
+}
+
 // Stalled is closed when the first request reaches a stall: a listing in
 // SFTPStallReadDir, the mutation SFTPHoldNextMutation holds, or a command in
 // ExecHang. A test cancels on it, so its cancel lands inside the stall.
@@ -310,7 +319,18 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 		s.mu.Unlock()
 	}()
 
-	s.wg.Go(func() { ssh.DiscardRequests(reqs) })
+	s.wg.Go(func() {
+		for req := range reqs {
+			if req.Type == "keepalive@openssh.com" {
+				s.mu.Lock()
+				s.keepalives++
+				s.mu.Unlock()
+			}
+			if req.WantReply {
+				_ = req.Reply(false, nil)
+			}
+		}
+	})
 
 	var sessions sync.WaitGroup
 	defer sessions.Wait()

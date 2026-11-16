@@ -35,8 +35,8 @@ const (
 	keepaliveTimeout  = 15 * time.Second
 
 	// idleTimeout closes a connection nobody has used for a while. "Used"
-	// means taken from the pool or running a remote command, so one sftp call
-	// that alone runs past the limit is cut and redialed.
+	// means taken from the pool, running a remote command, or running an sftp
+	// call, so the copy of a big file keeps its connection.
 	idleTimeout = 10 * time.Minute
 )
 
@@ -67,6 +67,7 @@ type entry struct {
 	sem    chan struct{}
 	client *ssh.Client
 	sftp   *sftp.Client
+	calls  *sftpCalls     // the sftp calls running on client
 	tier   models.SSHTier // what the probe of client found
 	// slots bounds the exec sessions on client. It outlives a reconnect,
 	// which is harmless: a session on a dead client fails and frees its slot.
@@ -183,7 +184,8 @@ func (p *Pool) take(ctx context.Context, inst *models.Instance) (live, *entry, e
 	initCtx, cancel := context.WithTimeout(ctx, p.dialer.timeout)
 	defer cancel()
 	stop := context.AfterFunc(initCtx, func() { _ = client.Close() })
-	sftpClient, err := sftp.NewClient(client)
+	calls := &sftpCalls{answered: entry.touch}
+	sftpClient, err := newSFTPClient(client, calls)
 	if !stop() && err == nil {
 		// The close ran between the init finishing and stop: the client in
 		// hand is dead and must not be handed out.
@@ -208,6 +210,7 @@ func (p *Pool) take(ctx context.Context, inst *models.Instance) (live, *entry, e
 
 	entry.client = client
 	entry.sftp = sftpClient
+	entry.calls = calls
 	_, hardlink := sftpClient.HasExtension(HardlinkExtension)
 	entry.tier = p.probeTier(ctx, row, client, hardlink)
 	entry.err = nil
@@ -217,7 +220,7 @@ func (p *Pool) take(ctx context.Context, inst *models.Instance) (live, *entry, e
 
 	//nolint:gosec // G118: the watcher outlives the request that opened the connection by design
 	go entry.watch(inst.ID, client, done)
-	go entry.keepalive(inst.ID, client, done, keepaliveInterval)
+	go entry.keepalive(inst.ID, client, calls, done, keepaliveInterval)
 	// sshd can close the sftp channel while the transport stays up; closing the
 	// client routes that through the watcher like any other drop.
 	go func() {
@@ -348,6 +351,7 @@ func (e *entry) forget() {
 	}
 	e.client = nil
 	e.sftp = nil
+	e.calls = nil
 	e.tier = ""
 	e.err = nil
 	e.retryAt = time.Time{}
@@ -379,7 +383,7 @@ func (e *entry) watch(instanceID int, client *ssh.Client, done chan struct{}) {
 // it has sat unused past idleTimeout. The request is sent from a goroutine
 // because SendRequest has no deadline of its own: a host that accepts bytes and
 // never answers would otherwise wedge this loop forever.
-func (e *entry) keepalive(instanceID int, client *ssh.Client, done <-chan struct{}, interval time.Duration) {
+func (e *entry) keepalive(instanceID int, client *ssh.Client, calls *sftpCalls, done <-chan struct{}, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -390,9 +394,9 @@ func (e *entry) keepalive(instanceID int, client *ssh.Client, done <-chan struct
 		case <-ticker.C:
 		}
 
-		// A command still running is use: a find over a large tree can take
-		// longer than the idle limit.
-		if len(e.slots) == int(e.parked.Load()) && time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
+		// A command or an sftp call still running is use: a find over a large
+		// tree or the copy of a big file can take longer than the idle limit.
+		if len(e.slots) == int(e.parked.Load()) && calls.running.Load() == 0 && time.Since(time.Unix(0, e.lastUsed.Load())) > idleTimeout {
 			log.Debug().Int("instanceID", instanceID).Msg("sshpool: closing idle connection")
 			_ = client.Close()
 			return
