@@ -196,7 +196,8 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 }
 
 // runCrashChild runs qui in a child process on the database of the rig, and
-// waits until it ends at its crash point, or until the parent kills it.
+// waits until it ends at its crash point, or until the parent kills it. The
+// parent takes the process from child to kill it.
 func runCrashChild(t *testing.T, plan crash, child chan<- *os.Process, killed bool) {
 	t.Helper()
 	env, err := json.Marshal(plan)
@@ -214,7 +215,8 @@ func runCrashChild(t *testing.T, plan crash, child chan<- *os.Process, killed bo
 	exit, ok := errors.AsType[*exec.ExitError](err)
 	require.True(t, ok, "qui never reached the crash point:\n%s", output.String())
 	if killed {
-		require.False(t, exit.Exited(), "the parent kills qui:\n%s", output.String())
+		// On Windows a killed process exits with code 1, as a failed test does.
+		require.Empty(t, child, "the parent kills qui:\n%s", output.String())
 		return
 	}
 	require.Equal(t, crashed, exit.ExitCode(), output.String())
