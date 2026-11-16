@@ -976,7 +976,7 @@
         "allowancePathLabel": "Carpeta que cal mesurar",
         "allowanceUnitAria": "Unitat de l'espai permès",
         "allowanceHelp": "Introdueix l'espai que permet el teu pla. qui en resta la mida dels fitxers que hi ha sota el camí. La majoria de proveïdors compten en passos de 1000, no de 1024, de manera que la xifra del pla és un 9% més petita en {{unit}}.",
-        "allowancePathHelp": "Introdueix la carpeta que cal mesurar, per exemple el teu directori d'inici"
+        "allowancePathHelp": "Per exemple, el teu directori d'inici"
       },
       "grouping": {
         "title": "Grups de condicions agrupades",

@@ -152,6 +152,18 @@ func TestFreeSpaceLedgers_AllowanceFailures(t *testing.T) {
 			wantErr: errNoIdentity, wantPath: "/home/user/odd.bin",
 		},
 		{
+			name: "a remote walk without identity names the folder that qui cannot read", row: shell,
+			backend: entriesBackend{entries: []fsops.WalkEntry{keyless,
+				{Path: "/home/user/private", IsDir: true, Err: fs.ErrPermission}}},
+			wantErr: fs.ErrPermission, wantPath: "/home/user/private",
+		},
+		{
+			name: "a file that is deleted during the walk holds no space", row: local,
+			backend: entriesBackend{entries: []fsops.WalkEntry{file("/home/user/a.bin", 100),
+				{Path: "/home/user/gone.bin", StatErr: fs.ErrNotExist}}},
+			wantStart: 1000 - 100,
+		},
+		{
 			name: "a local file without identity counts as its own file", row: local,
 			backend:   entriesBackend{entries: []fsops.WalkEntry{file("/home/user/a.bin", 100), keyless}},
 			wantStart: 1000 - 400,

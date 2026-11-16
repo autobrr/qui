@@ -1313,7 +1313,7 @@
         "allowancePathLabel": "Pasta a medir",
         "allowanceUnitAria": "Unidade do espaço permitido",
         "allowanceHelp": "Informe o espaço que o seu plano permite. O qui subtrai o tamanho dos arquivos sob o caminho. A maioria dos provedores conta em passos de 1000, não de 1024, então o número do plano é cerca de 9% menor em {{unit}}.",
-        "allowancePathHelp": "Informe a pasta a medir, por exemplo o seu diretório pessoal"
+        "allowancePathHelp": "Por exemplo, o seu diretório pessoal"
       },
       "grouping": {
         "title": "Grupos Personalizados (Para GROUP_SIZE)",

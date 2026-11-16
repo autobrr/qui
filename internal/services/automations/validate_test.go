@@ -502,9 +502,9 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := conditionsUseFreeSpace(tt.conditions)
+			got := actionConditionsUseField(tt.conditions, FieldFreeSpace)
 			if got != tt.want {
-				t.Errorf("conditionsUseFreeSpace() = %v, want %v", got, tt.want)
+				t.Errorf("actionConditionsUseField() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1064,6 +1064,12 @@ func TestValidateRule(t *testing.T) {
 		{name: "free space path source without instance", edit: freeSpacePath, wantMsg: errMsgPathSourceAccessRequired},
 		{name: "free space path source with local access", edit: freeSpacePath, instance: local, wantMsg: localFreeSpacePathMsg},
 		{name: "free space path source with SSH access", edit: freeSpacePath, instance: remote},
+		// regression: #4092
+		{name: "free space only in the sorting still checks the path source", instance: &models.Instance{}, wantMsg: errMsgPathSourceAccessRequired,
+			edit: func(r *models.Automation) {
+				r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldFreeSpace, Direction: models.SortDirectionASC}
+				r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"}
+			}},
 		{name: "free space only in the sorting still checks the source", instance: remote, wantMsg: errMsgAllowanceSourceAccessRequired,
 			edit: func(r *models.Automation) {
 				r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldFreeSpace, Direction: models.SortDirectionASC}

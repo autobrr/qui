@@ -1307,7 +1307,7 @@
         "allowancePathLabel": "Dossier à mesurer",
         "allowanceUnitAria": "Unité de l'espace alloué",
         "allowanceHelp": "Entrez l'espace que votre offre autorise. qui en soustrait la taille des fichiers sous le chemin. La plupart des fournisseurs comptent par paliers de 1000, et non de 1024 : le chiffre de l'offre est donc environ 9 % plus petit en {{unit}}.",
-        "allowancePathHelp": "Entrez le dossier à mesurer, par exemple votre répertoire personnel"
+        "allowancePathHelp": "Par exemple, votre répertoire personnel"
       },
       "grouping": {
         "title": "Groupes de conditions",

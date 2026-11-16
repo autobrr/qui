@@ -1313,7 +1313,7 @@
         "allowancePathLabel": "Zu messender Ordner",
         "allowanceUnitAria": "Einheit des Kontingents",
         "allowanceHelp": "Gib den Speicher ein, den dein Tarif erlaubt. qui zieht die Größe der Dateien unter dem Pfad ab. Die meisten Anbieter rechnen in Schritten von 1000, nicht 1024, daher ist die Tarifangabe in {{unit}} etwa 9 % kleiner.",
-        "allowancePathHelp": "Gib den Ordner ein, der gemessen werden soll, z. B. dein Home-Verzeichnis"
+        "allowancePathHelp": "Zum Beispiel dein Home-Verzeichnis"
       },
       "grouping": {
         "title": "Gruppierte Bedingungsgruppen",

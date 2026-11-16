@@ -269,6 +269,14 @@ function conditionUsesField(condition: RuleCondition | null | undefined, field: 
   return false
 }
 
+/** Whether a run reads Free Space for this rule: in the action condition or in the sorting. The backend decides the same way. */
+function formUsesFreeSpace(state: Pick<FormState, "actionCondition" | "sortingType" | "simpleSortField" | "scoreRules">): boolean {
+  if (conditionUsesField(state.actionCondition, "FREE_SPACE")) return true
+  if (state.sortingType === "simple") return state.simpleSortField === "FREE_SPACE"
+  return state.sortingType === "score" && state.scoreRules.some(rule =>
+    rule.fieldMultiplier?.field === "FREE_SPACE" || conditionUsesField(rule.conditional?.condition, "FREE_SPACE"))
+}
+
 /**
  * Available keys for custom group definitions
  */
@@ -665,7 +673,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   })
   const hasNotificationTargets = (notificationTargets ?? []).length > 0
 
-  const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   // Undefined while the capabilities query is in flight. Only a definite false
   // may rewrite a saved source; treating "not loaded yet" as unsupported would
   // silently drop a stored qBittorrent path when the dialog opens.
@@ -676,7 +683,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const hasTrustedIdentity = ruleInstance?.capabilities.trustedIdentity ?? false
   const isRemoteInstance = ruleInstance?.filesystemMode === "remote"
   // A Windows host refuses the path source only for an instance it reads locally.
-  const pathSourceWindowsBlocked = hasLocalFilesystemAccess && !supportsFreeSpacePathSource
+  // Only a definite false blocks: while the capabilities load, a block would
+  // switch a saved path or allowance source to the default.
+  const pathSourceWindowsBlocked = hasLocalFilesystemAccess && capabilities?.supportsFreeSpacePathSource === false
   const canRead = ruleInstance?.capabilities.read ?? false
   const pathSourceAvailable = canRead && !pathSourceWindowsBlocked
   // The allowance source measures the files itself, and it needs file identity to count a hardlinked file one time.
@@ -1273,7 +1282,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [supportsFreeSpaceAtPath, formState.exprFreeSpaceSourceType, t])
 
   const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
-    const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
+    const usesFreeSpace = formUsesFreeSpace(state)
     if (!usesFreeSpace || state.exprFreeSpaceSourceType === "qbittorrent") {
       setFreeSpaceSourcePathError(null)
       return true
@@ -1349,7 +1358,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [t])
 
   const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
-    const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
+    const usesFreeSpace = formUsesFreeSpace(state)
     if (!usesFreeSpace || state.exprFreeSpaceSourceType === "qbittorrent") {
       return true
     }
@@ -1627,13 +1636,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const isTagRule = formState.tagEnabled && !formState.deleteEnabled && !formState.categoryEnabled
   const previewCategory = formState.exprCategory || t("preferences.workflowDialog.uncategorized")
 
-  // Check if condition uses FREE_SPACE field (for free space source UI - shown regardless of action)
+  // Check if condition uses FREE_SPACE field (for preview view toggle - only for delete rules)
   const conditionUsesFreeSpace = useMemo(() => {
     return conditionUsesField(formState.actionCondition, "FREE_SPACE")
   }, [formState.actionCondition])
-
-  // Check if delete rule uses FREE_SPACE field (for preview view toggle - only for delete rules)
   const deleteUsesFreeSpace = formState.deleteEnabled && conditionUsesFreeSpace
+  // The free space source UI shows when the condition or the sorting reads FREE_SPACE.
+  const ruleUsesFreeSpace = formUsesFreeSpace(formState)
   const intervalOptions = useMemo(() => ([
     { value: "default", label: t("preferences.workflowDialog.interval.default") },
     { value: "60", label: t("preferences.workflowDialog.interval.oneMinute"), disabled: deleteUsesFreeSpace },
@@ -3855,8 +3864,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   </div>
                 </div>
 
-                {/* Free Space Source - shown whenever FREE_SPACE is used in conditions */}
-                {conditionUsesFreeSpace && (
+                {/* Free Space Source - shown whenever FREE_SPACE is used in the conditions or the sorting */}
+                {ruleUsesFreeSpace && (
                   <div className="rounded-lg border p-3 space-y-2">
                     <div className="flex items-center gap-1.5">
                       <Label className="text-sm font-medium">{t("preferences.workflowDialog.freeSpace.title")}</Label>

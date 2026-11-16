@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"path"
 	"strings"
@@ -166,18 +167,27 @@ func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, roo
 	var usage int64
 	files := 0
 	counted := make(map[fsops.FileKey]struct{})
+	var identityErr error
 	for entry := range entries {
 		switch {
 		case entry.Err != nil:
 			return 0, fmt.Errorf("failed to measure %s: cannot read %s: %w", root, entry.Path, entry.Err)
+		// A file that was deleted between the listing and the stat holds no space.
+		case errors.Is(entry.StatErr, fs.ErrNotExist):
+			continue
 		case entry.StatErr != nil:
 			return 0, fmt.Errorf("failed to measure %s: cannot read %s: %w", root, entry.Path, entry.StatErr)
 		case !entry.Mode.IsRegular():
 			continue
 		// A remote walk without identity is the walk of a host that has no
-		// shell, or of a tree too large for the shell walk.
+		// shell, of a tree too large for the shell walk, or of a tree where
+		// the shell walk failed. In the last case the walk goes on to the
+		// folder that it cannot read, and that folder is the reason to report.
 		case remote && entry.FileIDErr != nil:
-			return 0, fmt.Errorf("failed to measure %s: %s: %w", root, entry.Path, entry.FileIDErr)
+			if identityErr == nil {
+				identityErr = fmt.Errorf("failed to measure %s: %s: %w", root, entry.Path, entry.FileIDErr)
+			}
+			continue
 		}
 		if entry.Nlinks > 1 {
 			if key, ok := fsops.FileKeyOf(entry.FileID, fsInstance); ok {
@@ -192,6 +202,9 @@ func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, roo
 	}
 	if err := ctx.Err(); err != nil {
 		return 0, fmt.Errorf("failed to measure %s: %w", root, err)
+	}
+	if identityErr != nil {
+		return 0, identityErr
 	}
 	log.Trace().Int("instanceID", fsInstance.ID).Str("path", root).Int64("usedBytes", usage).Int("files", files).
 		Dur("took", time.Since(started)).Msg("automations: measured the usage for a free space allowance")

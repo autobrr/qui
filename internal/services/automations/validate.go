@@ -209,11 +209,6 @@ func validateMovePath(move *models.MoveAction) error {
 	return ruleError(msg)
 }
 
-// conditionsUseFreeSpace checks if any enabled action condition uses FREE_SPACE field.
-func conditionsUseFreeSpace(conditions *models.ActionConditions) bool {
-	return actionConditionsUseField(conditions, FieldFreeSpace)
-}
-
 // deleteUsesKeepFilesWithFreeSpace checks if the delete action uses keep-files mode
 // with a FREE_SPACE condition. This combination is a foot-gun because keep-files
 // doesn't free disk space, so the condition would match indefinitely.

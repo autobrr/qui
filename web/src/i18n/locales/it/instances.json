@@ -1313,7 +1313,7 @@
         "allowancePathLabel": "Cartella da misurare",
         "allowanceUnitAria": "Unità dello spazio consentito",
         "allowanceHelp": "Inserisci lo spazio consentito dal tuo piano. qui sottrae la dimensione dei file sotto il percorso. La maggior parte dei provider conta a passi di 1000, non di 1024, quindi la cifra del piano è circa il 9% più piccola in {{unit}}.",
-        "allowancePathHelp": "Inserisci la cartella da misurare, ad esempio la tua directory home"
+        "allowancePathHelp": "Ad esempio, la tua directory home"
       },
       "grouping": {
         "title": "Gruppi di condizioni raggruppate",

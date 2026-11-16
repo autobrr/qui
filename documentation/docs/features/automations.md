@@ -1318,6 +1318,7 @@ On a shared seedbox, the free space of the disk is not the space that you may fi
 - qui measures the folder at the start of each run. It counts hidden files, counts a hardlinked file one time, and does not follow symlinks.
 - When the files take more space than the allowance, the rule first has to free the excess. For example, with 50 GiB above the allowance, a rule "Free Space below 100 GiB" frees 150 GiB.
 - Match only torrents that are stored under the folder. A delete of a torrent that is stored elsewhere frees no space under the folder, but qui counts it as freed.
+- A delete frees no space while another hardlink to the same files stays under the folder, for example a cross-seed that shares the files. qui still counts the size of the torrent as freed, so a run can stop before it reaches the target. The next run measures the folder again and continues.
 - If qui cannot read a folder or a file under the path, the run fails and sends a notification.
 
 :::note
