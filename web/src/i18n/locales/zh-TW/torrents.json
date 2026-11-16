@@ -1658,7 +1658,12 @@
       "thisBrowser": "此瀏覽器",
       "use": "使用",
       "newName": "從目前設定建立新設定檔",
-      "create": "建立"
+      "create": "建立",
+      "renameAriaLabel": "重新命名 {{name}}",
+      "deleteAriaLabel": "刪除 {{name}}",
+      "deleteTitle": "刪除 {{name}}？",
+      "deleteDescription": "使用它的其他瀏覽器將切換到 {{defaultName}}。",
+      "deleteConfirm": "刪除"
     },
     "nameErrors": {
       "empty": "請輸入名稱。",
@@ -1671,6 +1676,7 @@
       "offWarning": "關閉此設定會刪除 {{name}} 單獨保存的排序和篩選。",
       "defaultShares": "一律共用排序和篩選",
       "defaultSharesHelp": "Default 一律與所有設定檔共用排序、篩選和其他檢視選項。如需單獨保存，請建立另一個設定檔並開啟「獨立的排序和篩選」。"
-    }
+    },
+    "deletedToast": "{{name}} 設定檔已刪除。此瀏覽器現在使用 {{defaultName}}。"
   }
 }

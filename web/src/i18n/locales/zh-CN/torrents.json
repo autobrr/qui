@@ -1658,7 +1658,12 @@
       "thisBrowser": "此浏览器",
       "use": "使用",
       "newName": "从当前设置新建配置",
-      "create": "创建"
+      "create": "创建",
+      "renameAriaLabel": "重命名 {{name}}",
+      "deleteAriaLabel": "删除 {{name}}",
+      "deleteTitle": "删除 {{name}}？",
+      "deleteDescription": "使用它的其他浏览器将切换到 {{defaultName}}。",
+      "deleteConfirm": "删除"
     },
     "nameErrors": {
       "empty": "请输入名称。",
@@ -1671,6 +1676,7 @@
       "offWarning": "关闭此设置会删除 {{name}} 单独保存的排序和筛选。",
       "defaultShares": "始终共享排序和筛选",
       "defaultSharesHelp": "Default 始终与所有配置共享排序、筛选和其他视图选项。如需单独保存，请创建另一个配置并开启“独立的排序和筛选”。"
-    }
+    },
+    "deletedToast": "{{name}} 配置已删除。此浏览器现在使用 {{defaultName}}。"
   }
 }

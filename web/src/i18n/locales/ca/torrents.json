@@ -1742,7 +1742,12 @@
       "thisBrowser": "Aquest navegador",
       "use": "Fes servir",
       "newName": "Perfil nou a partir d'aquesta configuració",
-      "create": "Crea"
+      "create": "Crea",
+      "renameAriaLabel": "Canvia el nom de {{name}}",
+      "deleteAriaLabel": "Suprimeix {{name}}",
+      "deleteTitle": "Vols suprimir {{name}}?",
+      "deleteDescription": "Els altres navegadors que el fan servir passen a {{defaultName}}.",
+      "deleteConfirm": "Suprimeix"
     },
     "nameErrors": {
       "empty": "Introdueix un nom.",
@@ -1755,6 +1760,7 @@
       "offWarning": "Desactivar això elimina l'ordre i els filtres propis de {{name}}.",
       "defaultShares": "Sempre comparteix l'ordre i els filtres",
       "defaultSharesHelp": "Default sempre comparteix l'ordre, els filtres i les altres opcions de vista amb tots els perfils. Per tenir els teus propis, crea un altre perfil i activa Ordre i filtres propis."
-    }
+    },
+    "deletedToast": "S'ha suprimit el perfil {{name}}. Aquest navegador ara fa servir {{defaultName}}."
   }
 }

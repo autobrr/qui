@@ -1826,7 +1826,12 @@
       "thisBrowser": "Tento prohlížeč",
       "use": "Použít",
       "newName": "Nový profil z tohoto nastavení",
-      "create": "Vytvořit"
+      "create": "Vytvořit",
+      "renameAriaLabel": "Přejmenovat {{name}}",
+      "deleteAriaLabel": "Smazat {{name}}",
+      "deleteTitle": "Smazat {{name}}?",
+      "deleteDescription": "Ostatní prohlížeče, které ho používají, přejdou na {{defaultName}}.",
+      "deleteConfirm": "Smazat"
     },
     "nameErrors": {
       "empty": "Zadejte název.",
@@ -1839,6 +1844,7 @@
       "offWarning": "Vypnutím se smaže vlastní řazení a filtry profilu {{name}}.",
       "defaultShares": "Vždy sdílí řazení a filtry",
       "defaultSharesHelp": "Default vždy sdílí řazení, filtry a další volby zobrazení se všemi profily. Chcete-li mít vlastní, vytvořte jiný profil a zapněte Vlastní řazení a filtry."
-    }
+    },
+    "deletedToast": "Profil {{name}} byl smazán. Tento prohlížeč teď používá {{defaultName}}."
   }
 }

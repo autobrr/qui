@@ -1742,7 +1742,12 @@
       "thisBrowser": "Dieser Browser",
       "use": "Verwenden",
       "newName": "Neues Profil aus dieser Einrichtung",
-      "create": "Erstellen"
+      "create": "Erstellen",
+      "renameAriaLabel": "{{name}} umbenennen",
+      "deleteAriaLabel": "{{name}} löschen",
+      "deleteTitle": "{{name}} löschen?",
+      "deleteDescription": "Andere Browser, die es verwenden, wechseln zu {{defaultName}}.",
+      "deleteConfirm": "Löschen"
     },
     "nameErrors": {
       "empty": "Gib einen Namen ein.",
@@ -1755,6 +1760,7 @@
       "offWarning": "Beim Ausschalten werden die eigene Sortierung und die eigenen Filter von {{name}} gelöscht.",
       "defaultShares": "Teilt Sortierung und Filter immer",
       "defaultSharesHelp": "Default teilt die Sortierung, die Filter und die anderen Ansichtsoptionen immer mit allen Profilen. Für eigene Werte erstelle ein anderes Profil und schalte Eigene Sortierung und Filter ein."
-    }
+    },
+    "deletedToast": "Das Profil {{name}} wurde gelöscht. Dieser Browser verwendet jetzt {{defaultName}}."
   }
 }

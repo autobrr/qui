@@ -1742,7 +1742,12 @@
       "thisBrowser": "Questo browser",
       "use": "Usa",
       "newName": "Nuovo profilo da questa configurazione",
-      "create": "Crea"
+      "create": "Crea",
+      "renameAriaLabel": "Rinomina {{name}}",
+      "deleteAriaLabel": "Elimina {{name}}",
+      "deleteTitle": "Eliminare {{name}}?",
+      "deleteDescription": "Gli altri browser che lo usano passano a {{defaultName}}.",
+      "deleteConfirm": "Elimina"
     },
     "nameErrors": {
       "empty": "Inserisci un nome.",
@@ -1755,6 +1760,7 @@
       "offWarning": "Disattivandola, l'ordinamento e i filtri propri di {{name}} vengono eliminati.",
       "defaultShares": "Condivide sempre ordinamento e filtri",
       "defaultSharesHelp": "Default condivide sempre l'ordinamento, i filtri e le altre scelte di visualizzazione con tutti i profili. Per averne di propri, crea un altro profilo e attiva Ordinamento e filtri propri."
-    }
+    },
+    "deletedToast": "Il profilo {{name}} è stato eliminato. Questo browser ora usa {{defaultName}}."
   }
 }

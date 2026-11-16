@@ -1742,7 +1742,12 @@
       "thisBrowser": "This browser",
       "use": "Use",
       "newName": "New profile from this setup",
-      "create": "Create"
+      "create": "Create",
+      "renameAriaLabel": "Rename {{name}}",
+      "deleteAriaLabel": "Delete {{name}}",
+      "deleteTitle": "Delete {{name}}?",
+      "deleteDescription": "Other browsers that use it move to {{defaultName}}.",
+      "deleteConfirm": "Delete"
     },
     "nameErrors": {
       "empty": "Enter a name.",
@@ -1755,6 +1760,7 @@
       "offWarning": "Turning this off deletes the own sort and filters of {{name}}.",
       "defaultShares": "Always shares sort and filters",
       "defaultSharesHelp": "Default always shares the sort, the filters, and the other view choices with every profile. To keep your own, make another profile and turn on Own sort and filters."
-    }
+    },
+    "deletedToast": "The {{name}} profile was deleted. This browser now uses {{defaultName}}."
   }
 }

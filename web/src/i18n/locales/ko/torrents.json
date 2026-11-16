@@ -1658,7 +1658,12 @@
       "thisBrowser": "이 브라우저",
       "use": "사용",
       "newName": "현재 설정으로 새 프로필 만들기",
-      "create": "만들기"
+      "create": "만들기",
+      "renameAriaLabel": "{{name}} 이름 바꾸기",
+      "deleteAriaLabel": "{{name}} 삭제",
+      "deleteTitle": "{{name}}을(를) 삭제할까요?",
+      "deleteDescription": "이 프로필을 사용하는 다른 브라우저는 {{defaultName}}(으)로 전환됩니다.",
+      "deleteConfirm": "삭제"
     },
     "nameErrors": {
       "empty": "이름을 입력하세요.",
@@ -1671,6 +1676,7 @@
       "offWarning": "이 설정을 끄면 {{name}}의 자체 정렬 및 필터가 삭제됩니다.",
       "defaultShares": "항상 정렬 및 필터 공유",
       "defaultSharesHelp": "Default는 정렬, 필터 및 기타 보기 선택을 항상 모든 프로필과 공유합니다. 자체 값을 유지하려면 다른 프로필을 만들고 자체 정렬 및 필터를 켜세요."
-    }
+    },
+    "deletedToast": "{{name}} 프로필이 삭제되었습니다. 이 브라우저는 이제 {{defaultName}}을(를) 사용합니다."
   }
 }
