@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -68,9 +69,7 @@ func TestBulkAction_RefusesDeleteAndMoveOfHeldTorrents(t *testing.T) {
 				t.Parallel()
 				handler, deleter := newHeldHandler(t)
 				body := map[string]any{"hashes": []string{ownHash, hash}}
-				for key, value := range payload {
-					body[key] = value
-				}
+				maps.Copy(body, payload)
 
 				rec := httptest.NewRecorder()
 				handler.BulkAction(rec, newTorrentFieldRequest(t, 1, body))

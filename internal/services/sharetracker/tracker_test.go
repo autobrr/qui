@@ -199,9 +199,7 @@ func (r *rig) get(path string, header http.Header) answer {
 	r.t.Helper()
 	req, err := http.NewRequestWithContext(r.t.Context(), http.MethodGet, r.base+path, nil)
 	require.NoError(r.t, err)
-	for key, values := range header {
-		req.Header[key] = values
-	}
+	maps.Copy(req.Header, header)
 	return r.do(req)
 }
 
