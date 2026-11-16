@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 
-import { checkTheme, freeThemeFiles } from "./theme-check.mjs"
+import { builtInThemeFiles, checkTheme } from "./theme-check.mjs"
 
 const WHITE_SURFACES = ["background", "card", "popover", "muted", "secondary", "accent", "sidebar", "sidebar-accent"]
 const BLACK_FILLS = ["primary", "destructive", "sidebar-primary", "ring", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
@@ -93,12 +93,25 @@ const KNOWN_OUTSIDE_SRGB = {
   "wave.css": ["light --variation-pink: oklch(0.6931 0.1971 22.11)"],
 }
 
-test("each free theme keeps its colors inside sRGB", () => {
-  const files = freeThemeFiles()
+test("each built-in theme keeps its colors inside sRGB", () => {
+  const files = builtInThemeFiles()
   assert.ok(files.length > 0)
 
   for (const file of files) {
     const name = path.basename(file)
     assert.deepEqual(checkTheme(fs.readFileSync(file, "utf8")).outsideSrgb, KNOWN_OUTSIDE_SRGB[name] ?? [], name)
+  }
+})
+
+// regression: #4230
+test("each community theme keeps its ratio colors readable on the plain and the striped row", () => {
+  const files = builtInThemeFiles().filter(file => path.basename(path.dirname(file)) === "premium")
+  assert.ok(files.length > 0)
+
+  for (const file of files) {
+    const faint = checkTheme(fs.readFileSync(file, "utf8")).pairs
+      .filter(pair => !pair.ok && /^chart-\d text on (row|striped row)$/.test(pair.label))
+      .map(pair => `${pair.mode} ${pair.label}`)
+    assert.deepEqual(faint, [], path.basename(file))
   }
 })

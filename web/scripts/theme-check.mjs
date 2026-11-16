@@ -1,14 +1,15 @@
 // Reports on built-in theme files: each color that sRGB cannot show, and each text or control pair
 // that the app paints below its WCAG contrast minimum.
 //
-//   node scripts/theme-check.mjs [theme.css ...]     (run in web/; no file means every free theme)
+//   node scripts/theme-check.mjs [theme.css ...]     (run in web/; no file means every built-in theme)
 import fs from "node:fs"
 import path from "node:path"
 
 import { converter, formatHex, inGamut, parse, wcagContrast } from "culori"
 
 const scriptPath = fs.realpathSync(import.meta.filename)
-export const freeThemesDir = path.resolve(path.dirname(scriptPath), "..", "..", "internal", "themes", "assets")
+const freeThemesDir = path.resolve(path.dirname(scriptPath), "..", "..", "internal", "themes", "assets")
+const licensedThemesDir = path.join(freeThemesDir, "premium")
 
 const MODES = [["light", ":root"], ["dark", ".dark"]]
 const TEXT = 4.5
@@ -170,8 +171,10 @@ export function checkTheme(css) {
   return { outsideSrgb, pairs }
 }
 
-export function freeThemeFiles() {
-  return fs.readdirSync(freeThemesDir).filter(name => name.endsWith(".css")).sort().map(name => path.join(freeThemesDir, name))
+export function builtInThemeFiles() {
+  return [freeThemesDir, licensedThemesDir].flatMap(dir =>
+    fs.readdirSync(dir).filter(name => name.endsWith(".css")).sort().map(name => path.join(dir, name))
+  )
 }
 
 function report(file) {
@@ -195,7 +198,7 @@ function report(file) {
 // A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
 // names no file.
 if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
-  const files = process.argv.length > 2 ? process.argv.slice(2) : freeThemeFiles()
+  const files = process.argv.length > 2 ? process.argv.slice(2) : builtInThemeFiles()
   const problems = files.reduce((total, file) => total + report(file), 0)
   process.exit(problems > 0 ? 1 : 0)
 }

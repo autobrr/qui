@@ -76,8 +76,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Layout**: The form of the UI that qui shows for the current viewport width: the *mobile layout* when the viewport is less than 768 px wide, or the *desktop layout*. It is not the device type. _Avoid_: device, platform.
 - **Theme slot**: One stored theme selection (theme, mode, variation) on the server. There is a default slot and an optional mobile slot. A theme that a browser keeps local is not a slot, because it never reaches the server.
-- **Free theme**: A theme that qui ships from its own repo. It needs no license.
-- **Community theme**: A theme from the `autobrr/qui-community-themes` repo. qui ships it built in, and it needs the license. _Avoid_: premium theme, user theme.
+- **Free theme**: A theme that qui ships built in and that needs no license.
+- **Community theme**: A theme that a member of the community contributed to qui. qui ships it built in, and it needs the license. _Avoid_: premium theme, user theme.
 - **Custom theme**: A theme that comes from a `.css` file in the custom themes folder on the server. The user puts the file there by hand, or saves it from Settings → Themes or through the API. It needs the license. _Avoid_: sideloaded theme.
 - **Theme area**: A part of the UI with a fixed name that a custom theme can style, for example the torrent table. qui keeps the name across releases. _Avoid_: hook, selector.
 - **Theme preview**: A custom theme that one browser shows before the user saves it. It reaches no theme slot and no other browser, and a page reload ends it.
