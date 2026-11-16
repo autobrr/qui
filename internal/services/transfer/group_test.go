@@ -214,7 +214,7 @@ func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 			s := newShow(t, showName)
 			r.seed(s)
 			crossSeed, crossSeedHash := crossSeedOf(t, s)
-			r.src.Seed(crossSeed, r.srcDir)
+			r.src.Seed(crossSeed, r.srcPath())
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
 			r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
 			cs.stub.CheckSyncs = 40
