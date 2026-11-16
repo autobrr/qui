@@ -66,6 +66,54 @@ func relativeName(name string) bool {
 		!slices.Contains(strings.Split(name, "/"), "..")
 }
 
+// part is one member of a Transfer as one run reads it on the source.
+type part struct {
+	*Member
+	position int
+	src      *source
+	// dir is the slash folder of the member below the root of the Transfer,
+	// "" for the root itself.
+	dir    string
+	plan   []file
+	proven []byte
+}
+
+func (p *part) rel(f file) string {
+	return path.Join(p.dir, f.name)
+}
+
+// groupFile is a file of the group. The copy writes it once, with the pieces
+// of owner, the first member that has it.
+type groupFile struct {
+	rel   string
+	size  int64
+	owner *part
+	// name is the name of the file in owner.
+	name string
+}
+
+// groupFiles lists each file of the members once, in the order of the copy.
+func groupFiles(parts []*part) (files []*groupFile, byRel map[string]*groupFile, err error) {
+	byRel = map[string]*groupFile{}
+	for _, p := range parts {
+		for _, f := range p.plan {
+			if f.pad {
+				continue
+			}
+			rel := p.rel(f)
+			if have, ok := byRel[rel]; ok {
+				if have.size != f.size {
+					return nil, nil, fmt.Errorf("%s has %d bytes in %s and %d in %s", rel, have.size, have.owner.Name, f.size, p.Name)
+				}
+				continue
+			}
+			byRel[rel] = &groupFile{rel: rel, size: f.size, owner: p, name: f.name}
+			files = append(files, byRel[rel])
+		}
+	}
+	return files, byRel, nil
+}
+
 // names are the names of the files that are on disk.
 func names(plan []file) []string {
 	var out []string
@@ -77,12 +125,10 @@ func names(plan []file) []string {
 	return out
 }
 
-func diskBytes(plan []file) int64 {
+func diskBytes(files []*groupFile) int64 {
 	var total int64
-	for _, f := range plan {
-		if !f.pad {
-			total += f.size
-		}
+	for _, f := range files {
+		total += f.size
 	}
 	return total
 }

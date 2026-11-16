@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
 // Request is the Transfer of one torrent.
@@ -92,10 +91,9 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 	} else if onTarget {
 		return nil, refuse("Already on the target: %s has this torrent.", target.Name)
 	}
-	if shared, err := s.othersRead(ctx, source.ID, hash, false); err != nil {
-		return nil, fmt.Errorf("find the torrents that share the files: %w", err)
-	} else if shared {
-		return nil, refuse("Other torrents on %s share the files of this torrent. qui cannot transfer a Shared-file group yet.", source.Name)
+	group, err := s.groupOf(ctx, source.ID, src)
+	if err != nil {
+		return nil, err
 	}
 
 	placement := req.Placement
@@ -111,6 +109,10 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 		return nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
 	}
 	placement.SavePath = filepath.Clean(placement.SavePath)
+	members, err := s.members(ctx, source, target, group, placement)
+	if err != nil {
+		return nil, err
+	}
 
 	options := req.Options
 	if options.After == "" {
@@ -135,13 +137,7 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 		TargetEndpoint:   fsops.EndpointOf(target),
 		Options:          options,
 		Steps:            []Step{{Name: "start", At: s.deps.Now()}},
-		Members: []Member{{
-			Hash:             hash,
-			Name:             src.torrent.Name,
-			SourceSavePath:   src.torrent.SavePath,
-			TargetInstanceID: target.ID,
-			Placement:        placement,
-		}},
+		Members:          members,
 	}, nil
 }
 
@@ -249,18 +245,13 @@ func (s *Service) has(ctx context.Context, instanceID int, hash string) (bool, e
 	return torrent != nil, err
 }
 
-// othersRead reports whether another torrent on the instance reads the files
-// of the torrent, and with otherInstances, a torrent on another instance. A
-// torrent that qui could not check counts as read.
-func (s *Service) othersRead(ctx context.Context, instanceID int, hash string, otherInstances bool) (bool, error) {
-	res, err := s.deps.Groups.FindDeleteMatches(ctx, map[int][]string{instanceID: {hash}})
+// othersRead reports whether a torrent outside hashes reads their files: on
+// the instance, and on another instance. A torrent that qui could not check
+// counts as read.
+func (s *Service) othersRead(ctx context.Context, instanceID int, hashes []string) (bool, error) {
+	res, err := s.deps.Groups.FindDeleteMatches(ctx, map[int][]string{instanceID: hashes})
 	if err != nil {
 		return true, err
 	}
-	if otherInstances && len(res.Unchecked) > 0 {
-		return true, nil
-	}
-	return slices.ContainsFunc(res.Matches, func(m crossseed.LocalMatch) bool {
-		return otherInstances || m.InstanceID == instanceID
-	}), nil
+	return len(res.Matches) > 0 || len(res.Unchecked) > 0, nil
 }

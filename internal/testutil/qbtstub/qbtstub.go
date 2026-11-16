@@ -65,6 +65,8 @@ type Torrent struct {
 	Popularity float64
 	Private    bool
 	NoMetadata bool
+	// AddedOn is the Unix time at which qBittorrent added the torrent.
+	AddedOn int64
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
@@ -581,7 +583,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
 				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
-				"tags": strings.Join(t.Tags, ", ")}
+				"tags": strings.Join(t.Tags, ", "), "added_on": t.AddedOn}
 			if state != "" {
 				row["state"] = state
 			}

@@ -856,12 +856,14 @@ func (app *Application) runServer() {
 
 	// Nothing starts a Transfer while the switch for Transfers and Shares is off.
 	transferService := transfer.NewService(context.Background(), transfer.Deps{
-		Store:     transfers,
-		Instances: instanceStore,
-		Sync:      syncManager,
-		Files:     backendPool,
-		Groups:    crossSeedService,
-		Config:    transfer.DefaultConfig(),
+		Store:      transfers,
+		Instances:  instanceStore,
+		Sync:       syncManager,
+		Files:      backendPool,
+		Groups:     crossSeedService,
+		Routes:     crossSeedRoutes,
+		CrossSeeds: crossSeedService,
+		Config:     transfer.DefaultConfig(),
 	})
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {

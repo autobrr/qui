@@ -42,21 +42,30 @@ func sourceChanged(what string) error {
 	return temporary("The torrent changed on the source during the copy: %s.", what)
 }
 
-// job is one run of a Transfer of one torrent.
+// job is one run of a Transfer of a torrent and its Shared-file group.
 type job struct {
 	svc            *Service
 	rec            *Record
 	source, target *models.Instance
-	src            *source
-	plan           []file
-	srcFiles       fsops.Backend
-	root           fsops.Root
-	reserved       int64
-	proven         []byte
+	// crossSeed is the Cross-seed instance of the target when a member
+	// lands there.
+	crossSeed *models.Instance
+	// parts holds the members in the order of the record, the torrent of the
+	// request first.
+	parts []*part
+	// files holds each file of the group once, and byRel finds one by its
+	// path below the root.
+	files    []*groupFile
+	byRel    map[string]*groupFile
+	srcFiles fsops.Backend
+	root     fsops.Root
+	// rootDir is the folder on the target that holds every member.
+	rootDir  string
+	reserved int64
 	// helper is the infohash of a helper torrent on the target that qui has
 	// not removed yet.
 	helper string
-	// added is set once qui asked the target to add the real torrent. From
+	// added is set once qui asked the target to add a real torrent. From
 	// then on qui keeps the files on the target.
 	added bool
 	// placed lists the files that qui renamed into place.
@@ -64,11 +73,27 @@ type job struct {
 	stoppedSource bool
 }
 
-func (j *job) member() *Member { return &j.rec.Members[0] }
+func (j *job) hashes() []string {
+	out := make([]string, len(j.parts))
+	for i, p := range j.parts {
+		out[i] = p.Hash
+	}
+	return out
+}
 
-func (j *job) hash() string { return j.member().Hash }
+func (j *job) torrents(article string) string {
+	if len(j.parts) == 1 {
+		return article + " torrent"
+	}
+	return fmt.Sprintf("%s %d torrents", article, len(j.parts))
+}
 
-func (j *job) savePath() string { return j.member().Placement.SavePath }
+func (j *job) its() string {
+	if len(j.parts) == 1 {
+		return "its"
+	}
+	return "their"
+}
 
 func (j *job) tempName(name string) string {
 	return fmt.Sprintf("%s.qui-transfer-%d", name, j.rec.ID)
@@ -101,8 +126,8 @@ func (j *job) logf(format string, args ...any) {
 	j.rec.Log = append(j.rec.Log, LogLine{At: j.svc.deps.Now(), Message: fmt.Sprintf(format, args...)})
 }
 
-// prepare reads both sides again, checks the free space, and opens the save
-// path on the target with no file at any path that the copy writes.
+// prepare reads both sides again, checks the free space, and opens the root
+// on the target with no file at any path that the copy writes.
 func (j *job) prepare(ctx context.Context) error {
 	if err := j.step(ctx, StateCopying, "prepare"); err != nil {
 		return err
@@ -124,24 +149,55 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
 	}
 
-	if j.src, err = j.svc.readSource(ctx, j.source.ID, j.hash()); err != nil {
-		return err
+	d := targetFiles.Paths()
+	saves := make([]string, len(j.rec.Members))
+	for i := range j.rec.Members {
+		saves[i] = j.rec.Members[i].Placement.SavePath
 	}
-	if j.src == nil {
-		return sourceChanged("it left the source")
+	j.rootDir = topFolder(d, saves)
+	for i := range j.rec.Members {
+		p := &part{Member: &j.rec.Members[i], position: i}
+		if p.src, err = j.svc.readSource(ctx, j.source.ID, p.Hash); err != nil {
+			return err
+		}
+		if p.src == nil {
+			return sourceChanged("it left the source")
+		}
+		if err := p.src.movable(); err != nil {
+			return permanent("%v", err)
+		}
+		if p.src.torrent.SavePath != p.SourceSavePath {
+			return sourceChanged("it moved")
+		}
+		if p.plan, err = planFiles(p.src.info, p.src.files); err != nil {
+			return permanent("The files of the torrent do not match its .torrent: %v", err)
+		}
+		rel, err := d.Rel(j.rootDir, d.Clean(p.Placement.SavePath))
+		if err != nil {
+			return permanent("qui cannot place %s on %s: %v", p.Name, j.target.Name, err)
+		}
+		if p.dir = d.ToSlash(rel); p.dir == "." {
+			p.dir = ""
+		}
+		j.parts = append(j.parts, p)
 	}
-	if err := j.src.movable(); err != nil {
-		return permanent("%v", err)
+	for _, p := range j.parts {
+		if p.TargetInstanceID == j.target.ID || j.crossSeed != nil {
+			continue
+		}
+		if j.svc.deps.CrossSeeds == nil {
+			return permanent("qui cannot add cross-seeds on the Cross-seed instance of %s.", j.target.Name)
+		}
+		if j.crossSeed, err = j.svc.instance(ctx, p.TargetInstanceID); err != nil {
+			return permanent("%v", err)
+		}
 	}
-	if j.src.torrent.SavePath != j.member().SourceSavePath {
-		return sourceChanged("it moved")
-	}
-	if j.plan, err = planFiles(j.src.info, j.src.files); err != nil {
-		return permanent("The files of the torrent do not match its .torrent: %v", err)
+	if j.files, j.byRel, err = groupFiles(j.parts); err != nil {
+		return permanent("The torrents of the group do not agree on their files: %v", err)
 	}
 
-	need := diskBytes(j.plan)
-	stat, err := targetFiles.Statfs(ctx, nearestFolder(ctx, targetFiles, j.savePath()))
+	need := diskBytes(j.files)
+	stat, err := targetFiles.Statfs(ctx, nearestFolder(ctx, targetFiles, j.rootDir))
 	if err != nil {
 		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
 	}
@@ -150,13 +206,13 @@ func (j *job) prepare(ctx context.Context) error {
 	}
 	j.reserved = need
 
-	if j.root, err = opener.OpenRoot(ctx, j.savePath()); err != nil {
-		return permanent("qui cannot open the save path %s on %s: %v", j.savePath(), j.target.Name, err)
+	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
+		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
 	}
-	for _, name := range names(j.plan) {
-		for _, candidate := range []string{name, j.tempName(name), j.tempName(name) + incompleteExt} {
+	for _, f := range j.files {
+		for _, candidate := range []string{f.rel, j.tempName(f.rel), j.tempName(f.rel) + incompleteExt} {
 			if _, err := j.root.Lstat(ctx, candidate); !errors.Is(err, fs.ErrNotExist) {
-				return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, path.Join(j.savePath(), candidate))
+				return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, path.Join(j.rootDir, candidate))
 			}
 		}
 	}
@@ -179,33 +235,38 @@ func nearestFolder(ctx context.Context, files fsops.Backend, dir string) string 
 	}
 }
 
-// checkSource fails when the torrent on the source moved, was renamed, is
-// rechecked, or has other files than at the start of the copy.
+// checkSource fails when a torrent of the Transfer moved on the source, was
+// renamed, is rechecked, or has other files than at the start of the copy.
 func (j *job) checkSource(ctx context.Context) error {
-	torrent, err := j.svc.torrent(ctx, j.source.ID, j.hash())
+	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
-		return temporary("qui cannot read the torrent on %s: %v", j.source.Name, err)
+		return temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
 	}
-	switch {
-	case torrent == nil:
-		return sourceChanged("it left the source")
-	case torrent.SavePath != j.src.torrent.SavePath:
-		return sourceChanged("it moved")
-	case torrent.Name != j.src.torrent.Name:
-		return sourceChanged("it was renamed")
-	case isChecking(torrent.State) || torrent.Progress < 1:
-		return sourceChanged("qBittorrent checks it again")
-	}
-	files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, j.hash())
-	if err != nil {
-		return temporary("qui cannot read the files of the torrent on %s: %v", j.source.Name, err)
-	}
-	if files == nil {
-		return sourceChanged("it left the source")
-	}
-	plan, err := planFiles(j.src.info, *files)
-	if err != nil || !slices.Equal(names(plan), names(j.plan)) {
-		return sourceChanged("a file was renamed")
+	for _, p := range j.parts {
+		i := slices.IndexFunc(torrents, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) })
+		if i < 0 {
+			return sourceChanged("it left the source")
+		}
+		torrent := torrents[i]
+		switch {
+		case torrent.SavePath != p.src.torrent.SavePath:
+			return sourceChanged("it moved")
+		case torrent.Name != p.src.torrent.Name:
+			return sourceChanged("it was renamed")
+		case isChecking(torrent.State) || torrent.Progress < 1:
+			return sourceChanged("qBittorrent checks it again")
+		}
+		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash)
+		if err != nil {
+			return temporary("qui cannot read the files of the torrent on %s: %v", j.source.Name, err)
+		}
+		if files == nil {
+			return sourceChanged("it left the source")
+		}
+		plan, err := planFiles(p.src.info, *files)
+		if err != nil || !slices.Equal(names(plan), names(p.plan)) {
+			return sourceChanged("a file was renamed")
+		}
 	}
 	return nil
 }
@@ -256,7 +317,7 @@ func (j *job) release() {
 }
 
 // cleanup removes the helper torrent and the files that qui wrote, and
-// starts the source again when qui stopped it. Once the target has the real
+// starts the source again when qui stopped it. Once the target has a real
 // torrent, qui keeps its files.
 func (j *job) cleanup(ctx context.Context) {
 	if j.helper != "" {
@@ -265,20 +326,20 @@ func (j *job) cleanup(ctx context.Context) {
 		}
 	}
 	if j.stoppedSource {
-		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, []string{j.hash()}, "resume"); err != nil {
-			j.logf("qui could not start the torrent on %s again: %v", j.source.Name, err)
+		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, j.hashes(), "resume"); err != nil {
+			j.logf("qui could not start %s on %s again: %v", j.torrents("the"), j.source.Name, err)
 		}
 	}
 	if j.root == nil {
 		return
 	}
 	folders := map[string]struct{}{}
-	for _, name := range names(j.plan) {
-		removed := j.remove(ctx, j.tempName(name), j.tempName(name)+incompleteExt)
-		if !j.added && slices.Contains(j.placed, name) {
-			removed = j.remove(ctx, name) || removed
+	for _, f := range j.files {
+		removed := j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
+		if !j.added && slices.Contains(j.placed, f.rel) {
+			removed = j.remove(ctx, f.rel) || removed
 		}
-		for dir := path.Dir(name); removed && dir != "."; dir = path.Dir(dir) {
+		for dir := path.Dir(f.rel); removed && dir != "."; dir = path.Dir(dir) {
 			folders[dir] = struct{}{}
 		}
 	}
@@ -298,7 +359,7 @@ func (j *job) remove(ctx context.Context, names ...string) bool {
 		case err == nil:
 			removed = true
 		case !errors.Is(err, fs.ErrNotExist):
-			j.logf("qui could not remove %s on %s: %v", path.Join(j.savePath(), name), j.target.Name, err)
+			j.logf("qui could not remove %s on %s: %v", path.Join(j.rootDir, name), j.target.Name, err)
 		}
 	}
 	return removed
