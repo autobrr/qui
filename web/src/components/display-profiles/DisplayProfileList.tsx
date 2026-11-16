@@ -7,10 +7,10 @@ import { Check, ChevronRight, Funnel, Plus } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useDisplayProfiles } from "@/lib/client-settings"
 import type { DisplayProfile } from "@/lib/display-profiles"
 import { cn } from "@/lib/utils"
 
+import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileTile } from "./DisplayProfileTile"
 import { OwnSortAndFiltersHelp } from "./OwnSortAndFiltersSetting"
 
@@ -27,7 +27,7 @@ interface DisplayProfileListProps {
 /** The profiles in rows of 56 px. While only Default exists, a dashed tile below it opens the New profile dialog. */
 export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit, rowsDisabled = false }: DisplayProfileListProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active, settled } = useDisplayProfiles()
+  const { profiles, active, settled } = useNamedDisplayProfiles()
 
   return (
     <ul aria-label={t("displayProfiles.settings.title")} className="flex flex-col gap-1.5">
@@ -50,7 +50,8 @@ export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit,
             >
               <DisplayProfileTile profile={profile} size="md" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium" title={profile.name}>{profile.name}</span>
+                {/* A touch screen shows no title, so there the name wraps. */}
+                <span className="block text-sm font-medium [overflow-wrap:anywhere] pointer-fine:truncate" title={profile.name}>{profile.name}</span>
                 {profile.id === active.id && (
                   <span className="flex items-center gap-1 text-xs font-medium text-primary">
                     <Check aria-hidden="true" className="size-3 shrink-0" />

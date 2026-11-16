@@ -92,7 +92,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Column setup**: Which columns of the torrent table show, their order and widths, and Name stretch. A Display profile keeps one for each instance, or one for every instance. _Avoid_: column layout.
 - **Sort and filters**: The Client settings that every Display profile shares with the others, unless the profile keeps its own: the sort, the column filters, the sidebar filters, the instances that the Unified view shows, Group copies, the last open tab of the details panel, and the instance that the Backups and RSS pages show. Default always shares them. _Avoid_: view state.
 - **System notice**: A message about a fault in qui that needs an action from the user, shown where qui shows the update notice. It says what qui does while the fault lasts and how to fix it. An available update is not a System notice. _Avoid_: banner, alert.
-- **Feature notice**: A one-time bubble that points at a control and tells the user about a feature. It goes away for good when the user dismisses it or uses the feature. _Avoid_: banner, tip, tour, announcement.
+- **Feature notice**: A one-time bubble that points at a control and tells the user about a feature. It goes away for good when the user dismisses it, opens the control, or uses the feature. _Avoid_: banner, tip, tour, announcement.
 
 ## Orphan scan
 

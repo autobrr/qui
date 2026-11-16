@@ -1656,6 +1656,7 @@
   "displayProfiles": {
     "chipAriaLabel": "표시 프로필: {{name}}",
     "menuLabel": "표시 프로필",
+    "defaultName": "기본",
     "manage": "프로필 관리…",
     "sheetDescription": "각 브라우저가 자신의 프로필을 고릅니다.",
     "settings": {
@@ -1709,6 +1710,7 @@
     },
     "iconPicker": {
       "trigger": "아이콘: {{icon}}. 아이콘과 색 변경",
+      "letter": "이름의 첫 글자",
       "color": "색"
     },
     "iconGroups": {

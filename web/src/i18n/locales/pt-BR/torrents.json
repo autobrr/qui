@@ -1740,6 +1740,7 @@
   "displayProfiles": {
     "chipAriaLabel": "Perfil de exibição: {{name}}",
     "menuLabel": "Perfil de exibição",
+    "defaultName": "Padrão",
     "manage": "Gerenciar perfis…",
     "sheetDescription": "Cada navegador escolhe o próprio perfil.",
     "settings": {
@@ -1793,6 +1794,7 @@
     },
     "iconPicker": {
       "trigger": "Ícone: {{icon}}. Alterar o ícone e a cor",
+      "letter": "Primeira letra do nome",
       "color": "Cor"
     },
     "iconGroups": {

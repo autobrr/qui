@@ -1656,6 +1656,7 @@
   "displayProfiles": {
     "chipAriaLabel": "显示配置：{{name}}",
     "menuLabel": "显示配置",
+    "defaultName": "默认",
     "manage": "管理配置…",
     "sheetDescription": "每个浏览器各自选择配置文件。",
     "settings": {
@@ -1709,6 +1710,7 @@
     },
     "iconPicker": {
       "trigger": "图标：{{icon}}。更改图标和颜色",
+      "letter": "名称的首字母",
       "color": "颜色"
     },
     "iconGroups": {

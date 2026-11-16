@@ -91,7 +91,7 @@ describe("DisplayProfileChip", () => {
     const newProfile = () => screen.getByRole("menuitem", { name: "displayProfiles.newProfile" })
 
     act(() => fireEvent.click(row("Laptop")))
-    expect(row("Default").getAttribute("aria-checked")).toBe("true")
+    expect(row("displayProfiles.defaultName").getAttribute("aria-checked")).toBe("true")
     expect(row("Laptop").getAttribute("aria-disabled")).toBe("true")
     expect(newProfile().getAttribute("aria-disabled")).toBe("true")
 
@@ -115,9 +115,9 @@ describe("DisplayProfileChip", () => {
 
     await pressAndExpectFocus("ArrowDown", () => row("Phone"))
     await pressAndExpectFocus("ArrowUp", () => row("Laptop"))
-    await pressAndExpectFocus("ArrowUp", () => row("Default"))
+    await pressAndExpectFocus("ArrowUp", () => row("displayProfiles.defaultName"))
     await pressAndExpectFocus("End", () => screen.getByRole("menuitem", { name: "displayProfiles.manage" }))
-    await pressAndExpectFocus("Home", () => row("Default"))
+    await pressAndExpectFocus("Home", () => row("displayProfiles.defaultName"))
   })
 
   it("the first letter of a name moves to that row", async () => {
@@ -158,7 +158,7 @@ describe("DisplayProfileChip", () => {
 
     openMenu()
     const laptop = screen.getByRole("menuitemradio", { name: "Laptop" })
-    expect(screen.getByRole("menuitemradio", { name: "Default" }).getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByRole("menuitemradio", { name: "displayProfiles.defaultName" }).getAttribute("aria-checked")).toBe("true")
     act(() => fireEvent.click(laptop))
 
     expect(screen.getByRole("status").textContent).toBe("collapsed")

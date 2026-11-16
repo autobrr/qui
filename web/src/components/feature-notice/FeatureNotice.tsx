@@ -18,8 +18,6 @@ interface FeatureNoticeProps {
   id: FeatureNoticeId
   /** Turns the feature on. Called from the primary button of the bubble. */
   onAction: () => void
-  /** True while the control shows its own menu or dialog. Opening it counts as seen. */
-  controlOpen?: boolean
   /** The side of the control that the bubble prefers. */
   side?: "top" | "bottom"
   /** The control the bubble points at. It must take a ref and a className. */
@@ -29,14 +27,15 @@ interface FeatureNoticeProps {
 /**
  * Points a one-time bubble at the wrapped control while its notice is due. The
  * notice counts as seen after Got it, the primary button, or once the feature
- * is in use or the control opens while the control is in the page.
+ * is in use while the control is in the page. A control that opens calls
+ * markFeatureNoticeSeen from its open handler.
  */
 export function FeatureNotice(props: FeatureNoticeProps) {
   if (isDemo) return props.children
   return <FeatureNoticeBubble {...props} />
 }
 
-function FeatureNoticeBubble({ id, onAction, controlOpen = false, side = "bottom", children }: FeatureNoticeProps) {
+function FeatureNoticeBubble({ id, onAction, side = "bottom", children }: FeatureNoticeProps) {
   const notice: FeatureNoticeEntry = FEATURE_NOTICES.find((entry) => entry.id === id)!
 
   const loaded = useClientSettingsLoaded()
@@ -46,8 +45,8 @@ function FeatureNoticeBubble({ id, onAction, controlOpen = false, side = "bottom
   const present = control !== null
 
   useEffect(() => {
-    if (loaded && present && (inUse || controlOpen) && !seen) setSeen(true)
-  }, [loaded, present, inUse, controlOpen, seen, setSeen])
+    if (loaded && present && inUse && !seen) setSeen(true)
+  }, [loaded, present, inUse, seen, setSeen])
 
   const open = loaded && present && !seen && !inUse && getDueNoticeId() === id
 

@@ -572,7 +572,7 @@ describe("TorrentCardsMobile Display profile", () => {
 
     const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
     const rows = within(within(sheet).getByRole("list")).getAllByRole("button")
-    expect(rows.map((row) => row.textContent)).toEqual(["DefaultdisplayProfiles.settings.thisBrowser", "Laptop"])
+    expect(rows.map((row) => row.textContent)).toEqual(["displayProfiles.defaultNamedisplayProfiles.settings.thisBrowser", "Laptop"])
 
     fireEvent.click(rows[1])
 

@@ -1908,6 +1908,7 @@
   "displayProfiles": {
     "chipAriaLabel": "Профіль відображення: {{name}}",
     "menuLabel": "Профіль відображення",
+    "defaultName": "Типовий",
     "manage": "Керувати профілями…",
     "sheetDescription": "Кожен браузер вибирає власний профіль.",
     "settings": {
@@ -1961,6 +1962,7 @@
     },
     "iconPicker": {
       "trigger": "Значок: {{icon}}. Змінити значок і колір",
+      "letter": "Перша літера назви",
       "color": "Колір"
     },
     "iconGroups": {

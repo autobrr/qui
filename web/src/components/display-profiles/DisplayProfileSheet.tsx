@@ -11,8 +11,8 @@ import { useTranslation } from "react-i18next"
 
 import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { useDisplayProfiles } from "@/lib/client-settings"
 
+import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileList } from "./DisplayProfileList"
 import { DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
@@ -20,7 +20,7 @@ import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 /** "Display profile" with the profile of this browser, and a separator under it, for the menu of the mobile torrent list. */
 export function DisplayProfileMenuItem({ onSelect }: { onSelect: () => void }) {
   const { t } = useTranslation("torrents")
-  const { active } = useDisplayProfiles()
+  const { active } = useNamedDisplayProfiles()
 
   return (
     <>
@@ -46,7 +46,7 @@ interface DisplayProfileSheetProps {
 /** The profile list in a bottom sheet for a phone. A tap on a row picks that profile for this browser and closes the sheet. */
 export function DisplayProfileSheet({ open, onOpenChange }: DisplayProfileSheetProps) {
   const { t } = useTranslation("torrents")
-  const { active, settled, pick } = useDisplayProfiles()
+  const { active, settled, pick } = useNamedDisplayProfiles()
   const [newProfileOpen, setNewProfileOpen] = useState(false)
 
   const openNewProfile = () => {

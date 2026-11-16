@@ -6,7 +6,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import "@/i18n"
+import { changeLanguage } from "@/i18n"
 import { _resetClientSettingsForTests, markClientSettingsUnavailable, getDisplayProfiles } from "@/lib/client-settings"
 
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
@@ -74,6 +74,20 @@ describe("NewDisplayProfileDialog", () => {
     act(() => markClientSettingsUnavailable())
     fireEvent.click(screen.getByRole("button", { name: "Create" }))
     expect(getDisplayProfiles().profiles).toHaveLength(2)
+  })
+
+  it("in another language, names Default in that language and refuses that name", async () => {
+    await changeLanguage("de")
+    try {
+      renderDialog()
+      expect(screen.getByText(/Spalten/).textContent).toContain("Standard")
+
+      typeName("standard")
+
+      expect(screen.getByRole("textbox").getAttribute("aria-invalid")).toBe("true")
+    } finally {
+      await changeLanguage("en")
+    }
   })
 
   it("guesses the icon from the name while the user types", () => {

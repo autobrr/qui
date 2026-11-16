@@ -596,11 +596,11 @@ describe("display profiles", () => {
     expect(laptop).not.toBe(phone)
   })
 
-  it("a new profile starts with the bookmark icon, no color, Same columns unset, and Own sort and filters off", () => {
+  it("a new profile starts with the bookmark icon, no color, Same columns unset, and Own sort and filters off, and Default has no name of its own", () => {
     const laptop = createDisplayProfile("  Laptop ")
 
     const { profiles, active } = getDisplayProfiles()
-    expect(profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop"])
+    expect(profiles.map((profile) => profile.name)).toEqual(["", "Laptop"])
     expect(profiles[0]).toMatchObject({ isDefault: true, icon: "app-window", color: null, sameColumns: null, ownSortAndFilters: false })
     expect(active).toEqual({
       id: laptop,
@@ -624,7 +624,7 @@ describe("display profiles", () => {
 
     const byId = new Map(getDisplayProfiles().profiles.map((profile) => [profile.id, profile]))
     expect(byId.get(laptop)).toMatchObject({ name: "Laptop", icon: "laptop", color: "sky" })
-    expect(byId.get(DEFAULT_DISPLAY_PROFILE_ID)).toMatchObject({ name: "Default", icon: "app-window", color: "rose" })
+    expect(byId.get(DEFAULT_DISPLAY_PROFILE_ID)).toMatchObject({ name: "", icon: "app-window", color: "rose" })
     expect(byId.get(phone)).toMatchObject({ name: "Phone", icon: "smartphone", color: null })
 
     setDisplayProfileColor(laptop, null)

@@ -9,7 +9,7 @@ import { forwardRef } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady, writeRaw } from "@/lib/client-settings"
-import { _resetFeatureNoticesForTests } from "./due-notice"
+import { _resetFeatureNoticesForTests, markFeatureNoticeSeen } from "./due-notice"
 import { FeatureNotice } from "./FeatureNotice"
 import type { FeatureNoticeId } from "./notices"
 
@@ -135,20 +135,12 @@ describe("FeatureNotice", () => {
     expect(readRaw(FIRST_SEEN)).toBe("true")
   })
 
-  it("closes and stores seen when the control opens", () => {
+  it("closes and stores seen when the control opens and marks it seen", () => {
     loadServerSnapshot()
-    const view = render(
-      <FeatureNotice id={"first" as FeatureNoticeId} onAction={vi.fn()} controlOpen={false}>
-        <TestButton />
-      </FeatureNotice>
-    )
+    renderNotice("first")
     expect(bubbleShown()).toBe(true)
 
-    view.rerender(
-      <FeatureNotice id={"first" as FeatureNoticeId} onAction={vi.fn()} controlOpen={true}>
-        <TestButton />
-      </FeatureNotice>
-    )
+    act(() => markFeatureNoticeSeen("first"))
 
     expect(bubbleShown()).toBe(false)
     expect(readRaw(FIRST_SEEN)).toBe("true")
