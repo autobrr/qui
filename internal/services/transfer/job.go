@@ -186,6 +186,11 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := find(ctx); err != nil {
 		return err
 	}
+	if j.rec.Way == WayLocal && !j.reached(stepPlace) {
+		if err := j.linkFiles(ctx, targetFiles); err != nil {
+			return err
+		}
+	}
 
 	need := copiedBytes(j.files)
 	for _, size := range j.made {
@@ -207,7 +212,13 @@ func (j *job) prepare(ctx context.Context) error {
 		if j.rec.Way == WayLocal {
 			how = "on qui's own disk"
 		}
-		j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
+		linked, size := linkedBytes(j.files)
+		if linked > 0 {
+			j.logf("Linking %d files (%s) %s from %s to %s.", linked, formatBytes(size), how, j.source.Name, j.target.Name)
+		}
+		if need > 0 || linked == 0 {
+			j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
+		}
 		return nil
 	}
 	if err := j.removeHelpers(ctx); err != nil {

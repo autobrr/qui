@@ -99,6 +99,9 @@ type groupFile struct {
 	// onTarget is set when the target had the file before the Transfer. qui
 	// checks it there and never writes it.
 	onTarget bool
+	// linked is set when the temporary file is a hardlink to the file on the
+	// source. qui never writes it.
+	linked bool
 }
 
 // groupFiles lists each file of the members once, in the order of the copy.

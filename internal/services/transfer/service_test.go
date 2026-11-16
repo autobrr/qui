@@ -63,12 +63,14 @@ func newShow(t *testing.T, name string) show {
 
 // disk is qui's own disk. Its switches imitate a target that cannot confirm
 // a flush, that cannot make a hardlink, that damages a byte, that has little
-// free space, or that a test watches during the copy.
+// free space, that is on another filesystem than the source, or that a test
+// watches during the copy.
 type disk struct {
 	*local.Backend
-	free        int64
-	unconfirmed bool
-	noLinks     bool
+	free            int64
+	unconfirmed     bool
+	noLinks         bool
+	otherFilesystem bool
 	// damage flips the byte at an offset of the file with this final name.
 	damage  map[string]int64
 	onWrite func(name string)
@@ -95,6 +97,13 @@ func (d *disk) Statfs(ctx context.Context, path string) (*fsops.StatfsResult, er
 		return &fsops.StatfsResult{BytesAvailable: d.free, BytesTotal: d.free}, nil
 	}
 	return d.Backend.Statfs(ctx, path)
+}
+
+func (d *disk) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {
+	if d.otherFilesystem {
+		return false, nil
+	}
+	return d.Backend.SameFilesystem(ctx, p1, p2)
 }
 
 func (d *disk) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
@@ -282,12 +291,14 @@ func wire(t *testing.T, db *database.DB, d *disk, now func() time.Time) (transfe
 	})
 	store, err := transfer.NewStore(t.Context(), db)
 	require.NoError(t, err)
+	groups := crossseed.NewService(instances, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	groups.SetBackendPool(files)
 	return transfer.Deps{
 		Store:     store,
 		Instances: instances,
 		Sync:      syncManager,
 		Files:     files,
-		Groups:    crossseed.NewService(instances, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil),
+		Groups:    groups,
 		Now:       now,
 		Config: transfer.Config{Polls: 20, CheckPolls: 20, PollInterval: time.Millisecond, FlushBytes: 32,
 			Reconnects: 20, ReconnectWait: time.Millisecond},

@@ -4,6 +4,9 @@
 package transfer_test
 
 import (
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,4 +65,63 @@ func TestTransferRelaysBetweenTwoSFTPSides(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash))
 	require.False(t, r.src.Has(s.hash))
 	require.Empty(t, tree(t, r.srcDir))
+}
+
+// Two instances on qui's own disk get a local copy when they are on two
+// filesystems, and hardlinks when they are on one. The removal from the
+// source then removes the source paths, and the links keep the files.
+func TestTransferOnQuisOwnDisk(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		otherFilesystem bool
+		// restart stops qui at the check on the target, and starts it again.
+		restart bool
+		log     string
+	}{
+		{name: "a local copy", otherFilesystem: true, log: "Copying 70 B on qui's own disk from seedbox to homelab."},
+		{name: "hardlinks", log: "Linking 2 files (70 B) on qui's own disk from seedbox to homelab."},
+		{name: "hardlinks after a restart", restart: true, log: "Linking 2 files (70 B) on qui's own disk from seedbox to homelab."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, onDisk, onDisk)
+			r.disk.otherFilesystem = tc.otherFilesystem
+			s := newShow(t, showName)
+			r.seed(s)
+			before := map[string]os.FileInfo{}
+			for name := range s.files {
+				info, err := os.Stat(filepath.Join(r.srcDir, showName, name))
+				require.NoError(t, err)
+				before[name] = info
+			}
+
+			var once sync.Once
+			if tc.restart {
+				r.dst.OnAdd = func(string) { once.Do(r.cancel) }
+			}
+
+			id, err := r.svc.Start(t.Context(), r.request(s))
+			require.NoError(t, err)
+			r.svc.Wait()
+			if tc.restart {
+				r.restart()
+				r.svc.Wait()
+			}
+
+			record := r.get(id)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, transfer.WayLocal, record.Way)
+			require.Contains(t, logOf(record), tc.log)
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the target has the files, and no temporary file")
+			writes, _ := r.disk.log()
+			require.Equal(t, tc.otherFilesystem, len(writes) > 0, "a hardlink writes no byte")
+			for name, info := range before {
+				after, err := os.Stat(filepath.Join(r.dstDir, showName, name))
+				require.NoError(t, err)
+				require.Equal(t, !tc.otherFilesystem, os.SameFile(info, after), name)
+			}
+			require.True(t, r.dst.Has(s.hash))
+			require.False(t, r.src.Has(s.hash))
+			require.Empty(t, tree(t, r.srcDir), "the removal from the source removes the source paths")
+		})
+	}
 }

@@ -208,11 +208,15 @@ func (p *part) segments(start, length int64) []segment {
 }
 
 // writes reports whether the member writes the file of the segment: the
-// target does not have the file, and the member is the first one that has
-// it.
+// target does not have the file, qui did not link it, and the member is the
+// first one that has it.
 func (j *job) writes(p *part, s segment) bool {
 	f := p.plan[s.file]
-	return !f.pad && !f.onTarget && j.byRel[p.rel(f)].owner == p
+	if f.pad || f.onTarget {
+		return false
+	}
+	g := j.byRel[p.rel(f)]
+	return g.owner == p && !g.linked
 }
 
 func (c *copier) read(ctx context.Context, p *part, s segment, into []byte) error {
