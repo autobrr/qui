@@ -51,7 +51,7 @@ func TestTransferMovesTheGroupWithItsCrossSeed(t *testing.T) {
 	s := newShow(t, showName)
 	r.seed(s)
 	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcDir)
+	r.src.Seed(crossSeed, r.srcPath())
 	r.disk.free = 70
 
 	record := r.run(r.request(s))
@@ -153,7 +153,7 @@ func TestTransferSendsTheCrossSeedToTheCrossSeedInstance(t *testing.T) {
 	s := newShow(t, showName)
 	r.seed(s)
 	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcDir)
+	r.src.Seed(crossSeed, r.srcPath())
 	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
 	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
 
@@ -184,7 +184,7 @@ func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 	s := newShow(t, showName)
 	r.seed(s)
 	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcDir)
+	r.src.Seed(crossSeed, r.srcPath())
 	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
 	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
 
@@ -207,7 +207,7 @@ func TestTransferMovesAMixedGroupWholeToTheTarget(t *testing.T) {
 	pack := newPack(t)
 	r.seed(pack)
 	episode, episodeHash := singleFileTorrent(t, episode2, pack.files[episode2])
-	r.src.Seed(episode, filepath.Join(r.srcDir, showName))
+	r.src.Seed(episode, r.srcPath(showName))
 	r.disk.free = 106
 
 	record := r.run(transfer.Request{SourceInstanceID: r.source.ID, Hash: episodeHash, TargetInstanceID: r.target.ID})
@@ -234,7 +234,7 @@ func (r *rig) seedHardlinkedCrossSeed(s show) (links, hash string) {
 		require.NoError(r.t, os.Link(filepath.Join(r.srcDir, showName, name), filepath.Join(links, showName, name)))
 	}
 	crossSeed, hash := crossSeedOf(r.t, s)
-	r.src.Seed(crossSeed, links)
+	r.src.Seed(crossSeed, r.srcPath("links"))
 	return links, hash
 }
 
@@ -408,14 +408,15 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	first := newShow(t, showName)
 	r.seed(first)
 	otherDir := t.TempDir()
-	other := qbtstub.New(t, otherDir)
+	otherPath := pathOn(overSFTP, otherDir)
+	other := qbtstub.New(t, otherPath)
 	otherSource := r.sshInstance("seedbox two", other.URL)
 	second := newShow(t, "Other.Show.S02.720p-GRP")
 	write(t, filepath.Join(otherDir, "Other.Show.S02.720p-GRP"), second.files)
-	other.Seed(second.data, otherDir)
+	other.Seed(second.data, otherPath)
 	small, smallHash := singleFileTorrent(t, "Small.mkv", []byte("ten bytes!"))
 	write(t, otherDir, map[string][]byte{"Small.mkv": []byte("ten bytes!")})
-	other.Seed(small, otherDir)
+	other.Seed(small, otherPath)
 	r.disk.free = 100
 
 	// The first Transfer stops at its first write. The third Transfer waits
@@ -460,7 +461,7 @@ func TestTransferUsesAFileOnTheTargetForTheWholeGroup(t *testing.T) {
 	s := newShow(t, showName)
 	r.seed(s)
 	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, r.srcDir)
+	r.src.Seed(crossSeed, r.srcPath())
 	theirs := map[string][]byte{"Show.S01E02.mkv": s.files["Show.S01E02.mkv"]}
 	before := r.placeOnTarget(theirs)
 	r.disk.free = 40

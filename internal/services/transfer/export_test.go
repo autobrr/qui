@@ -212,7 +212,7 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 	for i := range exports {
 		name := fmt.Sprintf("Other.Show.S%02d.720p-GRP", i+1)
 		s := newShow(t, name)
-		r.src.Seed(s.data, r.srcDir)
+		r.src.Seed(s.data, r.srcPath())
 		write(t, filepath.Join(r.dstDir, name), s.files)
 		req := r.exportRequest(s)
 		req.Name = name

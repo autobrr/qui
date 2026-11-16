@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -135,6 +136,24 @@ func (f *sftpFiles) OpenRoot(ctx context.Context, dir string) (fsops.Root, error
 	return &diskRoot{Root: root, d: f.d}, nil
 }
 
+// Statfs reads the free space of the host folder where the SFTP server of
+// sshtest cannot: pkg/sftp serves statvfs only on Linux, macOS and Plan 9.
+func (f *sftpFiles) Statfs(ctx context.Context, p string) (*fsops.StatfsResult, error) {
+	stat, err := f.Backend.Statfs(ctx, p)
+	if err != nil && strings.Contains(err.Error(), syscall.ENOTSUP.Error()) {
+		return f.d.Backend.Statfs(ctx, hostPath(p))
+	}
+	return stat, err
+}
+
+// hostPath is the host path of a path that pkg/sftp serves.
+func hostPath(p string) string {
+	if native, ok := strings.CutPrefix(p, "/"); ok && filepath.VolumeName(native) != "" {
+		return filepath.FromSlash(native)
+	}
+	return p
+}
+
 func (r *diskRoot) Create(ctx context.Context, name string) (fsops.FileWriter, error) {
 	w, err := r.Root.Create(ctx, name)
 	if err != nil {
@@ -202,6 +221,7 @@ type rig struct {
 	ssh, dstSSH *sshtest.Server
 	srcDir      string
 	dstDir      string
+	srcSide     side
 	source      *models.Instance
 	target      *models.Instance
 	disk        *disk
@@ -252,9 +272,9 @@ func newRigOn(t *testing.T, source, target side, options ...func(*transfer.Confi
 	t.Helper()
 	srcDir, dstDir := t.TempDir(), t.TempDir()
 	dbPath := testdb.CloneMigratedSQLite(t, "transfer-service")
-	r := &rig{t: t, srcDir: srcDir, dstDir: dstDir, dbPath: dbPath, disk: &disk{Backend: local.NewBackend()}}
+	r := &rig{t: t, srcDir: srcDir, dstDir: dstDir, srcSide: source, dbPath: dbPath, disk: &disk{Backend: local.NewBackend()}}
 	// The servers start first, so that they stop after the pools of qui.
-	r.src, r.dst = qbtstub.New(t, srcDir), qbtstub.New(t, dstDir)
+	r.src, r.dst = qbtstub.New(t, pathOn(source, srcDir)), qbtstub.New(t, pathOn(target, dstDir))
 	r.dst.HashCheck = true
 	r.ssh = sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecSFTPOnly)
 	r.dstSSH = sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecSFTPOnly)
@@ -371,12 +391,27 @@ func (r *rig) instanceOn(where side, server *sshtest.Server, name, url string) *
 	return r.localInstance(name, url)
 }
 
+// pathOn is the host folder dir as the qBittorrent of an instance on where
+// names it. Over SFTP that is the path that qui reaches: pkg/sftp names C:\x
+// on Windows /C:/x.
+func pathOn(where side, dir string) string {
+	if where != overSFTP || filepath.VolumeName(dir) == "" {
+		return dir
+	}
+	return "/" + filepath.ToSlash(dir)
+}
+
+// srcPath is a folder below srcDir as the qBittorrent of the source names it.
+func (r *rig) srcPath(elem ...string) string {
+	return pathOn(r.srcSide, filepath.Join(append([]string{r.srcDir}, elem...)...))
+}
+
 // seed writes the files of a torrent in the folder of the source and seeds
 // it there.
 func (r *rig) seed(s show) {
 	r.t.Helper()
 	write(r.t, filepath.Join(r.srcDir, showName), s.files)
-	r.src.Seed(s.data, r.srcDir)
+	r.src.Seed(s.data, r.srcPath())
 }
 
 func write(t *testing.T, dir string, files map[string][]byte) {
@@ -579,7 +614,7 @@ func (r *rig) seedEpisode(s show) string {
 	r.t.Helper()
 	episode := "Show.S01E01.mkv"
 	file, hash := singleFileTorrent(r.t, episode, s.files[episode])
-	r.src.Seed(file, filepath.Join(r.srcDir, showName))
+	r.src.Seed(file, r.srcPath(showName))
 	return hash
 }
 
@@ -604,7 +639,7 @@ func TestTransferQueuesBySource(t *testing.T) {
 	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
 	r.seed(first)
 	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
-	r.src.Seed(second.data, r.srcDir)
+	r.src.Seed(second.data, r.srcPath())
 	copying, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	r.disk.onWrite = func(string) {
@@ -871,7 +906,7 @@ func TestTransferKeepsSourceFiles(t *testing.T) {
 		r := newRig(t)
 		s := newShow(t, showName)
 		r.seed(s)
-		r.sshInstance("second client", qbtstub.New(t, r.srcDir).URL)
+		r.sshInstance("second client", qbtstub.New(t, r.srcPath()).URL)
 
 		record := r.run(r.request(s))
 

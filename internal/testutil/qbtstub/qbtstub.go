@@ -386,18 +386,36 @@ func (s *Server) contentPath(t *Torrent) string {
 		return s.anchor(t)
 	case RootFolder, SingleFile:
 	}
-	return filepath.Join(s.anchor(t), t.Name)
+	return join(s.anchor(t), t.Name)
 }
 
 func (s *Server) diskFiles(t *Torrent) []string {
+	content := onHost(s.contentPath(t))
 	if t.Layout == SingleFile {
-		return []string{s.contentPath(t)}
+		return []string{content}
 	}
 	files := make([]string, 0, len(t.Files))
 	for _, f := range t.Files {
-		files = append(files, filepath.Join(s.contentPath(t), filepath.FromSlash(f)))
+		files = append(files, filepath.Join(content, filepath.FromSlash(f)))
 	}
 	return files
+}
+
+// onHost is the host path of p. A stub whose files qui reaches over sshtest
+// names them as pkg/sftp does, /C:/x on Windows for the host path C:\x.
+func onHost(p string) string {
+	if native, ok := strings.CutPrefix(p, "/"); ok && filepath.VolumeName(native) != "" {
+		return filepath.FromSlash(native)
+	}
+	return p
+}
+
+// join joins the slash name to dir in the form of dir.
+func join(dir, name string) string {
+	if onHost(dir) != dir {
+		return path.Join(dir, name)
+	}
+	return filepath.Join(dir, filepath.FromSlash(name))
 }
 
 // fileNames are the file names that torrents/files reports.
@@ -436,7 +454,7 @@ func (s *Server) categoryPath(name string) string {
 	if name == "" {
 		return s.savePath
 	}
-	return filepath.Join(s.savePath, filepath.FromSlash(name))
+	return join(s.savePath, name)
 }
 
 // move relocates the content the way libtorrent's move_storage does: file by
@@ -480,7 +498,7 @@ func (s *Server) relocate(from, to *Torrent) {
 		assert.NoError(s.t, os.Rename(old[i], f))
 	}
 	if from.Layout == RootFolder {
-		assert.NoError(s.t, os.RemoveAll(s.contentPath(from)))
+		assert.NoError(s.t, os.RemoveAll(onHost(s.contentPath(from))))
 	}
 }
 
@@ -489,7 +507,7 @@ func (s *Server) relocate(from, to *Torrent) {
 // missing, such as one set to Do Not Download, is skipped.
 func (s *Server) remove(t *Torrent) {
 	if t.Layout == RootFolder {
-		assert.NoError(s.t, os.RemoveAll(s.contentPath(t)))
+		assert.NoError(s.t, os.RemoveAll(onHost(s.contentPath(t))))
 		return
 	}
 	for _, f := range s.diskFiles(t) {
@@ -583,7 +601,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case "app/preferences":
 		downloadPath := s.DownloadPath
 		if downloadPath == "" {
-			downloadPath = filepath.Join(s.savePath, "incomplete")
+			downloadPath = join(s.savePath, "incomplete")
 		}
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
 			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
