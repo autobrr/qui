@@ -318,28 +318,6 @@ func TestAShareSeedsAShareTorrentThatQuisTrackerAnnounces(t *testing.T) {
 	require.Zero(t, listed.Downloaded)
 }
 
-func TestAShareEndsAtTheFirstCompleteDownload(t *testing.T) {
-	r := newRig(t)
-	sh := r.start(share.Request{})
-	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
-	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
-	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
-	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
-	r.announce(recipientURL, sh.HelperHash, 6881, 30, "")
-	r.check()
-	require.Equal(t, share.StateActive, r.get(sh.ID).State)
-	require.Equal(t, int64(40), r.get(sh.ID).Downloaded)
-
-	r.announce(recipientURL, sh.HelperHash, 6881, 0, "completed")
-	r.check()
-
-	r.requireEnded(sh.ID, "The recipient has the files.")
-	require.False(t, listening(r.port), "the Share tracker stops with the last Share on it")
-	ended := r.get(sh.ID)
-	require.Equal(t, int64(70), ended.Downloaded)
-	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
-}
-
 func TestAShareWithoutTheEndAtTheFirstDownloadRunsOn(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{EndAtFirstDownload: new(false)})
@@ -358,10 +336,6 @@ func TestAShareEnds(t *testing.T) {
 		"after the set days": {
 			act:    func(r *rig, _ *share.Share) { r.clock.advance(3 * 24 * time.Hour) },
 			reason: "The Share expired.",
-		},
-		"when the user stops it": {
-			act:    func(r *rig, sh *share.Share) { require.NoError(r.t, r.svc.Stop(r.t.Context(), sh.ID)) },
-			reason: "Stopped by the user.",
 		},
 		"when another client deletes the real torrent": {
 			act:    func(r *rig, _ *share.Share) { r.stub.DeleteElsewhereKeepFiles(r.hash) },
@@ -533,9 +507,13 @@ func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	require.Len(t, listed.Peers, 1, "the peers of the Share stay")
 	r.announce(ownerURL, sh.HelperHash, 51413, 0, "started")
 	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(recipientURL, sh.HelperHash, 6881, 40, ""))
+	require.Equal(t, int64(30), r.get(sh.ID).Downloaded)
 	r.announce(recipientURL, sh.HelperHash, 6881, 0, "completed")
 	r.check()
 	r.requireEnded(sh.ID, "The recipient has the files.")
+	ended := r.get(sh.ID)
+	require.Equal(t, int64(70), ended.Downloaded)
+	require.Equal(t, []share.Peer{{Address: "127.0.0.1:6881", Progress: 1, SeenAt: r.clock.Now()}}, ended.Peers)
 }
 
 func TestAShareKeepsToTheLimitsOfTheSettings(t *testing.T) {

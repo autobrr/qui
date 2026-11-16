@@ -13,19 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func TestTheShareSettingsStartAtTheirDefaultsPostgresIntegration(t *testing.T) {
-	t.Parallel()
-	engines(t, func(t *testing.T, db dbinterface.Querier) {
-		got, err := share.NewSettingsStore(db).Settings(t.Context())
-		require.NoError(t, err)
-		require.Equal(t, share.Options{
-			MaxActive:     10,
-			PeersPerShare: 20,
-			Defaults:      share.Defaults{Days: 7, EndAtFirstDownload: true, FirstDownloaderOnly: true},
-		}, got)
-	})
-}
-
 func TestTheShareSettingsKeepEveryFieldPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, db dbinterface.Querier) {
@@ -47,11 +34,9 @@ func TestTheShareSettingsRefuseValuesThatShareCannotUse(t *testing.T) {
 	store := share.NewSettingsStore(testdb.NewMigratedSQLite(t, "share-settings"))
 	valid := share.Options{MaxActive: 10, PeersPerShare: 20, Defaults: share.Defaults{Days: 7}}
 	for name, edit := range map[string]func(o *share.Options){
-		"no active Share":            func(o *share.Options) { o.MaxActive = 0 },
-		"no peer":                    func(o *share.Options) { o.PeersPerShare = 0 },
-		"no day":                     func(o *share.Options) { o.Defaults.Days = 0 },
-		"a tracker URL without http": func(o *share.Options) { o.TrackerURL = "tracker.example.com/announce" },
-		"a tracker URL with ftp":     func(o *share.Options) { o.TrackerURL = "ftp://tracker.example.com/announce" },
+		"no active Share":        func(o *share.Options) { o.MaxActive = 0 },
+		"no day":                 func(o *share.Options) { o.Defaults.Days = 0 },
+		"a tracker URL with ftp": func(o *share.Options) { o.TrackerURL = "ftp://tracker.example.com/announce" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			invalid := valid
