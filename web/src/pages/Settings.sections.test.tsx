@@ -33,6 +33,7 @@ vi.mock("@/components/settings/ClientApiKeysManager", () => ({ ClientApiKeysMana
 vi.mock("@/components/settings/ExternalProgramsManager", () => ({ ExternalProgramsManager: () => <div data-testid="section-external-programs" /> }))
 vi.mock("@/components/settings/NotificationsManager", () => ({ NotificationsManager: () => <div data-testid="section-notifications" /> }))
 vi.mock("@/components/settings/DateTimePreferencesForm", () => ({ DateTimePreferencesForm: () => <div data-testid="section-datetime" /> }))
+vi.mock("@/components/display-profiles/DisplayProfilesSettings", () => ({ DisplayProfilesSettings: () => <div data-testid="section-display-profiles" /> }))
 vi.mock("@/components/settings/LogSettingsPanel", () => ({ LogSettingsPanel: () => <div data-testid="section-logs" /> }))
 vi.mock("@/components/settings/StatisticsSettingsCard", () => ({ StatisticsSettingsCard: () => <div data-testid="section-statistics" /> }))
 vi.mock("@/components/settings/TrackerCustomizationsManager", () => ({ TrackerCustomizationsManager: () => <div data-testid="section-trackers" /> }))

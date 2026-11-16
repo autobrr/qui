@@ -1730,6 +1730,137 @@
       "title": "Groupez vos Cross-Seeds",
       "description": "Affiche les copies d'un torrent sur une seule ligne.",
       "action": "Essayer"
+    },
+    "displayProfiles": {
+      "title": "Profils d’affichage",
+      "description": "Donnez à chaque écran ses propres colonnes, sa densité de lignes et ses barres latérales. Choisissez ici le profil de ce navigateur.",
+      "action": "Créer un profil"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Profil d’affichage : {{name}}",
+    "menuLabel": "Profil d’affichage",
+    "defaultName": "Par défaut",
+    "manage": "Gérer les profils…",
+    "sheetDescription": "Chaque navigateur choisit son propre profil.",
+    "settings": {
+      "title": "Profils d’affichage",
+      "holds": "Contient : colonnes · densité des lignes · barres latérales · sections de filtres · arborescences de catégories · filtres vides",
+      "holdsHelp": "Un profil contient l’apparence de la liste des torrents : les colonnes affichées, leur ordre et leur largeur, l’étirement de la colonne Nom, la densité des lignes, les barres latérales et les sections de filtres ouvertes, les arborescences de catégories repliées et l’affichage des filtres vides. Chaque navigateur utilise un profil, et seul ce navigateur retient le choix. Un navigateur qui n’en a jamais choisi, et une fenêtre privée, utilisent Default. Tous les profils partagent les autres réglages.",
+      "thisBrowser": "Ce navigateur",
+      "use": "Utiliser dans ce navigateur",
+      "makeProfile": "Créer un profil pour un ordinateur portable ou un téléphone",
+      "themesSync": "Les thèmes se synchronisent à part : <sync>Synchronisation du thème</sync>",
+      "renameAriaLabel": "Renommer {{name}}",
+      "saveName": "Enregistrer le nom",
+      "cancelRename": "Annuler le renommage",
+      "editAriaLabel": "Modifier {{name}}",
+      "editTitle": "Modifier le profil",
+      "delete": "Supprimer…",
+      "deleteTitle": "Supprimer {{name}} ?",
+      "deleteDescription": "Les autres navigateurs qui l’utilisent passent à {{defaultName}}.",
+      "deleteConfirm": "Supprimer",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Lignes en tableau",
+        "dense": "Lignes denses",
+        "stacked": "Cartes empilées"
+      },
+      "filterSidebarOpen": "barre de filtres ouverte",
+      "filterSidebarClosed": "barre de filtres fermée"
+    },
+    "nameErrors": {
+      "empty": "Saisissez un nom.",
+      "tooLong": "Utilisez {{max}} caractères au maximum.",
+      "duplicate": "Un autre profil porte ce nom."
+    },
+    "ownSortAndFilters": {
+      "label": "Tri et filtres propres",
+      "help": "<lead>Quand cette option est activée, ce profil garde ses propres :</lead><list><item>ordre de tri de la liste des torrents</item><item>filtres de colonne et filtres de la barre latérale</item><item>instances affichées par la vue unifiée</item><item>Grouper les copies, activé ou non</item><item>dernier onglet ouvert du panneau de détails</item><item>instance affichée par les pages Sauvegardes et RSS</item></list><note>Une modification de ces réglages dans ce profil n’atteint pas les autres profils. Quand cette option est désactivée, ce profil les partage avec tous les autres profils qui n’ont pas les leurs. La désactivation supprime les valeurs propres de ce profil.</note>",
+      "offWarning": "La désactivation supprime le tri et les filtres propres de {{name}}.",
+      "defaultShares": "Partage toujours le tri et les filtres",
+      "defaultSharesHelp": "Default partage toujours le tri, les filtres et les autres choix d’affichage avec tous les profils qui n’ont pas les leurs. Pour garder les vôtres, créez un autre profil et activez Tri et filtres propres."
+    },
+    "deletedToast": "Le profil {{name}} a été supprimé. Ce navigateur utilise maintenant {{defaultName}}.",
+    "newProfile": "Nouveau profil à partir de cette configuration…",
+    "newDialog": {
+      "title": "Nouveau profil",
+      "copies": "Copie <profile>{{name}}</profile> : colonnes, densité, barres latérales et filtres. Ce navigateur l’utilise ensuite.",
+      "name": "Nom",
+      "namePlaceholder": "Par exemple, Portable",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Annuler",
+      "create": "Créer"
+    },
+    "iconPicker": {
+      "trigger": "Icône : {{icon}}. Changer l’icône et la couleur",
+      "letter": "Première lettre du nom",
+      "color": "Couleur"
+    },
+    "iconGroups": {
+      "devices": "Appareils",
+      "places": "Lieux",
+      "use": "Usage",
+      "mood": "Humeur"
+    },
+    "icons": {
+      "appWindow": "Fenêtre d’application",
+      "monitor": "Écran",
+      "laptop": "Ordinateur portable",
+      "tablet": "Tablette",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Serveur",
+      "gamepad": "Manette",
+      "house": "Maison",
+      "briefcase": "Mallette",
+      "building": "Immeuble",
+      "sofa": "Canapé",
+      "bed": "Lit",
+      "coffee": "Café",
+      "plane": "Avion",
+      "train": "Train",
+      "rows": "Lignes",
+      "table": "Tableau",
+      "list": "Liste",
+      "eye": "Œil",
+      "gauge": "Jauge",
+      "zap": "Éclair",
+      "download": "Téléchargement",
+      "upload": "Envoi",
+      "sprout": "Pousse",
+      "bookmark": "Signet",
+      "moon": "Lune",
+      "sun": "Soleil",
+      "star": "Étoile",
+      "heart": "Cœur",
+      "flame": "Flamme",
+      "rocket": "Fusée"
+    },
+    "colors": {
+      "none": "Aucune (couleur du texte)",
+      "sky": "Ciel",
+      "emerald": "Émeraude",
+      "amber": "Ambre",
+      "rose": "Rose",
+      "violet": "Violet",
+      "orange": "Orange",
+      "teal": "Sarcelle",
+      "pink": "Rose vif"
+    },
+    "columns": {
+      "headingEveryInstance": "Colonnes de {{profile}} · chaque instance",
+      "headingOneInstance": "Colonnes de {{profile}} · {{instance}} uniquement",
+      "unifiedView": "Vue unifiée",
+      "thisInstance": "cette instance"
+    },
+    "sameColumns": {
+      "label": "Mêmes colonnes sur chaque instance",
+      "menuHelp": "Le tri et les filtres de colonnes restent propres à chaque instance.",
+      "helpOn": "Une seule configuration de colonnes pour {{instances}}.",
+      "helpOff": "Chaque instance garde la sienne. L’activer donne à chaque instance les colonnes de {{instance}}.",
+      "helpOffNoInstance": "Chaque instance garde la sienne.",
+      "unifiedViewInList": "la vue unifiée"
     }
   }
 }

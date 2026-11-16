@@ -42,6 +42,8 @@ import { type TableViewMode } from "./TorrentTableColumns"
 import { TorrentListEmptyState } from "./TorrentListEmptyState"
 import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
+import { ColumnsMenuHeader } from "@/components/display-profiles/ColumnsMenuHeader"
+import { DisplayProfileChip } from "@/components/display-profiles/DisplayProfileChip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -63,6 +65,7 @@ import {
 import { useGlobalMaxRatio, useListenPort, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { recordColumnSetupInstance } from "@/lib/client-settings"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { useIncognitoMode } from "@/lib/incognito"
@@ -241,6 +244,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const listenPort = useListenPort(instanceId)
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  useEffect(() => recordColumnSetupInstance(instanceId), [instanceId])
 
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("desktop")
 
@@ -426,6 +430,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           secondary: t("statusBar.streamStatus.connecting.secondary", { seconds: TORRENT_STREAM_POLL_INTERVAL_SECONDS }),
           tone: streamConnected ? ("warning" as const) : ("muted" as const),
           animate: !streamConnected,
+          dotOnly: true,
         }
     }
   }, [
@@ -1140,8 +1145,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             </TooltipTrigger>
                             <TooltipContent>{t("tableView.toggleColumns")}</TooltipContent>
                           </Tooltip>
-                          <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>
+                          <DropdownMenuContent align="end" className="w-64">
+                            <ColumnsMenuHeader instanceId={instanceId} instanceName={instance?.name} />
                             <DropdownMenuSeparator />
                             <ColumnOrderMenu
                               table={table}
@@ -1301,7 +1306,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   {hasStreamStatusDetails ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+                        <div
+                          className="flex items-center gap-1.5 cursor-default text-[11px]"
+                          role={streamStatus.dotOnly ? "img" : undefined}
+                          aria-label={streamStatus.dotOnly ? streamStatus.label : undefined}
+                        >
                           <span
                             className={cn(
                               "h-1.5 w-1.5 rounded-full transition",
@@ -1309,7 +1318,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               streamStatus.animate && "animate-pulse"
                             )}
                           />
-                          {hasStreamStatusLabel && (
+                          {hasStreamStatusLabel && !streamStatus.dotOnly && (
                             <span className={cn("opacity-80", streamToneStyles.textClass)}>{streamStatus.label}</span>
                           )}
                         </div>
@@ -1464,6 +1473,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     )}
                   </div>
                   <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                    <DisplayProfileChip />
                     <Button
                       variant="ghost"
                       size="sm"

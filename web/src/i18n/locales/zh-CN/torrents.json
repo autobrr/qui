@@ -1646,6 +1646,137 @@
       "title": "合并你的辅种",
       "description": "将同一种子的多个副本显示为一行。",
       "action": "试试看"
+    },
+    "displayProfiles": {
+      "title": "显示配置",
+      "description": "为每块屏幕保留各自的列、行密度和侧边栏。在这里选择此浏览器的配置。",
+      "action": "创建配置"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "显示配置：{{name}}",
+    "menuLabel": "显示配置",
+    "defaultName": "默认",
+    "manage": "管理配置…",
+    "sheetDescription": "每个浏览器各自选择配置文件。",
+    "settings": {
+      "title": "显示配置",
+      "holds": "包含：列 · 行密度 · 侧边栏 · 筛选分区 · 分类树 · 空筛选",
+      "holdsHelp": "配置文件保存种子列表的外观：显示哪些列、列的顺序和宽度、名称列拉伸、行密度、展开的侧边栏和筛选分区、折叠的分类树，以及是否显示空筛选。每个浏览器使用一个配置文件，只有该浏览器记住这个选择。从未选择过配置文件的浏览器和隐私窗口使用 Default。其他设置由所有配置文件共享。",
+      "thisBrowser": "此浏览器",
+      "use": "在此浏览器中使用",
+      "makeProfile": "为笔记本电脑或手机创建配置文件",
+      "themesSync": "主题单独同步：<sync>主题同步</sync>",
+      "renameAriaLabel": "重命名 {{name}}",
+      "saveName": "保存名称",
+      "cancelRename": "取消重命名",
+      "editAriaLabel": "编辑 {{name}}",
+      "editTitle": "编辑配置文件",
+      "delete": "删除…",
+      "deleteTitle": "删除 {{name}}？",
+      "deleteDescription": "使用它的其他浏览器将切换到 {{defaultName}}。",
+      "deleteConfirm": "删除",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "表格行",
+        "dense": "紧凑行",
+        "stacked": "堆叠卡片"
+      },
+      "filterSidebarOpen": "筛选侧边栏展开",
+      "filterSidebarClosed": "筛选侧边栏收起"
+    },
+    "nameErrors": {
+      "empty": "请输入名称。",
+      "tooLong": "最多 {{max}} 个字符。",
+      "duplicate": "已有其他配置使用此名称。"
+    },
+    "ownSortAndFilters": {
+      "label": "独立的排序和筛选",
+      "help": "<lead>开启后，此配置会单独保存：</lead><list><item>种子列表的排序方式</item><item>列筛选和侧边栏筛选</item><item>统一视图显示的实例</item><item>合并副本的开关</item><item>详情面板上次打开的标签页</item><item>备份和 RSS 页面显示的实例</item></list><note>在此配置中对这些内容的更改不会影响其他配置。关闭后，此配置与其他所有未单独保存的配置共享这些内容。关闭会删除此配置单独保存的值。</note>",
+      "offWarning": "关闭此设置会删除 {{name}} 单独保存的排序和筛选。",
+      "defaultShares": "始终共享排序和筛选",
+      "defaultSharesHelp": "Default 始终与所有未单独保存的配置共享排序、筛选和其他视图选项。如需单独保存，请创建另一个配置并开启“独立的排序和筛选”。"
+    },
+    "deletedToast": "{{name}} 配置已删除。此浏览器现在使用 {{defaultName}}。",
+    "newProfile": "用当前设置新建配置文件…",
+    "newDialog": {
+      "title": "新建配置文件",
+      "copies": "复制<profile>{{name}}</profile>的列、密度、侧边栏和筛选器。之后此浏览器使用它。",
+      "name": "名称",
+      "namePlaceholder": "例如：笔记本",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "取消",
+      "create": "创建"
+    },
+    "iconPicker": {
+      "trigger": "图标：{{icon}}。更改图标和颜色",
+      "letter": "名称的首字母",
+      "color": "颜色"
+    },
+    "iconGroups": {
+      "devices": "设备",
+      "places": "地点",
+      "use": "用途",
+      "mood": "心情"
+    },
+    "icons": {
+      "appWindow": "应用窗口",
+      "monitor": "显示器",
+      "laptop": "笔记本",
+      "tablet": "平板",
+      "smartphone": "手机",
+      "tv": "电视",
+      "server": "服务器",
+      "gamepad": "游戏手柄",
+      "house": "房子",
+      "briefcase": "公文包",
+      "building": "大楼",
+      "sofa": "沙发",
+      "bed": "床",
+      "coffee": "咖啡",
+      "plane": "飞机",
+      "train": "火车",
+      "rows": "行",
+      "table": "表格",
+      "list": "列表",
+      "eye": "眼睛",
+      "gauge": "仪表",
+      "zap": "闪电",
+      "download": "下载",
+      "upload": "上传",
+      "sprout": "嫩芽",
+      "bookmark": "书签",
+      "moon": "月亮",
+      "sun": "太阳",
+      "star": "星星",
+      "heart": "爱心",
+      "flame": "火焰",
+      "rocket": "火箭"
+    },
+    "colors": {
+      "none": "无（文字颜色）",
+      "sky": "天蓝",
+      "emerald": "翠绿",
+      "amber": "琥珀",
+      "rose": "玫红",
+      "violet": "紫罗兰",
+      "orange": "橙色",
+      "teal": "青绿",
+      "pink": "粉红"
+    },
+    "columns": {
+      "headingEveryInstance": "{{profile}} 中的列 · 所有实例",
+      "headingOneInstance": "{{profile}} 中的列 · 仅 {{instance}}",
+      "unifiedView": "统一视图",
+      "thisInstance": "此实例"
+    },
+    "sameColumns": {
+      "label": "所有实例使用相同的列",
+      "menuHelp": "排序和列筛选仍按实例分别保存。",
+      "helpOn": "{{instances}}共用一套列设置。",
+      "helpOff": "每个实例保留自己的列设置。开启后，所有实例都会使用 {{instance}} 的列。",
+      "helpOffNoInstance": "每个实例保留自己的列设置。",
+      "unifiedViewInList": "统一视图"
     }
   }
 }

@@ -563,7 +563,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="theme-sync">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MonitorSmartphone className="size-4" />
