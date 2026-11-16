@@ -239,3 +239,46 @@ func TestHoldNamesWhyQuiKeepsATorrent(t *testing.T) {
 	require.NoError(t, store.Hold(source, "bbbb"))
 	require.ErrorIs(t, store.Hold(source, "AAAA"), transfer.ErrClaimed, "a hash in upper case names the same torrent")
 }
+
+// The Transfer saves its progress while it runs: the state, the steps and the
+// log, the failure, and the Proven pieces of each member.
+func TestSaveKeepsTheProgressPostgresIntegration(t *testing.T) {
+	t.Parallel()
+
+	engines(t, func(t *testing.T, db *database.DB) {
+		store := open(t, db)
+		record := group("aaaa", "bbbb")
+		require.NoError(t, store.Create(t.Context(), record))
+		at := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+
+		record.State = transfer.StateFailed
+		record.Steps = append(record.Steps, transfer.Step{Name: "copy", At: at})
+		record.Log = append(record.Log, transfer.LogLine{At: at, Message: "copied"})
+		record.FlushState = transfer.FlushConfirmed
+		record.ReservedBytes = 64
+		record.FailureClass, record.FailureReason = transfer.FailurePermanent, "conflict"
+		require.NoError(t, store.Save(t.Context(), record))
+		require.NoError(t, store.SaveProven(t.Context(), record.ID, 1, []byte{0b1010_0000}))
+
+		got, err := open(t, db).Get(t.Context(), record.ID)
+		require.NoError(t, err)
+		require.Equal(t, transfer.StateFailed, got.State)
+		require.Equal(t, []transfer.Step{{Name: "copy", At: at}}, normalizeSteps(got.Steps))
+		require.Len(t, got.Log, 1)
+		require.Equal(t, "copied", got.Log[0].Message)
+		require.Equal(t, transfer.FlushConfirmed, got.FlushState)
+		require.Equal(t, int64(64), got.ReservedBytes)
+		require.Equal(t, transfer.FailurePermanent, got.FailureClass)
+		require.Equal(t, "conflict", got.FailureReason)
+		require.Empty(t, got.Members[0].ProvenPieces)
+		require.Equal(t, []byte{0b1010_0000}, got.Members[1].ProvenPieces)
+		require.True(t, got.FinishedAt.IsZero(), "a save does not finish the Transfer")
+	})
+}
+
+func normalizeSteps(steps []transfer.Step) []transfer.Step {
+	for i := range steps {
+		steps[i].At = steps[i].At.UTC()
+	}
+	return steps
+}

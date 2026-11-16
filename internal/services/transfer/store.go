@@ -263,6 +263,35 @@ func (s *Store) members(ctx context.Context, transferID int64) ([]Member, error)
 	return members, rows.Err()
 }
 
+// Save writes what changes while a Transfer runs: the state, the steps, the
+// log, the flush state, the reserved bytes, the retry, and the failure.
+func (s *Store) Save(ctx context.Context, r *Record) error {
+	steps, err := json.Marshal(r.Steps)
+	if err != nil {
+		return err
+	}
+	logLines, err := json.Marshal(r.Log)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE torrent_transfers SET state = ?, steps_json = ?, log_json = ?, flush_state = ?,
+			reserved_bytes = ?, retry_at = ?, failure_class = ?, failure_reason = ? WHERE id = ?`,
+		string(r.State), string(steps), string(logLines), string(r.FlushState),
+		r.ReservedBytes, nullTime(r.RetryAt), string(r.FailureClass), r.FailureReason, r.ID); err != nil {
+		return fmt.Errorf("save transfer %d: %w", r.ID, err)
+	}
+	return nil
+}
+
+// SaveProven writes the Proven pieces of the member at position.
+func (s *Store) SaveProven(ctx context.Context, id int64, position int, proven []byte) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE torrent_transfer_members SET proven_pieces = ? WHERE transfer_id = ? AND position = ?`,
+		proven, id, position); err != nil {
+		return fmt.Errorf("save proven pieces of transfer %d: %w", id, err)
+	}
+	return nil
+}
+
 // Finish ends the Transfer in state, and releases its torrents and folders.
 func (s *Store) Finish(ctx context.Context, id int64, state State) error {
 	tx, err := s.db.BeginTx(ctx, nil)
