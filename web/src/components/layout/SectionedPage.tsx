@@ -8,7 +8,7 @@ import { ShownSectionContext } from "@/components/layout/shown-section"
 import { SIDEWAYS_PHONE_QUERY, useIsMobile, useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react"
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 /** A group without a label shows its sections without a heading. Labels arrive translated. */
 export interface SectionNavGroup<S extends string> {
@@ -47,10 +47,11 @@ export function SectionedPage<S extends string>({ title, description, badge, not
   const sideways = useMediaQuery(SIDEWAYS_PHONE_QUERY)
   const phone = useIsMobile() || sideways
   const showMenu = phone && section === undefined
-  // The section that a tap in the menu of a phone opened. While it shows, the history entry before it is the menu.
+  // tapped: the section that a tap in the menu of a phone opened. While it shows, the history entry before it is the menu.
   // A link or the command palette can then open another section, and that one has no menu entry before it, also when a
-  // later link opens the tapped section again.
-  const openedFromMenu = useRef<S | undefined>(undefined)
+  // later link opens the tapped section again. seen: the section of the last render, to notice that change.
+  const [menuTap, setMenuTap] = useState<{ tapped: S | undefined; seen: S | undefined }>({ tapped: undefined, seen: section })
+  if (menuTap.seen !== section) setMenuTap({ tapped: section === menuTap.tapped ? section : undefined, seen: section })
   // Where the menu of a phone was scrolled to, so that a return to it, also with the back gesture, lands there again.
   const menuScrollTop = useRef(0)
 
@@ -62,22 +63,18 @@ export function SectionedPage<S extends string>({ title, description, badge, not
     if (showMenu && main) main.scrollTop = menuScrollTop.current
   }, [showMenu])
 
-  useEffect(() => {
-    if (section !== openedFromMenu.current) openedFromMenu.current = undefined
-  }, [section])
-
   const openSection = (next: S, fromMenu: boolean) => {
     const main = scroller()
     if (main) {
       if (fromMenu) menuScrollTop.current = main.scrollTop
       main.scrollTop = 0
     }
-    openedFromMenu.current = fromMenu ? next : undefined
+    setMenuTap((tap) => ({ ...tap, tapped: fromMenu ? next : undefined }))
     onSectionChange(next, { replace: !fromMenu })
   }
 
   const backToMenu = () => {
-    if (section !== undefined && openedFromMenu.current === section) {
+    if (section !== undefined && menuTap.tapped === section) {
       window.history.back()
     } else {
       onSectionChange(undefined, { replace: true })
