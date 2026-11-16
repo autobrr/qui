@@ -319,7 +319,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
           className={baseUrlError ? "border-destructive focus-visible:ring-destructive" : undefined}
           aria-invalid={baseUrlError ? "true" : "false"}
           autoComplete="off"
-          data-1p-ignore
           required
         />
         {baseUrlError && (
@@ -340,7 +339,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
           onChange={(e) => setApiKey(e.target.value)}
           placeholder={t("indexers.autodiscovery.placeholders.apiKey")}
           autoComplete="off"
-          data-1p-ignore
           required
         />
       </div>
@@ -373,7 +371,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
               onChange={(e) => setBasicUsername(e.target.value)}
               placeholder={t("indexers.autodiscovery.placeholders.username")}
               autoComplete="off"
-              data-1p-ignore
               required
             />
           </div>
@@ -386,7 +383,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
               onChange={(e) => setBasicPassword(e.target.value)}
               placeholder={t("indexers.autodiscovery.placeholders.password")}
               autoComplete="off"
-              data-1p-ignore
               required
             />
           </div>
@@ -406,7 +402,7 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
         </DialogHeader>
 
         {step === "input" ? (
-          <form onSubmit={handleDiscover} autoComplete="off" data-1p-ignore className="flex-1 flex flex-col min-h-0">
+          <form onSubmit={handleDiscover} autoComplete="off" className="flex-1 flex flex-col min-h-0">
             <div className="grid gap-4 py-4 flex-1 overflow-y-auto">
               {savedConnections.length > 0 && (
                 <div className="grid gap-2">

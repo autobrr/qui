@@ -60,7 +60,6 @@ function GazelleCard({ settings }: { settings: CrossSeedAutomationSettings }) {
               id="gazelle-red-api-key"
               type="password"
               value={redactedApiKey}
-              data-1p-ignore="true"
               onChange={event => setRedactedApiKey(event.target.value)}
               placeholder={gazelleEnabled ? t("gazelle.pasteRedKey") : t("gazelle.enableToConfigure")}
               disabled={!gazelleEnabled}
@@ -77,7 +76,6 @@ function GazelleCard({ settings }: { settings: CrossSeedAutomationSettings }) {
               id="gazelle-ops-api-key"
               type="password"
               value={orpheusApiKey}
-              data-1p-ignore="true"
               onChange={event => setOrpheusApiKey(event.target.value)}
               placeholder={gazelleEnabled ? t("gazelle.pasteOpsKey") : t("gazelle.enableToConfigure")}
               disabled={!gazelleEnabled}

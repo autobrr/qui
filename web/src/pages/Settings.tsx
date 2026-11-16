@@ -149,6 +149,7 @@ function ChangePasswordForm() {
             <Input
               id="currentPassword"
               type="password"
+              autoComplete="current-password"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -176,6 +177,7 @@ function ChangePasswordForm() {
             <Input
               id="newPassword"
               type="password"
+              autoComplete="new-password"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
@@ -204,6 +206,7 @@ function ChangePasswordForm() {
             <Input
               id="confirmPassword"
               type="password"
+              autoComplete="new-password"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}

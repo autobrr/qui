@@ -280,7 +280,6 @@ export function ClientApiKeysManager() {
                               value={field.state.value}
                               onBlur={field.handleBlur}
                               onChange={(e) => field.handleChange(e.target.value)}
-                              data-1p-ignore
                               autoComplete='off'
                             />
                           </div>

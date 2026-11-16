@@ -102,6 +102,7 @@ export function Setup() {
                     <Input
                       id={field.name}
                       type="text"
+                      autoComplete="username"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
@@ -130,6 +131,7 @@ export function Setup() {
                     <Input
                       id={field.name}
                       type="password"
+                      autoComplete="new-password"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
@@ -159,6 +161,7 @@ export function Setup() {
                     <Input
                       id={field.name}
                       type="password"
+                      autoComplete="new-password"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}

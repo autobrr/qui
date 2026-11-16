@@ -442,7 +442,6 @@ export function LicenseManager({
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
                     autoComplete="off"
-                    data-1p-ignore
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>

@@ -179,7 +179,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
             {mode === "create" ? t("indexers.dialog.addDescription") : t("indexers.dialog.editDescription")}
           </DialogDescription>
         </DialogHeader>
-        <form id="indexer-form" onSubmit={handleSubmit} autoComplete="off" data-1p-ignore className="flex-1 overflow-y-auto min-h-0">
+        <form id="indexer-form" onSubmit={handleSubmit} autoComplete="off" className="flex-1 overflow-y-auto min-h-0">
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="name">{t("indexers.dialog.labels.name")}</Label>
@@ -191,7 +191,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 }
                 placeholder={t("indexers.dialog.placeholders.name")}
                 autoComplete="off"
-                data-1p-ignore
                 required
               />
             </div>
@@ -228,7 +227,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 }
                 placeholder={baseUrlPlaceholder}
                 autoComplete="off"
-                data-1p-ignore
                 required
               />
             </div>
@@ -245,7 +243,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   }
                   placeholder={backend === "prowlarr" ? t("indexers.dialog.placeholders.indexerIdProwlarr") : t("indexers.dialog.placeholders.indexerIdJackett")}
                   autoComplete="off"
-                  data-1p-ignore
                   required={requiresIndexerId}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -264,7 +261,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 }
                 placeholder={mode === "edit" ? t("indexers.dialog.placeholders.apiKeyEdit") : t("indexers.dialog.placeholders.apiKeyCreate")}
                 autoComplete="off"
-                data-1p-ignore
                 required={mode === "create"}
               />
             </div>
@@ -298,7 +294,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                     onChange={(e) => setFormData({ ...formData, basic_username: e.target.value })}
                     placeholder={t("indexers.dialog.placeholders.username")}
                     autoComplete="off"
-                    data-1p-ignore
                     required
                   />
                 </div>
@@ -311,7 +306,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                     onChange={(e) => setFormData({ ...formData, basic_password: e.target.value })}
                     placeholder={mode === "edit" ? "<redacted>" : t("indexers.dialog.placeholders.password")}
                     autoComplete="off"
-                    data-1p-ignore
                     required={mode === "create"}
                   />
                   {mode === "edit" && (
@@ -334,7 +328,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   }
                   min="0"
                   autoComplete="off"
-                  data-1p-ignore
                   required
                 />
               </div>
@@ -350,7 +343,6 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   min="5"
                   max="120"
                   autoComplete="off"
-                  data-1p-ignore
                   required
                 />
               </div>
