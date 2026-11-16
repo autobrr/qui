@@ -13,11 +13,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
 import { Checkbox } from "@/components/ui/checkbox"
-import type { MouseEvent } from "react"
+import { useRef, type MouseEvent } from "react"
 import { useTranslation } from "react-i18next"
 import type { Torrent } from "@/types"
 import { AlertTriangle } from "lucide-react"
@@ -80,86 +83,130 @@ export function DeleteTorrentDialog({
   const isLarge = isAllSelected || displayCount >= LARGE_DELETE
   const shown = previewTorrents.slice(0, 3)
   const notLoaded = Math.max(0, count - previewTorrents.length)
+  const isMobile = useIsMobile()
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
-  return (
-    // A delete that started cannot stop, so the dialog stays open until it ends.
-    <AlertDialog open={open} onOpenChange={(next) => isPending || onOpenChange(next)}>
-      <AlertDialogContent className="sm:max-w-2xl">
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {isAllSelected ? t("deleteDialog.titleSelectAll", { count }) : t("deleteDialog.title", { count: displayCount })}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {t("deleteDialog.description")}
-            {totalSize > 0 && (
-              <span className="block mt-2 text-xs text-muted-foreground">
-                {t("deleteDialog.totalSize", { size: formattedSize })}
-              </span>
+  const destructiveClass = "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  const title = isAllSelected ? t("deleteDialog.titleSelectAll", { count }) : t("deleteDialog.title", { count: displayCount })
+  const description = (
+    <>
+      {t("deleteDialog.description")}
+      {totalSize > 0 && (
+        <span className="block mt-2 text-xs text-muted-foreground">
+          {t("deleteDialog.totalSize", { size: formattedSize })}
+        </span>
+      )}
+    </>
+  )
+  const confirmLabel = isLarge ? t("deleteDialog.deleteCount", { count: displayCount }) : t("deleteDialog.delete")
+  // A delete that started cannot stop, so the dialog stays open until it ends.
+  const changeOpen = (next: boolean) => isPending || onOpenChange(next)
+  const body = (
+    <>
+      {isLarge && (
+        <div className="flex gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+          <div className="min-w-0">
+            {isAllSelected && (
+              <p className="font-medium text-destructive">
+                {t("deleteDialog.selectAllNotice")}
+                {notLoaded > 0 && ` ${t("deleteDialog.notLoaded", { count: notLoaded })}`}
+              </p>
             )}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        {isLarge && (
-          <div className="flex gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <div className="min-w-0">
-              {isAllSelected && (
-                <p className="font-medium text-destructive">
-                  {t("deleteDialog.selectAllNotice")}
-                  {notLoaded > 0 && ` ${t("deleteDialog.notLoaded", { count: notLoaded })}`}
-                </p>
-              )}
-              <ul className={cn("space-y-0.5 text-xs text-muted-foreground", isAllSelected && "mt-2")}>
-                {shown.map(torrent => <li key={torrent.hash} className="truncate">{incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name}</li>)}
-                {displayCount > shown.length && <li>{t("deleteDialog.andMore", { more: displayCount - shown.length })}</li>}
-              </ul>
-            </div>
+            <ul className={cn("space-y-0.5 text-xs text-muted-foreground", isAllSelected && "mt-2")}>
+              {shown.map(torrent => <li key={torrent.hash} className="truncate">{incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name}</li>)}
+              {displayCount > shown.length && <li>{t("deleteDialog.andMore", { more: displayCount - shown.length })}</li>}
+            </ul>
           </div>
-        )}
-        <DeleteFilesPreference
-          id="deleteFiles"
-          checked={deleteFiles}
-          onCheckedChange={onDeleteFilesChange}
-          isLocked={isDeleteFilesLocked}
-          onToggleLock={onToggleDeleteFilesLock}
+        </div>
+      )}
+      <DeleteFilesPreference
+        id="deleteFiles"
+        checked={deleteFiles}
+        onCheckedChange={onDeleteFilesChange}
+        isLocked={isDeleteFilesLocked}
+        onToggleLock={onToggleDeleteFilesLock}
+        disabled={isPending}
+      />
+      {crossSeedWarning && (
+        <CrossSeedWarning
+          affectedTorrents={crossSeedWarning.affectedTorrents}
+          uncheckedInstances={crossSeedWarning.uncheckedInstances}
+          searchState={crossSeedWarning.searchState}
+          hasWarning={crossSeedWarning.hasWarning}
+          deleteFiles={deleteFiles}
+          deleteCrossSeeds={deleteCrossSeeds}
+          onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
+          onSearch={crossSeedWarning.search}
           disabled={isPending}
         />
-        {crossSeedWarning && (
-          <CrossSeedWarning
-            affectedTorrents={crossSeedWarning.affectedTorrents}
-            uncheckedInstances={crossSeedWarning.uncheckedInstances}
-            searchState={crossSeedWarning.searchState}
-            hasWarning={crossSeedWarning.hasWarning}
-            deleteFiles={deleteFiles}
-            deleteCrossSeeds={deleteCrossSeeds}
-            onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
-            onSearch={crossSeedWarning.search}
+      )}
+      {showBlockCrossSeeds && (
+        <div className="mt-3 flex items-center gap-2">
+          <Checkbox
+            id="blockCrossSeeds"
+            checked={blockCrossSeeds}
+            onCheckedChange={(checked) => onBlockCrossSeedsChange(checked === true)}
             disabled={isPending}
           />
-        )}
-        {showBlockCrossSeeds && (
-          <div className="mt-3 flex items-center gap-2">
-            <Checkbox
-              id="blockCrossSeeds"
-              checked={blockCrossSeeds}
-              onCheckedChange={(checked) => onBlockCrossSeedsChange(checked === true)}
+          <label
+            htmlFor="blockCrossSeeds"
+            className="text-xs cursor-pointer select-none"
+          >
+            {t("deleteDialog.blockCrossSeeds")}
+          </label>
+        </div>
+      )}
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={changeOpen} dismissible={!isPending}>
+        <DrawerContent
+          className="max-h-[92dvh]"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            cancelRef.current?.focus({ preventScroll: true })
+          }}
+        >
+          <DrawerHeader className="text-left">
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription>{description}</DrawerDescription>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">{body}</div>
+          <div className="grid shrink-0 grid-cols-2 gap-2 border-t px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <Button ref={cancelRef} variant="outline" className="h-11" disabled={isPending} onClick={() => onOpenChange(false)}>
+              {t("deleteDialog.cancel")}
+            </Button>
+            <Button
+              className={cn("h-11", destructiveClass)}
               disabled={isPending}
-            />
-            <label
-              htmlFor="blockCrossSeeds"
-              className="text-xs cursor-pointer select-none"
+              onClick={(event) => {
+                onConfirm(event)
+                if (!event.defaultPrevented) onOpenChange(false)
+              }}
             >
-              {t("deleteDialog.blockCrossSeeds")}
-            </label>
+              {confirmLabel}
+            </Button>
           </div>
-        )}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <AlertDialog open={open} onOpenChange={changeOpen}>
+      <AlertDialogContent className="sm:max-w-2xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {body}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>{t("deleteDialog.cancel")}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            {isLarge ? t("deleteDialog.deleteCount", { count: displayCount }) : t("deleteDialog.delete")}
+          <AlertDialogAction onClick={onConfirm} disabled={isPending} className={destructiveClass}>
+            {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
