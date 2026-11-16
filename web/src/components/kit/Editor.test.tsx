@@ -70,4 +70,21 @@ describe("Editor", () => {
     await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
     expect(document.activeElement === screen.getByRole("textbox", { name: "Name" })).toBe(focusesField)
   })
+
+  it.each([
+    ["skips a disabled combobox and focuses the first field that takes input", <button type="button" role="combobox" aria-label="Type" disabled />, "Name"],
+    ["focuses the editor itself when the field it picks takes no focus", <div role="combobox" aria-label="Type" />, null],
+  ] as const)("with a fine pointer, %s", async (_case, leading, focused) => {
+    stubPointer("fine")
+    render(
+      <Editor open onOpenChange={() => {}} title="New target" submitLabel="Create" onSubmit={() => {}}>
+        {leading}
+        {focused === null ? null : <input aria-label={focused} />}
+      </Editor>
+    )
+
+    const dialog = await screen.findByRole("dialog")
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    expect(document.activeElement).toBe(focused === null ? dialog : screen.getByRole("textbox", { name: focused }))
+  })
 })
