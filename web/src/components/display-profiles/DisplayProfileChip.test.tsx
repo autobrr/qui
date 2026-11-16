@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -29,8 +29,36 @@ function SidebarProbe() {
   return <output>{collapsed ? "collapsed" : "open"}</output>
 }
 
+function chip(): HTMLElement {
+  return screen.getByRole("button", { name: "displayProfiles.chipAriaLabel" })
+}
+
 function openMenu(): void {
-  fireEvent.pointerDown(screen.getByRole("button", { name: "displayProfiles.chipAriaLabel" }), { button: 0, ctrlKey: false })
+  fireEvent.pointerDown(chip(), { button: 0, ctrlKey: false })
+}
+
+function row(name: string): HTMLElement {
+  return screen.getByRole("menuitemradio", { name })
+}
+
+/** Radix moves the focus of a menu in a timeout, so the check waits for it. */
+async function pressAndExpectFocus(key: string, expected: () => HTMLElement): Promise<void> {
+  fireEvent.keyDown(document.activeElement as Element, { key })
+  await waitFor(() => expect(document.activeElement).toBe(expected()))
+}
+
+/** Opens the picker of renderWithThreeProfiles, and waits for the focus on the row of Laptop. */
+async function openPickerOnLaptop(): Promise<void> {
+  openMenu()
+  await waitFor(() => expect(document.activeElement).toBe(row("Laptop")))
+}
+
+/** Default, Laptop, and Phone, with this browser on Laptop: the row in the middle. */
+function renderWithThreeProfiles(): void {
+  createDisplayProfile("Phone")
+  const laptop = createDisplayProfile("Laptop")
+  pickDisplayProfile(laptop)
+  render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
 }
 
 beforeEach(() => {
@@ -41,6 +69,53 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("DisplayProfileChip", () => {
+  it("opens with focus on the row of this browser's profile", async () => {
+    renderWithThreeProfiles()
+    openMenu()
+
+    await waitFor(() => expect(document.activeElement).toBe(row("Laptop")))
+  })
+
+  it("Up, Down, Home, and End move between the rows", async () => {
+    renderWithThreeProfiles()
+    await openPickerOnLaptop()
+
+    await pressAndExpectFocus("ArrowDown", () => row("Phone"))
+    await pressAndExpectFocus("ArrowUp", () => row("Laptop"))
+    await pressAndExpectFocus("ArrowUp", () => row("Default"))
+    await pressAndExpectFocus("End", () => screen.getByRole("menuitem", { name: "displayProfiles.manage" }))
+    await pressAndExpectFocus("Home", () => row("Default"))
+  })
+
+  it("the first letter of a name moves to that row", async () => {
+    renderWithThreeProfiles()
+    await openPickerOnLaptop()
+
+    await pressAndExpectFocus("p", () => row("Phone"))
+  })
+
+  it("Enter picks the row with focus, and the chip then shows it", async () => {
+    renderWithThreeProfiles()
+    await openPickerOnLaptop()
+    await pressAndExpectFocus("ArrowDown", () => row("Phone"))
+
+    fireEvent.keyDown(row("Phone"), { key: "Enter" })
+
+    expect(screen.queryByRole("menu")).toBeNull()
+    expect(chip().textContent).toBe("Phone")
+  })
+
+  it("Esc closes the picker, keeps the pick, and moves focus back to the chip", async () => {
+    renderWithThreeProfiles()
+    await openPickerOnLaptop()
+    await pressAndExpectFocus("ArrowDown", () => row("Phone"))
+
+    await pressAndExpectFocus("Escape", chip)
+
+    expect(screen.queryByRole("menu")).toBeNull()
+    expect(chip().textContent).toBe("Laptop")
+  })
+
   it("a pick in the list changes the value that a hook reads", () => {
     createDisplayProfile("Laptop")
     writeClientSetting("qui-filter-sidebar-collapsed", true)
