@@ -287,7 +287,6 @@ function ClientKeyEditor({ open, onOpenChange, instances, pending, error, onSave
           value={clientName}
           placeholder={t("clientApiKeys.createDialog.clientNamePlaceholder")}
           autoComplete="off"
-          data-1p-ignore
           onChange={(event) => {
             setClientName(event.target.value)
             setErrors((prev) => ({ ...prev, clientName: undefined }))

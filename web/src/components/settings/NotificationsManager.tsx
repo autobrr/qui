@@ -264,7 +264,6 @@ function TargetEditor({ open, onOpenChange, target, definitions, pending, submit
           value={name}
           placeholder={t("notifications.form.namePlaceholder")}
           autoComplete="off"
-          data-1p-ignore
           onChange={(event) => {
             setName(event.target.value)
             setErrors((prev) => ({ ...prev, name: undefined }))

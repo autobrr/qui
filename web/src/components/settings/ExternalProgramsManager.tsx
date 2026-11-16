@@ -292,7 +292,6 @@ function ProgramEditor({ open, onOpenChange, program, pending, submitDisabled, e
           value={name}
           placeholder={t("externalPrograms.namePlaceholder")}
           autoComplete="off"
-          data-1p-ignore
           onChange={(event) => {
             setName(event.target.value)
             setErrors((prev) => ({ ...prev, name: undefined }))

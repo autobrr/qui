@@ -165,7 +165,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
               placeholder={t("form.placeholders.instanceName")}
-              data-1p-ignore
               autoComplete="off"
             />
           </Field>
@@ -234,7 +233,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder={t("form.placeholders.username")}
-                  data-1p-ignore
                   autoComplete="off"
                   autoCapitalize="off"
                 />
@@ -256,7 +254,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder={instance ? t("form.placeholders.passwordExisting") : t("form.placeholders.passwordNew")}
-                  data-1p-ignore
                   autoComplete="off"
                 />
               </Field>
@@ -294,7 +291,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
                 }}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder={instance ? t("form.placeholders.apiKeyExisting") : t("form.placeholders.apiKeyNew")}
-                data-1p-ignore
                 autoComplete="off"
               />
             </Field>
@@ -321,7 +317,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={t("form.placeholders.basicAuthUsername")}
-                    data-1p-ignore
                     autoComplete="off"
                     autoCapitalize="off"
                   />
@@ -348,7 +343,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
                     }}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={t("form.placeholders.basicAuthPassword")}
-                    data-1p-ignore
                     autoComplete="off"
                   />
                 </Field>

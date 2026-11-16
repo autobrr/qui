@@ -176,7 +176,6 @@ export function IndexerDialog({ open, onOpenChange, indexer, pending, error, onS
     },
     value: values[name] as string,
     autoComplete: "off",
-    "data-1p-ignore": true,
     onChange: (event: ChangeEvent<HTMLInputElement>) => {
       update({ [name]: event.target.value })
       setErrors((prev) => ({ ...prev, [name]: undefined }))

@@ -411,7 +411,6 @@ function CustomizeEditor({ mode, initialName, domains, incognitoMode, saving, on
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder={t("trackerCustomizations.customizeDialog.displayNamePlaceholder")}
           autoComplete="off"
-          data-1p-ignore
         />
       </Field>
       <div role="group" aria-labelledby={domainsLabelId} className="space-y-2">

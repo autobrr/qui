@@ -46,7 +46,6 @@ function GazelleSection({ settings }: { settings: CrossSeedAutomationSettings })
   const keyInput = {
     type: "password",
     autoComplete: "off",
-    "data-1p-ignore": "true",
     disabled: !gazelleEnabled,
   }
 

@@ -388,7 +388,6 @@ export function LicenseManager({
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
                     autoComplete="off"
-                    data-1p-ignore
                   />
                 </Field>
               )}

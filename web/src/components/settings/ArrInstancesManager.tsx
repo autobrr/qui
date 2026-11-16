@@ -388,7 +388,6 @@ function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSav
           {...input("name", name, setName)}
           placeholder={t("arrInstances.form.namePlaceholder", { type: typeName })}
           autoComplete="off"
-          data-1p-ignore
         />
       </Field>
       <Field label={t("arrInstances.form.baseUrl")} error={errors.baseUrl}>
@@ -412,7 +411,6 @@ function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSav
           type="password"
           placeholder={isEdit ? t("arrInstances.form.apiKeyPlaceholderEdit") : t("arrInstances.form.apiKeyPlaceholder")}
           autoComplete="off"
-          data-1p-ignore
         />
       </Field>
       <SwitchRow
@@ -433,14 +431,14 @@ function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSav
       {showBasicAuth && (
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label={t("arrInstances.form.basicUsername")} error={errors.basicUsername}>
-            <Input {...input("basicUsername", basicUsername, setBasicUsername)} autoComplete="off" data-1p-ignore />
+            <Input {...input("basicUsername", basicUsername, setBasicUsername)} autoComplete="off" />
           </Field>
           <Field
             label={t("arrInstances.form.basicPassword")}
             description={instance?.basic_username ? t("arrInstances.form.basicPasswordKeep") : undefined}
             error={errors.basicPassword}
           >
-            <Input {...input("basicPassword", basicPassword, setBasicPassword)} type="password" autoComplete="off" data-1p-ignore />
+            <Input {...input("basicPassword", basicPassword, setBasicPassword)} type="password" autoComplete="off" />
           </Field>
         </div>
       )}
