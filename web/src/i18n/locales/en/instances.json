@@ -42,7 +42,13 @@
     "passwordRequired": "Password required",
     "decryptionDescription": "Unable to decrypt saved password. This usually happens when the session secret has changed.",
     "reenterPassword": "Re-enter password",
-    "recentErrors": "Recent errors ({{count}})"
+    "recentErrors": "Recent errors ({{count}})",
+    "errorTypes": {
+      "connection": "Connection",
+      "authentication": "Authentication",
+      "ban": "Ban",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

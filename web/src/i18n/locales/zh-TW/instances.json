@@ -42,7 +42,13 @@
     "passwordRequired": "需要密碼",
     "decryptionDescription": "無法解密已儲存的密碼。這通常是因為工作階段金鑰已更改。",
     "reenterPassword": "重新輸入密碼",
-    "recentErrors": "近期錯誤（{{count}}）"
+    "recentErrors": "近期錯誤（{{count}}）",
+    "errorTypes": {
+      "connection": "連線",
+      "authentication": "身分驗證",
+      "ban": "封鎖",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

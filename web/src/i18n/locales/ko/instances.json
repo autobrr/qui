@@ -42,7 +42,13 @@
     "passwordRequired": "비밀번호 필요",
     "decryptionDescription": "저장된 비밀번호를 해독할 수 없습니다. 일반적으로 세션 시크릿이 변경되었을 때 발생합니다.",
     "reenterPassword": "비밀번호 다시 입력",
-    "recentErrors": "최근 오류 ({{count}})"
+    "recentErrors": "최근 오류 ({{count}})",
+    "errorTypes": {
+      "connection": "연결",
+      "authentication": "인증",
+      "ban": "차단",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

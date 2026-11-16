@@ -42,7 +42,13 @@
     "passwordRequired": "Passwort erforderlich",
     "decryptionDescription": "Das gespeicherte Passwort kann nicht entschlüsselt werden. Das passiert üblicherweise, wenn sich das Session-Secret geändert hat.",
     "reenterPassword": "Passwort erneut eingeben",
-    "recentErrors": "Letzte Fehler ({{count}})"
+    "recentErrors": "Letzte Fehler ({{count}})",
+    "errorTypes": {
+      "connection": "Verbindung",
+      "authentication": "Authentifizierung",
+      "ban": "Sperre",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

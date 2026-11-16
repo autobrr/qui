@@ -42,7 +42,13 @@
     "passwordRequired": "Password obbligatoria",
     "decryptionDescription": "Impossibile decifrare la password salvata. Di solito accade quando il segreto della sessione è cambiato.",
     "reenterPassword": "Inserisci di nuovo la password",
-    "recentErrors": "Errori recenti ({{count}})"
+    "recentErrors": "Errori recenti ({{count}})",
+    "errorTypes": {
+      "connection": "Connessione",
+      "authentication": "Autenticazione",
+      "ban": "Ban",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

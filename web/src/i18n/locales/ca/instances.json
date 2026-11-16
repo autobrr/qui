@@ -42,7 +42,13 @@
     "passwordRequired": "Cal la contrasenya",
     "decryptionDescription": "No s'ha pogut desxifrar la contrasenya desada. Això sol passar quan ha canviat el secret de la sessió.",
     "reenterPassword": "Torna a introduir la contrasenya",
-    "recentErrors": "Errors recents ({{count}})"
+    "recentErrors": "Errors recents ({{count}})",
+    "errorTypes": {
+      "connection": "Connexió",
+      "authentication": "Autenticació",
+      "ban": "Bloqueig",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

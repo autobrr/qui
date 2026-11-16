@@ -42,7 +42,13 @@
     "passwordRequired": "Heslo je povinné",
     "decryptionDescription": "Nepodařilo se dešifrovat uložené heslo. To obvykle nastane, když se změní session secret.",
     "reenterPassword": "Znovu zadat heslo",
-    "recentErrors": "Poslední Chyby ({{count}})"
+    "recentErrors": "Poslední Chyby ({{count}})",
+    "errorTypes": {
+      "connection": "Připojení",
+      "authentication": "Ověření",
+      "ban": "Zákaz",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

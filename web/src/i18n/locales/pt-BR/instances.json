@@ -42,7 +42,13 @@
     "passwordRequired": "Senha Obrigatória",
     "decryptionDescription": "Não foi possível descriptografar a senha salva. Isso geralmente acontece quando o segredo da sessão é alterado.",
     "reenterPassword": "Digite a Senha Novamente",
-    "recentErrors": "Erros Recentes ({{count}})"
+    "recentErrors": "Erros Recentes ({{count}})",
+    "errorTypes": {
+      "connection": "Conexão",
+      "authentication": "Autenticação",
+      "ban": "Banimento",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {

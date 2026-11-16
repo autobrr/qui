@@ -42,7 +42,13 @@
     "passwordRequired": "Потрібен пароль",
     "decryptionDescription": "Не вдалося розшифрувати збережений пароль. Зазвичай це відбувається, коли секрет сеансу змінюється.",
     "reenterPassword": "Повторно введіть пароль",
-    "recentErrors": "Останні помилки ({{count}})"
+    "recentErrors": "Останні помилки ({{count}})",
+    "errorTypes": {
+      "connection": "Підключення",
+      "authentication": "Автентифікація",
+      "ban": "Блокування",
+      "api": "API"
+    }
   },
   "form": {
     "labels": {
