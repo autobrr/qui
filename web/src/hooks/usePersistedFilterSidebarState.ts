@@ -5,8 +5,10 @@
 
 import { parseJsonBoolean, useClientSetting } from "@/lib/client-settings"
 
+export const FILTER_SIDEBAR_COLLAPSED_KEY = "qui-filter-sidebar-collapsed"
+
 export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false) {
-  return useClientSetting<boolean>("qui-filter-sidebar-collapsed", {
+  return useClientSetting<boolean>(FILTER_SIDEBAR_COLLAPSED_KEY, {
     defaultValue: defaultCollapsed,
     parse: parseJsonBoolean,
   })

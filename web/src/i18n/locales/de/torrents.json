@@ -1741,17 +1741,29 @@
     "chipAriaLabel": "Anzeigeprofil: {{name}}",
     "menuLabel": "Anzeigeprofil",
     "manage": "Profile verwalten…",
-    "panel": {
+    "settings": {
       "title": "Anzeigeprofile",
-      "description": "Dieser Browser nutzt ein Profil. Eine Änderung an Spalten, Zeilendichte oder Seitenleisten gilt nur für dieses Profil.",
+      "holds": "Enthält: Spalten · Zeilendichte · Seitenleisten · Filterbereiche · Kategoriebäume · Leere Filter",
+      "holdsHelp": "Ein Profil enthält, wie die Torrent-Liste aussieht: welche Spalten sichtbar sind, ihre Reihenfolge und Breite, die Dehnung der Namensspalte, die Zeilendichte, die offenen Seitenleisten und Filterbereiche, die eingeklappten Kategoriebäume und ob leere Filter angezeigt werden. Jeder Browser nutzt ein Profil, und nur dieser Browser merkt sich die Wahl. Ein Browser, der nie eines gewählt hat, und ein privates Fenster nutzen Default. Alle anderen Einstellungen teilen sich alle Profile.",
       "thisBrowser": "Dieser Browser",
-      "use": "Verwenden",
+      "use": "In diesem Browser verwenden",
+      "makeProfile": "Ein Profil für einen Laptop oder ein Smartphone erstellen",
+      "themesSync": "Themes synchronisieren sich separat: <sync>Theme-Synchronisierung</sync>",
       "renameAriaLabel": "{{name}} umbenennen",
-      "deleteAriaLabel": "{{name}} löschen",
+      "saveName": "Namen speichern",
+      "cancelRename": "Umbenennen abbrechen",
+      "delete": "Löschen…",
       "deleteTitle": "{{name}} löschen?",
       "deleteDescription": "Andere Browser, die es verwenden, wechseln zu {{defaultName}}.",
       "deleteConfirm": "Löschen",
-      "changeIcon": "Symbol von {{name}} ändern"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Tabellenzeilen",
+        "dense": "Kompakte Zeilen",
+        "stacked": "Gestapelte Karten"
+      },
+      "filterSidebarOpen": "Filterleiste offen",
+      "filterSidebarClosed": "Filterleiste geschlossen"
     },
     "nameErrors": {
       "empty": "Gib einen Namen ein.",

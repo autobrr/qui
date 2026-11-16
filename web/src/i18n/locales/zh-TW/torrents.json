@@ -1657,17 +1657,29 @@
     "chipAriaLabel": "顯示設定檔：{{name}}",
     "menuLabel": "顯示設定檔",
     "manage": "管理設定檔…",
-    "panel": {
+    "settings": {
       "title": "顯示設定檔",
-      "description": "此瀏覽器使用一個設定檔。對欄位、列密度或側邊欄的變更只套用到該設定檔。",
+      "holds": "包含：欄位 · 列密度 · 側邊欄 · 篩選區段 · 分類樹 · 空篩選",
+      "holdsHelp": "設定檔保存種子列表的外觀：顯示哪些欄位、欄位的順序和寬度、名稱欄延展、列密度、展開的側邊欄和篩選區段、收合的分類樹，以及是否顯示空篩選。每個瀏覽器使用一個設定檔，只有該瀏覽器記住這個選擇。從未選擇過設定檔的瀏覽器和私密視窗使用 Default。其他設定由所有設定檔共用。",
       "thisBrowser": "此瀏覽器",
-      "use": "使用",
+      "use": "在此瀏覽器中使用",
+      "makeProfile": "為筆記型電腦或手機建立設定檔",
+      "themesSync": "主題單獨同步：<sync>主題同步</sync>",
       "renameAriaLabel": "重新命名 {{name}}",
-      "deleteAriaLabel": "刪除 {{name}}",
+      "saveName": "儲存名稱",
+      "cancelRename": "取消重新命名",
+      "delete": "刪除…",
       "deleteTitle": "刪除 {{name}}？",
       "deleteDescription": "使用它的其他瀏覽器將切換到 {{defaultName}}。",
       "deleteConfirm": "刪除",
-      "changeIcon": "變更{{name}}的圖示"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "表格列",
+        "dense": "緊湊列",
+        "stacked": "堆疊卡片"
+      },
+      "filterSidebarOpen": "篩選側邊欄展開",
+      "filterSidebarClosed": "篩選側邊欄收合"
     },
     "nameErrors": {
       "empty": "請輸入名稱。",

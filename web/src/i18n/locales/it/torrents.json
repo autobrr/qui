@@ -1741,17 +1741,29 @@
     "chipAriaLabel": "Profilo di visualizzazione: {{name}}",
     "menuLabel": "Profilo di visualizzazione",
     "manage": "Gestisci profili…",
-    "panel": {
+    "settings": {
       "title": "Profili di visualizzazione",
-      "description": "Questo browser usa un profilo. Una modifica alle colonne, alla densità delle righe o alle barre laterali vale solo per quel profilo.",
+      "holds": "Contiene: colonne · densità delle righe · barre laterali · sezioni dei filtri · alberi delle categorie · filtri vuoti",
+      "holdsHelp": "Un profilo contiene l’aspetto dell’elenco dei torrent: quali colonne sono visibili, il loro ordine e la loro larghezza, l’estensione della colonna Nome, la densità delle righe, le barre laterali e le sezioni dei filtri aperte, gli alberi delle categorie compressi e se i filtri vuoti sono visibili. Ogni browser usa un profilo, e solo quel browser ricorda la scelta. Un browser che non ne ha mai scelto uno, e una finestra privata, usano Default. Tutti i profili condividono le altre impostazioni.",
       "thisBrowser": "Questo browser",
-      "use": "Usa",
+      "use": "Usa in questo browser",
+      "makeProfile": "Crea un profilo per un portatile o un telefono",
+      "themesSync": "I temi si sincronizzano per conto loro: <sync>Sincronizzazione del tema</sync>",
       "renameAriaLabel": "Rinomina {{name}}",
-      "deleteAriaLabel": "Elimina {{name}}",
+      "saveName": "Salva il nome",
+      "cancelRename": "Annulla la rinomina",
+      "delete": "Elimina…",
       "deleteTitle": "Eliminare {{name}}?",
       "deleteDescription": "Gli altri browser che lo usano passano a {{defaultName}}.",
       "deleteConfirm": "Elimina",
-      "changeIcon": "Cambia l’icona di {{name}}"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Righe di tabella",
+        "dense": "Righe dense",
+        "stacked": "Schede impilate"
+      },
+      "filterSidebarOpen": "barra dei filtri aperta",
+      "filterSidebarClosed": "barra dei filtri chiusa"
     },
     "nameErrors": {
       "empty": "Inserisci un nome.",

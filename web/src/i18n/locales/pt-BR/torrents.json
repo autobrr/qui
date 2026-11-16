@@ -1741,17 +1741,29 @@
     "chipAriaLabel": "Perfil de exibição: {{name}}",
     "menuLabel": "Perfil de exibição",
     "manage": "Gerenciar perfis…",
-    "panel": {
+    "settings": {
       "title": "Perfis de exibição",
-      "description": "Este navegador usa um perfil. Uma mudança nas colunas, na densidade das linhas ou nas barras laterais vale só para esse perfil.",
+      "holds": "Guarda: colunas · densidade das linhas · barras laterais · seções de filtros · árvores de categorias · filtros vazios",
+      "holdsHelp": "Um perfil guarda a aparência da lista de torrents: quais colunas aparecem, sua ordem e largura, o esticamento da coluna Nome, a densidade das linhas, as barras laterais e seções de filtros abertas, as árvores de categorias recolhidas e se os filtros vazios aparecem. Cada navegador usa um perfil, e só esse navegador lembra a escolha. Um navegador que nunca escolheu um, e uma janela privada, usam Default. Todos os perfis compartilham as outras configurações.",
       "thisBrowser": "Este navegador",
-      "use": "Usar",
+      "use": "Usar neste navegador",
+      "makeProfile": "Criar um perfil para um notebook ou celular",
+      "themesSync": "Os temas sincronizam por conta própria: <sync>Sincronização do tema</sync>",
       "renameAriaLabel": "Renomear {{name}}",
-      "deleteAriaLabel": "Excluir {{name}}",
+      "saveName": "Salvar o nome",
+      "cancelRename": "Cancelar a renomeação",
+      "delete": "Excluir…",
       "deleteTitle": "Excluir {{name}}?",
       "deleteDescription": "Outros navegadores que o usam passam para {{defaultName}}.",
       "deleteConfirm": "Excluir",
-      "changeIcon": "Alterar o ícone de {{name}}"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Linhas de tabela",
+        "dense": "Linhas densas",
+        "stacked": "Cartões empilhados"
+      },
+      "filterSidebarOpen": "barra de filtros aberta",
+      "filterSidebarClosed": "barra de filtros fechada"
     },
     "nameErrors": {
       "empty": "Digite um nome.",

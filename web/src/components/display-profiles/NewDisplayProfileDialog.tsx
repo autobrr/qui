@@ -27,10 +27,12 @@ import { DisplayProfileTile } from "./DisplayProfileTile"
 interface NewDisplayProfileDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Called with the id of the new profile, after this browser starts to use it. */
+  onCreated?: (profileId: string) => void
 }
 
 /** Makes a profile from the setup of this browser, and this browser then uses it. */
-export function NewDisplayProfileDialog({ open, onOpenChange }: NewDisplayProfileDialogProps) {
+export function NewDisplayProfileDialog({ open, onOpenChange, onCreated }: NewDisplayProfileDialogProps) {
   const nameRef = useRef<HTMLInputElement>(null)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,7 +44,14 @@ export function NewDisplayProfileDialog({ open, onOpenChange }: NewDisplayProfil
         }}
       >
         {/* The content unmounts on close, so a cancelled draft does not come back. */}
-        <NewDisplayProfileForm nameRef={nameRef} onCreated={() => onOpenChange(false)} onCancel={() => onOpenChange(false)} />
+        <NewDisplayProfileForm
+          nameRef={nameRef}
+          onCreated={(profileId) => {
+            onOpenChange(false)
+            onCreated?.(profileId)
+          }}
+          onCancel={() => onOpenChange(false)}
+        />
       </DialogContent>
     </Dialog>
   )
@@ -50,7 +59,7 @@ export function NewDisplayProfileDialog({ open, onOpenChange }: NewDisplayProfil
 
 interface NewDisplayProfileFormProps {
   nameRef: RefObject<HTMLInputElement | null>
-  onCreated: () => void
+  onCreated: (profileId: string) => void
   onCancel: () => void
 }
 
@@ -81,8 +90,7 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
     event.preventDefault()
     setSubmitted(true)
     if (error) return
-    create(name, { icon, color })
-    onCreated()
+    onCreated(create(name, { icon, color }))
   }
 
   return (

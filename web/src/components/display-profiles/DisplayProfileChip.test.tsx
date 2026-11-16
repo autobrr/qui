@@ -4,6 +4,7 @@
  */
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -24,8 +25,11 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }))
-const instancesMock = vi.hoisted(() => ({ instances: [] }))
-vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instancesMock }))
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ to, search, children, ...props }: { to: string; search?: Record<string, string>; children: ReactNode }) => (
+    <a href={`${to}?${new URLSearchParams(search)}`} {...props}>{children}</a>
+  ),
+}))
 
 import { DisplayProfileChip } from "./DisplayProfileChip"
 
@@ -134,6 +138,16 @@ describe("DisplayProfileChip", () => {
     act(() => fireEvent.click(laptop))
 
     expect(screen.getByRole("status").textContent).toBe("collapsed")
+  })
+
+  it("Manage profiles… links to the Display profiles section of Settings", () => {
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
+    openMenu()
+
+    const manage = screen.getByRole("menuitem", { name: "displayProfiles.manage" })
+
+    expect(manage.tagName).toBe("A")
+    expect(manage.getAttribute("href")).toBe("/settings?tab=display-profiles")
   })
 
   it("the New profile item opens the dialog with focus in the name field", async () => {

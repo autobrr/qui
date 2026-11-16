@@ -1741,17 +1741,29 @@
     "chipAriaLabel": "Perfil de visualització: {{name}}",
     "menuLabel": "Perfil de visualització",
     "manage": "Gestiona els perfils…",
-    "panel": {
+    "settings": {
       "title": "Perfils de visualització",
-      "description": "Aquest navegador fa servir un perfil. Un canvi a les columnes, la densitat de files o les barres laterals només afecta aquest perfil.",
+      "holds": "Conté: columnes · densitat de files · barres laterals · seccions de filtres · arbres de categories · filtres buits",
+      "holdsHelp": "Un perfil conté l’aspecte de la llista de torrents: quines columnes es mostren, el seu ordre i amplada, l’estirament de la columna Nom, la densitat de files, les barres laterals i les seccions de filtres obertes, els arbres de categories plegats i si es mostren els filtres buits. Cada navegador fa servir un perfil, i només aquest navegador recorda l’elecció. Un navegador que no n’ha triat mai cap, i una finestra privada, fan servir Default. Tots els perfils comparteixen la resta de la configuració.",
       "thisBrowser": "Aquest navegador",
-      "use": "Fes servir",
+      "use": "Fes-lo servir en aquest navegador",
+      "makeProfile": "Crea un perfil per a un portàtil o un telèfon",
+      "themesSync": "Els temes se sincronitzen pel seu compte: <sync>Sincronització del tema</sync>",
       "renameAriaLabel": "Canvia el nom de {{name}}",
-      "deleteAriaLabel": "Suprimeix {{name}}",
+      "saveName": "Desa el nom",
+      "cancelRename": "Cancel·la el canvi de nom",
+      "delete": "Suprimeix…",
       "deleteTitle": "Vols suprimir {{name}}?",
       "deleteDescription": "Els altres navegadors que el fan servir passen a {{defaultName}}.",
       "deleteConfirm": "Suprimeix",
-      "changeIcon": "Canvia la icona de {{name}}"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Files de taula",
+        "dense": "Files denses",
+        "stacked": "Targetes apilades"
+      },
+      "filterSidebarOpen": "barra de filtres oberta",
+      "filterSidebarClosed": "barra de filtres tancada"
     },
     "nameErrors": {
       "empty": "Introdueix un nom.",

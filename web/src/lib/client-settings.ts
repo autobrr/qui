@@ -512,23 +512,22 @@ function keepsOwnCopy(profile: DisplayProfile, key: string): boolean {
   return group === "display" || (group === "sortAndFilters" && profile.ownSortAndFilters)
 }
 
-/** The storage key that a write of a setting goes to, for the profile of this browser. */
-function resolveKey(key: string): string {
-  const { active } = getDisplayProfiles()
-  if (!keepsOwnCopy(active, key)) return key
-  const prefix = active.usesSameColumns ? instanceColumnSetupPrefix(key) : undefined
-  return profileStorageKey(active, prefix === undefined ? key : prefix + SHARED_COLUMN_SETUP)
+/** The storage key that a write of a setting goes to, by default for the profile of this browser. */
+function resolveKey(key: string, profile: DisplayProfile = getDisplayProfiles().active): string {
+  if (!keepsOwnCopy(profile, key)) return key
+  const prefix = profile.usesSameColumns ? instanceColumnSetupPrefix(key) : undefined
+  return profileStorageKey(profile, prefix === undefined ? key : prefix + SHARED_COLUMN_SETUP)
 }
 
 /**
  * The storage key that a read of a setting comes from. It differs from resolveKey only for an instance that has no
  * Column setup of its own while Same columns is off: that instance reads the shared setup, the last one it showed.
  */
-function resolveReadKey(key: string): string {
-  const storageKey = resolveKey(key)
+function resolveReadKey(key: string, profile: DisplayProfile = getDisplayProfiles().active): string {
+  const storageKey = resolveKey(key, profile)
   const prefix = instanceColumnSetupPrefix(key)
   if (prefix === undefined || readRaw(storageKey) !== null) return storageKey
-  return profileStorageKey(getDisplayProfiles().active, prefix + SHARED_COLUMN_SETUP)
+  return profileStorageKey(profile, prefix + SHARED_COLUMN_SETUP)
 }
 
 /** Makes this browser use the profile. Only this browser remembers the pick. Every live setting re-reads at once. */
@@ -968,6 +967,18 @@ export function subscribeClientSettings(callback: () => void): () => void {
     window.removeEventListener("storage", callback)
     window.removeEventListener(CHANGE_EVENT, callback)
   }
+}
+
+/**
+ * The value of one setting as a profile sees it, whatever profile this browser uses, for a place that shows
+ * profiles side by side, such as Settings. A profile that does not exist reads the default.
+ */
+export function useDisplayProfileSetting<T>(profileId: string, key: string, { defaultValue, parse }: ClientSettingOptions<T>): T {
+  const raw = useSyncExternalStore(subscribeClientSettings, () => {
+    const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+    return profile ? readRaw(resolveReadKey(key, profile)) : null
+  })
+  return useMemo(() => decode(raw, { defaultValue, parse }), [raw, parse, defaultValue])
 }
 
 /**
