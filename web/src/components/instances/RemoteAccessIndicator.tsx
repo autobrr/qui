@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { remoteAccessLimits, type RemoteAccessLimit } from "@/lib/remote-access"
 import { cn } from "@/lib/utils"
 import type { Instance } from "@/types"
@@ -11,8 +12,8 @@ import { useTranslation } from "react-i18next"
 
 interface RemoteAccessIndicatorProps {
   instance: Pick<Instance, "filesystemMode" | "sshTier" | "sshHardlink">
-  // fact: an icon and a few words, for the row of the instance in Settings. It takes no focus, because the row is a
-  // button. inline: the list of limits, for the SSH tab.
+  // fact: an icon and a few words, for the row of the instance in Settings, with the limits in a tooltip on hover. It
+  // takes no focus, because the row is a button. inline: the list of limits, for the SSH tab.
   variant: "fact" | "inline"
   className?: string
 }
@@ -21,9 +22,9 @@ interface RemoteAccessIndicatorProps {
 // leaves off: the degraded mode the design doc wants visible, not silent.
 export function RemoteAccessIndicator({ instance, variant, className }: RemoteAccessIndicatorProps) {
   const { t } = useTranslation("instances")
+  const limits = remoteAccessLimits(instance)
 
   if (variant === "inline") {
-    const limits = remoteAccessLimits(instance)
     if (limits.length === 0) {
       return null
     }
@@ -35,11 +36,25 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
     return <span className={className}>{t("access.none")}</span>
   }
   const Icon = mode === "remote" ? KeyRound : HardDrive
-  return (
-    <span className={className}>
+  const fact = (
+    <span className={cn(limits.length > 0 && "cursor-help", className)}>
       <Icon aria-hidden="true" className="mr-1 inline size-3 align-[-0.125em]" />
       {mode === "local" ? t("access.local") : t("access.remote")}
     </span>
+  )
+  if (limits.length === 0) {
+    return fact
+  }
+  return (
+    <Tooltip>
+      {/* A tap opens the tooltip, not the row, which a mouse click still opens. */}
+      <TooltipTrigger asChild onClick={(event) => (event.nativeEvent as PointerEvent).pointerType === "touch" && event.stopPropagation()}>
+        {fact}
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        <LimitList limits={limits} />
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
