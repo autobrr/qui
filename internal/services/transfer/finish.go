@@ -152,38 +152,51 @@ func (j *job) removeHelper(ctx context.Context) error {
 // place renames the copy into place and adds the real torrent on the
 // target, stopped and in seed mode, with the file names of the source.
 func (j *job) place(ctx context.Context) error {
-	if err := j.step(ctx, StateFinishing, "place"); err != nil {
+	again := j.reached(stepPlace)
+	if err := j.stepWith(ctx, StateFinishing, stepPlace, headStartDetail(j.plan)); err != nil {
 		return err
 	}
-	if onTarget, err := j.svc.has(ctx, j.target.ID, j.hash()); err != nil {
-		return temporary("qui cannot read the torrents of %s: %v", j.target.Name, err)
-	} else if onTarget {
-		return permanent("Already on the target: %s has this torrent.", j.target.Name)
+	owned := j.reached(stepAdded)
+	if !owned {
+		onTarget, err := j.svc.has(ctx, j.target.ID, j.hash())
+		switch {
+		case err != nil:
+			return temporary("qui cannot read the torrents of %s: %v", j.target.Name, err)
+		case onTarget && j.reached(stepAdd):
+			return j.ownershipUnknown()
+		case onTarget:
+			return permanent("Already on the target: %s has this torrent.", j.target.Name)
+		}
 	}
 	for _, f := range j.plan {
 		if f.pad || f.onTarget {
 			continue
 		}
-		name := f.name
-		temp := j.tempName(name)
-		if _, err := j.root.Lstat(ctx, temp); errors.Is(err, fs.ErrNotExist) {
-			temp += incompleteExt
+		if err := j.placeFile(ctx, f.name, again); err != nil {
+			return err
 		}
-		if err := j.root.RenameNoReplace(ctx, temp, name); err != nil {
-			if errors.Is(err, fs.ErrExist) {
-				return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, name)
-			}
-			return temporary("qui cannot put %s in place on %s: %v", name, j.target.Name, err)
-		}
-		j.placed = append(j.placed, name)
 	}
 
+	if !owned {
+		if err := j.add(ctx); err != nil {
+			return err
+		}
+	}
+	return j.rename(ctx)
+}
+
+// add adds the real torrent on the target. qui records that the target did
+// not have it before the add, and that the target took it after the answer.
+// Without an answer, a torrent on the target may be qui's or the user's.
+func (j *job) add(ctx context.Context) error {
+	if err := j.stepWith(ctx, StateFinishing, stepAdd, j.target.Name+" did not have the torrent."); err != nil {
+		return err
+	}
 	placement := j.member().Placement
 	layout := qbt.ContentLayoutOriginal
 	if j.src.info.IsDir() && commonRoot(names(j.plan)) == "" {
 		layout = qbt.ContentLayoutSubfolderNone
 	}
-	j.added = true
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
 		InstanceID: j.target.ID,
@@ -202,10 +215,67 @@ func (j *job) place(ctx context.Context) error {
 		Polls:        cfg.Polls,
 		PollInterval: cfg.PollInterval,
 	})
+	if res.Failure == torrentadd.AddRefused {
+		if onTarget, err := j.svc.has(ctx, j.target.ID, j.hash()); err == nil && onTarget {
+			return j.ownershipUnknown()
+		}
+		return temporary("%s did not take the torrent: %s", j.target.Name, describe(res))
+	}
+	if err := j.step(ctx, StateFinishing, stepAdded); err != nil {
+		return err
+	}
 	if res.Outcome != torrentadd.Verified {
 		return temporary("%s did not take the torrent: %s", j.target.Name, describe(res))
 	}
-	return j.rename(ctx)
+	return nil
+}
+
+// ownershipUnknown stops the Transfer when the target has the torrent after
+// an add that did not answer. qui keeps the torrent and its files there, and
+// leaves the source as it is.
+func (j *job) ownershipUnknown() error {
+	return permanent("Ownership unknown: %s has the torrent, but its add did not answer, so qui cannot tell who added it. "+
+		"qui keeps the torrent and its files on %s, and the torrent on %s.", j.target.Name, j.target.Name, j.source.Name)
+}
+
+// placeFile renames the temporary file of a file into place. When the
+// Transfer resumes after the step place, the file can be in place already.
+func (j *job) placeFile(ctx context.Context, name string, again bool) error {
+	temp := j.tempName(name)
+	_, err := j.root.Lstat(ctx, temp)
+	if errors.Is(err, fs.ErrNotExist) {
+		temp += incompleteExt
+		_, err = j.root.Lstat(ctx, temp)
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		if _, err := j.root.Lstat(ctx, name); again && err == nil {
+			return nil
+		}
+		return permanent("The copy of %s is missing on %s.", name, j.target.Name)
+	}
+	err = j.root.RenameNoReplace(ctx, temp, name)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, fs.ErrExist) && again && j.sameFile(ctx, temp, name):
+		// A stop came between the link and the remove of the rename.
+		if err := j.root.Remove(ctx, temp); err != nil {
+			return temporary("qui cannot remove %s on %s: %v", temp, j.target.Name, err)
+		}
+		return nil
+	case errors.Is(err, fs.ErrExist):
+		return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, name)
+	}
+	return temporary("qui cannot put %s in place on %s: %v", name, j.target.Name, err)
+}
+
+func (j *job) sameFile(ctx context.Context, a, b string) bool {
+	ai, err := j.root.Lstat(ctx, a)
+	if err != nil || ai.FileIDErr != nil || ai.FileID.IsZero() {
+		return false
+	}
+	bi, err := j.root.Lstat(ctx, b)
+	return err == nil && bi.FileIDErr == nil && ai.FileID == bi.FileID
 }
 
 func commonRoot(names []string) string {
@@ -248,15 +318,15 @@ func (j *job) rename(ctx context.Context) error {
 }
 
 // after stops the source, starts the target, and then removes or keeps the
-// torrent on the source as the user chose.
+// torrent on the source as the user chose. A cancel rolls back until the
+// removal from the source starts.
 func (j *job) after(ctx context.Context) error {
-	if err := j.step(ctx, StateFinishing, "after"); err != nil {
+	if err := j.step(ctx, StateFinishing, stepAfter); err != nil {
 		return err
 	}
-	hashes := []string{j.hash()}
 	after := j.rec.Options.After
 	if after != AfterKeepSeeding {
-		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, hashes, "pause"); err != nil {
+		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, []string{j.hash()}, "pause"); err != nil {
 			return temporary("qui cannot stop the torrent on %s: %v", j.source.Name, err)
 		}
 		j.stoppedSource = true
@@ -266,30 +336,69 @@ func (j *job) after(ctx context.Context) error {
 			return err
 		}
 	}
-	switch after {
-	case AfterKeepSeeding:
+	if !j.svc.commit(j.rec.ID) {
+		return errCancelled
+	}
+	if after == AfterKeepSeeding {
 		j.logf("The torrent seeds on %s and on %s.", j.source.Name, j.target.Name)
 		return nil
-	case AfterKeepFiles:
-		if err := j.svc.deps.Sync.DeleteTorrents(ctx, j.source.ID, hashes, false, j.actor()); err != nil {
+	}
+	keep := ""
+	if after == AfterRemoveWithFiles {
+		keep = j.keepReason(ctx)
+	}
+	if err := j.stepWith(ctx, StateFinishing, stepRemoveFromSource, keep); err != nil {
+		return err
+	}
+	return j.removeFromSource(ctx, keep)
+}
+
+// finishRemoval goes on with the removal from the source after a stop. It
+// keeps the files when the recorded step says why.
+func (j *job) finishRemoval(ctx context.Context) error {
+	if !j.svc.commit(j.rec.ID) {
+		return errCancelled
+	}
+	var keep string
+	for _, step := range j.rec.Steps {
+		if step.Name == stepRemoveFromSource {
+			keep = step.Detail
+		}
+	}
+	if err := j.stepWith(ctx, StateFinishing, stepRemoveFromSource, keep); err != nil {
+		return err
+	}
+	var err error
+	if j.srcFiles, _, err = j.svc.deps.Files.Require(ctx, j.source.ID, models.CapabilityReadBytes); err != nil {
+		return temporary("qui cannot read the files of the Transfer source: %v", err)
+	}
+	if !j.readPlan(ctx) {
+		return permanent("qui cannot read the names of the files of the torrent, so it cannot finish the removal from %s.", j.source.Name)
+	}
+	return j.removeFromSource(ctx, keep)
+}
+
+// removeFromSource removes the torrent from the source, and its files
+// unless keep says why they stay or the user chose to keep them.
+func (j *job) removeFromSource(ctx context.Context, keep string) error {
+	onSource, err := j.svc.has(ctx, j.source.ID, j.hash())
+	if err != nil {
+		return temporary("qui cannot read the torrents of %s: %v", j.source.Name, err)
+	}
+	if onSource {
+		if err := j.svc.deps.Sync.DeleteTorrents(ctx, j.source.ID, []string{j.hash()}, false, j.actor()); err != nil {
 			return temporary("qui cannot remove the torrent from %s: %v", j.source.Name, err)
 		}
-		j.stoppedSource = false
-		j.logf("Removed the torrent from %s and kept its files: %s stay in use.", j.source.Name, formatBytes(diskBytes(j.plan)))
-		return nil
-	case AfterRemoveWithFiles:
-	}
-
-	keep := j.keepReason(ctx)
-	if err := j.svc.deps.Sync.DeleteTorrents(ctx, j.source.ID, hashes, false, j.actor()); err != nil {
-		return temporary("qui cannot remove the torrent from %s: %v", j.source.Name, err)
 	}
 	j.stoppedSource = false
-	if keep != "" {
+	switch {
+	case j.rec.Options.After == AfterKeepFiles:
+		j.logf("Removed the torrent from %s and kept its files: %s stay in use.", j.source.Name, formatBytes(diskBytes(j.plan)))
+	case keep != "":
 		j.logf("Removed the torrent from %s and kept its files, because %s: %s stay in use.", j.source.Name, keep, formatBytes(diskBytes(j.plan)))
-		return nil
+	default:
+		j.removeSourceFiles(ctx)
 	}
-	j.removeSourceFiles(ctx)
 	return nil
 }
 
@@ -360,7 +469,7 @@ func (j *job) hostKeyPin(inst *models.Instance) []byte {
 // the folders that this leaves empty. A file whose size changed stays.
 func (j *job) removeSourceFiles(ctx context.Context) {
 	paths := j.srcFiles.Paths()
-	saveRoot := paths.Clean(j.src.torrent.SavePath)
+	saveRoot := paths.Clean(j.member().SourceSavePath)
 	folders := map[string]struct{}{}
 	var kept, notCopied int64
 	for _, f := range j.plan {
@@ -373,6 +482,9 @@ func (j *job) removeSourceFiles(ctx context.Context) {
 		}
 		p := paths.Join(saveRoot, paths.FromSlash(f.name))
 		info, err := j.srcFiles.Lstat(ctx, p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		if err != nil || info.IsDir || info.Size != f.size {
 			kept += f.size
 			continue

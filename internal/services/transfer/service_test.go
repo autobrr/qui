@@ -9,6 +9,7 @@ import (
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
 	"io/fs"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/fsops/remote"
@@ -70,6 +72,22 @@ type disk struct {
 	// damage flips the byte at an offset of the file with this final name.
 	damage  map[string]int64
 	onWrite func(name string)
+
+	mu      sync.Mutex
+	writes  []diskWrite
+	creates map[string]int
+}
+
+// diskWrite is one write of the copy: n bytes at an offset of a file.
+type diskWrite struct {
+	name  string
+	at, n int64
+}
+
+func (d *disk) log() ([]diskWrite, map[string]int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.writes), maps.Clone(d.creates)
 }
 
 func (d *disk) Statfs(ctx context.Context, path string) (*fsops.StatfsResult, error) {
@@ -97,7 +115,21 @@ func (r *diskRoot) Create(ctx context.Context, name string) (fsops.FileWriter, e
 	if err != nil {
 		return nil, err
 	}
+	r.d.mu.Lock()
+	if r.d.creates == nil {
+		r.d.creates = map[string]int{}
+	}
+	r.d.creates[name]++
+	r.d.mu.Unlock()
 	return &diskWriter{FileWriter: w, d: r.d, name: name}, nil
+}
+
+func (r *diskRoot) OpenWrite(ctx context.Context, name string, offset int64) (fsops.FileWriter, error) {
+	w, err := r.Root.OpenWrite(ctx, name, offset)
+	if err != nil {
+		return nil, err
+	}
+	return &diskWriter{FileWriter: w, d: r.d, name: name, at: offset}, nil
 }
 
 type diskWriter struct {
@@ -119,6 +151,9 @@ func (w *diskWriter) Write(p []byte) (int, error) {
 		}
 	}
 	n, err := w.FileWriter.Write(data)
+	w.d.mu.Lock()
+	w.d.writes = append(w.d.writes, diskWrite{name: w.name, at: w.at, n: int64(n)})
+	w.d.mu.Unlock()
 	w.at += int64(n)
 	return n, err
 }
@@ -142,51 +177,106 @@ type rig struct {
 	source    *models.Instance
 	target    *models.Instance
 	disk      *disk
+	db        *database.DB
+	dbPath    string
 	deps      transfer.Deps
 	svc       *transfer.Service
 	cancel    context.CancelFunc
+
+	clockMu sync.Mutex
+	clockAt time.Time
+}
+
+func (r *rig) now() time.Time {
+	r.clockMu.Lock()
+	defer r.clockMu.Unlock()
+	if r.clockAt.IsZero() {
+		return clock
+	}
+	return r.clockAt
+}
+
+func (r *rig) setClock(at time.Time) {
+	r.clockMu.Lock()
+	defer r.clockMu.Unlock()
+	r.clockAt = at
 }
 
 var clock = time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
 
-func newRig(t *testing.T) *rig {
+func newRig(t *testing.T, options ...func(*transfer.Config)) *rig {
 	t.Helper()
 	srcDir, dstDir := t.TempDir(), t.TempDir()
-	db := testdb.NewMigratedSQLite(t, "transfer-service")
-	instances, err := models.NewInstanceStore(db, sshtest.EncryptionKey())
-	require.NoError(t, err)
-	r := &rig{t: t, instances: instances, srcDir: srcDir, dstDir: dstDir, disk: &disk{Backend: local.NewBackend()}}
+	dbPath := testdb.CloneMigratedSQLite(t, "transfer-service")
+	r := &rig{t: t, srcDir: srcDir, dstDir: dstDir, dbPath: dbPath, disk: &disk{Backend: local.NewBackend()}}
+	// The servers start first, so that they stop after the pools of qui.
 	r.src, r.dst = qbtstub.New(t, srcDir), qbtstub.New(t, dstDir)
 	r.dst.HashCheck = true
 	r.ssh = sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecSFTPOnly)
+	r.db = openDB(t, dbPath)
+	r.deps, r.instances, r.sync = wire(t, r.db, r.disk, r.now)
+	r.store = r.deps.Store
 
 	r.source = r.sshInstance("seedbox", r.src.URL)
-	r.target, err = instances.Create(t.Context(), "homelab", r.dst.URL, "", "", nil, nil, false, new(true))
+	var err error
+	r.target, err = r.instances.Create(t.Context(), "homelab", r.dst.URL, "", "", nil, nil, false, new(true))
 	require.NoError(t, err)
+	for _, option := range options {
+		option(&r.deps.Config)
+	}
+	r.start()
+	return r
+}
 
+func openDB(t *testing.T, path string) *database.DB {
+	t.Helper()
+	db, err := database.New(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// wire builds the parts of qui that the Service uses, on db.
+func wire(t *testing.T, db *database.DB, d *disk, now func() time.Time) (transfer.Deps, *models.InstanceStore, *qbittorrent.SyncManager) {
+	t.Helper()
+	instances, err := models.NewInstanceStore(db, sshtest.EncryptionKey())
+	require.NoError(t, err)
 	clientPool, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
-	r.sync = qbittorrent.NewSyncManager(clientPool, nil)
+	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 	sshPool := sshpool.NewPool(sshpool.NewDialer(instances))
 	t.Cleanup(sshPool.Close)
-	files := fsops.NewPoolWithRemote(instances, r.disk, func(inst *models.Instance) fsops.Backend { return remote.New(sshPool, inst) })
-	r.store, err = transfer.NewStore(t.Context(), db)
+	files := fsops.NewPoolWithRemote(instances, d, func(inst *models.Instance) fsops.Backend { return remote.New(sshPool, inst) })
+	store, err := transfer.NewStore(t.Context(), db)
 	require.NoError(t, err)
-	r.deps = transfer.Deps{
-		Store:     r.store,
+	return transfer.Deps{
+		Store:     store,
 		Instances: instances,
-		Sync:      r.sync,
+		Sync:      syncManager,
 		Files:     files,
-		Groups:    crossseed.NewService(instances, r.sync, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil),
-		Now:       func() time.Time { return clock },
-		Config:    transfer.Config{Polls: 20, CheckPolls: 20, PollInterval: time.Millisecond, FlushBytes: 32},
-	}
-	ctx, cancel := context.WithCancel(t.Context())
+		Groups:    crossseed.NewService(instances, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil),
+		Now:       now,
+		Config: transfer.Config{Polls: 20, CheckPolls: 20, PollInterval: time.Millisecond, FlushBytes: 32,
+			Reconnects: 20, ReconnectWait: time.Millisecond},
+	}, instances, syncManager
+}
+
+func (r *rig) start() {
+	ctx, cancel := context.WithCancel(r.t.Context())
 	r.cancel = cancel
 	r.svc = transfer.NewService(ctx, r.deps)
-	t.Cleanup(r.svc.Close)
-	return r
+	r.t.Cleanup(r.svc.Close)
+}
+
+// restart stops the Service, and starts qui again on the same database.
+func (r *rig) restart() {
+	r.t.Helper()
+	r.svc.Close()
+	store, err := transfer.NewStore(r.t.Context(), r.db)
+	require.NoError(r.t, err)
+	r.store, r.deps.Store = store, store
+	r.start()
 }
 
 // sshInstance adds an instance whose files qui reaches on the SSH server.
@@ -498,35 +588,38 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 	require.False(t, r.src.Stopped(s.hash))
 }
 
-// A change of the source torrent during the copy fails the Transfer, which
-// removes what it wrote and leaves the source as it is.
+// A change of the source torrent during the copy fails the Transfer and
+// leaves the source as it is. After a move, a removal, or a file rename, no
+// retry finds the files, so qui removes what it wrote. After any other
+// change, qui keeps what it wrote for the retry.
 func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		change func(r *rig, s show)
 		reason string
+		class  transfer.FailureClass
 	}{
 		{name: "a move", change: func(r *rig, s show) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.SavePath = filepath.Join(r.srcDir, "moved") })
-		}, reason: "it moved"},
+		}, reason: "it moved", class: transfer.FailurePermanent},
 		{name: "a rename", change: func(r *rig, s show) {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Name = "Show.S01.REPACK.1080p-GRP" })
-		}, reason: "it was renamed"},
+		}, reason: "it was renamed", class: transfer.FailureTemporary},
 		{name: "a file rename", change: func(r *rig, s show) {
 			require.NoError(t, r.sync.RenameTorrentFile(r.t.Context(), r.source.ID, s.hash,
 				showName+"/Show.S01E02.mkv", showName+"/Show.S01E02.REPACK.mkv"))
-		}, reason: "a file was renamed"},
+		}, reason: "a file was renamed", class: transfer.FailurePermanent},
 		{name: "a recheck", change: func(r *rig, s show) {
 			r.src.CheckSyncs = 1000
 			require.NoError(t, r.sync.BulkAction(r.t.Context(), r.source.ID, []string{s.hash}, "recheck"))
-		}, reason: "qBittorrent checks it again"},
+		}, reason: "qBittorrent checks it again", class: transfer.FailureTemporary},
 		{name: "a file that grows", change: func(r *rig, s show) {
 			f, err := os.OpenFile(filepath.Join(r.srcDir, showName, "Show.S01E02.mkv"), os.O_APPEND|os.O_WRONLY, 0o600)
 			require.NoError(t, err)
 			_, err = f.WriteString("more")
 			require.NoError(t, err)
 			require.NoError(t, f.Close())
-		}, reason: "the file " + showName + "/Show.S01E02.mkv changed its size"},
+		}, reason: "the file " + showName + "/Show.S01E02.mkv changed its size", class: transfer.FailureTemporary},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t)
@@ -539,7 +632,13 @@ func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 
 			require.Equal(t, transfer.StateFailed, record.State)
 			require.Contains(t, record.FailureReason, "The torrent changed on the source during the copy: "+tc.reason)
-			require.Empty(t, tree(t, r.dstDir), "qui removes what it wrote")
+			require.Equal(t, tc.class, record.FailureClass)
+			if tc.class == transfer.FailurePermanent {
+				require.Empty(t, tree(t, r.dstDir), "qui removes what it wrote")
+			} else {
+				require.NotEmpty(t, tree(t, r.dstDir), "qui keeps what it wrote")
+				require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
+			}
 			require.True(t, r.src.Has(s.hash))
 			require.Zero(t, r.dst.Writes("torrents/add"))
 		})
@@ -711,9 +810,31 @@ func TestTransferServiceIdleWithoutTransfers(t *testing.T) {
 	r.seed(s)
 
 	r.svc.Close()
-	transfer.NewService(t.Context(), r.deps).Close()
+	svc := transfer.NewService(t.Context(), r.deps)
+	svc.Wake()
+	svc.Close()
 
 	require.Zero(t, r.src.Requests())
 	require.Zero(t, r.dst.Requests())
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+}
+
+// A finished Transfer stays finished: a Wake and a restart send nothing.
+func TestTransferServiceLeavesFinishedTransfers(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), map[string][]byte{"Show.S01E02.mkv": []byte("theirs")})
+	require.Equal(t, transfer.FailurePermanent, r.run(r.request(s)).FailureClass)
+	require.NoError(t, os.RemoveAll(filepath.Join(r.dstDir, showName)))
+	require.Equal(t, transfer.StateDone, r.run(r.request(s)).State)
+	src, dst := r.src.Requests(), r.dst.Requests()
+
+	r.svc.Wake()
+	r.svc.Wait()
+	r.restart()
+	r.svc.Wait()
+
+	require.Equal(t, src, r.src.Requests())
+	require.Equal(t, dst, r.dst.Requests())
 }

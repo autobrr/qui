@@ -9,6 +9,8 @@ import (
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
 	"io"
+	"math/bits"
+	"time"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
@@ -20,9 +22,11 @@ const incompleteExt = ".!qB"
 // open is a file of the copy whose bytes qui reads and writes.
 type open struct {
 	reader io.ReadCloser
-	// at is the offset in the file of the next byte of reader.
+	// at is the offset in the file of the next byte of reader, and next the
+	// offset of the next byte of writer.
 	at     int64
 	writer fsops.FileWriter
+	next   int64
 	// done is set once every byte of the file is written.
 	done bool
 }
@@ -38,19 +42,57 @@ type copier struct {
 	confirmed bool
 }
 
-// copy copies every piece from the source to temporary files on the target.
-// qui checks each piece against the .torrent before it writes it, and
-// records it as a Proven piece once the target confirmed the flush of its
-// bytes.
+// copyAll copies the pieces that are not Proven pieces. After a dropped
+// connection it goes on with the pieces that are still missing, until
+// Config.Reconnects drops in a row proved no piece.
+func (j *job) copyAll(ctx context.Context) error {
+	cfg := j.svc.deps.Config
+	for drops := 0; ; {
+		before := provenCount(j.member().ProvenPieces)
+		err := j.copy(ctx)
+		if err == nil || !errors.Is(err, fsops.ErrConnectionLost) {
+			return err
+		}
+		if provenCount(j.member().ProvenPieces) > before {
+			drops = 0
+		}
+		if drops++; drops > cfg.Reconnects {
+			return err
+		}
+		j.logf("The connection to %s dropped. qui goes on with the pieces that are not proven yet.", j.source.Name)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(cfg.ReconnectWait):
+		}
+	}
+}
+
+func provenCount(proven []byte) int {
+	n := 0
+	for _, b := range proven {
+		n += bits.OnesCount8(b)
+	}
+	return n
+}
+
+// copy copies every piece that is not a Proven piece from the source to
+// temporary files on the target. qui checks each piece against the .torrent
+// before it writes it, and records it as a Proven piece once the target
+// confirmed the flush of its bytes.
 func (j *job) copy(ctx context.Context) error {
 	c := &copier{j: j, open: map[int]*open{}, dirty: map[int]struct{}{}, confirmed: true}
 	defer c.close()
 	info := j.src.info
 	j.proven = make([]byte, (info.NumPieces()+7)/8)
+	copy(j.proven, j.member().ProvenPieces)
+	if j.made == nil {
+		j.made = map[int]int64{}
+	}
 
 	for i, f := range j.plan {
-		if f.size == 0 && j.writes(i) {
-			if _, err := c.writer(ctx, i); err != nil {
+		if _, made := j.made[i]; f.size == 0 && j.writes(i) && !made {
+			if _, err := c.writer(ctx, i, 0); err != nil {
 				return err
 			}
 			c.open[i].done = true
@@ -61,13 +103,16 @@ func (j *job) copy(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if !j.skips(piece) {
+		if !j.skips(piece) && !j.isProven(piece) {
 			if err := c.piece(ctx, piece, buf); err != nil {
 				return err
 			}
 		}
 		if c.written >= j.svc.deps.Config.FlushBytes || piece == info.NumPieces()-1 {
 			if err := c.flush(ctx); err != nil {
+				return err
+			}
+			if err := j.checkInstances(ctx); err != nil {
 				return err
 			}
 			if err := j.checkSource(ctx); err != nil {
@@ -146,7 +191,7 @@ func (c *copier) read(ctx context.Context, s segment, into []byte) error {
 		paths := c.j.srcFiles.Paths()
 		reader, err := c.j.srcFiles.OpenRead(ctx, paths.Join(c.j.src.torrent.SavePath, paths.FromSlash(f.name)), s.offset)
 		if err != nil {
-			return temporary("qui cannot read %s on %s: %v", f.name, c.j.source.Name, err)
+			return temporary("qui cannot read %s on %s: %w", f.name, c.j.source.Name, err)
 		}
 		o.reader, o.at = reader, s.offset
 	}
@@ -154,7 +199,7 @@ func (c *copier) read(ctx context.Context, s segment, into []byte) error {
 		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 			return sourceChanged("the file " + f.name + " got shorter")
 		}
-		return temporary("qui cannot read %s on %s: %v", f.name, c.j.source.Name, err)
+		return temporary("qui cannot read %s on %s: %w", f.name, c.j.source.Name, err)
 	}
 	o.at += s.n
 	if s.offset+s.n == f.size {
@@ -168,13 +213,14 @@ func (c *copier) write(ctx context.Context, s segment, data []byte) error {
 	if !c.j.writes(s.file) {
 		return nil
 	}
-	w, err := c.writer(ctx, s.file)
+	w, err := c.writer(ctx, s.file, s.offset)
 	if err != nil {
 		return err
 	}
 	if _, err := w.Write(data); err != nil {
 		return temporary("qui cannot write on %s: %v", c.j.target.Name, err)
 	}
+	c.open[s.file].next += s.n
 	c.dirty[s.file] = struct{}{}
 	if s.offset+s.n == c.j.plan[s.file].size {
 		c.open[s.file].done = true
@@ -191,16 +237,40 @@ func (c *copier) file(i int) *open {
 	return o
 }
 
-// writer creates the temporary file of a file at its first byte.
-func (c *copier) writer(ctx context.Context, i int) (fsops.FileWriter, error) {
+// writer returns the writer of the temporary file of a file at offset. It
+// creates the temporary file at its first byte, and writes into the one that
+// qui made before. Proven pieces lie between the last write and offset when
+// they differ: the writer starts again there after a flush.
+func (c *copier) writer(ctx context.Context, i int, offset int64) (fsops.FileWriter, error) {
 	o := c.file(i)
+	if o.writer != nil && o.next != offset {
+		if err := c.flush(ctx); err != nil {
+			return nil, err
+		}
+		if o.writer != nil {
+			if err := o.writer.Close(); err != nil {
+				return nil, temporary("qui cannot close %s on %s: %v", c.j.plan[i].name, c.j.target.Name, err)
+			}
+			o.writer = nil
+		}
+	}
 	if o.writer == nil {
 		name := c.j.tempName(c.j.plan[i].name)
-		w, err := c.j.root.Create(ctx, name)
-		if err != nil {
-			return nil, permanent("qui cannot create %s on %s: %v", name, c.j.target.Name, err)
+		var (
+			w   fsops.FileWriter
+			err error
+		)
+		if _, made := c.j.made[i]; made {
+			if w, err = c.j.root.OpenWrite(ctx, name, offset); err != nil {
+				return nil, temporary("qui cannot open %s on %s: %v", name, c.j.target.Name, err)
+			}
+		} else {
+			if w, err = c.j.root.Create(ctx, name); err != nil {
+				return nil, permanent("qui cannot create %s on %s: %v", name, c.j.target.Name, err)
+			}
+			c.j.made[i] = 0
 		}
-		o.writer = w
+		o.writer, o.next = w, offset
 		c.dirty[i] = struct{}{}
 	}
 	return o.writer, nil
@@ -261,7 +331,7 @@ func (j *job) checkSourceSizes(ctx context.Context) error {
 		}
 		info, err := j.srcFiles.Lstat(ctx, paths.Join(j.src.torrent.SavePath, paths.FromSlash(f.name)))
 		if err != nil {
-			return temporary("qui cannot read %s on %s: %v", f.name, j.source.Name, err)
+			return temporary("qui cannot read %s on %s: %w", f.name, j.source.Name, err)
 		}
 		if info.Size != f.size {
 			return sourceChanged("the file " + f.name + " changed its size")
@@ -274,9 +344,13 @@ func (j *job) checkSourceSizes(ctx context.Context) error {
 func (j *job) allProven() bool {
 	pieces := j.src.info.NumPieces()
 	for piece := range pieces {
-		if j.proven[piece/8]&(0x80>>(piece%8)) == 0 {
+		if !j.isProven(piece) {
 			return false
 		}
 	}
 	return true
+}
+
+func (j *job) isProven(piece int) bool {
+	return j.proven[piece/8]&(0x80>>(piece%8)) != 0
 }

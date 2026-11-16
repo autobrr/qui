@@ -8,10 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"path"
 	"slices"
-	"strings"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -22,24 +20,33 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// failure ends a Transfer with a reason for the user.
+// failure ends a Transfer with a reason for the user. Its format may wrap
+// an error with %w.
 type failure struct {
-	class  FailureClass
-	reason string
+	class FailureClass
+	err   error
 }
 
-func (f *failure) Error() string { return f.reason }
+func (f *failure) Error() string { return f.err.Error() }
+
+func (f *failure) Unwrap() error { return f.err }
 
 func permanent(format string, args ...any) error {
-	return &failure{class: FailurePermanent, reason: fmt.Sprintf(format, args...)}
+	return &failure{class: FailurePermanent, err: fmt.Errorf(format, args...)}
 }
 
 func temporary(format string, args ...any) error {
-	return &failure{class: FailureTemporary, reason: fmt.Sprintf(format, args...)}
+	return &failure{class: FailureTemporary, err: fmt.Errorf(format, args...)}
 }
 
 func sourceChanged(what string) error {
 	return temporary("The torrent changed on the source during the copy: %s.", what)
+}
+
+// sourceGone is a change of the source after which no retry finds the files
+// where the Transfer reads them.
+func sourceGone(what string) error {
+	return permanent("The torrent changed on the source during the copy: %s.", what)
 }
 
 // job is one run of a Transfer of one torrent.
@@ -56,15 +63,15 @@ type job struct {
 	// helper is the infohash of a helper torrent on the target that qui has
 	// not removed yet.
 	helper string
-	// added is set once qui asked the target to add the real torrent. From
-	// then on qui keeps the files on the target.
-	added bool
-	// placed lists the files that qui renamed into place.
-	placed        []string
 	stoppedSource bool
 	// headStartProven is set when the check of the files that were on the
 	// target passed every piece.
 	headStartProven bool
+	// made holds the temporary files on the target by the index of their
+	// file, with their size when the run found them.
+	made map[int]int64
+	// away holds the instances that were deleted or changed their endpoint.
+	away map[int]bool
 }
 
 func (j *job) member() *Member { return &j.rec.Members[0] }
@@ -77,18 +84,25 @@ func (j *job) tempName(name string) string {
 	return fmt.Sprintf("%s.qui-transfer-%d", name, j.rec.ID)
 }
 
+// run takes the steps that the Transfer did not finish. Once qui placed
+// the files, the copy and its proof are done.
 func (j *job) run(ctx context.Context) error {
+	if j.reached(stepRemoveFromSource) {
+		return j.finishRemoval(ctx)
+	}
 	if err := j.prepare(ctx); err != nil {
 		return err
 	}
-	if err := j.headStart(ctx); err != nil {
-		return err
-	}
-	if err := j.copy(ctx); err != nil {
-		return err
-	}
-	if err := j.prove(ctx); err != nil {
-		return err
+	if !j.reached(stepPlace) {
+		if err := j.headStart(ctx); err != nil {
+			return err
+		}
+		if err := j.copyAll(ctx); err != nil {
+			return err
+		}
+		if err := j.prove(ctx); err != nil {
+			return err
+		}
 	}
 	if err := j.place(ctx); err != nil {
 		return err
@@ -98,8 +112,15 @@ func (j *job) run(ctx context.Context) error {
 
 // step records a step and the state before qui takes the step.
 func (j *job) step(ctx context.Context, state State, name string) error {
+	return j.stepWith(ctx, state, name, "")
+}
+
+func (j *job) stepWith(ctx context.Context, state State, name, detail string) error {
+	if err := j.checkInstances(ctx); err != nil {
+		return err
+	}
 	j.rec.State = state
-	j.rec.Steps = append(j.rec.Steps, Step{Name: name, At: j.svc.deps.Now()})
+	j.rec.Steps = append(j.rec.Steps, Step{Name: name, At: j.svc.deps.Now(), Detail: detail})
 	return j.svc.deps.Store.Save(ctx, j.rec)
 }
 
@@ -110,7 +131,9 @@ func (j *job) logf(format string, args ...any) {
 // prepare reads both sides again, checks the free space, and opens the save
 // path on the target with no file at any path that the copy writes.
 func (j *job) prepare(ctx context.Context) error {
-	if err := j.step(ctx, StateCopying, "prepare"); err != nil {
+	resumed := j.reached(stepPrepare)
+	j.rec.RetryAt, j.rec.FailureClass, j.rec.FailureReason = time.Time{}, "", ""
+	if err := j.step(ctx, StateCopying, stepPrepare); err != nil {
 		return err
 	}
 	var err error
@@ -122,9 +145,6 @@ func (j *job) prepare(ctx context.Context) error {
 		return temporary("qui cannot write the files of the Transfer target: %v", err)
 	}
 	j.target = target
-	if j.rec.SourceEndpoint.Changed(j.source) || j.rec.TargetEndpoint.Changed(j.target) {
-		return permanent("An instance of the Transfer changed its address, its SSH server, or its file access.")
-	}
 	opener, ok := targetFiles.(fsops.RootOpener)
 	if !ok {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
@@ -134,13 +154,13 @@ func (j *job) prepare(ctx context.Context) error {
 		return err
 	}
 	if j.src == nil {
-		return sourceChanged("it left the source")
+		return sourceGone("it left the source")
 	}
 	if err := j.src.movable(); err != nil {
 		return permanent("%v", err)
 	}
 	if j.src.torrent.SavePath != j.member().SourceSavePath {
-		return sourceChanged("it moved")
+		return sourceGone("it moved")
 	}
 	if j.plan, err = planFiles(j.src.info, j.src.files); err != nil {
 		return permanent("The files of the torrent do not match its .torrent: %v", err)
@@ -149,11 +169,21 @@ func (j *job) prepare(ctx context.Context) error {
 	if j.root, err = opener.OpenRoot(ctx, j.savePath()); err != nil {
 		return permanent("qui cannot open the save path %s on %s: %v", j.savePath(), j.target.Name, err)
 	}
-	if err := j.findOnTarget(ctx); err != nil {
+	find := j.findOnTarget
+	if resumed {
+		find = j.findOnTargetAgain
+	}
+	if err := find(ctx); err != nil {
 		return err
 	}
 
 	need := copiedBytes(j.plan)
+	for _, size := range j.made {
+		need -= size
+	}
+	if j.reached(stepPlace) {
+		need = 0
+	}
 	stat, err := targetFiles.Statfs(ctx, j.savePath())
 	if err != nil {
 		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
@@ -162,7 +192,15 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("Not enough free space on %s: %v", j.target.Name, err)
 	}
 	j.reserved = need
-	j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
+	if !resumed {
+		j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
+		return nil
+	}
+	if err := j.removeHelpers(ctx); err != nil {
+		return temporary("qui cannot remove its helper torrents from %s: %v", j.target.Name, err)
+	}
+	j.logf("Resumed: %d of %d pieces are proven, and %s are left to copy.",
+		provenCount(j.member().ProvenPieces), j.src.info.NumPieces(), formatBytes(need))
 	return nil
 }
 
@@ -175,9 +213,9 @@ func (j *job) checkSource(ctx context.Context) error {
 	}
 	switch {
 	case torrent == nil:
-		return sourceChanged("it left the source")
+		return sourceGone("it left the source")
 	case torrent.SavePath != j.src.torrent.SavePath:
-		return sourceChanged("it moved")
+		return sourceGone("it moved")
 	case torrent.Name != j.src.torrent.Name:
 		return sourceChanged("it was renamed")
 	case isChecking(torrent.State) || torrent.Progress < 1:
@@ -188,11 +226,11 @@ func (j *job) checkSource(ctx context.Context) error {
 		return temporary("qui cannot read the files of the torrent on %s: %v", j.source.Name, err)
 	}
 	if files == nil {
-		return sourceChanged("it left the source")
+		return sourceGone("it left the source")
 	}
 	plan, err := planFiles(j.src.info, *files)
 	if err != nil || !slices.Equal(names(plan), names(j.plan)) {
-		return sourceChanged("a file was renamed")
+		return sourceGone("a file was renamed")
 	}
 	return nil
 }
@@ -201,32 +239,104 @@ func isChecking(state qbt.TorrentState) bool {
 	return slices.Contains([]qbt.TorrentState{qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData}, state)
 }
 
-// end finishes the Transfer as done, or as failed after the cleanup.
+// retryAfter is the least time between a temporary failure and its retry.
+const retryAfter = time.Hour
+
+func (j *job) cleanupContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(j.svc.ctx), 5*time.Minute)
+}
+
+// rollBack ends a cancelled Transfer: it takes back what the Transfer did.
+func (j *job) rollBack() {
+	ctx, cancel := j.cleanupContext()
+	defer cancel()
+	defer j.release()
+	// The check marks the instances that the cleanup must not touch.
+	_ = j.checkInstances(ctx)
+	j.logf("Cancelled.")
+	j.cleanUp(ctx, StateCancelled)
+}
+
+// cleanUpAgain finishes a cleanup that a stop interrupted.
+func (j *job) cleanUpAgain() {
+	ctx, cancel := j.cleanupContext()
+	defer cancel()
+	defer j.release()
+	_ = j.checkInstances(ctx)
+	j.cleanup(ctx)
+	j.finish(ctx, j.rec.State)
+}
+
+// end records how the run ended. A temporary failure keeps the partial data
+// and the claims until its retry. A permanent failure takes back what the
+// Transfer did, and waits for the user.
 func (j *job) end(runErr error) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(j.svc.ctx), 5*time.Minute)
+	ctx, cancel := j.cleanupContext()
 	defer cancel()
 	defer j.release()
 
-	state := StateDone
-	if runErr != nil {
-		state = StateFailed
-		if f, ok := errors.AsType[*failure](runErr); ok {
-			j.rec.FailureClass, j.rec.FailureReason = f.class, f.reason
-		} else if r, ok := errors.AsType[*RefusalError](runErr); ok {
-			j.rec.FailureClass, j.rec.FailureReason = FailurePermanent, r.Reason
-		} else {
-			j.rec.FailureClass, j.rec.FailureReason = FailureTemporary, runErr.Error()
-		}
-		j.logf("Failed: %s", j.rec.FailureReason)
-		j.cleanup(ctx)
-	} else {
+	if runErr == nil {
 		j.logf("Done.")
+		j.finish(ctx, StateDone)
+		return
 	}
+	class, reason := FailureTemporary, runErr.Error()
+	if f, ok := errors.AsType[*failure](runErr); ok {
+		class = f.class
+	} else if r, ok := errors.AsType[*RefusalError](runErr); ok {
+		class, reason = FailurePermanent, r.Reason
+	}
+	if off, ok := errors.AsType[*instanceOff](runErr); ok {
+		j.rec.State = StateWaiting
+		j.logf("Waits until %s is turned on again.", off.name)
+		if j.stoppedSource {
+			j.startSource(ctx)
+		}
+		j.save(ctx)
+		return
+	}
+	j.rec.FailureClass, j.rec.FailureReason = class, reason
+	if class == FailurePermanent {
+		j.logf("Failed: %s", reason)
+		j.cleanUp(ctx, StateFailed)
+		return
+	}
+
+	j.rec.State = StateFailed
+	j.rec.RetryAt = j.svc.deps.Now().Add(retryAfter)
+	j.logf("Failed: %s qui tries again in an hour, and keeps what it copied.", reason)
+	if j.reaches(j.target) {
+		if err := j.removeHelpers(ctx); err != nil {
+			j.logf("qui could not remove its helper torrents from %s: %v", j.target.Name, err)
+		}
+	}
+	if j.stoppedSource {
+		j.startSource(ctx)
+	}
+	j.save(ctx)
+}
+
+func (j *job) save(ctx context.Context) {
+	if err := j.svc.deps.Store.Save(ctx, j.rec); err != nil {
+		log.Error().Err(err).Int64("transfer", j.rec.ID).Msg("transfer: cannot save the Transfer")
+	}
+}
+
+// cleanUp records the step clean up, takes back what the Transfer did, and
+// finishes it in state.
+func (j *job) cleanUp(ctx context.Context, state State) {
+	j.rec.State = state
+	j.rec.Steps = append(j.rec.Steps, Step{Name: stepCleanUp, At: j.svc.deps.Now()})
+	j.save(ctx)
+	j.cleanup(ctx)
+	j.finish(ctx, state)
+}
+
+// finish records the end of the Transfer and releases its torrents.
+func (j *job) finish(ctx context.Context, state State) {
 	j.rec.State = state
 	j.rec.Steps = append(j.rec.Steps, Step{Name: string(state), At: j.svc.deps.Now()})
-	if err := j.svc.deps.Store.Save(ctx, j.rec); err != nil {
-		log.Error().Err(err).Int64("transfer", j.rec.ID).Msg("transfer: cannot save the end of the Transfer")
-	}
+	j.save(ctx)
 	if err := j.svc.deps.Store.Finish(ctx, j.rec.ID, state); err != nil {
 		log.Error().Err(err).Int64("transfer", j.rec.ID).Msg("transfer: cannot finish the Transfer")
 	}
@@ -242,38 +352,12 @@ func (j *job) release() {
 	}
 }
 
-// cleanup removes the helper torrent and the files that qui wrote, and
-// starts the source again when qui stopped it. Once the target has the real
-// torrent, qui keeps its files.
-func (j *job) cleanup(ctx context.Context) {
-	if j.helper != "" {
-		if err := j.removeHelper(ctx); err != nil {
-			j.logf("qui could not remove its helper torrent %s from %s: %v", j.helper, j.target.Name, err)
-		}
-	}
-	if j.stoppedSource {
-		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, []string{j.hash()}, "resume"); err != nil {
-			j.logf("qui could not start the torrent on %s again: %v", j.source.Name, err)
-		}
-	}
-	if j.root == nil {
+func (j *job) startSource(ctx context.Context) {
+	if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, []string{j.hash()}, "resume"); err != nil {
+		j.logf("qui could not start the torrent on %s again: %v", j.source.Name, err)
 		return
 	}
-	folders := map[string]struct{}{}
-	for _, name := range names(j.plan) {
-		removed := j.remove(ctx, j.tempName(name), j.tempName(name)+incompleteExt)
-		if !j.added && slices.Contains(j.placed, name) {
-			removed = j.remove(ctx, name) || removed
-		}
-		for dir := path.Dir(name); removed && dir != "."; dir = path.Dir(dir) {
-			folders[dir] = struct{}{}
-		}
-	}
-	// The deepest folders go first, so that a parent is empty when its turn
-	// comes. A folder that holds other files stays.
-	for _, dir := range slices.SortedFunc(maps.Keys(folders), func(a, b string) int { return strings.Count(b, "/") - strings.Count(a, "/") }) {
-		_ = j.root.Remove(ctx, dir)
-	}
+	j.stoppedSource = false
 }
 
 // remove removes the files that exist and reports whether it removed one.

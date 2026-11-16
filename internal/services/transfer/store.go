@@ -320,6 +320,33 @@ func (s *Store) Finish(ctx context.Context, id int64, state State) error {
 	return nil
 }
 
+// Unfinished returns the IDs of the Transfers that hold their torrents, in
+// the order they started.
+func (s *Store) Unfinished(ctx context.Context) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM torrent_transfers WHERE finished_at IS NULL ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("read unfinished transfers: %w", err)
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("read unfinished transfers: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// HasClaims reports whether an unfinished Transfer holds a torrent. It reads
+// no database.
+func (s *Store) HasClaims() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.claims) > 0
+}
+
 // RunningFolders returns the save path of each member of each unfinished
 // Transfer that reads or writes on the instance: the save path on the source
 // and the save path of its placement on the target.

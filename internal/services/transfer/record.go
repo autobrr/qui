@@ -30,6 +30,7 @@ const (
 	StateFinishing State = "finishing"
 	StateDone      State = "done"
 	StateFailed    State = "failed"
+	StateCancelled State = "cancelled"
 )
 
 // Way is how a Transfer moves the files, such as SFTP or a Transfer torrent.
