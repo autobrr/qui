@@ -99,8 +99,13 @@ func TestTransferOnQuisOwnDisk(t *testing.T) {
 			r.seed(s)
 			before := map[string]os.FileInfo{}
 			for name := range s.files {
-				info, err := os.Stat(filepath.Join(r.srcDir, showName, name))
+				// os.Stat on Windows reads the identity of a file by its path
+				// only in os.SameFile, and the removal from the source removes
+				// the path. The stat of an open file reads it at once.
+				f, err := os.Open(filepath.Join(r.srcDir, showName, name))
 				require.NoError(t, err)
+				info, err := f.Stat()
+				require.NoError(t, errors.Join(err, f.Close()))
 				before[name] = info
 			}
 
