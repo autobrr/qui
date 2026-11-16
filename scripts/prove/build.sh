@@ -14,9 +14,9 @@ SRC=$CACHE/src/$SHA
 rm -rf "$SRC"
 mkdir -p "$SRC"
 git -C "$REPO" archive "$SHA" | tar -x -C "$SRC"
+PKG=github.com/autobrr/qui/internal/buildinfo
 {
-  (cd "$SRC/web" && pnpm install --frozen-lockfile --offline && pnpm build)
-  PKG=github.com/autobrr/qui/internal/buildinfo
+  (cd "$SRC/web" && pnpm install --frozen-lockfile --offline && pnpm build) &&
   (cd "$SRC" && go build -ldflags "-X $PKG.Version=prove-${SHA:0:9} -X $PKG.Commit=$SHA" -o "$BIN.tmp" ./cmd/qui)
 } > "$CACHE/bin/$SHA/build.log" 2>&1 || { tail -20 "$CACHE/bin/$SHA/build.log" >&2; exit 1; }
 mv "$BIN.tmp" "$BIN"
