@@ -29,6 +29,8 @@ import (
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/rollout"
@@ -206,6 +208,15 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
 	require.NoError(t, err)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	transferService := transfer.NewService(t.Context(), transfer.Deps{
+		Store:     transfers,
+		Instances: instanceStore,
+		Sync:      syncManager,
+		Files:     fsops.NewPool(instanceStore, local.NewBackend()),
+		Groups:    crossSeedService,
+		Config:    transfer.DefaultConfig(),
+	})
+	t.Cleanup(transferService.Close)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
@@ -262,6 +273,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		ArrInstanceStore:          arrInstanceStore,
 		ArrService:                arr.NewService(arrInstanceStore, models.NewArrIDCacheStore(db)),
 		Transfers:                 transfers,
+		TransferService:           transferService,
 		Switches:                  rollout.Switches{TransfersAndShares: true},
 	}
 }

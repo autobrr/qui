@@ -6811,6 +6811,95 @@ paths:
         '204':
           description: The outcome is dismissed
 
+  /api/transfers:
+    post:
+      tags:
+        - Transfers
+      summary: Start a Transfer
+      description: >-
+        Moves one torrent from the Transfer source to the Transfer target. qui copies its files from a source that it
+        reaches over SSH to its own disk on the target, checks every piece, adds the torrent to the target, and then
+        handles the source as the "after" field says. The route answers when the Transfer is recorded, before the copy
+        starts. Transfers from the same source run one at a time, in the order they started. Only a signed-in browser
+        can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourceInstanceId
+                - hash
+                - targetInstanceId
+              properties:
+                sourceInstanceId:
+                  type: integer
+                  description: The instance that has the torrent
+                hash:
+                  type: string
+                  description: The infohash of the torrent on the source
+                targetInstanceId:
+                  type: integer
+                  description: The instance that gets the torrent
+                savePath:
+                  type: string
+                  description: The save path on the target. Empty is the default save path of the target.
+                category:
+                  type: string
+                  description: The category of the torrent on the target
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  description: The tags of the torrent on the target
+                after:
+                  type: string
+                  enum:
+                    - removeWithFiles
+                    - keepFiles
+                    - keepSeeding
+                  default: removeWithFiles
+                  description: >-
+                    What happens to the torrent on the source after the Transfer. removeWithFiles keeps a file that
+                    another torrent reads.
+                leaveStopped:
+                  type: boolean
+                  description: Keep the torrent stopped on the target
+      responses:
+        '202':
+          description: The Transfer is recorded and waits for its turn
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+        '400':
+          description: The body is invalid, or it does not name the source, the torrent, and the target
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: qui refuses the Transfer, or another Transfer holds the torrent. The message says why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to record the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/system-notices/{kind}:
     delete:
       tags:
@@ -12444,6 +12533,8 @@ tags:
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
   - name: Transfer History
     description: The upload and download that qui recorded for each instance
+  - name: Transfers
+    description: Moves of a torrent and its files from one instance to another
   - name: Disc Scans
     description: BDInfo scans of Blu-ray Discs (BDMV folders and .iso files) in torrents
   - name: RSS
