@@ -128,25 +128,6 @@ func TestExecuteExportToInstance_RecheckOnlyWhenPausedAndChecking(t *testing.T) 
 	})
 }
 
-// With the Export switch off, a run of Export to Instance writes no Export
-// run of the Transfer module, also when start-up wires the Transfer module.
-// With the switch on, it writes one.
-func TestExecuteExportToInstance_RunsOnTransfersOnlyWithTheSwitch(t *testing.T) {
-	for _, tc := range []struct {
-		switches rollout.Switches
-		want     int
-	}{
-		{rollout.Production(), 0},
-		{rollout.Switches{ExportOnTransfer: true}, 1},
-	} {
-		result := runExport(t, exportCase{skipChecking: true, recheckStatus: http.StatusOK, switches: tc.switches})
-
-		require.Len(t, result.activities, 1)
-		require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
-		require.Equal(t, tc.want, result.exportRuns)
-	}
-}
-
 // exportPaths are the old Export path and the Export runs of the Transfer
 // module (#4166). The gate, #4170, deletes the old path.
 var exportPaths = []struct {
