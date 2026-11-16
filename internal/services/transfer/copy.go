@@ -20,6 +20,8 @@ const incompleteExt = ".!qB"
 // open is a file of the copy whose bytes qui reads and writes.
 type open struct {
 	reader io.ReadCloser
+	// at is the offset in the file of the next byte of reader.
+	at     int64
 	writer fsops.FileWriter
 	// done is set once every byte of the file is written.
 	done bool
@@ -47,7 +49,7 @@ func (j *job) copy(ctx context.Context) error {
 	j.proven = make([]byte, (info.NumPieces()+7)/8)
 
 	for i, f := range j.plan {
-		if f.size == 0 && !f.pad {
+		if f.size == 0 && j.writes(i) {
 			if _, err := c.writer(ctx, i); err != nil {
 				return err
 			}
@@ -59,8 +61,10 @@ func (j *job) copy(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := c.piece(ctx, piece, buf); err != nil {
-			return err
+		if !j.skips(piece) {
+			if err := c.piece(ctx, piece, buf); err != nil {
+				return err
+			}
 		}
 		if c.written >= j.svc.deps.Config.FlushBytes || piece == info.NumPieces()-1 {
 			if err := c.flush(ctx); err != nil {
@@ -134,13 +138,17 @@ func (c *copier) read(ctx context.Context, s segment, into []byte) error {
 		return nil
 	}
 	o := c.file(s.file)
+	if o.reader != nil && o.at != s.offset {
+		_ = o.reader.Close()
+		o.reader = nil
+	}
 	if o.reader == nil {
 		paths := c.j.srcFiles.Paths()
 		reader, err := c.j.srcFiles.OpenRead(ctx, paths.Join(c.j.src.torrent.SavePath, paths.FromSlash(f.name)), s.offset)
 		if err != nil {
 			return temporary("qui cannot read %s on %s: %v", f.name, c.j.source.Name, err)
 		}
-		o.reader = reader
+		o.reader, o.at = reader, s.offset
 	}
 	if _, err := io.ReadFull(o.reader, into); err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
@@ -148,6 +156,7 @@ func (c *copier) read(ctx context.Context, s segment, into []byte) error {
 		}
 		return temporary("qui cannot read %s on %s: %v", f.name, c.j.source.Name, err)
 	}
+	o.at += s.n
 	if s.offset+s.n == f.size {
 		_ = o.reader.Close()
 		o.reader = nil
@@ -156,7 +165,7 @@ func (c *copier) read(ctx context.Context, s segment, into []byte) error {
 }
 
 func (c *copier) write(ctx context.Context, s segment, data []byte) error {
-	if c.j.plan[s.file].pad {
+	if !c.j.writes(s.file) {
 		return nil
 	}
 	w, err := c.writer(ctx, s.file)

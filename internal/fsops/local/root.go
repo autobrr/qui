@@ -126,6 +126,13 @@ func (r *root) RenameNoReplace(ctx context.Context, oldName, newName string) err
 	return r.r.Rename(oldNative, newNative)
 }
 
+func (r *root) Link(ctx context.Context, oldName, newName string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.r.Link(filepath.FromSlash(oldName), filepath.FromSlash(newName))
+}
+
 func (r *root) Remove(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err

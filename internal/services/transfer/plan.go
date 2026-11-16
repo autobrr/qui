@@ -25,6 +25,9 @@ type file struct {
 	// name is the path that qBittorrent reports on the source, relative to
 	// the save path. The file keeps it on the target.
 	name string
+	// onTarget is set when the target had the file before the Transfer. qui
+	// checks it there and never writes it.
+	onTarget bool
 }
 
 // planFiles lines up the files of the .torrent with the names that
