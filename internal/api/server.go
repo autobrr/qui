@@ -281,6 +281,16 @@ func (s *Server) Switches() rollout.Switches {
 	return s.switches
 }
 
+// newTorrentsHandler builds the handler of the torrent routes. It refuses to
+// change a torrent that a Transfer holds, and a helper torrent.
+func (s *Server) newTorrentsHandler() *handlers.TorrentsHandler {
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
+	if s.transfers != nil {
+		torrentsHandler.SetHeldTorrents(s.transfers)
+	}
+	return torrentsHandler
+}
+
 // ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
 func (s *Server) ListenAndServeReady(ready chan<- struct{}) error {
 	return s.open(ready)
@@ -423,10 +433,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService, sshpool.NewDialer(s.instanceStore), s.sshPool)
 	instancesHandler.SetOrphanScan(s.orphanScanService)
 	instancesHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
-	if s.transfers != nil {
-		torrentsHandler.SetHeldTorrents(s.transfers)
-	}
+	torrentsHandler := s.newTorrentsHandler()
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)

@@ -36,7 +36,7 @@ type seedingFiles map[string]string // hash -> file path
 func (f seedingFiles) SeedingReady(context.Context, int) error { return nil }
 
 func (f seedingFiles) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
-	var views []qbittorrent.CrossInstanceTorrentView
+	views := make([]qbittorrent.CrossInstanceTorrentView, 0, len(f))
 	for hash, file := range f {
 		torrent := &qbt.Torrent{Hash: hash, Progress: 1, SavePath: filepath.Dir(file), Tags: "qui-transfer"}
 		views = append(views, qbittorrent.CrossInstanceTorrentView{TorrentView: &qbittorrent.TorrentView{Torrent: torrent}})

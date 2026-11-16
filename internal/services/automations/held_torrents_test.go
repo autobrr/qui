@@ -65,7 +65,7 @@ func TestRulesLeaveOutTorrentsThatQuiHolds(t *testing.T) {
 		svc.SetHeldTorrents(held)
 		preview, err := svc.PreviewDeleteRule(t.Context(), instanceID, deleteRule(DeleteModeWithFilesIncludeCrossSeeds, tagsContain("del")), 10, 0, "")
 		require.NoError(t, err)
-		var hashes []string
+		hashes := make([]string, 0, len(preview.Examples))
 		for _, example := range preview.Examples {
 			hashes = append(hashes, example.Hash)
 		}

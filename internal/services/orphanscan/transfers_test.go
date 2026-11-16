@@ -69,7 +69,7 @@ func TestScanSkipsHelperTorrentsAndRunningTransfers(t *testing.T) {
 	require.False(t, run.Partial)
 	files, err := store.ListFiles(t.Context(), run.ID, 100, 0, "")
 	require.NoError(t, err)
-	var found []string
+	found := make([]string, 0, len(files))
 	for _, file := range files {
 		found = append(found, file.FilePath)
 	}
