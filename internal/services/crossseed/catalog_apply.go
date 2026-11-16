@@ -30,7 +30,7 @@ func (s *Service) catalogAddPlan(candidate CrossSeedCandidate, incomingRelease *
 		return nil, err.Error()
 	}
 	incomingRoot := detectCommonRoot(incoming)
-	pairs, err := completeCatalogPairing(incoming, files, incomingRoot, catalogRoot(files, torrent.Name))
+	pairs, err := completeCatalogPairing(incoming, files, incomingRoot, detectCommonRoot(files))
 	if err != nil {
 		return nil, err.Error()
 	}

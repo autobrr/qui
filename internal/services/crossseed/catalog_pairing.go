@@ -109,13 +109,6 @@ func completeCatalogPairing(incoming, existing qbt.TorrentFiles, incomingRoot, e
 	return pairs, nil
 }
 
-func catalogRoot(files qbt.TorrentFiles, name string) string {
-	if root := detectCommonRoot(files); root == name {
-		return root
-	}
-	return ""
-}
-
 func catalogLinkPlan(d fsops.PathDialect, rootDir string, pairs []catalogFilePair, existing []hardlinktree.ExistingFile) (*hardlinktree.TreePlan, error) {
 	plan := &hardlinktree.TreePlan{RootDir: rootDir}
 	seen := make(map[string]struct{}, len(pairs))

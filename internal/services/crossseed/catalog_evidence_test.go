@@ -100,18 +100,19 @@ func TestCatalogPairing(t *testing.T) {
 }
 
 // regression: #4181
-func TestCatalogPairingKeepsIdenticalPathsUnderRenamedDisplayName(t *testing.T) {
+func TestCatalogPairingKeepsFullPathPriority(t *testing.T) {
 	files := qbt.TorrentFiles{
 		{Name: "Album/CD1/01.flac", Size: 100},
 		{Name: "Album/CD1/cover.jpg", Size: 10},
 		{Name: "Album/CD2/01.flac", Size: 200},
 		{Name: "Album/CD2/cover.jpg", Size: 10},
 	}
-	pairs, err := completeCatalogPairing(files, slices.Clone(files), detectCommonRoot(files), catalogRoot(files, "Album [FLAC]"))
+	pairs, err := completeCatalogPairing(files, slices.Clone(files), detectCommonRoot(files), detectCommonRoot(files))
 	require.NoError(t, err)
 	require.Len(t, pairs, len(files))
 	for _, pair := range pairs {
 		require.Equal(t, pair.sourcePath, pair.candidatePath)
+		require.Equal(t, catalogPairPath, pair.tier)
 	}
 }
 

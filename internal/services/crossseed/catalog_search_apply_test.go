@@ -226,7 +226,7 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	}
 	old := svc.matcher().matchVerdict(svc.matcher().readName(sourceMeta.Name), svc.matcher().readName(targetMeta.Name), matchEvidence{SourceSize: total, CandidateSize: total}, matchPolicy{})
 	old.Relaxed = old.Strict.differences
-	pairs, pairErr := completeCatalogPairing(targetMeta.Files, sourceMeta.Files, detectCommonRoot(targetMeta.Files), catalogRoot(sourceMeta.Files, sourceMeta.Name))
+	pairs, pairErr := completeCatalogPairing(targetMeta.Files, sourceMeta.Files, detectCommonRoot(targetMeta.Files), detectCommonRoot(sourceMeta.Files))
 	require.NoError(t, pairErr)
 	tiers := make([]catalogPairTier, len(pairs))
 	for i, pair := range pairs {

@@ -125,9 +125,9 @@ func TestCatalogFileOrderUsesPathAndSize(t *testing.T) {
 		{name: "API order is not identity", skip: true, reorder: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			piece := sha1.Sum([]byte("AABB"))
+			piece := sha1.Sum([]byte("AABBCC"))
 			torrent := func(source string) []byte {
-				data, err := bencode.Marshal(map[string]any{"announce": "https://tracker.example.invalid/announce", "info": map[string]any{"name": "Original Album", "source": source, "piece length": int64(16384), "pieces": string(piece[:]), "files": []map[string]any{{"length": int64(2), "path": []string{"a.flac"}}, {"length": int64(2), "path": []string{"b.flac"}}}}})
+				data, err := bencode.Marshal(map[string]any{"announce": "https://tracker.example.invalid/announce", "info": map[string]any{"name": "Original Album", "source": source, "piece length": int64(16384), "pieces": string(piece[:]), "files": []map[string]any{{"length": int64(2), "path": []string{"a.flac"}}, {"length": int64(2), "path": []string{"b.flac"}}, {"length": int64(1), "path": []string{"CD1", "cover.jpg"}}, {"length": int64(1), "path": []string{"CD2", "cover.jpg"}}}}})
 				require.NoError(t, err)
 				return data
 			}
@@ -141,7 +141,7 @@ func TestCatalogFileOrderUsesPathAndSize(t *testing.T) {
 			hashes, err := client.TargetHashes(sourceBytes)
 			require.NoError(t, err)
 			require.Contains(t, hashes, targetMeta.HashV1)
-			current := qbt.TorrentFiles{{Index: 0, Name: "A completely different local display name/b.flac", Size: 2, Progress: 1}, {Index: 1, Name: "A completely different local display name/a.flac", Size: 2, Progress: 1}}
+			current := qbt.TorrentFiles{{Index: 0, Name: "Existing Album/b.flac", Size: 2, Progress: 1}, {Index: 1, Name: "Existing Album/a.flac", Size: 2, Progress: 1}, {Index: 2, Name: "Existing Album/CD1/cover.jpg", Size: 1, Progress: 1}, {Index: 3, Name: "Existing Album/CD2/cover.jpg", Size: 1, Progress: 1}}
 			if !tt.swap {
 				current[0].Name, current[1].Name = current[1].Name, current[0].Name
 			}
@@ -150,8 +150,8 @@ func TestCatalogFileOrderUsesPathAndSize(t *testing.T) {
 			}
 			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, sourceMeta.HashV1, "A completely different local display name", current, targetMeta.HashV1, targetMeta.Files)
 			source := candidate.Torrents[0]
-			source.Size, source.TotalSize = 4, 4
-			p, err := svc.gazelleDecision(1, source, current, &gazellemusic.Match{Kind: gazellemusic.MatchHash, Host: "orpheus.network", TorrentID: 7, Size: 4, Title: "Tracker listing", TargetHash: targetMeta.HashV1, QueriedHash: targetMeta.HashV1})
+			source.Size, source.TotalSize = 6, 6
+			p, err := svc.gazelleDecision(1, source, current, &gazellemusic.Match{Kind: gazellemusic.MatchHash, Host: "orpheus.network", TorrentID: 7, Size: 6, Title: "Tracker listing", TargetHash: targetMeta.HashV1, QueriedHash: targetMeta.HashV1})
 			require.NoError(t, err)
 			sync := &catalogReplaySync{renameOnlySyncManager: base, source: source, sourceBytes: sourceBytes}
 			svc.syncManager = sync
