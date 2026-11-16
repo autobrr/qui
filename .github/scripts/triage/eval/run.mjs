@@ -167,13 +167,17 @@ function runClaude({ tree, prompt, binDir, worldFile, writesFile, transcript, di
   };
   if (process.env.CLAUDE_CONFIG_DIR) env.CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
   const started = Date.now();
-  return new Promise((done) => {
+  return new Promise((done, fail) => {
     const child = spawn(claudeBin, args, { cwd: tree, env, stdio: ["pipe", "pipe", "pipe"] });
     const out = [];
     const err = [];
     child.stdout.on("data", (b) => out.push(b));
     child.stderr.on("data", (b) => err.push(b));
     const timer = setTimeout(() => child.kill("SIGTERM"), 20 * 60 * 1000);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      fail(err);
+    });
     child.stdin.end(prompt);
     child.on("close", (code) => {
       clearTimeout(timer);
