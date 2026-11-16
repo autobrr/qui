@@ -1741,13 +1741,12 @@
       "description": "Este navegador usa um perfil. Uma mudança nas colunas, na densidade das linhas ou nas barras laterais vale só para esse perfil.",
       "thisBrowser": "Este navegador",
       "use": "Usar",
-      "newName": "Novo perfil a partir desta configuração",
-      "create": "Criar",
       "renameAriaLabel": "Renomear {{name}}",
       "deleteAriaLabel": "Excluir {{name}}",
       "deleteTitle": "Excluir {{name}}?",
       "deleteDescription": "Outros navegadores que o usam passam para {{defaultName}}.",
-      "deleteConfirm": "Excluir"
+      "deleteConfirm": "Excluir",
+      "changeIcon": "Alterar o ícone de {{name}}"
     },
     "nameErrors": {
       "empty": "Digite um nome.",
@@ -1761,6 +1760,71 @@
       "defaultShares": "Sempre compartilha ordenação e filtros",
       "defaultSharesHelp": "Default sempre compartilha a ordenação, os filtros e as outras escolhas de visualização com todos os perfis. Para manter os seus, crie outro perfil e ative Ordenação e filtros próprios."
     },
-    "deletedToast": "O perfil {{name}} foi excluído. Este navegador agora usa {{defaultName}}."
+    "deletedToast": "O perfil {{name}} foi excluído. Este navegador agora usa {{defaultName}}.",
+    "newProfile": "Novo perfil a partir desta configuração…",
+    "newDialog": {
+      "title": "Novo perfil",
+      "copies": "Copia <profile>{{name}}</profile>: colunas, densidade, barras laterais e filtros. Depois, este navegador passa a usá-lo.",
+      "name": "Nome",
+      "namePlaceholder": "Por exemplo, Notebook",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Cancelar",
+      "create": "Criar"
+    },
+    "iconPicker": {
+      "trigger": "Ícone: {{icon}}. Alterar o ícone e a cor",
+      "color": "Cor"
+    },
+    "iconGroups": {
+      "devices": "Dispositivos",
+      "places": "Lugares",
+      "use": "Uso",
+      "mood": "Humor"
+    },
+    "icons": {
+      "appWindow": "Janela de app",
+      "monitor": "Monitor",
+      "laptop": "Notebook",
+      "tablet": "Tablet",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Servidor",
+      "gamepad": "Controle",
+      "house": "Casa",
+      "briefcase": "Maleta",
+      "building": "Prédio",
+      "sofa": "Sofá",
+      "bed": "Cama",
+      "coffee": "Café",
+      "plane": "Avião",
+      "train": "Trem",
+      "rows": "Linhas",
+      "table": "Tabela",
+      "list": "Lista",
+      "eye": "Olho",
+      "gauge": "Medidor",
+      "zap": "Raio",
+      "download": "Download",
+      "upload": "Upload",
+      "sprout": "Broto",
+      "bookmark": "Marcador",
+      "moon": "Lua",
+      "sun": "Sol",
+      "star": "Estrela",
+      "heart": "Coração",
+      "flame": "Chama",
+      "rocket": "Foguete"
+    },
+    "colors": {
+      "none": "Nenhuma (cor do texto)",
+      "sky": "Céu",
+      "emerald": "Esmeralda",
+      "amber": "Âmbar",
+      "rose": "Rosa",
+      "violet": "Violeta",
+      "orange": "Laranja",
+      "teal": "Azul-petróleo",
+      "pink": "Rosa-choque"
+    }
   }
 }

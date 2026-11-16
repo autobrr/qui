@@ -1825,13 +1825,12 @@
       "description": "Tento prohlížeč používá jeden profil. Změna sloupců, hustoty řádků nebo postranních panelů platí jen pro tento profil.",
       "thisBrowser": "Tento prohlížeč",
       "use": "Použít",
-      "newName": "Nový profil z tohoto nastavení",
-      "create": "Vytvořit",
       "renameAriaLabel": "Přejmenovat {{name}}",
       "deleteAriaLabel": "Smazat {{name}}",
       "deleteTitle": "Smazat {{name}}?",
       "deleteDescription": "Ostatní prohlížeče, které ho používají, přejdou na {{defaultName}}.",
-      "deleteConfirm": "Smazat"
+      "deleteConfirm": "Smazat",
+      "changeIcon": "Změnit ikonu profilu {{name}}"
     },
     "nameErrors": {
       "empty": "Zadejte název.",
@@ -1845,6 +1844,71 @@
       "defaultShares": "Vždy sdílí řazení a filtry",
       "defaultSharesHelp": "Default vždy sdílí řazení, filtry a další volby zobrazení se všemi profily. Chcete-li mít vlastní, vytvořte jiný profil a zapněte Vlastní řazení a filtry."
     },
-    "deletedToast": "Profil {{name}} byl smazán. Tento prohlížeč teď používá {{defaultName}}."
+    "deletedToast": "Profil {{name}} byl smazán. Tento prohlížeč teď používá {{defaultName}}.",
+    "newProfile": "Nový profil z tohoto nastavení…",
+    "newDialog": {
+      "title": "Nový profil",
+      "copies": "Zkopíruje <profile>{{name}}</profile>: sloupce, hustotu, postranní panely a filtry. Tento prohlížeč ho pak používá.",
+      "name": "Název",
+      "namePlaceholder": "Například Notebook",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Zrušit",
+      "create": "Vytvořit"
+    },
+    "iconPicker": {
+      "trigger": "Ikona: {{icon}}. Změnit ikonu a barvu",
+      "color": "Barva"
+    },
+    "iconGroups": {
+      "devices": "Zařízení",
+      "places": "Místa",
+      "use": "Použití",
+      "mood": "Nálada"
+    },
+    "icons": {
+      "appWindow": "Okno aplikace",
+      "monitor": "Monitor",
+      "laptop": "Notebook",
+      "tablet": "Tablet",
+      "smartphone": "Chytrý telefon",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Herní ovladač",
+      "house": "Dům",
+      "briefcase": "Aktovka",
+      "building": "Budova",
+      "sofa": "Pohovka",
+      "bed": "Postel",
+      "coffee": "Káva",
+      "plane": "Letadlo",
+      "train": "Vlak",
+      "rows": "Řádky",
+      "table": "Tabulka",
+      "list": "Seznam",
+      "eye": "Oko",
+      "gauge": "Ukazatel",
+      "zap": "Blesk",
+      "download": "Stahování",
+      "upload": "Nahrávání",
+      "sprout": "Výhonek",
+      "bookmark": "Záložka",
+      "moon": "Měsíc",
+      "sun": "Slunce",
+      "star": "Hvězda",
+      "heart": "Srdce",
+      "flame": "Plamen",
+      "rocket": "Raketa"
+    },
+    "colors": {
+      "none": "Žádná (barva textu)",
+      "sky": "Nebeská",
+      "emerald": "Smaragdová",
+      "amber": "Jantarová",
+      "rose": "Růžová",
+      "violet": "Fialová",
+      "orange": "Oranžová",
+      "teal": "Modrozelená",
+      "pink": "Sytě růžová"
+    }
   }
 }

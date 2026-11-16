@@ -1741,13 +1741,12 @@
       "description": "Ce navigateur utilise un profil. Une modification des colonnes, de la densité des lignes ou des barres latérales ne s’applique qu’à ce profil.",
       "thisBrowser": "Ce navigateur",
       "use": "Utiliser",
-      "newName": "Nouveau profil à partir de cette configuration",
-      "create": "Créer",
       "renameAriaLabel": "Renommer {{name}}",
       "deleteAriaLabel": "Supprimer {{name}}",
       "deleteTitle": "Supprimer {{name}} ?",
       "deleteDescription": "Les autres navigateurs qui l’utilisent passent à {{defaultName}}.",
-      "deleteConfirm": "Supprimer"
+      "deleteConfirm": "Supprimer",
+      "changeIcon": "Changer l’icône de {{name}}"
     },
     "nameErrors": {
       "empty": "Saisissez un nom.",
@@ -1761,6 +1760,71 @@
       "defaultShares": "Partage toujours le tri et les filtres",
       "defaultSharesHelp": "Default partage toujours le tri, les filtres et les autres choix d’affichage avec tous les profils. Pour garder les vôtres, créez un autre profil et activez Tri et filtres propres."
     },
-    "deletedToast": "Le profil {{name}} a été supprimé. Ce navigateur utilise maintenant {{defaultName}}."
+    "deletedToast": "Le profil {{name}} a été supprimé. Ce navigateur utilise maintenant {{defaultName}}.",
+    "newProfile": "Nouveau profil à partir de cette configuration…",
+    "newDialog": {
+      "title": "Nouveau profil",
+      "copies": "Copie <profile>{{name}}</profile> : colonnes, densité, barres latérales et filtres. Ce navigateur l’utilise ensuite.",
+      "name": "Nom",
+      "namePlaceholder": "Par exemple, Portable",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Annuler",
+      "create": "Créer"
+    },
+    "iconPicker": {
+      "trigger": "Icône : {{icon}}. Changer l’icône et la couleur",
+      "color": "Couleur"
+    },
+    "iconGroups": {
+      "devices": "Appareils",
+      "places": "Lieux",
+      "use": "Usage",
+      "mood": "Humeur"
+    },
+    "icons": {
+      "appWindow": "Fenêtre d’application",
+      "monitor": "Écran",
+      "laptop": "Ordinateur portable",
+      "tablet": "Tablette",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Serveur",
+      "gamepad": "Manette",
+      "house": "Maison",
+      "briefcase": "Mallette",
+      "building": "Immeuble",
+      "sofa": "Canapé",
+      "bed": "Lit",
+      "coffee": "Café",
+      "plane": "Avion",
+      "train": "Train",
+      "rows": "Lignes",
+      "table": "Tableau",
+      "list": "Liste",
+      "eye": "Œil",
+      "gauge": "Jauge",
+      "zap": "Éclair",
+      "download": "Téléchargement",
+      "upload": "Envoi",
+      "sprout": "Pousse",
+      "bookmark": "Signet",
+      "moon": "Lune",
+      "sun": "Soleil",
+      "star": "Étoile",
+      "heart": "Cœur",
+      "flame": "Flamme",
+      "rocket": "Fusée"
+    },
+    "colors": {
+      "none": "Aucune (couleur du texte)",
+      "sky": "Ciel",
+      "emerald": "Émeraude",
+      "amber": "Ambre",
+      "rose": "Rose",
+      "violet": "Violet",
+      "orange": "Orange",
+      "teal": "Sarcelle",
+      "pink": "Rose vif"
+    }
   }
 }

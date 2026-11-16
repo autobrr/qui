@@ -36,8 +36,25 @@ export const DEFAULT_DISPLAY_PROFILE_ENTRY: DisplayProfileEntry = {
   ownSortAndFilters: false,
 }
 
+/** The icon of a profile whose name matches no guess. */
+export const DISPLAY_PROFILE_FALLBACK_ICON = "bookmark"
+
+const ICON_GUESSES: readonly [RegExp, string][] = [
+  [/laptop/, "laptop"],
+  [/phone|mobile/, "smartphone"],
+  [/tablet|ipad/, "tablet"],
+  [/\btv\b/, "tv"],
+  [/desktop|\bwork/, "monitor"],
+]
+
+/** The icon that a new profile gets from its name, until the user picks one. */
+export function guessDisplayProfileIcon(name: string): string {
+  const folded = name.toLocaleLowerCase()
+  return ICON_GUESSES.find(([pattern]) => pattern.test(folded))?.[1] ?? DISPLAY_PROFILE_FALLBACK_ICON
+}
+
 export function newDisplayProfileEntry(name: string): DisplayProfileEntry {
-  return { name, icon: "bookmark", color: null, sameColumns: null, ownSortAndFilters: false }
+  return { name, icon: DISPLAY_PROFILE_FALLBACK_ICON, color: null, sameColumns: null, ownSortAndFilters: false }
 }
 
 /** Reads a stored entry. Returns null for a deleted entry ("") and for a value that is not an entry. */

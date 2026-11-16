@@ -1741,13 +1741,12 @@
       "description": "Aquest navegador fa servir un perfil. Un canvi a les columnes, la densitat de files o les barres laterals només afecta aquest perfil.",
       "thisBrowser": "Aquest navegador",
       "use": "Fes servir",
-      "newName": "Perfil nou a partir d'aquesta configuració",
-      "create": "Crea",
       "renameAriaLabel": "Canvia el nom de {{name}}",
       "deleteAriaLabel": "Suprimeix {{name}}",
       "deleteTitle": "Vols suprimir {{name}}?",
       "deleteDescription": "Els altres navegadors que el fan servir passen a {{defaultName}}.",
-      "deleteConfirm": "Suprimeix"
+      "deleteConfirm": "Suprimeix",
+      "changeIcon": "Canvia la icona de {{name}}"
     },
     "nameErrors": {
       "empty": "Introdueix un nom.",
@@ -1761,6 +1760,71 @@
       "defaultShares": "Sempre comparteix l'ordre i els filtres",
       "defaultSharesHelp": "Default sempre comparteix l'ordre, els filtres i les altres opcions de vista amb tots els perfils. Per tenir els teus propis, crea un altre perfil i activa Ordre i filtres propis."
     },
-    "deletedToast": "S'ha suprimit el perfil {{name}}. Aquest navegador ara fa servir {{defaultName}}."
+    "deletedToast": "S'ha suprimit el perfil {{name}}. Aquest navegador ara fa servir {{defaultName}}.",
+    "newProfile": "Perfil nou a partir d’aquesta configuració…",
+    "newDialog": {
+      "title": "Perfil nou",
+      "copies": "Copia <profile>{{name}}</profile>: columnes, densitat, barres laterals i filtres. Després aquest navegador l’utilitza.",
+      "name": "Nom",
+      "namePlaceholder": "Per exemple, Portàtil",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Cancel·la",
+      "create": "Crea"
+    },
+    "iconPicker": {
+      "trigger": "Icona: {{icon}}. Canvia la icona i el color",
+      "color": "Color"
+    },
+    "iconGroups": {
+      "devices": "Dispositius",
+      "places": "Llocs",
+      "use": "Ús",
+      "mood": "Estat d’ànim"
+    },
+    "icons": {
+      "appWindow": "Finestra d’aplicació",
+      "monitor": "Monitor",
+      "laptop": "Portàtil",
+      "tablet": "Tauleta",
+      "smartphone": "Telèfon intel·ligent",
+      "tv": "TV",
+      "server": "Servidor",
+      "gamepad": "Comandament",
+      "house": "Casa",
+      "briefcase": "Maletí",
+      "building": "Edifici",
+      "sofa": "Sofà",
+      "bed": "Llit",
+      "coffee": "Cafè",
+      "plane": "Avió",
+      "train": "Tren",
+      "rows": "Files",
+      "table": "Taula",
+      "list": "Llista",
+      "eye": "Ull",
+      "gauge": "Indicador",
+      "zap": "Llamp",
+      "download": "Baixada",
+      "upload": "Pujada",
+      "sprout": "Brot",
+      "bookmark": "Marcador",
+      "moon": "Lluna",
+      "sun": "Sol",
+      "star": "Estrella",
+      "heart": "Cor",
+      "flame": "Flama",
+      "rocket": "Coet"
+    },
+    "colors": {
+      "none": "Cap (color del text)",
+      "sky": "Cel",
+      "emerald": "Maragda",
+      "amber": "Ambre",
+      "rose": "Rosa",
+      "violet": "Violeta",
+      "orange": "Taronja",
+      "teal": "Verd blavós",
+      "pink": "Rosa intens"
+    }
   }
 }

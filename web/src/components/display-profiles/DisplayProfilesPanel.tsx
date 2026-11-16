@@ -4,7 +4,7 @@
  */
 
 import { Pencil, Trash2 } from "lucide-react"
-import { useId, useState, type FormEvent, type KeyboardEvent } from "react"
+import { useState, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -20,7 +20,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { useDisplayProfiles } from "@/lib/client-settings"
 import {
   DISPLAY_PROFILE_NAME_MAX_LENGTH,
@@ -29,38 +28,29 @@ import {
   type DisplayProfileNameError
 } from "@/lib/display-profiles"
 
+import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
+import { DisplayProfileTile } from "./DisplayProfileTile"
 import { OwnSortAndFiltersSetting } from "./OwnSortAndFiltersSetting"
 
 interface DisplayProfilesPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onNewProfile: () => void
 }
 
 type NameErrorText = Record<DisplayProfileNameError, string>
 
-/** Lists the Display profiles, picks, renames, and deletes one, and creates one from the current setup. */
-export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPanelProps) {
+/** Lists the Display profiles, picks, renames, restyles, and deletes one, and opens the New profile dialog. */
+export function DisplayProfilesPanel({ open, onOpenChange, onNewProfile }: DisplayProfilesPanelProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick, create, rename, delete: deleteProfile } = useDisplayProfiles()
-  const [name, setName] = useState("")
-  const [nameError, setNameError] = useState<DisplayProfileNameError | null>(null)
+  const { profiles, active, pick, rename, delete: deleteProfile, setIcon, setColor } = useDisplayProfiles()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<DisplayProfile | null>(null)
-  const nameId = useId()
 
   const nameErrorText: NameErrorText = {
     empty: t("displayProfiles.nameErrors.empty"),
     tooLong: t("displayProfiles.nameErrors.tooLong", { max: DISPLAY_PROFILE_NAME_MAX_LENGTH }),
     duplicate: t("displayProfiles.nameErrors.duplicate"),
-  }
-
-  const handleCreate = (event: FormEvent) => {
-    event.preventDefault()
-    const error = validateDisplayProfileName(name, profiles)
-    setNameError(error)
-    if (error) return
-    create(name)
-    setName("")
   }
 
   return (
@@ -81,6 +71,16 @@ export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPane
         <ul className="divide-y rounded-md border">
           {profiles.map((profile) => (
             <li key={profile.id} className="flex min-h-11 items-center justify-between gap-2 px-3 py-2 text-sm">
+              <DisplayProfileIconPicker
+                icon={profile.icon}
+                color={profile.color}
+                onIconChange={(icon) => setIcon(profile.id, icon)}
+                onColorChange={(color) => setColor(profile.id, color)}
+              >
+                <button type="button" aria-label={t("displayProfiles.panel.changeIcon", { name: profile.name })} className="shrink-0 rounded-md">
+                  <DisplayProfileTile profile={profile} size="sm" />
+                </button>
+              </DisplayProfileIconPicker>
               {renamingId === profile.id ? (
                 <RenameField
                   profile={profile}
@@ -130,22 +130,7 @@ export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPane
           ))}
         </ul>
         <OwnSortAndFiltersSetting profile={active} />
-        <form onSubmit={handleCreate} className="space-y-2">
-          <Label htmlFor={nameId}>{t("displayProfiles.panel.newName")}</Label>
-          <div className="flex gap-2">
-            <Input
-              id={nameId}
-              value={name}
-              aria-invalid={nameError !== null}
-              onChange={(event) => {
-                setName(event.target.value)
-                setNameError(null)
-              }}
-            />
-            <Button type="submit">{t("displayProfiles.panel.create")}</Button>
-          </div>
-          {nameError && <p className="text-sm text-destructive">{nameErrorText[nameError]}</p>}
-        </form>
+        <Button variant="outline" onClick={onNewProfile}>{t("displayProfiles.newProfile")}</Button>
       </DialogContent>
       <AlertDialog open={deleting !== null} onOpenChange={(isOpen) => !isOpen && setDeleting(null)}>
         <AlertDialogContent>

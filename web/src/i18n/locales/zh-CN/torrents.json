@@ -1657,13 +1657,12 @@
       "description": "此浏览器使用一个配置。对列、行密度或侧边栏的更改只作用于该配置。",
       "thisBrowser": "此浏览器",
       "use": "使用",
-      "newName": "从当前设置新建配置",
-      "create": "创建",
       "renameAriaLabel": "重命名 {{name}}",
       "deleteAriaLabel": "删除 {{name}}",
       "deleteTitle": "删除 {{name}}？",
       "deleteDescription": "使用它的其他浏览器将切换到 {{defaultName}}。",
-      "deleteConfirm": "删除"
+      "deleteConfirm": "删除",
+      "changeIcon": "更改{{name}}的图标"
     },
     "nameErrors": {
       "empty": "请输入名称。",
@@ -1677,6 +1676,71 @@
       "defaultShares": "始终共享排序和筛选",
       "defaultSharesHelp": "Default 始终与所有配置共享排序、筛选和其他视图选项。如需单独保存，请创建另一个配置并开启“独立的排序和筛选”。"
     },
-    "deletedToast": "{{name}} 配置已删除。此浏览器现在使用 {{defaultName}}。"
+    "deletedToast": "{{name}} 配置已删除。此浏览器现在使用 {{defaultName}}。",
+    "newProfile": "用当前设置新建配置文件…",
+    "newDialog": {
+      "title": "新建配置文件",
+      "copies": "复制<profile>{{name}}</profile>的列、密度、侧边栏和筛选器。之后此浏览器使用它。",
+      "name": "名称",
+      "namePlaceholder": "例如：笔记本",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "取消",
+      "create": "创建"
+    },
+    "iconPicker": {
+      "trigger": "图标：{{icon}}。更改图标和颜色",
+      "color": "颜色"
+    },
+    "iconGroups": {
+      "devices": "设备",
+      "places": "地点",
+      "use": "用途",
+      "mood": "心情"
+    },
+    "icons": {
+      "appWindow": "应用窗口",
+      "monitor": "显示器",
+      "laptop": "笔记本",
+      "tablet": "平板",
+      "smartphone": "手机",
+      "tv": "电视",
+      "server": "服务器",
+      "gamepad": "游戏手柄",
+      "house": "房子",
+      "briefcase": "公文包",
+      "building": "大楼",
+      "sofa": "沙发",
+      "bed": "床",
+      "coffee": "咖啡",
+      "plane": "飞机",
+      "train": "火车",
+      "rows": "行",
+      "table": "表格",
+      "list": "列表",
+      "eye": "眼睛",
+      "gauge": "仪表",
+      "zap": "闪电",
+      "download": "下载",
+      "upload": "上传",
+      "sprout": "嫩芽",
+      "bookmark": "书签",
+      "moon": "月亮",
+      "sun": "太阳",
+      "star": "星星",
+      "heart": "爱心",
+      "flame": "火焰",
+      "rocket": "火箭"
+    },
+    "colors": {
+      "none": "无（文字颜色）",
+      "sky": "天蓝",
+      "emerald": "翠绿",
+      "amber": "琥珀",
+      "rose": "玫红",
+      "violet": "紫罗兰",
+      "orange": "橙色",
+      "teal": "青绿",
+      "pink": "粉红"
+    }
   }
 }

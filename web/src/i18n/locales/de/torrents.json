@@ -1741,13 +1741,12 @@
       "description": "Dieser Browser nutzt ein Profil. Eine Änderung an Spalten, Zeilendichte oder Seitenleisten gilt nur für dieses Profil.",
       "thisBrowser": "Dieser Browser",
       "use": "Verwenden",
-      "newName": "Neues Profil aus dieser Einrichtung",
-      "create": "Erstellen",
       "renameAriaLabel": "{{name}} umbenennen",
       "deleteAriaLabel": "{{name}} löschen",
       "deleteTitle": "{{name}} löschen?",
       "deleteDescription": "Andere Browser, die es verwenden, wechseln zu {{defaultName}}.",
-      "deleteConfirm": "Löschen"
+      "deleteConfirm": "Löschen",
+      "changeIcon": "Symbol von {{name}} ändern"
     },
     "nameErrors": {
       "empty": "Gib einen Namen ein.",
@@ -1761,6 +1760,71 @@
       "defaultShares": "Teilt Sortierung und Filter immer",
       "defaultSharesHelp": "Default teilt die Sortierung, die Filter und die anderen Ansichtsoptionen immer mit allen Profilen. Für eigene Werte erstelle ein anderes Profil und schalte Eigene Sortierung und Filter ein."
     },
-    "deletedToast": "Das Profil {{name}} wurde gelöscht. Dieser Browser verwendet jetzt {{defaultName}}."
+    "deletedToast": "Das Profil {{name}} wurde gelöscht. Dieser Browser verwendet jetzt {{defaultName}}.",
+    "newProfile": "Neues Profil aus dieser Einrichtung…",
+    "newDialog": {
+      "title": "Neues Profil",
+      "copies": "Kopiert <profile>{{name}}</profile>: Spalten, Dichte, Seitenleisten und Filter. Dieser Browser nutzt es danach.",
+      "name": "Name",
+      "namePlaceholder": "Zum Beispiel Laptop",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Abbrechen",
+      "create": "Erstellen"
+    },
+    "iconPicker": {
+      "trigger": "Symbol: {{icon}}. Symbol und Farbe ändern",
+      "color": "Farbe"
+    },
+    "iconGroups": {
+      "devices": "Geräte",
+      "places": "Orte",
+      "use": "Nutzung",
+      "mood": "Stimmung"
+    },
+    "icons": {
+      "appWindow": "App-Fenster",
+      "monitor": "Monitor",
+      "laptop": "Laptop",
+      "tablet": "Tablet",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Gamepad",
+      "house": "Haus",
+      "briefcase": "Aktentasche",
+      "building": "Gebäude",
+      "sofa": "Sofa",
+      "bed": "Bett",
+      "coffee": "Kaffee",
+      "plane": "Flugzeug",
+      "train": "Zug",
+      "rows": "Zeilen",
+      "table": "Tabelle",
+      "list": "Liste",
+      "eye": "Auge",
+      "gauge": "Tacho",
+      "zap": "Blitz",
+      "download": "Download",
+      "upload": "Upload",
+      "sprout": "Spross",
+      "bookmark": "Lesezeichen",
+      "moon": "Mond",
+      "sun": "Sonne",
+      "star": "Stern",
+      "heart": "Herz",
+      "flame": "Flamme",
+      "rocket": "Rakete"
+    },
+    "colors": {
+      "none": "Keine (Textfarbe)",
+      "sky": "Himmelblau",
+      "emerald": "Smaragd",
+      "amber": "Bernstein",
+      "rose": "Rosé",
+      "violet": "Violett",
+      "orange": "Orange",
+      "teal": "Petrol",
+      "pink": "Pink"
+    }
   }
 }

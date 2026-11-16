@@ -12,6 +12,7 @@ import {
   parseDisplayProfileEntry,
   validateDisplayProfileName,
   type DisplayProfile,
+  type DisplayProfileColor,
   type DisplayProfileEntry
 } from "@/lib/display-profiles"
 
@@ -460,11 +461,14 @@ function randomProfileId(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
+export type DisplayProfileLook = Partial<Pick<DisplayProfileEntry, "icon" | "color">>
+
 /**
  * Makes a profile from the Display settings of the active profile, for every instance, and makes this browser use
- * it. Throws when validateDisplayProfileName rejects the name. Returns the id of the new profile.
+ * it. The icon and the color come from look, not from the source; with no look the icon is bookmark and the color
+ * None. Throws when validateDisplayProfileName rejects the name. Returns the id of the new profile.
  */
-export function createDisplayProfile(name: string): string {
+export function createDisplayProfile(name: string, look: DisplayProfileLook = {}): string {
   const { profiles, active } = getDisplayProfiles()
   const error = validateDisplayProfileName(name, profiles)
   if (error) throw new Error(`invalid Display profile name: ${error}`)
@@ -487,6 +491,7 @@ export function createDisplayProfile(name: string): string {
   for (const [key, raw] of copies) writeRaw(profileValueKey(id, key), raw)
   writeRaw(profileEntryKey(id), JSON.stringify({
     ...newDisplayProfileEntry(name.trim()),
+    ...look,
     sameColumns: active.sameColumns,
     ownSortAndFilters: active.ownSortAndFilters,
   }))
@@ -531,6 +536,23 @@ export function deleteDisplayProfile(profileId: string): void {
   writeRaw(profileEntryKey(profileId), "")
   for (const key of profileValueKeys(profileId)) writeRaw(key, "")
   if (wasActive) pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+}
+
+function updateDisplayProfileEntry(profileId: string, change: Partial<DisplayProfileEntry>): void {
+  const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+  if (!profile) return
+  const { id: _id, isDefault: _isDefault, ...entry } = profile
+  writeRaw(profileEntryKey(profileId), JSON.stringify({ ...entry, ...change }))
+}
+
+/** Saves the lucide icon name of a profile. */
+export function setDisplayProfileIcon(profileId: string, icon: string): void {
+  updateDisplayProfileEntry(profileId, { icon })
+}
+
+/** Saves the color of a profile. null is the color None. */
+export function setDisplayProfileColor(profileId: string, color: DisplayProfileColor | null): void {
+  updateDisplayProfileEntry(profileId, { color })
 }
 
 /** The Sort and filters values stored under the prefix, as pairs of the key of today and the raw value. */
@@ -590,9 +612,11 @@ function subscribeDisplayProfiles(callback: () => void): () => void {
 
 export interface DisplayProfilesApi extends DisplayProfilesState {
   pick: (profileId: string) => void
-  create: (name: string) => string
+  create: (name: string, look?: DisplayProfileLook) => string
   rename: (profileId: string, name: string) => void
   delete: (profileId: string) => void
+  setIcon: (profileId: string, icon: string) => void
+  setColor: (profileId: string, color: DisplayProfileColor | null) => void
   setOwnSortAndFilters: (profileId: string, on: boolean) => void
 }
 
@@ -605,6 +629,8 @@ export function useDisplayProfiles(): DisplayProfilesApi {
     create: createDisplayProfile,
     rename: renameDisplayProfile,
     delete: deleteDisplayProfile,
+    setIcon: setDisplayProfileIcon,
+    setColor: setDisplayProfileColor,
     setOwnSortAndFilters: setDisplayProfileOwnSortAndFilters,
   }), [state])
 }
