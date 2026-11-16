@@ -217,9 +217,7 @@ func TestTransferResumesOnATargetWithoutFsync(t *testing.T) {
 			}
 			require.Equal(t, failed, pieces, "qui copies the pieces that failed the check, each one time")
 			for _, w := range resumed {
-				if strings.HasPrefix(w.name, showName+"/Show.S01E01.mkv.") {
-					require.Equal(t, tc.incompleteExt, strings.HasSuffix(w.name, ".!qB"), w.name)
-				}
+				require.Equal(t, tc.incompleteExt, strings.HasSuffix(w.name, ".!qB"), "the check renamed each partial file: %s", w.name)
 			}
 		})
 	}
