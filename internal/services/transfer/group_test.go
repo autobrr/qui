@@ -9,7 +9,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -198,31 +200,22 @@ func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
 func TestTransferMovesAMixedGroupWholeToTheTarget(t *testing.T) {
 	r := newRig(t)
 	cs := r.withCrossSeedInstance()
-	files := map[string][]byte{
-		"Show.S01E01.mkv": bytes.Repeat([]byte("one|"), 10),
-		"Show.S01E02.mkv": []byte("E02-abcdefghijklmnopqrstuvwxyz"),
-		"Show.S01E03.mkv": bytes.Repeat([]byte("six|"), 5),
-	}
-	pack, packHash := qbtstub.NewContentTorrent(t, showName, 16,
-		qbtstub.ContentFile{Path: "Show.S01E01.mkv", Data: files["Show.S01E01.mkv"]},
-		qbtstub.ContentFile{Path: "Show.S01E02.mkv", Data: files["Show.S01E02.mkv"]},
-		qbtstub.ContentFile{Path: "Show.S01E03.mkv", Data: files["Show.S01E03.mkv"]})
-	write(t, filepath.Join(r.srcDir, showName), files)
-	r.src.Seed(pack, r.srcDir)
-	episode, episodeHash := singleFileTorrent(t, "Show.S01E02.mkv", files["Show.S01E02.mkv"])
+	pack := newPack(t)
+	r.seed(pack)
+	episode, episodeHash := singleFileTorrent(t, episode2, pack.files[episode2])
 	r.src.Seed(episode, filepath.Join(r.srcDir, showName))
-	r.disk.free = 90
+	r.disk.free = 106
 
 	record := r.run(transfer.Request{SourceInstanceID: r.source.ID, Hash: episodeHash, TargetInstanceID: r.target.ID})
 
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Len(t, record.Members, 2)
 	require.Empty(t, cs.requests)
-	require.Contains(t, logOf(record), "Proof: the check on homelab passed all 6 pieces of "+showName+".")
+	require.Contains(t, logOf(record), "Proof: the check on homelab passed all 7 pieces of "+showName+".")
 	require.True(t, r.seeding(r.target.ID, episodeHash))
-	require.True(t, r.seeding(r.target.ID, packHash))
-	require.Equal(t, contents(show{files: files}, showName), tree(t, r.dstDir))
-	require.False(t, r.src.Has(packHash))
+	require.True(t, r.seeding(r.target.ID, pack.hash))
+	require.Equal(t, contents(pack, showName), tree(t, r.dstDir))
+	require.False(t, r.src.Has(pack.hash))
 	require.False(t, r.src.Has(episodeHash))
 	require.Empty(t, tree(t, r.srcDir))
 }
@@ -299,4 +292,34 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	require.Equal(t, transfer.StateFailed, records[secondID].State)
 	require.Contains(t, records[secondID].FailureReason, "the Transfer needs 70 B, and 30 B is free")
 	require.Equal(t, transfer.StateDone, records[thirdID].State, records[thirdID].FailureReason)
+}
+
+// A file of the group that is on the target before the Transfer is a head
+// start for each torrent of the group: qui writes only the missing file, and
+// once.
+func TestTransferUsesAFileOnTheTargetForTheWholeGroup(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	crossSeed, crossSeedHash := crossSeedOf(t, s)
+	r.src.Seed(crossSeed, r.srcDir)
+	theirs := map[string][]byte{"Show.S01E02.mkv": s.files["Show.S01E02.mkv"]}
+	before := r.placeOnTarget(theirs)
+	r.disk.free = 40
+	written := map[string]struct{}{}
+	r.disk.onWrite = func(name string) {
+		final, _, _ := strings.Cut(path.Base(name), ".qui-transfer-")
+		written[final] = struct{}{}
+	}
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, map[string]struct{}{"Show.S01E01.mkv": {}}, written)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	r.requireUntouched(before, theirs)
+	require.True(t, r.seeding(r.target.ID, s.hash))
+	require.True(t, r.seeding(r.target.ID, crossSeedHash))
+	require.Equal(t, map[string]string{showName + "/Show.S01E02.mkv": string(theirs["Show.S01E02.mkv"])}, tree(t, r.srcDir),
+		"the source keeps the file that qui did not copy")
 }

@@ -56,7 +56,7 @@ func (j *job) copy(ctx context.Context) error {
 	c := &copier{j: j, open: map[*groupFile]*open{}, reads: map[string]*reading{}, dirty: map[*groupFile]struct{}{}, confirmed: true}
 	defer c.close()
 	for _, f := range j.files {
-		if f.size == 0 {
+		if f.size == 0 && !f.onTarget {
 			if _, err := c.writer(ctx, f); err != nil {
 				return err
 			}
@@ -152,11 +152,12 @@ func (p *part) segments(start, length int64) []segment {
 	return out
 }
 
-// writes reports whether the member writes the file of the segment: it is
-// the first member that has the file.
+// writes reports whether the member writes the file of the segment: the
+// target does not have the file, and the member is the first one that has
+// it.
 func (j *job) writes(p *part, s segment) bool {
 	f := p.plan[s.file]
-	return !f.pad && j.byRel[p.rel(f)].owner == p
+	return !f.pad && !f.onTarget && j.byRel[p.rel(f)].owner == p
 }
 
 func (c *copier) read(ctx context.Context, p *part, s segment, into []byte) error {

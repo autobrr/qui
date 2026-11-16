@@ -103,6 +103,9 @@ func (j *job) run(ctx context.Context) error {
 	if err := j.prepare(ctx); err != nil {
 		return err
 	}
+	if err := j.headStart(ctx); err != nil {
+		return err
+	}
 	if err := j.copy(ctx); err != nil {
 		return err
 	}
@@ -196,8 +199,15 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("The torrents of the group do not agree on their files: %v", err)
 	}
 
-	need := diskBytes(j.files)
-	stat, err := targetFiles.Statfs(ctx, nearestFolder(ctx, targetFiles, j.rootDir))
+	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
+		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
+	}
+	if err := j.findOnTarget(ctx); err != nil {
+		return err
+	}
+
+	need := copiedBytes(j.files)
+	stat, err := targetFiles.Statfs(ctx, j.rootDir)
 	if err != nil {
 		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
 	}
@@ -205,34 +215,8 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("Not enough free space on %s: %v", j.target.Name, err)
 	}
 	j.reserved = need
-
-	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
-		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
-	}
-	for _, f := range j.files {
-		for _, candidate := range []string{f.rel, j.tempName(f.rel), j.tempName(f.rel) + incompleteExt} {
-			if _, err := j.root.Lstat(ctx, candidate); !errors.Is(err, fs.ErrNotExist) {
-				return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, path.Join(j.rootDir, candidate))
-			}
-		}
-	}
 	j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
 	return nil
-}
-
-// nearestFolder is path or its closest parent that exists.
-func nearestFolder(ctx context.Context, files fsops.Backend, dir string) string {
-	paths := files.Paths()
-	for {
-		if _, err := files.Lstat(ctx, dir); err == nil {
-			return dir
-		}
-		parent := paths.Dir(dir)
-		if parent == dir {
-			return dir
-		}
-		dir = parent
-	}
 }
 
 // checkSource fails when a torrent of the Transfer moved on the source, was

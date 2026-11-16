@@ -60,12 +60,13 @@ func newShow(t *testing.T, name string) show {
 }
 
 // disk is qui's own disk. Its switches imitate a target that cannot confirm
-// a flush, that damages a byte, that has little free space, or that a test
-// watches during the copy.
+// a flush, that cannot make a hardlink, that damages a byte, that has little
+// free space, or that a test watches during the copy.
 type disk struct {
 	*local.Backend
 	free        int64
 	unconfirmed bool
+	noLinks     bool
 	// damage flips the byte at an offset of the file with this final name.
 	damage  map[string]int64
 	onWrite func(name string)
