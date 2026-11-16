@@ -146,6 +146,7 @@ The web UI signs in with a browser session cookie. These rules apply to that coo
 - Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests must send an `X-Requested-With` header. The web UI and the Swagger UI do this. Scripts and other clients must use an [API key](../api/overview.md) instead of the cookie.
 - `/api/auth/setup` and `/api/auth/login` accept only `Content-Type: application/json`. Other media types get HTTP 415.
 - After five failed password logins in one minute, qui rejects password logins with HTTP 429 until the minute passes. This limit is process-wide and does not apply to OIDC or API keys.
+- The routes under `/api/auth` take one request at a time, and one more request can wait for up to one second. Each other request at the same time gets HTTP 429, also when its password is correct.
 - A password change ends every session, including the browser that changed it. Sign in again with the new password.
 
 ## Allowed Hosts
