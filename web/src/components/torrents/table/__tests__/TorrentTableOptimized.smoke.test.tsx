@@ -54,6 +54,8 @@ const scenario = vi.hoisted(() => ({
   listOptions: undefined as { groupCopies?: boolean } | undefined,
   isDemo: false,
   capabilities: undefined as InstanceCapabilities | undefined,
+  streamError: null as string | null,
+  streamRetrying: false,
 }))
 // The real list controller, so a test can read its load-more window.
 const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
@@ -212,8 +214,8 @@ vi.mock("@/hooks/useTorrentsList", () => {
         streamConnected: false,
         streamMeta: undefined,
         isStreaming: false,
-        streamError: null,
-        streamRetrying: false,
+        get streamError() { return scenario.streamError },
+        get streamRetrying() { return scenario.streamRetrying },
         streamNextRetryAt: undefined,
         streamRetryAttempt: 0,
         get isCrossSeedFiltering() { return scenario.isCrossSeedFiltering },
@@ -888,6 +890,42 @@ describe("TorrentTableOptimized Copy groups", () => {
     const { container } = renderGroups(copyGroupRows(overrides))
     const labels = Array.from(warnings(container), pill => JSON.parse(pill.getAttribute("aria-label")!.replace("copyGroups.labelWithProblem ", "")).problem)
     expect(labels).toEqual(expected ? [`copyGroups.hiddenProblem.${expected}`] : [])
+  })
+})
+
+describe("TorrentTableOptimized stream status", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    _resetClientSettingsForTests()
+    scenario.isCrossSeedFiltering = false
+    scenario.rows = undefined
+    scenario.streamError = null
+    scenario.streamRetrying = false
+  })
+
+  // regression: #4206
+  it("shows only the dot while the stream connects, and names the dot and the tooltip with the label", async () => {
+    const { getByRole, queryByText, findByRole } = renderTable()
+
+    expect(queryByText("statusBar.streamStatus.connecting.label")).toBeNull()
+    const dot = getByRole("img", { name: "statusBar.streamStatus.connecting.label" })
+
+    fireEvent.click(dot)
+
+    const tooltip = await findByRole("tooltip")
+    expect(tooltip.textContent).toContain("statusBar.streamStatus.connecting.label")
+    expect(tooltip.textContent).toContain("statusBar.streamStatus.connecting.message")
+    expect(tooltip.textContent).toContain("statusBar.streamStatus.connecting.secondary")
+  })
+
+  it.each([
+    ["reconnecting", { streamRetrying: true }, "statusBar.streamStatus.reconnecting.label"],
+    ["fallback", { streamError: "stream closed by the server" }, "statusBar.streamStatus.fallback.degraded.label"],
+  ] as const)("shows the label next to the dot while the stream is %s", (_phase, stream, label) => {
+    Object.assign(scenario, stream)
+    const { getByText } = renderTable()
+
+    expect(getByText(label)).toBeTruthy()
   })
 })
 
