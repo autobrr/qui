@@ -165,7 +165,7 @@ def comment(files):
 
 def git_diff(base, head):
     return subprocess.run(
-        ["git", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "-U0", "-M", f"{base}...{head}", "--", *PATHSPECS],
+        ["git", "-c", "core.quotePath=true", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "-U0", "-M", f"{base}...{head}", "--", *PATHSPECS],
         check=True,
         capture_output=True,
         text=True,
