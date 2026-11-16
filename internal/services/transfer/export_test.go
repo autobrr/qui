@@ -205,10 +205,11 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 	require.NoError(t, err)
 	<-copying
 
-	var ids []int64
-	var results []<-chan transfer.ExportResult
-	var hashes []string
-	for i := range 6 {
+	const exports = 6
+	ids := make([]int64, 0, exports)
+	results := make([]<-chan transfer.ExportResult, 0, exports)
+	hashes := make([]string, 0, exports)
+	for i := range exports {
 		name := fmt.Sprintf("Other.Show.S%02d.720p-GRP", i+1)
 		s := newShow(t, name)
 		r.src.Seed(s.data, r.srcDir)
