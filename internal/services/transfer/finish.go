@@ -197,7 +197,12 @@ func (j *job) place(ctx context.Context) error {
 	if err := j.putInPlace(ctx, again); err != nil {
 		return err
 	}
+	return j.addMembers(ctx)
+}
 
+// addMembers adds each member that the target or its Cross-seed instance
+// does not have yet, and waits for the check of each routed member.
+func (j *job) addMembers(ctx context.Context) error {
 	var representative *part
 	for _, p := range j.parts {
 		if p.TargetInstanceID != j.target.ID {
@@ -216,10 +221,16 @@ func (j *job) place(ctx context.Context) error {
 		}
 	}
 	for _, p := range j.parts {
-		if p.TargetInstanceID != j.target.ID && !j.added(p) {
+		if p.TargetInstanceID == j.target.ID {
+			continue
+		}
+		if !j.added(p) {
 			if err := j.addCrossSeed(ctx, p, representative); err != nil {
 				return err
 			}
+		}
+		if err := j.crossSeedChecked(ctx, p); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -328,8 +339,9 @@ func (j *job) add(ctx context.Context, p *part) error {
 }
 
 // addCrossSeed adds the member on the Cross-seed instance of the target, on
-// links to the files of the representative. The cross-seed add checks it
-// and leaves it stopped. qui records the add as add does.
+// links to the files of the representative. The cross-seed add starts a
+// check of the member and leaves it stopped. qui records the add as add
+// does.
 func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	if representative == nil {
 		return permanent("%s has no torrent on %s to link %s to.", j.crossSeed.Name, j.target.Name, p.Name)
@@ -366,6 +378,25 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 		}
 	}
 	return temporary("%s did not take %s: %s", j.crossSeed.Name, p.Name, why)
+}
+
+// crossSeedChecked waits until the check that the cross-seed add started
+// finds every piece of the member, also when a stop came during the wait.
+func (j *job) crossSeedChecked(ctx context.Context, p *part) error {
+	cfg := j.svc.deps.Config
+	res := j.svc.adder.Confirm(ctx, torrentadd.Request{
+		InstanceID:   j.crossSeed.ID,
+		Hash:         p.Hash,
+		Polls:        cfg.CheckPolls,
+		PollInterval: cfg.PollInterval,
+	})
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if res.Outcome != torrentadd.Verified {
+		return temporary("The check of %s on %s did not pass: %s", p.Name, j.crossSeed.Name, describe(res))
+	}
+	return nil
 }
 
 // ownershipUnknown stops the Transfer when an instance has a member after

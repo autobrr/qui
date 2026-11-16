@@ -175,6 +175,63 @@ func TestTransferSendsTheCrossSeedToTheCrossSeedInstance(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 }
 
+// checkingCrossSeeds is the routed cross-seed add as crossseed runs it with
+// SkipAutoResume: the add sends the recheck and returns while qBittorrent
+// checks the links.
+type checkingCrossSeeds struct {
+	*crossSeeds
+	hash string
+}
+
+func (c checkingCrossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequest) (*crossseed.CrossSeedResponse, error) {
+	res, err := c.crossSeeds.CrossSeed(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return res, c.r.sync.BulkAction(ctx, c.inst.ID, []string{c.hash}, "recheck")
+}
+
+// The routed cross-seed add returns while qBittorrent checks the cross-seed.
+// qui waits for that check before it starts the cross-seed or ends the
+// Transfer, also when the check takes longer than a start.
+//
+// regression: #4231
+func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		leaveStopped bool
+		state        string
+	}{
+		{name: "start on the target", state: "stalledUP"},
+		{name: "leave stopped on the target", leaveStopped: true, state: "stoppedUP"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t, func(c *transfer.Config) { c.CheckPolls = 100 })
+			cs := r.withCrossSeedInstance()
+			s := newShow(t, showName)
+			r.seed(s)
+			crossSeed, crossSeedHash := crossSeedOf(t, s)
+			r.src.Seed(crossSeed, r.srcDir)
+			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
+			r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
+			cs.stub.CheckSyncs = 40
+			r.deps.CrossSeeds = checkingCrossSeeds{crossSeeds: cs, hash: s.hash}
+			r.restart()
+			req := r.request(s)
+			req.Options.LeaveStopped = tc.leaveStopped
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			torrents, err := r.sync.GetTorrentRefsFresh(t.Context(), cs.inst.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			require.NoError(t, err)
+			require.Len(t, torrents, 1)
+			require.Equal(t, tc.state, string(torrents[0].State), "the check ended before the Transfer")
+			require.False(t, r.src.Has(s.hash))
+		})
+	}
+}
+
 // A refused cross-seed add fails the Transfer. The source keeps both
 // torrents and their files.
 func TestTransferFailsWhenTheCrossSeedAddFails(t *testing.T) {
