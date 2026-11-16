@@ -131,6 +131,11 @@ type Server struct {
 	// ListAfterSyncs is how many syncs leave out a torrent after its add, as
 	// qBittorrent lists a new torrent only once libtorrent added it.
 	ListAfterSyncs int
+	// ListenPort is reported as the listen_port preference. qBittorrent
+	// reports 0 when it picks a random port.
+	ListenPort int
+
+	externalV4, externalV6 string
 
 	calls        map[string]int
 	writes       map[string]int
@@ -189,6 +194,15 @@ func (s *Server) categoryJSON(name string) map[string]any {
 		c["download_path"] = option
 	}
 	return c
+}
+
+// SetExternalAddress sets the external addresses that the server state
+// reports, as qBittorrent learns them from its peers. An empty value is an
+// address that qBittorrent does not know yet.
+func (s *Server) SetExternalAddress(v4, v6 string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.externalV4, s.externalV6 = v4, v6
 }
 
 // SetDefaultSavePath changes the default save path, as an edit in
@@ -521,7 +535,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
 			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
-			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs})
+			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs, "listen_port": s.ListenPort})
 	case "sync/maindata":
 		s.syncs++
 		if ch, ok := s.synced[s.syncs]; ok {
@@ -572,7 +586,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		full := !s.PartialUpdates || param("rid") == "0"
 		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
-			"server_state": map[string]any{"connection_status": "connected"}})
+			"server_state": map[string]any{"connection_status": "connected",
+				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6}})
 	case "torrents/files":
 		if t, ok := s.torrents[strings.ToLower(param("hash"))]; ok {
 			writeJSON(w, s.apiFiles(t))

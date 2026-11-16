@@ -240,6 +240,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "ssh_host_key_encrypted", Type: "TEXT"},
 		{Name: "ssh_tier", Type: "TEXT"},
 		{Name: "ssh_hardlink", Type: "BOOLEAN"},
+		{Name: "public_peer_address", Type: "TEXT"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
