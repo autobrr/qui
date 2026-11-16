@@ -112,9 +112,12 @@ const ALLOWED = [
   "Bash(gh issue view:*)",
   "Bash(gh discussion list:*)",
   "Bash(gh discussion view:*)",
-  "Bash(./.github/scripts/discussion-write.sh:*)",
-  "Bash(./.github/scripts/qbit-source.sh:*)",
 ];
+// The same two forms as the triage profile in triage/run.mjs.
+const scriptRules = (tree) => ["discussion-write.sh", "qbit-source.sh"].flatMap((s) => [
+  `Bash(./.github/scripts/${s}:*)`,
+  `Bash(${tree}/.github/scripts/${s}:*)`,
+]);
 
 // --setting-sources project still loads the user CLAUDE.md, which a CI run
 // does not have.
@@ -138,7 +141,7 @@ function runClaude({ tree, prompt, binDir, worldFile, writesFile, transcript, di
     "--output-format", "stream-json",
     "--verbose",
     "--tools", "Read,Grep,Glob,Bash",
-    "--allowedTools", ...ALLOWED,
+    "--allowedTools", ...ALLOWED, ...scriptRules(tree),
     "--disallowedTools", ...deny,
   ];
   const env = {
