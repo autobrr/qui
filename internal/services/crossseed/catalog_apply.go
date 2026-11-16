@@ -54,7 +54,7 @@ func (s *Service) alignCatalogFiles(ctx context.Context, instanceID int, hash, h
 	}
 	alignment, err := catalogAlignment(plan, visible)
 	if err != nil {
-		log.Warn().
+		log.Debug().
 			Err(err).
 			Int("instanceID", instanceID).
 			Str("torrentHash", active).
