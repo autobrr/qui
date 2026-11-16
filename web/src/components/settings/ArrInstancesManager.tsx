@@ -552,7 +552,6 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
               onChange={(e) => setBasicUsername(e.target.value)}
               placeholder={t("arrInstances.form.basicUsernamePlaceholder")}
               autoComplete="off"
-              data-1p-ignore
               required
             />
           </div>
@@ -565,7 +564,6 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
               onChange={(e) => setBasicPassword(e.target.value)}
               placeholder={isEdit ? t("arrInstances.form.basicPasswordPlaceholderEdit") : t("arrInstances.form.basicPasswordPlaceholder")}
               autoComplete="off"
-              data-1p-ignore
               required={!isEdit}
             />
             {isEdit && (

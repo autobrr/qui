@@ -240,7 +240,6 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
           placeholder={t("notifications.form.namePlaceholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          data-1p-ignore
           autoComplete="off"
         />
       </div>

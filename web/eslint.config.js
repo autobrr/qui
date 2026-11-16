@@ -61,6 +61,18 @@ const gazelleSiteSelectors = [
   { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
 ]
 
+// A raw text field skips the default of Input, which keeps the password managers away. A field passes with a type that
+// takes no text, a sign-in token in autoComplete, or the attributes of passwordManagerAttributes.
+const rawTextFieldSelectors = [{
+  selector: [
+    'JSXOpeningElement[name.name=/^(input|textarea)$/]',
+    ':not(:has(JSXAttribute[name.name="type"] > Literal[value=/^(checkbox|radio|file|hidden|range|color)$/]))',
+    ':not(:has(JSXAttribute[name.name="autoComplete"] > Literal[value=/(^|\\s)(username|current-password|new-password|one-time-code)(\\s|$)/]))',
+    ':not(:has(JSXSpreadAttribute > CallExpression[callee.name="passwordManagerAttributes"]))',
+  ].join(''),
+  message: 'Use Input or Textarea from @/components/ui, which keep the password managers away. For a raw text field, spread passwordManagerAttributes() from @/lib/password-manager.',
+}]
+
 const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
 
 // Files that may touch localStorage or the raw client settings store, each for its reason.
@@ -199,6 +211,14 @@ export default tseslint.config([
     files: ['**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
     rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors],
+    },
+  },
+  {
+    // The shared field components render the raw fields.
+    files: ['src/components/ui/**'],
+    ignores: ['**/*.test.{ts,tsx}'],
+    rules: {
       'no-restricted-syntax': ['error', ...gazelleSiteSelectors],
     },
   },
@@ -209,6 +229,7 @@ export default tseslint.config([
     rules: {
       'no-restricted-syntax': ['error',
         ...gazelleSiteSelectors,
+        ...rawTextFieldSelectors,
         { selector: 'Program:not(:has(ImportDeclaration[source.value="@/components/layout/Page"]))', message: pageShellMessage },
         { selector: 'Program:not(:has(JSXOpeningElement[name.name="Page"]))', message: pageShellMessage },
         { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name="Page"]', message: 'Render Page as the root of the page, with no HTML element around it.' },

@@ -209,7 +209,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder={t("form.placeholders.instanceName")}
-                data-1p-ignore
                 autoComplete="off"
               />
               {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -315,7 +314,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={t("form.placeholders.username")}
-                    data-1p-ignore
                     autoComplete="off"
                   />
                 </div>
@@ -335,7 +333,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={instance ? t("form.placeholders.passwordExisting") : t("form.placeholders.passwordNew")}
-                    data-1p-ignore
                     autoComplete="off"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -369,7 +366,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                   }}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder={instance ? t("form.placeholders.apiKeyExisting") : t("form.placeholders.apiKeyNew")}
-                  data-1p-ignore
                   autoComplete="off"
                 />
               </div>
@@ -402,7 +398,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder={t("form.placeholders.basicAuthUsername")}
-                      data-1p-ignore
                       autoComplete="off"
                     />
                   </div>
@@ -432,7 +427,6 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                       }}
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder={t("form.placeholders.basicAuthPassword")}
-                      data-1p-ignore
                       autoComplete="off"
                     />
                     {field.state.meta.errors[0] && (
