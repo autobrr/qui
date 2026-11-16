@@ -927,15 +927,17 @@ type fsyncAnswerer struct {
 
 func (c *fsyncAnswerer) Read(p []byte) (int, error) {
 	if len(c.pending) == 0 {
-		header := make([]byte, 4)
-		if _, err := io.ReadFull(c.Channel, header); err != nil {
+		var header [4]byte
+		if _, err := io.ReadFull(c.Channel, header[:]); err != nil {
 			return 0, err
 		}
-		body := make([]byte, binary.BigEndian.Uint32(header))
+		packet := make([]byte, 4+int(binary.BigEndian.Uint32(header[:])))
+		copy(packet, header[:])
+		body := packet[4:]
 		if _, err := io.ReadFull(c.Channel, body); err != nil {
 			return 0, err
 		}
-		c.pending = append(header, body...)
+		c.pending = packet
 		if handle, ok := fsyncHandle(body); ok {
 			// SSH_FXP_FSETSTAT: id, handle, and attribute flags of zero.
 			c.pending = binary.BigEndian.AppendUint32(nil, uint32(1+4+len(handle)+4))
