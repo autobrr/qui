@@ -66,7 +66,7 @@ func run() error {
 
 	var b strings.Builder
 	b.WriteString("Third-party notices for qui\n")
-	writeSection(&b, "Community themes (github.com/autobrr/qui-community-themes)", string(community))
+	writeSection(&b, "Community themes (internal/themes/assets/premium)", string(community))
 	writeSection(&b, "Sources of the community themes", themeNotices)
 	writeSection(&b, "Go and its modules", goText)
 	writeSection(&b, "npm packages, including the packages that only the build uses", npmText)
