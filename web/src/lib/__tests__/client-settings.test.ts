@@ -8,12 +8,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   _resetClientSettingsForTests,
+  createDisplayProfile,
+  getDisplayProfiles,
+  migrateLegacyLocalValue,
+  pickDisplayProfile,
   applyServerSettings,
   parseJsonBoolean,
+  readClientSetting,
   seedAndMarkReady,
+  setDisplayProfileOwnSortAndFilters,
   useClientSetting,
+  useDisplayProfiles,
+  writeClientSetting,
   writeRaw
 } from "@/lib/client-settings"
+import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 
 const fetchMock = vi.fn()
 
@@ -72,6 +81,26 @@ describe("useClientSetting", () => {
     })
 
     expect(result.current[0]).toBe(true)
+  })
+})
+
+describe("writeClientSetting", () => {
+  it("updates a live hook and readClientSetting, and pushes the value like the hook setter", async () => {
+    seedAndMarkReady({})
+    const { result } = renderHook(() => useClientSetting("qui-test-bool", boolSetting))
+
+    act(() => writeClientSetting("qui-test-bool", true))
+
+    expect(result.current[0]).toBe(true)
+    expect(readClientSetting("qui-test-bool", boolSetting)).toBe(true)
+    await vi.runAllTimersAsync()
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
+  })
+
+  it("encodes the value with a custom serializer", () => {
+    writeClientSetting("qui-test-mode", "dense", (mode) => mode)
+
+    expect(readClientSetting("qui-test-mode", { defaultValue: "", parse: (raw) => raw })).toBe("dense")
   })
 })
 
@@ -475,5 +504,262 @@ describe("seedAndMarkReady", () => {
       "qui-speed-units": "bits",
       "qui-torrent-mobile-view-mode": "ultra-compact",
     })
+  })
+})
+
+describe("display profiles", () => {
+  const visibility = { defaultValue: {} as Record<string, boolean>, parse: (raw: string) => JSON.parse(raw) as Record<string, boolean> }
+  const filters = { defaultValue: {} as Record<string, string[]>, parse: (raw: string) => JSON.parse(raw) as Record<string, string[]> }
+  const sorting = { defaultValue: [] as unknown[], parse: (raw: string) => JSON.parse(raw) as unknown[] }
+
+  it("Default reads the keys of today", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: false }))
+
+    expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-column-visibility:1", visibility)).toEqual({ ratio: false })
+  })
+
+  it("a Display setting that Laptop writes does not change Default", () => {
+    writeClientSetting("qui-column-visibility:1", { ratio: true })
+    const laptop = createDisplayProfile("Laptop")
+
+    writeClientSetting("qui-column-visibility:1", { ratio: false })
+
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+    expect(localStorage.getItem(`qui-display-profile:${laptop}:qui-column-visibility:1`)).toBe(JSON.stringify({ ratio: false }))
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-column-visibility:1", visibility)).toEqual({ ratio: true })
+  })
+
+  it("a Shared setting and a Sort and filters setting are the same on every profile", () => {
+    createDisplayProfile("Laptop")
+    writeClientSetting("qui-speed-units", "bits", String)
+    writeClientSetting("qui-column-sorting:1", [{ id: "ratio", desc: true }])
+
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+
+    expect(readClientSetting("qui-speed-units", { defaultValue: "", parse: String })).toBe("bits")
+    expect(readClientSetting("qui-column-sorting:1", { defaultValue: [], parse: JSON.parse })).toEqual([{ id: "ratio", desc: true }])
+  })
+
+  it("create copies the Display settings of every instance of the active profile, and only those", () => {
+    localStorage.setItem("qui-column-visibility:1", "{\"ratio\":false}")
+    localStorage.setItem("qui-column-sizing:2", "{\"name\":600}")
+    localStorage.setItem("qui-torrent-desktop-view-mode", "dense")
+    localStorage.setItem("qui-column-sorting:1", "[]")
+    localStorage.setItem("qui-speed-units", "bits")
+    const laptop = createDisplayProfile("Laptop")
+    writeClientSetting("qui-filter-sidebar-collapsed", true)
+
+    const phone = createDisplayProfile("Phone")
+
+    const phoneKeys = Object.keys(localStorage).filter((key) => key.startsWith(`qui-display-profile:${phone}:`)).sort()
+    expect(phoneKeys).toEqual([
+      `qui-display-profile:${phone}:qui-column-sizing:2`,
+      `qui-display-profile:${phone}:qui-column-visibility:1`,
+      `qui-display-profile:${phone}:qui-filter-sidebar-collapsed`,
+      `qui-display-profile:${phone}:qui-torrent-desktop-view-mode`,
+    ])
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-column-sizing:2`)).toBe("{\"name\":600}")
+    expect(localStorage.getItem("qui-filter-sidebar-collapsed")).toBeNull()
+    expect(laptop).not.toBe(phone)
+  })
+
+  it("a new profile starts with the bookmark icon, no color, Same columns unset, and Own sort and filters off", () => {
+    const laptop = createDisplayProfile("  Laptop ")
+
+    const { profiles, active } = getDisplayProfiles()
+    expect(profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop"])
+    expect(profiles[0]).toMatchObject({ isDefault: true, icon: "app-window", color: null, sameColumns: null, ownSortAndFilters: false })
+    expect(active).toEqual({ id: laptop, isDefault: false, name: "Laptop", icon: "bookmark", color: null, sameColumns: null, ownSortAndFilters: false })
+  })
+
+  it("create refuses a name that the name rule rejects", () => {
+    createDisplayProfile("Laptop")
+
+    expect(() => createDisplayProfile("LAPTOP")).toThrow()
+    expect(getDisplayProfiles().profiles).toHaveLength(2)
+  })
+
+  it("pushes the profile values and the entry, but never the pick of this browser", async () => {
+    seedAndMarkReady({})
+    writeClientSetting("qui-sidebar-collapsed", true)
+    const laptop = createDisplayProfile("Laptop")
+    await vi.runAllTimersAsync()
+
+    const pushed = Object.assign({}, ...fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body)))
+    expect(Object.keys(pushed).sort()).toEqual([
+      `qui-display-profile-entry:${laptop}`,
+      `qui-display-profile:${laptop}:qui-sidebar-collapsed`,
+      "qui-sidebar-collapsed",
+    ])
+
+    fetchMock.mockClear()
+    _resetClientSettingsForTests()
+    seedAndMarkReady(pushed)
+    await vi.runAllTimersAsync()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+  })
+
+  it("two browsers that create a profile at the same time both keep theirs", async () => {
+    const server: Record<string, string> = {}
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      Object.assign(server, JSON.parse(String(init.body)))
+      return { ok: true, status: 200 }
+    })
+    seedAndMarkReady({})
+    const laptop = createDisplayProfile("Laptop")
+    await vi.runAllTimersAsync()
+
+    // Browser B has its own localStorage and has not seen Laptop yet.
+    const browserA = { ...localStorage }
+    localStorage.clear()
+    _resetClientSettingsForTests()
+    seedAndMarkReady({})
+    const phone = createDisplayProfile("Phone")
+    await vi.runAllTimersAsync()
+    applyServerSettings({ ...server })
+
+    expect(getDisplayProfiles().profiles.map((profile) => profile.id)).toEqual([DEFAULT_DISPLAY_PROFILE_ID, laptop, phone])
+    localStorage.clear()
+    for (const [key, raw] of Object.entries(browserA)) localStorage.setItem(key, raw)
+    _resetClientSettingsForTests()
+    applyServerSettings({ ...server })
+    expect(getDisplayProfiles().profiles.map((profile) => profile.id)).toEqual([DEFAULT_DISPLAY_PROFILE_ID, laptop, phone])
+  })
+
+  it("a second browser on the same profile sees the changes of the first", () => {
+    const laptop = createDisplayProfile("Laptop")
+    const { result } = renderHook(() => useClientSetting("qui-filter-sidebar-collapsed", boolSetting))
+
+    act(() => {
+      applyServerSettings({ [`qui-display-profile:${laptop}:qui-filter-sidebar-collapsed`]: "true" })
+    })
+
+    expect(result.current[0]).toBe(true)
+  })
+
+  it("a pick re-reads every live setting with one render", () => {
+    localStorage.setItem("qui-sidebar-collapsed", "false")
+    localStorage.setItem("qui-filter-sidebar-collapsed", "false")
+    const laptop = createDisplayProfile("Laptop")
+    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-filter-sidebar-collapsed", true)
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    let renders = 0
+    const { result } = renderHook(() => {
+      renders++
+      return [useClientSetting("qui-sidebar-collapsed", boolSetting)[0], useClientSetting("qui-filter-sidebar-collapsed", boolSetting)[0]]
+    })
+    expect(result.current).toEqual([false, false])
+    renders = 0
+
+    act(() => pickDisplayProfile(laptop))
+
+    expect(result.current).toEqual([true, true])
+    expect(renders).toBe(1)
+  })
+
+  it("with Own sort and filters on, a Sort and filters setting that Phone writes does not change Default", () => {
+    writeClientSetting("qui-filters-global", { status: ["all"] })
+    const phone = createDisplayProfile("Phone")
+
+    setDisplayProfileOwnSortAndFilters(phone, true)
+    writeClientSetting("qui-filters-global", { status: ["downloading"] })
+
+    expect(getDisplayProfiles().active).toMatchObject({ id: phone, ownSortAndFilters: true })
+    expect(readClientSetting("qui-filters-global", filters)).toEqual({ status: ["downloading"] })
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-filters-global", filters)).toEqual({ status: ["all"] })
+  })
+
+  it("turning Own sort and filters on copies the shared values, so nothing changes at that moment", () => {
+    writeClientSetting("qui-column-sorting:1", [{ id: "ratio", desc: true }])
+    writeClientSetting("qui-selected-instance-backups", 2)
+    writeClientSetting("qui-speed-units", "bits", String)
+    const phone = createDisplayProfile("Phone")
+    const { result } = renderHook(() => useClientSetting("qui-column-sorting:1", sorting))
+
+    act(() => setDisplayProfileOwnSortAndFilters(phone, true))
+
+    expect(result.current[0]).toEqual([{ id: "ratio", desc: true }])
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-column-sorting:1`)).toBe("[{\"id\":\"ratio\",\"desc\":true}]")
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-selected-instance-backups`)).toBe("2")
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-speed-units`)).toBeNull()
+  })
+
+  it("turning Own sort and filters off blanks the own values, and the profile reads the shared values again", () => {
+    writeClientSetting("qui-column-sorting:1", [{ id: "ratio", desc: true }])
+    const phone = createDisplayProfile("Phone")
+    setDisplayProfileOwnSortAndFilters(phone, true)
+    writeClientSetting("qui-column-sorting:1", [{ id: "name", desc: false }])
+    writeClientSetting("qui-column-filters-1", [{ id: "state", value: "error" }])
+    const { result } = renderHook(() => useClientSetting("qui-column-sorting:1", sorting))
+
+    act(() => setDisplayProfileOwnSortAndFilters(phone, false))
+
+    expect(getDisplayProfiles().active.ownSortAndFilters).toBe(false)
+    expect(result.current[0]).toEqual([{ id: "ratio", desc: true }])
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-column-sorting:1`)).toBe("")
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-column-filters-1`)).toBe("")
+  })
+
+  it("Default always shares sort and filters", () => {
+    expect(() => setDisplayProfileOwnSortAndFilters(DEFAULT_DISPLAY_PROFILE_ID, true)).toThrow()
+    expect(getDisplayProfiles().active.ownSortAndFilters).toBe(false)
+  })
+
+  it("create copies Own sort and filters and the own values of the source, but not the icon or the color", () => {
+    writeClientSetting("qui-group-copies", false)
+    const phone = createDisplayProfile("Phone")
+    setDisplayProfileOwnSortAndFilters(phone, true)
+    writeClientSetting("qui-group-copies", true)
+
+    createDisplayProfile("Tablet")
+
+    expect(getDisplayProfiles().active).toMatchObject({ name: "Tablet", ownSortAndFilters: true, icon: "bookmark", color: null })
+    expect(readClientSetting("qui-group-copies", boolSetting)).toBe(true)
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-group-copies", boolSetting)).toBe(false)
+  })
+
+  it("useDisplayProfiles follows a pick made in another tab", () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    const { result } = renderHook(() => useDisplayProfiles())
+    expect(result.current.active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+
+    localStorage.setItem("qui-display-profile-active", laptop)
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "qui-display-profile-active" }))
+    })
+
+    expect(result.current.active.id).toBe(laptop)
+  })
+})
+
+describe("migrateLegacyLocalValue", () => {
+  it("moves a valid legacy value into the active profile once, then drops the legacy key", () => {
+    const laptop = createDisplayProfile("Laptop")
+    localStorage.setItem("qui-column-sizing", "{\"name\":600}")
+
+    migrateLegacyLocalValue("qui-column-sizing", "qui-column-sizing:1", () => true)
+
+    expect(localStorage.getItem(`qui-display-profile:${laptop}:qui-column-sizing:1`)).toBe("{\"name\":600}")
+    expect(localStorage.getItem("qui-column-sizing:1")).toBeNull()
+    expect(localStorage.getItem("qui-column-sizing")).toBeNull()
+  })
+
+  it("keeps a stored value and skips an invalid legacy value", () => {
+    writeClientSetting("qui-column-sizing:1", { name: 300 })
+    localStorage.setItem("qui-column-sizing", "{\"name\":600}")
+    migrateLegacyLocalValue("qui-column-sizing", "qui-column-sizing:1", () => true)
+    localStorage.setItem("qui-column-sizing", "nope")
+    migrateLegacyLocalValue("qui-column-sizing", "qui-column-sizing:2", () => false)
+
+    expect(localStorage.getItem("qui-column-sizing:1")).toBe("{\"name\":300}")
+    expect(localStorage.getItem("qui-column-sizing:2")).toBeNull()
+    expect(localStorage.getItem("qui-column-sizing")).toBeNull()
   })
 })

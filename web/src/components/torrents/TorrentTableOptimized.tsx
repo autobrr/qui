@@ -42,6 +42,7 @@ import { type TableViewMode } from "./TorrentTableColumns"
 import { TorrentListEmptyState } from "./TorrentListEmptyState"
 import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
+import { DisplayProfileChip } from "@/components/display-profiles/DisplayProfileChip"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -1464,6 +1465,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     )}
                   </div>
                   <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                    <DisplayProfileChip />
                     <Button
                       variant="ghost"
                       size="sm"

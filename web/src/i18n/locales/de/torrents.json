@@ -1731,5 +1731,30 @@
       "description": "Zeigt die Kopien eines Torrents in einer einzigen Zeile.",
       "action": "Ausprobieren"
     }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Anzeigeprofil: {{name}}",
+    "menuLabel": "Anzeigeprofil",
+    "manage": "Profile verwalten…",
+    "panel": {
+      "title": "Anzeigeprofile",
+      "description": "Dieser Browser nutzt ein Profil. Eine Änderung an Spalten, Zeilendichte oder Seitenleisten gilt nur für dieses Profil.",
+      "thisBrowser": "Dieser Browser",
+      "use": "Verwenden",
+      "newName": "Neues Profil aus dieser Einrichtung",
+      "create": "Erstellen"
+    },
+    "nameErrors": {
+      "empty": "Gib einen Namen ein.",
+      "tooLong": "Verwende höchstens {{max}} Zeichen.",
+      "duplicate": "Ein anderes Profil hat diesen Namen."
+    },
+    "ownSortAndFilters": {
+      "label": "Eigene Sortierung und Filter",
+      "help": "<lead>Wenn das an ist, behält dieses Profil eigene Werte für:</lead><list><item>Sortierung der Torrent-Liste</item><item>Spaltenfilter und Filter der Seitenleiste</item><item>Instanzen, die die vereinheitlichte Ansicht zeigt</item><item>Kopien gruppieren, an oder aus</item><item>zuletzt geöffneter Tab im Detailbereich</item><item>Instanz, die die Seiten Backups und RSS zeigen</item></list><note>Eine Änderung daran in diesem Profil erreicht keine anderen Profile. Wenn das aus ist, teilt dieses Profil sie mit allen anderen Profilen. Beim Ausschalten werden die eigenen Werte dieses Profils gelöscht.</note>",
+      "offWarning": "Beim Ausschalten werden die eigene Sortierung und die eigenen Filter von {{name}} gelöscht.",
+      "defaultShares": "Teilt Sortierung und Filter immer",
+      "defaultSharesHelp": "Default teilt die Sortierung, die Filter und die anderen Ansichtsoptionen immer mit allen Profilen. Für eigene Werte erstelle ein anderes Profil und schalte Eigene Sortierung und Filter ein."
+    }
   }
 }

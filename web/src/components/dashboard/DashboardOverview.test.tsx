@@ -12,7 +12,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "@/i18n"
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { _resetClientSettingsForTests, applyServerSettings, markClientSettingsUnavailable, readRaw, seedAndMarkReady } from "@/lib/client-settings"
+import {
+  _resetClientSettingsForTests,
+  applyServerSettings,
+  createDisplayProfile,
+  markClientSettingsUnavailable,
+  pickDisplayProfile,
+  readClientSetting,
+  readRaw,
+  seedAndMarkReady,
+  setDisplayProfileOwnSortAndFilters
+} from "@/lib/client-settings"
+import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import type { DashboardInstanceStats } from "@/lib/dashboard-overview"
 import { formatBytes } from "@/lib/utils"
 import { server } from "@/test/msw/server"
@@ -535,6 +546,19 @@ describe("DashboardOverview instances", () => {
     fireEvent.click(link)
     expect(JSON.parse(readRaw("qui-filters-global") ?? "")).toEqual({ status: ["unregistered"], excludeStatus: [] })
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/instances/1"))
+  })
+
+  it("gives the filter of an issue to a profile that keeps its own sort and filters", () => {
+    const phone = createDisplayProfile("Phone")
+    setDisplayProfileOwnSortAndFilters(phone, true)
+    renderOverview([stats(1, { torrentCounts: { status: { unregistered: 4 }, categories: {}, tags: {}, trackers: {}, total: 10 } })])
+
+    fireEvent.click(within(screen.getByTestId("attention-list")).getByText("issues.unregistered count=4").closest("a")!)
+
+    const filters = { defaultValue: null, parse: (raw: string) => JSON.parse(raw) as unknown }
+    expect(readClientSetting("qui-filters-global", filters)).toEqual({ status: ["unregistered"], excludeStatus: [] })
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-filters-global", filters)).toBeNull()
   })
 })
 

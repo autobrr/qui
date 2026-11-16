@@ -6,7 +6,7 @@
 import type { ColumnSizingState } from "@tanstack/react-table"
 import { useCallback, useEffect, useMemo } from "react"
 
-import { readRaw, useClientSetting, writeRaw } from "@/lib/client-settings"
+import { migrateLegacyLocalValue, useClientSetting } from "@/lib/client-settings"
 
 const BASE_STORAGE_KEY = "qui-column-sizing"
 
@@ -21,6 +21,14 @@ function parseSizing(value: unknown): ColumnSizingState | undefined {
   return undefined
 }
 
+function isValidSizing(raw: string): boolean {
+  try {
+    return parseSizing(JSON.parse(raw)) !== undefined
+  } catch {
+    return false
+  }
+}
+
 export function usePersistedColumnSizing(
   defaultSizing: ColumnSizingState = {},
   instanceKey?: string | number
@@ -32,15 +40,7 @@ export function usePersistedColumnSizing(
   // then drop it.
   useEffect(() => {
     if (!hasInstanceKey) return
-    try {
-      const legacy = localStorage.getItem(BASE_STORAGE_KEY)
-      if (legacy && readRaw(storageKey) == null) {
-        if (parseSizing(JSON.parse(legacy))) writeRaw(storageKey, legacy)
-      }
-      localStorage.removeItem(BASE_STORAGE_KEY)
-    } catch (error) {
-      console.error("Failed to migrate legacy column sizing state:", error)
-    }
+    migrateLegacyLocalValue(BASE_STORAGE_KEY, storageKey, isValidSizing)
   }, [hasInstanceKey, storageKey])
 
   const defaultsJson = JSON.stringify(defaultSizing)

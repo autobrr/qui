@@ -55,6 +55,30 @@ const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
 const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
 const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
 
+const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
+
+// Files that may touch localStorage or the raw client settings store, each for its reason.
+const clientSettingAllowlist = [
+  // The module itself.
+  'src/lib/client-settings.ts',
+  // The theme boot cache, which index.html reads before the bundle loads.
+  'src/lib/theme-storage.ts',
+  // The "this browser only" switch of Theme sync stays local by design.
+  'src/hooks/useThemeSettingsSync.ts',
+  // The dismissed protocol banner stays in one browser.
+  'src/lib/protocol-handler.ts',
+  // i18n boots from the cached language before React mounts.
+  'src/i18n/index.ts',
+  // The sync hook moves raw values between the server and the module.
+  'src/hooks/useClientSettingsSync.ts',
+  // Bypass: the date and time format reader reads the raw key.
+  'src/lib/dateTimeUtils.ts',
+  // Bypass: the lock of the delete-files default reads and clears the raw key.
+  'src/hooks/usePersistedDeleteFiles.ts',
+  // Bypass: the theme variation keeps its own localStorage key.
+  'src/hooks/usePersistedThemeVariation.ts',
+]
+
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
   {
@@ -174,6 +198,24 @@ export default tseslint.config([
         { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
         { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
       ],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...clientSettingAllowlist],
+    rules: {
+      'no-restricted-globals': ['error', {
+        globals: [{ name: 'localStorage', message: clientSettingMessage }],
+        checkGlobalObject: true,
+      }],
+      // The typescript-eslint rule, because one more block of the core rule would replace the five above.
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '(^|/)client-settings$',
+          importNames: ['readRaw', 'writeRaw'],
+          message: clientSettingMessage,
+        }],
+      }],
     },
   },
   {
