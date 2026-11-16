@@ -547,6 +547,7 @@ func TestPathFormatMatchesSourceFiles(t *testing.T) {
 	require.Equal(t, "test-root/b-extra.nfo", files[1].Path, "path should include root folder")
 }
 
+// regression: #4220
 func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
 	// The boundary-check paths are looked up in maps keyed by qbt.TorrentFiles.Name,
 	// so the two builders must format paths identically. Malformed UTF-8 in the
@@ -555,7 +556,7 @@ func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
 		Name:        "Movie.\xe1.2024",
 		PieceLength: 262144,
 		Files: []metainfo.FileInfo{
-			{Path: []string{"sub\xe1", "file.mkv"}, Length: 1},
+			{Path: []string{"sub\xff\xfe", "file.mkv"}, Length: 1},
 			{Path: []string{"", "extra.nfo"}, Length: 1},
 		},
 	}

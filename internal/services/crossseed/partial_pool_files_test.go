@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+// regression: #4220
 func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 	t.Parallel()
 
@@ -27,11 +28,13 @@ func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 		PieceLength: 16,
 		// Hybrid v1 order deliberately disagrees with sorted v2 traversal.
 		Files: []metainfo.FileInfo{
-			{Path: []string{"B.mkv"}, Length: 20},
+			{Path: []string{"sub\xff\xfe\u200e", "B.mkv"}, Length: 20},
 			{Path: []string{"A.mkv"}, Length: 10},
 		},
 		FileTree: metainfo.FileTree{Dir: map[string]metainfo.FileTree{
-			"B.mkv": {File: metainfo.FileTreeFile{Length: 20, PiecesRoot: rootB}},
+			"sub\xff\xfe\u200e": {Dir: map[string]metainfo.FileTree{
+				"B.mkv": {File: metainfo.FileTreeFile{Length: 20, PiecesRoot: rootB}},
+			}},
 			"A.mkv": {File: metainfo.FileTreeFile{Length: 10, PiecesRoot: rootA}},
 		}},
 	}
@@ -39,10 +42,29 @@ func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 	descriptors, err := buildPartialPoolFileDescriptors(info)
 	require.NoError(t, err)
 	require.Len(t, descriptors, 2)
-	require.Equal(t, "Synthetic.Release/B.mkv", descriptors[0].RelativePath)
+	require.Equal(t, "Synthetic.Release/sub\uFFFD/B.mkv", descriptors[0].RelativePath)
 	require.Equal(t, strings.Repeat("62", 32), descriptors[0].PiecesRoot)
 	require.Equal(t, "Synthetic.Release/A.mkv", descriptors[1].RelativePath)
 	require.Equal(t, strings.Repeat("61", 32), descriptors[1].PiecesRoot)
+}
+
+// regression: #4220
+func TestBuildPartialPoolFileDescriptorsSingleFileSanitizesUTF8(t *testing.T) {
+	info := &metainfo.Info{
+		Name:        "Synthetic\xff\xfe\u200e.flac",
+		MetaVersion: 2,
+		PieceLength: 16384,
+		FileTree:    metainfo.FileTree{File: metainfo.FileTreeFile{Length: 1, PiecesRoot: strings.Repeat("a", 32)}},
+	}
+
+	descriptors, err := buildPartialPoolFileDescriptors(info)
+	require.NoError(t, err)
+	require.Equal(t, []partialPoolFileDescriptor{{
+		Index:            0,
+		RelativePath:     "Synthetic\uFFFD.flac",
+		RootStrippedPath: "Synthetic\uFFFD.flac",
+		SizeBytes:        1,
+	}}, descriptors)
 }
 
 func TestBuildPartialPoolFileDescriptorsDropsMalformedV2Evidence(t *testing.T) {

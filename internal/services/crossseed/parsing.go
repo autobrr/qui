@@ -411,18 +411,17 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	return files
 }
 
-// torrentDisplayPath is metainfo.FileInfo.DisplayPath with libtorrent's empty-component
-// rule applied, so the path lines up with the one qBittorrent stores for the file.
-// The non-directory branch is kept so this stays a drop-in for DisplayPath.
+// torrentDisplayPath sanitizes UTF-8 and applies libtorrent's empty-component and
+// directional-control rules to metainfo.FileInfo.DisplayPath.
 func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) string {
 	if !info.IsDir() {
-		return pathutil.StripTorrentPathControls(info.BestName())
+		return pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(info.BestName()))
 	}
 
 	parts := f.BestPath()
 	components := make([]string, len(parts))
 	for i, part := range parts {
-		components[i] = pathutil.TorrentPathComponent(part)
+		components[i] = pathutil.TorrentPathComponent(stringutils.SanitizeUTF8(part))
 		if components[i] == "" {
 			return ""
 		}
