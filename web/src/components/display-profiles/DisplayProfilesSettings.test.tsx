@@ -1,0 +1,219 @@
+/*
+ * Copyright (c) 2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import type { ReactNode } from "react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+import "@/i18n"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import {
+  _resetClientSettingsForTests,
+  createDisplayProfile,
+  getDisplayProfiles,
+  pickDisplayProfile,
+  setDisplayProfileOwnSortAndFilters,
+  TORRENT_VIEW_MODE_KEYS,
+  writeClientSetting
+} from "@/lib/client-settings"
+import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
+
+const instancesMock = vi.hoisted(() => ({ instances: [] }))
+vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instancesMock }))
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ to, search, hash, children, ...props }: { to: string; search?: Record<string, string>; hash?: string; children: ReactNode }) => (
+    <a href={`${to}?${new URLSearchParams(search)}${hash ? `#${hash}` : ""}`} {...props}>{children}</a>
+  ),
+}))
+
+import { DisplayProfilesSettings } from "./DisplayProfilesSettings"
+
+function renderSettings(): void {
+  render(<TooltipProvider><DisplayProfilesSettings /></TooltipProvider>)
+}
+
+/** Default, Laptop, and Phone with its own sort and filters, with this browser on Laptop. */
+function renderWithThreeProfiles(): void {
+  const laptop = createDisplayProfile("Laptop")
+  setDisplayProfileOwnSortAndFilters(createDisplayProfile("Phone"), true)
+  pickDisplayProfile(laptop)
+  renderSettings()
+}
+
+function list(): HTMLElement {
+  return screen.getByRole("list", { name: "Display profiles" })
+}
+
+function row(name: string): HTMLElement {
+  return within(list()).getByRole("button", { name: new RegExp(`^${name}`) })
+}
+
+/** The editor, a region named after the profile that it shows. */
+function editor(): HTMLElement {
+  return screen.getByRole("region")
+}
+
+beforeEach(() => {
+  localStorage.clear()
+  _resetClientSettingsForTests()
+})
+
+afterEach(cleanup)
+
+describe("DisplayProfilesSettings", () => {
+  it("lists every profile, marks the one of this browser, and opens the editor on it", () => {
+    renderWithThreeProfiles()
+
+    expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Default", "LaptopThis browser", "Phone"])
+    expect(row("Laptop").getAttribute("aria-current")).toBe("true")
+    expect(within(list()).getByRole("button", { name: "Own sort and filters" })).not.toBeNull()
+    expect(screen.getByRole("region", { name: "Laptop" })).toBe(editor())
+
+    fireEvent.click(row("Phone"))
+
+    expect(screen.getByRole("region", { name: "Phone" })).toBe(editor())
+    expect(row("Phone").getAttribute("aria-current")).toBe("true")
+  })
+
+  it("Use in this browser picks the profile in the editor, and This browser then takes its place", () => {
+    renderWithThreeProfiles()
+    fireEvent.click(row("Phone"))
+
+    fireEvent.click(within(editor()).getByRole("button", { name: "Use in this browser" }))
+
+    expect(getDisplayProfiles().active.name).toBe("Phone")
+    expect(within(editor()).queryByRole("button", { name: "Use in this browser" })).toBeNull()
+    expect(within(editor()).getByRole("button", { name: "This browser" }).getAttribute("aria-disabled")).toBe("true")
+    expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Default", "Laptop", "PhoneThis browser"])
+  })
+
+  it("renames inline: the field shows the count and the errors of the name rule, and Enter saves", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+
+    await user.click(within(editor()).getByRole("button", { name: "Rename Laptop" }))
+    const field = within(editor()).getByRole("textbox", { name: "Rename Laptop" })
+    expect(document.activeElement).toBe(field)
+    expect(within(editor()).getByText("6/32")).not.toBeNull()
+
+    await user.clear(field)
+    await user.type(field, "phone{Enter}")
+    expect(within(editor()).getByText("Another profile has this name.")).not.toBeNull()
+    expect(field.getAttribute("aria-invalid")).toBe("true")
+
+    await user.clear(field)
+    await user.type(field, "x".repeat(33))
+    expect(within(editor()).getByText("Use 32 characters or fewer.")).not.toBeNull()
+    expect(within(editor()).getByText("33/32")).not.toBeNull()
+
+    await user.clear(field)
+    await user.type(field, "Work laptop{Enter}")
+
+    expect(within(editor()).queryByRole("textbox")).toBeNull()
+    expect(screen.getByRole("region", { name: "Work laptop" })).toBe(editor())
+    expect(getDisplayProfiles().active.name).toBe("Work laptop")
+    expect(document.activeElement).toBe(within(editor()).getByRole("button", { name: "Rename Work laptop" }))
+  })
+
+  it("Esc cancels a rename and keeps the name", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+
+    await user.click(within(editor()).getByRole("button", { name: "Rename Laptop" }))
+    await user.type(within(editor()).getByRole("textbox", { name: "Rename Laptop" }), " 13{Escape}")
+
+    expect(within(editor()).queryByRole("textbox")).toBeNull()
+    expect(getDisplayProfiles().active.name).toBe("Laptop")
+    expect(document.activeElement).toBe(within(editor()).getByRole("button", { name: "Rename Laptop" }))
+  })
+
+  it("Delete… asks first, and the delete then leaves the editor on the profile of this browser", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+    await user.click(row("Phone"))
+
+    await user.click(within(editor()).getByRole("button", { name: "Delete…" }))
+    const confirm = screen.getByRole("alertdialog")
+    expect(within(confirm).getByRole("heading").textContent).toBe("Delete Phone?")
+    expect(within(confirm).getByText("Other browsers that use it move to Default.")).not.toBeNull()
+    await user.click(within(confirm).getByRole("button", { name: "Delete" }))
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(getDisplayProfiles().profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop"])
+    expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Default", "LaptopThis browser"])
+    expect(screen.getByRole("region", { name: "Laptop" })).toBe(editor())
+  })
+
+  it("Cancel in the delete dialog keeps the profile", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+
+    await user.click(within(editor()).getByRole("button", { name: "Delete…" }))
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }))
+
+    expect(getDisplayProfiles().profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop", "Phone"])
+  })
+
+  it("holds both switches of a profile", () => {
+    renderWithThreeProfiles()
+    fireEvent.click(row("Phone"))
+
+    expect(within(editor()).getByRole("switch", { name: "Same columns on every instance" })).not.toBeNull()
+    expect(within(editor()).getByRole("switch", { name: "Own sort and filters" }).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("Default has the Same columns switch, a line that it always shares sort and filters, and no Delete…", () => {
+    renderWithThreeProfiles()
+    fireEvent.click(row("Default"))
+
+    expect(within(editor()).getByRole("switch", { name: "Same columns on every instance" })).not.toBeNull()
+    expect(within(editor()).queryByRole("switch", { name: "Own sort and filters" })).toBeNull()
+    expect(within(editor()).getByText("Always shares sort and filters")).not.toBeNull()
+    expect(within(editor()).queryByRole("button", { name: "Delete…" })).toBeNull()
+  })
+
+  it("while only Default exists, a dashed tile opens the New profile dialog, and the editor then shows the new profile", async () => {
+    const user = userEvent.setup()
+    renderSettings()
+    expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["DefaultThis browser", "Make a profile for a laptop or phone"])
+
+    await user.click(within(list()).getByRole("button", { name: "Make a profile for a laptop or phone" }))
+    await user.type(within(screen.getByRole("dialog", { name: "New profile" })).getByLabelText("Name"), "Laptop{Enter}")
+
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(screen.getByRole("region", { name: "Laptop" })).toBe(editor())
+    expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Default", "LaptopThis browser"])
+  })
+
+  it("the header button opens the New profile dialog", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+
+    await user.click(screen.getByRole("button", { name: "New profile from this setup…" }))
+
+    expect(screen.getByRole("dialog", { name: "New profile" })).not.toBeNull()
+  })
+
+  it("sums up the row density and the filter sidebar of the profile in the editor", () => {
+    createDisplayProfile("Laptop")
+    writeClientSetting(TORRENT_VIEW_MODE_KEYS.desktop, "dense", String)
+    writeClientSetting("qui-filter-sidebar-collapsed", true)
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    renderSettings()
+    expect(within(editor()).getByText("Table rows · filter sidebar open")).not.toBeNull()
+
+    fireEvent.click(row("Laptop"))
+
+    expect(screen.getByRole("region", { name: "Laptop" })).toBe(editor())
+    expect(within(editor()).getByText("Dense rows · filter sidebar closed")).not.toBeNull()
+  })
+
+  it("links to Theme sync", () => {
+    renderSettings()
+
+    expect(screen.getByRole("link", { name: "Theme sync" }).getAttribute("href")).toBe("/settings?tab=themes#theme-sync")
+  })
+})

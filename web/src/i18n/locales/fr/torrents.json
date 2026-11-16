@@ -1736,17 +1736,29 @@
     "chipAriaLabel": "Profil d’affichage : {{name}}",
     "menuLabel": "Profil d’affichage",
     "manage": "Gérer les profils…",
-    "panel": {
+    "settings": {
       "title": "Profils d’affichage",
-      "description": "Ce navigateur utilise un profil. Une modification des colonnes, de la densité des lignes ou des barres latérales ne s’applique qu’à ce profil.",
+      "holds": "Contient : colonnes · densité des lignes · barres latérales · sections de filtres · arborescences de catégories · filtres vides",
+      "holdsHelp": "Un profil contient l’apparence de la liste des torrents : les colonnes affichées, leur ordre et leur largeur, l’étirement de la colonne Nom, la densité des lignes, les barres latérales et les sections de filtres ouvertes, les arborescences de catégories repliées et l’affichage des filtres vides. Chaque navigateur utilise un profil, et seul ce navigateur retient le choix. Un navigateur qui n’en a jamais choisi, et une fenêtre privée, utilisent Default. Tous les profils partagent les autres réglages.",
       "thisBrowser": "Ce navigateur",
-      "use": "Utiliser",
+      "use": "Utiliser dans ce navigateur",
+      "makeProfile": "Créer un profil pour un ordinateur portable ou un téléphone",
+      "themesSync": "Les thèmes se synchronisent à part : <sync>Synchronisation du thème</sync>",
       "renameAriaLabel": "Renommer {{name}}",
-      "deleteAriaLabel": "Supprimer {{name}}",
+      "saveName": "Enregistrer le nom",
+      "cancelRename": "Annuler le renommage",
+      "delete": "Supprimer…",
       "deleteTitle": "Supprimer {{name}} ?",
       "deleteDescription": "Les autres navigateurs qui l’utilisent passent à {{defaultName}}.",
       "deleteConfirm": "Supprimer",
-      "changeIcon": "Changer l’icône de {{name}}"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Lignes en tableau",
+        "dense": "Lignes denses",
+        "stacked": "Cartes empilées"
+      },
+      "filterSidebarOpen": "barre de filtres ouverte",
+      "filterSidebarClosed": "barre de filtres fermée"
     },
     "nameErrors": {
       "empty": "Saisissez un nom.",

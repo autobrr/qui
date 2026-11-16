@@ -1736,17 +1736,29 @@
     "chipAriaLabel": "Display profile: {{name}}",
     "menuLabel": "Display profile",
     "manage": "Manage profiles…",
-    "panel": {
+    "settings": {
       "title": "Display profiles",
-      "description": "This browser uses one profile. A change to the columns, the row density, or the sidebars goes only to that profile.",
+      "holds": "Holds: Columns · Row density · Sidebars · Filter sections · Category trees · Empty filters",
+      "holdsHelp": "A profile holds how the torrent list looks: which columns show, their order and widths, Name stretch, the row density, the open sidebars and filter sections, the collapsed category trees, and whether empty filters show. Each browser uses one profile, and only that browser remembers the pick. A browser that never picked one, and a private window, use Default. Every profile shares the other settings.",
       "thisBrowser": "This browser",
-      "use": "Use",
+      "use": "Use in this browser",
+      "makeProfile": "Make a profile for a laptop or phone",
+      "themesSync": "Themes sync on their own: <sync>Theme sync</sync>",
       "renameAriaLabel": "Rename {{name}}",
-      "deleteAriaLabel": "Delete {{name}}",
+      "saveName": "Save the name",
+      "cancelRename": "Cancel the rename",
+      "delete": "Delete…",
       "deleteTitle": "Delete {{name}}?",
       "deleteDescription": "Other browsers that use it move to {{defaultName}}.",
       "deleteConfirm": "Delete",
-      "changeIcon": "Change the icon of {{name}}"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Table rows",
+        "dense": "Dense rows",
+        "stacked": "Stacked cards"
+      },
+      "filterSidebarOpen": "filter sidebar open",
+      "filterSidebarClosed": "filter sidebar closed"
     },
     "nameErrors": {
       "empty": "Enter a name.",

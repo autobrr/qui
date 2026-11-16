@@ -1820,17 +1820,29 @@
     "chipAriaLabel": "Profil zobrazení: {{name}}",
     "menuLabel": "Profil zobrazení",
     "manage": "Spravovat profily…",
-    "panel": {
+    "settings": {
       "title": "Profily zobrazení",
-      "description": "Tento prohlížeč používá jeden profil. Změna sloupců, hustoty řádků nebo postranních panelů platí jen pro tento profil.",
+      "holds": "Obsahuje: sloupce · hustotu řádků · postranní panely · sekce filtrů · stromy kategorií · prázdné filtry",
+      "holdsHelp": "Profil určuje, jak vypadá seznam torrentů: které sloupce se zobrazují, jejich pořadí a šířku, roztažení sloupce Název, hustotu řádků, otevřené postranní panely a sekce filtrů, sbalené stromy kategorií a zda se zobrazují prázdné filtry. Každý prohlížeč používá jeden profil a volbu si pamatuje jen tento prohlížeč. Prohlížeč, který si nikdy žádný nevybral, a anonymní okno používají Default. Ostatní nastavení sdílejí všechny profily.",
       "thisBrowser": "Tento prohlížeč",
-      "use": "Použít",
+      "use": "Použít v tomto prohlížeči",
+      "makeProfile": "Vytvořit profil pro notebook nebo telefon",
+      "themesSync": "Motivy se synchronizují samostatně: <sync>Synchronizace motivu</sync>",
       "renameAriaLabel": "Přejmenovat {{name}}",
-      "deleteAriaLabel": "Smazat {{name}}",
+      "saveName": "Uložit název",
+      "cancelRename": "Zrušit přejmenování",
+      "delete": "Smazat…",
       "deleteTitle": "Smazat {{name}}?",
       "deleteDescription": "Ostatní prohlížeče, které ho používají, přejdou na {{defaultName}}.",
       "deleteConfirm": "Smazat",
-      "changeIcon": "Změnit ikonu profilu {{name}}"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Řádky tabulky",
+        "dense": "Kompaktní řádky",
+        "stacked": "Skládané karty"
+      },
+      "filterSidebarOpen": "panel filtrů otevřený",
+      "filterSidebarClosed": "panel filtrů zavřený"
     },
     "nameErrors": {
       "empty": "Zadejte název.",

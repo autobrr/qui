@@ -1652,17 +1652,29 @@
     "chipAriaLabel": "显示配置：{{name}}",
     "menuLabel": "显示配置",
     "manage": "管理配置…",
-    "panel": {
+    "settings": {
       "title": "显示配置",
-      "description": "此浏览器使用一个配置。对列、行密度或侧边栏的更改只作用于该配置。",
+      "holds": "包含：列 · 行密度 · 侧边栏 · 筛选分区 · 分类树 · 空筛选",
+      "holdsHelp": "配置文件保存种子列表的外观：显示哪些列、列的顺序和宽度、名称列拉伸、行密度、展开的侧边栏和筛选分区、折叠的分类树，以及是否显示空筛选。每个浏览器使用一个配置文件，只有该浏览器记住这个选择。从未选择过配置文件的浏览器和隐私窗口使用 Default。其他设置由所有配置文件共享。",
       "thisBrowser": "此浏览器",
-      "use": "使用",
+      "use": "在此浏览器中使用",
+      "makeProfile": "为笔记本电脑或手机创建配置文件",
+      "themesSync": "主题单独同步：<sync>主题同步</sync>",
       "renameAriaLabel": "重命名 {{name}}",
-      "deleteAriaLabel": "删除 {{name}}",
+      "saveName": "保存名称",
+      "cancelRename": "取消重命名",
+      "delete": "删除…",
       "deleteTitle": "删除 {{name}}？",
       "deleteDescription": "使用它的其他浏览器将切换到 {{defaultName}}。",
       "deleteConfirm": "删除",
-      "changeIcon": "更改{{name}}的图标"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "表格行",
+        "dense": "紧凑行",
+        "stacked": "堆叠卡片"
+      },
+      "filterSidebarOpen": "筛选侧边栏展开",
+      "filterSidebarClosed": "筛选侧边栏收起"
     },
     "nameErrors": {
       "empty": "请输入名称。",

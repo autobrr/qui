@@ -6,9 +6,12 @@
 import { useId } from "react"
 import { useTranslation } from "react-i18next"
 
+import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useDisplayProfiles, useLastColumnSetupInstance } from "@/lib/client-settings"
 import { isAllInstancesScope } from "@/lib/instances"
+
+import { StableText } from "./StableText"
 
 interface SameColumnsSwitchProps {
   profileId: string
@@ -30,13 +33,16 @@ export function SameColumnsSwitch({ profileId, instances }: SameColumnsSwitchPro
     ...instances.map((instance) => instance.name),
     t("displayProfiles.sameColumns.unifiedViewInList"),
   ])
-  const help = profile.usesSameColumns? t("displayProfiles.sameColumns.helpOn", { instances: everyInstance }): lastInstance === undefined? t("displayProfiles.sameColumns.helpOffNoInstance"): t("displayProfiles.sameColumns.helpOff", { instance: lastInstance })
+  const helpOn = t("displayProfiles.sameColumns.helpOn", { instances: everyInstance })
+  const helpOff = lastInstance === undefined? t("displayProfiles.sameColumns.helpOffNoInstance"): t("displayProfiles.sameColumns.helpOff", { instance: lastInstance })
 
   return (
     <div className="flex items-start gap-3">
       <div className="min-w-0 flex-1">
-        <label htmlFor={switchId} className="text-sm leading-5">{t("displayProfiles.sameColumns.label")}</label>
-        <p data-testid="same-columns-help" className="mt-0.5 text-xs leading-4 text-muted-foreground [overflow-wrap:anywhere]">{help}</p>
+        <Label htmlFor={switchId} className="w-fit cursor-pointer leading-5">{t("displayProfiles.sameColumns.label")}</Label>
+        <p data-testid="same-columns-help" className="mt-0.5 text-xs leading-4 text-muted-foreground [overflow-wrap:anywhere]">
+          <StableText reserve={[helpOn, helpOff]}>{profile.usesSameColumns ? helpOn : helpOff}</StableText>
+        </p>
       </div>
       <Switch
         id={switchId}

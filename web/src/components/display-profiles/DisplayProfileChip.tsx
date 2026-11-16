@@ -4,6 +4,7 @@
  */
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
+import { Link } from "@tanstack/react-router"
 import { Check, ChevronUp, Plus, Settings2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -22,7 +23,6 @@ import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { useDisplayProfiles } from "@/lib/client-settings"
 import { cn } from "@/lib/utils"
 
-import { DisplayProfilesPanel } from "./DisplayProfilesPanel"
 import { DisplayProfileGlyph, DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
@@ -32,7 +32,6 @@ export function DisplayProfileChip() {
   const { profiles, active, pick } = useDisplayProfiles()
   const wide = useMediaQuery("(min-width: 1024px)")
   const [menuOpen, setMenuOpen] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(false)
   const [newProfileOpen, setNewProfileOpen] = useState(false)
   const activeRowRef = useRef<HTMLDivElement>(null)
 
@@ -100,13 +99,14 @@ export function DisplayProfileChip() {
             <Plus />
             {t("displayProfiles.newProfile")}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setPanelOpen(true)}>
-            <Settings2 />
-            {t("displayProfiles.manage")}
+          <DropdownMenuItem asChild>
+            <Link to="/settings" search={{ tab: "display-profiles" }}>
+              <Settings2 />
+              {t("displayProfiles.manage")}
+            </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <DisplayProfilesPanel open={panelOpen} onOpenChange={setPanelOpen} onNewProfile={() => setNewProfileOpen(true)} />
       <NewDisplayProfileDialog open={newProfileOpen} onOpenChange={setNewProfileOpen} />
     </>
   )

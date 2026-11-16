@@ -1652,17 +1652,29 @@
     "chipAriaLabel": "표시 프로필: {{name}}",
     "menuLabel": "표시 프로필",
     "manage": "프로필 관리…",
-    "panel": {
+    "settings": {
       "title": "표시 프로필",
-      "description": "이 브라우저는 프로필 하나를 사용합니다. 열, 행 밀도, 사이드바를 변경하면 그 프로필에만 적용됩니다.",
+      "holds": "포함: 열 · 행 밀도 · 사이드바 · 필터 섹션 · 카테고리 트리 · 빈 필터",
+      "holdsHelp": "프로필에는 토렌트 목록의 모양이 담깁니다. 표시할 열, 열의 순서와 너비, 이름 열 늘이기, 행 밀도, 열린 사이드바와 필터 섹션, 접힌 카테고리 트리, 빈 필터 표시 여부입니다. 각 브라우저는 하나의 프로필을 사용하며, 선택은 그 브라우저만 기억합니다. 프로필을 고른 적이 없는 브라우저와 비공개 창은 Default를 사용합니다. 다른 설정은 모든 프로필이 공유합니다.",
       "thisBrowser": "이 브라우저",
-      "use": "사용",
+      "use": "이 브라우저에서 사용",
+      "makeProfile": "노트북이나 휴대폰용 프로필 만들기",
+      "themesSync": "테마는 따로 동기화됩니다: <sync>테마 동기화</sync>",
       "renameAriaLabel": "{{name}} 이름 바꾸기",
-      "deleteAriaLabel": "{{name}} 삭제",
+      "saveName": "이름 저장",
+      "cancelRename": "이름 바꾸기 취소",
+      "delete": "삭제…",
       "deleteTitle": "{{name}}을(를) 삭제할까요?",
       "deleteDescription": "이 프로필을 사용하는 다른 브라우저는 {{defaultName}}(으)로 전환됩니다.",
       "deleteConfirm": "삭제",
-      "changeIcon": "{{name}}의 아이콘 변경"
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "테이블 행",
+        "dense": "조밀한 행",
+        "stacked": "스택 카드"
+      },
+      "filterSidebarOpen": "필터 사이드바 열림",
+      "filterSidebarClosed": "필터 사이드바 닫힘"
     },
     "nameErrors": {
       "empty": "이름을 입력하세요.",

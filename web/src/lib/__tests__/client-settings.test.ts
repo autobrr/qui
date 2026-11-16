@@ -26,6 +26,7 @@ import {
   setDisplayProfileOwnSortAndFilters,
   useClientSetting,
   useDisplayProfiles,
+  useDisplayProfileSetting,
   useLastColumnSetupInstance,
   writeClientSetting,
   writeRaw
@@ -920,6 +921,22 @@ describe("display profiles", () => {
 
     expect(result.current.profiles.map((profile) => profile.name)).toEqual(["Home", "Workstation"])
     expect(result.current.active.name).toBe("Workstation")
+  })
+
+  it("useDisplayProfileSetting reads a Display setting of a profile that this browser does not use, and follows a change", () => {
+    const laptop = createDisplayProfile("Laptop")
+    writeClientSetting("qui-filter-sidebar-collapsed", true)
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    const { result } = renderHook(() => ({
+      laptop: useDisplayProfileSetting(laptop, "qui-filter-sidebar-collapsed", boolSetting),
+      default: useDisplayProfileSetting(DEFAULT_DISPLAY_PROFILE_ID, "qui-filter-sidebar-collapsed", boolSetting),
+    }))
+    expect(result.current).toEqual({ laptop: true, default: false })
+
+    act(() => pickDisplayProfile(laptop))
+    act(() => writeClientSetting("qui-filter-sidebar-collapsed", false))
+
+    expect(result.current).toEqual({ laptop: false, default: false })
   })
 })
 
