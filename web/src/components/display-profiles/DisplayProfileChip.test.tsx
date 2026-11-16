@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -18,6 +18,7 @@ import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }))
 
 import { DisplayProfileChip } from "./DisplayProfileChip"
@@ -54,21 +55,26 @@ describe("DisplayProfileChip", () => {
     expect(screen.getByRole("status").textContent).toBe("collapsed")
   })
 
-  it("creates a profile by name from the panel, and refuses a name in use", () => {
+  it("the New profile item opens the dialog with focus in the name field", async () => {
     render(<DisplayProfileChip />)
     openMenu()
-    fireEvent.click(screen.getByRole("menuitem", { name: "displayProfiles.manage" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "displayProfiles.newProfile" }))
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)))
 
-    const nameField = screen.getByLabelText("displayProfiles.panel.newName")
-    fireEvent.change(nameField, { target: { value: "default" } })
-    fireEvent.click(screen.getByRole("button", { name: "displayProfiles.panel.create" }))
-    expect(screen.getByText("displayProfiles.nameErrors.duplicate")).not.toBeNull()
+    expect(document.activeElement).toBe(screen.getByLabelText("displayProfiles.newDialog.name"))
+  })
 
-    fireEvent.change(nameField, { target: { value: "Laptop" } })
-    fireEvent.click(screen.getByRole("button", { name: "displayProfiles.panel.create" }))
+  it("creates a profile from the dialog, and the chip then shows it", () => {
+    render(<DisplayProfileChip />)
+    openMenu()
+    fireEvent.click(screen.getByRole("menuitem", { name: "displayProfiles.newProfile" }))
 
-    const laptopRow = within(screen.getByRole("dialog")).getByText("Laptop").closest("li")
-    expect(laptopRow?.textContent).toContain("displayProfiles.panel.thisBrowser")
-    expect(screen.getByRole("button", { name: "displayProfiles.panel.use" })).not.toBeNull()
+    fireEvent.change(screen.getByLabelText("displayProfiles.newDialog.name"), { target: { value: "Laptop" } })
+    fireEvent.click(screen.getByRole("button", { name: "displayProfiles.newDialog.create" }))
+
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(screen.getByRole("button", { name: "displayProfiles.chipAriaLabel" }).textContent).toBe("Laptop")
+    openMenu()
+    expect(screen.getByRole("menuitemradio", { name: "Laptop" }).getAttribute("aria-checked")).toBe("true")
   })
 })

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { AppWindow, ChevronDown } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -21,12 +21,15 @@ import {
 import { useDisplayProfiles } from "@/lib/client-settings"
 
 import { DisplayProfilesPanel } from "./DisplayProfilesPanel"
+import { DisplayProfileGlyph, DisplayProfileTile } from "./DisplayProfileTile"
+import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
 /** The Display profile of this browser in the status bar of the torrent table, with a picker. */
 export function DisplayProfileChip() {
   const { t } = useTranslation("torrents")
   const { profiles, active, pick } = useDisplayProfiles()
   const [panelOpen, setPanelOpen] = useState(false)
+  const [newProfileOpen, setNewProfileOpen] = useState(false)
 
   return (
     <>
@@ -38,7 +41,7 @@ export function DisplayProfileChip() {
             aria-label={t("displayProfiles.chipAriaLabel", { name: active.name })}
             className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
           >
-            <AppWindow className="h-3 w-3" />
+            <DisplayProfileGlyph profile={active} />
             <span className="max-w-[8rem] truncate">{active.name}</span>
             <ChevronDown className="h-3 w-3" />
           </Button>
@@ -48,15 +51,18 @@ export function DisplayProfileChip() {
           <DropdownMenuRadioGroup value={active.id} onValueChange={pick}>
             {profiles.map((profile) => (
               <DropdownMenuRadioItem key={profile.id} value={profile.id}>
+                <DisplayProfileTile profile={profile} size="sm" />
                 <span className="truncate" title={profile.name}>{profile.name}</span>
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setNewProfileOpen(true)}>{t("displayProfiles.newProfile")}</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setPanelOpen(true)}>{t("displayProfiles.manage")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <DisplayProfilesPanel open={panelOpen} onOpenChange={setPanelOpen} />
+      <DisplayProfilesPanel open={panelOpen} onOpenChange={setPanelOpen} onNewProfile={() => setNewProfileOpen(true)} />
+      <NewDisplayProfileDialog open={newProfileOpen} onOpenChange={setNewProfileOpen} />
     </>
   )
 }

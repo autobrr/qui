@@ -1825,13 +1825,77 @@
       "description": "Tento prohlížeč používá jeden profil. Změna sloupců, hustoty řádků nebo postranních panelů platí jen pro tento profil.",
       "thisBrowser": "Tento prohlížeč",
       "use": "Použít",
-      "newName": "Nový profil z tohoto nastavení",
-      "create": "Vytvořit"
+      "changeIcon": "Změnit ikonu profilu {{name}}"
     },
     "nameErrors": {
       "empty": "Zadejte název.",
       "tooLong": "Použijte nejvýše {{max}} znaků.",
       "duplicate": "Tento název už má jiný profil."
+    },
+    "newProfile": "Nový profil z tohoto nastavení…",
+    "newDialog": {
+      "title": "Nový profil",
+      "copies": "Zkopíruje <profile>{{name}}</profile>: sloupce, hustotu, postranní panely a filtry. Tento prohlížeč ho pak používá.",
+      "name": "Název",
+      "namePlaceholder": "Například Notebook",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Zrušit",
+      "create": "Vytvořit"
+    },
+    "iconPicker": {
+      "trigger": "Ikona: {{icon}}. Změnit ikonu a barvu",
+      "color": "Barva"
+    },
+    "iconGroups": {
+      "devices": "Zařízení",
+      "places": "Místa",
+      "use": "Použití",
+      "mood": "Nálada"
+    },
+    "icons": {
+      "appWindow": "Okno aplikace",
+      "monitor": "Monitor",
+      "laptop": "Notebook",
+      "tablet": "Tablet",
+      "smartphone": "Chytrý telefon",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Herní ovladač",
+      "house": "Dům",
+      "briefcase": "Aktovka",
+      "building": "Budova",
+      "sofa": "Pohovka",
+      "bed": "Postel",
+      "coffee": "Káva",
+      "plane": "Letadlo",
+      "train": "Vlak",
+      "rows": "Řádky",
+      "table": "Tabulka",
+      "list": "Seznam",
+      "eye": "Oko",
+      "gauge": "Ukazatel",
+      "zap": "Blesk",
+      "download": "Stahování",
+      "upload": "Nahrávání",
+      "sprout": "Výhonek",
+      "bookmark": "Záložka",
+      "moon": "Měsíc",
+      "sun": "Slunce",
+      "star": "Hvězda",
+      "heart": "Srdce",
+      "flame": "Plamen",
+      "rocket": "Raketa"
+    },
+    "colors": {
+      "none": "Žádná (barva textu)",
+      "sky": "Nebeská",
+      "emerald": "Smaragdová",
+      "amber": "Jantarová",
+      "rose": "Růžová",
+      "violet": "Fialová",
+      "orange": "Oranžová",
+      "teal": "Modrozelená",
+      "pink": "Sytě růžová"
     }
   }
 }

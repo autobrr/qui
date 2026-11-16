@@ -16,6 +16,8 @@ import {
   parseJsonBoolean,
   readClientSetting,
   seedAndMarkReady,
+  setDisplayProfileColor,
+  setDisplayProfileIcon,
   useClientSetting,
   useDisplayProfiles,
   writeClientSetting,
@@ -475,6 +477,23 @@ describe("display profiles", () => {
     expect(profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop"])
     expect(profiles[0]).toMatchObject({ isDefault: true, icon: "app-window", color: null, sameColumns: null, ownSortAndFilters: false })
     expect(active).toEqual({ id: laptop, isDefault: false, name: "Laptop", icon: "bookmark", color: null, sameColumns: null, ownSortAndFilters: false })
+  })
+
+  it("set icon and set color save on the profile, and a new profile does not copy them", () => {
+    const laptop = createDisplayProfile("Laptop")
+    setDisplayProfileIcon(laptop, "laptop")
+    setDisplayProfileColor(laptop, "sky")
+    setDisplayProfileColor(DEFAULT_DISPLAY_PROFILE_ID, "rose")
+
+    const phone = createDisplayProfile("Phone", { icon: "smartphone" })
+
+    const byId = new Map(getDisplayProfiles().profiles.map((profile) => [profile.id, profile]))
+    expect(byId.get(laptop)).toMatchObject({ name: "Laptop", icon: "laptop", color: "sky" })
+    expect(byId.get(DEFAULT_DISPLAY_PROFILE_ID)).toMatchObject({ name: "Default", icon: "app-window", color: "rose" })
+    expect(byId.get(phone)).toMatchObject({ name: "Phone", icon: "smartphone", color: null })
+
+    setDisplayProfileColor(laptop, null)
+    expect(getDisplayProfiles().profiles.find((profile) => profile.id === laptop)?.color).toBeNull()
   })
 
   it("create refuses a name that the name rule rejects", () => {

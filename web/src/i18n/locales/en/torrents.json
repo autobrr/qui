@@ -1741,13 +1741,77 @@
       "description": "This browser uses one profile. A change to the columns, the row density, or the sidebars goes only to that profile.",
       "thisBrowser": "This browser",
       "use": "Use",
-      "newName": "New profile from this setup",
-      "create": "Create"
+      "changeIcon": "Change the icon of {{name}}"
     },
     "nameErrors": {
       "empty": "Enter a name.",
       "tooLong": "Use {{max}} characters or fewer.",
       "duplicate": "Another profile has this name."
+    },
+    "newProfile": "New profile from this setup…",
+    "newDialog": {
+      "title": "New profile",
+      "copies": "Copies <profile>{{name}}</profile>: columns, density, sidebars, and filters. This browser then uses it.",
+      "name": "Name",
+      "namePlaceholder": "For example, Laptop",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Cancel",
+      "create": "Create"
+    },
+    "iconPicker": {
+      "trigger": "Icon: {{icon}}. Change the icon and the color",
+      "color": "Color"
+    },
+    "iconGroups": {
+      "devices": "Devices",
+      "places": "Places",
+      "use": "Use",
+      "mood": "Mood"
+    },
+    "icons": {
+      "appWindow": "App window",
+      "monitor": "Monitor",
+      "laptop": "Laptop",
+      "tablet": "Tablet",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Gamepad",
+      "house": "House",
+      "briefcase": "Briefcase",
+      "building": "Building",
+      "sofa": "Sofa",
+      "bed": "Bed",
+      "coffee": "Coffee",
+      "plane": "Plane",
+      "train": "Train",
+      "rows": "Rows",
+      "table": "Table",
+      "list": "List",
+      "eye": "Eye",
+      "gauge": "Gauge",
+      "zap": "Lightning",
+      "download": "Download",
+      "upload": "Upload",
+      "sprout": "Sprout",
+      "bookmark": "Bookmark",
+      "moon": "Moon",
+      "sun": "Sun",
+      "star": "Star",
+      "heart": "Heart",
+      "flame": "Flame",
+      "rocket": "Rocket"
+    },
+    "colors": {
+      "none": "None (text color)",
+      "sky": "Sky",
+      "emerald": "Emerald",
+      "amber": "Amber",
+      "rose": "Rose",
+      "violet": "Violet",
+      "orange": "Orange",
+      "teal": "Teal",
+      "pink": "Pink"
     }
   }
 }

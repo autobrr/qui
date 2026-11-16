@@ -1657,13 +1657,77 @@
       "description": "이 브라우저는 프로필 하나를 사용합니다. 열, 행 밀도, 사이드바를 변경하면 그 프로필에만 적용됩니다.",
       "thisBrowser": "이 브라우저",
       "use": "사용",
-      "newName": "현재 설정으로 새 프로필 만들기",
-      "create": "만들기"
+      "changeIcon": "{{name}}의 아이콘 변경"
     },
     "nameErrors": {
       "empty": "이름을 입력하세요.",
       "tooLong": "{{max}}자 이하로 입력하세요.",
       "duplicate": "다른 프로필이 이 이름을 사용합니다."
+    },
+    "newProfile": "이 설정으로 새 프로필…",
+    "newDialog": {
+      "title": "새 프로필",
+      "copies": "<profile>{{name}}</profile>의 열, 밀도, 사이드바, 필터를 복사합니다. 그 후 이 브라우저가 새 프로필을 사용합니다.",
+      "name": "이름",
+      "namePlaceholder": "예: 노트북",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "취소",
+      "create": "만들기"
+    },
+    "iconPicker": {
+      "trigger": "아이콘: {{icon}}. 아이콘과 색 변경",
+      "color": "색"
+    },
+    "iconGroups": {
+      "devices": "기기",
+      "places": "장소",
+      "use": "용도",
+      "mood": "분위기"
+    },
+    "icons": {
+      "appWindow": "앱 창",
+      "monitor": "모니터",
+      "laptop": "노트북",
+      "tablet": "태블릿",
+      "smartphone": "스마트폰",
+      "tv": "TV",
+      "server": "서버",
+      "gamepad": "게임패드",
+      "house": "집",
+      "briefcase": "서류 가방",
+      "building": "건물",
+      "sofa": "소파",
+      "bed": "침대",
+      "coffee": "커피",
+      "plane": "비행기",
+      "train": "기차",
+      "rows": "행",
+      "table": "표",
+      "list": "목록",
+      "eye": "눈",
+      "gauge": "게이지",
+      "zap": "번개",
+      "download": "다운로드",
+      "upload": "업로드",
+      "sprout": "새싹",
+      "bookmark": "북마크",
+      "moon": "달",
+      "sun": "해",
+      "star": "별",
+      "heart": "하트",
+      "flame": "불꽃",
+      "rocket": "로켓"
+    },
+    "colors": {
+      "none": "없음(텍스트 색)",
+      "sky": "하늘색",
+      "emerald": "에메랄드",
+      "amber": "호박색",
+      "rose": "로즈",
+      "violet": "보라",
+      "orange": "주황",
+      "teal": "청록",
+      "pink": "분홍"
     }
   }
 }

@@ -3,43 +3,25 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useId, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { useDisplayProfiles } from "@/lib/client-settings"
-import { DISPLAY_PROFILE_NAME_MAX_LENGTH, validateDisplayProfileName, type DisplayProfileNameError } from "@/lib/display-profiles"
+
+import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
+import { DisplayProfileTile } from "./DisplayProfileTile"
 
 interface DisplayProfilesPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onNewProfile: () => void
 }
 
 /** Lists the Display profiles, picks one for this browser, and creates one from the current setup. */
-export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPanelProps) {
+export function DisplayProfilesPanel({ open, onOpenChange, onNewProfile }: DisplayProfilesPanelProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick, create } = useDisplayProfiles()
-  const [name, setName] = useState("")
-  const [nameError, setNameError] = useState<DisplayProfileNameError | null>(null)
-  const nameId = useId()
-
-  const nameErrorText: Record<DisplayProfileNameError, string> = {
-    empty: t("displayProfiles.nameErrors.empty"),
-    tooLong: t("displayProfiles.nameErrors.tooLong", { max: DISPLAY_PROFILE_NAME_MAX_LENGTH }),
-    duplicate: t("displayProfiles.nameErrors.duplicate"),
-  }
-
-  const handleCreate = (event: FormEvent) => {
-    event.preventDefault()
-    const error = validateDisplayProfileName(name, profiles)
-    setNameError(error)
-    if (error) return
-    create(name)
-    setName("")
-  }
+  const { profiles, active, pick, setIcon, setColor } = useDisplayProfiles()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -51,7 +33,17 @@ export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPane
         <ul className="divide-y rounded-md border">
           {profiles.map((profile) => (
             <li key={profile.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-              <span className="truncate" title={profile.name}>{profile.name}</span>
+              <DisplayProfileIconPicker
+                icon={profile.icon}
+                color={profile.color}
+                onIconChange={(icon) => setIcon(profile.id, icon)}
+                onColorChange={(color) => setColor(profile.id, color)}
+              >
+                <button type="button" aria-label={t("displayProfiles.panel.changeIcon", { name: profile.name })} className="shrink-0 rounded-md">
+                  <DisplayProfileTile profile={profile} size="sm" />
+                </button>
+              </DisplayProfileIconPicker>
+              <span className="min-w-0 flex-1 truncate" title={profile.name}>{profile.name}</span>
               {profile.id === active.id ? (
                 <span className="shrink-0 text-xs text-muted-foreground">{t("displayProfiles.panel.thisBrowser")}</span>
               ) : (
@@ -62,22 +54,7 @@ export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPane
             </li>
           ))}
         </ul>
-        <form onSubmit={handleCreate} className="space-y-2">
-          <Label htmlFor={nameId}>{t("displayProfiles.panel.newName")}</Label>
-          <div className="flex gap-2">
-            <Input
-              id={nameId}
-              value={name}
-              aria-invalid={nameError !== null}
-              onChange={(event) => {
-                setName(event.target.value)
-                setNameError(null)
-              }}
-            />
-            <Button type="submit">{t("displayProfiles.panel.create")}</Button>
-          </div>
-          {nameError && <p className="text-sm text-destructive">{nameErrorText[nameError]}</p>}
-        </form>
+        <Button variant="outline" onClick={onNewProfile}>{t("displayProfiles.newProfile")}</Button>
       </DialogContent>
     </Dialog>
   )

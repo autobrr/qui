@@ -1657,13 +1657,77 @@
       "description": "此瀏覽器使用一個設定檔。對欄位、列密度或側邊欄的變更只套用到該設定檔。",
       "thisBrowser": "此瀏覽器",
       "use": "使用",
-      "newName": "從目前設定建立新設定檔",
-      "create": "建立"
+      "changeIcon": "變更{{name}}的圖示"
     },
     "nameErrors": {
       "empty": "請輸入名稱。",
       "tooLong": "最多 {{max}} 個字元。",
       "duplicate": "已有其他設定檔使用此名稱。"
+    },
+    "newProfile": "用目前設定新增設定檔…",
+    "newDialog": {
+      "title": "新增設定檔",
+      "copies": "複製<profile>{{name}}</profile>的欄位、密度、側邊欄和篩選器。之後此瀏覽器使用它。",
+      "name": "名稱",
+      "namePlaceholder": "例如：筆電",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "取消",
+      "create": "建立"
+    },
+    "iconPicker": {
+      "trigger": "圖示：{{icon}}。變更圖示和顏色",
+      "color": "顏色"
+    },
+    "iconGroups": {
+      "devices": "裝置",
+      "places": "地點",
+      "use": "用途",
+      "mood": "心情"
+    },
+    "icons": {
+      "appWindow": "應用程式視窗",
+      "monitor": "螢幕",
+      "laptop": "筆電",
+      "tablet": "平板",
+      "smartphone": "手機",
+      "tv": "電視",
+      "server": "伺服器",
+      "gamepad": "遊戲手把",
+      "house": "房子",
+      "briefcase": "公事包",
+      "building": "大樓",
+      "sofa": "沙發",
+      "bed": "床",
+      "coffee": "咖啡",
+      "plane": "飛機",
+      "train": "火車",
+      "rows": "列",
+      "table": "表格",
+      "list": "清單",
+      "eye": "眼睛",
+      "gauge": "儀表",
+      "zap": "閃電",
+      "download": "下載",
+      "upload": "上傳",
+      "sprout": "嫩芽",
+      "bookmark": "書籤",
+      "moon": "月亮",
+      "sun": "太陽",
+      "star": "星星",
+      "heart": "愛心",
+      "flame": "火焰",
+      "rocket": "火箭"
+    },
+    "colors": {
+      "none": "無（文字顏色）",
+      "sky": "天藍",
+      "emerald": "翠綠",
+      "amber": "琥珀",
+      "rose": "玫紅",
+      "violet": "紫羅蘭",
+      "orange": "橘色",
+      "teal": "青綠",
+      "pink": "粉紅"
     }
   }
 }
