@@ -4,8 +4,11 @@
 package sshpool
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -289,10 +292,56 @@ func TestPoolReuseKeepsTheConnectionFromIdleClose(t *testing.T) {
 	require.NoError(t, err)
 	done := make(chan struct{})
 	defer close(done)
-	go entry.keepalive(inst.ID, entry.client, done, 20*time.Millisecond)
+	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
 	time.Sleep(200 * time.Millisecond)
 	_, err = client.Getwd()
 	require.NoError(t, err, "a connection just reused must not be closed as idle")
+}
+
+// One sftp call that alone runs past the idle limit is use, and its answer
+// marks the connection used: the copy of a big file, in one call or in many,
+// must not lose its connection halfway.
+func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	server.SetSFTP(sshtest.SFTPHoldNextMutation)
+	call := make(chan error, 1)
+	go func() { call <- client.Mkdir(filepath.Join(dir, "held")) }()
+	<-server.Stalled()
+
+	pool.mu.Lock()
+	entry := pool.conns[inst.ID]
+	pool.mu.Unlock()
+	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
+	done := make(chan struct{})
+	defer close(done)
+	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
+
+	// The loop pings only on a tick that found the connection in use.
+	require.Eventually(t, func() bool { return server.Keepalives() >= 2 }, 5*time.Second, 10*time.Millisecond,
+		"the idle close must leave a connection with a running sftp call open")
+	select {
+	case err := <-call:
+		require.FailNow(t, "the held call ended before the keepalive ticks", "err: %v", err)
+	default:
+	}
+	server.ReleaseStall()
+	require.NoError(t, <-call)
+	pings := server.Keepalives()
+	require.Eventually(t, func() bool { return server.Keepalives() >= pings+2 }, 5*time.Second, 10*time.Millisecond,
+		"the answer must mark the connection used")
+	_, err = client.Getwd()
+	require.NoError(t, err)
+	assert.Equal(t, 1, server.Accepts())
 }
 
 // A caller giving up says nothing about the host: a dial cut short by the
@@ -534,11 +583,12 @@ func TestPoolClosesIdleConnection(t *testing.T) {
 	pool.mu.Unlock()
 	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
 	done := make(chan struct{})
-	go entry.keepalive(inst.ID, entry.client, done, 20*time.Millisecond)
-	require.Eventually(t, func() bool {
-		_, err := client.Getwd()
-		return err != nil
-	}, 5*time.Second, 20*time.Millisecond, "the idle connection must be closed on the next tick")
+	// A poll by sftp call would itself be use, so the test waits for the close.
+	closed := make(chan error, 1)
+	go func() { closed <- client.Wait() }()
+	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return len(closed) > 0 }, 5*time.Second, 20*time.Millisecond,
+		"the idle connection must be closed on the next tick")
 	close(done)
 
 	require.Eventually(t, func() bool {
@@ -546,6 +596,46 @@ func TestPoolClosesIdleConnection(t *testing.T) {
 		return err == nil && again != client
 	}, 5*time.Second, 20*time.Millisecond, "the next caller redials once the watcher has cleared the entry")
 	assert.Equal(t, 2, server.Accepts())
+}
+
+// A call that has ended is no longer use: after a copy in both directions,
+// many packets each way, the idle close applies again.
+func TestPoolClosesIdleConnectionAfterSFTPCalls(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	client, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	data := bytes.Repeat([]byte("piece"), 100_000)
+	file, err := client.Create(filepath.Join(dir, "copy"))
+	require.NoError(t, err)
+	_, err = file.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	file, err = client.Open(filepath.Join(dir, "copy"))
+	require.NoError(t, err)
+	copied, err := io.ReadAll(file)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	require.Equal(t, data, copied)
+
+	pool.mu.Lock()
+	entry := pool.conns[inst.ID]
+	pool.mu.Unlock()
+	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
+	done := make(chan struct{})
+	defer close(done)
+	closed := make(chan error, 1)
+	go func() { closed <- client.Wait() }()
+	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return len(closed) > 0 }, 5*time.Second, 20*time.Millisecond,
+		"a connection whose calls have all ended must be closed as idle")
 }
 
 func TestPoolReconnectsAfterDrop(t *testing.T) {
