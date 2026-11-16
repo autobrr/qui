@@ -1765,17 +1765,17 @@
       "pink": "粉紅"
     },
     "columns": {
-      "headingEveryInstance": "{{profile}} 中的列 · 所有實例",
-      "headingOneInstance": "{{profile}} 中的列 · 僅 {{instance}}",
+      "headingEveryInstance": "{{profile}} 中的欄位 · 所有實例",
+      "headingOneInstance": "{{profile}} 中的欄位 · 僅 {{instance}}",
       "unifiedView": "統一檢視",
       "thisInstance": "此實例"
     },
     "sameColumns": {
-      "label": "所有實例使用相同的列",
-      "menuHelp": "排序和列篩選仍按實例分別保存。",
-      "helpOn": "{{instances}}共用一套列設定。",
-      "helpOff": "每個實例保留自己的列設定。開啟後，所有實例都會使用 {{instance}} 的列。",
-      "helpOffNoInstance": "每個實例保留自己的列設定。",
+      "label": "所有實例使用相同的欄位",
+      "menuHelp": "排序和欄位篩選仍按實例分別保存。",
+      "helpOn": "{{instances}}共用一套欄位設定。",
+      "helpOff": "每個實例保留自己的欄位設定。開啟後，所有實例都會使用 {{instance}} 的欄位。",
+      "helpOffNoInstance": "每個實例保留自己的欄位設定。",
       "unifiedViewInList": "統一檢視"
     }
   }
