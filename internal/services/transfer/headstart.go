@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path"
 	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -31,7 +30,7 @@ func (j *job) checkName(f file) string {
 }
 
 func (j *job) inTheWay(rel string) error {
-	return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, path.Join(j.rootDir, rel))
+	return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, j.targetPath(rel))
 }
 
 // findOnTarget marks each file of the group that the target already has. A
@@ -103,7 +102,7 @@ func (j *job) headStart(ctx context.Context) error {
 			}
 			for piece := first; piece < end; piece++ {
 				if states[piece] != qbt.PieceStateAlreadyDownloaded {
-					return permanent("Conflict: the file at %s on %s differs from the torrent.", path.Join(j.rootDir, p.rel(f)), j.target.Name)
+					return permanent("Conflict: the file at %s on %s differs from the torrent.", j.targetPath(p.rel(f)), j.target.Name)
 				}
 			}
 		}
@@ -131,7 +130,7 @@ func (j *job) link(ctx context.Context, p *part) error {
 		}
 		if err := j.root.Link(ctx, p.rel(f), j.linkName(p.rel(f))); err != nil {
 			return permanent("Conflict: qui cannot check the file at %s on %s, because it cannot make a hardlink there: %v",
-				path.Join(j.rootDir, p.rel(f)), j.target.Name, err)
+				j.targetPath(p.rel(f)), j.target.Name, err)
 		}
 	}
 	return nil

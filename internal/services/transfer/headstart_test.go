@@ -186,7 +186,8 @@ func TestTransferStopsAtAFileOnTheTargetThatFailsItsCheck(t *testing.T) {
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	require.Equal(t, "Conflict: the file at "+filepath.Join(r.dstDir, showName)+"/"+episode2+" on homelab differs from the torrent.", record.FailureReason)
+	// regression: #4231
+	require.Equal(t, "Conflict: the file at "+filepath.Join(r.dstDir, showName, episode2)+" on homelab differs from the torrent.", record.FailureReason)
 	r.requireUntouched(before, theirs)
 	require.Equal(t, map[string]string{showName + "/" + episode2: string(theirs[episode2])}, tree(t, r.dstDir),
 		"no link, no .!qB name, and no copy of qui remains")
@@ -226,7 +227,8 @@ func TestTransferTreatsAFileItCannotLinkAsAConflict(t *testing.T) {
 
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, transfer.FailurePermanent, record.FailureClass)
-	require.Contains(t, record.FailureReason, "Conflict: qui cannot check the file at "+filepath.Join(r.dstDir, showName)+"/"+episode2+
+	// regression: #4231
+	require.Contains(t, record.FailureReason, "Conflict: qui cannot check the file at "+filepath.Join(r.dstDir, showName, episode2)+
 		" on homelab, because it cannot make a hardlink there")
 	require.Zero(t, r.dst.Writes("torrents/add"), "no helper checks the file")
 	r.requireUntouched(before, theirs)

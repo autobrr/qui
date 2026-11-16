@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -71,9 +70,11 @@ type job struct {
 	blind    bool
 	dstFiles fsops.Backend
 	root     fsops.Root
-	// rootDir is the folder on the target that holds every member.
-	rootDir  string
-	reserved int64
+	// rootDir is the folder on the target that holds every member, in the
+	// path dialect rootPaths.
+	rootDir   string
+	rootPaths fsops.PathDialect
+	reserved  int64
 	// helper is the infohash of a helper torrent on the target that qui has
 	// not removed yet.
 	helper        string
@@ -370,7 +371,7 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	for i := range j.rec.Members {
 		saves[i] = j.rec.Members[i].Placement.SavePath
 	}
-	j.rootDir = topFolder(d, saves)
+	j.rootDir, j.rootPaths = topFolder(d, saves), d
 	for i := range j.rec.Members {
 		p := &part{Member: &j.rec.Members[i], position: i}
 		if p.src, err = j.svc.readSource(ctx, j.source.ID, p.Hash); err != nil {
@@ -585,10 +586,15 @@ func (j *job) remove(ctx context.Context, names ...string) bool {
 		case err == nil:
 			removed = true
 		case !errors.Is(err, fs.ErrNotExist):
-			j.logf("qui could not remove %s on %s: %v", path.Join(j.rootDir, name), j.target.Name, err)
+			j.logf("qui could not remove %s on %s: %v", j.targetPath(name), j.target.Name, err)
 		}
 	}
 	return removed
+}
+
+// targetPath is the path on the target of a slash name below the root.
+func (j *job) targetPath(name string) string {
+	return j.rootPaths.Join(j.rootDir, j.rootPaths.FromSlash(name))
 }
 
 func (j *job) actor() qbittorrent.DeleteActor {

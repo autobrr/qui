@@ -696,7 +696,8 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 	record := r.run(r.request(s))
 
 	require.Equal(t, transfer.StateFailed, record.State)
-	require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab at "+filepath.Join(r.dstDir, showName)+"/Show.S01E02.mkv")
+	// regression: #4231
+	require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab at "+filepath.Join(r.dstDir, showName, "Show.S01E02.mkv"))
 	require.Equal(t, map[string]string{showName + "/Show.S01E02.mkv": "theirs"}, tree(t, r.dstDir))
 	require.True(t, r.src.Has(s.hash))
 	require.False(t, r.src.Stopped(s.hash))

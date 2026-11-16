@@ -355,7 +355,7 @@ func (j *job) readGroup(ctx context.Context) bool {
 	for i := range j.rec.Members {
 		saves[i] = j.rec.Members[i].Placement.SavePath
 	}
-	j.rootDir = topFolder(d, saves)
+	j.rootDir, j.rootPaths = topFolder(d, saves), d
 	for _, inst := range []*models.Instance{j.source, j.target} {
 		if !j.reaches(inst) {
 			continue
