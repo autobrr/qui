@@ -79,9 +79,6 @@ export function Editor({ open, onOpenChange, title, description, submitLabel, on
     ...(description ? {} : { "aria-describedby": undefined }),
     onOpenAutoFocus: handleOpenAutoFocus,
     onCloseAutoFocus: returnFocus.restore,
-    // A tap outside the form does not throw away what the user typed. Escape, Cancel, and the close button still close it.
-    // An editor with nothing to save closes on a tap outside.
-    onInteractOutside: onSubmit ? (event: Event) => event.preventDefault() : undefined,
   }
 
   const body = (
