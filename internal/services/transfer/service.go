@@ -102,7 +102,7 @@ func (s *Service) Start(ctx context.Context, req Request) (int64, error) {
 	if err := s.deps.Store.Create(ctx, record); err != nil {
 		return 0, err
 	}
-	s.enqueue(record)
+	s.enqueue(record) //nolint:contextcheck // the Transfer outlives the request and runs in the context of the Service
 	return record.ID, nil
 }
 

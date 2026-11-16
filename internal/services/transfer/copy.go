@@ -54,31 +54,14 @@ func (j *job) copy(ctx context.Context) error {
 			c.open[i].done = true
 		}
 	}
-	total := info.TotalLength()
 	buf := make([]byte, info.PieceLength)
 	for piece := range info.NumPieces() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		start := int64(piece) * info.PieceLength
-		data := buf[:min(start+info.PieceLength, total)-start]
-		segments := j.segments(start, int64(len(data)))
-		for _, s := range segments {
-			if err := c.read(ctx, s, data[s.at:s.at+s.n]); err != nil {
-				return err
-			}
+		if err := c.piece(ctx, piece, buf); err != nil {
+			return err
 		}
-		sum := sha1.Sum(data) //nolint:gosec // BitTorrent v1 pieces are SHA-1
-		if !bytes.Equal(sum[:], info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size]) {
-			return permanent("Piece %d on %s does not match the .torrent. qBittorrent can find the damage with a recheck.", piece, j.source.Name)
-		}
-		for _, s := range segments {
-			if err := c.write(ctx, s, data[s.at:s.at+s.n]); err != nil {
-				return err
-			}
-		}
-		c.pending = append(c.pending, piece)
-		c.written += int64(len(data))
 		if c.written >= j.svc.deps.Config.FlushBytes || piece == info.NumPieces()-1 {
 			if err := c.flush(ctx); err != nil {
 				return err
@@ -96,6 +79,32 @@ func (j *job) copy(ctx context.Context) error {
 		j.rec.FlushState = FlushUnconfirmed
 	}
 	return j.checkSourceSizes(ctx)
+}
+
+// piece reads one piece from the source, checks it against the .torrent,
+// and writes it to the temporary files.
+func (c *copier) piece(ctx context.Context, piece int, buf []byte) error {
+	info := c.j.src.info
+	start := int64(piece) * info.PieceLength
+	data := buf[:min(start+info.PieceLength, info.TotalLength())-start]
+	segments := c.j.segments(start, int64(len(data)))
+	for _, s := range segments {
+		if err := c.read(ctx, s, data[s.at:s.at+s.n]); err != nil {
+			return err
+		}
+	}
+	sum := sha1.Sum(data) //nolint:gosec // BitTorrent v1 pieces are SHA-1
+	if !bytes.Equal(sum[:], info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size]) {
+		return permanent("Piece %d on %s does not match the .torrent. qBittorrent can find the damage with a recheck.", piece, c.j.source.Name)
+	}
+	for _, s := range segments {
+		if err := c.write(ctx, s, data[s.at:s.at+s.n]); err != nil {
+			return err
+		}
+	}
+	c.pending = append(c.pending, piece)
+	c.written += int64(len(data))
+	return nil
 }
 
 // segment is the part of one file in a piece.

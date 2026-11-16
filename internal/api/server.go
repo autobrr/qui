@@ -286,6 +286,16 @@ func (s *Server) Switches() rollout.Switches {
 	return s.switches
 }
 
+// transferRoutes adds the Transfer routes while the switch for Transfers and
+// Shares is on.
+func (s *Server) transferRoutes(r chi.Router) {
+	if !s.switches.TransfersAndShares {
+		return
+	}
+	transfersHandler := handlers.NewTransfersHandler(s.transferService)
+	r.Post("/transfers", transfersHandler.Start)
+}
+
 // newTorrentsHandler builds the handler of the torrent routes. It refuses to
 // change a torrent that a Transfer holds, and a helper torrent.
 func (s *Server) newTorrentsHandler() *handlers.TorrentsHandler {
@@ -891,11 +901,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.With(allInstances, settings.Read).Get("/database/shrink", databaseShrinkHandler.Status)
 			r.With(browserOnly).Post("/database/shrink", databaseShrinkHandler.Request)
 			r.With(allInstances, settings.Write).Delete("/database/shrink/result", databaseShrinkHandler.DismissResult)
-
-			if s.switches.TransfersAndShares {
-				transfersHandler := handlers.NewTransfersHandler(s.transferService)
-				r.With(browserOnly).Post("/transfers", transfersHandler.Start)
-			}
+			s.transferRoutes(r.With(browserOnly))
 		})
 	})
 
