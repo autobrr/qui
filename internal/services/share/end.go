@@ -283,13 +283,21 @@ func (s *Service) BeforeTorrentChange(ctx context.Context, instanceID int, hashe
 
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	failed := 0
+	var lastErr error
 	for _, id := range ids {
 		sh, err := s.deps.Store.Get(ctx, id)
 		if err == nil && sh.State == StateActive {
 			err = s.end(ctx, sh, changeReasons[change], "a change of the torrent in qui")
 		}
 		if err != nil {
-			log.Error().Err(err).Int64("share", id).Msg("share: cannot end the Share before the change of its torrent")
+			log.Debug().Err(err).Int64("share", id).Msg("share: cannot end the Share before the change of its torrent")
+			failed++
+			lastErr = err
 		}
+	}
+	if failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", instanceID).Int("failed", failed).
+			Msg("share: cannot end Shares before the change of their torrents")
 	}
 }

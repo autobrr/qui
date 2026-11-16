@@ -126,7 +126,8 @@ func (h *SharesHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := startSharesResponse{Shares: []shareView{}, Refused: []refusedShare{}}
-	failed := false
+	failed := 0
+	var lastErr error
 	for _, hash := range req.Hashes {
 		sh, err := h.service.Start(r.Context(), share.Request{
 			InstanceID:          req.InstanceID,
@@ -139,17 +140,22 @@ func (h *SharesHandler) Start(w http.ResponseWriter, r *http.Request) {
 		case share.IsRefusal(err):
 			res.Refused = append(res.Refused, refusedShare{Hash: hash, Reason: err.Error()})
 		case err != nil:
-			log.Error().Err(err).Int("instanceID", req.InstanceID).Str("hash", hash).Msg("share: failed to start the Share")
+			log.Debug().Err(err).Int("instanceID", req.InstanceID).Str("hash", hash).Msg("share: failed to start the Share")
 			res.Refused = append(res.Refused, refusedShare{Hash: hash, Reason: "qui could not start the Share. The log has the details."})
-			failed = true
+			failed++
+			lastErr = err
 		default:
 			res.Shares = append(res.Shares, viewOf(sh))
 		}
 	}
+	if failed > 0 {
+		log.Error().Err(lastErr).Int("instanceID", req.InstanceID).Int("started", len(res.Shares)).Int("failed", failed).
+			Msg("share: failed to start Shares")
+	}
 	switch {
 	case len(res.Shares) > 0:
 		RespondJSON(w, http.StatusCreated, res)
-	case failed:
+	case failed > 0:
 		res.Error = "Failed to start the Share"
 		RespondJSON(w, http.StatusInternalServerError, res)
 	default:

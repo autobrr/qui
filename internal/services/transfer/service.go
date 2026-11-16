@@ -189,13 +189,17 @@ func (s *Service) Wake() {
 		return
 	}
 	now := s.deps.Now()
+	unread := 0
+	var readErr error
 	for _, id := range ids {
 		if s.holds(id) {
 			continue
 		}
 		record, err := s.deps.Store.Get(s.ctx, id)
 		if err != nil {
-			log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
+			log.Debug().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
+			unread++
+			readErr = err
 			continue
 		}
 		if record.Kind == KindExport {
@@ -206,6 +210,9 @@ func (s *Service) Wake() {
 			continue
 		}
 		s.enqueue(record)
+	}
+	if unread > 0 {
+		log.Error().Err(readErr).Int("transfers", unread).Msg("transfer: cannot read Transfers to wake")
 	}
 }
 

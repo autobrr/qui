@@ -199,6 +199,8 @@ func (s *Service) refresh(ctx context.Context) error {
 	}
 
 	var tracked []sharetracker.Share
+	invalid := 0
+	var invalidErr error
 	s.mu.Lock()
 	known := s.live
 	s.live = make(map[int64]*live, len(list))
@@ -222,7 +224,9 @@ func (s *Service) refresh(ctx context.Context) error {
 		if sh.Tracker == TrackerOwn {
 			infoHash, err := infoHashOf(sh.HelperHash)
 			if err != nil {
-				log.Error().Err(err).Int64("share", sh.ID).Msg("share: the Share torrent has no valid infohash")
+				log.Debug().Err(err).Int64("share", sh.ID).Msg("share: the Share torrent has no valid infohash")
+				invalid++
+				invalidErr = err
 				continue
 			}
 			tracked = append(tracked, sharetracker.Share{ID: sh.ID, InfoHash: infoHash, OwnerSecret: sh.OwnerSecret,
@@ -230,6 +234,9 @@ func (s *Service) refresh(ctx context.Context) error {
 		}
 	}
 	s.mu.Unlock()
+	if invalid > 0 {
+		log.Error().Err(invalidErr).Int("shares", invalid).Msg("share: Share torrents have no valid infohash")
+	}
 
 	s.table.Store(sharetracker.NewTable(tracked, options.PeersPerShare))
 	return s.tracker.Start(ctx, trackerSettings)
