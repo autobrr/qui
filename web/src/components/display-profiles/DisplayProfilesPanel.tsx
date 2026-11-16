@@ -11,6 +11,7 @@ import { useDisplayProfiles } from "@/lib/client-settings"
 
 import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
 import { DisplayProfileTile } from "./DisplayProfileTile"
+import { OwnSortAndFiltersSetting } from "./OwnSortAndFiltersSetting"
 
 interface DisplayProfilesPanelProps {
   open: boolean
@@ -54,6 +55,7 @@ export function DisplayProfilesPanel({ open, onOpenChange, onNewProfile }: Displ
             </li>
           ))}
         </ul>
+        <OwnSortAndFiltersSetting profile={active} />
         <Button variant="outline" onClick={onNewProfile}>{t("displayProfiles.newProfile")}</Button>
       </DialogContent>
     </Dialog>

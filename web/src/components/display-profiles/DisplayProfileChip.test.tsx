@@ -14,6 +14,7 @@ import {
   useClientSetting,
   writeClientSetting
 } from "@/lib/client-settings"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 
 vi.mock("react-i18next", () => ({
@@ -44,7 +45,7 @@ describe("DisplayProfileChip", () => {
     createDisplayProfile("Laptop")
     writeClientSetting("qui-filter-sidebar-collapsed", true)
     pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
-    render(<><DisplayProfileChip /><SidebarProbe /></>)
+    render(<TooltipProvider><DisplayProfileChip /><SidebarProbe /></TooltipProvider>)
     expect(screen.getByRole("status").textContent).toBe("open")
 
     openMenu()
@@ -56,7 +57,7 @@ describe("DisplayProfileChip", () => {
   })
 
   it("the New profile item opens the dialog with focus in the name field", async () => {
-    render(<DisplayProfileChip />)
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
     openMenu()
     fireEvent.click(screen.getByRole("menuitem", { name: "displayProfiles.newProfile" }))
     await act(() => new Promise((resolve) => requestAnimationFrame(resolve)))
@@ -65,7 +66,7 @@ describe("DisplayProfileChip", () => {
   })
 
   it("creates a profile from the dialog, and the chip then shows it", () => {
-    render(<DisplayProfileChip />)
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
     openMenu()
     fireEvent.click(screen.getByRole("menuitem", { name: "displayProfiles.newProfile" }))
 

@@ -18,6 +18,7 @@ import {
   seedAndMarkReady,
   setDisplayProfileColor,
   setDisplayProfileIcon,
+  setDisplayProfileOwnSortAndFilters,
   useClientSetting,
   useDisplayProfiles,
   writeClientSetting,
@@ -416,6 +417,8 @@ describe("seedAndMarkReady", () => {
 
 describe("display profiles", () => {
   const visibility = { defaultValue: {} as Record<string, boolean>, parse: (raw: string) => JSON.parse(raw) as Record<string, boolean> }
+  const filters = { defaultValue: {} as Record<string, string[]>, parse: (raw: string) => JSON.parse(raw) as Record<string, string[]> }
+  const sorting = { defaultValue: [] as unknown[], parse: (raw: string) => JSON.parse(raw) as unknown[] }
 
   it("Default reads the keys of today", () => {
     localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: false }))
@@ -581,6 +584,69 @@ describe("display profiles", () => {
 
     expect(result.current).toEqual([true, true])
     expect(renders).toBe(1)
+  })
+
+  it("with Own sort and filters on, a Sort and filters setting that Phone writes does not change Default", () => {
+    writeClientSetting("qui-filters-global", { status: ["all"] })
+    const phone = createDisplayProfile("Phone")
+
+    setDisplayProfileOwnSortAndFilters(phone, true)
+    writeClientSetting("qui-filters-global", { status: ["downloading"] })
+
+    expect(getDisplayProfiles().active).toMatchObject({ id: phone, ownSortAndFilters: true })
+    expect(readClientSetting("qui-filters-global", filters)).toEqual({ status: ["downloading"] })
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-filters-global", filters)).toEqual({ status: ["all"] })
+  })
+
+  it("turning Own sort and filters on copies the shared values, so nothing changes at that moment", () => {
+    writeClientSetting("qui-column-sorting:1", [{ id: "ratio", desc: true }])
+    writeClientSetting("qui-selected-instance-backups", 2)
+    writeClientSetting("qui-speed-units", "bits", String)
+    const phone = createDisplayProfile("Phone")
+    const { result } = renderHook(() => useClientSetting("qui-column-sorting:1", sorting))
+
+    act(() => setDisplayProfileOwnSortAndFilters(phone, true))
+
+    expect(result.current[0]).toEqual([{ id: "ratio", desc: true }])
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-column-sorting:1`)).toBe("[{\"id\":\"ratio\",\"desc\":true}]")
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-selected-instance-backups`)).toBe("2")
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-speed-units`)).toBeNull()
+  })
+
+  it("turning Own sort and filters off blanks the own values, and the profile reads the shared values again", () => {
+    writeClientSetting("qui-column-sorting:1", [{ id: "ratio", desc: true }])
+    const phone = createDisplayProfile("Phone")
+    setDisplayProfileOwnSortAndFilters(phone, true)
+    writeClientSetting("qui-column-sorting:1", [{ id: "name", desc: false }])
+    writeClientSetting("qui-column-filters-1", [{ id: "state", value: "error" }])
+    const { result } = renderHook(() => useClientSetting("qui-column-sorting:1", sorting))
+
+    act(() => setDisplayProfileOwnSortAndFilters(phone, false))
+
+    expect(getDisplayProfiles().active.ownSortAndFilters).toBe(false)
+    expect(result.current[0]).toEqual([{ id: "ratio", desc: true }])
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-column-sorting:1`)).toBe("")
+    expect(localStorage.getItem(`qui-display-profile:${phone}:qui-column-filters-1`)).toBe("")
+  })
+
+  it("Default always shares sort and filters", () => {
+    expect(() => setDisplayProfileOwnSortAndFilters(DEFAULT_DISPLAY_PROFILE_ID, true)).toThrow()
+    expect(getDisplayProfiles().active.ownSortAndFilters).toBe(false)
+  })
+
+  it("create copies Own sort and filters and the own values of the source, but not the icon or the color", () => {
+    writeClientSetting("qui-group-copies", false)
+    const phone = createDisplayProfile("Phone")
+    setDisplayProfileOwnSortAndFilters(phone, true)
+    writeClientSetting("qui-group-copies", true)
+
+    createDisplayProfile("Tablet")
+
+    expect(getDisplayProfiles().active).toMatchObject({ name: "Tablet", ownSortAndFilters: true, icon: "bookmark", color: null })
+    expect(readClientSetting("qui-group-copies", boolSetting)).toBe(true)
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-group-copies", boolSetting)).toBe(false)
   })
 
   it("useDisplayProfiles follows a pick made in another tab", () => {

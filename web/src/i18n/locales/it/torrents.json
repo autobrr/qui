@@ -1748,6 +1748,13 @@
       "tooLong": "Usa al massimo {{max}} caratteri.",
       "duplicate": "Un altro profilo ha già questo nome."
     },
+    "ownSortAndFilters": {
+      "label": "Ordinamento e filtri propri",
+      "help": "<lead>Quando è attiva, questo profilo mantiene i propri:</lead><list><item>ordinamento dell'elenco dei torrent</item><item>filtri delle colonne e filtri della barra laterale</item><item>istanze mostrate dalla vista unificata</item><item>Raggruppa le copie, attivo o no</item><item>ultima scheda aperta del pannello dei dettagli</item><item>istanza mostrata dalle pagine Backup e RSS</item></list><note>Una modifica a questi valori in questo profilo non raggiunge gli altri profili. Quando è disattivata, questo profilo li condivide con tutti gli altri profili. Disattivandola, i valori propri di questo profilo vengono eliminati.</note>",
+      "offWarning": "Disattivandola, l'ordinamento e i filtri propri di {{name}} vengono eliminati.",
+      "defaultShares": "Condivide sempre ordinamento e filtri",
+      "defaultSharesHelp": "Default condivide sempre l'ordinamento, i filtri e le altre scelte di visualizzazione con tutti i profili. Per averne di propri, crea un altro profilo e attiva Ordinamento e filtri propri."
+    },
     "newProfile": "Nuovo profilo da questa configurazione…",
     "newDialog": {
       "title": "Nuovo profilo",

@@ -1664,6 +1664,13 @@
       "tooLong": "{{max}}자 이하로 입력하세요.",
       "duplicate": "다른 프로필이 이 이름을 사용합니다."
     },
+    "ownSortAndFilters": {
+      "label": "자체 정렬 및 필터",
+      "help": "<lead>이 설정을 켜면 이 프로필은 다음 항목을 따로 유지합니다:</lead><list><item>토렌트 목록의 정렬 순서</item><item>열 필터와 사이드바 필터</item><item>통합 보기에 표시되는 인스턴스</item><item>사본 묶기 켜기 또는 끄기</item><item>세부 정보 패널에서 마지막으로 연 탭</item><item>백업 및 RSS 페이지에 표시되는 인스턴스</item></list><note>이 프로필에서 이 항목을 바꿔도 다른 프로필에는 적용되지 않습니다. 이 설정을 끄면 이 프로필은 다른 모든 프로필과 이 항목을 공유합니다. 끄면 이 프로필의 자체 값이 삭제됩니다.</note>",
+      "offWarning": "이 설정을 끄면 {{name}}의 자체 정렬 및 필터가 삭제됩니다.",
+      "defaultShares": "항상 정렬 및 필터 공유",
+      "defaultSharesHelp": "Default는 정렬, 필터 및 기타 보기 선택을 항상 모든 프로필과 공유합니다. 자체 값을 유지하려면 다른 프로필을 만들고 자체 정렬 및 필터를 켜세요."
+    },
     "newProfile": "이 설정으로 새 프로필…",
     "newDialog": {
       "title": "새 프로필",

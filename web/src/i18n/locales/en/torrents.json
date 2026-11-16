@@ -1748,6 +1748,13 @@
       "tooLong": "Use {{max}} characters or fewer.",
       "duplicate": "Another profile has this name."
     },
+    "ownSortAndFilters": {
+      "label": "Own sort and filters",
+      "help": "<lead>When this is on, this profile keeps its own:</lead><list><item>sort order of the torrent list</item><item>column filters and sidebar filters</item><item>instances that the Unified view shows</item><item>Group copies, on or off</item><item>last open tab of the details panel</item><item>instance that the Backups and RSS pages show</item></list><note>A change to these in this profile does not reach other profiles. When this is off, this profile shares them with every other profile. Turning it off deletes this profile's own values.</note>",
+      "offWarning": "Turning this off deletes the own sort and filters of {{name}}.",
+      "defaultShares": "Always shares sort and filters",
+      "defaultSharesHelp": "Default always shares the sort, the filters, and the other view choices with every profile. To keep your own, make another profile and turn on Own sort and filters."
+    },
     "newProfile": "New profile from this setup…",
     "newDialog": {
       "title": "New profile",
