@@ -20,7 +20,7 @@ import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
 import { Checkbox } from "@/components/ui/checkbox"
-import type { MouseEvent } from "react"
+import { useRef, type MouseEvent } from "react"
 import { useTranslation } from "react-i18next"
 import type { Torrent } from "@/types"
 import { AlertTriangle } from "lucide-react"
@@ -84,6 +84,7 @@ export function DeleteTorrentDialog({
   const shown = previewTorrents.slice(0, 3)
   const notLoaded = Math.max(0, count - previewTorrents.length)
   const isMobile = useIsMobile()
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   const destructiveClass = "bg-destructive text-destructive-foreground hover:bg-destructive/90"
   const title = isAllSelected ? t("deleteDialog.titleSelectAll", { count }) : t("deleteDialog.title", { count: displayCount })
@@ -162,14 +163,20 @@ export function DeleteTorrentDialog({
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={changeOpen} dismissible={!isPending}>
-        <DrawerContent className="max-h-[92dvh]">
+        <DrawerContent
+          className="max-h-[92dvh]"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            cancelRef.current?.focus({ preventScroll: true })
+          }}
+        >
           <DrawerHeader className="text-left">
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>{description}</DrawerDescription>
           </DrawerHeader>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">{body}</div>
           <div className="grid shrink-0 grid-cols-2 gap-2 border-t px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <Button variant="outline" className="h-11" disabled={isPending} onClick={() => onOpenChange(false)}>
+            <Button ref={cancelRef} variant="outline" className="h-11" disabled={isPending} onClick={() => onOpenChange(false)}>
               {t("deleteDialog.cancel")}
             </Button>
             <Button
