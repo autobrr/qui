@@ -21,9 +21,9 @@ type Root interface {
 	// RenameNoReplace gives a file a new name. It never replaces a file:
 	// when newName exists, the error wraps fs.ErrExist.
 	RenameNoReplace(ctx context.Context, oldName, newName string) error
-	// Link makes newName a hardlink to the file oldName. It never replaces a
-	// file. The error differs between filesystems, and a filesystem without
-	// hardlinks always fails.
+	// Link makes newName a hardlink to the file oldName, and the missing
+	// folders of newName. It never replaces a file. The error differs between
+	// filesystems, and a filesystem without hardlinks always fails.
 	Link(ctx context.Context, oldName, newName string) error
 	// Remove removes a file or an empty folder.
 	Remove(ctx context.Context, name string) error

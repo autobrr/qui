@@ -66,6 +66,7 @@ type job struct {
 	files    []*groupFile
 	byRel    map[string]*groupFile
 	srcFiles fsops.Backend
+	dstFiles fsops.Backend
 	root     fsops.Root
 	// rootDir is the folder on the target that holds every member.
 	rootDir  string
@@ -170,7 +171,7 @@ func (j *job) prepare(ctx context.Context) error {
 	if err != nil {
 		return temporary("qui cannot write the files of the Transfer target: %v", err)
 	}
-	j.target = target
+	j.target, j.dstFiles = target, targetFiles
 	opener, ok := targetFiles.(fsops.RootOpener)
 	if !ok {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
@@ -195,21 +196,13 @@ func (j *job) prepare(ctx context.Context) error {
 		}
 	}
 
-	need := copiedBytes(j.files)
-	for _, size := range j.made {
-		need -= size
-	}
+	need := j.need()
 	if j.reached(stepPlace) {
 		need = 0
 	}
-	stat, err := targetFiles.Statfs(ctx, j.rootDir)
-	if err != nil {
-		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+	if err := j.reserve(ctx, need); err != nil {
+		return err
 	}
-	if err := j.svc.reserve(j.target.ID, need, stat.BytesAvailable); err != nil {
-		return permanent("Not enough free space on %s: %v", j.target.Name, err)
-	}
-	j.reserved = need
 	if !resumed && j.rec.Way == WayNone {
 		j.logf("No copy: %s sees the same files as %s.", j.target.Name, j.source.Name)
 		return nil
@@ -222,6 +215,9 @@ func (j *job) prepare(ctx context.Context) error {
 		linked, size := linkedBytes(j.files)
 		if linked > 0 {
 			j.logf("Linking %d files (%s) %s from %s to %s.", linked, formatBytes(size), how, j.source.Name, j.target.Name)
+		}
+		if n, size := j.hardlinkBytes(); n > 0 {
+			j.logf("%d files (%s) are hardlinks of other files on %s, so qui copies them once and links them on %s.", n, formatBytes(size), j.source.Name, j.target.Name)
 		}
 		if need > 0 || linked == 0 {
 			j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
@@ -241,6 +237,36 @@ func (j *job) prepare(ctx context.Context) error {
 		pieces += p.src.info.NumPieces()
 	}
 	j.logf("Resumed: %d of %d pieces are proven, and %s are left to copy.", proven, pieces, formatBytes(need))
+	return nil
+}
+
+// need is how many bytes the copy writes on the target: each file that the
+// target lacks, once.
+func (j *job) need() int64 {
+	var need int64
+	for _, f := range j.files {
+		size, made := j.made[f]
+		switch {
+		case f.onTarget || f.linked || f.linksCopy || j.linksCopyLater(f):
+		case made:
+			need += f.size - size
+		default:
+			need += f.size
+		}
+	}
+	return need
+}
+
+// reserve reserves bytes of the free space on the target for the run.
+func (j *job) reserve(ctx context.Context, bytes int64) error {
+	stat, err := j.dstFiles.Statfs(ctx, j.rootDir)
+	if err != nil {
+		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+	}
+	if err := j.svc.reserve(j.target.ID, bytes, stat.BytesAvailable); err != nil {
+		return permanent("Not enough free space on %s: %v", j.target.Name, err)
+	}
+	j.reserved += bytes
 	return nil
 }
 
@@ -293,7 +319,7 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	if j.files, j.byRel, err = groupFiles(j.parts); err != nil {
 		return permanent("The torrents of the group do not agree on their files: %v", err)
 	}
-
+	j.findHardlinks(ctx)
 	return nil
 }
 

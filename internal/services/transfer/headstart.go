@@ -68,17 +68,6 @@ func (j *job) markOnTarget() {
 	}
 }
 
-// copiedBytes is the size of the files that qui copies.
-func copiedBytes(files []*groupFile) int64 {
-	var total int64
-	for _, f := range files {
-		if !f.onTarget {
-			total += f.size
-		}
-	}
-	return total
-}
-
 func (p *part) hasOnTarget() bool {
 	return slices.ContainsFunc(p.plan, func(f file) bool { return f.onTarget })
 }

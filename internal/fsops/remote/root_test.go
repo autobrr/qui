@@ -209,3 +209,19 @@ func TestRoot_LinksAndRemoves(t *testing.T) {
 	_, err = os.Lstat(filepath.Join(dir, "Show"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
+
+// Link makes the missing folders of the new name, as Create does.
+func TestRoot_LinkMakesTheFoldersOfTheNewName(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newBackend(t)
+	dir := t.TempDir()
+	root := openRoot(t, b, remotePath(dir))
+	create(t, root, "Show/a.bin", "x")
+
+	require.NoError(t, root.Link(t.Context(), "Show/a.bin", "links/Show/a.bin"))
+
+	got, err := os.ReadFile(filepath.Join(dir, "links", "Show", "a.bin"))
+	require.NoError(t, err)
+	assert.Equal(t, "x", string(got))
+}

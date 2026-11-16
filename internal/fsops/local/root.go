@@ -146,6 +146,11 @@ func (r *root) Link(ctx context.Context, oldName, newName string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if dir := path.Dir(newName); dir != "." {
+		if err := r.mkdirs(dir); err != nil {
+			return err
+		}
+	}
 	return r.r.Link(filepath.FromSlash(oldName), filepath.FromSlash(newName))
 }
 

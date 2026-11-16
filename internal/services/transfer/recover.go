@@ -124,6 +124,7 @@ func (j *job) findOnTargetAgain(ctx context.Context) error {
 			f.onTarget = true
 		}
 	}
+	j.relink(ctx)
 	j.markOnTarget()
 	j.keepProven()
 	return nil
