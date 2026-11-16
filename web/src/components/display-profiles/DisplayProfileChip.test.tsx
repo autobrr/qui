@@ -18,9 +18,11 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }))
+const instancesMock = vi.hoisted(() => ({ instances: [] }))
+vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instancesMock }))
 
 import { DisplayProfileChip } from "./DisplayProfileChip"
 

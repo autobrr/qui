@@ -1909,6 +1909,20 @@
       "orange": "Oranžová",
       "teal": "Modrozelená",
       "pink": "Sytě růžová"
+    },
+    "columns": {
+      "headingEveryInstance": "Sloupce v {{profile}} · každá instance",
+      "headingOneInstance": "Sloupce v {{profile}} · jen {{instance}}",
+      "unifiedView": "Unifikované zobrazení",
+      "thisInstance": "tato instance"
+    },
+    "sameColumns": {
+      "label": "Stejné sloupce na každé instanci",
+      "menuHelp": "Řazení a filtry sloupců zůstávají pro každou instanci zvlášť.",
+      "helpOn": "Jedno nastavení sloupců pro {{instances}}.",
+      "helpOff": "Každá instance si ponechá své. Po zapnutí dostane každá instance sloupce z {{instance}}.",
+      "helpOffNoInstance": "Každá instance si ponechá své.",
+      "unifiedViewInList": "unifikované zobrazení"
     }
   }
 }
