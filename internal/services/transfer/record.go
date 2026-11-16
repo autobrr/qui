@@ -36,8 +36,14 @@ const (
 // Way is how a Transfer moves the files, such as SFTP or a Transfer torrent.
 type Way string
 
-// WaySFTP: qui copies the bytes from the source over SFTP.
-const WaySFTP Way = "sftp"
+const (
+	// WaySFTP: qui copies the bytes over SFTP, through qui, from or to a side
+	// on qui's own disk or between two SFTP sides.
+	WaySFTP Way = "sftp"
+	// WayLocal: both sides are on qui's own disk. qui copies the files, or
+	// links them when both are on one filesystem.
+	WayLocal Way = "local"
+)
 
 type StartedBy string
 

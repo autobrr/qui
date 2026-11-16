@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -69,7 +68,8 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 			return nil, err
 		}
 	}
-	if err := checkWay(source, target, req.Options.ForcedWay); err != nil {
+	way, err := checkWay(source, target, req.Options.ForcedWay)
+	if err != nil {
 		return nil, err
 	}
 	if s.deps.Store.IsHelper(source.ID, hash) {
@@ -105,10 +105,15 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 		}
 		placement.SavePath = prefs.SavePath
 	}
-	if !filepath.IsAbs(placement.SavePath) {
+	targetFiles, err := s.deps.Files.GetBackend(ctx, target.ID)
+	if err != nil {
+		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
+	}
+	td := targetFiles.Paths()
+	if !td.IsAbs(placement.SavePath) {
 		return nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
 	}
-	placement.SavePath = filepath.Clean(placement.SavePath)
+	placement.SavePath = td.Clean(placement.SavePath)
 	members, err := s.members(ctx, source, target, group, placement)
 	if err != nil {
 		return nil, err
@@ -127,7 +132,7 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 	}
 	return &Record{
 		Kind:             KindTransfer,
-		Way:              WaySFTP,
+		Way:              way,
 		State:            StateWaiting,
 		StartedBy:        startedBy,
 		RuleID:           req.RuleID,
@@ -161,16 +166,22 @@ func (s *Service) supported(ctx context.Context, inst *models.Instance) error {
 	return nil
 }
 
-// checkWay refuses a Transfer that the SFTP way cannot do: it reads the
-// source over SSH and writes on qui's own disk.
-func checkWay(source, target *models.Instance, forced Way) error {
+// checkWay picks how qui copies the files: on its own disk when it has both
+// sides there, and else over SFTP through qui. It refuses a side without
+// file access.
+func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 	if forced != "" && forced != WaySFTP {
-		return refuse("qui cannot transfer by %s yet.", forced)
+		return "", refuse("qui cannot transfer by %s yet.", forced)
 	}
-	if models.FilesystemAccessMode(source) != models.FilesystemModeRemote || models.FilesystemAccessMode(target) != models.FilesystemModeLocal {
-		return refuse("For now, a Transfer needs SSH access to %s and %s on qui's own disk.", source.Name, target.Name)
+	for _, inst := range []*models.Instance{source, target} {
+		if models.FilesystemAccessMode(inst) == models.FilesystemModeNone {
+			return "", refuse("For now, a Transfer needs file access to %s, on qui's own disk or over SSH.", inst.Name)
+		}
 	}
-	return nil
+	if models.FilesystemAccessMode(source) == models.FilesystemModeLocal && models.FilesystemAccessMode(target) == models.FilesystemModeLocal {
+		return WayLocal, nil
+	}
+	return WaySFTP, nil
 }
 
 // source is the torrent on the Transfer source as one fresh read found it.

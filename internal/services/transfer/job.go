@@ -203,7 +203,11 @@ func (j *job) prepare(ctx context.Context) error {
 	}
 	j.reserved = need
 	if !resumed {
-		j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
+		how := "over SFTP"
+		if j.rec.Way == WayLocal {
+			how = "on qui's own disk"
+		}
+		j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
 		return nil
 	}
 	if err := j.removeHelpers(ctx); err != nil {
