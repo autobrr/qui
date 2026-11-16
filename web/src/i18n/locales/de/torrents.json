@@ -1741,6 +1741,7 @@
     "chipAriaLabel": "Anzeigeprofil: {{name}}",
     "menuLabel": "Anzeigeprofil",
     "manage": "Profile verwalten…",
+    "sheetDescription": "Jeder Browser wählt sein eigenes Profil.",
     "settings": {
       "title": "Anzeigeprofile",
       "holds": "Enthält: Spalten · Zeilendichte · Seitenleisten · Filterbereiche · Kategoriebäume · Leere Filter",
@@ -1752,6 +1753,8 @@
       "renameAriaLabel": "{{name}} umbenennen",
       "saveName": "Namen speichern",
       "cancelRename": "Umbenennen abbrechen",
+      "editAriaLabel": "{{name}} bearbeiten",
+      "editTitle": "Profil bearbeiten",
       "delete": "Löschen…",
       "deleteTitle": "{{name}} löschen?",
       "deleteDescription": "Andere Browser, die es verwenden, wechseln zu {{defaultName}}.",

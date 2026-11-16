@@ -11,39 +11,59 @@ import { Trans, useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldHelp } from "@/components/ui/field-help"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { useDisplayProfiles } from "@/lib/client-settings"
 
 import { DisplayProfileEditor } from "./DisplayProfileEditor"
 import { DisplayProfileList } from "./DisplayProfileList"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
-/** Settings > General > Display profiles: the profiles in a list next to an editor. */
+/**
+ * Settings > General > Display profiles: the profiles in a list next to an editor. Below 768 px only the list shows:
+ * a tap on a row picks that profile for this browser, and a › opens the editor in a sheet.
+ */
 export function DisplayProfilesSettings() {
   const { t } = useTranslation("torrents")
-  const { profiles, active } = useDisplayProfiles()
+  const { profiles, active, pick } = useDisplayProfiles()
+  const narrow = useIsMobile()
   const [selectedId, setSelectedId] = useState(active.id)
+  // The sheet keeps its profile after it closes, so the editor stays in the sheet while it slides out.
+  const [sheet, setSheet] = useState<{ profileId: string; open: boolean } | null>(null)
   const [newProfileOpen, setNewProfileOpen] = useState(false)
-  // A deleted profile leaves the editor on the profile of this browser.
+  // A deleted profile leaves the editor on the profile of this browser, and closes the sheet.
   const shown = profiles.find((profile) => profile.id === selectedId) ?? active
+  const sheetProfile = profiles.find((profile) => profile.id === sheet?.profileId)
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="max-sm:has-data-[slot=card-action]:grid-cols-1">
         <CardTitle>{t("displayProfiles.settings.title")}</CardTitle>
         <CardDescription className="flex items-center gap-1.5">
           <span>{t("displayProfiles.settings.holds")}</span>
           <FieldHelp>{t("displayProfiles.settings.holdsHelp")}</FieldHelp>
         </CardDescription>
-        <CardAction>
-          <Button size="sm" variant="outline" onClick={() => setNewProfileOpen(true)}>
+        <CardAction className="max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:mt-2 max-sm:justify-self-stretch">
+          <Button size="sm" variant="outline" className="max-sm:h-10 max-sm:w-full" onClick={() => setNewProfileOpen(true)}>
             <Plus />
             {t("displayProfiles.newProfile")}
           </Button>
         </CardAction>
       </CardHeader>
       <CardContent className="grid items-start gap-4 md:grid-cols-[minmax(12rem,15rem)_minmax(0,1fr)]">
-        <DisplayProfileList selectedId={shown.id} onSelect={(profile) => setSelectedId(profile.id)} onNewProfile={() => setNewProfileOpen(true)} />
-        <DisplayProfileEditor key={shown.id} profile={shown} />
+        {narrow ? (
+          <DisplayProfileList
+            selectedId={active.id}
+            onSelect={(profile) => pick(profile.id)}
+            onEdit={(profile) => setSheet({ profileId: profile.id, open: true })}
+            onNewProfile={() => setNewProfileOpen(true)}
+          />
+        ) : (
+          <>
+            <DisplayProfileList selectedId={shown.id} onSelect={(profile) => setSelectedId(profile.id)} onNewProfile={() => setNewProfileOpen(true)} />
+            <DisplayProfileEditor key={shown.id} profile={shown} />
+          </>
+        )}
       </CardContent>
       <CardFooter className="gap-1.5 text-xs text-muted-foreground">
         <Palette aria-hidden="true" className="size-3.5 shrink-0" />
@@ -58,6 +78,17 @@ export function DisplayProfilesSettings() {
         </span>
       </CardFooter>
       <NewDisplayProfileDialog open={newProfileOpen} onOpenChange={setNewProfileOpen} onCreated={setSelectedId} />
+      <Sheet
+        open={narrow && sheet?.open === true && sheetProfile !== undefined}
+        onOpenChange={(open) => !open && setSheet((current) => current && { ...current, open: false })}
+      >
+        <SheetContent side="bottom" aria-describedby={undefined} className="max-h-[90dvh] gap-0 overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <SheetHeader className="pb-2">
+            <SheetTitle>{t("displayProfiles.settings.editTitle")}</SheetTitle>
+          </SheetHeader>
+          {sheetProfile && <div className="px-4"><DisplayProfileEditor key={sheetProfile.id} profile={sheetProfile} /></div>}
+        </SheetContent>
+      </Sheet>
     </Card>
   )
 }

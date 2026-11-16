@@ -1741,6 +1741,7 @@
     "chipAriaLabel": "Profil d’affichage : {{name}}",
     "menuLabel": "Profil d’affichage",
     "manage": "Gérer les profils…",
+    "sheetDescription": "Chaque navigateur choisit son propre profil.",
     "settings": {
       "title": "Profils d’affichage",
       "holds": "Contient : colonnes · densité des lignes · barres latérales · sections de filtres · arborescences de catégories · filtres vides",
@@ -1752,6 +1753,8 @@
       "renameAriaLabel": "Renommer {{name}}",
       "saveName": "Enregistrer le nom",
       "cancelRename": "Annuler le renommage",
+      "editAriaLabel": "Modifier {{name}}",
+      "editTitle": "Modifier le profil",
       "delete": "Supprimer…",
       "deleteTitle": "Supprimer {{name}} ?",
       "deleteDescription": "Les autres navigateurs qui l’utilisent passent à {{defaultName}}.",

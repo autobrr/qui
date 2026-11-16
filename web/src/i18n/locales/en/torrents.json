@@ -1741,6 +1741,7 @@
     "chipAriaLabel": "Display profile: {{name}}",
     "menuLabel": "Display profile",
     "manage": "Manage profiles…",
+    "sheetDescription": "Each browser picks its own profile.",
     "settings": {
       "title": "Display profiles",
       "holds": "Holds: Columns · Row density · Sidebars · Filter sections · Category trees · Empty filters",
@@ -1752,6 +1753,8 @@
       "renameAriaLabel": "Rename {{name}}",
       "saveName": "Save the name",
       "cancelRename": "Cancel the rename",
+      "editAriaLabel": "Edit {{name}}",
+      "editTitle": "Edit profile",
       "delete": "Delete…",
       "deleteTitle": "Delete {{name}}?",
       "deleteDescription": "Other browsers that use it move to {{defaultName}}.",

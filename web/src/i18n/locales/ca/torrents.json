@@ -1741,6 +1741,7 @@
     "chipAriaLabel": "Perfil de visualització: {{name}}",
     "menuLabel": "Perfil de visualització",
     "manage": "Gestiona els perfils…",
+    "sheetDescription": "Cada navegador tria el seu propi perfil.",
     "settings": {
       "title": "Perfils de visualització",
       "holds": "Conté: columnes · densitat de files · barres laterals · seccions de filtres · arbres de categories · filtres buits",
@@ -1752,6 +1753,8 @@
       "renameAriaLabel": "Canvia el nom de {{name}}",
       "saveName": "Desa el nom",
       "cancelRename": "Cancel·la el canvi de nom",
+      "editAriaLabel": "Edita {{name}}",
+      "editTitle": "Edita el perfil",
       "delete": "Suprimeix…",
       "deleteTitle": "Vols suprimir {{name}}?",
       "deleteDescription": "Els altres navegadors que el fan servir passen a {{defaultName}}.",

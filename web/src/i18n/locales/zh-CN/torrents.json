@@ -1657,6 +1657,7 @@
     "chipAriaLabel": "显示配置：{{name}}",
     "menuLabel": "显示配置",
     "manage": "管理配置…",
+    "sheetDescription": "每个浏览器各自选择配置文件。",
     "settings": {
       "title": "显示配置",
       "holds": "包含：列 · 行密度 · 侧边栏 · 筛选分区 · 分类树 · 空筛选",
@@ -1668,6 +1669,8 @@
       "renameAriaLabel": "重命名 {{name}}",
       "saveName": "保存名称",
       "cancelRename": "取消重命名",
+      "editAriaLabel": "编辑 {{name}}",
+      "editTitle": "编辑配置文件",
       "delete": "删除…",
       "deleteTitle": "删除 {{name}}？",
       "deleteDescription": "使用它的其他浏览器将切换到 {{defaultName}}。",

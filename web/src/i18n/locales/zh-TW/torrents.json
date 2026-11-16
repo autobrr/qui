@@ -1657,6 +1657,7 @@
     "chipAriaLabel": "顯示設定檔：{{name}}",
     "menuLabel": "顯示設定檔",
     "manage": "管理設定檔…",
+    "sheetDescription": "每個瀏覽器各自選擇設定檔。",
     "settings": {
       "title": "顯示設定檔",
       "holds": "包含：欄位 · 列密度 · 側邊欄 · 篩選區段 · 分類樹 · 空篩選",
@@ -1668,6 +1669,8 @@
       "renameAriaLabel": "重新命名 {{name}}",
       "saveName": "儲存名稱",
       "cancelRename": "取消重新命名",
+      "editAriaLabel": "編輯 {{name}}",
+      "editTitle": "編輯設定檔",
       "delete": "刪除…",
       "deleteTitle": "刪除 {{name}}？",
       "deleteDescription": "使用它的其他瀏覽器將切換到 {{defaultName}}。",

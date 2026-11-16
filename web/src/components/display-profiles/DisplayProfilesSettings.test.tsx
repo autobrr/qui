@@ -217,3 +217,55 @@ describe("DisplayProfilesSettings", () => {
     expect(screen.getByRole("link", { name: "Theme sync" }).getAttribute("href")).toBe("/settings?tab=themes#theme-sync")
   })
 })
+
+describe("DisplayProfilesSettings below 768 px", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(max-width: 767px)", addEventListener: () => {}, removeEventListener: () => {} }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("shows the list with no editor, and a tap on a row picks that profile for this browser", () => {
+    renderWithThreeProfiles()
+    expect(screen.queryByRole("region")).toBeNull()
+
+    fireEvent.click(row("Phone"))
+
+    expect(getDisplayProfiles().active.name).toBe("Phone")
+    expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Default", "Laptop", "PhoneThis browser"])
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("› on a row opens that profile in the editor in a sheet, and keeps the pick of this browser", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+
+    await user.click(within(list()).getByRole("button", { name: "Edit Phone" }))
+
+    const sheet = screen.getByRole("dialog", { name: "Edit profile" })
+    expect(within(sheet).getByRole("region", { name: "Phone" })).not.toBeNull()
+    expect(within(sheet).getByRole("switch", { name: "Own sort and filters" }).getAttribute("aria-checked")).toBe("true")
+    expect(getDisplayProfiles().active.name).toBe("Laptop")
+
+    await user.click(within(sheet).getByRole("button", { name: "Close" }))
+    expect(screen.queryByRole("dialog")).toBeNull()
+
+    await user.click(within(list()).getByRole("button", { name: "Edit Default" }))
+    expect(within(screen.getByRole("dialog", { name: "Edit profile" })).getByRole("region", { name: "Default" })).not.toBeNull()
+  })
+
+  it("a delete in the sheet closes the sheet", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+    await user.click(within(list()).getByRole("button", { name: "Edit Phone" }))
+
+    await user.click(within(screen.getByRole("dialog", { name: "Edit profile" })).getByRole("button", { name: "Delete…" }))
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }))
+
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(within(list()).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Default", "LaptopThis browser"])
+  })
+})

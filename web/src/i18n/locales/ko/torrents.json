@@ -1657,6 +1657,7 @@
     "chipAriaLabel": "표시 프로필: {{name}}",
     "menuLabel": "표시 프로필",
     "manage": "프로필 관리…",
+    "sheetDescription": "각 브라우저가 자신의 프로필을 고릅니다.",
     "settings": {
       "title": "표시 프로필",
       "holds": "포함: 열 · 행 밀도 · 사이드바 · 필터 섹션 · 카테고리 트리 · 빈 필터",
@@ -1668,6 +1669,8 @@
       "renameAriaLabel": "{{name}} 이름 바꾸기",
       "saveName": "이름 저장",
       "cancelRename": "이름 바꾸기 취소",
+      "editAriaLabel": "{{name}} 편집",
+      "editTitle": "프로필 편집",
       "delete": "삭제…",
       "deleteTitle": "{{name}}을(를) 삭제할까요?",
       "deleteDescription": "이 프로필을 사용하는 다른 브라우저는 {{defaultName}}(으)로 전환됩니다.",
