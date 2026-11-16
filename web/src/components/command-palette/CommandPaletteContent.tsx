@@ -1,0 +1,231 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useReturnFocus } from "@/components/display-profiles/use-return-focus"
+import { ThemeThumbnail } from "@/components/themes/ThemeThumbnail"
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command"
+import { DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { useMediaQuery } from "@/hooks/useMediaQuery"
+import { isMac, keyLabels, modShortcut } from "@/lib/keyboard"
+import { cn } from "@/lib/utils"
+import { Command as CommandPrimitive } from "cmdk"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Search, X } from "lucide-react"
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useId, useReducer, useRef } from "react"
+import { flushSync } from "react-dom"
+import { useTranslation } from "react-i18next"
+import { findEntry, INITIAL_PALETTE_STATE, type PaletteEntry, type PaletteGroup, paletteKeyAction, paletteReducer, searchEntries } from "./palette"
+import { useDestinations } from "./useDestinations"
+import { useTorrentResults } from "./useTorrentResults"
+import { useVisibleHeight } from "./useVisibleHeight"
+
+function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-foreground/10 px-1.5 font-sans text-xs font-medium text-foreground">
+      {children}
+    </kbd>
+  )
+}
+
+function Hint({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {children}
+      <span>{label}</span>
+    </span>
+  )
+}
+
+/**
+ * One list, with a search field above it. Typing searches every instance,
+ * page, section, action and torrent. An entry with sections opens them as a
+ * second level.
+ */
+export function CommandPaletteContent({ close, startText = "" }: { close: () => void; startText?: string }) {
+  const { t } = useTranslation(["common", "torrents"])
+  // Radix selects the text of the search field when the palette opens, so the first key replaces a start text.
+  const [state, dispatch] = useReducer(paletteReducer, { ...INITIAL_PALETTE_STATE, query: startText })
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const returnFocus = useReturnFocus()
+  const idPrefix = useId()
+  const touch = useMediaQuery("(pointer: coarse)")
+  const visibleHeight = useVisibleHeight()
+  const rowId = (entry: PaletteEntry) => `${idPrefix}-${entry.id}`
+
+  const query = state.query.trim()
+  const destinations = useDestinations(close)
+  const parent = findEntry(destinations, state.parentId)
+  // A second level holds no torrents, so only the first level searches them.
+  const torrents = useTorrentResults(parent ? "" : query, close)
+  const scope = parent?.sections ?? destinations
+  // A touch keyboard has no key for ⌘↵. There, the row that searches the torrents is the first row, so the key that sends the text runs it. When no torrent matches, that key opens the first destination.
+  const searchFirst = touch && !torrents.noMatch ? torrents.entries.slice(0, 1) : []
+  const groups: PaletteGroup[] = [
+    { id: "torrent-search", entries: searchFirst },
+    ...(query ? [{ id: "results", entries: searchEntries(scope, query) }] : scope),
+    { id: "torrents", label: t("torrents:page.routeTitle"), entries: torrents.entries.slice(searchFirst.length) },
+  ].filter(group => group.entries.length > 0)
+  const rows = groups.flatMap(group => group.entries).filter(entry => !entry.disabled)
+  const highlighted = rows.find(entry => entry.id === state.highlightId) ?? rows.at(0)
+  const moreOf = !parent && highlighted?.sections ? highlighted : undefined
+
+  // cmdk scrolls only to a row that its own keys highlight. When the palette moves the highlight, the list follows it here.
+  const changeText = (text: string) => {
+    dispatch({ type: "typed", query: text })
+    listRef.current?.scrollTo({ top: 0 })
+  }
+  const openSections = (entry: PaletteEntry) => {
+    dispatch({ type: "sectionsOpened", parentId: entry.id })
+    listRef.current?.scrollTo({ top: 0 })
+    inputRef.current?.focus()
+  }
+  const select = (entry: PaletteEntry) => (entry.run ? entry.run() : openSections(entry))
+  const back = () => {
+    flushSync(() => dispatch({ type: "wentBack" }))
+    if (parent) document.getElementById(rowId(parent))?.scrollIntoView({ block: "nearest" })
+    inputRef.current?.focus()
+  }
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    const input = inputRef.current
+    const action = paletteKeyAction(event.nativeEvent, {
+      entries: [...destinations.flatMap(group => group.entries), ...torrents.entries],
+      moreOf,
+      inSections: parent !== undefined,
+      queryEmpty: state.query === "",
+      caretAtEnd: input !== null && input.selectionStart === input.value.length,
+    })
+    if (!action) return
+    event.preventDefault()
+    if (action.type === "run") select(action.entry)
+    else if (action.type === "openSections") openSections(action.parent)
+    else if (action.type === "goBack") back()
+  }
+
+  // In a list where a row has the arrow to its sections, a row without the arrow keeps its shortcut in the same column.
+  const renderRow = (entry: PaletteEntry, alignsShortcut: boolean) => {
+    const Icon = entry.icon
+    const subtitle = [entry.current ? t("common:commandPalette.current") : null, parent ? null : entry.trail, entry.note].filter(Boolean).join(" · ")
+    const copies = entry.copies ?? 0
+    return (
+      // With an id of the palette, the search field can name the row to a screen reader. cmdk knows a row by its own id, so it also leaves the highlight alone when the row goes away.
+      <CommandItem asChild key={entry.id} value={entry.id} disabled={entry.disabled} onSelect={() => select(entry)} className="cursor-pointer gap-3 rounded-lg px-3 py-2">
+        <div id={rowId(entry)}>
+          <span className="relative flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground/[0.06] text-muted-foreground">
+            <Icon className="size-4" />
+            {entry.connected !== undefined && (
+              <span className={cn("absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-popover", entry.connected ? "bg-green-500" : "bg-red-500")} />
+            )}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-medium" title={entry.label}>{entry.label}</span>
+            {subtitle && <span className="truncate text-xs text-muted-foreground">{subtitle}</span>}
+          </span>
+          {entry.thumbnail && <ThemeThumbnail palette={entry.thumbnail} detail="compact" className="w-10 shrink-0 rounded-sm" />}
+          {copies > 0 && (
+            <span className="shrink-0 rounded-full bg-foreground/10 px-1.5 py-0.5 text-xs text-muted-foreground" title={t("torrents:copyGroups.copies", { count: copies, name: entry.label })}>
+              <span aria-hidden="true">{t("torrents:copyGroups.badge", { hidden: copies })}</span>
+              <span className="sr-only">{t("torrents:copyGroups.copies", { count: copies, name: entry.label })}</span>
+            </span>
+          )}
+          {entry.shortcut !== undefined && (
+            <CommandShortcut className="text-sm tracking-normal pointer-coarse:hidden">{modShortcut(entry.shortcut === "Enter" ? keyLabels.enter : entry.shortcut)}</CommandShortcut>
+          )}
+          {!parent && entry.sections ? (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={t("common:commandPalette.moreOf", { name: entry.label })}
+              className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-foreground/10 hover:text-foreground pointer-coarse:-m-2 pointer-coarse:p-3"
+              onClick={(event) => {
+                event.stopPropagation()
+                openSections(entry)
+              }}
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          ) : alignsShortcut && entry.shortcut !== undefined && <span className="size-6 shrink-0 pointer-coarse:hidden" />}
+        </div>
+      </CommandItem>
+    )
+  }
+
+  return (
+    <DialogContent
+      data-command-palette=""
+      showCloseButton={false}
+      overlayClassName="bg-black/40 backdrop-blur-sm"
+      aria-describedby={undefined}
+      onOpenAutoFocus={returnFocus.remember}
+      onCloseAutoFocus={returnFocus.restore}
+      // The sizes follow the height that an on-screen keyboard leaves free, so the keyboard does not cover the list.
+      style={visibleHeight === null ? undefined : { "--visible-height": `${visibleHeight}px` } as CSSProperties}
+      className="top-[calc(var(--visible-height,100vh)*0.12)] flex max-h-[calc(var(--visible-height,100vh)*0.76)] translate-y-0 flex-col gap-0 overflow-hidden rounded-2xl bg-popover p-0 text-popover-foreground shadow-2xl outline-none sm:max-w-2xl"
+    >
+      <DialogTitle className="sr-only">{t("common:commandPalette.title")}</DialogTitle>
+      <Command
+        shouldFilter={false}
+        loop
+        // Ctrl+K closes the palette on Windows and Linux, so Ctrl+J/K/N/P move the highlight only on macOS.
+        vimBindings={isMac}
+        value={highlighted?.id ?? ""}
+        onValueChange={id => dispatch({ type: "highlighted", id })}
+        onKeyDown={onKeyDown}
+        label={t("common:commandPalette.title")}
+        className="h-auto min-h-0 rounded-none"
+      >
+        <div className="flex items-center gap-3 px-5">
+          {parent ? (
+            <button type="button" tabIndex={-1} onClick={back} aria-label={t("common:commandPalette.hints.back")} className="text-muted-foreground hover:text-foreground pointer-coarse:-m-3 pointer-coarse:p-3">
+              <ArrowLeft className="size-5" />
+            </button>
+          ) : (
+            <Search className="size-5 text-muted-foreground" />
+          )}
+          {/* cmdk moves the highlight to its first row when its own search text changes. The palette sets the highlight itself, so cmdk gets no text. */}
+          <CommandPrimitive.Input asChild value="" onValueChange={changeText}>
+            <input
+              ref={inputRef}
+              value={state.query}
+              aria-activedescendant={highlighted && rowId(highlighted)}
+              placeholder={parent ? t("common:commandPalette.placeholderIn", { name: parent.label }) : t("common:commandPalette.placeholder")}
+              className="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+            />
+          </CommandPrimitive.Input>
+          {/* A touch screen has no Escape key. cmdk runs the highlighted row on an Enter that reaches it, so Enter stays with the button. */}
+          <button
+            type="button"
+            onClick={close}
+            onKeyDown={event => event.key === "Enter" && event.stopPropagation()}
+            aria-label={t("common:actions.close")}
+            className="-m-3 hidden p-3 text-muted-foreground pointer-coarse:block"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        {/* A press in the list must not take the cursor out of the search field: a heading or a disabled row runs nothing, and the keys would then go nowhere. */}
+        <CommandList ref={listRef} onMouseDown={event => event.preventDefault()} className="max-h-[min(28rem,calc(var(--visible-height,100vh)*0.56))] scroll-py-2 overscroll-contain px-2 pb-2">
+          {parent && <CommandEmpty className="py-8 text-center text-sm text-muted-foreground">{t("common:commandPalette.noMatchIn", { name: parent.label })}</CommandEmpty>}
+          {groups.map(group => (
+            <CommandGroup key={group.id} heading={group.label} className="p-0 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1.5">
+              {group.entries.map(entry => renderRow(entry, !parent && group.entries.some(other => other.sections)))}
+            </CommandGroup>
+          ))}
+        </CommandList>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t bg-foreground/[0.03] px-4 py-2.5 text-sm text-muted-foreground pointer-coarse:hidden">
+          <Hint label={t("common:commandPalette.hints.navigate")}>
+            <Kbd><ArrowUp className="size-3.5" /></Kbd>
+            <Kbd><ArrowDown className="size-3.5" /></Kbd>
+          </Hint>
+          <Hint label={t("common:commandPalette.hints.open")}><Kbd>{keyLabels.enter}</Kbd></Hint>
+          {moreOf && <Hint label={t("common:commandPalette.hints.more")}><Kbd><ArrowRight className="size-3.5" /></Kbd></Hint>}
+          {torrents.entries.length > 0 && <Hint label={t("common:commandPalette.hints.searchTorrents")}><Kbd>{modShortcut(keyLabels.enter)}</Kbd></Hint>}
+          {parent && <Hint label={t("common:commandPalette.hints.back")}><Kbd>{keyLabels.backspace}</Kbd></Hint>}
+          <Hint label={t("common:actions.close")}><Kbd>{keyLabels.escape}</Kbd></Hint>
+        </div>
+      </Command>
+    </DialogContent>
+  )
+}

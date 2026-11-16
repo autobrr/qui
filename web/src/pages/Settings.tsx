@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DisplayProfilesSettings } from "@/components/display-profiles/DisplayProfilesSettings"
 import { IndexersPage } from "@/components/indexers/IndexersPage"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
@@ -1023,6 +1024,10 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               </CardContent>
             </Card>
           </>
+        )}
+
+        {activeTab === "display-profiles" && (
+          <DisplayProfilesSettings />
         )}
 
         {activeTab === "statistics" && (

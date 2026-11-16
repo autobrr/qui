@@ -3,17 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DisplayProfileMenuItem, DisplayProfileSheet } from "@/components/display-profiles/DisplayProfileSheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,13 +15,11 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
 import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
-import { useDebounce } from "@/hooks/useDebounce"
 import { useCopyGroupRows, type CopyGroupRow } from "@/hooks/useCopyGroupRows"
 import { useTorrentListController } from "@/hooks/useTorrentListController"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
@@ -62,7 +53,6 @@ import {
   FolderOpen,
   Gauge,
   GitBranch,
-  Info,
   ListTodo,
   Loader2,
   MoreVertical,
@@ -215,7 +205,7 @@ const TrackerIcon = ({ title, fallback, src, size = "md", className }: TrackerIc
   }, [src])
 
   return (
-    <div className={cn("flex items-center justify-center", className)} title={title}>
+    <div className={cn("flex items-center justify-center", className)} role={title ? "img" : undefined} aria-label={title || undefined}>
       <div
         className={cn(
           "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
@@ -449,7 +439,7 @@ function SwipeableCard({
                 <h3 className={cn(
                   "font-medium text-xs inline-block",
                   selectionMode && "pr-8"
-                )} title={displayName}>
+                )}>
                   {displayName}
                 </h3>
               </div>
@@ -500,7 +490,7 @@ function SwipeableCard({
                 <h3 className={cn(
                   "font-medium text-sm inline-block whitespace-nowrap",
                   selectionMode && "pr-8"
-                )} title={displayName}>
+                )}>
                   {displayName}
                 </h3>
               </div>
@@ -512,7 +502,7 @@ function SwipeableCard({
           <div className="flex h-[22px] items-center gap-2 text-xs">
             <div className="flex items-center gap-2 text-muted-foreground min-w-0">
               {trackerDisplayName && (
-                <span className="flex items-center gap-1 min-w-0 shrink-[9999]" title={trackerTitle}>
+                <span className="flex items-center gap-1 min-w-0 shrink-[9999]">
                   <TrackerIcon
                     title={trackerTitle}
                     fallback={trackerMeta.fallback}
@@ -679,7 +669,7 @@ function SwipeableCard({
           {/* Left side: Tracker and Category */}
           <div className="flex items-center gap-3 flex-shrink-0">
             {trackerDisplayName && (
-              <div className="flex items-center gap-1" title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}>
+              <div className="flex items-center gap-1">
                 <TrackerIcon
                   title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}
                   fallback={trackerMeta.fallback}
@@ -735,8 +725,6 @@ export function TorrentCardsMobile({
     `${MOBILE_SORT_STORAGE_KEY}:${instanceId}`,
     { defaultValue: DEFAULT_MOBILE_SORT_STATE, parse: parseMobileSortState }
   )
-  const [globalFilter, setGlobalFilter] = useState("")
-  const [immediateSearch] = useState("")
   // Selection keys: hash for single-instance, `${instanceId}:${hash}` for unified scope.
   const { selection, dispatch: dispatchSelection, publishSummary } = useTorrentSelectionContext()
   const { isAllSelected, selected: selectedHashes, excluded: excludedFromSelectAll } = selection
@@ -748,7 +736,8 @@ export function TorrentCardsMobile({
   useRegisterMobileScrollContainer(parentRef)
 
   const [showActionsSheet, setShowActionsSheet] = useState(false)
-  const [showSearchModal, setShowSearchModal] = useState(false)
+  const [showProfileSheet, setShowProfileSheet] = useState(false)
+  const sortButtonRef = useRef<HTMLButtonElement>(null)
   const sortField = sortState.field
   const sortOrder = sortState.order
 
@@ -824,32 +813,12 @@ export function TorrentCardsMobile({
 
   const { pick, isExporting } = useBulkActions()
 
-  const debouncedSearch = useDebounce(globalFilter, 1000)
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
-  const searchFromRoute = routeSearch?.q || ""
-
-  const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const effectiveSearch = routeSearch?.q || ""
   const navigate = useNavigate()
   const activeTaskCount = useActiveTaskCount(instanceId, !isAllInstancesView)
 
   // Columns controls removed on mobile
-
-  useEffect(() => {
-    if (searchFromRoute !== globalFilter) {
-      setGlobalFilter(searchFromRoute)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchFromRoute])
-
-  // The search modal filters without the route `q`, so the page scope does not
-  // see it. A search change clears the selection here instead.
-  const selectionSearchRef = useRef(effectiveSearch)
-  useEffect(() => {
-    if (selectionSearchRef.current !== effectiveSearch) {
-      selectionSearchRef.current = effectiveSearch
-      dispatchSelection({ type: "clear" })
-    }
-  }, [effectiveSearch, dispatchSelection])
 
   const [groupCopiesSetting, toggleGroupCopies] = usePersistedGroupCopies()
 
@@ -1057,19 +1026,12 @@ export function TorrentCardsMobile({
   const stateUnknownForSelection = isAllSelected && selectedTorrents.length < effectiveSelectionCount
 
   const handleClearSearch = useCallback(() => {
-    setGlobalFilter("")
-
     if (routeSearch && Object.prototype.hasOwnProperty.call(routeSearch, "q")) {
       const next = { ...(routeSearch || {}) }
       delete next.q
       navigateWithSearch({ navigate, search: next, replace: true })
     }
   }, [navigate, routeSearch])
-
-  const handleClearSearchAndClose = useCallback(() => {
-    handleClearSearch()
-    setShowSearchModal(false)
-  }, [handleClearSearch])
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
@@ -1129,6 +1091,7 @@ export function TorrentCardsMobile({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
+                    ref={sortButtonRef}
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
@@ -1136,7 +1099,8 @@ export function TorrentCardsMobile({
                     {t("mobileCards.sort")}: {t(currentSortOption.labelKey)}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
+                <DropdownMenuContent align="end" className="w-56 max-h-100 overflow-y-auto">
+                  <DisplayProfileMenuItem onSelect={() => setShowProfileSheet(true)} />
                   <CopyGroupMenuItems groupCopies={groupCopiesSetting} onToggleGroupCopies={toggleGroupCopies} />
                   <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
@@ -1607,71 +1571,7 @@ export function TorrentCardsMobile({
         </SheetContent>
       </Sheet>
 
-      {/* Search Modal */}
-      <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("mobileCards.searchModal.title")}</DialogTitle>
-            <DialogDescription>
-              {t("mobileCards.searchModal.description")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder={t("mobileCards.searchModal.placeholder")}
-                value={globalFilter}
-                onChange={(e) => setGlobalFilter(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    setShowSearchModal(false)
-                  } else if (e.key === "Escape") {
-                    handleClearSearch()
-                    setShowSearchModal(false)
-                  }
-                }}
-                className={`w-full pl-9 ${globalFilter ? "ring-1 ring-primary/50" : ""
-                } ${globalFilter && /[*?]/.test(globalFilter) ? "ring-1 ring-primary" : ""}`}
-                autoFocus
-              />
-              {globalFilter && (
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded-sm transition-colors"
-                  onClick={handleClearSearch}
-                  aria-label={t("common:header.clearSearch")}
-                >
-                  <X className="h-3.5 w-3.5 text-muted-foreground" />
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-2 text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-semibold">{t("common:header.smartSearchTitle")}</p>
-                  <ul className="space-y-1 ml-2">
-                    <li>• <strong>{t("common:header.smartSearchGlob")}</strong> {t("mobileCards.searchModal.globExamples")}</li>
-                    <li>• <strong>{t("common:header.smartSearchFuzzy")}</strong> {t("common:header.smartSearchFuzzyExample")}</li>
-                    <li>• {t("common:header.smartSearchFields")}</li>
-                    <li>• {t("mobileCards.searchModal.autoSearches")}</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="sm:justify-between">
-            <Button variant="outline" onClick={handleClearSearchAndClose}>
-              {t("mobileCards.clear")}
-            </Button>
-            <Button onClick={() => setShowSearchModal(false)}>
-              {t("mobileCards.done")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DisplayProfileSheet open={showProfileSheet} onOpenChange={setShowProfileSheet} returnFocusRef={sortButtonRef} />
 
       {/* Add torrent dialog */}
       {instanceId > 0 && (
@@ -1693,14 +1593,6 @@ export function TorrentCardsMobile({
           style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
         >
           <div className="flex items-center justify-around h-14 px-2">
-            <button
-              onClick={() => setShowSearchModal(true)}
-              className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
-            >
-              <Search className="h-5 w-5" />
-              <span className="truncate text-[10px]">{t("common:actions.search")}</span>
-            </button>
-
             <button
               onClick={() => setIncognitoMode(!incognitoMode)}
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"

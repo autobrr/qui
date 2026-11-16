@@ -1,0 +1,84 @@
+/* @name: Kanagawa Lotus
+ * @description: Port of Kanagawa Lotus by rebelot (github.com/rebelot/kanagawa.nvim, MIT) via the Omarchy Kanagawa Lotus theme by bjarneo, with the Kanagawa Dragon palette as the dark companion
+ * The text and accent colors match the Lotus palette of kanagawa.nvim. The light background, card, secondary, border and muted text colors come from github.com/bjarneo/omarchy-kanagawa-lotus-theme, which names no license.
+ */
+
+:root {
+  --background: oklch(0.9342 0.0316 91.0298);
+  --foreground: oklch(0.4519 0.0259 285.3160);
+  --card: oklch(0.9662 0.0283 93.7491);
+  --card-foreground: oklch(0.4519 0.0259 285.3160);
+  --popover: oklch(0.9850 0.0150 93.7491);
+  --popover-foreground: oklch(0.4519 0.0259 285.3160);
+  --primary: oklch(0.5211 0.0862 261.4868);
+  --primary-foreground: oklch(0.9662 0.0283 93.7491);
+  --secondary: oklch(0.8952 0.0388 90.6653);
+  --secondary-foreground: oklch(0.4519 0.0259 285.3160);
+  --muted: oklch(0.8952 0.0388 90.6653);
+  --muted-foreground: oklch(0.5112 0.0200 285.7177);
+  --accent: oklch(0.8423 0.0086 271.3129);
+  --accent-foreground: oklch(0.4019 0.0684 282.8868);
+  --destructive: oklch(0.5707 0.1715 16.4775);
+  --destructive-foreground: oklch(0.9662 0.0283 93.7491);
+  --border: oklch(0.8497 0.0408 89.7057);
+  --input: oklch(0.8497 0.0408 89.7057);
+  --ring: oklch(0.5211 0.0862 261.4868);
+  --chart-1: oklch(0.5111 0.0862 261.4868);
+  --chart-2: oklch(0.5026 0.0889 128.2578);
+  --chart-3: oklch(0.5189 0.1251 57.2624);
+  --chart-4: oklch(0.4634 0.0901 301.4109);
+  --chart-5: oklch(0.5246 0.1185 359.7673);
+  --sidebar: oklch(0.8952 0.0388 90.6653);
+  --sidebar-foreground: oklch(0.4519 0.0259 285.3160);
+  --sidebar-primary: oklch(0.5211 0.0862 261.4868);
+  --sidebar-primary-foreground: oklch(0.9662 0.0283 93.7491);
+  --sidebar-accent: oklch(0.8423 0.0086 271.3129);
+  --sidebar-accent-foreground: oklch(0.4019 0.0684 282.8868);
+  --sidebar-border: oklch(0.8497 0.0408 89.7057);
+  --sidebar-ring: oklch(0.5211 0.0862 261.4868);
+  --ratio-bad: oklch(0.5707 0.1715 16.4775);
+  --ratio-almost: oklch(0.6314 0.1523 57.2624);
+  --ratio-good: oklch(0.5211 0.0862 261.4868);
+  --ratio-best: oklch(0.5951 0.0889 128.2578);
+  --radius: 0.375rem;
+}
+
+.dark {
+  --background: oklch(0.2025 0.0032 17.4210);
+  --foreground: oklch(0.8316 0.0070 145.5120);
+  --card: oklch(0.1556 0.0017 17.3395);
+  --card-foreground: oklch(0.8316 0.0070 145.5120);
+  --popover: oklch(0.2738 0.0015 17.2471);
+  --popover-foreground: oklch(0.8316 0.0070 145.5120);
+  --primary: oklch(0.7035 0.0330 228.4233);
+  --primary-foreground: oklch(0.1556 0.0017 17.3395);
+  --secondary: oklch(0.2738 0.0015 17.2471);
+  --secondary-foreground: oklch(0.8316 0.0070 145.5120);
+  --muted: oklch(0.2738 0.0015 17.2471);
+  --muted-foreground: oklch(0.7222 0.0142 106.7492);
+  --accent: oklch(0.3410 0.0037 84.5767);
+  --accent-foreground: oklch(0.7035 0.0330 228.4233);
+  --destructive: oklch(0.6446 0.1019 24.8553);
+  --destructive-foreground: oklch(0.1556 0.0017 17.3395);
+  --border: oklch(0.3410 0.0037 84.5767);
+  --input: oklch(0.1556 0.0017 17.3395);
+  --ring: oklch(0.7035 0.0330 228.4233);
+  --chart-1: oklch(0.7035 0.0330 228.4233);
+  --chart-2: oklch(0.6999 0.0616 144.8815);
+  --chart-3: oklch(0.7688 0.0578 86.5788);
+  --chart-4: oklch(0.6794 0.0307 324.1128);
+  --chart-5: oklch(0.6874 0.0545 54.1635);
+  --sidebar: oklch(0.1556 0.0017 17.3395);
+  --sidebar-foreground: oklch(0.8316 0.0070 145.5120);
+  --sidebar-primary: oklch(0.7035 0.0330 228.4233);
+  --sidebar-primary-foreground: oklch(0.1556 0.0017 17.3395);
+  --sidebar-accent: oklch(0.3410 0.0037 84.5767);
+  --sidebar-accent-foreground: oklch(0.7035 0.0330 228.4233);
+  --sidebar-border: oklch(0.3410 0.0037 84.5767);
+  --sidebar-ring: oklch(0.7035 0.0330 228.4233);
+  --ratio-bad: oklch(0.6446 0.1019 24.8553);
+  --ratio-almost: oklch(0.7688 0.0578 86.5788);
+  --ratio-good: oklch(0.7035 0.0330 228.4233);
+  --ratio-best: oklch(0.6999 0.0616 144.8815);
+  --radius: 0.375rem;
+}

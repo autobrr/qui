@@ -1511,19 +1511,11 @@
     "incognito": "Incognito",
     "add": "Hinzufügen",
     "tasks": "Aufgaben",
-    "done": "Fertig",
     "actionsForCount": "Aktionen für {{count}} Torrent(s)",
     "actionsForAll": "Aktionen für alle {{count}} Torrent(s)",
     "selection": {
       "selectedCount": "{{count}} ausgewählt",
       "allSelectedCount": "Alle {{count}} ausgewählt"
-    },
-    "searchModal": {
-      "title": "Torrents durchsuchen",
-      "description": "Suche nach Name, Kategorie oder Tags. Unterstützt Glob-Muster wie *.mkv oder *1080p*.",
-      "placeholder": "Torrents durchsuchen...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Sucht automatisch nach der Eingabe"
     },
     "ratio": "Ratio:",
     "added": "Hinzugefügt {{time}}"
@@ -1730,6 +1722,137 @@
       "title": "Cross-Seeds gruppieren",
       "description": "Zeigt die Kopien eines Torrents in einer einzigen Zeile.",
       "action": "Ausprobieren"
+    },
+    "displayProfiles": {
+      "title": "Anzeigeprofile",
+      "description": "Gib jedem Bildschirm eigene Spalten, Zeilendichte und Seitenleisten. Wähle hier das Profil dieses Browsers.",
+      "action": "Profil erstellen"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Anzeigeprofil: {{name}}",
+    "menuLabel": "Anzeigeprofil",
+    "defaultName": "Standard",
+    "manage": "Profile verwalten…",
+    "sheetDescription": "Jeder Browser wählt sein eigenes Profil.",
+    "settings": {
+      "title": "Anzeigeprofile",
+      "holds": "Enthält: Spalten · Zeilendichte · Seitenleisten · Filterbereiche · Kategoriebäume · Leere Filter",
+      "holdsHelp": "Ein Profil enthält, wie die Torrent-Liste aussieht: welche Spalten sichtbar sind, ihre Reihenfolge und Breite, die Dehnung der Namensspalte, die Zeilendichte, die offenen Seitenleisten und Filterbereiche, die eingeklappten Kategoriebäume und ob leere Filter angezeigt werden. Jeder Browser nutzt ein Profil, und nur dieser Browser merkt sich die Wahl. Ein Browser, der nie eines gewählt hat, und ein privates Fenster nutzen Default. Alle anderen Einstellungen teilen sich alle Profile.",
+      "thisBrowser": "Dieser Browser",
+      "use": "In diesem Browser verwenden",
+      "makeProfile": "Ein Profil für einen Laptop oder ein Smartphone erstellen",
+      "themesSync": "Themes synchronisieren sich separat: <sync>Theme-Synchronisierung</sync>",
+      "renameAriaLabel": "{{name}} umbenennen",
+      "saveName": "Namen speichern",
+      "cancelRename": "Umbenennen abbrechen",
+      "editAriaLabel": "{{name}} bearbeiten",
+      "editTitle": "Profil bearbeiten",
+      "delete": "Löschen…",
+      "deleteTitle": "{{name}} löschen?",
+      "deleteDescription": "Andere Browser, die es verwenden, wechseln zu {{defaultName}}.",
+      "deleteConfirm": "Löschen",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Tabellenzeilen",
+        "dense": "Kompakte Zeilen",
+        "stacked": "Gestapelte Karten"
+      },
+      "filterSidebarOpen": "Filterleiste offen",
+      "filterSidebarClosed": "Filterleiste geschlossen"
+    },
+    "nameErrors": {
+      "empty": "Gib einen Namen ein.",
+      "tooLong": "Verwende höchstens {{max}} Zeichen.",
+      "duplicate": "Ein anderes Profil hat diesen Namen."
+    },
+    "ownSortAndFilters": {
+      "label": "Eigene Sortierung und Filter",
+      "help": "<lead>Wenn das an ist, behält dieses Profil eigene Werte für:</lead><list><item>Sortierung der Torrent-Liste</item><item>Spaltenfilter und Filter der Seitenleiste</item><item>Instanzen, die die vereinheitlichte Ansicht zeigt</item><item>Kopien gruppieren, an oder aus</item><item>zuletzt geöffneter Tab im Detailbereich</item><item>Instanz, die die Seiten Backups und RSS zeigen</item></list><note>Eine Änderung daran in diesem Profil erreicht keine anderen Profile. Wenn das aus ist, teilt dieses Profil sie mit allen anderen Profilen ohne eigene Werte. Beim Ausschalten werden die eigenen Werte dieses Profils gelöscht.</note>",
+      "offWarning": "Beim Ausschalten werden die eigene Sortierung und die eigenen Filter von {{name}} gelöscht.",
+      "defaultShares": "Teilt Sortierung und Filter immer",
+      "defaultSharesHelp": "Default teilt die Sortierung, die Filter und die anderen Ansichtsoptionen immer mit allen Profilen ohne eigene Werte. Für eigene Werte erstelle ein anderes Profil und schalte Eigene Sortierung und Filter ein."
+    },
+    "deletedToast": "Das Profil {{name}} wurde gelöscht. Dieser Browser verwendet jetzt {{defaultName}}.",
+    "newProfile": "Neues Profil aus dieser Einrichtung…",
+    "newDialog": {
+      "title": "Neues Profil",
+      "copies": "Kopiert <profile>{{name}}</profile>: Spalten, Dichte, Seitenleisten und Filter. Dieser Browser nutzt es danach.",
+      "name": "Name",
+      "namePlaceholder": "Zum Beispiel Laptop",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Abbrechen",
+      "create": "Erstellen"
+    },
+    "iconPicker": {
+      "trigger": "Symbol: {{icon}}. Symbol und Farbe ändern",
+      "letter": "Erster Buchstabe des Namens",
+      "color": "Farbe"
+    },
+    "iconGroups": {
+      "devices": "Geräte",
+      "places": "Orte",
+      "use": "Nutzung",
+      "mood": "Stimmung"
+    },
+    "icons": {
+      "appWindow": "App-Fenster",
+      "monitor": "Monitor",
+      "laptop": "Laptop",
+      "tablet": "Tablet",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Gamepad",
+      "house": "Haus",
+      "briefcase": "Aktentasche",
+      "building": "Gebäude",
+      "sofa": "Sofa",
+      "bed": "Bett",
+      "coffee": "Kaffee",
+      "plane": "Flugzeug",
+      "train": "Zug",
+      "rows": "Zeilen",
+      "table": "Tabelle",
+      "list": "Liste",
+      "eye": "Auge",
+      "gauge": "Tacho",
+      "zap": "Blitz",
+      "download": "Download",
+      "upload": "Upload",
+      "sprout": "Spross",
+      "bookmark": "Lesezeichen",
+      "moon": "Mond",
+      "sun": "Sonne",
+      "star": "Stern",
+      "heart": "Herz",
+      "flame": "Flamme",
+      "rocket": "Rakete"
+    },
+    "colors": {
+      "none": "Keine (Textfarbe)",
+      "sky": "Himmelblau",
+      "emerald": "Smaragd",
+      "amber": "Bernstein",
+      "rose": "Rosé",
+      "violet": "Violett",
+      "orange": "Orange",
+      "teal": "Petrol",
+      "pink": "Pink"
+    },
+    "columns": {
+      "headingEveryInstance": "Spalten in {{profile}} · jede Instanz",
+      "headingOneInstance": "Spalten in {{profile}} · nur {{instance}}",
+      "unifiedView": "Vereinheitlichte Ansicht",
+      "thisInstance": "diese Instanz"
+    },
+    "sameColumns": {
+      "label": "Gleiche Spalten auf jeder Instanz",
+      "menuHelp": "Sortierung und Spaltenfilter bleiben pro Instanz.",
+      "helpOn": "Eine Spalteneinrichtung für {{instances}}.",
+      "helpOff": "Jede Instanz behält ihre eigene. Wenn du das einschaltest, erhält jede Instanz die Spalten von {{instance}}.",
+      "helpOffNoInstance": "Jede Instanz behält ihre eigene.",
+      "unifiedViewInList": "die vereinheitlichte Ansicht"
     }
   }
 }

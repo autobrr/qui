@@ -59,6 +59,7 @@
     "smartSearchEnter": "按Enter 鍵立即搜尋",
     "smartSearchAuto": "暫停輸入 500 毫秒後自動搜尋",
     "smartSearchShortcut": "按 {{shortcutKey}} 跳至搜尋框",
+    "smartSearchPalette": "按 {{shortcutKey}} 開啟指令面板",
     "torrentCreationTasksTitle": "種子建立任務",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
@@ -76,6 +77,32 @@
     "collapseScope": "摺疊統一檢視",
     "expandScope": "展開統一檢視",
     "allActive": "全部活動 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "指令面板",
+    "placeholder": "搜尋頁面、設定和種子...",
+    "placeholderIn": "在 {{name}} 中搜尋...",
+    "groups": {
+      "pages": "頁面",
+      "actions": "操作"
+    },
+    "current": "目前",
+    "statisticsNote": "實例的上傳與下載歷史",
+    "searchTorrentsFor": "搜尋種子「{{query}}」",
+    "torrentMatches_other": "{{count}} 個種子符合",
+    "noTorrentMatches": "沒有符合的種子",
+    "searching": "正在搜尋...",
+    "searchFailed": "種子搜尋失敗",
+    "listFiltersApply": "已套用清單篩選器",
+    "noMatchIn": "{{name}} 中沒有符合的項目",
+    "moreOf": "{{name}} 的更多選項",
+    "hints": {
+      "navigate": "導覽",
+      "open": "開啟",
+      "more": "更多",
+      "searchTorrents": "搜尋種子",
+      "back": "返回"
+    }
   },
   "mobileNav": {
     "dashboard": "儀表板",

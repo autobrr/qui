@@ -9,7 +9,7 @@ Frontend rules for work under `web/`. Locale and translation rules live in `web/
 - A new worktree has no `web/node_modules`. Run `pnpm install --frozen-lockfile` in `web/` before `pnpm exec tsc`, `eslint`, or `pnpm check:i18n`. `npx tsc` without it does not run the TypeScript compiler.
 - Before you write or run a frontend test, read `docs/standards/frontend-tests.md`.
 - Before you change when a tab of `TorrentDetailsPanel.tsx` or the piece bar fetches, or change a `useSyncStream` listener, read "Torrent details" in `docs/agents/frontend-notes.md`.
-- Before you add an API call to the torrent list surface, or add demo-only UI, read "getqui.com demo" in `docs/agents/frontend-notes.md`.
+- Before you add or review an API call, a page, or demo-only UI, read "getqui.com demo" in `docs/agents/frontend-notes.md`. Only the `/instances` pages run in the demo, so another page needs no demo route.
 
 ## i18n
 

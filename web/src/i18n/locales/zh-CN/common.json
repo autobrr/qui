@@ -59,6 +59,7 @@
     "smartSearchEnter": "按回车键立即搜索",
     "smartSearchAuto": "暂停输入 500 毫秒后自动搜索",
     "smartSearchShortcut": "按 {{shortcutKey}} 跳转到搜索框",
+    "smartSearchPalette": "按 {{shortcutKey}} 打开命令面板",
     "torrentCreationTasksTitle": "种子创建任务",
     "updateAvailable": "有可用更新",
     "updateVersion": "版本 {{version}}",
@@ -76,6 +77,32 @@
     "collapseScope": "折叠统一视图",
     "expandScope": "展开统一视图",
     "allActive": "全部活动 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "命令面板",
+    "placeholder": "搜索页面、设置和种子...",
+    "placeholderIn": "在 {{name}} 中搜索...",
+    "groups": {
+      "pages": "页面",
+      "actions": "操作"
+    },
+    "current": "当前",
+    "statisticsNote": "实例的上传和下载历史",
+    "searchTorrentsFor": "搜索种子「{{query}}」",
+    "torrentMatches_other": "{{count}} 个种子匹配",
+    "noTorrentMatches": "没有匹配的种子",
+    "searching": "正在搜索...",
+    "searchFailed": "种子搜索失败",
+    "listFiltersApply": "已应用列表筛选器",
+    "noMatchIn": "{{name}} 中没有匹配项",
+    "moreOf": "{{name}} 的更多选项",
+    "hints": {
+      "navigate": "导航",
+      "open": "打开",
+      "more": "更多",
+      "searchTorrents": "搜索种子",
+      "back": "返回"
+    }
   },
   "mobileNav": {
     "dashboard": "仪表盘",

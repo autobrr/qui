@@ -6,6 +6,7 @@
 // Map of font names to their Google Fonts URLs. Exported for fontLoader.test.ts.
 export const FONT_MAP: Record<string, string> = {
   // Sans fonts
+  "-apple-system": "", // System font, no need to load
   "Inter": "Inter:wght@300;400;500;600;700",
   "Montserrat": "Montserrat:wght@300;400;500;600;700",
   "Poppins": "Poppins:wght@300;400;500;600;700",
