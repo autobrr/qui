@@ -79,6 +79,9 @@ type part struct {
 	dir    string
 	plan   []file
 	proven []byte
+	// checked holds the pieces that the last check of the partial files on
+	// the target passed.
+	checked []byte
 	// headStartProven is set when the check of the files that were on the
 	// target passed every piece of the member.
 	headStartProven bool

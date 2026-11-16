@@ -70,8 +70,10 @@ func (s *Server) Seed(data []byte, savePath string) string {
 
 // check checks the files of an added torrent and returns its progress. With
 // HashCheck it hashes each piece, and with IncompleteFilesExt it renames each
-// incomplete file as qBittorrent does. Otherwise a file counts when its size
-// is right.
+// incomplete file as qBittorrent does. A piece with a byte that is not on
+// disk fails, so a partial file passes the pieces that it holds whole. A
+// file that is longer than in the torrent fails each of its pieces. Without
+// HashCheck, a file counts when its size is right.
 func (s *Server) check(t *Torrent) float64 {
 	if !s.HashCheck {
 		return s.onDisk(t)
@@ -80,16 +82,20 @@ func (s *Server) check(t *Torrent) float64 {
 	files := s.diskFiles(t)
 	var stream []byte
 	starts := make([]int64, len(files))
+	// missing holds the parts of the stream that are not on disk.
+	var missing [][2]int64
 	for i, f := range files {
 		starts[i] = int64(len(stream))
 		data, err := os.ReadFile(f)
 		if errors.Is(err, fs.ErrNotExist) {
 			data, err = os.ReadFile(f + incompleteExt)
 		}
-		if err != nil || int64(len(data)) != a.sizes[i] {
-			// A byte that is not on disk fails its piece.
-			data = bytes.Repeat([]byte{0xff}, int(a.sizes[i]))
-			data[0] ^= 0x01
+		if err != nil || int64(len(data)) > a.sizes[i] {
+			data = nil
+		}
+		if have := int64(len(data)); have < a.sizes[i] {
+			missing = append(missing, [2]int64{starts[i] + have, starts[i] + a.sizes[i]})
+			data = append(data, make([]byte, a.sizes[i]-have)...)
 		}
 		stream = append(stream, data...)
 	}
@@ -97,7 +103,11 @@ func (s *Server) check(t *Torrent) float64 {
 	passed := 0
 	for i := range a.pieceStates {
 		start := int64(i) * a.pieceLength
-		sum := sha1.Sum(stream[start:min(start+a.pieceLength, int64(len(stream)))]) //nolint:gosec // BitTorrent v1 pieces are SHA-1
+		end := min(start+a.pieceLength, int64(len(stream)))
+		if slices.ContainsFunc(missing, func(m [2]int64) bool { return m[0] < end && start < m[1] }) {
+			continue
+		}
+		sum := sha1.Sum(stream[start:end]) //nolint:gosec // BitTorrent v1 pieces are SHA-1
 		if bytes.Equal(sum[:], a.pieces[i*sha1.Size:(i+1)*sha1.Size]) {
 			a.pieceStates[i] = 2
 			passed++

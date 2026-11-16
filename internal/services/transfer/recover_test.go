@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,14 +49,15 @@ func newBigShow(t *testing.T) show {
 // span is the part of the torrent that one write covers.
 type span struct{ start, end int64 }
 
-// spans maps each write of the copy of s to its offsets in the torrent.
+// spans maps each write of the copy of s to its offsets in the torrent, also
+// a write into the .!qB name of a temporary file.
 func spans(t *testing.T, s show, id int64, writes []diskWrite) []span {
 	t.Helper()
 	first := int64(len(s.files["Show.S01E01.mkv"]))
 	out := make([]span, 0, len(writes))
 	for _, w := range writes {
 		var offset int64
-		switch w.name {
+		switch strings.TrimSuffix(w.name, ".!qB") {
 		case showName + "/Show.S01E01.mkv.qui-transfer-" + strconv.FormatInt(id, 10):
 		case showName + "/Show.S01E02.mkv.qui-transfer-" + strconv.FormatInt(id, 10):
 			offset = first

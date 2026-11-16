@@ -79,6 +79,9 @@ type job struct {
 	made map[*groupFile]int64
 	// away holds the instances that were deleted or changed their endpoint.
 	away map[int]bool
+	// flushedPieces counts the pieces that qui wrote and flushed in this run,
+	// also on a target that does not confirm a flush.
+	flushedPieces int
 }
 
 func (j *job) hashes() []string {

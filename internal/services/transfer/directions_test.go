@@ -4,8 +4,15 @@
 package transfer_test
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -149,4 +156,148 @@ func TestTransferWithNoCopy(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash))
 	require.Equal(t, r.srcDir, r.dst.LastParams("torrents/add").Get("savepath"))
 	require.False(t, r.src.Has(s.hash))
+}
+
+// A target that cannot confirm a flush has no Proven pieces. After a stop, a
+// check on the target finds the pieces that the partial files hold, and qui
+// copies only the pieces that failed that check. With qBittorrent's setting
+// "Append .!qB extension to incomplete files" on, the check renames the
+// partial files, and qui writes the missing pieces into those names.
+func TestTransferResumesOnATargetWithoutFsync(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		incompleteExt bool
+	}{
+		{name: "plain names"},
+		{name: "the .!qB setting on", incompleteExt: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, onDisk, overSFTP, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
+			r.dst.IncompleteFilesExt = tc.incompleteExt
+			s := newBigShow(t)
+			r.seed(s)
+			count := 0
+			r.disk.onWrite = func(string) {
+				if count++; count == 30 {
+					r.cancel()
+				}
+			}
+
+			id, err := r.svc.Start(t.Context(), r.request(s))
+			require.NoError(t, err)
+			r.svc.Wait()
+			// The target lost bytes of piece 3, as a host can when it stops
+			// before a flush.
+			first := filepath.Join(r.dstDir, showName, "Show.S01E01.mkv.qui-transfer-"+strconv.FormatInt(id, 10))
+			lose(t, first, 3*bigPiece+50, 100)
+			failed := failedPieces(t, s, r.dstDir, id)
+			require.Contains(t, failed, int64(3))
+			require.Greater(t, len(failed), 30, "the copy stopped in the first file")
+			stopped, _ := r.disk.log()
+
+			r.restart()
+			r.svc.Wait()
+
+			record := r.get(id)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the target has the files, and no temporary file")
+			require.Contains(t, logOf(record), fmt.Sprintf("The check on homelab passed %d of 63 pieces of the partial files.", 63-len(failed)))
+			writes, creates := r.disk.log()
+			for name, n := range creates {
+				require.Equal(t, 1, n, "qui made %s once, and wrote into it after the stop", name)
+			}
+			resumed := writes[len(stopped):]
+			written := spans(t, s, id, resumed)
+			requireWholePieces(t, int64(len(s.files["Show.S01E01.mkv"])+len(s.files["Show.S01E02.mkv"])), written)
+			var pieces []int64
+			for _, w := range written {
+				if piece := w.start / bigPiece; len(pieces) == 0 || pieces[len(pieces)-1] != piece {
+					pieces = append(pieces, piece)
+				}
+			}
+			require.Equal(t, failed, pieces, "qui copies the pieces that failed the check, each one time")
+			for _, w := range resumed {
+				if strings.HasPrefix(w.name, showName+"/Show.S01E01.mkv.") {
+					require.Equal(t, tc.incompleteExt, strings.HasSuffix(w.name, ".!qB"), w.name)
+				}
+			}
+		})
+	}
+}
+
+// lose overwrites n bytes at offset of a file with zeros.
+func lose(t *testing.T, name string, offset, n int64) {
+	t.Helper()
+	f, err := os.OpenFile(name, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = f.WriteAt(make([]byte, n), offset)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+}
+
+// failedPieces returns the pieces of s that the temporary files of the
+// Transfer on the target do not hold whole and right.
+func failedPieces(t *testing.T, s show, dir string, id int64) []int64 {
+	t.Helper()
+	var want, got []byte
+	var missing [][2]int
+	for _, name := range []string{"Show.S01E01.mkv", "Show.S01E02.mkv"} {
+		file := s.files[name]
+		data, err := os.ReadFile(filepath.Join(dir, showName, name+".qui-transfer-"+strconv.FormatInt(id, 10)))
+		if !errors.Is(err, fs.ErrNotExist) {
+			require.NoError(t, err)
+		}
+		missing = append(missing, [2]int{len(want) + len(data), len(want) + len(file)})
+		want = append(want, file...)
+		got = append(got, data...)
+		got = append(got, make([]byte, len(file)-len(data))...)
+	}
+	var failed []int64
+	for start := 0; start < len(want); start += bigPiece {
+		end := min(start+bigPiece, len(want))
+		gap := slices.ContainsFunc(missing, func(m [2]int) bool { return m[0] < end && start < m[1] })
+		if gap || !bytes.Equal(want[start:end], got[start:end]) {
+			failed = append(failed, int64(start/bigPiece))
+		}
+	}
+	return failed
+}
+
+// On a relay to a target that cannot confirm a flush, a dropped connection
+// to the source also leads to a check of the partial files, and qui copies
+// each piece one time. A drop after qui flushed pieces does not count
+// against Config.Reconnects.
+func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
+	r := newRigOn(t, overSFTP, overSFTP, func(c *transfer.Config) {
+		c.FlushBytes = 64 << 10
+		c.Reconnects = 1
+	})
+	s := newBigShow(t)
+	r.seed(s)
+	count := 0
+	r.disk.onWrite = func(string) {
+		if count++; count == 10 || count == 30 || count == 50 {
+			r.ssh.DropConnections()
+		}
+	}
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Equal(t, 3, strings.Count(logOf(record), "The connection to seedbox dropped."))
+	require.Equal(t, 3, strings.Count(logOf(record), "pieces of the partial files."))
+	writes, _ := r.disk.log()
+	written := spans(t, s, record.ID, writes)
+	requireWholePieces(t, int64(len(s.files["Show.S01E01.mkv"])+len(s.files["Show.S01E02.mkv"])), written)
+	var pieces []int64
+	for _, w := range written {
+		if piece := w.start / bigPiece; len(pieces) == 0 || pieces[len(pieces)-1] != piece {
+			pieces = append(pieces, piece)
+		}
+	}
+	require.Len(t, pieces, 63)
+	for i, piece := range pieces {
+		require.Equal(t, int64(i), piece, "qui copies each piece one time")
+	}
 }

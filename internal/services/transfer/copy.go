@@ -9,6 +9,7 @@ import (
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
 	"io"
+	"io/fs"
 	"math/bits"
 	"slices"
 	"time"
@@ -47,22 +48,24 @@ type copier struct {
 	dirty   map[*groupFile]struct{}
 	pending []copied
 	written int64
-	// confirmed is false once a flush was not confirmed.
-	confirmed bool
 }
 
-// copyAll copies the pieces that are not Proven pieces. After a dropped
-// connection it goes on with the pieces that are still missing, until
-// Config.Reconnects drops in a row proved no piece.
+// copyAll copies the pieces that are not Proven pieces, and on a target
+// that confirmed no flush, the pieces that fail a check of the partial
+// files. After a dropped connection it goes on with the pieces that are
+// still missing, until Config.Reconnects drops in a row flushed no piece.
 func (j *job) copyAll(ctx context.Context) error {
 	cfg := j.svc.deps.Config
 	for drops := 0; ; {
-		before := j.provenCount()
+		if err := j.checkPartials(ctx); err != nil {
+			return err
+		}
+		before := j.flushedPieces
 		err := j.copy(ctx)
 		if err == nil || !errors.Is(err, fsops.ErrConnectionLost) {
 			return err
 		}
-		if j.provenCount() > before {
+		if j.flushedPieces > before {
 			drops = 0
 		}
 		if drops++; drops > cfg.Reconnects {
@@ -75,14 +78,6 @@ func (j *job) copyAll(ctx context.Context) error {
 		case <-time.After(cfg.ReconnectWait):
 		}
 	}
-}
-
-func (j *job) provenCount() int {
-	n := 0
-	for _, p := range j.parts {
-		n += provenCount(p.ProvenPieces)
-	}
-	return n
 }
 
 func provenCount(proven []byte) int {
@@ -99,7 +94,7 @@ func provenCount(proven []byte) int {
 // target confirmed the flush of its bytes. A piece that holds no file that
 // the member writes stays unproven: the check on the target proves it.
 func (j *job) copy(ctx context.Context) error {
-	c := &copier{j: j, open: map[*groupFile]*open{}, reads: map[string]*reading{}, dirty: map[*groupFile]struct{}{}, confirmed: true}
+	c := &copier{j: j, open: map[*groupFile]*open{}, reads: map[string]*reading{}, dirty: map[*groupFile]struct{}{}}
 	defer c.close()
 	if j.made == nil {
 		j.made = map[*groupFile]int64{}
@@ -120,10 +115,6 @@ func (j *job) copy(ctx context.Context) error {
 	if err := c.flush(ctx); err != nil {
 		return err
 	}
-	j.rec.FlushState = FlushConfirmed
-	if !c.confirmed {
-		j.rec.FlushState = FlushUnconfirmed
-	}
 	return j.checkSourceSizes(ctx)
 }
 
@@ -136,7 +127,7 @@ func (c *copier) part(ctx context.Context, p *part) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if !p.isProven(piece) {
+		if !p.isProven(piece) && !p.isChecked(piece) {
 			if err := c.piece(ctx, p, piece, buf); err != nil {
 				return err
 			}
@@ -300,7 +291,12 @@ func (c *copier) writer(ctx context.Context, f *groupFile, offset int64) (fsops.
 			err error
 		)
 		if _, made := c.j.made[f]; made {
-			if w, err = c.j.root.OpenWrite(ctx, name, offset); err != nil {
+			w, err = c.j.root.OpenWrite(ctx, name, offset)
+			if errors.Is(err, fs.ErrNotExist) {
+				// A check of the partial files gave the file the .!qB name.
+				w, err = c.j.root.OpenWrite(ctx, name+incompleteExt, offset)
+			}
+			if err != nil {
 				return nil, temporary("qui cannot open %s on %s: %v", name, c.j.target.Name, err)
 			}
 		} else {
@@ -319,6 +315,7 @@ func (c *copier) writer(ctx context.Context, f *groupFile, offset int64) (fsops.
 // that are complete. When the target confirms every flush, the pieces
 // written since the last flush become Proven pieces.
 func (c *copier) flush(ctx context.Context) error {
+	flushed := len(c.dirty) > 0
 	confirmed := true
 	for f := range c.dirty {
 		o := c.open[f]
@@ -335,9 +332,14 @@ func (c *copier) flush(ctx context.Context) error {
 		}
 	}
 	clear(c.dirty)
-	c.confirmed = c.confirmed && confirmed
+	if flushed {
+		if err := c.j.recordFlush(ctx, confirmed); err != nil {
+			return err
+		}
+	}
 	pending := c.pending
 	c.pending, c.written = nil, 0
+	c.j.flushedPieces += len(pending)
 	if !confirmed || len(pending) == 0 {
 		return nil
 	}
