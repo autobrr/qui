@@ -301,3 +301,37 @@ func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
 		require.Equal(t, int64(i), piece, "qui copies each piece one time")
 	}
 }
+
+// With no Transfer rows, the Service touches no instance in any direction:
+// no SSH dial, no request to qBittorrent, and no write.
+func TestTransferServiceIdleInEveryDirection(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		source, target side
+	}{
+		{name: "push", source: onDisk, target: overSFTP},
+		{name: "relay", source: overSFTP, target: overSFTP},
+		{name: "local", source: onDisk, target: onDisk},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, tc.source, tc.target)
+			s := newShow(t, showName)
+			r.seed(s)
+
+			r.svc.Close()
+			svc := transfer.NewService(t.Context(), r.deps)
+			svc.Wake()
+			svc.Close()
+
+			require.Zero(t, r.ssh.Dials())
+			require.Zero(t, r.dstSSH.Dials())
+			require.Zero(t, r.src.Requests())
+			require.Zero(t, r.dst.Requests())
+			writes, creates := r.disk.log()
+			require.Empty(t, writes)
+			require.Empty(t, creates)
+			require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+			require.Empty(t, tree(t, r.dstDir))
+		})
+	}
+}
