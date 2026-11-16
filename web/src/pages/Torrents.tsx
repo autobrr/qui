@@ -153,14 +153,18 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   // Handle deep link to a specific torrent (from cross-seed navigation or the command palette)
   useEffect(() => {
     if (!search.torrent) return
-    // Already selected (mobile keeps the hash in the URL); nothing to fetch
+    const clearDeepLinkParams = () => onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
+    // Already selected; nothing to fetch. Mobile keeps the hash in the URL. On the desktop, a link
+    // left in the URL would select the torrent again after the user closes its details.
     if (
       selectedTorrent?.hash === search.torrent &&
       (!search.instance || getTorrentInstanceId(selectedTorrent) === search.instance)
-    ) return
+    ) {
+      if (!isMobile) clearDeepLinkParams()
+      return
+    }
     let cancelled = false
 
-    const clearDeepLinkParams = () => onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
     const hash = search.torrent
     const tab = search.tab
     const escapedHash = hash.replaceAll("\"", "\\\"")
