@@ -125,3 +125,35 @@ func TestRoot_RemovesFilesAndEmptyFolders(t *testing.T) {
 	_, err := os.Lstat(filepath.Join(dir, "Show"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
+
+// A resumed copy writes the missing pieces into the file that it wrote
+// before, and keeps the bytes that are there.
+func TestRoot_OpenWriteWritesIntoAnExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	root := openRoot(t, dir)
+	create(t, root, "Sub/a.bin", "0123456789")
+
+	w, err := root.OpenWrite(t.Context(), "Sub/a.bin", 4)
+	require.NoError(t, err)
+	_, err = w.Write([]byte("xy"))
+	require.NoError(t, err)
+	confirmed, err := w.Flush()
+	require.NoError(t, err)
+	assert.True(t, confirmed)
+	require.NoError(t, w.Close())
+
+	got, err := os.ReadFile(filepath.Join(dir, "Sub", "a.bin"))
+	require.NoError(t, err)
+	assert.Equal(t, "0123xy6789", string(got))
+}
+
+func TestRoot_OpenWriteNeverCreatesAFile(t *testing.T) {
+	dir := t.TempDir()
+	root := openRoot(t, dir)
+
+	_, err := root.OpenWrite(t.Context(), "Sub/a.bin", 0)
+
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	_, err = os.Lstat(filepath.Join(dir, "Sub"))
+	require.ErrorIs(t, err, fs.ErrNotExist)
+}

@@ -14,6 +14,10 @@ type Root interface {
 	// Create creates a new file and its missing folders. It never opens a
 	// file that exists: the error then wraps fs.ErrExist.
 	Create(ctx context.Context, name string) (FileWriter, error)
+	// OpenWrite opens a file that exists for writing from offset on. It
+	// never creates or truncates a file: a missing file is an error that
+	// wraps fs.ErrNotExist.
+	OpenWrite(ctx context.Context, name string, offset int64) (FileWriter, error)
 	// RenameNoReplace gives a file a new name. It never replaces a file:
 	// when newName exists, the error wraps fs.ErrExist.
 	RenameNoReplace(ctx context.Context, oldName, newName string) error

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -85,6 +86,21 @@ func (r *root) Create(ctx context.Context, name string) (fsops.FileWriter, error
 		return nil, err
 	}
 	_ = r.r.Chmod(native, rootFileMode)
+	return writer{f}, nil
+}
+
+func (r *root) OpenWrite(ctx context.Context, name string, offset int64) (fsops.FileWriter, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	f, err := r.r.OpenFile(filepath.FromSlash(name), os.O_WRONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
 	return writer{f}, nil
 }
 
