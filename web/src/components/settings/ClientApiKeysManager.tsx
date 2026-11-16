@@ -110,6 +110,8 @@ export function ClientApiKeysManager() {
     },
   })
 
+  // A second key would replace the proxy URL of the first, so the next create waits until the user dismisses it.
+  const canCreate = keysQuery.isSuccess && !newKey
   const openEditor = () => {
     createMutation.reset()
     setEditorSession((session) => session + 1)
@@ -128,7 +130,7 @@ export function ClientApiKeysManager() {
         title={t("clientApiKeys.cardTitle")}
         description={t("clientApiKeys.cardDescription")}
         actions={
-          <Button variant="outline" size="sm" disabled={!keysQuery.isSuccess} onClick={openEditor}>
+          <Button variant="outline" size="sm" disabled={!canCreate} onClick={openEditor}>
             <Plus />
             {t("clientApiKeys.createButton")}
           </Button>
@@ -175,7 +177,7 @@ export function ClientApiKeysManager() {
           empty={{
             title: t("clientApiKeys.emptyTitle"),
             description: t("clientApiKeys.emptyDescription"),
-            onAdd: keysQuery.isSuccess ? openEditor : undefined,
+            onAdd: canCreate ? openEditor : undefined,
           }}
         />
       </Section>
@@ -244,6 +246,7 @@ interface ClientKeyEditorProps {
 
 function ClientKeyEditor({ open, onOpenChange, instances, pending, error, onSave }: ClientKeyEditorProps) {
   const { t } = useTranslation("settings")
+  const [incognitoMode] = useIncognitoMode()
   const [clientName, setClientName] = useState("")
   const [instanceId, setInstanceId] = useState("")
   const [errors, setErrors] = useState<{ clientName?: string; instanceId?: string }>({})
@@ -308,7 +311,7 @@ function ClientKeyEditor({ open, onOpenChange, instances, pending, error, onSave
                 <SelectItem key={instance.id} value={instance.id.toString()}>
                   <Server className="size-4" />
                   <span className="truncate">{instance.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">{instance.host}</span>
+                  <span className={cn("truncate text-xs text-muted-foreground", incognitoMode && "blur-sm select-none")}>{instance.host}</span>
                 </SelectItem>
               ))}
             </SelectContent>
