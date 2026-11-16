@@ -6,12 +6,11 @@
 import { arrayMove } from "@dnd-kit/sortable"
 
 /**
- * Computes the next persisted column order after a drag. The current order is
- * first normalized against the table's live leaf columns — stale ids are
- * dropped and newly-present ids appended — and the moved column is then
- * repositioned within that normalized order. If either dragged id is missing
- * after normalization, the normalized order is returned unchanged (still worth
- * persisting, since it drops stale ids / adds new ones).
+ * Computes the next persisted column order after a drag. The table's live leaf
+ * columns that the current order lacks are appended, and the moved column is
+ * then repositioned. A column that the table does not show keeps its place, so
+ * the order of every instance keeps the instance column of the Unified view. If
+ * either dragged id is missing, the order with the appended columns is returned.
  */
 export function reorderColumns(
   currentOrder: string[],
@@ -19,9 +18,8 @@ export function reorderColumns(
   overId: string,
   allColumnIds: string[]
 ): string[] {
-  // Normalize current order to include all current columns exactly once
   const sanitizedOrder = [
-    ...currentOrder.filter((id) => allColumnIds.includes(id)),
+    ...new Set(currentOrder),
     ...allColumnIds.filter((id) => !currentOrder.includes(id)),
   ]
 

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { DisplayProfileMenuItem, DisplayProfileSheet } from "@/components/display-profiles/DisplayProfileSheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -748,6 +749,8 @@ export function TorrentCardsMobile({
   useRegisterMobileScrollContainer(parentRef)
 
   const [showActionsSheet, setShowActionsSheet] = useState(false)
+  const [showProfileSheet, setShowProfileSheet] = useState(false)
+  const sortButtonRef = useRef<HTMLButtonElement>(null)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const sortField = sortState.field
   const sortOrder = sortState.order
@@ -1129,6 +1132,7 @@ export function TorrentCardsMobile({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
+                    ref={sortButtonRef}
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
@@ -1136,7 +1140,8 @@ export function TorrentCardsMobile({
                     {t("mobileCards.sort")}: {t(currentSortOption.labelKey)}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
+                <DropdownMenuContent align="end" className="w-56 max-h-100 overflow-y-auto">
+                  <DisplayProfileMenuItem onSelect={() => setShowProfileSheet(true)} />
                   <CopyGroupMenuItems groupCopies={groupCopiesSetting} onToggleGroupCopies={toggleGroupCopies} />
                   <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                   <DropdownMenuRadioGroup
@@ -1606,6 +1611,8 @@ export function TorrentCardsMobile({
           </div>
         </SheetContent>
       </Sheet>
+
+      <DisplayProfileSheet open={showProfileSheet} onOpenChange={setShowProfileSheet} returnFocusRef={sortButtonRef} />
 
       {/* Search Modal */}
       <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>

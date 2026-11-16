@@ -22,11 +22,19 @@ import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts
 import "@/i18n"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
+import {
+  _resetClientSettingsForTests,
+  createDisplayProfile,
+  getDisplayProfiles,
+  markClientSettingsUnavailable,
+  pickDisplayProfile
+} from "@/lib/client-settings"
+import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import { formatBytes } from "@/lib/utils"
 import type { ActionTarget } from "@/lib/torrent-selection"
 import type { Torrent, TorrentFilters } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, fireEvent, render, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react"
 import { useMemo, useRef, type ComponentProps, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -63,6 +71,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...(await importOriginal<typeof import("@tanstack/react-router")>()),
     useSearch: () => search,
     useNavigate: () => navigate,
+    Link: ({ to, search, children, ...props }: { to: string; search?: Record<string, string>; children: ReactNode }) => (
+      <a href={`${to}?${new URLSearchParams(search)}`} {...props}>{children}</a>
+    ),
   }
 })
 
@@ -522,5 +533,62 @@ describe("TorrentCardsMobile count bar", () => {
 
     expect(container.textContent).not.toContain("copyGroups.grouping")
     expect(container.textContent).toContain("statusBar.torrentsLoaded {\"loaded\":3,\"total\":500}")
+  })
+})
+
+describe("TorrentCardsMobile Display profile", () => {
+  beforeEach(() => {
+    _resetClientSettingsForTests()
+    markClientSettingsUnavailable()
+  })
+
+  it("the sheet takes a pick or a new profile only after the first read of the server ends", async () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    const view = renderCards(flatRows(3))
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+    const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
+    const laptopRow = () => within(within(sheet).getByRole("list")).getAllByRole("button")[1]
+    const newProfile = () => within(sheet).getByRole("button", { name: "displayProfiles.newProfile" }) as HTMLButtonElement
+
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(newProfile().disabled).toBe(true)
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(newProfile().disabled).toBe(false)
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+  })
+
+  it("opens the profile list in a sheet from the sort menu, and a tap on a row picks that profile and closes the sheet", async () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    const view = renderCards(flatRows(3))
+
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+
+    const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
+    const rows = within(within(sheet).getByRole("list")).getAllByRole("button")
+    expect(rows.map((row) => row.textContent)).toEqual(["displayProfiles.defaultNamedisplayProfiles.settings.thisBrowser", "Laptop"])
+
+    fireEvent.click(rows[1])
+
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+    expect(view.queryByRole("dialog")).toBeNull()
+  })
+
+  it("New profile in the sheet closes the sheet and opens the New profile dialog with focus on the name", async () => {
+    const view = renderCards(flatRows(3))
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+
+    fireEvent.click(within(view.getByRole("dialog", { name: "displayProfiles.menuLabel" })).getByRole("button", { name: "displayProfiles.newProfile" }))
+
+    const dialog = await view.findByRole("dialog", { name: "displayProfiles.newDialog.title" })
+    // The open dialog hides the rest of the page from the a11y tree, so a sheet left open under it counts only with hidden.
+    expect(view.queryAllByRole("dialog", { hidden: true })).toEqual([dialog])
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "displayProfiles.newDialog.name" })))
   })
 })

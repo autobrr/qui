@@ -1,0 +1,53 @@
+name: Test growth
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Test the counter
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_count_test_growth.py'
+      # The PR commits are fetched as objects only. Nothing from the PR is checked out or run.
+      - name: Count the test growth
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags --filter=blob:none origin "$HEAD"
+          python3 -B .github/scripts/count_test_growth.py "$BASE" "$HEAD"
+          python3 -B .github/scripts/count_test_growth.py --comment "$BASE" "$HEAD" > "$RUNNER_TEMP/body.md"
+      - name: Update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- qui-test-growth -->"))) | .id')
+          read -r id <<<"$ids"
+          if [ -s "$RUNNER_TEMP/body.md" ]; then
+            if [ -n "$id" ]; then
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F "body=@$RUNNER_TEMP/body.md" --silent
+            else
+              gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F "body=@$RUNNER_TEMP/body.md" --silent
+            fi
+          elif [ -n "$id" ]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id"
+          fi

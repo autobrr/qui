@@ -1814,6 +1814,137 @@
       "title": "Seskupte svá křížová sdílení",
       "description": "Zobrazí kopie jednoho torrentu jako jeden řádek.",
       "action": "Vyzkoušet"
+    },
+    "displayProfiles": {
+      "title": "Profily zobrazení",
+      "description": "Dejte každé obrazovce vlastní sloupce, hustotu řádků a postranní panely. Profil tohoto prohlížeče vyberete tady.",
+      "action": "Vytvořit profil"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Profil zobrazení: {{name}}",
+    "menuLabel": "Profil zobrazení",
+    "defaultName": "Výchozí",
+    "manage": "Spravovat profily…",
+    "sheetDescription": "Každý prohlížeč si vybírá vlastní profil.",
+    "settings": {
+      "title": "Profily zobrazení",
+      "holds": "Obsahuje: sloupce · hustotu řádků · postranní panely · sekce filtrů · stromy kategorií · prázdné filtry",
+      "holdsHelp": "Profil určuje, jak vypadá seznam torrentů: které sloupce se zobrazují, jejich pořadí a šířku, roztažení sloupce Název, hustotu řádků, otevřené postranní panely a sekce filtrů, sbalené stromy kategorií a zda se zobrazují prázdné filtry. Každý prohlížeč používá jeden profil a volbu si pamatuje jen tento prohlížeč. Prohlížeč, který si nikdy žádný nevybral, a anonymní okno používají Default. Ostatní nastavení sdílejí všechny profily.",
+      "thisBrowser": "Tento prohlížeč",
+      "use": "Použít v tomto prohlížeči",
+      "makeProfile": "Vytvořit profil pro notebook nebo telefon",
+      "themesSync": "Motivy se synchronizují samostatně: <sync>Synchronizace motivu</sync>",
+      "renameAriaLabel": "Přejmenovat {{name}}",
+      "saveName": "Uložit název",
+      "cancelRename": "Zrušit přejmenování",
+      "editAriaLabel": "Upravit {{name}}",
+      "editTitle": "Upravit profil",
+      "delete": "Smazat…",
+      "deleteTitle": "Smazat {{name}}?",
+      "deleteDescription": "Ostatní prohlížeče, které ho používají, přejdou na {{defaultName}}.",
+      "deleteConfirm": "Smazat",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Řádky tabulky",
+        "dense": "Kompaktní řádky",
+        "stacked": "Skládané karty"
+      },
+      "filterSidebarOpen": "panel filtrů otevřený",
+      "filterSidebarClosed": "panel filtrů zavřený"
+    },
+    "nameErrors": {
+      "empty": "Zadejte název.",
+      "tooLong": "Použijte nejvýše {{max}} znaků.",
+      "duplicate": "Tento název už má jiný profil."
+    },
+    "ownSortAndFilters": {
+      "label": "Vlastní řazení a filtry",
+      "help": "<lead>Když je zapnuto, tento profil si drží vlastní:</lead><list><item>řazení seznamu torrentů</item><item>filtry sloupců a filtry postranního panelu</item><item>instance, které ukazuje sjednocený pohled</item><item>Seskupit kopie, zapnuto nebo vypnuto</item><item>poslední otevřená karta panelu podrobností</item><item>instance, kterou ukazují stránky záloh a RSS</item></list><note>Změna těchto hodnot v tomto profilu se nedostane do jiných profilů. Když je vypnuto, tento profil je sdílí se všemi ostatními profily, které nemají vlastní. Vypnutím se vlastní hodnoty tohoto profilu smažou.</note>",
+      "offWarning": "Vypnutím se smaže vlastní řazení a filtry profilu {{name}}.",
+      "defaultShares": "Vždy sdílí řazení a filtry",
+      "defaultSharesHelp": "Default vždy sdílí řazení, filtry a další volby zobrazení se všemi profily, které nemají vlastní. Chcete-li mít vlastní, vytvořte jiný profil a zapněte Vlastní řazení a filtry."
+    },
+    "deletedToast": "Profil {{name}} byl smazán. Tento prohlížeč teď používá {{defaultName}}.",
+    "newProfile": "Nový profil z tohoto nastavení…",
+    "newDialog": {
+      "title": "Nový profil",
+      "copies": "Zkopíruje <profile>{{name}}</profile>: sloupce, hustotu, postranní panely a filtry. Tento prohlížeč ho pak používá.",
+      "name": "Název",
+      "namePlaceholder": "Například Notebook",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Zrušit",
+      "create": "Vytvořit"
+    },
+    "iconPicker": {
+      "trigger": "Ikona: {{icon}}. Změnit ikonu a barvu",
+      "letter": "První písmeno názvu",
+      "color": "Barva"
+    },
+    "iconGroups": {
+      "devices": "Zařízení",
+      "places": "Místa",
+      "use": "Použití",
+      "mood": "Nálada"
+    },
+    "icons": {
+      "appWindow": "Okno aplikace",
+      "monitor": "Monitor",
+      "laptop": "Notebook",
+      "tablet": "Tablet",
+      "smartphone": "Chytrý telefon",
+      "tv": "TV",
+      "server": "Server",
+      "gamepad": "Herní ovladač",
+      "house": "Dům",
+      "briefcase": "Aktovka",
+      "building": "Budova",
+      "sofa": "Pohovka",
+      "bed": "Postel",
+      "coffee": "Káva",
+      "plane": "Letadlo",
+      "train": "Vlak",
+      "rows": "Řádky",
+      "table": "Tabulka",
+      "list": "Seznam",
+      "eye": "Oko",
+      "gauge": "Ukazatel",
+      "zap": "Blesk",
+      "download": "Stahování",
+      "upload": "Nahrávání",
+      "sprout": "Výhonek",
+      "bookmark": "Záložka",
+      "moon": "Měsíc",
+      "sun": "Slunce",
+      "star": "Hvězda",
+      "heart": "Srdce",
+      "flame": "Plamen",
+      "rocket": "Raketa"
+    },
+    "colors": {
+      "none": "Žádná (barva textu)",
+      "sky": "Nebeská",
+      "emerald": "Smaragdová",
+      "amber": "Jantarová",
+      "rose": "Růžová",
+      "violet": "Fialová",
+      "orange": "Oranžová",
+      "teal": "Modrozelená",
+      "pink": "Sytě růžová"
+    },
+    "columns": {
+      "headingEveryInstance": "Sloupce v {{profile}} · každá instance",
+      "headingOneInstance": "Sloupce v {{profile}} · jen {{instance}}",
+      "unifiedView": "Unifikované zobrazení",
+      "thisInstance": "tato instance"
+    },
+    "sameColumns": {
+      "label": "Stejné sloupce na každé instanci",
+      "menuHelp": "Řazení a filtry sloupců zůstávají pro každou instanci zvlášť.",
+      "helpOn": "Jedno nastavení sloupců pro {{instances}}.",
+      "helpOff": "Každá instance si ponechá své. Po zapnutí dostane každá instance sloupce z {{instance}}.",
+      "helpOffNoInstance": "Každá instance si ponechá své.",
+      "unifiedViewInList": "unifikované zobrazení"
     }
   }
 }

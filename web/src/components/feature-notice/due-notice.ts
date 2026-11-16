@@ -3,12 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { parseJsonBoolean, readClientSetting } from "@/lib/client-settings"
+import { parseJsonBoolean, readClientSetting, writeClientSetting } from "@/lib/client-settings"
 import { FEATURE_NOTICES } from "./notices"
 
 export const SEEN_SETTING = { defaultValue: false, parse: parseJsonBoolean }
 
 export const seenKey = (id: string) => `qui-feature-notice-seen:${id}`
+
+/** Marks the notice seen for good. Call it when the user opens the control that the notice points at. */
+export function markFeatureNoticeSeen(id: string): void {
+  writeClientSetting(seenKey(id), true)
+}
 
 let dueNoticeId: string | null | undefined
 
