@@ -86,7 +86,8 @@ func (t *Table) empty() bool {
 
 // Shares is the owner of the table of active Shares.
 type Shares interface {
-	// ActiveShares returns the table as it is now.
+	// ActiveShares returns the table as it is now. The tracker calls it while
+	// it holds its own lock, so it must not call the tracker.
 	ActiveShares() *Table
 	// PublicPeerAddress returns the address at which other clients reach the
 	// user's own client of the Share. The tracker calls it at each announce

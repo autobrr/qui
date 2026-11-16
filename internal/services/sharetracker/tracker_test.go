@@ -48,12 +48,28 @@ func share() sharetracker.Share {
 // service is in qui.
 type shares struct {
 	table atomic.Pointer[sharetracker.Table]
+	hold  atomic.Pointer[hold]
 
 	mu      sync.Mutex
 	address map[int64]netip.AddrPort
 }
 
-func (s *shares) ActiveShares() *sharetracker.Table { return s.table.Load() }
+// hold keeps the next caller of ActiveShares after it read the table: read
+// closes when it has the table, and the caller goes on when the test closes
+// release.
+type hold struct {
+	read    chan struct{}
+	release chan struct{}
+}
+
+func (s *shares) ActiveShares() *sharetracker.Table {
+	table := s.table.Load()
+	if h := s.hold.Swap(nil); h != nil {
+		close(h.read)
+		<-h.release
+	}
+	return table
+}
 
 func (s *shares) PublicPeerAddress(_ context.Context, id int64) (netip.AddrPort, error) {
 	s.mu.Lock()
@@ -409,6 +425,35 @@ func TestOnlyTheFirstDownloaderGetsTheUsersAddressUntilAnUnlock(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(second, announce{left: 1000}).peers(t))
 	require.Empty(t, r.announce(first, announce{left: 900}).peers(t))
 	require.Equal(t, []netip.AddrPort{addr("198.51.100.2:6882")}, r.announce(owner, announce{}).peers(t))
+}
+
+// regression: #4231
+func TestAnAnnounceWithAnOlderTableKeepsTheLockOfANewShare(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+	locked := sharetracker.Share{ID: 8, InfoHash: infoHash, OwnerSecret: "owner-secret-8", RecipientSecret: "recipient-secret-8", FirstDownloaderOnly: true}
+	r.shares.setAddress(locked.ID, ownerAddress)
+	lockedOwner := client{secret: locked.OwnerSecret, from: "192.0.2.1", port: 51413}
+	first := client{secret: locked.RecipientSecret, from: "198.51.100.1", port: 6881}
+	second := client{secret: locked.RecipientSecret, from: "198.51.100.2", port: 6882}
+
+	h := &hold{read: make(chan struct{}), release: make(chan struct{})}
+	r.shares.hold.Store(h)
+	older := make(chan struct{})
+	go func() {
+		defer close(older)
+		r.announce(recipient, announce{left: 1000})
+	}()
+	<-h.read
+
+	r.shares.set(share(), locked)
+	r.announce(lockedOwner, announce{event: "started"})
+	require.Equal(t, []netip.AddrPort{ownerAddress}, r.announce(first, announce{left: 1000, event: "started"}).peers(t))
+	close(h.release)
+	<-older
+
+	r.announce(lockedOwner, announce{})
+	require.Empty(t, r.announce(second, announce{left: 1000, event: "started"}).peers(t), "the lock holds the first downloader")
 }
 
 func TestWithoutTheLockEveryClientGetsEveryAddress(t *testing.T) {

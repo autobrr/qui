@@ -39,8 +39,11 @@ type answer struct {
 func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req announceRequest) (answer, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	// The table of this announce can be older than a Share that another
+	// announce already joined, so the swarms follow the table as it is now.
+	active := t.shares.ActiveShares()
 	for id := range t.swarms {
-		if !table.has(id) {
+		if !active.has(id) {
 			delete(t.swarms, id)
 		}
 	}
