@@ -5,6 +5,7 @@ package fsops
 
 import (
 	"context"
+	"io"
 	"io/fs"
 	"testing"
 
@@ -62,6 +63,12 @@ func (f fakeBackend) ReflinkTree(context.Context, *hardlinktree.TreePlan) (*Tree
 func (f fakeBackend) RemoveTree(context.Context, *TreeCreateResult) error { return nil }
 func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, error) {
 	return false, "", nil
+}
+func (f fakeBackend) OpenRead(context.Context, string, int64) (io.ReadCloser, error) {
+	return nil, nil
+}
+func (f fakeBackend) OpenWrite(context.Context, string, int64) (FileWriter, error) {
+	return nil, nil
 }
 
 func remoteFactory(backend Backend) func(*models.Instance) Backend {
@@ -234,6 +241,12 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, _, err = b.SupportsReflink(ctx, "/x")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.OpenRead(ctx, "/x", 0)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.OpenWrite(ctx, "/x", 0)
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 }
 

@@ -1562,9 +1562,19 @@ func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID i
 	return client, syncManager, nil
 }
 
-// validateTorrentsExist checks if the specified torrent hashes exist
-func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, operation string) error {
+// validateTorrentsExist checks if the specified torrent hashes exist. With
+// [WithPostAddBulkActionRetry] it waits as long as a bulk action does for
+// torrents that were just added.
+func (sm *SyncManager) validateTorrentsExist(ctx context.Context, client *Client, hashes []string, operation string) error {
 	if !client.hasAnyTorrent(hashes) {
+		if client != nil && client.syncManager != nil && postAddBulkActionRetry(ctx) {
+			found, _ := bulkActionSyncRetry(context.WithoutCancel(ctx), ownerSyncer{client.syncManager}, hashes, client.instanceID, operation,
+				bulkActionAddRetryAttempts, bulkActionSyncRetryInterval, countListed(hashes))
+			if found > 0 {
+				return nil
+			}
+			return fmt.Errorf("no valid torrents found to %s", operation)
+		}
 		// Force a fresh sync (needed by backup restore flows) to pick up torrents that were just added and are not yet cached.
 		if client != nil && client.syncManager != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -1580,6 +1590,19 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 	return nil
 }
 
+// countListed counts the hashes that an index lists, for bulkActionSyncRetry.
+func countListed(hashes []string) func(torrentIndex) (int, int) {
+	return func(index torrentIndex) (int, int) {
+		found := 0
+		for _, hash := range hashes {
+			if _, ok := index.Torrent(hash); ok {
+				found++
+			}
+		}
+		return found, 0
+	}
+}
+
 // editTorrents is the one path for every edit of existing torrents by hash, so
 // a fix to a shared step reaches each edit. A failed call starts no sync and
 // queues no folder cleanup, as ADR 0025 asks.
@@ -1588,7 +1611,7 @@ func (sm *SyncManager) editTorrents(ctx context.Context, instanceID int, hashes 
 	if err != nil {
 		return err
 	}
-	if err := sm.validateTorrentsExist(client, hashes, operation); err != nil {
+	if err := sm.validateTorrentsExist(ctx, client, hashes, operation); err != nil {
 		return err
 	}
 	var folders FolderCleanupBatch

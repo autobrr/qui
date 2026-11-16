@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -646,6 +647,7 @@ type Service struct {
 	activityStore             *models.AutomationActivityStore
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	syncManager               *qbittorrent.SyncManager
+	adder                     *torrentadd.Adder
 	filesReader               filesReader
 	targetLookup              targetLookup
 	deleter                   torrentDeleter
@@ -698,6 +700,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		activityStore:             activityStore,
 		trackerCustomizationStore: trackerCustomizationStore,
 		syncManager:               syncManager,
+		adder:                     torrentadd.New(syncManager),
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
 		deleter:                   syncManager,
@@ -4074,68 +4077,46 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				return
 			}
 
-			// 2. Build options for AddTorrent on target
-			options := map[string]string{}
-			if exec.resolvedSavePath != "" {
-				// Explicit save path: disable autoTMM so qBittorrent uses the provided path
-				options["autoTMM"] = "false"
-				options["savepath"] = exec.resolvedSavePath
-			} else if exec.action.Category != "" {
-				// No save path but category set: enable autoTMM so qBittorrent uses the category's configured path
-				options["autoTMM"] = "true"
-			}
-			if exec.action.Category != "" {
-				options["category"] = exec.action.Category
-			}
-			if len(exec.action.Tags) > 0 {
-				options["tags"] = strings.Join(exec.action.Tags, ",")
-			}
-			if exec.action.Paused {
-				options["paused"] = "true"
-				options["stopped"] = "true"
-			}
-			if exec.action.SkipCheckingEnabled() {
-				options["skip_checking"] = "true"
-			}
-			if exec.action.ContentLayout != "" {
-				options["contentLayout"] = exec.action.ContentLayout
-			}
-
-			// 3. Add to target instance
-			if _, err := s.syncManager.AddTorrent(ctx, exec.action.TargetInstanceID, torrentBytes, options); err != nil {
-				log.Error().Err(err).
+			// 2. Add to target instance, and confirm the torrent is healthy there
+			settings := exportAddSettings(exec.action, exec.resolvedSavePath)
+			added := s.adder.Add(ctx, torrentadd.Request{
+				InstanceID:   exec.action.TargetInstanceID,
+				Torrent:      torrentBytes,
+				Hash:         exec.hash,
+				Settings:     settings,
+				Polls:        exportVerifyMaxAttempts,
+				PollInterval: exportVerifyPollInterval,
+			})
+			if added.Failure == torrentadd.AddRefused {
+				log.Error().Err(added.Err).
 					Int("sourceInstanceID", sourceInstanceID).
 					Int("targetInstanceID", exec.action.TargetInstanceID).
 					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
 					Msg("automations: add torrent to target instance failed")
-				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Add to target failed: "+err.Error()))
+				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Add to target failed: "+added.Err.Error()))
 				return
 			}
 
-			// qBittorrent does not hash-check a torrent that was added stopped.
-			// Ask it to recheck; it runs the torrent only for the check and stops it again.
-			if exec.action.Paused && !exec.action.SkipCheckingEnabled() {
-				err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), exec.action.TargetInstanceID, []string{exec.hash}, "recheck")
-
-				// The post-add retry detaches from ctx and can use up its deadline, so verify and clean up under a fresh one.
-				var verifyCancel context.CancelFunc
-				ctx, verifyCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
-				defer verifyCancel()
-
-				if err != nil {
-					log.Error().Err(err).
-						Int("sourceInstanceID", sourceInstanceID).
-						Int("targetInstanceID", exec.action.TargetInstanceID).
-						Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
-						Msg("automations: recheck on target failed")
-					removeFromTarget(ctx, "recheck failed")
-					recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Recheck on target failed: "+err.Error()))
-					return
-				}
+			if settings.Recheck {
+				// The post-add retry detaches from ctx and can use up its deadline, so clean up under a fresh one.
+				var cleanupCancel context.CancelFunc
+				ctx, cleanupCancel = context.WithTimeout(context.WithoutCancel(ctx), exportTimeout)
+				defer cleanupCancel()
 			}
 
-			// 4. Post-add verification: confirm torrent is healthy on target
-			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.action.SkipCheckingEnabled()); reason != "" {
+			if added.Failure == torrentadd.AfterAddFailed {
+				log.Error().Err(added.Err).
+					Int("sourceInstanceID", sourceInstanceID).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
+					Msg("automations: recheck on target failed")
+				removeFromTarget(ctx, "recheck failed")
+				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Recheck on target failed: "+added.Err.Error()))
+				return
+			}
+
+			// 3. Post-add verification
+			if reason := exportVerifyFailure(added, exec.action.TargetInstanceID, exec.hash, exec.action.SkipCheckingEnabled()); reason != "" {
 				log.Error().
 					Int("sourceInstanceID", sourceInstanceID).
 					Int("targetInstanceID", exec.action.TargetInstanceID).
@@ -4188,96 +4169,56 @@ var (
 	exportVerifyPollInterval = 3 * time.Second
 )
 
-// verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
-// When skipChecking is false, a torrent still in a checking state after retries is treated as
-// success (the add worked, hash check is in progress).
-// Returns empty string on success, or a failure reason string.
-func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash string, skipChecking bool) string {
-	syncMgr, err := s.syncManager.GetSyncOwner(ctx, targetInstanceID)
-	if err != nil {
-		return fmt.Sprintf("Verification failed: unable to get sync manager: %v", err)
+// exportAddSettings are the settings of the add on the target. savePath is
+// the resolved save path, empty for none.
+func exportAddSettings(action *models.ExportToInstanceAction, savePath string) torrentadd.Settings {
+	settings := torrentadd.Settings{
+		Category:      action.Category,
+		Tags:          action.Tags,
+		ContentLayout: qbt.ContentLayout(action.ContentLayout),
+		SeedMode:      action.SkipCheckingEnabled(),
+		// qBittorrent does not hash-check a torrent that was added stopped.
+		// Ask it to recheck; it runs the torrent only for the check and stops it again.
+		Recheck: action.Paused && !action.SkipCheckingEnabled(),
 	}
-
-	var lastErr error
-	var lastStateChecking bool
-
-	for attempt := range exportVerifyMaxAttempts {
-		// Force a cache refresh so we see newly added torrents
-		if err := syncMgr.Sync(ctx); err != nil {
-			lastErr = err
-			lastStateChecking = false
-			log.Debug().Err(err).
-				Int("targetInstanceID", targetInstanceID).
-				Str("hash", hash).Int("attempt", attempt+1).
-				Msg("automations: sync failed during verification, retrying")
-		} else {
-			torrent, found, lookupErr := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
-
-			switch {
-			case lookupErr != nil:
-				lastErr = lookupErr
-				lastStateChecking = false
-				log.Debug().Err(lookupErr).
-					Int("targetInstanceID", targetInstanceID).
-					Str("hash", hash).Int("attempt", attempt+1).
-					Msg("automations: verification poll failed, retrying")
-			case !found:
-				lastErr = nil
-				lastStateChecking = false
-				log.Debug().
-					Int("targetInstanceID", targetInstanceID).
-					Str("hash", hash).Int("attempt", attempt+1).
-					Msg("automations: torrent not yet visible on target, retrying")
-			default:
-				// Successful lookup — clear transient error state
-				lastErr = nil
-
-				switch torrent.State { //nolint:exhaustive // only failure and transient states need special handling
-				case qbt.TorrentStateMissingFiles:
-					log.Warn().
-						Int("targetInstanceID", targetInstanceID).
-						Str("hash", hash).
-						Str("savePath", torrent.SavePath).
-						Str("contentPath", torrent.ContentPath).
-						Msg("automations: torrent has missingFiles state on target")
-					return fmt.Sprintf("Files missing on target instance (savePath: %s)", torrent.SavePath)
-				case qbt.TorrentStateError:
-					return "Torrent in error state on target instance"
-				case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
-					lastStateChecking = true
-					log.Debug().
-						Int("targetInstanceID", targetInstanceID).
-						Str("hash", hash).Str("state", string(torrent.State)).Int("attempt", attempt+1).
-						Msg("automations: torrent still checking on target, retrying")
-				default:
-					lastStateChecking = false
-					if torrent.Progress >= 1.0 {
-						return "" // success
-					}
-					// Progress < 1.0 but not in a checking/error state — might still be initializing
-					log.Debug().
-						Int("targetInstanceID", targetInstanceID).
-						Str("hash", hash).Float64("progress", torrent.Progress).
-						Str("state", string(torrent.State)).Int("attempt", attempt+1).
-						Msg("automations: torrent not yet complete on target, retrying")
-				}
-			}
-		}
-
-		// Wait before next retry
-		select {
-		case <-ctx.Done():
-			return "Verification cancelled: " + ctx.Err().Error()
-		case <-time.After(exportVerifyPollInterval):
-		}
+	if savePath != "" {
+		// Explicit save path: disable autoTMM so qBittorrent uses the provided path
+		settings.AutoTMM = new(false)
+		settings.SavePath = savePath
+	} else if action.Category != "" {
+		// No save path but category set: enable autoTMM so qBittorrent uses the category's configured path
+		settings.AutoTMM = new(true)
 	}
+	if action.Paused {
+		settings.Stopped = new(true)
+	}
+	return settings
+}
 
-	// When skip_checking is false, a torrent still hash-checking is expected — treat as success
-	if lastStateChecking && !skipChecking {
+// exportVerifyFailure is the reason an export failed its verification on the
+// target, or "" when it passed. When skipChecking is false, a torrent still in
+// a checking state after the polls counts as success (the add worked, the hash
+// check is in progress).
+func exportVerifyFailure(added torrentadd.Result, targetInstanceID int, hash string, skipChecking bool) string {
+	switch added.Failure {
+	case torrentadd.MissingFiles:
+		log.Warn().
+			Int("targetInstanceID", targetInstanceID).
+			Str("hash", hash).
+			Str("savePath", added.Torrent.SavePath).
+			Str("contentPath", added.Torrent.ContentPath).
+			Msg("automations: torrent has missingFiles state on target")
+		return fmt.Sprintf("Files missing on target instance (savePath: %s)", added.Torrent.SavePath)
+	case torrentadd.Errored:
+		return "Torrent in error state on target instance"
+	case torrentadd.Cancelled:
+		return "Verification cancelled: " + added.Err.Error()
+	case torrentadd.PollFailed:
+		return fmt.Sprintf("Verification failed: %v", added.Err)
+	default:
+	}
+	if added.Outcome == torrentadd.Verified || (added.Outcome == torrentadd.Checking && !skipChecking) {
 		return ""
-	}
-	if lastErr != nil {
-		return fmt.Sprintf("Verification failed: %v", lastErr)
 	}
 	return fmt.Sprintf("Verification timed out after %d attempts (%v)", exportVerifyMaxAttempts, time.Duration(exportVerifyMaxAttempts)*exportVerifyPollInterval)
 }
