@@ -1749,6 +1749,13 @@
       "tooLong": "Utilisez {{max}} caractères au maximum.",
       "duplicate": "Un autre profil porte ce nom."
     },
+    "ownSortAndFilters": {
+      "label": "Tri et filtres propres",
+      "help": "<lead>Quand cette option est activée, ce profil garde ses propres :</lead><list><item>ordre de tri de la liste des torrents</item><item>filtres de colonne et filtres de la barre latérale</item><item>instances affichées par la vue unifiée</item><item>Grouper les copies, activé ou non</item><item>dernier onglet ouvert du panneau de détails</item><item>instance affichée par les pages Sauvegardes et RSS</item></list><note>Une modification de ces réglages dans ce profil n’atteint pas les autres profils. Quand cette option est désactivée, ce profil les partage avec tous les autres profils. La désactivation supprime les valeurs propres de ce profil.</note>",
+      "offWarning": "La désactivation supprime le tri et les filtres propres de {{name}}.",
+      "defaultShares": "Partage toujours le tri et les filtres",
+      "defaultSharesHelp": "Default partage toujours le tri, les filtres et les autres choix d’affichage avec tous les profils. Pour garder les vôtres, créez un autre profil et activez Tri et filtres propres."
+    },
     "columns": {
       "headingEveryInstance": "Colonnes de {{profile}} · chaque instance",
       "headingOneInstance": "Colonnes de {{profile}} · {{instance}} uniquement",

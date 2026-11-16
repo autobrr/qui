@@ -285,7 +285,30 @@ let flushInFlight = false
 // after another tab replaces a batch value.
 let flushRequestedInFlight = false
 
-async function flushPending(): Promise<void> {
+// Chrome refuses a keepalive body over 64 KiB, so no PUT body is larger.
+const MAX_PUT_BODY_BYTES = 64 * 1024
+const utf8 = new TextEncoder()
+
+/** Splits entries into PUT bodies of at most MAX_PUT_BODY_BYTES; an entry over the limit gets a body of its own. */
+function splitIntoBodies(entries: [string, string][]): [string, string][][] {
+  const chunks: [string, string][][] = []
+  let chunk: [string, string][] = []
+  let bytes = 2 // "{}"
+  for (const entry of entries) {
+    const entryBytes = utf8.encode(`${JSON.stringify(entry[0])}:${JSON.stringify(entry[1])}`).length
+    if (chunk.length > 0 && bytes + 1 + entryBytes > MAX_PUT_BODY_BYTES) {
+      chunks.push(chunk)
+      chunk = []
+      bytes = 2
+    }
+    bytes += (chunk.length > 0 ? 1 : 0) + entryBytes
+    chunk.push(entry)
+  }
+  if (chunk.length > 0) chunks.push(chunk)
+  return chunks
+}
+
+async function flushPending(atPageHide = false): Promise<void> {
   if (flushInFlight) {
     flushRequestedInFlight = true
     return
@@ -294,33 +317,36 @@ async function flushPending(): Promise<void> {
   // Keys stay in pending while the PUT is in flight so a concurrent server
   // apply cannot clobber the newer local value (the echo guard checks
   // pending). On failure they simply stay queued for the next flush.
-  const batch = Object.fromEntries(pending)
+  const chunks = splitIntoBodies([...pending])
   flushInFlight = true
   try {
-    // Plain fetch instead of the api client: keepalive lets the tab-hidden
-    // flush finish, and this module must stay import-light (i18n boots on it).
-    const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify(batch),
-      keepalive: true,
-    })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    // Drop what this PUT delivered. Entries replaced in this tab stay queued;
-    // a newer edit from another tab is copied from the shared localStorage.
-    // A server copy is not an edit: pushing it back can be one write old, and
-    // two tabs then flip the value forever (#3424).
-    for (const [key, raw] of Object.entries(batch)) {
-      const latest = readRaw(key)
-      if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
-        pending.set(key, latest)
-        flushRequestedInFlight = true
-      } else if (pending.get(key) === raw) pending.delete(key)
+    // One PUT at a time: Chrome counts every keepalive body in flight against the same 64 KiB.
+    for (const chunk of chunks) {
+      // Plain fetch instead of the api client: this module must stay import-light (i18n boots on it).
+      const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(Object.fromEntries(chunk)),
+        // keepalive lets the PUT outlive the page; Chrome caps its body, so other saves leave it off.
+        keepalive: atPageHide,
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      // Drop what this PUT delivered. Entries replaced in this tab stay queued;
+      // a newer edit from another tab is copied from the shared localStorage.
+      // A server copy is not an edit: pushing it back can be one write old, and
+      // two tabs then flip the value forever (#3424).
+      for (const [key, raw] of chunk) {
+        const latest = readRaw(key)
+        if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
+          pending.set(key, latest)
+          flushRequestedInFlight = true
+        } else if (pending.get(key) === raw) pending.delete(key)
+      }
+      persistPending()
     }
-    persistPending()
   } catch (error) {
     // No self-retry, on purpose: a failed batch stays pending until the next write
     // or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
@@ -334,23 +360,23 @@ async function flushPending(): Promise<void> {
   }
 }
 
-function flushNow(): void {
+function flushAtPageHide(): void {
   if (flushTimer !== null) {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  void flushPending()
+  void flushPending(true)
 }
 
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flushNow()
+    if (document.visibilityState === "hidden") flushAtPageHide()
   })
   // Chrome does not fire visibilitychange on a same-tab reload or navigation,
   // so a write inside the debounce window would die with the page and the
   // stale server snapshot would revert it at next boot. keepalive lets the
   // PUT outlive the page.
-  window.addEventListener("pagehide", flushNow)
+  window.addEventListener("pagehide", flushAtPageHide)
 }
 
 // --- Display profiles ---
@@ -479,10 +505,16 @@ export function getDisplayProfiles(): DisplayProfilesState {
   return profilesState
 }
 
+/** True when the profile keeps its own copy of the setting instead of the key of today. */
+function keepsOwnCopy(profile: DisplayProfile, key: string): boolean {
+  const group = settingGroup(key)
+  return group === "display" || (group === "sortAndFilters" && profile.ownSortAndFilters)
+}
+
 /** The storage key that a write of a setting goes to, for the profile of this browser. */
 function resolveKey(key: string): string {
   const { active } = getDisplayProfiles()
-  if (settingGroup(key) !== "display") return key
+  if (!keepsOwnCopy(active, key)) return key
   const prefix = active.usesSameColumns ? instanceColumnSetupPrefix(key) : undefined
   return profileStorageKey(active, prefix === undefined ? key : prefix + SHARED_COLUMN_SETUP)
 }
@@ -526,7 +558,7 @@ export function createDisplayProfile(name: string): string {
       if (!storageKey?.startsWith(sourcePrefix)) continue
       const key = storageKey.slice(sourcePrefix.length)
       const raw = localStorage.getItem(storageKey)
-      if (raw !== null && settingGroup(key) === "display") copies.push([key, raw])
+      if (raw !== null && keepsOwnCopy(active, key)) copies.push([key, raw])
     }
   } catch (scanError) {
     console.error("Failed to copy the Display settings of the active profile:", scanError)
@@ -534,7 +566,11 @@ export function createDisplayProfile(name: string): string {
 
   const id = randomProfileId()
   for (const [key, raw] of copies) writeRaw(profileValueKey(id, key), raw)
-  writeRaw(profileEntryKey(id), JSON.stringify({ ...newDisplayProfileEntry(name.trim()), sameColumns: active.sameColumns }))
+  writeRaw(profileEntryKey(id), JSON.stringify({
+    ...newDisplayProfileEntry(name.trim()),
+    sameColumns: active.sameColumns,
+    ownSortAndFilters: active.ownSortAndFilters,
+  }))
   pickDisplayProfile(id)
   return id
 }
@@ -603,6 +639,45 @@ export function setDisplayProfileSameColumns(profileId: string, on: boolean, ins
   writeRaw(profileEntryKey(profile.id), JSON.stringify({ ...entryOf(profile), sameColumns: on }))
 }
 
+/** The Sort and filters values stored under the prefix, as pairs of the key of today and the raw value. */
+function storedSortAndFilters(prefix: string): [string, string][] {
+  const values: [string, string][] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i)
+      if (!storageKey?.startsWith(prefix)) continue
+      const key = storageKey.slice(prefix.length)
+      const raw = localStorage.getItem(storageKey)
+      if (raw !== null && settingGroup(key) === "sortAndFilters") values.push([key, raw])
+    }
+  } catch (error) {
+    console.error("Failed to read the Sort and filters values:", error)
+  }
+  return values
+}
+
+/**
+ * Sets "Own sort and filters" of a profile. On copies the shared values to the profile, so nothing changes at that
+ * moment. Off writes "" to the own values, and the profile reads the shared values again. Throws for Default, which
+ * always shares.
+ */
+export function setDisplayProfileOwnSortAndFilters(profileId: string, on: boolean): void {
+  const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+  if (!profile || profile.isDefault) throw new Error(`Display profile ${profileId} cannot keep its own sort and filters`)
+  if (profile.ownSortAndFilters === on) return
+  const { name, icon, color, sameColumns } = profile
+  const entry = JSON.stringify({ name, icon, color, sameColumns, ownSortAndFilters: on } satisfies DisplayProfileEntry)
+
+  // The entry flips last on the way in and first on the way out, so the profile never reads blank own values.
+  if (on) {
+    for (const [key, raw] of storedSortAndFilters("")) writeRaw(profileValueKey(profileId, key), raw)
+    writeRaw(profileEntryKey(profileId), entry)
+  } else {
+    writeRaw(profileEntryKey(profileId), entry)
+    for (const [key] of storedSortAndFilters(profileValueKey(profileId, ""))) writeRaw(profileValueKey(profileId, key), "")
+  }
+}
+
 function subscribeDisplayProfiles(callback: () => void): () => void {
   const onStorage = (event: StorageEvent) => {
     if (event.key == null || isProfileStateKey(event.key)) callback()
@@ -623,6 +698,7 @@ export interface DisplayProfilesApi extends DisplayProfilesState {
   pick: (profileId: string) => void
   create: (name: string) => string
   setSameColumns: (profileId: string, on: boolean, instanceId?: number | null) => void
+  setOwnSortAndFilters: (profileId: string, on: boolean) => void
 }
 
 /** The Display profiles for the UI. */
@@ -633,6 +709,7 @@ export function useDisplayProfiles(): DisplayProfilesApi {
     pick: pickDisplayProfile,
     create: createDisplayProfile,
     setSameColumns: setDisplayProfileSameColumns,
+    setOwnSortAndFilters: setDisplayProfileOwnSortAndFilters,
   }), [state])
 }
 

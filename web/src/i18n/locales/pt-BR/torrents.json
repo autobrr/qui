@@ -1749,6 +1749,13 @@
       "tooLong": "Use no máximo {{max}} caracteres.",
       "duplicate": "Outro perfil já tem este nome."
     },
+    "ownSortAndFilters": {
+      "label": "Ordenação e filtros próprios",
+      "help": "<lead>Quando esta opção está ativada, este perfil mantém os próprios:</lead><list><item>ordem da lista de torrents</item><item>filtros de coluna e filtros da barra lateral</item><item>instâncias que a visão unificada mostra</item><item>Agrupar cópias, ativado ou não</item><item>última aba aberta do painel de detalhes</item><item>instância que as páginas de Backups e RSS mostram</item></list><note>Uma alteração nesses itens neste perfil não chega a outros perfis. Quando esta opção está desativada, este perfil os compartilha com todos os outros perfis. Desativar esta opção exclui os valores próprios deste perfil.</note>",
+      "offWarning": "Desativar esta opção exclui a ordenação e os filtros próprios de {{name}}.",
+      "defaultShares": "Sempre compartilha ordenação e filtros",
+      "defaultSharesHelp": "Default sempre compartilha a ordenação, os filtros e as outras escolhas de visualização com todos os perfis. Para manter os seus, crie outro perfil e ative Ordenação e filtros próprios."
+    },
     "columns": {
       "headingEveryInstance": "Colunas em {{profile}} · todas as instâncias",
       "headingOneInstance": "Colunas em {{profile}} · somente {{instance}}",

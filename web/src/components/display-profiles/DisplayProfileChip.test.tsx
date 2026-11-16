@@ -14,6 +14,7 @@ import {
   useClientSetting,
   writeClientSetting
 } from "@/lib/client-settings"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 
 vi.mock("react-i18next", () => ({
@@ -45,7 +46,7 @@ describe("DisplayProfileChip", () => {
     createDisplayProfile("Laptop")
     writeClientSetting("qui-filter-sidebar-collapsed", true)
     pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
-    render(<><DisplayProfileChip /><SidebarProbe /></>)
+    render(<TooltipProvider><DisplayProfileChip /><SidebarProbe /></TooltipProvider>)
     expect(screen.getByRole("status").textContent).toBe("open")
 
     openMenu()
@@ -57,7 +58,7 @@ describe("DisplayProfileChip", () => {
   })
 
   it("creates a profile by name from the panel, and refuses a name in use", () => {
-    render(<DisplayProfileChip />)
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
     openMenu()
     fireEvent.click(screen.getByRole("menuitem", { name: "displayProfiles.manage" }))
 
