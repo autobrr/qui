@@ -444,6 +444,37 @@ describe("large batches", () => {
     expect(server["qui-test-bool"]).toBe("2")
   })
 
+  // regression: #4206
+  it("keeps the newer value when the page-hide PUT lands before an older PUT and a snapshot of it", async () => {
+    const server: Record<string, string> = {}
+    const inFlight: (() => void)[] = []
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((resolve) => {
+      inFlight.push(() => {
+        Object.assign(server, JSON.parse(String(init.body)))
+        resolve({ ok: true, status: 200 })
+      })
+    }))
+    const land = async (index: number) => {
+      inFlight[index]()
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "1")
+    await vi.advanceTimersByTimeAsync(1_000)
+    writeRaw("qui-test-bool", "2")
+    window.dispatchEvent(new Event("pagehide"))
+    expect(inFlight).toHaveLength(2)
+
+    await land(1)
+    applyServerSettings({ "qui-test-bool": "1" })
+    await land(0)
+    await vi.advanceTimersByTimeAsync(1_000)
+    for (let i = 2; i < inFlight.length; i++) await land(i)
+
+    expect(localStorage.getItem("qui-test-bool")).toBe("2")
+    expect(server["qui-test-bool"]).toBe("2")
+  })
+
   it.each([
     ["pagehide", () => window.dispatchEvent(new Event("pagehide"))],
     ["a hidden tab", () => {

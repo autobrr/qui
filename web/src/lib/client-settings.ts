@@ -325,6 +325,8 @@ let keepaliveInFlight = false
 // A flush needed after the current PUT, either requested while in flight or
 // after another tab replaces a batch value.
 let flushRequestedInFlight = false
+// PUTs in flight: page hide can start one beside a debounced one.
+let putsInFlight = 0
 
 // Chrome refuses a keepalive body over 64 KiB, so no PUT body is larger.
 const MAX_PUT_BODY_BYTES = 64 * 1024
@@ -356,6 +358,7 @@ function splitIntoBodies(entries: [string, string][]): [string, string][][] {
  */
 async function putPending(keepalive: boolean): Promise<void> {
   if (keepalive) keepaliveInFlight = true
+  putsInFlight++
   try {
     // One PUT at a time: Chrome counts every keepalive body in flight against the same 64 KiB.
     for (const chunk of splitIntoBodies([...pending])) {
@@ -380,11 +383,16 @@ async function putPending(keepalive: boolean): Promise<void> {
         if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
           pending.set(key, latest)
           flushRequestedInFlight = true
-        } else if (pending.get(key) === raw) pending.delete(key)
+        } else if (pending.get(key) === raw) {
+          // The other PUT can land an older value after this one, so the key stays queued and goes out once more.
+          if (putsInFlight > 1) flushRequestedInFlight = true
+          else pending.delete(key)
+        }
       }
       persistPending()
     }
   } finally {
+    putsInFlight--
     if (keepalive) keepaliveInFlight = false
   }
 }
@@ -922,6 +930,7 @@ export function _resetClientSettingsForTests(): void {
   flushInFlight = false
   keepaliveInFlight = false
   flushRequestedInFlight = false
+  putsInFlight = 0
   snapshotFailed = false
   setSyncReady(false)
   invalidateDisplayProfiles()
