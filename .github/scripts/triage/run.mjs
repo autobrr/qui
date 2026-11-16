@@ -70,8 +70,12 @@ const profiles = {
       "Bash(gh issue view:*)",
       "Bash(gh discussion list:*)",
       "Bash(gh discussion view:*)",
-      "Bash(./.github/scripts/discussion-write.sh:*)",
-      "Bash(./.github/scripts/qbit-source.sh:*)",
+      // A rule matches the path as typed, and the agent sometimes types the
+      // absolute path, so allow both forms.
+      ...["discussion-write.sh", "qbit-source.sh"].flatMap((s) => [
+        `Bash(./.github/scripts/${s}:*)`,
+        `Bash(${process.cwd()}/.github/scripts/${s}:*)`,
+      ]),
     ],
   },
   // The ratchet edits one file, its test and the allowlist. It has no GitHub
