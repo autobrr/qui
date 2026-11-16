@@ -131,6 +131,13 @@ index 3333333..0000000
 +++ /dev/null
 @@ -1 +0,0 @@
 -it("accent", () => {})
+diff --git "a/web/caf\\351.test.ts" "b/web/caf\\351.test.ts"
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ "b/web/caf\\351.test.ts"
+@@ -0,0 +1 @@
++it("latin-1", () => {})
 """
 
 REMOVED_DASHES = """diff --git a/internal/a/a_test.go b/internal/a/a_test.go
@@ -182,6 +189,7 @@ class TestFiles(unittest.TestCase):
                 "web/a b.test.ts": Growth(added_cases=1, added_lines=1),
                 'web/q"x.test.ts': Growth(added_cases=1, added_lines=1),
                 "web/\u00e9.test.ts": Growth(removed_cases=1),
+                "web/caf\ufffd.test.ts": Growth(added_cases=1, added_lines=1),
             },
         )
 

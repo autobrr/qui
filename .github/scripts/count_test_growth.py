@@ -45,7 +45,7 @@ def kind(path):
 def header_path(line):
     name = line[4:].rstrip("\t")
     if name.startswith('"'):
-        name = ast.literal_eval(name).encode("latin-1").decode("utf-8")
+        name = ast.literal_eval(name).encode("latin-1").decode("utf-8", "replace")
     return name[2:] if name.startswith(("a/", "b/")) else None
 
 
