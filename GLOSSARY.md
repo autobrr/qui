@@ -34,7 +34,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Group representative**: The member of a group that stands for the group: the oldest by added time, with the infohash as the tie-break, then the instance. _Avoid_: parent, canonical copy, primary copy.
 - **Select all mode**: A selection of every torrent that matches the current filter, including torrents on pages that are not loaded, minus the torrents that the user excluded. _Avoid_: Select-all, all selected.
 - **Exclusion**: A torrent that the user unticked in Select all mode. It stays out of the selection until the user ticks it again or the selection clears. _Avoid_: Deselected torrent.
-- **Action target**: What one bulk action reaches: the ticked torrents, or the torrents in Select all mode minus the Exclusions, with the count that the user sees. _Avoid_: Action scope, selection payload.
+- **Action target**: What one bulk action reaches: the ticked torrents, or the torrents in Select all mode minus the Exclusions, with the count that the user sees. While no torrent is ticked, it is the mobile card that shows its swipe buttons. _Avoid_: Action scope, selection payload.
 - **Bulk action**: One action that the user applies to the Action target, for example Pause, Set category, or Delete.
 - **Action surface**: A place in the torrent list where the user picks a Bulk action: the context menu, the header bar, the mobile action bar, and the swipe buttons of a mobile card. _Avoid_: host.
 - **Share limits**: The ratio limit, seeding time limit, and inactive seeding time limit of a torrent, with the action when a limit is reached and the matching mode. Each limit is "use global", unlimited, or a custom value.
