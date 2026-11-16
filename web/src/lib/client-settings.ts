@@ -399,7 +399,7 @@ async function flushPending(atPageHide = false): Promise<void> {
   if (flushInFlight) {
     flushRequestedInFlight = true
     // The page can cancel the PUT in flight, which has no keepalive. A PUT sets values, so sending them twice is safe.
-    if (atPageHide && !keepaliveInFlight) void putPending(true).catch(logPushError)
+    if (atPageHide && !keepaliveInFlight) void putPending(true).catch(logPushError).finally(flushIfRequested)
     return
   }
   if (!syncReady || pending.size === 0) return
@@ -410,11 +410,15 @@ async function flushPending(atPageHide = false): Promise<void> {
     logPushError(error)
   } finally {
     flushInFlight = false
-    if (flushRequestedInFlight) {
-      flushRequestedInFlight = false
-      scheduleFlush()
-    }
+    flushIfRequested()
   }
+}
+
+/** Schedules the flush that a finished PUT asked for, unless a flush is in flight and does it at its end. */
+function flushIfRequested(): void {
+  if (flushInFlight || !flushRequestedInFlight) return
+  flushRequestedInFlight = false
+  scheduleFlush()
 }
 
 function flushAtPageHide(): void {
