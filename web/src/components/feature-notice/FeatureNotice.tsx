@@ -104,7 +104,7 @@ function NoticeBubble({ notice, side, onDismiss, onAction }: NoticeBubbleProps) 
     >
       {notice.Picture && <notice.Picture />}
       <p id={titleId} className={cn("text-sm font-semibold leading-5", notice.Picture && "pt-3")}>{t(notice.titleKey)}</p>
-      <p className="mt-1 text-sm leading-5 text-muted-foreground text-balance">{t(notice.descriptionKey)}</p>
+      <p className="mt-1 text-sm leading-5 text-muted-foreground text-pretty">{t(notice.descriptionKey)}</p>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={(event) => onDismiss(event.currentTarget)}>{t("common:featureNotice.gotIt")}</Button>
         <Button size="sm" onClick={(event) => onAction(event.currentTarget)}>{t(notice.actionLabelKey)}</Button>
