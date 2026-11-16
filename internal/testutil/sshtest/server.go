@@ -115,7 +115,10 @@ const (
 	SFTPRefuseLinkAndLstat
 )
 
-const hardlinkExtension = "hardlink@openssh.com"
+const (
+	hardlinkExtension = "hardlink@openssh.com"
+	fsyncExtension    = "fsync@openssh.com"
+)
 
 // stallTimeout is how long a stalled listing waits before it releases itself.
 const stallTimeout = 3 * time.Second
@@ -134,6 +137,7 @@ type Server struct {
 
 	mu             sync.Mutex
 	latency        time.Duration
+	fsync          bool
 	sftpMode       SFTPMode
 	dials          int
 	auths          int
@@ -426,7 +430,11 @@ func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 	cutter := &requestCutter{Channel: channel, conn: conn, server: s}
 	s.mu.Lock()
 	latency := s.latency
+	cutter.fsync = s.fsync
 	s.mu.Unlock()
+	if cutter.fsync {
+		cutter.Channel = &fsyncAnswerer{Channel: channel}
+	}
 	if latency > 0 {
 		cutter.latency = newLatencyWriter(channel, latency, s, &s.wg)
 		defer cutter.latency.close()
@@ -624,6 +632,16 @@ func (s *Server) SetLatency(d time.Duration) {
 	s.mu.Unlock()
 }
 
+// SetFsync sets whether sftp sessions opened from now on advertise
+// fsync@openssh.com, as OpenSSH 6.5 and later do. An fsync then checks its
+// handle and syncs nothing. It applies to the modes that serve the host file
+// system.
+func (s *Server) SetFsync(advertise bool) {
+	s.mu.Lock()
+	s.fsync = advertise
+	s.mu.Unlock()
+}
+
 // SetSFTP sets what later sftp subsystem requests get.
 func (s *Server) SetSFTP(mode SFTPMode) {
 	s.mu.Lock()
@@ -747,6 +765,7 @@ type requestCutter struct {
 	versionSent bool
 	server      *Server
 	latency     *latencyWriter
+	fsync       bool
 	// bodyLeft is how many bytes of the current request body are still to
 	// be read; zero means the next read is a 4-byte length header. pkg/sftp
 	// reads a request as exactly those two reads.
@@ -877,6 +896,55 @@ func (c *latencyWriter) close() {
 	c.once.Do(func() { close(c.done) })
 }
 
+// fsyncAnswerer reads the client's requests one whole packet at a time and
+// rewrites each fsync@openssh.com request into an fsetstat that sets nothing,
+// because pkg/sftp's server refuses the fsync. The server then checks the
+// handle and answers OK under the request's id.
+type fsyncAnswerer struct {
+	ssh.Channel
+	pending []byte
+}
+
+func (c *fsyncAnswerer) Read(p []byte) (int, error) {
+	if len(c.pending) == 0 {
+		header := make([]byte, 4)
+		if _, err := io.ReadFull(c.Channel, header); err != nil {
+			return 0, err
+		}
+		body := make([]byte, binary.BigEndian.Uint32(header))
+		if _, err := io.ReadFull(c.Channel, body); err != nil {
+			return 0, err
+		}
+		c.pending = append(header, body...)
+		if handle, ok := fsyncHandle(body); ok {
+			// SSH_FXP_FSETSTAT: id, handle, and attribute flags of zero.
+			c.pending = binary.BigEndian.AppendUint32(nil, uint32(1+4+len(handle)+4))
+			c.pending = append(c.pending, 10)
+			c.pending = append(c.pending, body[1:5]...)
+			c.pending = append(c.pending, handle...)
+			c.pending = binary.BigEndian.AppendUint32(c.pending, 0)
+		}
+	}
+	n := copy(p, c.pending)
+	c.pending = c.pending[n:]
+	return n, nil
+}
+
+// fsyncHandle returns the handle of an fsync@openssh.com request in its wire
+// form, a length and the bytes.
+func fsyncHandle(body []byte) ([]byte, bool) {
+	// SSH_FXP_EXTENDED: type, id, extension name, then the handle.
+	if len(body) < 9 || body[0] != 200 {
+		return nil, false
+	}
+	name := body[9:]
+	nameLen := binary.BigEndian.Uint32(body[5:9])
+	if uint32(len(name)) < nameLen || string(name[:nameLen]) != fsyncExtension {
+		return nil, false
+	}
+	return name[nameLen:], true
+}
+
 // holdMutation blocks a mutation, told by its request type, until the stall
 // is released. One hold only: the mode is cleared so rollback after the hold
 // runs unhindered.
@@ -896,11 +964,12 @@ func (t *requestCutter) holdMutation(requestType byte) {
 }
 
 // Write follows the framing of each answer, so the count in flight drops when
-// an answer starts. It also strips the hardlink extension from the server's
-// SSH_FXP_VERSION reply when the mode asks for it. Only the first write is
-// parsed for that: the version packet is always the server's first send, and
-// later writes may be payload chunks (file data, names) whose bytes mean
-// nothing to that parser.
+// an answer starts. It also edits the extensions of the server's
+// SSH_FXP_VERSION reply: it strips the hardlink extension when the mode asks
+// for it, and adds the fsync extension when the session advertises it. Only
+// the first write is parsed for that: the version packet is always the
+// server's first send, and later writes may be payload chunks (file data,
+// names) whose bytes mean nothing to that parser.
 func (t *requestCutter) Write(p []byte) (int, error) {
 	// pkg/sftp writes an answer's length and header first, and its payload, if
 	// any, in a second write.
@@ -912,7 +981,8 @@ func (t *requestCutter) Write(p []byte) (int, error) {
 
 	first := !t.versionSent
 	t.versionSent = true
-	if !first || t.mode() != SFTPNoHardlink || len(p) < 9 || p[4] != 2 {
+	stripHardlink := t.mode() == SFTPNoHardlink
+	if !first || (!stripHardlink && !t.fsync) || len(p) < 9 || p[4] != 2 {
 		if err := t.send(p, answer); err != nil {
 			return 0, err
 		}
@@ -926,9 +996,15 @@ func (t *requestCutter) Write(p []byte) (int, error) {
 		dataLen := binary.BigEndian.Uint32(rest[4+nameLen:])
 		pair := rest[:8+nameLen+dataLen]
 		rest = rest[len(pair):]
-		if string(name) != hardlinkExtension {
+		if !stripHardlink || string(name) != hardlinkExtension {
 			out = append(out, pair...)
 		}
+	}
+	if t.fsync {
+		out = binary.BigEndian.AppendUint32(out, uint32(len(fsyncExtension)))
+		out = append(out, fsyncExtension...)
+		out = binary.BigEndian.AppendUint32(out, 1)
+		out = append(out, '1')
 	}
 	binary.BigEndian.PutUint32(out, uint32(len(out)-4))
 	if err := t.send(out, answer); err != nil {
