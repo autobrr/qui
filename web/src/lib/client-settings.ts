@@ -40,6 +40,8 @@ export const TORRENT_VIEW_MODE_KEYS = {
   desktop: "qui-torrent-desktop-view-mode",
 } as const
 
+export const FILTER_SIDEBAR_COLLAPSED_KEY = "qui-filter-sidebar-collapsed"
+
 const LEGACY_TORRENT_VIEW_MODES = {
   normal: { mobile: "normal", desktop: "normal" },
   dense: { mobile: "compact", desktop: "dense" },
@@ -58,7 +60,7 @@ const SYNCED_KEYS = new Set<string>([
   "qui-titlebar-speeds-enabled",
   "qui.language",
   "qui-sidebar-collapsed",
-  "qui-filter-sidebar-collapsed",
+  FILTER_SIDEBAR_COLLAPSED_KEY,
   "qui-accordion",
   "qui-accordion-views-seeded",
   TORRENT_VIEW_MODE_KEYS.legacy,
@@ -88,14 +90,20 @@ const SYNCED_PREFIXES = [
   "qui-show-empty-",
   "qui-selected-instance-",
   "qui-feature-notice-seen:",
-  // The values and the entries of Display profiles other than Default.
+  // The values, the entries, and the tombstones of Display profiles.
   "qui-display-profile:",
   "qui-display-profile-entry:",
+  "qui-display-profile-deleted:",
 ]
 
 function isSyncedKey(key: string): boolean {
   return SYNCED_KEYS.has(key) || SYNCED_PREFIXES.some((prefix) => key.startsWith(prefix))
 }
+
+// The keys of a Column setup. Each ends in ":" and the instance id (0 is the Unified view), or in
+// ":" + SHARED_COLUMN_SETUP for the one setup that every instance reads when Same columns is on.
+const COLUMN_SETUP_PREFIXES = ["qui-column-visibility:", "qui-column-order:", "qui-column-sizing:", "qui-stretch-name-column:"]
+const SHARED_COLUMN_SETUP = "every-instance"
 
 // Every key outside these two groups is a Shared setting: one value for every Display profile.
 export type SettingGroup = "display" | "sortAndFilters" | "shared"
@@ -106,18 +114,11 @@ const SETTING_GROUPS: Record<Exclude<SettingGroup, "shared">, { keys: readonly s
       TORRENT_VIEW_MODE_KEYS.mobile,
       TORRENT_VIEW_MODE_KEYS.desktop,
       "qui-sidebar-collapsed",
-      "qui-filter-sidebar-collapsed",
+      FILTER_SIDEBAR_COLLAPSED_KEY,
       "qui-accordion",
       "qui-accordion-views-seeded",
     ],
-    prefixes: [
-      "qui-column-visibility:",
-      "qui-column-order:",
-      "qui-column-sizing:",
-      "qui-stretch-name-column:",
-      "qui-collapsed-categories-",
-      "qui-show-empty-",
-    ],
+    prefixes: [...COLUMN_SETUP_PREFIXES, "qui-collapsed-categories-", "qui-show-empty-"],
   },
   sortAndFilters: {
     keys: ["qui-unified-instance-filter", "qui-group-copies", "torrent-details-last-tab"],
@@ -131,11 +132,6 @@ const SETTING_GROUPS: Record<Exclude<SettingGroup, "shared">, { keys: readonly s
   },
 }
 
-// The keys of a Column setup. Each ends in ":" and the instance id (0 is the Unified view), or in
-// ":" + SHARED_COLUMN_SETUP for the one setup that every instance reads when Same columns is on.
-const COLUMN_SETUP_PREFIXES = ["qui-column-visibility:", "qui-column-order:", "qui-column-sizing:", "qui-stretch-name-column:"]
-const SHARED_COLUMN_SETUP = "every-instance"
-
 /** The prefix of a Column setup key of one instance, or undefined for any other key. */
 function instanceColumnSetupPrefix(key: string): string | undefined {
   const prefix = COLUMN_SETUP_PREFIXES.find((candidate) => key.startsWith(candidate))
@@ -143,12 +139,20 @@ function instanceColumnSetupPrefix(key: string): string | undefined {
   return prefix
 }
 
+// A few hundred keys at most, and resolveKey asks for each one on every read.
+const settingGroups = new Map<string, SettingGroup>()
+
 /** The group of a setting key of today (not of a profile copy). */
 export function settingGroup(key: string): SettingGroup {
-  for (const [group, { keys, prefixes }] of Object.entries(SETTING_GROUPS)) {
-    if (keys.includes(key) || prefixes.some((prefix) => key.startsWith(prefix))) return group as SettingGroup
+  let group = settingGroups.get(key)
+  if (group === undefined) {
+    group = (Object.keys(SETTING_GROUPS) as Exclude<SettingGroup, "shared">[]).find((candidate) => {
+      const { keys, prefixes } = SETTING_GROUPS[candidate]
+      return keys.includes(key) || prefixes.some((prefix) => key.startsWith(prefix))
+    }) ?? "shared"
+    settingGroups.set(key, group)
   }
-  return "shared"
+  return group
 }
 
 export function readRaw(key: string): string | null {
@@ -159,12 +163,27 @@ export function readRaw(key: string): string | null {
   }
 }
 
+/** Every key in localStorage. A read that fails ends the list. */
+function storedKeys(): string[] {
+  const keys: string[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key !== null) keys.push(key)
+    }
+  } catch (error) {
+    console.error("Failed to read the keys of localStorage:", error)
+  }
+  return keys
+}
+
 // Marks a value that a tab copied from the server into the shared
 // localStorage, so another tab's flush does not push it back as an edit.
 // Local-only: the prefix matches no synced key.
 const SERVER_COPY_PREFIX = "qui-client-settings-server-copy:"
 
 function writeLocal(key: string, raw: string, fromServer = false): boolean {
+  const profilesChange = changesDisplayProfiles(key)
   try {
     // Mark before value, so another tab never reads a server copy without its mark.
     if (fromServer) localStorage.setItem(SERVER_COPY_PREFIX + key, "1")
@@ -174,9 +193,29 @@ function writeLocal(key: string, raw: string, fromServer = false): boolean {
     console.error("Failed to write client setting to localStorage:", error)
     return false
   }
-  if (isProfileStateKey(key)) invalidateDisplayProfiles()
+  if (profilesChange) displayProfilesChanged()
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { key } }))
   return true
+}
+
+/**
+ * Calls back after a write of a key that matches, in this tab or another one, and after localStorage.clear() in
+ * another tab. Returns the unsubscribe.
+ */
+function subscribeToKeys(callback: () => void, matches: (key: string) => boolean): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key == null || matches(event.key)) callback()
+  }
+  const onChange = (event: Event) => {
+    const key = (event as CustomEvent<{ key?: string }>).detail?.key
+    if (key && matches(key)) callback()
+  }
+  window.addEventListener("storage", onStorage)
+  window.addEventListener(CHANGE_EVENT, onChange)
+  return () => {
+    window.removeEventListener("storage", onStorage)
+    window.removeEventListener(CHANGE_EVENT, onChange)
+  }
 }
 
 /**
@@ -282,6 +321,7 @@ function scheduleFlush(): void {
 }
 
 let flushInFlight = false
+let keepaliveInFlight = false
 // A flush needed after the current PUT, either requested while in flight or
 // after another tab replaces a batch value.
 let flushRequestedInFlight = false
@@ -309,20 +349,16 @@ function splitIntoBodies(entries: [string, string][]): [string, string][][] {
   return chunks
 }
 
-async function flushPending(atPageHide = false): Promise<void> {
-  if (flushInFlight) {
-    flushRequestedInFlight = true
-    return
-  }
-  if (!syncReady || pending.size === 0) return
-  // Keys stay in pending while the PUT is in flight so a concurrent server
-  // apply cannot clobber the newer local value (the echo guard checks
-  // pending). On failure they simply stay queued for the next flush.
-  const chunks = splitIntoBodies([...pending])
-  flushInFlight = true
+/**
+ * Sends the pending entries in PUT bodies of at most MAX_PUT_BODY_BYTES, and drops each entry that a PUT delivered.
+ * Keys stay in pending while their PUT is in flight, so a concurrent server apply cannot clobber the newer local value
+ * (the echo guard checks pending). Throws at the first failed PUT; the rest stays queued for the next flush.
+ */
+async function putPending(keepalive: boolean): Promise<void> {
+  if (keepalive) keepaliveInFlight = true
   try {
     // One PUT at a time: Chrome counts every keepalive body in flight against the same 64 KiB.
-    for (const chunk of chunks) {
+    for (const chunk of splitIntoBodies([...pending])) {
       // Plain fetch instead of the api client: this module must stay import-light (i18n boots on it).
       const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
         method: "PUT",
@@ -332,7 +368,7 @@ async function flushPending(atPageHide = false): Promise<void> {
         },
         body: JSON.stringify(Object.fromEntries(chunk)),
         // keepalive lets the PUT outlive the page; Chrome caps its body, so other saves leave it off.
-        keepalive: atPageHide,
+        keepalive,
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       // Drop what this PUT delivered. Entries replaced in this tab stay queued;
@@ -348,10 +384,30 @@ async function flushPending(atPageHide = false): Promise<void> {
       }
       persistPending()
     }
+  } finally {
+    if (keepalive) keepaliveInFlight = false
+  }
+}
+
+// No self-retry, on purpose: a failed batch stays pending until the next write
+// or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
+function logPushError(error: unknown): void {
+  console.error("Failed to push client settings:", error)
+}
+
+async function flushPending(atPageHide = false): Promise<void> {
+  if (flushInFlight) {
+    flushRequestedInFlight = true
+    // The page can cancel the PUT in flight, which has no keepalive. A PUT sets values, so sending them twice is safe.
+    if (atPageHide && !keepaliveInFlight) void putPending(true).catch(logPushError)
+    return
+  }
+  if (!syncReady || pending.size === 0) return
+  flushInFlight = true
+  try {
+    await putPending(atPageHide)
   } catch (error) {
-    // No self-retry, on purpose: a failed batch stays pending until the next write
-    // or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
-    console.error("Failed to push client settings:", error)
+    logPushError(error)
   } finally {
     flushInFlight = false
     if (flushRequestedInFlight) {
@@ -380,20 +436,20 @@ if (typeof document !== "undefined") {
   window.addEventListener("pagehide", flushAtPageHide)
 }
 
-// --- Display profiles ---
-//
-// Default keeps the keys of today. Another profile keeps the copy of a Display setting under
+// Display profiles: Default keeps the keys of today. Another profile keeps the copy of a Display setting under
 // PROFILE_VALUE_PREFIX + id + ":" + key, and its entry under PROFILE_ENTRY_PREFIX + id. The pick of
 // this browser is local only and never synced.
 
 const PROFILE_VALUE_PREFIX = "qui-display-profile:"
 const PROFILE_ENTRY_PREFIX = "qui-display-profile-entry:"
+// No edit writes a tombstone, so an edit from a browser that missed the delete cannot bring the profile back.
+const PROFILE_TOMBSTONE_PREFIX = "qui-display-profile-deleted:"
 const ACTIVE_PROFILE_KEY = "qui-display-profile-active"
 // The last instance that a torrent table of this browser showed. Local only, like the pick.
 const LAST_INSTANCE_KEY = "qui-display-profile-last-instance"
 
 function isProfileStateKey(key: string): boolean {
-  return key === ACTIVE_PROFILE_KEY || key.startsWith(PROFILE_ENTRY_PREFIX)
+  return key === ACTIVE_PROFILE_KEY || key.startsWith(PROFILE_ENTRY_PREFIX) || key.startsWith(PROFILE_TOMBSTONE_PREFIX)
 }
 
 function profileValueKey(profileId: string, key: string): string {
@@ -402,6 +458,10 @@ function profileValueKey(profileId: string, key: string): string {
 
 function profileEntryKey(profileId: string): string {
   return PROFILE_ENTRY_PREFIX + profileId
+}
+
+function profileTombstoneKey(profileId: string): string {
+  return PROFILE_TOMBSTONE_PREFIX + profileId
 }
 
 /** The storage key of a setting of today in a profile. Default keeps the key of today. */
@@ -424,11 +484,6 @@ function instanceColumnSetupOwner(storageKey: string): { profileId: string; pref
   return prefix === undefined ? null : { profileId, prefix }
 }
 
-function entryOf(profile: DisplayProfile): DisplayProfileEntry {
-  const { name, icon, color, sameColumns, ownSortAndFilters } = profile
-  return { name, icon, color, sameColumns, ownSortAndFilters }
-}
-
 export interface DisplayProfilesState {
   /** Default first, then the other profiles by name. */
   profiles: readonly DisplayProfile[]
@@ -437,51 +492,54 @@ export interface DisplayProfilesState {
 }
 
 let profilesState: DisplayProfilesState | null = null
-// A new key can be the first Column setup of a profile, which turns its computed Same columns off. Every new key
-// changes the length, also a key that another tab or a raw localStorage call writes.
-let profilesStorageLength = -1
-
-function storageLength(): number {
-  try {
-    return localStorage.length
-  } catch {
-    return -1
-  }
-}
+// The profile of this tab at the last read, so a storage event can show that another tab applied its delete.
+let lastActiveProfile: DisplayProfile | null = null
+const displayProfileListeners = new Set<() => void>()
 
 function invalidateDisplayProfiles(): void {
   profilesState = null
 }
 
-if (typeof window !== "undefined") {
-  // Registered before any hook subscribes, so a hook that re-reads after a storage event sees the new profiles.
-  window.addEventListener("storage", (event) => {
-    if (event.key == null || isProfileStateKey(event.key)) invalidateDisplayProfiles()
-  })
+function displayProfilesChanged(): void {
+  invalidateDisplayProfiles()
+  for (const listener of displayProfileListeners) listener()
+}
+
+/**
+ * True when a write of the key can change the profiles: the pick, an entry, a tombstone, or the first Column setup of
+ * an instance in a profile whose Same columns is computed. Call it before the write.
+ */
+function changesDisplayProfiles(key: string): boolean {
+  if (isProfileStateKey(key)) return true
+  const owner = instanceColumnSetupOwner(key)
+  if (owner === null || profilesState === null) return false
+  const profile = findDisplayProfile(owner.profileId, profilesState)
+  return profile !== undefined && profile.sameColumns === null && profile.usesSameColumns
 }
 
 function loadDisplayProfiles(): DisplayProfilesState {
   let defaultEntry = DEFAULT_DISPLAY_PROFILE_ENTRY
   const others: (DisplayProfileEntry & { id: string })[] = []
   const withColumnSetup = new Set<string>()
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (!key) continue
-      if (!key.startsWith(PROFILE_ENTRY_PREFIX)) {
-        const owner = instanceColumnSetupOwner(key)
-        if (owner !== null) withColumnSetup.add(owner.profileId)
-        continue
-      }
-      const id = key.slice(PROFILE_ENTRY_PREFIX.length)
-      const entry = parseDisplayProfileEntry(localStorage.getItem(key) ?? "")
-      if (id === DEFAULT_DISPLAY_PROFILE_ID) defaultEntry = entry ?? DEFAULT_DISPLAY_PROFILE_ENTRY
-      else if (entry) others.push({ ...entry, id })
+  const deleted = new Set<string>()
+  for (const key of storedKeys()) {
+    if (key.startsWith(PROFILE_TOMBSTONE_PREFIX)) {
+      deleted.add(key.slice(PROFILE_TOMBSTONE_PREFIX.length))
+      continue
     }
-  } catch (error) {
-    console.error("Failed to read Display profiles:", error)
+    if (!key.startsWith(PROFILE_ENTRY_PREFIX)) {
+      const owner = instanceColumnSetupOwner(key)
+      if (owner !== null) withColumnSetup.add(owner.profileId)
+      continue
+    }
+    const id = key.slice(PROFILE_ENTRY_PREFIX.length)
+    const entry = parseDisplayProfileEntry(readRaw(key) ?? "")
+    if (id === DEFAULT_DISPLAY_PROFILE_ID) defaultEntry = entry ?? DEFAULT_DISPLAY_PROFILE_ENTRY
+    else if (entry) others.push({ ...entry, id })
   }
-  others.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id))
+  const listed = others
+    .filter((entry) => !deleted.has(entry.id))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id))
   const toProfile = (entry: DisplayProfileEntry, id: string, isDefault: boolean): DisplayProfile => ({
     ...entry,
     id,
@@ -490,7 +548,7 @@ function loadDisplayProfiles(): DisplayProfilesState {
   })
   const profiles = [
     toProfile({ ...defaultEntry, ownSortAndFilters: false }, DEFAULT_DISPLAY_PROFILE_ID, true),
-    ...others.map((entry) => toProfile(entry, entry.id, false)),
+    ...listed.map((entry) => toProfile(entry, entry.id, false)),
   ]
   const activeId = readRaw(ACTIVE_PROFILE_KEY)
   return { profiles, active: profiles.find((profile) => profile.id === activeId) ?? profiles[0] }
@@ -498,12 +556,15 @@ function loadDisplayProfiles(): DisplayProfilesState {
 
 /** The profiles and the profile of this browser. The object stays the same until a profile or the pick changes. */
 export function getDisplayProfiles(): DisplayProfilesState {
-  const length = storageLength()
-  if (profilesState === null || length !== profilesStorageLength) {
+  if (profilesState === null) {
     profilesState = loadDisplayProfiles()
-    profilesStorageLength = length
+    lastActiveProfile = profilesState.active
   }
   return profilesState
+}
+
+function findDisplayProfile(profileId: string, { profiles } = getDisplayProfiles()): DisplayProfile | undefined {
+  return profiles.find((profile) => profile.id === profileId)
 }
 
 /** True when the profile keeps its own copy of the setting instead of the key of today. */
@@ -555,16 +616,11 @@ export function createDisplayProfile(name: string, look: DisplayProfileLook = {}
 
   const sourcePrefix = active.isDefault ? "" : profileValueKey(active.id, "")
   const copies: [string, string][] = []
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const storageKey = localStorage.key(i)
-      if (!storageKey?.startsWith(sourcePrefix)) continue
-      const key = storageKey.slice(sourcePrefix.length)
-      const raw = localStorage.getItem(storageKey)
-      if (raw !== null && keepsOwnCopy(active, key)) copies.push([key, raw])
-    }
-  } catch (scanError) {
-    console.error("Failed to copy the Display settings of the active profile:", scanError)
+  for (const storageKey of storedKeys()) {
+    if (!storageKey.startsWith(sourcePrefix)) continue
+    const key = storageKey.slice(sourcePrefix.length)
+    const raw = readRaw(storageKey)
+    if (raw !== null && keepsOwnCopy(active, key)) copies.push([key, raw])
   }
 
   const id = randomProfileId()
@@ -582,26 +638,11 @@ export function createDisplayProfile(name: string, look: DisplayProfileLook = {}
 /** Renames a profile for every browser. Default can be renamed too. Throws when validateDisplayProfileName rejects the name. */
 export function renameDisplayProfile(profileId: string, name: string): void {
   const { profiles } = getDisplayProfiles()
-  const profile = profiles.find((candidate) => candidate.id === profileId)
+  const profile = findDisplayProfile(profileId)
   if (!profile) throw new Error(`unknown Display profile: ${profileId}`)
   const error = validateDisplayProfileName(name, profiles, profileId)
   if (error) throw new Error(`invalid Display profile name: ${error}`)
-  writeRaw(profileEntryKey(profileId), JSON.stringify({ ...entryOf(profile), name: name.trim() }))
-}
-
-/** The storage keys that hold the values of a profile other than Default. */
-function profileValueKeys(profileId: string): string[] {
-  const prefix = profileValueKey(profileId, "")
-  const keys: string[] = []
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key?.startsWith(prefix)) keys.push(key)
-    }
-  } catch (error) {
-    console.error("Failed to read the values of a Display profile:", error)
-  }
-  return keys
+  updateDisplayProfileEntry(profile, { name: name.trim() })
 }
 
 /**
@@ -611,26 +652,34 @@ function profileValueKeys(profileId: string): string[] {
 export function deleteDisplayProfile(profileId: string): void {
   if (profileId === DEFAULT_DISPLAY_PROFILE_ID) throw new Error("the Default Display profile cannot be deleted")
   const wasActive = readRaw(ACTIVE_PROFILE_KEY) === profileId
-  // The entry first, so another browser on this profile moves to Default before it reads blank values.
+  // The tombstone and the entry first, so another browser on this profile moves to Default before it reads blank values.
+  writeRaw(profileTombstoneKey(profileId), "1")
   writeRaw(profileEntryKey(profileId), "")
-  for (const key of profileValueKeys(profileId)) writeRaw(key, "")
+  const valuePrefix = profileValueKey(profileId, "")
+  for (const key of storedKeys()) if (key.startsWith(valuePrefix)) writeRaw(key, "")
   if (wasActive) pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
 }
 
-function updateDisplayProfileEntry(profileId: string, change: Partial<DisplayProfileEntry>): void {
-  const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
-  if (!profile) return
-  writeRaw(profileEntryKey(profileId), JSON.stringify({ ...entryOf(profile), ...change }))
+/**
+ * Writes the change over the stored entry of the profile. The fields that this version does not know stay, and the
+ * entry of Default starts from the defaults while it has none.
+ */
+function updateDisplayProfileEntry(profile: DisplayProfile, change: Partial<DisplayProfileEntry>): void {
+  const key = profileEntryKey(profile.id)
+  const raw = readRaw(key) ?? ""
+  const stored: object = parseDisplayProfileEntry(raw) ? JSON.parse(raw) : DEFAULT_DISPLAY_PROFILE_ENTRY
+  writeRaw(key, JSON.stringify({ ...stored, ...change }))
 }
 
-/** Saves the lucide icon name of a profile. */
 export function setDisplayProfileIcon(profileId: string, icon: string): void {
-  updateDisplayProfileEntry(profileId, { icon })
+  const profile = findDisplayProfile(profileId)
+  if (profile) updateDisplayProfileEntry(profile, { icon })
 }
 
 /** Saves the color of a profile. null is the color None. */
 export function setDisplayProfileColor(profileId: string, color: DisplayProfileColor | null): void {
-  updateDisplayProfileEntry(profileId, { color })
+  const profile = findDisplayProfile(profileId)
+  if (profile) updateDisplayProfileEntry(profile, { color })
 }
 
 function readLastInstance(): number | null {
@@ -645,18 +694,7 @@ export function recordColumnSetupInstance(instanceId: number): void {
 }
 
 function subscribeLastInstance(callback: () => void): () => void {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key == null || event.key === LAST_INSTANCE_KEY) callback()
-  }
-  const onChange = (event: Event) => {
-    if ((event as CustomEvent<{ key?: string }>).detail?.key === LAST_INSTANCE_KEY) callback()
-  }
-  window.addEventListener("storage", onStorage)
-  window.addEventListener(CHANGE_EVENT, onChange)
-  return () => {
-    window.removeEventListener("storage", onStorage)
-    window.removeEventListener(CHANGE_EVENT, onChange)
-  }
+  return subscribeToKeys(callback, (key) => key === LAST_INSTANCE_KEY)
 }
 
 /** The last instance that a torrent table of this browser showed, or null when none did. */
@@ -670,7 +708,7 @@ export function useLastColumnSetupInstance(): number | null {
  * instance, so no instance changes on screen.
  */
 export function setDisplayProfileSameColumns(profileId: string, on: boolean, instanceId: number | null = readLastInstance()): void {
-  const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+  const profile = findDisplayProfile(profileId)
   if (!profile) return
   if (on && !profile.usesSameColumns && instanceId !== null) {
     for (const prefix of COLUMN_SETUP_PREFIXES) {
@@ -679,37 +717,23 @@ export function setDisplayProfileSameColumns(profileId: string, on: boolean, ins
     }
   }
   if (!on && profile.usesSameColumns) {
-    const instanceKeys: [string, string][] = []
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const storageKey = localStorage.key(i)
-        const owner = storageKey ? instanceColumnSetupOwner(storageKey) : null
-        if (storageKey && owner?.profileId === profile.id) {
-          instanceKeys.push([storageKey, profileStorageKey(profile, owner.prefix + SHARED_COLUMN_SETUP)])
-        }
-      }
-    } catch (error) {
-      console.error("Failed to copy the shared Column setup to the instances:", error)
-    }
     // An instance with no setup of its own already reads the shared setup.
-    for (const [storageKey, sharedKey] of instanceKeys) writeRaw(storageKey, readRaw(sharedKey) ?? "")
+    for (const storageKey of storedKeys()) {
+      const owner = instanceColumnSetupOwner(storageKey)
+      if (owner?.profileId === profile.id) writeRaw(storageKey, readRaw(profileStorageKey(profile, owner.prefix + SHARED_COLUMN_SETUP)) ?? "")
+    }
   }
-  writeRaw(profileEntryKey(profile.id), JSON.stringify({ ...entryOf(profile), sameColumns: on }))
+  updateDisplayProfileEntry(profile, { sameColumns: on })
 }
 
 /** The Sort and filters values stored under the prefix, as pairs of the key of today and the raw value. */
 function storedSortAndFilters(prefix: string): [string, string][] {
   const values: [string, string][] = []
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const storageKey = localStorage.key(i)
-      if (!storageKey?.startsWith(prefix)) continue
-      const key = storageKey.slice(prefix.length)
-      const raw = localStorage.getItem(storageKey)
-      if (raw !== null && settingGroup(key) === "sortAndFilters") values.push([key, raw])
-    }
-  } catch (error) {
-    console.error("Failed to read the Sort and filters values:", error)
+  for (const storageKey of storedKeys()) {
+    if (!storageKey.startsWith(prefix)) continue
+    const key = storageKey.slice(prefix.length)
+    const raw = readRaw(storageKey)
+    if (raw !== null && settingGroup(key) === "sortAndFilters") values.push([key, raw])
   }
   return values
 }
@@ -720,39 +744,31 @@ function storedSortAndFilters(prefix: string): [string, string][] {
  * always shares.
  */
 export function setDisplayProfileOwnSortAndFilters(profileId: string, on: boolean): void {
-  const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+  const profile = findDisplayProfile(profileId)
   if (!profile || profile.isDefault) throw new Error(`Display profile ${profileId} cannot keep its own sort and filters`)
   if (profile.ownSortAndFilters === on) return
-  const { name, icon, color, sameColumns } = profile
-  const entry = JSON.stringify({ name, icon, color, sameColumns, ownSortAndFilters: on } satisfies DisplayProfileEntry)
 
   // The entry flips last on the way in and first on the way out, so the profile never reads blank own values.
   if (on) {
     for (const [key, raw] of storedSortAndFilters("")) writeRaw(profileValueKey(profileId, key), raw)
-    writeRaw(profileEntryKey(profileId), entry)
+    updateDisplayProfileEntry(profile, { ownSortAndFilters: true })
   } else {
-    writeRaw(profileEntryKey(profileId), entry)
+    updateDisplayProfileEntry(profile, { ownSortAndFilters: false })
     for (const [key] of storedSortAndFilters(profileValueKey(profileId, ""))) writeRaw(profileValueKey(profileId, key), "")
   }
 }
 
 function subscribeDisplayProfiles(callback: () => void): () => void {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key == null || isProfileStateKey(event.key)) callback()
-  }
-  const onChange = (event: Event) => {
-    const key = (event as CustomEvent<{ key?: string }>).detail?.key
-    if (key && isProfileStateKey(key)) callback()
-  }
-  window.addEventListener("storage", onStorage)
-  window.addEventListener(CHANGE_EVENT, onChange)
-  return () => {
-    window.removeEventListener("storage", onStorage)
-    window.removeEventListener(CHANGE_EVENT, onChange)
-  }
+  displayProfileListeners.add(callback)
+  return () => displayProfileListeners.delete(callback)
 }
 
 export interface DisplayProfilesApi extends DisplayProfilesState {
+  /**
+   * False until the first read of the server ends. Until then the actions can copy old local values over newer
+   * values of the server, so the UI keeps them disabled.
+   */
+  settled: boolean
   pick: (profileId: string) => void
   create: (name: string, look?: DisplayProfileLook) => string
   rename: (profileId: string, name: string) => void
@@ -763,11 +779,12 @@ export interface DisplayProfilesApi extends DisplayProfilesState {
   setOwnSortAndFilters: (profileId: string, on: boolean) => void
 }
 
-/** The Display profiles for the UI. */
 export function useDisplayProfiles(): DisplayProfilesApi {
   const state = useSyncExternalStore(subscribeDisplayProfiles, getDisplayProfiles)
+  const settled = useClientSettingsSettled()
   return useMemo(() => ({
     ...state,
+    settled,
     pick: pickDisplayProfile,
     create: createDisplayProfile,
     rename: renameDisplayProfile,
@@ -776,7 +793,7 @@ export function useDisplayProfiles(): DisplayProfilesApi {
     setColor: setDisplayProfileColor,
     setSameColumns: setDisplayProfileSameColumns,
     setOwnSortAndFilters: setDisplayProfileOwnSortAndFilters,
-  }), [state])
+  }), [state, settled])
 }
 
 // --- server sync (called by useClientSettingsSync) ---
@@ -793,20 +810,42 @@ export function onActiveDisplayProfileDeleted(listener: (profile: DisplayProfile
 }
 
 function deletedProfileIds(settings: Record<string, string>): string[] {
-  return Object.entries(settings)
-    .filter(([key, raw]) => raw === "" && key.startsWith(PROFILE_ENTRY_PREFIX))
-    .map(([key]) => key.slice(PROFILE_ENTRY_PREFIX.length))
-    .filter((id) => id !== DEFAULT_DISPLAY_PROFILE_ID)
+  const ids = new Set<string>()
+  for (const [key, raw] of Object.entries(settings)) {
+    if (key.startsWith(PROFILE_TOMBSTONE_PREFIX)) ids.add(key.slice(PROFILE_TOMBSTONE_PREFIX.length))
+    else if (raw === "" && key.startsWith(PROFILE_ENTRY_PREFIX)) ids.add(key.slice(PROFILE_ENTRY_PREFIX.length))
+  }
+  ids.delete(DEFAULT_DISPLAY_PROFILE_ID)
+  return [...ids]
 }
 
 function isKeyOfProfile(key: string, profileId: string): boolean {
   return key === profileEntryKey(profileId) || key.startsWith(profileValueKey(profileId, ""))
 }
 
+function isProfileDeleted(profileId: string): boolean {
+  return readRaw(profileTombstoneKey(profileId)) !== null || readRaw(profileEntryKey(profileId)) === ""
+}
+
 function isValueOfDeletedProfile(key: string): boolean {
   if (!key.startsWith(PROFILE_VALUE_PREFIX)) return false
-  const profileId = key.slice(PROFILE_VALUE_PREFIX.length).split(":", 1)[0]
-  return readRaw(profileEntryKey(profileId)) === ""
+  return isProfileDeleted(key.slice(PROFILE_VALUE_PREFIX.length).split(":", 1)[0])
+}
+
+function notifyActiveProfileDeleted(profile: DisplayProfile): void {
+  for (const listener of activeProfileDeletedListeners) listener(profile)
+}
+
+if (typeof window !== "undefined") {
+  // Registered before any hook subscribes, so a hook that re-reads after a storage event sees the new profiles.
+  window.addEventListener("storage", (event) => {
+    if (event.key != null && !changesDisplayProfiles(event.key)) return
+    const before = lastActiveProfile
+    displayProfilesChanged()
+    // Another tab of this browser applied a server delete of the profile that this tab uses.
+    if (event.key === null || !before || before.isDefault || readRaw(SERVER_COPY_PREFIX + event.key) === null) return
+    if (getDisplayProfiles().active.id !== before.id && isProfileDeleted(before.id)) notifyActiveProfileDeleted(before)
+  })
 }
 
 function dropPendingOfProfile(profileId: string): void {
@@ -838,7 +877,7 @@ export function applyServerSettings(settings: Record<string, string>): string[] 
 
   if (!active.isDefault && deletedIds.includes(active.id)) {
     pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
-    for (const listener of activeProfileDeletedListeners) listener(active)
+    notifyActiveProfileDeleted(active)
   }
   return changed
 }
@@ -861,15 +900,10 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
     }
   }
 
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (!key || !isSyncedKey(key) || key in serverSettings || pending.has(key) || isValueOfDeletedProfile(key)) continue
-      const raw = localStorage.getItem(key)
-      if (raw !== null) pending.set(key, raw)
-    }
-  } catch (error) {
-    console.error("Failed to scan localStorage for client settings seed:", error)
+  for (const key of storedKeys()) {
+    if (!isSyncedKey(key) || key in serverSettings || pending.has(key) || isValueOfDeletedProfile(key)) continue
+    const raw = readRaw(key)
+    if (raw !== null) pending.set(key, raw)
   }
   setSyncReady(true)
   scheduleFlush()
@@ -882,10 +916,12 @@ export function _resetClientSettingsForTests(): void {
   if (flushTimer !== null) clearTimeout(flushTimer)
   flushTimer = null
   flushInFlight = false
+  keepaliveInFlight = false
   flushRequestedInFlight = false
   snapshotFailed = false
   setSyncReady(false)
   invalidateDisplayProfiles()
+  lastActiveProfile = null
   loadPersistedPending()
 }
 
@@ -975,7 +1011,7 @@ export function subscribeClientSettings(callback: () => void): () => void {
  */
 export function useDisplayProfileSetting<T>(profileId: string, key: string, { defaultValue, parse }: ClientSettingOptions<T>): T {
   const raw = useSyncExternalStore(subscribeClientSettings, () => {
-    const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+    const profile = findDisplayProfile(profileId)
     return profile ? readRaw(resolveReadKey(key, profile)) : null
   })
   return useMemo(() => decode(raw, { defaultValue, parse }), [raw, parse, defaultValue])
@@ -992,21 +1028,12 @@ export function useClientSetting<T>(
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const subscribe = useCallback(
     (callback: () => void) => {
-      // A storage event without a key is localStorage.clear() (or a test's
-      // bare Event); re-read for those too.
-      // A profile change can move the key to another storage key, so it re-reads too.
-      const onStorage = (e: StorageEvent) => {
-        if (e.key == null || e.key === resolveKey(key) || isProfileStateKey(e.key)) callback()
-      }
-      const onChange = (e: Event) => {
-        const changed = (e as CustomEvent<{ key?: string }>).detail?.key
-        if (changed && (changed === resolveKey(key) || isProfileStateKey(changed))) callback()
-      }
-      window.addEventListener("storage", onStorage)
-      window.addEventListener(CHANGE_EVENT, onChange)
+      const unsubscribeKey = subscribeToKeys(callback, (changed) => changed === resolveKey(key) || changed === resolveReadKey(key))
+      // A profile change can move the key to another storage key.
+      const unsubscribeProfiles = subscribeDisplayProfiles(callback)
       return () => {
-        window.removeEventListener("storage", onStorage)
-        window.removeEventListener(CHANGE_EVENT, onChange)
+        unsubscribeKey()
+        unsubscribeProfiles()
       }
     },
     [key]

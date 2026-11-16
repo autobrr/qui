@@ -22,7 +22,13 @@ import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts
 import "@/i18n"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
-import { _resetClientSettingsForTests, createDisplayProfile, getDisplayProfiles, pickDisplayProfile } from "@/lib/client-settings"
+import {
+  _resetClientSettingsForTests,
+  createDisplayProfile,
+  getDisplayProfiles,
+  markClientSettingsUnavailable,
+  pickDisplayProfile
+} from "@/lib/client-settings"
 import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import { formatBytes } from "@/lib/utils"
 import type { ActionTarget } from "@/lib/torrent-selection"
@@ -533,6 +539,28 @@ describe("TorrentCardsMobile count bar", () => {
 describe("TorrentCardsMobile Display profile", () => {
   beforeEach(() => {
     _resetClientSettingsForTests()
+    markClientSettingsUnavailable()
+  })
+
+  it("the sheet takes a pick or a new profile only after the first read of the server ends", async () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    const view = renderCards(flatRows(3))
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+    const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
+    const laptopRow = () => within(within(sheet).getByRole("list")).getAllByRole("button")[1]
+    const newProfile = () => within(sheet).getByRole("button", { name: "displayProfiles.newProfile" }) as HTMLButtonElement
+
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(newProfile().disabled).toBe(true)
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(newProfile().disabled).toBe(false)
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(laptop)
   })
 
   it("opens the profile list in a sheet from the sort menu, and a tap on a row picks that profile and closes the sheet", async () => {

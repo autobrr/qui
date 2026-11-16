@@ -65,7 +65,7 @@ interface NewDisplayProfileFormProps {
 
 function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfileFormProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active, create } = useDisplayProfiles()
+  const { profiles, active, settled, create } = useDisplayProfiles()
   const [name, setName] = useState("")
   const [submitted, setSubmitted] = useState(false)
   // null while the icon still follows the name.
@@ -89,7 +89,7 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     setSubmitted(true)
-    if (error) return
+    if (error || !settled) return
     onCreated(create(name, { icon, color }))
   }
 
@@ -142,7 +142,7 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onCancel}>{t("displayProfiles.newDialog.cancel")}</Button>
-        <Button type="submit">{t("displayProfiles.newDialog.create")}</Button>
+        <Button type="submit" disabled={!settled}>{t("displayProfiles.newDialog.create")}</Button>
       </DialogFooter>
     </form>
   )

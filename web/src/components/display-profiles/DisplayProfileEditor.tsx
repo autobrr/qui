@@ -22,8 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { VIEW_MODE_SETTINGS } from "@/hooks/usePersistedCompactViewState"
 import { useInstances } from "@/hooks/useInstances"
-import { FILTER_SIDEBAR_COLLAPSED_KEY } from "@/hooks/usePersistedFilterSidebarState"
-import { parseJsonBoolean, useDisplayProfiles, useDisplayProfileSetting } from "@/lib/client-settings"
+import { FILTER_SIDEBAR_COLLAPSED_KEY, parseJsonBoolean, useDisplayProfiles, useDisplayProfileSetting } from "@/lib/client-settings"
 import {
   DISPLAY_PROFILE_NAME_MAX_LENGTH,
   validateDisplayProfileName,
@@ -62,7 +61,7 @@ interface DisplayProfileEditorProps {
 /** One profile in Settings, in the style of the "In use" block of Themes. */
 export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick, setIcon, setColor, delete: deleteProfile } = useDisplayProfiles()
+  const { profiles, active, settled, pick, setIcon, setColor, delete: deleteProfile } = useDisplayProfiles()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { instances } = useInstances()
   const view = useTableView(profile.id)
@@ -88,8 +87,9 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
             >
               <button
                 type="button"
+                disabled={!settled}
                 aria-label={t("displayProfiles.iconPicker.trigger", { icon: iconLabelKey ? t(iconLabelKey) : profile.icon })}
-                className="shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="shrink-0 rounded-lg outline-none ring-1 ring-border hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
               >
                 <DisplayProfileTile profile={profile} size="lg" />
               </button>
@@ -101,6 +101,7 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
             <Button
               size="sm"
               variant="outline"
+              disabled={!settled}
               aria-disabled={isActive || undefined}
               onClick={() => !isActive && pick(profile.id)}
               className={cn(
@@ -115,7 +116,7 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
               </span>
             </Button>
             {!profile.isDefault && (
-              <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+              <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={!settled} onClick={() => setConfirmDelete(true)}>
                 {t("displayProfiles.settings.delete")}
               </Button>
             )}
@@ -156,7 +157,7 @@ interface NameFieldProps {
 /** The name of the profile with inline rename, and below it the look line, or the count and the errors while it renames. */
 function NameField({ profile, titleId, lookLine }: NameFieldProps) {
   const { t } = useTranslation("torrents")
-  const { profiles, rename } = useDisplayProfiles()
+  const { profiles, settled, rename } = useDisplayProfiles()
   const [draft, setDraft] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const pencilRef = useRef<HTMLButtonElement>(null)
@@ -225,6 +226,7 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
             size="icon"
             variant="ghost"
             className="size-8 shrink-0 text-muted-foreground"
+            disabled={!settled}
             aria-label={t("displayProfiles.settings.renameAriaLabel", { name: profile.name })}
             onClick={() => setDraft(profile.name)}
           >

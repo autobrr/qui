@@ -3,9 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { parseJsonBoolean, useClientSetting } from "@/lib/client-settings"
-
-export const FILTER_SIDEBAR_COLLAPSED_KEY = "qui-filter-sidebar-collapsed"
+import { FILTER_SIDEBAR_COLLAPSED_KEY, parseJsonBoolean, useClientSetting } from "@/lib/client-settings"
 
 export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false) {
   return useClientSetting<boolean>(FILTER_SIDEBAR_COLLAPSED_KEY, {

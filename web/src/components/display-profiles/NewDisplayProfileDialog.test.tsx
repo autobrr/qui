@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
-import { _resetClientSettingsForTests, getDisplayProfiles } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, markClientSettingsUnavailable, getDisplayProfiles } from "@/lib/client-settings"
 
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
@@ -28,6 +28,7 @@ function iconButton(): HTMLElement {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  markClientSettingsUnavailable()
 })
 
 afterEach(cleanup)
@@ -60,6 +61,19 @@ describe("NewDisplayProfileDialog", () => {
 
     expect(getDisplayProfiles().profiles).toHaveLength(1)
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it("creates nothing before the first read of the server ends", () => {
+    _resetClientSettingsForTests()
+    renderDialog()
+    typeName("Laptop")
+
+    fireEvent.submit(screen.getByRole("button", { name: "Create" }).closest("form")!)
+    expect(getDisplayProfiles().profiles).toHaveLength(1)
+
+    act(() => markClientSettingsUnavailable())
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    expect(getDisplayProfiles().profiles).toHaveLength(2)
   })
 
   it("guesses the icon from the name while the user types", () => {

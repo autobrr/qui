@@ -11,6 +11,7 @@ import {
   _resetClientSettingsForTests,
   applyServerSettings,
   createDisplayProfile,
+  markClientSettingsUnavailable,
   parseJsonBoolean,
   pickDisplayProfile,
   seedAndMarkReady,
@@ -78,6 +79,29 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("DisplayProfileChip", () => {
+  // The first read of the server ended, so the picker takes picks.
+  beforeEach(markClientSettingsUnavailable)
+
+  it("lets the user pick or make a profile only after the first read of the server ends", () => {
+    createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
+    openMenu()
+    const newProfile = () => screen.getByRole("menuitem", { name: "displayProfiles.newProfile" })
+
+    act(() => fireEvent.click(row("Laptop")))
+    expect(row("Default").getAttribute("aria-checked")).toBe("true")
+    expect(row("Laptop").getAttribute("aria-disabled")).toBe("true")
+    expect(newProfile().getAttribute("aria-disabled")).toBe("true")
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(newProfile().getAttribute("aria-disabled")).toBeNull()
+    act(() => fireEvent.click(row("Laptop")))
+    expect(chip().textContent).toBe("Laptop")
+  })
+
   it("opens with focus on the row of this browser's profile", async () => {
     renderWithThreeProfiles()
     openMenu()

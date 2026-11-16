@@ -30,7 +30,7 @@ import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 /** The Display profile of this browser in the status bar of the desktop torrent table, with a picker. */
 export function DisplayProfileChip() {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick } = useDisplayProfiles()
+  const { profiles, active, settled, pick } = useDisplayProfiles()
   const wide = useMediaQuery("(min-width: 1024px)")
   const [menuOpen, setMenuOpen] = useState(false)
   const [newProfileOpen, setNewProfileOpen] = useState(false)
@@ -87,7 +87,8 @@ export function DisplayProfileChip() {
                 ref={profile.id === active.id ? activeRowRef : undefined}
                 value={profile.id}
                 textValue={profile.name}
-                className="flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[state=checked]:font-medium"
+                disabled={!settled}
+                className="flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:opacity-50 data-[state=checked]:font-medium"
               >
                 <DisplayProfileTile profile={profile} size="sm" />
                 <span className="min-w-0 flex-1 truncate" title={profile.name}>{profile.name}</span>
@@ -98,7 +99,7 @@ export function DisplayProfileChip() {
             ))}
           </DropdownMenuPrimitive.RadioGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setNewProfileOpen(true)}>
+          <DropdownMenuItem disabled={!settled} onSelect={() => setNewProfileOpen(true)}>
             <Plus />
             {t("displayProfiles.newProfile")}
           </DropdownMenuItem>

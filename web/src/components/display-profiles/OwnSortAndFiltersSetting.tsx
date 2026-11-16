@@ -36,7 +36,7 @@ export function OwnSortAndFiltersHelp() {
  */
 export function OwnSortAndFiltersSetting({ profile }: { profile: DisplayProfile }) {
   const { t } = useTranslation("torrents")
-  const { setOwnSortAndFilters } = useDisplayProfiles()
+  const { settled, setOwnSortAndFilters } = useDisplayProfiles()
   const switchId = useId()
   const label = t("displayProfiles.ownSortAndFilters.label")
   const offWarning = t("displayProfiles.ownSortAndFilters.offWarning", { name: profile.name })
@@ -73,6 +73,7 @@ export function OwnSortAndFiltersSetting({ profile }: { profile: DisplayProfile 
       <Switch
         id={switchId}
         checked={profile.ownSortAndFilters}
+        disabled={!settled}
         onCheckedChange={(on) => setOwnSortAndFilters(profile.id, on)}
         className="mt-0.5"
       />

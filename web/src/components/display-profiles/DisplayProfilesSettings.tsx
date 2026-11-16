@@ -25,7 +25,7 @@ import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
  */
 export function DisplayProfilesSettings() {
   const { t } = useTranslation("torrents")
-  const { profiles, active, pick } = useDisplayProfiles()
+  const { profiles, active, settled, pick } = useDisplayProfiles()
   const narrow = useIsMobile()
   const [selectedId, setSelectedId] = useState(active.id)
   // The sheet keeps its profile after it closes, so the editor stays in the sheet while it slides out.
@@ -44,7 +44,7 @@ export function DisplayProfilesSettings() {
           <FieldHelp>{t("displayProfiles.settings.holdsHelp")}</FieldHelp>
         </CardDescription>
         <CardAction className="max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-3 max-sm:mt-2 max-sm:justify-self-stretch">
-          <Button size="sm" variant="outline" className="max-sm:h-10 max-sm:w-full" onClick={() => setNewProfileOpen(true)}>
+          <Button size="sm" variant="outline" className="max-sm:h-10 max-sm:w-full" disabled={!settled} onClick={() => setNewProfileOpen(true)}>
             <Plus />
             {t("displayProfiles.newProfile")}
           </Button>
@@ -54,6 +54,7 @@ export function DisplayProfilesSettings() {
         {narrow ? (
           <DisplayProfileList
             selectedId={active.id}
+            rowsDisabled={!settled}
             onSelect={(profile) => pick(profile.id)}
             onEdit={(profile) => setSheet({ profileId: profile.id, open: true })}
             onNewProfile={() => setNewProfileOpen(true)}

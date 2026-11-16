@@ -8,7 +8,7 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
-import { _resetClientSettingsForTests, createDisplayProfile, getDisplayProfiles, useDisplayProfiles } from "@/lib/client-settings"
+import { _resetClientSettingsForTests, markClientSettingsUnavailable, createDisplayProfile, getDisplayProfiles, useDisplayProfiles } from "@/lib/client-settings"
 
 vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <aside>{children}</aside>,
@@ -28,6 +28,7 @@ function renderFor(profileId: string) {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  markClientSettingsUnavailable()
 })
 
 afterEach(cleanup)

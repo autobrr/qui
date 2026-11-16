@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -14,6 +14,7 @@ import {
   _resetClientSettingsForTests,
   createDisplayProfile,
   getDisplayProfiles,
+  markClientSettingsUnavailable,
   pickDisplayProfile,
   setDisplayProfileOwnSortAndFilters,
   TORRENT_VIEW_MODE_KEYS,
@@ -59,11 +60,43 @@ function editor(): HTMLElement {
 beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
+  // The first read of the server ended, so the section takes changes.
+  markClientSettingsUnavailable()
 })
+
+/** The controls that change a profile, in the editor and in the header. */
+function profileActions(): HTMLButtonElement[] {
+  const inEditor = within(editor())
+  return [
+    screen.getByRole("button", { name: "New profile from this setup…" }),
+    inEditor.getByRole("button", { name: /^Icon:/ }),
+    inEditor.getByRole("button", { name: /^Rename/ }),
+    inEditor.getByRole("button", { name: "Use in this browser" }),
+    inEditor.getByRole("button", { name: "Delete…" }),
+    inEditor.getByRole("switch", { name: "Same columns on every instance" }),
+    inEditor.getByRole("switch", { name: "Own sort and filters" }),
+  ] as HTMLButtonElement[]
+}
 
 afterEach(cleanup)
 
 describe("DisplayProfilesSettings", () => {
+  it("takes a change only after the first read of the server ends, and shows the profiles before that", () => {
+    const laptop = createDisplayProfile("Laptop")
+    setDisplayProfileOwnSortAndFilters(createDisplayProfile("Phone"), true)
+    pickDisplayProfile(laptop)
+    _resetClientSettingsForTests()
+    renderSettings()
+    fireEvent.click(row("Phone"))
+
+    expect(screen.getByRole("region", { name: "Phone" })).toBe(editor())
+    expect(profileActions().map((control) => control.disabled)).toEqual(Array(7).fill(true))
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(profileActions().map((control) => control.disabled)).toEqual(Array(7).fill(false))
+  })
+
   it("lists every profile, marks the one of this browser, and opens the editor on it", () => {
     renderWithThreeProfiles()
 
@@ -225,6 +258,20 @@ describe("DisplayProfilesSettings below 768 px", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it("a tap on a row picks a profile only after the first read of the server ends", () => {
+    createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    renderSettings()
+
+    fireEvent.click(row("Laptop"))
+    expect(getDisplayProfiles().active.name).toBe("Default")
+
+    act(() => markClientSettingsUnavailable())
+    fireEvent.click(row("Laptop"))
+    expect(getDisplayProfiles().active.name).toBe("Laptop")
   })
 
   it("shows the list with no editor, and a tap on a row picks that profile for this browser", () => {
