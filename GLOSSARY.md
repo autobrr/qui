@@ -257,4 +257,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 ## Transfer and Share
 
+- **Transfer**: The move of a torrent, together with each torrent that shares its files, and of those files, from one instance to another. It copies the missing files, adds the torrents on the target, proves the copy, and then removes or keeps the torrents on the source. _Avoid_: Move (that changes the save path inside one instance), migration, export, transfer history (that is the bytes on the Statistics page).
+- **Transfer source** / **Transfer target**: The two instances of a Transfer. _Avoid_: Source instance and Cross-seed instance (cross-seed terms), destination.
+- **Proven piece**: A piece of a torrent in a Transfer that qui checked against the .torrent, and whose bytes the target confirmed on disk. A Transfer resumes from its Proven pieces. _Avoid_: resume point, offset, checkpoint.
 - **Share tracker**: The tracker that lets the client of a Share's recipient find the user's client. It is qui's own tracker or a URL from Settings, and it answers only for active Shares. _Avoid_: privtracker, embedded tracker (that is qBittorrent's open tracker).
