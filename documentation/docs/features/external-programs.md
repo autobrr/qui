@@ -28,21 +28,21 @@ External programs run on the machine or container that hosts the qui backend, no
 
 ## Creating and editing a program
 
-1. Open qui and go to **Settings → External Programs**
-2. Click **Create External Program**
-3. Fill in the form fields, then click **Create**. Toggle **Enable this program** to display the program in torrent context menus
-4. Use the edit and delete actions in the list to manage existing programs
+1. Open qui and go to **Settings → External programs**.
+2. Click **Add program**.
+3. Fill in the form fields, then click **Add program**. Turn on **Enabled** to show the program in torrent context menus.
+4. To change a program, click it in the list. The switch on each row turns the program on or off, and **Delete** removes it.
 
 ### Field reference
 
 | Field | Description |
 |-------|-------------|
 | **Name** | Display label in the torrent context menu and settings list. Must be unique. |
-| **Program Path** | Absolute path to the executable or script. Use the host path that the qui backend sees (for example `/usr/local/bin/my-script.sh`, `C:\Scripts\postprocess.bat`, `C:\python312\python.exe`). |
-| **Arguments Template** | Optional string of command-line arguments. qui substitutes torrent metadata placeholders before it spawns the process. |
-| **Path Mappings** | Optional array of `from → to` prefixes that rewrite remote qBittorrent paths into local mount points. If qui runs locally and qBittorrent stores data elsewhere, configure path mappings here. |
-| **Launch in terminal window** | Opens the program in an interactive terminal window. See [Supported terminal emulators](#supported-terminal-emulators) for the list of detected terminals. If you run GUI apps or background daemons, disable this option. |
-| **Enable this program** | Controls whether the program appears in the torrent context menu. |
+| **Program path** | Absolute path to the executable or script. Use the host path that the qui backend sees (for example `/usr/local/bin/my-script.sh`, `C:\Scripts\postprocess.bat`, `C:\python312\python.exe`). |
+| **Arguments** | Optional string of command-line arguments. qui substitutes torrent metadata placeholders before it spawns the process. |
+| **Path mappings** | Optional array of `from → to` prefixes that rewrite remote qBittorrent paths into local mount points. If qui runs locally and qBittorrent stores data elsewhere, configure path mappings here. |
+| **Open in a terminal** | Opens the program in an interactive terminal window. See [Supported terminal emulators](#supported-terminal-emulators) for the list of detected terminals. If you run GUI apps or background daemons, disable this option. |
+| **Enabled** | Controls whether the program appears in the torrent context menu. |
 
 ## Torrent placeholders
 
@@ -93,7 +93,7 @@ Programs run asynchronously. qui does not wait for processes to complete.
 
 ### Supported terminal emulators
 
-If you enable "Launch in terminal window", qui detects and uses an available terminal emulator. Detection priority:
+If you turn on **Open in a terminal**, qui detects and uses an available terminal emulator. Detection priority:
 
 1. **TERM_PROGRAM environment variable**: qui accepts `WezTerm`, `Hyper`, `kitty`, `alacritty`, `iTerm.app`, and `Apple_Terminal`. If qui finds the matching terminal, it uses it
 2. **Cross-platform terminals** (checked on all platforms):
@@ -180,7 +180,7 @@ When torrents match configured conditions, [automation rules](./automations.md) 
 
 ### Setting up automation triggers
 
-1. Create and enable an external program in **Settings → External Programs**
+1. Create and enable an external program in **Settings → External programs**
 2. Go to **Automations** and create or edit a rule
 3. Add an **External Program** action and select your program
 4. Set the conditions of the rule. The program runs for each torrent that matches them, unless a later rule with an enabled External Program action matches the same torrent. Then only the program of the later rule runs (see [External Program](./automations.md#external-program))
@@ -227,4 +227,4 @@ On Windows, batch and terminal launchers report their activity after the command
 - **Docker**: If qui runs in Docker, place the executable inside the container or bind-mount it from the host.
 - **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
 - **Multiple torrents**: The program runs once per torrent, and runs can overlap. Runs that open a terminal window, and Windows batch files, hold a slot only while qui starts them. For more information, see [Execution limit](#execution-limit). Make sure that your script handles concurrent executions or uses a lock.
-- **Automation not triggering**: Make sure that you enabled the program in **Settings → External Programs**. Disabled programs do not appear in the dropdown for new rules.
+- **Automation not triggering**: Make sure that you enabled the program in **Settings → External programs**. Disabled programs do not appear in the dropdown for new rules.

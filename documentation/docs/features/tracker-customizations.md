@@ -13,36 +13,35 @@ Display names apply across all your instances. You configure them once.
 
 ## Where to find it
 
-Open **Settings** and click **Tracker Customizations**. The list has one row for each tracker customization, and one row for each tracker domain of your instances that has no customization. The rename, merge, edit, and delete actions are the row actions in that list.
+Open **Settings** and click **Tracker customizations**. The list has one row for each tracker customization, and one row for each tracker domain of your instances that has no customization. The rename, merge, edit, and delete actions are the row actions in that list.
 
 ## Rename a tracker
 
-1. Open **Settings** and click **Tracker Customizations**.
-2. On a computer, hover the tracker row. On a phone, the actions show on each row.
-3. Click the pencil icon (**Rename**).
-4. Enter a **Display Name** and save.
+1. Open **Settings** and click **Tracker customizations**.
+2. On the row of the tracker, click **Rename**.
+3. Enter a **Display name** and save.
 
 ## Merge trackers
 
 If a tracker announces on several domains, you can combine the domains into a single entry:
 
 1. Tick the checkbox on each tracker row that you want to combine.
-2. Click the link icon on one of the selected rows (**Add to merge**).
-3. Enter the **Display Name** for the merged entry and save.
+2. On one of the selected rows, click **Add to merge**.
+3. Enter the **Display name** for the merged entry and save.
 
 The merge dialog marks the first domain **Primary**. qui shows the icon of that domain for the entry.
 
-If you want to add another domain to an existing entry later, select the domain and click the link icon on the row of the entry.
+If you want to add another domain to an existing entry later, select the domain and click **Merge selected trackers into this group** on the row of the entry.
 
 [Statistics](./statistics.md) counts a torrent toward one tracker, also when the torrent announces on several domains. A merge thus does not count a torrent two times.
 
 ## Edit or delete
 
-Rows that already have a customization show a pencil (**Edit**) and a trash icon (**Delete**). If you delete a customization, those trackers revert to their raw domains.
+To edit a customization, click its row. To delete it, click **Delete** on the row. If you delete a customization, those trackers revert to their raw domains.
 
 ## Import and export
 
-The header of the **Tracker Customizations** section has import and export buttons.
+The header of the **Tracker customizations** section has import and export buttons.
 
 **Export** copies all customizations to the clipboard as JSON. **Import** accepts the same JSON and reports new entries, conflicts, and unchanged entries before it applies them. For each conflict, you choose **Skip** or **Overwrite**.
 
