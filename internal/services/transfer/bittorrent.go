@@ -23,17 +23,17 @@ import (
 )
 
 const (
-	// stepPass comes before qui adds the Transfer torrent of a member, with
-	// its hash, and stepPassed once the target has every piece, with the
+	// stepTorrent comes before qui adds the Transfer torrent of a member, with
+	// its hash, and stepTorrentDone once the target has every piece, with the
 	// bytes that the target downloaded.
-	stepPass     = "pass by BitTorrent"
-	stepPassed   = "passed by BitTorrent"
-	stepFallBack = "fall back to SFTP"
+	stepTorrent     = "pass by BitTorrent"
+	stepTorrentDone = "passed by BitTorrent"
+	stepFallBack    = "fall back to SFTP"
 )
 
-type noConnection struct{ reason string }
+type noConnectionError struct{ reason string }
 
-func (e *noConnection) Error() string { return e.reason }
+func (e *noConnectionError) Error() string { return e.reason }
 
 func (j *job) passByBitTorrent(ctx context.Context) error {
 	for _, p := range j.parts {
@@ -41,7 +41,7 @@ func (j *job) passByBitTorrent(ctx context.Context) error {
 			continue
 		}
 		err := j.pass(ctx, p)
-		if why, ok := errors.AsType[*noConnection](err); ok {
+		if why, ok := errors.AsType[*noConnectionError](err); ok {
 			return j.fallBack(ctx, why)
 		}
 		if err != nil {
@@ -51,7 +51,7 @@ func (j *job) passByBitTorrent(ctx context.Context) error {
 	return nil
 }
 
-func (j *job) fallBack(ctx context.Context, why *noConnection) error {
+func (j *job) fallBack(ctx context.Context, why *noConnectionError) error {
 	if j.rec.Options.ForcedWay == WayBitTorrent || j.srcFiles == nil || j.blind {
 		return temporary("%s", why.reason)
 	}
@@ -105,7 +105,7 @@ func (j *job) pass(ctx context.Context, p *part) error {
 	if err != nil {
 		return permanent("qui cannot build the Transfer torrent: %v", err)
 	}
-	if err := j.stepWith(ctx, StateCopying, stepPass, helper.InfoHash); err != nil {
+	if err := j.stepWith(ctx, StateCopying, stepTorrent, helper.InfoHash); err != nil {
 		return err
 	}
 	if err := j.addHelper(ctx, j.target, helper, random, torrentadd.Settings{
@@ -148,7 +148,7 @@ func (j *job) pass(ctx context.Context, p *part) error {
 		return err
 	}
 	p.passed = true
-	return j.stepWith(ctx, StateCopying, stepPassed, strconv.FormatInt(torrent.Downloaded, 10))
+	return j.stepWith(ctx, StateCopying, stepTorrentDone, strconv.FormatInt(torrent.Downloaded, 10))
 }
 
 func (j *job) addHelper(ctx context.Context, inst *models.Instance, helper helpertorrent.Helper, random string, settings torrentadd.Settings) error {
@@ -234,7 +234,7 @@ func (j *job) connect(ctx context.Context, hash string) error {
 		}
 		why = append(why, fmt.Sprintf("%s did not reach %s at %s", dir.from.Name, dir.to.Name, address))
 	}
-	return &noConnection{reason: "The clients did not connect: " + strings.Join(why, ", and ") + "."}
+	return &noConnectionError{reason: "The clients did not connect: " + strings.Join(why, ", and ") + "."}
 }
 
 func (j *job) download(ctx context.Context, hash string) (*qbt.Torrent, error) {
@@ -307,7 +307,7 @@ func (j *job) pause(ctx context.Context, poll int) error {
 func (j *job) downloaded() int64 {
 	var total int64
 	for _, step := range j.rec.Steps {
-		if step.Name == stepPassed {
+		if step.Name == stepTorrentDone {
 			n, _ := strconv.ParseInt(step.Detail, 10, 64)
 			total += n
 		}

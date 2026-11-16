@@ -196,6 +196,7 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 		return WaySFTP, nil
 	case WayBitTorrent:
 		return WayBitTorrent, nil
+	case WayLocal, WayNone:
 	}
 	return "", refuse("Unknown way: %q.", forced)
 }

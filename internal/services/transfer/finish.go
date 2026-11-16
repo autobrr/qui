@@ -194,12 +194,8 @@ func (j *job) place(ctx context.Context) error {
 			return permanent("Already on the target: %s has %s.", inst.Name, which)
 		}
 	}
-	// A Transfer torrent on a target that qui cannot reach downloaded the
-	// files in place.
-	if !j.blind {
-		if err := j.putInPlace(ctx, again); err != nil {
-			return err
-		}
+	if err := j.putInPlace(ctx, again); err != nil {
+		return err
 	}
 
 	var representative *part
@@ -230,8 +226,12 @@ func (j *job) place(ctx context.Context) error {
 }
 
 // putInPlace renames each file that qui wrote from its temporary name to its
-// name.
+// name. A Transfer torrent on a target that qui cannot reach downloaded the
+// files in place.
 func (j *job) putInPlace(ctx context.Context, again bool) error {
+	if j.blind {
+		return nil
+	}
 	for _, f := range j.files {
 		if !f.onTarget {
 			if err := j.placeFile(ctx, f.rel, again); err != nil {
