@@ -430,6 +430,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           secondary: t("statusBar.streamStatus.connecting.secondary", { seconds: TORRENT_STREAM_POLL_INTERVAL_SECONDS }),
           tone: streamConnected ? ("warning" as const) : ("muted" as const),
           animate: !streamConnected,
+          dotOnly: true,
         }
     }
   }, [
@@ -1305,7 +1306,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   {hasStreamStatusDetails ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+                        <div
+                          className="flex items-center gap-1.5 cursor-default text-[11px]"
+                          role={streamStatus.dotOnly ? "img" : undefined}
+                          aria-label={streamStatus.dotOnly ? streamStatus.label : undefined}
+                        >
                           <span
                             className={cn(
                               "h-1.5 w-1.5 rounded-full transition",
@@ -1313,7 +1318,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               streamStatus.animate && "animate-pulse"
                             )}
                           />
-                          {hasStreamStatusLabel && (
+                          {hasStreamStatusLabel && !streamStatus.dotOnly && (
                             <span className={cn("opacity-80", streamToneStyles.textClass)}>{streamStatus.label}</span>
                           )}
                         </div>
