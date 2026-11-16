@@ -254,3 +254,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Section**: One part of a sectioned page. The user picks it from the section nav of the page, and only one section shows at a time. _Avoid_: tab, panel.
 - **Sectioned page**: A page with a section nav, for example Settings or Cross-Seed. _Avoid_: tabbed page.
 - **Single page**: A page that stacks its cards and has no section nav, for example Search or Backups.
+
+## Transfer and Share
+
+- **Share tracker**: The tracker that lets the client of a Share's recipient find the user's client. It is qui's own tracker or a URL from Settings, and it answers only for active Shares. _Avoid_: privtracker, embedded tracker (that is qBittorrent's open tracker).
