@@ -34,7 +34,9 @@ function freePort() {
 
 function start(name, cmd, args, env = {}) {
   const log = openSync(join(out, `${name}.log`), "w")
-  const child = spawn(cmd, args, { detached: true, stdio: ["ignore", log, log], env: { ...process.env, ...env } })
+  // An inherited QUI__ setting, such as QUI__DATA_DIR, could point qui at a real installation.
+  const inherited = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("QUI__")))
+  const child = spawn(cmd, args, { detached: true, stdio: ["ignore", log, log], env: { ...inherited, ...env } })
   children.push(child)
   return child
 }

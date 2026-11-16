@@ -24,16 +24,30 @@ const elapsed = () => `${((Date.now() - started) / 1000).toFixed(0)}s`
 
 function playwrightDir() {
   if (process.env.PW) return process.env.PW
-  let bin
-  try { bin = execFileSync("mise", ["which", "playwright"], { encoding: "utf8" }).trim() } catch {
-    bin = execFileSync("sh", ["-c", "command -v playwright"], { encoding: "utf8" }).trim()
+  for (const [cmd, args] of [["mise", ["which", "playwright"]], ["sh", ["-c", "command -v playwright"]]]) {
+    try {
+      const bin = execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()
+      return join(dirname(realpathSync(bin)), "..", "playwright")
+    } catch { /* try the next lookup */ }
   }
-  return join(dirname(realpathSync(bin)), "..", "playwright")
+  return null
+}
+
+const active = new Set()
+// A cancel stops the builds and the runners too. Each runner then stops its own stub, qui, and browser.
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, async () => {
+    const closing = [...active].map(c => new Promise(r => { c.once("close", r); c.kill("SIGTERM") }))
+    await Promise.all(closing)
+    process.exit(2)
+  })
 }
 
 function run(cmd, args, opts = {}) {
   return new Promise(res => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], ...opts })
+    active.add(child)
+    child.on("close", () => active.delete(child))
     let stdout = "", stderr = ""
     child.stdout.on("data", d => { stdout += d })
     child.stderr.on("data", d => { stderr += d })
@@ -44,8 +58,8 @@ function run(cmd, args, opts = {}) {
 }
 
 const PW = playwrightDir()
-if (!existsSync(join(PW, "index.mjs"))) {
-  console.error(`could not run: no Playwright package at ${PW}; set PW`)
+if (!PW || !existsSync(join(PW, "index.mjs"))) {
+  console.error(`could not run: no Playwright package${PW ? ` at ${PW}` : " found"}. Set PW to its folder.`)
   process.exit(2)
 }
 const cache = process.env.QUI_PROVE_CACHE || join(process.env.XDG_CACHE_HOME || join(process.env.HOME, ".cache"), "qui-prove")
