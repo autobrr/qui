@@ -110,6 +110,10 @@ async function rig() {
       const v = target[key]
       return typeof v === "function" ? (...a) => { asserted = true; return v(...a) } : v
     },
+    apply(target, self, args) {
+      asserted = true
+      return Reflect.apply(target, self, args)
+    },
   })
 
   const t = {
