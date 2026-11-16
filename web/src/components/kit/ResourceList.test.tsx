@@ -4,7 +4,7 @@
  */
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
-import { Download, Eye, Send, Trash2 } from "lucide-react"
+import { Download, Send, Trash2 } from "lucide-react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -105,15 +105,16 @@ describe("ResourceList", () => {
     expect(within(row).queryByRole("button", { name: "More actions" })).toBeNull()
   })
 
-  it("names the open step after openAction, and opens the item from the row", () => {
+  it("opens the item from the row and from its Edit step", () => {
     const onOpen = vi.fn()
-    renderList([{ id: 1, name: "search" }], (item) => ({ title: item.name, onOpen, openAction: { label: "View details", icon: Eye } }))
+    renderList([{ id: 1, name: "search" }], (item) => ({ title: item.name, onOpen }))
     const row = screen.getByRole("listitem", { name: "search" })
 
-    expect(within(row).queryByRole("button", { name: "Edit" })).toBeNull()
-    for (const button of within(row).getAllByRole("button", { name: "View details" })) fireEvent.click(button)
+    fireEvent.click(within(row).getByRole("button", { name: "search" }))
+    // A wide screen shows Edit as a button, and a phone as an arrow with the same name.
+    for (const button of within(row).getAllByRole("button", { name: "Edit" })) fireEvent.click(button)
 
-    expect(onOpen).toHaveBeenCalledTimes(2)
+    expect(onOpen).toHaveBeenCalledTimes(3)
   })
 
   it("opens the details of a row under it on a press, and closes them on a second press", () => {

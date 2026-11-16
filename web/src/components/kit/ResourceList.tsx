@@ -52,8 +52,6 @@ export interface ResourceRow {
   select?: { checked: boolean; onCheckedChange: (checked: boolean) => void; disabled?: boolean }
   /** Opens the item, usually in its Editor. The row and an Edit action both call it. */
   onOpen?: () => void
-  /** The name and icon of the action that onOpen adds, for an item that opens to read only. Edit by default. */
-  openAction?: { label: string; icon: LucideIcon }
   /**
    * The steps for the item. A wide screen shows the first three as buttons and the rest in a menu. A phone shows a lone
    * step as a button, and more in a menu. The menu puts the destructive steps last, under a line. On a phone, a row
@@ -148,7 +146,7 @@ function ResourceListRow({ row, selectable, onRun }: { row: ResourceRow; selecta
   const [expanded, setExpanded] = useState(false)
   const off = row.enabled?.checked === false
   const open: ResourceAction | null = row.onOpen
-    ? { label: row.openAction?.label ?? t("kit.edit"), icon: row.openAction?.icon ?? Pencil, onSelect: row.onOpen }
+    ? { label: t("kit.edit"), icon: Pencil, onSelect: row.onOpen }
     : null
   const actions: ResourceAction[] = [...(open ? [open] : []), ...(row.actions ?? [])]
   // A wide screen shows the first actions as buttons, in the order of the caller. The menu puts the destructive ones last.

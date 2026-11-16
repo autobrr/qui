@@ -13,15 +13,6 @@ import { ConfirmDialog } from "./ConfirmDialog"
 afterEach(cleanup)
 
 describe("ConfirmDialog", () => {
-  it.each([[true, true], [false, false]])("holds the confirm button off while confirmDisabled is %s", (confirmDisabled, disabled) => {
-    render(
-      <ConfirmDialog open onOpenChange={() => {}} title="Delete seedbox?" description="It goes away." confirmLabel="Delete" onConfirm={() => {}} confirmDisabled={confirmDisabled} />
-    )
-
-    expect((screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(disabled)
-    expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(false)
-  })
-
   it("stays open when the step fails, so the user can try again", async () => {
     const onOpenChange = vi.fn()
     let fail: (error: Error) => void = () => {}

@@ -53,24 +53,17 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenCalledWith("b", { replace: true })
   })
 
-  it("shows the menu first on a phone and adds a history entry for the section that the user taps", () => {
+  it("shows the menu first on a phone, adds a history entry for the section that the user taps, and goes back to the menu", () => {
     stubWidth("phone")
-    const { onSectionChange } = renderPage(undefined)
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
+    const { onSectionChange, rerender } = renderPage(undefined)
 
     expect(screen.queryByText(/content of/)).toBeNull()
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Settings")
     fireEvent.click(screen.getByRole("button", { name: "Beta" }))
-
-    expect(onSectionChange).toHaveBeenCalledWith("b", { replace: false })
-  })
-
-  it("goes back in history to the menu after a tap in the menu", () => {
-    stubWidth("phone")
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
-    const { onSectionChange, rerender } = renderPage(undefined)
-    fireEvent.click(screen.getByRole("button", { name: "Beta" }))
     rerender("b")
 
+    expect(onSectionChange).toHaveBeenCalledWith("b", { replace: false })
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Beta")
     fireEvent.click(screen.getByRole("button", { name: "Settings" }))
 
@@ -78,10 +71,17 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenCalledTimes(1)
   })
 
-  it("returns to the menu in place when a link opened another section after the tap", () => {
+  it("returns to the menu in place when a link opened the section, also after a tap on another section", () => {
     stubWidth("phone")
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
-    const { onSectionChange, rerender } = renderPage(undefined)
+    // A link, for example from the command palette, opens Beta with no tap in the menu.
+    const { onSectionChange, rerender } = renderPage("b")
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }))
+
+    expect(back).not.toHaveBeenCalled()
+    expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
+
+    rerender(undefined)
     fireEvent.click(screen.getByRole("button", { name: "Beta" }))
     rerender("b")
     // A link in Beta opens Alpha with a new history entry, so the entry before Alpha is Beta, not the menu.
@@ -114,17 +114,5 @@ describe("SectionedPage", () => {
     rerender(undefined)
 
     expect(main.scrollTop).toBe(300)
-  })
-
-  it("returns to the menu in place when a link opened the section", () => {
-    stubWidth("phone")
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
-    const { onSectionChange } = renderPage("b")
-
-    expect(screen.getByText("content of b")).not.toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }))
-
-    expect(back).not.toHaveBeenCalled()
-    expect(onSectionChange).toHaveBeenCalledWith(undefined, { replace: true })
   })
 })
