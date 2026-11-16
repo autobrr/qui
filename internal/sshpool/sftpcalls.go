@@ -67,8 +67,10 @@ type answerReader struct {
 func (r *answerReader) Read(p []byte) (int, error) {
 	n, err := r.Reader.Read(p)
 	if _, ended := r.frames.scan(p[:n]); ended > 0 {
-		r.calls.running.Add(-int64(ended))
+		// The mark of use comes first: in between, the idle close would see
+		// no call running and the old time of a call longer than its limit.
 		r.calls.answered()
+		r.calls.running.Add(-int64(ended))
 	}
 	return n, err
 }

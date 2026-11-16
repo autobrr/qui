@@ -10,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -344,6 +345,33 @@ func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
 	_, err = client.Getwd()
 	require.NoError(t, err)
 	assert.Equal(t, 1, server.Accepts())
+}
+
+// regression: #4231
+// The keepalive loop can look while the answer of a call that ran past the
+// idle limit comes in. At no point in between may the connection look idle,
+// or the loop closes it under the caller.
+func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
+	t.Parallel()
+
+	var lastUsed atomic.Int64
+	lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
+	calls := &sftpCalls{}
+	var idleSeen bool
+	calls.answered = func() {
+		// The last moment before the answer marks the connection used.
+		idleSeen = idleSeen || unused(calls, &lastUsed)
+		lastUsed.Store(time.Now().UnixNano())
+	}
+	calls.running.Store(1)
+	answer := &answerReader{Reader: bytes.NewReader([]byte{0, 0, 0, 1, 101}), calls: calls}
+
+	_, err := io.ReadAll(answer)
+
+	require.NoError(t, err)
+	assert.Zero(t, calls.running.Load())
+	assert.False(t, idleSeen, "the connection looked idle while the answer came in")
+	assert.False(t, unused(calls, &lastUsed))
 }
 
 // A caller giving up says nothing about the host: a dial cut short by the
