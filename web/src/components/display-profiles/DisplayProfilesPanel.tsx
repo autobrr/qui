@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { useInstances } from "@/hooks/useInstances"
 import { useDisplayProfiles } from "@/lib/client-settings"
 import {
   DISPLAY_PROFILE_NAME_MAX_LENGTH,
@@ -30,6 +31,7 @@ import {
 
 import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
 import { DisplayProfileTile } from "./DisplayProfileTile"
+import { SameColumnsSwitch } from "./SameColumnsSwitch"
 import { OwnSortAndFiltersSetting } from "./OwnSortAndFiltersSetting"
 
 interface DisplayProfilesPanelProps {
@@ -44,6 +46,7 @@ type NameErrorText = Record<DisplayProfileNameError, string>
 export function DisplayProfilesPanel({ open, onOpenChange, onNewProfile }: DisplayProfilesPanelProps) {
   const { t } = useTranslation("torrents")
   const { profiles, active, pick, rename, delete: deleteProfile, setIcon, setColor } = useDisplayProfiles()
+  const { instances } = useInstances()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<DisplayProfile | null>(null)
 
@@ -129,6 +132,7 @@ export function DisplayProfilesPanel({ open, onOpenChange, onNewProfile }: Displ
             </li>
           ))}
         </ul>
+        <SameColumnsSwitch profileId={active.id} instances={instances ?? []} />
         <OwnSortAndFiltersSetting profile={active} />
         <Button variant="outline" onClick={onNewProfile}>{t("displayProfiles.newProfile")}</Button>
       </DialogContent>

@@ -1825,6 +1825,20 @@
       "orange": "Taronja",
       "teal": "Verd blavós",
       "pink": "Rosa intens"
+    },
+    "columns": {
+      "headingEveryInstance": "Columnes de {{profile}} · cada instància",
+      "headingOneInstance": "Columnes de {{profile}} · només {{instance}}",
+      "unifiedView": "Vista unificada",
+      "thisInstance": "aquesta instància"
+    },
+    "sameColumns": {
+      "label": "Les mateixes columnes a cada instància",
+      "menuHelp": "L’ordenació i els filtres de columna es mantenen per instància.",
+      "helpOn": "Una sola configuració de columnes per a {{instances}}.",
+      "helpOff": "Cada instància manté la seva. Si ho actives, cada instància rep les columnes de {{instance}}.",
+      "helpOffNoInstance": "Cada instància manté la seva.",
+      "unifiedViewInList": "la vista unificada"
     }
   }
 }

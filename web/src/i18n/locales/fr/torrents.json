@@ -1825,6 +1825,20 @@
       "orange": "Orange",
       "teal": "Sarcelle",
       "pink": "Rose vif"
+    },
+    "columns": {
+      "headingEveryInstance": "Colonnes de {{profile}} · chaque instance",
+      "headingOneInstance": "Colonnes de {{profile}} · {{instance}} uniquement",
+      "unifiedView": "Vue unifiée",
+      "thisInstance": "cette instance"
+    },
+    "sameColumns": {
+      "label": "Mêmes colonnes sur chaque instance",
+      "menuHelp": "Le tri et les filtres de colonnes restent propres à chaque instance.",
+      "helpOn": "Une seule configuration de colonnes pour {{instances}}.",
+      "helpOff": "Chaque instance garde la sienne. L’activer donne à chaque instance les colonnes de {{instance}}.",
+      "helpOffNoInstance": "Chaque instance garde la sienne.",
+      "unifiedViewInList": "la vue unifiée"
     }
   }
 }

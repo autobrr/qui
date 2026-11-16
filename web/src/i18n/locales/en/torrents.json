@@ -1825,6 +1825,20 @@
       "orange": "Orange",
       "teal": "Teal",
       "pink": "Pink"
+    },
+    "columns": {
+      "headingEveryInstance": "Columns in {{profile}} · every instance",
+      "headingOneInstance": "Columns in {{profile}} · {{instance}} only",
+      "unifiedView": "Unified view",
+      "thisInstance": "this instance"
+    },
+    "sameColumns": {
+      "label": "Same columns on every instance",
+      "menuHelp": "Sort and column filters stay per instance.",
+      "helpOn": "One Column setup for {{instances}}.",
+      "helpOff": "Each instance keeps its own. Turning this on gives every instance the {{instance}} columns.",
+      "helpOffNoInstance": "Each instance keeps its own.",
+      "unifiedViewInList": "the Unified view"
     }
   }
 }

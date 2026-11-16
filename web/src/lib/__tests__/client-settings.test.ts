@@ -17,13 +17,16 @@ import {
   applyServerSettings,
   parseJsonBoolean,
   readClientSetting,
+  recordColumnSetupInstance,
   renameDisplayProfile,
   seedAndMarkReady,
   setDisplayProfileColor,
   setDisplayProfileIcon,
+  setDisplayProfileSameColumns,
   setDisplayProfileOwnSortAndFilters,
   useClientSetting,
   useDisplayProfiles,
+  useLastColumnSetupInstance,
   writeClientSetting,
   writeRaw
 } from "@/lib/client-settings"
@@ -525,6 +528,7 @@ describe("display profiles", () => {
   })
 
   it("a Display setting that Laptop writes does not change Default", () => {
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
     writeClientSetting("qui-column-visibility:1", { ratio: true })
     const laptop = createDisplayProfile("Laptop")
 
@@ -576,7 +580,16 @@ describe("display profiles", () => {
     const { profiles, active } = getDisplayProfiles()
     expect(profiles.map((profile) => profile.name)).toEqual(["Default", "Laptop"])
     expect(profiles[0]).toMatchObject({ isDefault: true, icon: "app-window", color: null, sameColumns: null, ownSortAndFilters: false })
-    expect(active).toEqual({ id: laptop, isDefault: false, name: "Laptop", icon: "bookmark", color: null, sameColumns: null, ownSortAndFilters: false })
+    expect(active).toEqual({
+      id: laptop,
+      isDefault: false,
+      name: "Laptop",
+      icon: "bookmark",
+      color: null,
+      sameColumns: null,
+      ownSortAndFilters: false,
+      usesSameColumns: true,
+    })
   })
 
   it("set icon and set color save on the profile, and a new profile does not copy them", () => {
@@ -910,8 +923,126 @@ describe("display profiles", () => {
   })
 })
 
+describe("same columns on every instance", () => {
+  const visibility = { defaultValue: {} as Record<string, boolean>, parse: (raw: string) => JSON.parse(raw) as Record<string, boolean> }
+  const sorting = { defaultValue: [] as unknown[], parse: (raw: string) => JSON.parse(raw) as unknown[] }
+  const sameColumnsOf = (id: string) => getDisplayProfiles().profiles.find((profile) => profile.id === id)?.usesSameColumns
+
+  it("is on when the profile has no stored Column setup, and off when it has one, until the user sets it", () => {
+    expect(getDisplayProfiles().active.usesSameColumns).toBe(true)
+
+    localStorage.setItem("qui-column-sizing:2", "{\"name\":600}")
+    expect(getDisplayProfiles().active.usesSameColumns).toBe(false)
+
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true)
+    expect(getDisplayProfiles().active.usesSameColumns).toBe(true)
+  })
+
+  it("with the switch on, every instance and the Unified view read one Column setup, and sort stays per instance", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: true }))
+    const laptop = createDisplayProfile("Laptop")
+    setDisplayProfileSameColumns(laptop, true, 1)
+
+    writeClientSetting("qui-column-visibility:1", { ratio: false })
+    writeClientSetting("qui-column-sorting:1", [{ id: "ratio", desc: true }])
+
+    expect(readClientSetting("qui-column-visibility:2", visibility)).toEqual({ ratio: false })
+    expect(readClientSetting("qui-column-visibility:0", visibility)).toEqual({ ratio: false })
+    expect(readClientSetting("qui-column-sorting:2", sorting)).toEqual([])
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(readClientSetting("qui-column-visibility:2", visibility)).toEqual({})
+    expect(sameColumnsOf(DEFAULT_DISPLAY_PROFILE_ID)).toBe(false)
+  })
+
+  it("a live hook of another instance follows a change while the switch is on", () => {
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true)
+    const { result } = renderHook(() => useClientSetting("qui-column-visibility:2", visibility))
+
+    act(() => writeClientSetting("qui-column-visibility:1", { ratio: false }))
+
+    expect(result.current[0]).toEqual({ ratio: false })
+  })
+
+  it("turning it on copies the Column setup of the instance on screen to every instance", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: false }))
+    localStorage.setItem("qui-column-visibility:2", JSON.stringify({ size: false }))
+    localStorage.setItem("qui-stretch-name-column:2", "false")
+
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true, 2)
+
+    expect(readClientSetting("qui-column-visibility:1", visibility)).toEqual({ size: false })
+    expect(readClientSetting("qui-column-visibility:0", visibility)).toEqual({ size: false })
+    expect(readClientSetting("qui-stretch-name-column:1", boolSetting)).toBe(false)
+  })
+
+  it("turning it on from a place with no instance copies the last instance that this browser showed", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: false }))
+    localStorage.setItem("qui-column-visibility:2", JSON.stringify({ size: false }))
+    recordColumnSetupInstance(2)
+    recordColumnSetupInstance(1)
+    const { result } = renderHook(() => useLastColumnSetupInstance())
+    expect(result.current).toBe(1)
+
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true)
+
+    expect(readClientSetting("qui-column-visibility:2", visibility)).toEqual({ ratio: false })
+  })
+
+  it("turning it off copies the shared setup to each instance, and each instance then changes on its own", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: true }))
+    localStorage.setItem("qui-column-visibility:2", JSON.stringify({ size: false }))
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true, 1)
+    writeClientSetting("qui-column-visibility:1", { ratio: false })
+    writeClientSetting("qui-column-sizing:1", { name: 600 })
+
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
+
+    for (const instance of [1, 2, 3, 0]) {
+      expect(readClientSetting(`qui-column-visibility:${instance}`, visibility)).toEqual({ ratio: false })
+      expect(readClientSetting(`qui-column-sizing:${instance}`, visibility)).toEqual({ name: 600 })
+    }
+    writeClientSetting("qui-column-visibility:1", { ratio: true })
+    writeClientSetting("qui-column-visibility:3", { tags: false })
+    expect(readClientSetting("qui-column-visibility:2", visibility)).toEqual({ ratio: false })
+    expect(readClientSetting("qui-column-visibility:3", visibility)).toEqual({ tags: false })
+    expect(getDisplayProfiles().active.usesSameColumns).toBe(false)
+  })
+
+  it("an instance that had no Column setup before the switch went on shows the defaults after it goes off", () => {
+    localStorage.setItem("qui-column-visibility:2", JSON.stringify({ size: false }))
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true, 1)
+
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
+
+    expect(readClientSetting("qui-column-visibility:2", visibility)).toEqual({})
+    expect(readClientSetting("qui-column-visibility:1", visibility)).toEqual({})
+  })
+
+  it("create copies the switch and the shared setup", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: true }))
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true, 1)
+    writeClientSetting("qui-column-visibility:1", { ratio: false })
+
+    const laptop = createDisplayProfile("Laptop")
+
+    expect(sameColumnsOf(laptop)).toBe(true)
+    expect(readClientSetting("qui-column-visibility:4", visibility)).toEqual({ ratio: false })
+  })
+
+  it("useDisplayProfiles sets the switch", () => {
+    localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: true }))
+    const { result } = renderHook(() => useDisplayProfiles())
+    expect(result.current.active.usesSameColumns).toBe(false)
+
+    act(() => result.current.setSameColumns(DEFAULT_DISPLAY_PROFILE_ID, true, 1))
+
+    expect(result.current.active.usesSameColumns).toBe(true)
+  })
+})
+
 describe("migrateLegacyLocalValue", () => {
   it("moves a valid legacy value into the active profile once, then drops the legacy key", () => {
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
     const laptop = createDisplayProfile("Laptop")
     localStorage.setItem("qui-column-sizing", "{\"name\":600}")
 
@@ -923,6 +1054,7 @@ describe("migrateLegacyLocalValue", () => {
   })
 
   it("keeps a stored value and skips an invalid legacy value", () => {
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
     writeClientSetting("qui-column-sizing:1", { name: 300 })
     localStorage.setItem("qui-column-sizing", "{\"name\":600}")
     migrateLegacyLocalValue("qui-column-sizing", "qui-column-sizing:1", () => true)
