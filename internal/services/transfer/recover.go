@@ -299,12 +299,14 @@ func (j *job) cleanTarget(ctx context.Context) {
 	folders := map[string]struct{}{}
 	for _, f := range j.files {
 		temp := j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
-		removed := j.remove(ctx, j.linkName(f.rel), j.linkName(f.rel)+incompleteExt) || temp
+		j.remove(ctx, j.linkName(f.rel), j.linkName(f.rel)+incompleteExt)
 		// A file whose temporary file was still there never moved into place.
 		if j.reached(stepPlace) && !f.onTarget && !keepPlaced && !temp {
-			removed = j.remove(ctx, f.rel) || removed
+			j.remove(ctx, f.rel)
 		}
-		for dir := path.Dir(f.rel); removed && dir != "."; dir = path.Dir(dir) {
+		// A link or a create that failed leaves the folders that it made,
+		// with no file in them.
+		for dir := path.Dir(f.rel); dir != "."; dir = path.Dir(dir) {
 			folders[dir] = struct{}{}
 		}
 	}

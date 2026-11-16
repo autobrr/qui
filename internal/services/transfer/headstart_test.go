@@ -24,6 +24,11 @@ import (
 
 func (r *diskRoot) Link(ctx context.Context, oldName, newName string) error {
 	if r.d.noLinks {
+		// A root makes the missing folders of newName before the link
+		// fails, so they stay.
+		if err := r.Root.Link(ctx, oldName, newName); err == nil {
+			_ = r.Remove(ctx, newName)
+		}
 		return &os.LinkError{Op: "link", Old: oldName, New: newName, Err: fs.ErrPermission}
 	}
 	return r.Root.Link(ctx, oldName, newName)

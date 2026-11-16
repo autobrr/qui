@@ -343,6 +343,10 @@ func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, "Not enough free space on homelab: not enough free space on the target: the Transfer needs 40 B, and 30 B is free", record.FailureReason)
 	require.Empty(t, tree(t, r.dstDir))
+	// regression: #4231
+	entries, err := os.ReadDir(r.dstDir)
+	require.NoError(t, err)
+	require.Empty(t, entries, "the folders of the link that failed stay")
 	require.Equal(t, sourceFiles, tree(t, r.srcDir))
 	require.True(t, r.seeding(r.source.ID, s.hash))
 	require.True(t, r.seeding(r.source.ID, crossSeedHash))
