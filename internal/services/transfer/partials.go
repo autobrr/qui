@@ -68,7 +68,7 @@ func (j *job) checkPartials(ctx context.Context) error {
 // on the target.
 func (j *job) partial(f *groupFile) bool {
 	_, made := j.made[f]
-	return made && !f.linked
+	return made && !f.linked && !f.linksCopy
 }
 
 func (p *part) isChecked(piece int) bool {

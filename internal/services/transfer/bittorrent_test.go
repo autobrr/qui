@@ -427,3 +427,42 @@ func TestTransferTorrentRetries(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, helpers, 4, "each run adds a Transfer torrent with a new infohash on both clients")
 }
+
+// A Transfer torrent downloads each path of a hardlinked cross-seed on its
+// own, so the free space on the target counts each one.
+func TestTransferTorrentCountsEachPathOfAHardlinkedCrossSeed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		free   int64
+		reason string
+	}{
+		{name: "room for each path", free: 140},
+		{name: "room for one copy", free: 139,
+			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 140 B, and 139 B is free"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, onDisk, noAccess)
+			r.connect()
+			r.dst.FreeSpace = tc.free
+			s := newShow(t, showName)
+			r.seed(s)
+			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+			sourceFiles := tree(t, r.srcDir)
+
+			record := r.run(r.request(s))
+
+			if tc.reason != "" {
+				require.Equal(t, transfer.StateFailed, record.State)
+				require.Equal(t, tc.reason, record.FailureReason)
+				require.Zero(t, r.dst.Writes("torrents/add"), "qui adds nothing on the target")
+				return
+			}
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Len(t, record.Members, 2)
+			require.Equal(t, sourceFiles, tree(t, r.dstDir))
+			require.True(t, r.seeding(r.target.ID, s.hash))
+			require.True(t, r.seeding(r.target.ID, crossSeedHash))
+			r.requireNoHelpers(record)
+		})
+	}
+}

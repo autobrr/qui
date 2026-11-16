@@ -180,6 +180,9 @@ func (r *root) Link(ctx context.Context, oldName, newName string) error {
 	if _, ok := client.HasExtension(sshpool.HardlinkExtension); !ok {
 		return pathError("link", newPath, fmt.Errorf("%w: server does not advertise %s", fsops.ErrUnsupported, sshpool.HardlinkExtension))
 	}
+	if err := mkdirs(ctx, client, path.Dir(newPath)); err != nil {
+		return err
+	}
 	if err := awaitMutation(ctx, func() error { return client.Link(oldPath, newPath) }); err != nil {
 		if _, statErr := lstat(ctx, client, newPath); statErr == nil {
 			return pathError("link", newPath, fs.ErrExist)

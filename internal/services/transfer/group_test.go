@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -223,19 +224,27 @@ func TestTransferMovesAMixedGroupWholeToTheTarget(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 }
 
+// seedHardlinkedCrossSeed seeds a cross-seed of s on the source that reads
+// hardlinks to the files of s in the folder links.
+func (r *rig) seedHardlinkedCrossSeed(s show) (links, hash string) {
+	r.t.Helper()
+	links = filepath.Join(r.srcDir, "links")
+	require.NoError(r.t, os.MkdirAll(filepath.Join(links, showName), 0o755))
+	for name := range s.files {
+		require.NoError(r.t, os.Link(filepath.Join(r.srcDir, showName, name), filepath.Join(links, showName, name)))
+	}
+	crossSeed, hash := crossSeedOf(r.t, s)
+	r.src.Seed(crossSeed, links)
+	return links, hash
+}
+
 // Over SSH qui does not see a hardlink, so a cross-seed on links to the
 // files stays on the source and keeps its data.
 func TestTransferLeavesAHardlinkedCrossSeedOverSSH(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
 	r.seed(s)
-	links := filepath.Join(r.srcDir, "links")
-	require.NoError(t, os.MkdirAll(filepath.Join(links, showName), 0o755))
-	for name := range s.files {
-		require.NoError(t, os.Link(filepath.Join(r.srcDir, showName, name), filepath.Join(links, showName, name)))
-	}
-	crossSeed, crossSeedHash := crossSeedOf(t, s)
-	r.src.Seed(crossSeed, links)
+	links, crossSeedHash := r.seedHardlinkedCrossSeed(s)
 
 	record := r.run(r.request(s))
 
@@ -244,6 +253,148 @@ func TestTransferLeavesAHardlinkedCrossSeedOverSSH(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 	require.True(t, r.seeding(r.source.ID, crossSeedHash))
 	require.Equal(t, contents(s, showName), tree(t, links))
+}
+
+// On qui's own disk, qui sees that a cross-seed reads the files through
+// hardlinks, so the cross-seed moves with the torrent. qui copies each file
+// once and links the path of the cross-seed to the copy where the target can
+// link, so the free space for one copy is enough. On one filesystem, both
+// paths link to the source. A target that cannot link gets a copy of each
+// path.
+func TestTransferMovesAHardlinkedCrossSeed(t *testing.T) {
+	const linkedLog = "2 files (70 B) are hardlinks of other files on seedbox, so qui copies them once and links them on homelab."
+	for _, tc := range []struct {
+		name            string
+		target          side
+		oneFilesystem   bool
+		noLinks         bool
+		free            int64
+		after           transfer.After
+		log             string
+		writtenFolders  []string
+		oneFileOnTarget bool
+	}{
+		{name: "a copy linked on the target", target: onDisk, free: 70, log: linkedLog,
+			writtenFolders: []string{showName}, oneFileOnTarget: true},
+		{name: "a copy linked over SFTP", target: overSFTP, log: linkedLog,
+			writtenFolders: []string{showName}, oneFileOnTarget: true},
+		{name: "links to the source on one filesystem", target: onDisk, oneFilesystem: true,
+			log: "Linking 4 files (140 B) on qui's own disk from seedbox to homelab.", oneFileOnTarget: true},
+		{name: "a copy of each path where the target cannot link", target: onDisk, noLinks: true, free: 140,
+			log:            "qui cannot link links/" + showName + "/Show.S01E01.mkv on homelab, so it copies the file",
+			writtenFolders: []string{showName, "links/" + showName}},
+		{name: "the kept files count once", target: onDisk, free: 70, after: transfer.AfterKeepFiles,
+			log: "Removed the 2 torrents from seedbox and kept their files: 70 B stay in use.", writtenFolders: []string{showName}, oneFileOnTarget: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, onDisk, tc.target)
+			r.disk.otherFilesystem = !tc.oneFilesystem
+			r.disk.noLinks = tc.noLinks
+			r.disk.free = tc.free
+			s := newShow(t, showName)
+			r.seed(s)
+			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+			sourceFiles := tree(t, r.srcDir)
+			req := r.request(s)
+			req.Options.After = tc.after
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Len(t, record.Members, 2)
+			require.Contains(t, logOf(record), tc.log)
+			written := map[string]bool{}
+			for _, folder := range tc.writtenFolders {
+				written[folder] = true
+			}
+			require.Equal(t, written, r.writtenFolders())
+			require.Equal(t, sourceFiles, tree(t, r.dstDir))
+			for name := range s.files {
+				require.Equal(t, tc.oneFileOnTarget, sameFile(t, filepath.Join(r.dstDir, showName, name), filepath.Join(r.dstDir, "links", showName, name)), name)
+			}
+			require.True(t, r.seeding(r.target.ID, s.hash))
+			require.True(t, r.seeding(r.target.ID, crossSeedHash))
+			require.False(t, r.src.Has(s.hash))
+			require.False(t, r.src.Has(crossSeedHash))
+			if tc.after == transfer.AfterKeepFiles {
+				require.Equal(t, sourceFiles, tree(t, r.srcDir))
+			} else {
+				require.Empty(t, tree(t, r.srcDir))
+			}
+		})
+	}
+}
+
+// A target that cannot link needs the free space for a second copy of a
+// hardlinked file. Without it, the Transfer stops, and qui removes what it
+// wrote.
+func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
+	r := newRigOn(t, onDisk, onDisk)
+	r.disk.otherFilesystem = true
+	r.disk.noLinks = true
+	r.disk.free = 100
+	s := newShow(t, showName)
+	r.seed(s)
+	_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+	sourceFiles := tree(t, r.srcDir)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, "Not enough free space on homelab: not enough free space on the target: the Transfer needs 40 B, and 30 B is free", record.FailureReason)
+	require.Empty(t, tree(t, r.dstDir))
+	require.Equal(t, sourceFiles, tree(t, r.srcDir))
+	require.True(t, r.seeding(r.source.ID, s.hash))
+	require.True(t, r.seeding(r.source.ID, crossSeedHash))
+}
+
+// A Transfer that resumes keeps the links that it made on the target, and
+// copies each file once.
+func TestTransferKeepsTheLinksOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
+	r := newRigOn(t, onDisk, onDisk)
+	r.disk.otherFilesystem = true
+	r.disk.free = 70
+	s := newShow(t, showName)
+	r.seed(s)
+	_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+	stop := sync.OnceFunc(r.cancel)
+	r.disk.onWrite = func(string) { stop() }
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	r.svc.Wait()
+	require.True(t, r.get(id).FinishedAt.IsZero(), "the stop keeps the Transfer unfinished")
+	r.restart()
+	r.svc.Wait()
+
+	record := r.get(id)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, map[string]bool{showName: true}, r.writtenFolders(), "qui writes no byte of the cross-seed")
+	for name := range s.files {
+		require.True(t, sameFile(t, filepath.Join(r.dstDir, showName, name), filepath.Join(r.dstDir, "links", showName, name)), name)
+	}
+	require.True(t, r.seeding(r.target.ID, crossSeedHash))
+	require.Empty(t, tree(t, r.srcDir))
+}
+
+// writtenFolders returns the folders below the root of the Transfer of the
+// files that the copy wrote.
+func (r *rig) writtenFolders() map[string]bool {
+	writes, _ := r.disk.log()
+	out := map[string]bool{}
+	for _, w := range writes {
+		out[path.Dir(filepath.ToSlash(w.name))] = true
+	}
+	return out
+}
+
+func sameFile(t *testing.T, a, b string) bool {
+	t.Helper()
+	ai, err := os.Stat(a)
+	require.NoError(t, err)
+	bi, err := os.Stat(b)
+	require.NoError(t, err)
+	return os.SameFile(ai, bi)
 }
 
 // Each running Transfer to a target holds its bytes of the free space there,

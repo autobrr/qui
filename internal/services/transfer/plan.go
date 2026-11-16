@@ -108,6 +108,12 @@ type groupFile struct {
 	// linked is set when the temporary file is a hardlink to the file on the
 	// source. qui never writes it.
 	linked bool
+	// hardlinkOf is an earlier file of the group that is this file on the
+	// source, through a hardlink.
+	hardlinkOf *groupFile
+	// linksCopy is set when the temporary file is a hardlink to the
+	// temporary file of hardlinkOf. qui never writes it.
+	linksCopy bool
 }
 
 // groupFiles lists each file of the members once, in the order of the copy.
@@ -143,10 +149,14 @@ func names(plan []file) []string {
 	return out
 }
 
+// diskBytes is the size of the files on the source, a file with hardlinks
+// once.
 func diskBytes(files []*groupFile) int64 {
 	var total int64
 	for _, f := range files {
-		total += f.size
+		if f.hardlinkOf == nil {
+			total += f.size
+		}
 	}
 	return total
 }

@@ -15,11 +15,14 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
-// matchSharedPath is the match type of the delete dialog that puts a torrent
-// in the Shared-file group: it reads a file at the same path. Over SSH the
-// dialog finds no hardlink, so a cross-seed on links stays on the source, and
-// its links keep the data.
-const matchSharedPath = "content_path"
+// The match types of the delete dialog that put a torrent in the group: it
+// reads a file at the same path, or a hardlink to a file. The dialog finds a
+// hardlink only on qui's own disk, so over SSH a cross-seed on links stays
+// on the source, and its links keep the data.
+const (
+	matchSharedPath = "content_path"
+	matchHardlink   = "hardlink"
+)
 
 // CrossSeeder adds a torrent through the existing routed cross-seed add:
 // on the Cross-seed instance of the instance that holds the matched torrent.
@@ -46,7 +49,7 @@ func (s *Service) groupOf(ctx context.Context, instanceID int, first *source) ([
 		frontier = nil
 		for _, m := range res.Matches {
 			hash := strings.ToLower(m.Hash)
-			if m.InstanceID != instanceID || seen[hash] || m.MatchType != matchSharedPath {
+			if m.InstanceID != instanceID || seen[hash] || (m.MatchType != matchSharedPath && m.MatchType != matchHardlink) {
 				continue
 			}
 			seen[hash] = true

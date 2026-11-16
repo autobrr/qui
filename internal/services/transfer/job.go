@@ -69,6 +69,7 @@ type job struct {
 	// Transfer torrent whose files qui cannot reach.
 	srcFiles fsops.Backend
 	blind    bool
+	dstFiles fsops.Backend
 	root     fsops.Root
 	// rootDir is the folder on the target that holds every member.
 	rootDir  string
@@ -180,41 +181,31 @@ func (j *job) prepare(ctx context.Context) error {
 			return temporary("qui cannot read the files of the Transfer source: %v", err)
 		}
 	}
-	var targetFiles fsops.Backend
 	j.blind = bitTorrent && models.FilesystemAccessMode(j.target) == models.FilesystemModeNone
 	if j.blind {
-		if targetFiles, err = j.svc.deps.Files.GetBackend(ctx, j.rec.TargetInstanceID); err != nil {
+		if j.dstFiles, err = j.svc.deps.Files.GetBackend(ctx, j.rec.TargetInstanceID); err != nil {
 			return temporary("qui cannot read the paths of the Transfer target: %v", err)
 		}
-	} else if targetFiles, j.target, err = j.svc.deps.Files.Require(ctx, j.rec.TargetInstanceID, models.CapabilityWriteBytes); err != nil {
+	} else if j.dstFiles, j.target, err = j.svc.deps.Files.Require(ctx, j.rec.TargetInstanceID, models.CapabilityWriteBytes); err != nil {
 		return temporary("qui cannot write the files of the Transfer target: %v", err)
 	}
 
-	if err := j.readParts(ctx, targetFiles.Paths()); err != nil {
+	if err := j.readParts(ctx, j.dstFiles.Paths()); err != nil {
 		return err
 	}
 	if !j.blind {
-		if err := j.openRoot(ctx, targetFiles, resumed); err != nil {
+		if err := j.openRoot(ctx, resumed); err != nil {
 			return err
 		}
 	}
 
-	need := copiedBytes(j.files)
-	for _, size := range j.made {
-		need -= size
-	}
+	need := j.need()
 	if j.reached(stepPlace) {
 		need = 0
 	}
-	free, known, err := j.freeSpace(ctx, targetFiles)
+	known, err := j.reserve(ctx, need)
 	if err != nil {
 		return err
-	}
-	if known {
-		if err := j.svc.reserve(j.target.ID, need, free); err != nil {
-			return permanent("Not enough free space on %s: %v", j.target.Name, err)
-		}
-		j.reserved = need
 	}
 	if !resumed {
 		j.logStart(ctx, need, known)
@@ -236,8 +227,8 @@ func (j *job) prepare(ctx context.Context) error {
 	return nil
 }
 
-func (j *job) openRoot(ctx context.Context, targetFiles fsops.Backend, resumed bool) error {
-	opener, ok := targetFiles.(fsops.RootOpener)
+func (j *job) openRoot(ctx context.Context, resumed bool) error {
+	opener, ok := j.dstFiles.(fsops.RootOpener)
 	if !ok {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
 	}
@@ -253,16 +244,16 @@ func (j *job) openRoot(ctx context.Context, targetFiles fsops.Backend, resumed b
 		return err
 	}
 	if j.rec.Way == WayLocal && !j.reached(stepPlace) {
-		return j.linkFiles(ctx, targetFiles)
+		return j.linkFiles(ctx, j.dstFiles)
 	}
 	return nil
 }
 
 // freeSpace is not known on a blind target before qBittorrent 5.3, which
 // reports it only at its default save path.
-func (j *job) freeSpace(ctx context.Context, targetFiles fsops.Backend) (free int64, known bool, err error) {
+func (j *job) freeSpace(ctx context.Context) (free int64, known bool, err error) {
 	if !j.blind {
-		stat, err := targetFiles.Statfs(ctx, j.rootDir)
+		stat, err := j.dstFiles.Statfs(ctx, j.rootDir)
 		if err != nil {
 			return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
 		}
@@ -279,7 +270,7 @@ func (j *job) freeSpace(ctx context.Context, targetFiles fsops.Backend) (free in
 	if err != nil {
 		return 0, false, temporary("qui cannot read the default save path of %s: %v", j.target.Name, err)
 	}
-	if d := targetFiles.Paths(); d.Clean(prefs.SavePath) != j.rootDir {
+	if d := j.dstFiles.Paths(); d.Clean(prefs.SavePath) != j.rootDir {
 		return 0, false, nil
 	}
 	if free, err = j.svc.deps.Sync.GetFreeSpace(ctx, j.target.ID); err != nil {
@@ -313,6 +304,9 @@ func (j *job) logStart(ctx context.Context, need int64, known bool) {
 	if linked > 0 {
 		j.logf("Linking %d files (%s) %s from %s to %s.", linked, formatBytes(size), how, j.source.Name, j.target.Name)
 	}
+	if n, size := j.hardlinkBytes(); n > 0 {
+		j.logf("%d files (%s) are hardlinks of other files on %s, so qui copies them once and links them on %s.", n, formatBytes(size), j.source.Name, j.target.Name)
+	}
 	if need > 0 || linked == 0 {
 		j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
 	}
@@ -336,6 +330,37 @@ func (j *job) hint(ctx context.Context) {
 // bittorrentTCPAndUTP is "TCP and μTP" in qBittorrent's "Peer connection
 // protocol".
 const bittorrentTCPAndUTP = 0
+
+// need is how many bytes the copy writes on the target: each file that the
+// target lacks, once.
+func (j *job) need() int64 {
+	var need int64
+	for _, f := range j.files {
+		size, made := j.made[f]
+		switch {
+		case f.onTarget || f.linked || f.linksCopy || j.linksCopyLater(f):
+		case made:
+			need += f.size - size
+		default:
+			need += f.size
+		}
+	}
+	return need
+}
+
+// reserve reserves bytes of the free space on the target for the run. It
+// reserves nothing, and reports false, when the free space is not known.
+func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
+	free, known, err := j.freeSpace(ctx)
+	if err != nil || !known {
+		return known, err
+	}
+	if err := j.svc.reserve(j.target.ID, bytes, free); err != nil {
+		return true, permanent("Not enough free space on %s: %v", j.target.Name, err)
+	}
+	j.reserved += bytes
+	return true, nil
+}
 
 // readParts reads each member on the source again, and places it below the
 // root of the Transfer on the target.
@@ -386,7 +411,7 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	if j.files, j.byRel, err = groupFiles(j.parts); err != nil {
 		return permanent("The torrents of the group do not agree on their files: %v", err)
 	}
-
+	j.findHardlinks(ctx)
 	return nil
 }
 

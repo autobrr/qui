@@ -143,6 +143,9 @@ func (j *job) copy(ctx context.Context) error {
 	if j.made == nil {
 		j.made = map[*groupFile]int64{}
 	}
+	if err := j.linkCopies(ctx); err != nil {
+		return err
+	}
 	runs, total := j.runs()
 	conns, err := c.connections(ctx, total)
 	if err != nil {
@@ -245,26 +248,34 @@ func (c *copier) create(ctx context.Context, tasks []task) error {
 		if _, made := c.j.made[f]; made || f.onTarget || f.size > 0 && !written[f] {
 			continue
 		}
-		name := c.j.tempName(f.rel)
-		w, err := c.j.root.Create(ctx, name)
+		if err := c.j.createTemp(ctx, f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// createTemp creates the temporary file of f on the target.
+func (j *job) createTemp(ctx context.Context, f *groupFile) error {
+	name := j.tempName(f.rel)
+	w, err := j.root.Create(ctx, name)
+	if err != nil {
+		return permanent("qui cannot create %s on %s: %v", name, j.target.Name, err)
+	}
+	j.made[f] = 0
+	if f.size == 0 {
+		confirmed, err := w.Flush()
 		if err != nil {
-			return permanent("qui cannot create %s on %s: %v", name, c.target, err)
+			_ = w.Close()
+			return temporary("qui cannot flush %s on %s: %v", f.rel, j.target.Name, err)
 		}
-		c.j.made[f] = 0
-		if f.size == 0 {
-			confirmed, err := w.Flush()
-			if err != nil {
-				_ = w.Close()
-				return temporary("qui cannot flush %s on %s: %v", f.rel, c.target, err)
-			}
-			if err := c.j.recordFlush(ctx, confirmed); err != nil {
-				_ = w.Close()
-				return err
-			}
+		if err := j.recordFlush(ctx, confirmed); err != nil {
+			_ = w.Close()
+			return err
 		}
-		if err := w.Close(); err != nil {
-			return temporary("qui cannot close %s on %s: %v", f.rel, c.target, err)
-		}
+	}
+	if err := w.Close(); err != nil {
+		return temporary("qui cannot close %s on %s: %v", f.rel, j.target.Name, err)
 	}
 	return nil
 }
@@ -470,7 +481,7 @@ func (j *job) writes(p *part, s segment) bool {
 		return false
 	}
 	g := j.byRel[p.rel(f)]
-	return g.owner == p && !g.linked
+	return g.owner == p && !g.linked && !g.linksCopy
 }
 
 func (s *stream) write(ctx context.Context, p *part, seg segment, data []byte) error {
