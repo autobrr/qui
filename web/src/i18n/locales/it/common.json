@@ -59,6 +59,7 @@
     "smartSearchEnter": "Premi Invio per la ricerca istantanea",
     "smartSearchAuto": "Ricerca automatica dopo una pausa di 500ms",
     "smartSearchShortcut": "Premi {{shortcutKey}} per andare alla ricerca",
+    "smartSearchPalette": "Premi {{shortcutKey}} per aprire la tavolozza dei comandi",
     "torrentCreationTasksTitle": "Attività di creazione torrent",
     "updateAvailable": "Aggiornamento disponibile",
     "updateVersion": "Versione {{version}}",
@@ -76,6 +77,33 @@
     "collapseScope": "Comprimi ambito unificato",
     "expandScope": "Espandi ambito unificato",
     "allActive": "Tutti gli attivi ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Tavolozza dei comandi",
+    "placeholder": "Cerca pagine, impostazioni e torrent...",
+    "placeholderIn": "Cerca in {{name}}...",
+    "groups": {
+      "pages": "Pagine",
+      "actions": "Azioni"
+    },
+    "current": "Attuale",
+    "statisticsNote": "Cronologia di upload e download delle tue istanze",
+    "searchTorrentsFor": "Cerca \"{{query}}\" nei torrent",
+    "torrentMatches_one": "{{count}} torrent corrisponde",
+    "torrentMatches_other": "{{count}} torrent corrispondono",
+    "noTorrentMatches": "Nessun torrent corrisponde",
+    "searching": "Ricerca in corso...",
+    "searchFailed": "La ricerca dei torrent non è riuscita",
+    "listFiltersApply": "Si applicano i filtri dell'elenco",
+    "noMatchIn": "Nessun risultato in {{name}}",
+    "moreOf": "Altre opzioni per {{name}}",
+    "hints": {
+      "navigate": "Naviga",
+      "open": "Apri",
+      "more": "Altro",
+      "searchTorrents": "Cerca torrent",
+      "back": "Indietro"
+    }
   },
   "mobileNav": {
     "dashboard": "Dashboard",

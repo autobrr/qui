@@ -59,6 +59,7 @@
     "smartSearchEnter": "Enter를 눌러 즉시 검색",
     "smartSearchAuto": "500ms 일시정지 후 자동 검색",
     "smartSearchShortcut": "{{shortcutKey}}를 눌러 검색창으로 이동",
+    "smartSearchPalette": "{{shortcutKey}}를 눌러 명령 팔레트 열기",
     "torrentCreationTasksTitle": "토렌트 생성 작업",
     "updateAvailable": "업데이트 사용 가능",
     "updateVersion": "버전 {{version}}",
@@ -76,6 +77,32 @@
     "collapseScope": "통합 범위 접기",
     "expandScope": "통합 범위 펼치기",
     "allActive": "모두 활성 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "명령 팔레트",
+    "placeholder": "페이지, 설정, 토렌트 검색...",
+    "placeholderIn": "{{name}}에서 검색...",
+    "groups": {
+      "pages": "페이지",
+      "actions": "작업"
+    },
+    "current": "현재",
+    "statisticsNote": "인스턴스의 업로드 및 다운로드 기록",
+    "searchTorrentsFor": "\"{{query}}\" 토렌트 검색",
+    "torrentMatches_other": "일치하는 토렌트 {{count}}개",
+    "noTorrentMatches": "일치하는 토렌트 없음",
+    "searching": "검색 중...",
+    "searchFailed": "토렌트 검색에 실패했습니다",
+    "listFiltersApply": "목록 필터 적용됨",
+    "noMatchIn": "{{name}}에 일치하는 항목 없음",
+    "moreOf": "{{name}} 더 보기",
+    "hints": {
+      "navigate": "이동",
+      "open": "열기",
+      "more": "더 보기",
+      "searchTorrents": "토렌트 검색",
+      "back": "뒤로"
+    }
   },
   "mobileNav": {
     "dashboard": "대시보드",

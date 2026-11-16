@@ -4,6 +4,7 @@
  */
 
 import { Outlet } from "@tanstack/react-router"
+import { CommandPalette } from "@/components/command-palette/CommandPalette"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
@@ -72,6 +73,8 @@ function AppLayoutContent() {
 
       {/* Mobile Footer Navigation */}
       <MobileFooterNav />
+
+      <CommandPalette />
     </div>
   )
 }

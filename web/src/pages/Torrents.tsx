@@ -108,6 +108,13 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
   const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
+  // A selection belongs to its instance. Clear it in the render that changes the instance, not in an effect:
+  // the deep-link effect would see the torrent of the old instance as selected on the new one and drop the link.
+  const [selectionInstanceId, setSelectionInstanceId] = useState(instanceId)
+  if (selectionInstanceId !== instanceId) {
+    setSelectionInstanceId(instanceId)
+    setSelectedTorrent(null)
+  }
   const [initialDetailsTab, setInitialDetailsTab] = useState<string | undefined>(undefined)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
@@ -150,17 +157,21 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }))
   }, [getTorrentInstanceId, isAllInstances, openMobileDetails])
 
-  // Handle deep link to a specific torrent (from cross-seed navigation)
+  // Handle deep link to a specific torrent (from cross-seed navigation or the command palette)
   useEffect(() => {
     if (!search.torrent) return
-    // Already selected (mobile keeps the hash in the URL); nothing to fetch
+    const clearDeepLinkParams = () => onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
+    // Already selected; nothing to fetch. Mobile keeps the hash in the URL. On the desktop, a link
+    // left in the URL would select the torrent again after the user closes its details.
     if (
       selectedTorrent?.hash === search.torrent &&
       (!search.instance || getTorrentInstanceId(selectedTorrent) === search.instance)
-    ) return
+    ) {
+      if (!isMobile) clearDeepLinkParams()
+      return
+    }
     let cancelled = false
 
-    const clearDeepLinkParams = () => onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
     const hash = search.torrent
     const tab = search.tab
     const escapedHash = hash.replaceAll("\"", "\\\"")
@@ -350,14 +361,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   }, [closeMobileDetails, isMobile, isSameTorrent, pushMobileDetailsEntry, selectedTorrent])
 
   const swipeToClose = useSwipeToClose(closeMobileDetails)
-
-  // Clear selected torrent and mark data as potentially stale when instance changes
-  // Don't immediately clear torrentCounts/categories/tags to prevent showing 0 values
-  useEffect(() => {
-    setSelectedTorrent(null) // Clear selected torrent immediately
-    // Note: We keep torrentCounts/categories/tags until new data arrives to prevent flickering zeros
-    // The TorrentTableOptimized callback will only update when complete data is available
-  }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, tags, and useSubcategories from backend
   const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean, trackerHealthEnabled?: boolean) => {

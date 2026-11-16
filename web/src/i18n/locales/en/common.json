@@ -59,6 +59,7 @@
     "smartSearchEnter": "Press Enter for instant search",
     "smartSearchAuto": "Auto-searches after 500ms pause",
     "smartSearchShortcut": "Press {{shortcutKey}} to focus search",
+    "smartSearchPalette": "Press {{shortcutKey}} to open the command palette",
     "torrentCreationTasksTitle": "Torrent Creation Tasks",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
@@ -76,6 +77,33 @@
     "collapseScope": "Collapse unified scope",
     "expandScope": "Expand unified scope",
     "allActive": "All active ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Search pages, settings and torrents...",
+    "placeholderIn": "Search {{name}}...",
+    "groups": {
+      "pages": "Pages",
+      "actions": "Actions"
+    },
+    "current": "Current",
+    "statisticsNote": "Upload and download history of your instances",
+    "searchTorrentsFor": "Search torrents for \"{{query}}\"",
+    "torrentMatches_one": "{{count}} torrent matches",
+    "torrentMatches_other": "{{count}} torrents match",
+    "noTorrentMatches": "No torrent matches",
+    "searching": "Searching...",
+    "searchFailed": "The torrent search failed",
+    "listFiltersApply": "List filters apply",
+    "noMatchIn": "Nothing in {{name}} matches",
+    "moreOf": "More for {{name}}",
+    "hints": {
+      "navigate": "Navigate",
+      "open": "Open",
+      "more": "More",
+      "searchTorrents": "Search torrents",
+      "back": "Back"
+    }
   },
   "mobileNav": {
     "dashboard": "Dashboard",

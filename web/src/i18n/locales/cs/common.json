@@ -59,6 +59,7 @@
     "smartSearchEnter": "Stiskněte Enter pro okamžité hledání",
     "smartSearchAuto": "Automaticky hledá po 500ms pauze",
     "smartSearchShortcut": "Stiskněte {{shortcutKey}} pro přechod do hledání",
+    "smartSearchPalette": "Stiskněte {{shortcutKey}} pro otevření palety příkazů",
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
@@ -76,6 +77,34 @@
     "collapseScope": "Sbalit unifikovaný rozsah",
     "expandScope": "Rozbalit unifikovaný rozsah",
     "allActive": "Všechny aktivní ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Paleta příkazů",
+    "placeholder": "Hledat stránky, nastavení a torrenty...",
+    "placeholderIn": "{{name}}: hledat...",
+    "groups": {
+      "pages": "Stránky",
+      "actions": "Akce"
+    },
+    "current": "Aktuální",
+    "statisticsNote": "Historie odeslaných a stažených dat vašich instancí",
+    "searchTorrentsFor": "Hledat torrenty: \"{{query}}\"",
+    "torrentMatches_one": "Odpovídá {{count}} torrent",
+    "torrentMatches_few": "Odpovídají {{count}} torrenty",
+    "torrentMatches_other": "Odpovídá {{count}} torrentů",
+    "noTorrentMatches": "Neodpovídá žádný torrent",
+    "searching": "Hledání...",
+    "searchFailed": "Hledání torrentů selhalo",
+    "listFiltersApply": "Platí filtry seznamu",
+    "noMatchIn": "{{name}}: žádná shoda",
+    "moreOf": "{{name}}: další možnosti",
+    "hints": {
+      "navigate": "Procházet",
+      "open": "Otevřít",
+      "more": "Další",
+      "searchTorrents": "Hledat torrenty",
+      "back": "Zpět"
+    }
   },
   "mobileNav": {
     "dashboard": "Domů",
