@@ -6,6 +6,7 @@ package transferhistory
 import (
 	"cmp"
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -24,8 +25,9 @@ const minReadingInterval = 50 * time.Second
 // qbittorrent.ClientPool.AddSyncEventSink and with
 // qbittorrent.SyncManager.SetDeleteNoter.
 type Adapter struct {
-	module *Module
-	sync   *qbittorrent.SyncManager
+	module  *Module
+	sync    *qbittorrent.SyncManager
+	helpers helperTorrents
 
 	mu        sync.Mutex
 	instances map[int]*adapterInstance
@@ -56,6 +58,18 @@ type adapterInstance struct {
 
 func NewAdapter(module *Module, syncManager *qbittorrent.SyncManager) *Adapter {
 	return &Adapter{module: module, sync: syncManager, instances: make(map[int]*adapterInstance)}
+}
+
+// helperTorrents is the helper registry: it names the torrents that qui added
+// for a Transfer or a Share. A tag proves nothing.
+type helperTorrents interface {
+	IsHelper(instanceID int, hash string) bool
+}
+
+// SetHelperTorrents leaves the helper torrents out of each reading. Call it
+// one time at start-up, before the first sync.
+func (a *Adapter) SetHelperTorrents(helpers helperTorrents) {
+	a.helpers = helpers
 }
 
 func (a *Adapter) instance(instanceID int) *adapterInstance {
@@ -207,6 +221,9 @@ func (inst *adapterInstance) start(now, builtAt time.Time) (failedSince time.Tim
 func (a *Adapter) record(b readingBuild) {
 	instanceID := b.instanceID
 	torrents := b.update.Snapshot.Torrents()
+	if a.helpers != nil {
+		torrents = slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return a.helpers.IsHelper(instanceID, t.Hash) })
+	}
 	facts := a.sync.TorrentFactsOf(instanceID, torrents, b.update.Trackers)
 	reading := Reading{
 		InstanceID: instanceID, Time: b.now, FailedSince: b.failedSince, Torrents: make([]Torrent, len(torrents)),
