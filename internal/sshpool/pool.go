@@ -328,7 +328,7 @@ func (p *Pool) grow(ctx context.Context, inst *models.Instance, entry *entry, wa
 	entry.extras = append(entry.extras, opened...)
 	for _, x := range opened {
 		done := make(chan struct{})
-		//nolint:gosec // G118: the watcher outlives the request that opened the connection by design
+		//nolint:gosec,contextcheck // G118: the watcher outlives the request that opened the connection by design
 		go entry.watchExtra(inst.ID, x, done)
 		go x.keepalive(inst.ID, done, keepaliveInterval)
 		go func() {

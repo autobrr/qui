@@ -315,13 +315,7 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	}
 	defer func() { _ = sshConn.Close() }()
 
-	s.mu.Lock()
-	full := s.maxConns > 0 && len(s.live) >= s.maxConns
-	if !full {
-		s.live[sshConn] = struct{}{}
-	}
-	s.mu.Unlock()
-	if full {
+	if !s.admit(sshConn) {
 		return
 	}
 	defer func() {
@@ -397,6 +391,18 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 			s.handleSession(sshConn, channel, requests, stalled)
 		})
 	}
+}
+
+// admit records conn as live, or reports false when SetMaxConnections allows
+// no more.
+func (s *Server) admit(conn *ssh.ServerConn) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.maxConns > 0 && len(s.live) >= s.maxConns {
+		return false
+	}
+	s.live[conn] = struct{}{}
+	return true
 }
 
 func (s *Server) handleSession(conn *ssh.ServerConn, channel ssh.Channel, requests <-chan *ssh.Request, stalled <-chan struct{}) {
