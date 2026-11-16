@@ -64,12 +64,14 @@ func newShow(t *testing.T, name string) show {
 
 // disk is qui's own disk. Its switches imitate a target that cannot confirm
 // a flush, that cannot make a hardlink, that damages a byte, that has little
-// free space, or that a test watches during the copy.
+// free space, that is on another filesystem than the source, or that a test
+// watches during the copy.
 type disk struct {
 	*local.Backend
-	free        int64
-	unconfirmed bool
-	noLinks     bool
+	free            int64
+	unconfirmed     bool
+	noLinks         bool
+	otherFilesystem bool
 	// damage flips the byte at an offset of the file with this final name.
 	damage  map[string]int64
 	onWrite func(name string)
@@ -98,6 +100,13 @@ func (d *disk) Statfs(ctx context.Context, path string) (*fsops.StatfsResult, er
 	return d.Backend.Statfs(ctx, path)
 }
 
+func (d *disk) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {
+	if d.otherFilesystem {
+		return false, nil
+	}
+	return d.Backend.SameFilesystem(ctx, p1, p2)
+}
+
 func (d *disk) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
 	root, err := d.Backend.OpenRoot(ctx, dir)
 	if err != nil {
@@ -109,6 +118,21 @@ func (d *disk) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
 type diskRoot struct {
 	fsops.Root
 	d *disk
+}
+
+// sftpFiles is an instance over SFTP whose writes the disk records and
+// watches like its own.
+type sftpFiles struct {
+	*remote.Backend
+	d *disk
+}
+
+func (f *sftpFiles) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
+	root, err := f.Backend.OpenRoot(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	return &diskRoot{Root: root, d: f.d}, nil
 }
 
 func (r *diskRoot) Create(ctx context.Context, name string) (fsops.FileWriter, error) {
@@ -164,25 +188,28 @@ func (w *diskWriter) Flush() (bool, error) {
 	return confirmed && !w.d.unconfirmed, err
 }
 
-// rig is a Transfer source on a seedbox that qui reaches over SFTP, and a
-// Transfer target on qui's own disk, each with a stub qBittorrent.
+// rig is a Transfer source and a Transfer target, each with a stub
+// qBittorrent. newRig puts the source on a seedbox that qui reaches over
+// SFTP, and the target on qui's own disk.
 type rig struct {
 	t         *testing.T
 	instances *models.InstanceStore
 	store     *transfer.Store
 	sync      *qbittorrent.SyncManager
 	src, dst  *qbtstub.Server
-	ssh       *sshtest.Server
-	srcDir    string
-	dstDir    string
-	source    *models.Instance
-	target    *models.Instance
-	disk      *disk
-	db        *database.DB
-	dbPath    string
-	deps      transfer.Deps
-	svc       *transfer.Service
-	cancel    context.CancelFunc
+	// ssh serves the files of the source, and dstSSH those of a target that
+	// qui reaches over SFTP.
+	ssh, dstSSH *sshtest.Server
+	srcDir      string
+	dstDir      string
+	source      *models.Instance
+	target      *models.Instance
+	disk        *disk
+	db          *database.DB
+	dbPath      string
+	deps        transfer.Deps
+	svc         *transfer.Service
+	cancel      context.CancelFunc
 
 	clockMu sync.Mutex
 	clockAt time.Time
@@ -205,7 +232,20 @@ func (r *rig) setClock(at time.Time) {
 
 var clock = time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
 
+// side is where qui reaches the files of an instance of the rig.
+type side int
+
+const (
+	overSFTP side = iota
+	onDisk
+)
+
 func newRig(t *testing.T, options ...func(*transfer.Config)) *rig {
+	t.Helper()
+	return newRigOn(t, overSFTP, onDisk, options...)
+}
+
+func newRigOn(t *testing.T, source, target side, options ...func(*transfer.Config)) *rig {
 	t.Helper()
 	srcDir, dstDir := t.TempDir(), t.TempDir()
 	dbPath := testdb.CloneMigratedSQLite(t, "transfer-service")
@@ -214,14 +254,13 @@ func newRig(t *testing.T, options ...func(*transfer.Config)) *rig {
 	r.src, r.dst = qbtstub.New(t, srcDir), qbtstub.New(t, dstDir)
 	r.dst.HashCheck = true
 	r.ssh = sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecSFTPOnly)
+	r.dstSSH = sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecSFTPOnly)
 	r.db = openDB(t, dbPath)
 	r.deps, r.instances, r.sync = wire(t, r.db, r.disk, r.now)
 	r.store = r.deps.Store
 
-	r.source = r.sshInstance("seedbox", r.src.URL)
-	var err error
-	r.target, err = r.instances.Create(t.Context(), "homelab", r.dst.URL, "", "", nil, nil, false, new(true))
-	require.NoError(t, err)
+	r.source = r.instanceOn(source, r.ssh, "seedbox", r.src.URL)
+	r.target = r.instanceOn(target, r.dstSSH, "homelab", r.dst.URL)
 	for _, option := range options {
 		option(&r.deps.Config)
 	}
@@ -248,15 +287,19 @@ func wire(t *testing.T, db *database.DB, d *disk, now func() time.Time) (transfe
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 	sshPool := sshpool.NewPool(sshpool.NewDialer(instances))
 	t.Cleanup(sshPool.Close)
-	files := fsops.NewPoolWithRemote(instances, d, func(inst *models.Instance) fsops.Backend { return remote.New(sshPool, inst) })
+	files := fsops.NewPoolWithRemote(instances, d, func(inst *models.Instance) fsops.Backend {
+		return &sftpFiles{Backend: remote.New(sshPool, inst), d: d}
+	})
 	store, err := transfer.NewStore(t.Context(), db)
 	require.NoError(t, err)
+	groups := crossseed.NewService(instances, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
+	groups.SetBackendPool(files)
 	return transfer.Deps{
 		Store:     store,
 		Instances: instances,
 		Sync:      syncManager,
 		Files:     files,
-		Groups:    crossseed.NewService(instances, syncManager, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil),
+		Groups:    groups,
 		Now:       now,
 		Config: transfer.Config{Polls: 20, CheckPolls: 20, PollInterval: time.Millisecond, FlushBytes: 32,
 			Reconnects: 20, ReconnectWait: time.Millisecond},
@@ -280,21 +323,43 @@ func (r *rig) restart() {
 	r.start()
 }
 
-// sshInstance adds an instance whose files qui reaches on the SSH server.
+// sshInstance adds an instance whose files qui reaches on the SSH server of
+// the source.
 func (r *rig) sshInstance(name, url string) *models.Instance {
+	r.t.Helper()
+	return r.sshInstanceOn(r.ssh, name, url)
+}
+
+func (r *rig) sshInstanceOn(server *sshtest.Server, name, url string) *models.Instance {
 	r.t.Helper()
 	ctx := r.t.Context()
 	inst, err := r.instances.Create(ctx, name, url, "", "", nil, nil, false, new(false))
 	require.NoError(r.t, err)
-	host, portText, err := net.SplitHostPort(r.ssh.Addr)
+	host, portText, err := net.SplitHostPort(server.Addr)
 	require.NoError(r.t, err)
 	port, err := strconv.Atoi(portText)
 	require.NoError(r.t, err)
 	require.NoError(r.t, r.instances.SetSSHCredentials(ctx, inst.ID, host, port, "qui", sshtest.PrivateKey("")))
-	require.NoError(r.t, r.instances.SetHostKeyPin(ctx, inst.ID, host, port, r.ssh.HostKey.Marshal()))
+	require.NoError(r.t, r.instances.SetHostKeyPin(ctx, inst.ID, host, port, server.HostKey.Marshal()))
 	inst, err = r.instances.Get(ctx, inst.ID)
 	require.NoError(r.t, err)
 	return inst
+}
+
+// localInstance adds an instance whose files are on qui's own disk.
+func (r *rig) localInstance(name, url string) *models.Instance {
+	r.t.Helper()
+	inst, err := r.instances.Create(r.t.Context(), name, url, "", "", nil, nil, false, new(true))
+	require.NoError(r.t, err)
+	return inst
+}
+
+func (r *rig) instanceOn(where side, server *sshtest.Server, name, url string) *models.Instance {
+	r.t.Helper()
+	if where == overSFTP {
+		return r.sshInstanceOn(server, name, url)
+	}
+	return r.localInstance(name, url)
 }
 
 // seed writes the files of a torrent in the folder of the source and seeds
@@ -468,11 +533,13 @@ func TestTransferRefuses(t *testing.T) {
 			req.TargetInstanceID = r.source.ID
 			return req
 		}, reason: "The Transfer source and the Transfer target are the same instance."},
-		{name: "a target that qui reaches over SSH", setup: func(r *rig, s show) transfer.Request {
+		{name: "a target without file access", setup: func(r *rig, s show) transfer.Request {
+			other, err := r.instances.Create(t.Context(), "other client", r.dst.URL, "", "", nil, nil, false, new(false))
+			require.NoError(t, err)
 			req := r.request(s)
-			req.TargetInstanceID = r.sshInstance("other seedbox", r.dst.URL).ID
+			req.TargetInstanceID = other.ID
 			return req
-		}, reason: "For now, a Transfer needs SSH access to seedbox and other seedbox on qui's own disk."},
+		}, reason: "For now, a Transfer needs file access to other client, on qui's own disk or over SSH."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t)

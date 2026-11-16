@@ -140,6 +140,7 @@ type Server struct {
 	latency        time.Duration
 	maxConns       int
 	fsync          bool
+	renameRefuses  bool
 	sftpMode       SFTPMode
 	dials          int
 	auths          int
@@ -470,9 +471,10 @@ func (s *Server) serveSFTP(conn *ssh.ServerConn, channel ssh.Channel) {
 	s.mu.Lock()
 	latency := s.latency
 	cutter.fsync = s.fsync
+	renameRefuses := s.renameRefuses
 	s.mu.Unlock()
-	if cutter.fsync {
-		cutter.Channel = &fsyncAnswerer{Channel: channel}
+	if cutter.fsync || renameRefuses {
+		cutter.Channel = &requestRewriter{Channel: channel, fsync: cutter.fsync, renameRefuses: renameRefuses}
 	}
 	if latency > 0 {
 		cutter.latency = newLatencyWriter(channel, latency, s, &s.wg)
@@ -686,6 +688,16 @@ func (s *Server) SetMaxConnections(n int) {
 func (s *Server) SetFsync(advertise bool) {
 	s.mu.Lock()
 	s.fsync = advertise
+	s.mu.Unlock()
+}
+
+// SetRenameNoReplace sets whether sftp sessions opened from now on refuse a
+// plain rename onto a name that exists, as OpenSSH and ProFTPD do. Off, the
+// rename replaces the file, as pkg/sftp and SFTPGo 2.7.6 do. It applies to
+// the modes that serve the host file system.
+func (s *Server) SetRenameNoReplace(refuse bool) {
+	s.mu.Lock()
+	s.renameRefuses = refuse
 	s.mu.Unlock()
 }
 
@@ -995,16 +1007,20 @@ func (c *latencyWriter) close() {
 	c.once.Do(func() { close(c.done) })
 }
 
-// fsyncAnswerer reads the client's requests one whole packet at a time and
-// rewrites each fsync@openssh.com request into an fsetstat that sets nothing,
-// because pkg/sftp's server refuses the fsync. The server then checks the
-// handle and answers OK under the request's id.
-type fsyncAnswerer struct {
+// requestRewriter reads the client's requests one whole packet at a time
+// and rewrites the ones that pkg/sftp's server answers differently from the
+// server a test imitates. With fsync, it rewrites each fsync@openssh.com
+// request into an fsetstat that sets nothing, because pkg/sftp's server
+// refuses the fsync: the server then checks the handle and answers OK under
+// the request's id. With renameRefuses, it rewrites a rename onto a name that
+// exists into a mkdir of that name, which fails and changes nothing.
+type requestRewriter struct {
 	ssh.Channel
-	pending []byte
+	fsync, renameRefuses bool
+	pending              []byte
 }
 
-func (c *fsyncAnswerer) Read(p []byte) (int, error) {
+func (c *requestRewriter) Read(p []byte) (int, error) {
 	if len(c.pending) == 0 {
 		var header [4]byte
 		if _, err := io.ReadFull(c.Channel, header[:]); err != nil {
@@ -1017,7 +1033,7 @@ func (c *fsyncAnswerer) Read(p []byte) (int, error) {
 			return 0, err
 		}
 		c.pending = packet
-		if handle, ok := fsyncHandle(body); ok {
+		if handle, ok := fsyncHandle(body); ok && c.fsync {
 			// SSH_FXP_FSETSTAT: id, handle, and attribute flags of zero.
 			c.pending = binary.BigEndian.AppendUint32(nil, uint32(1+4+len(handle)+4))
 			c.pending = append(c.pending, 10)
@@ -1025,10 +1041,55 @@ func (c *fsyncAnswerer) Read(p []byte) (int, error) {
 			c.pending = append(c.pending, handle...)
 			c.pending = binary.BigEndian.AppendUint32(c.pending, 0)
 		}
+		if newPath, ok := renameTarget(body); ok && c.renameRefuses && exists(newPath) {
+			// SSH_FXP_MKDIR: id, path, and attribute flags of zero.
+			c.pending = binary.BigEndian.AppendUint32(nil, uint32(1+4+4+len(newPath)+4))
+			c.pending = append(c.pending, 14)
+			c.pending = append(c.pending, body[1:5]...)
+			c.pending = binary.BigEndian.AppendUint32(c.pending, uint32(len(newPath)))
+			c.pending = append(c.pending, newPath...)
+			c.pending = binary.BigEndian.AppendUint32(c.pending, 0)
+		}
 	}
 	n := copy(p, c.pending)
 	c.pending = c.pending[n:]
 	return n, nil
+}
+
+// renameTarget returns the new path of an SSH_FXP_RENAME request.
+func renameTarget(body []byte) (string, bool) {
+	// SSH_FXP_RENAME: type, id, old path, new path.
+	if len(body) < 5 || body[0] != 18 {
+		return "", false
+	}
+	_, rest, ok := sftpString(body[5:])
+	if !ok {
+		return "", false
+	}
+	newPath, _, ok := sftpString(rest)
+	return newPath, ok
+}
+
+// sftpString reads a string of the sftp wire format, a length and the bytes.
+func sftpString(b []byte) (string, []byte, bool) {
+	if len(b) < 4 {
+		return "", nil, false
+	}
+	n := binary.BigEndian.Uint32(b)
+	if uint64(len(b)-4) < uint64(n) {
+		return "", nil, false
+	}
+	return string(b[4 : 4+n]), b[4+n:], true
+}
+
+// exists reports whether a path that pkg/sftp's server receives names a
+// file on the host. The server prefixes a drive path with / on Windows.
+func exists(p string) bool {
+	if native := strings.TrimPrefix(p, "/"); filepath.VolumeName(native) != "" {
+		p = native
+	}
+	_, err := os.Lstat(filepath.FromSlash(p))
+	return err == nil
 }
 
 // fsyncHandle returns the handle of an fsync@openssh.com request in its wire

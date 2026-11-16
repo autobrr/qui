@@ -10,6 +10,7 @@ import (
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
 	"io"
+	"io/fs"
 	"math/bits"
 	"slices"
 	"sync"
@@ -71,11 +72,10 @@ type copier struct {
 	// window is how many bytes a stream reads at once.
 	window int64
 
-	// mu guards confirmed and the Proven pieces of the parts.
-	mu sync.Mutex
-	// confirmed is false once a flush was not confirmed.
-	confirmed bool
-	checks    sync.Mutex
+	// mu guards the Proven pieces of the parts, the flush state, and the
+	// count of flushed pieces.
+	mu     sync.Mutex
+	checks sync.Mutex
 }
 
 // stream copies its tasks on one connection to the source.
@@ -93,18 +93,22 @@ type stream struct {
 	confirmed bool
 }
 
-// copyAll copies the pieces that are not Proven pieces. After a dropped
-// connection it goes on with the pieces that are still missing, until
-// Config.Reconnects drops in a row proved no piece.
+// copyAll copies the pieces that are not Proven pieces, and on a target
+// that confirmed no flush, the pieces that fail a check of the partial
+// files. After a dropped connection it goes on with the pieces that are
+// still missing, until Config.Reconnects drops in a row flushed no piece.
 func (j *job) copyAll(ctx context.Context) error {
 	cfg := j.svc.deps.Config
 	for drops := 0; ; {
-		before := j.provenCount()
+		if err := j.checkPartials(ctx); err != nil {
+			return err
+		}
+		before := j.flushedPieces
 		err := j.copy(ctx)
 		if err == nil || !errors.Is(err, fsops.ErrConnectionLost) {
 			return err
 		}
-		if j.provenCount() > before {
+		if j.flushedPieces > before {
 			drops = 0
 		}
 		if drops++; drops > cfg.Reconnects {
@@ -117,14 +121,6 @@ func (j *job) copyAll(ctx context.Context) error {
 		case <-time.After(cfg.ReconnectWait):
 		}
 	}
-}
-
-func (j *job) provenCount() int {
-	n := 0
-	for _, p := range j.parts {
-		n += provenCount(p.ProvenPieces)
-	}
-	return n
 }
 
 func provenCount(proven []byte) int {
@@ -143,7 +139,7 @@ func provenCount(proven []byte) int {
 // copy splits the pieces into one range for each connection to the source,
 // and reads many files at once.
 func (j *job) copy(ctx context.Context) error {
-	c := &copier{j: j, source: j.source.Name, target: j.target.Name, files: make(chan struct{}, maxFiles), confirmed: true}
+	c := &copier{j: j, source: j.source.Name, target: j.target.Name, files: make(chan struct{}, maxFiles)}
 	if j.made == nil {
 		j.made = map[*groupFile]int64{}
 	}
@@ -173,16 +169,12 @@ func (j *job) copy(ctx context.Context) error {
 	if err := c.check(ctx); err != nil {
 		return err
 	}
-	j.rec.FlushState = FlushConfirmed
-	if !c.confirmed {
-		j.rec.FlushState = FlushUnconfirmed
-	}
 	return j.checkSourceSizes(ctx)
 }
 
 // runs lists the runs of pieces that the copy copies: the pieces that are
-// not Proven pieces and hold a file that their member writes. total is their
-// bytes.
+// not Proven pieces, did not pass the check of the partial files, and hold a
+// file that their member writes. total is their bytes.
 func (j *job) runs() (runs []task, total int64) {
 	for _, p := range j.parts {
 		info := p.src.info
@@ -191,7 +183,7 @@ func (j *job) runs() (runs []task, total int64) {
 		for piece := range info.NumPieces() {
 			start := int64(piece) * info.PieceLength
 			length := min(info.PieceLength, info.TotalLength()-start)
-			if p.isProven(piece) || !slices.ContainsFunc(p.segments(start, length), func(s segment) bool { return j.writes(p, s) }) {
+			if p.isProven(piece) || p.isChecked(piece) || !slices.ContainsFunc(p.segments(start, length), func(s segment) bool { return j.writes(p, s) }) {
 				continue
 			}
 			total += length
@@ -265,7 +257,10 @@ func (c *copier) create(ctx context.Context, tasks []task) error {
 				_ = w.Close()
 				return temporary("qui cannot flush %s on %s: %v", f.rel, c.target, err)
 			}
-			c.confirmed = c.confirmed && confirmed
+			if err := c.j.recordFlush(ctx, confirmed); err != nil {
+				_ = w.Close()
+				return err
+			}
 		}
 		if err := w.Close(); err != nil {
 			return temporary("qui cannot close %s on %s: %v", f.rel, c.target, err)
@@ -274,13 +269,19 @@ func (c *copier) create(ctx context.Context, tasks []task) error {
 	return nil
 }
 
-// prove records the pieces that a checkpoint flushed as Proven pieces, when
-// the target confirmed every flush.
+// prove records whether the target confirmed the flushes of a checkpoint,
+// and the pieces that the checkpoint flushed as Proven pieces when it did.
 func (c *copier) prove(ctx context.Context, pending []copied, confirmed bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.confirmed = c.confirmed && confirmed
-	if !confirmed || len(pending) == 0 {
+	if len(pending) == 0 {
+		return nil
+	}
+	if err := c.j.recordFlush(ctx, confirmed); err != nil {
+		return err
+	}
+	c.j.flushedPieces += len(pending)
+	if !confirmed {
 		return nil
 	}
 	var parts []*part
@@ -461,11 +462,15 @@ func (p *part) segments(start, length int64) []segment {
 }
 
 // writes reports whether the member writes the file of the segment: the
-// target does not have the file, and the member is the first one that has
-// it.
+// target does not have the file, qui did not link it, and the member is the
+// first one that has it.
 func (j *job) writes(p *part, s segment) bool {
 	f := p.plan[s.file]
-	return !f.pad && !f.onTarget && j.byRel[p.rel(f)].owner == p
+	if f.pad || f.onTarget {
+		return false
+	}
+	g := j.byRel[p.rel(f)]
+	return g.owner == p && !g.linked
 }
 
 func (s *stream) write(ctx context.Context, p *part, seg segment, data []byte) error {
@@ -499,6 +504,10 @@ func (s *stream) writer(ctx context.Context, f *groupFile, offset int64) (*open,
 	if o == nil {
 		name := s.c.j.tempName(f.rel)
 		w, err := s.c.j.root.OpenWrite(ctx, name, offset)
+		if errors.Is(err, fs.ErrNotExist) {
+			// A check of the partial files gave the file the .!qB name.
+			w, err = s.c.j.root.OpenWrite(ctx, name+incompleteExt, offset)
+		}
 		if err != nil {
 			return nil, temporary("qui cannot open %s on %s: %v", name, s.c.target, err)
 		}

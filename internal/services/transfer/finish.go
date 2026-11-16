@@ -551,6 +551,9 @@ func (j *job) startTarget(ctx context.Context, p *part) error {
 // keepReason says why qui keeps the files on the source, empty when it may
 // remove them.
 func (j *job) keepReason(ctx context.Context) string {
+	if j.rec.Way == WayNone {
+		return j.target.Name + " reads the same files"
+	}
 	instances, err := j.svc.deps.Instances.List(ctx)
 	if err != nil {
 		return "qui cannot list the instances that use the same SSH server"

@@ -79,6 +79,9 @@ type job struct {
 	made map[*groupFile]int64
 	// away holds the instances that were deleted or changed their endpoint.
 	away map[int]bool
+	// flushedPieces counts the pieces that qui wrote and flushed in this run,
+	// also on a target that does not confirm a flush.
+	flushedPieces int
 }
 
 func (j *job) hashes() []string {
@@ -186,6 +189,11 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := find(ctx); err != nil {
 		return err
 	}
+	if j.rec.Way == WayLocal && !j.reached(stepPlace) {
+		if err := j.linkFiles(ctx, targetFiles); err != nil {
+			return err
+		}
+	}
 
 	need := copiedBytes(j.files)
 	for _, size := range j.made {
@@ -202,8 +210,22 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("Not enough free space on %s: %v", j.target.Name, err)
 	}
 	j.reserved = need
+	if !resumed && j.rec.Way == WayNone {
+		j.logf("No copy: %s sees the same files as %s.", j.target.Name, j.source.Name)
+		return nil
+	}
 	if !resumed {
-		j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
+		how := "over SFTP"
+		if j.rec.Way == WayLocal {
+			how = "on qui's own disk"
+		}
+		linked, size := linkedBytes(j.files)
+		if linked > 0 {
+			j.logf("Linking %d files (%s) %s from %s to %s.", linked, formatBytes(size), how, j.source.Name, j.target.Name)
+		}
+		if need > 0 || linked == 0 {
+			j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
+		}
 		return nil
 	}
 	if err := j.removeHelpers(ctx); err != nil {

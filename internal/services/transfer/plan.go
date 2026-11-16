@@ -79,6 +79,9 @@ type part struct {
 	dir    string
 	plan   []file
 	proven []byte
+	// checked holds the pieces that the last check of the partial files on
+	// the target passed.
+	checked []byte
 	// headStartProven is set when the check of the files that were on the
 	// target passed every piece of the member.
 	headStartProven bool
@@ -99,6 +102,9 @@ type groupFile struct {
 	// onTarget is set when the target had the file before the Transfer. qui
 	// checks it there and never writes it.
 	onTarget bool
+	// linked is set when the temporary file is a hardlink to the file on the
+	// source. qui never writes it.
+	linked bool
 }
 
 // groupFiles lists each file of the members once, in the order of the copy.
