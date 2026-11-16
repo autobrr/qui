@@ -54,6 +54,12 @@ const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
 // "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
 const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
 const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
+const pageShellMessage = 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls.'
+const gazelleSiteSelectors = [
+  { selector: 'Literal[regex.pattern=/orpheus|opsfet|flacsfor|redacted/i]', message: gazelleSiteMessage },
+  { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+  { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+]
 
 const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
 
@@ -193,10 +199,19 @@ export default tseslint.config([
     files: ['**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
     rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors],
+    },
+  },
+  {
+    // Page owns the shell of a page: docs/standards/frontend-review.md, "Page layout".
+    files: ['src/pages/*.tsx'],
+    ignores: ['**/*.test.tsx', 'src/pages/{Login,NotFound,Setup,Torrents}.tsx'],
+    rules: {
       'no-restricted-syntax': ['error',
-        { selector: 'Literal[regex.pattern=/orpheus|opsfet|flacsfor|redacted/i]', message: gazelleSiteMessage },
-        { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
-        { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+        ...gazelleSiteSelectors,
+        { selector: 'Program:not(:has(ImportDeclaration[source.value="@/components/layout/Page"]))', message: pageShellMessage },
+        { selector: 'Program:not(:has(JSXOpeningElement[name.name="Page"]))', message: pageShellMessage },
+        { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name="Page"]', message: 'Render Page as the root of the page, with no HTML element around it.' },
       ],
     },
   },
