@@ -1664,6 +1664,20 @@
       "empty": "请输入名称。",
       "tooLong": "最多 {{max}} 个字符。",
       "duplicate": "已有其他配置使用此名称。"
+    },
+    "columns": {
+      "headingEveryInstance": "{{profile}} 中的列 · 所有实例",
+      "headingOneInstance": "{{profile}} 中的列 · 仅 {{instance}}",
+      "unifiedView": "统一视图",
+      "thisInstance": "此实例"
+    },
+    "sameColumns": {
+      "label": "所有实例使用相同的列",
+      "menuHelp": "排序和列筛选仍按实例分别保存。",
+      "helpOn": "{{instances}}共用一套列设置。",
+      "helpOff": "每个实例保留自己的列设置。开启后，所有实例都会使用 {{instance}} 的列。",
+      "helpOffNoInstance": "每个实例保留自己的列设置。",
+      "unifiedViewInList": "统一视图"
     }
   }
 }

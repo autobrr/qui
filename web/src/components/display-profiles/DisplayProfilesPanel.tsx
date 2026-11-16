@@ -10,8 +10,11 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useInstances } from "@/hooks/useInstances"
 import { useDisplayProfiles } from "@/lib/client-settings"
 import { DISPLAY_PROFILE_NAME_MAX_LENGTH, validateDisplayProfileName, type DisplayProfileNameError } from "@/lib/display-profiles"
+
+import { SameColumnsSwitch } from "./SameColumnsSwitch"
 
 interface DisplayProfilesPanelProps {
   open: boolean
@@ -22,6 +25,7 @@ interface DisplayProfilesPanelProps {
 export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPanelProps) {
   const { t } = useTranslation("torrents")
   const { profiles, active, pick, create } = useDisplayProfiles()
+  const { instances } = useInstances()
   const [name, setName] = useState("")
   const [nameError, setNameError] = useState<DisplayProfileNameError | null>(null)
   const nameId = useId()
@@ -62,6 +66,7 @@ export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPane
             </li>
           ))}
         </ul>
+        <SameColumnsSwitch profileId={active.id} instances={instances ?? []} />
         <form onSubmit={handleCreate} className="space-y-2">
           <Label htmlFor={nameId}>{t("displayProfiles.panel.newName")}</Label>
           <div className="flex gap-2">

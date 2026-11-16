@@ -26,6 +26,8 @@ export interface DisplayProfileEntry {
 export interface DisplayProfile extends DisplayProfileEntry {
   id: string
   isDefault: boolean
+  /** The value of Same columns on every instance: the stored switch, or while it is unset, true when the profile has no Column setup of an instance. */
+  usesSameColumns: boolean
 }
 
 export const DEFAULT_DISPLAY_PROFILE_ENTRY: DisplayProfileEntry = {

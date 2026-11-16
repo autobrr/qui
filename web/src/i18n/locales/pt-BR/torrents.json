@@ -1748,6 +1748,20 @@
       "empty": "Digite um nome.",
       "tooLong": "Use no máximo {{max}} caracteres.",
       "duplicate": "Outro perfil já tem este nome."
+    },
+    "columns": {
+      "headingEveryInstance": "Colunas em {{profile}} · todas as instâncias",
+      "headingOneInstance": "Colunas em {{profile}} · somente {{instance}}",
+      "unifiedView": "Visualização unificada",
+      "thisInstance": "esta instância"
+    },
+    "sameColumns": {
+      "label": "Mesmas colunas em todas as instâncias",
+      "menuHelp": "A ordenação e os filtros de coluna continuam por instância.",
+      "helpOn": "Uma configuração de colunas para {{instances}}.",
+      "helpOff": "Cada instância mantém a sua. Ao ativar, todas as instâncias recebem as colunas de {{instance}}.",
+      "helpOffNoInstance": "Cada instância mantém a sua.",
+      "unifiedViewInList": "a visualização unificada"
     }
   }
 }

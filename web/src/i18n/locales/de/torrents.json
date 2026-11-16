@@ -1748,6 +1748,20 @@
       "empty": "Gib einen Namen ein.",
       "tooLong": "Verwende höchstens {{max}} Zeichen.",
       "duplicate": "Ein anderes Profil hat diesen Namen."
+    },
+    "columns": {
+      "headingEveryInstance": "Spalten in {{profile}} · jede Instanz",
+      "headingOneInstance": "Spalten in {{profile}} · nur {{instance}}",
+      "unifiedView": "Vereinheitlichte Ansicht",
+      "thisInstance": "diese Instanz"
+    },
+    "sameColumns": {
+      "label": "Gleiche Spalten auf jeder Instanz",
+      "menuHelp": "Sortierung und Spaltenfilter bleiben pro Instanz.",
+      "helpOn": "Eine Spalteneinrichtung für {{instances}}.",
+      "helpOff": "Jede Instanz behält ihre eigene. Wenn du das einschaltest, erhält jede Instanz die Spalten von {{instance}}.",
+      "helpOffNoInstance": "Jede Instanz behält ihre eigene.",
+      "unifiedViewInList": "die vereinheitlichte Ansicht"
     }
   }
 }

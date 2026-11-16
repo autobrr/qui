@@ -1664,6 +1664,20 @@
       "empty": "이름을 입력하세요.",
       "tooLong": "{{max}}자 이하로 입력하세요.",
       "duplicate": "다른 프로필이 이 이름을 사용합니다."
+    },
+    "columns": {
+      "headingEveryInstance": "{{profile}}의 열 · 모든 인스턴스",
+      "headingOneInstance": "{{profile}}의 열 · {{instance}}만",
+      "unifiedView": "통합 보기",
+      "thisInstance": "이 인스턴스"
+    },
+    "sameColumns": {
+      "label": "모든 인스턴스에서 같은 열 사용",
+      "menuHelp": "정렬과 열 필터는 인스턴스별로 유지됩니다.",
+      "helpOn": "{{instances}}에 하나의 열 설정을 사용합니다.",
+      "helpOff": "각 인스턴스가 자체 설정을 유지합니다. 켜면 모든 인스턴스가 {{instance}}의 열을 사용합니다.",
+      "helpOffNoInstance": "각 인스턴스가 자체 설정을 유지합니다.",
+      "unifiedViewInList": "통합 보기"
     }
   }
 }

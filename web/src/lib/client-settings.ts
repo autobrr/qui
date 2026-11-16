@@ -11,7 +11,8 @@ import {
   newDisplayProfileEntry,
   parseDisplayProfileEntry,
   validateDisplayProfileName,
-  type DisplayProfile
+  type DisplayProfile,
+  type DisplayProfileEntry
 } from "@/lib/display-profiles"
 
 /**
@@ -127,6 +128,18 @@ const SETTING_GROUPS: Record<Exclude<SettingGroup, "shared">, { keys: readonly s
       "qui-selected-instance-",
     ],
   },
+}
+
+// The keys of a Column setup. Each ends in ":" and the instance id (0 is the Unified view), or in
+// ":" + SHARED_COLUMN_SETUP for the one setup that every instance reads when Same columns is on.
+const COLUMN_SETUP_PREFIXES = ["qui-column-visibility:", "qui-column-order:", "qui-column-sizing:", "qui-stretch-name-column:"]
+const SHARED_COLUMN_SETUP = "every-instance"
+
+/** The prefix of a Column setup key of one instance, or undefined for any other key. */
+function instanceColumnSetupPrefix(key: string): string | undefined {
+  const prefix = COLUMN_SETUP_PREFIXES.find((candidate) => key.startsWith(candidate))
+  if (prefix === undefined || key.length === prefix.length || key.slice(prefix.length) === SHARED_COLUMN_SETUP) return undefined
+  return prefix
 }
 
 /** The group of a setting key of today (not of a profile copy). */
@@ -349,6 +362,8 @@ if (typeof document !== "undefined") {
 const PROFILE_VALUE_PREFIX = "qui-display-profile:"
 const PROFILE_ENTRY_PREFIX = "qui-display-profile-entry:"
 const ACTIVE_PROFILE_KEY = "qui-display-profile-active"
+// The last instance that a torrent table of this browser showed. Local only, like the pick.
+const LAST_INSTANCE_KEY = "qui-display-profile-last-instance"
 
 function isProfileStateKey(key: string): boolean {
   return key === ACTIVE_PROFILE_KEY || key.startsWith(PROFILE_ENTRY_PREFIX)
@@ -362,6 +377,31 @@ function profileEntryKey(profileId: string): string {
   return PROFILE_ENTRY_PREFIX + profileId
 }
 
+/** The storage key of a setting of today in a profile. Default keeps the key of today. */
+function profileStorageKey(profile: DisplayProfile, key: string): string {
+  return profile.isDefault ? key : profileValueKey(profile.id, key)
+}
+
+/** The profile and the key prefix of a stored Column setup of one instance, or null for any other storage key. */
+function instanceColumnSetupOwner(storageKey: string): { profileId: string; prefix: string } | null {
+  let profileId = DEFAULT_DISPLAY_PROFILE_ID
+  let key = storageKey
+  if (storageKey.startsWith(PROFILE_VALUE_PREFIX)) {
+    const rest = storageKey.slice(PROFILE_VALUE_PREFIX.length)
+    const separator = rest.indexOf(":")
+    if (separator <= 0) return null
+    profileId = rest.slice(0, separator)
+    key = rest.slice(separator + 1)
+  }
+  const prefix = instanceColumnSetupPrefix(key)
+  return prefix === undefined ? null : { profileId, prefix }
+}
+
+function entryOf(profile: DisplayProfile): DisplayProfileEntry {
+  const { name, icon, color, sameColumns, ownSortAndFilters } = profile
+  return { name, icon, color, sameColumns, ownSortAndFilters }
+}
+
 export interface DisplayProfilesState {
   /** Default first, then the other profiles by name. */
   profiles: readonly DisplayProfile[]
@@ -370,6 +410,17 @@ export interface DisplayProfilesState {
 }
 
 let profilesState: DisplayProfilesState | null = null
+// A new key can be the first Column setup of a profile, which turns its computed Same columns off. Every new key
+// changes the length, also a key that another tab or a raw localStorage call writes.
+let profilesStorageLength = -1
+
+function storageLength(): number {
+  try {
+    return localStorage.length
+  } catch {
+    return -1
+  }
+}
 
 function invalidateDisplayProfiles(): void {
   profilesState = null
@@ -384,36 +435,67 @@ if (typeof window !== "undefined") {
 
 function loadDisplayProfiles(): DisplayProfilesState {
   let defaultEntry = DEFAULT_DISPLAY_PROFILE_ENTRY
-  const others: DisplayProfile[] = []
+  const others: (DisplayProfileEntry & { id: string })[] = []
+  const withColumnSetup = new Set<string>()
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (!key?.startsWith(PROFILE_ENTRY_PREFIX)) continue
+      if (!key) continue
+      if (!key.startsWith(PROFILE_ENTRY_PREFIX)) {
+        const owner = instanceColumnSetupOwner(key)
+        if (owner !== null) withColumnSetup.add(owner.profileId)
+        continue
+      }
       const id = key.slice(PROFILE_ENTRY_PREFIX.length)
       const entry = parseDisplayProfileEntry(localStorage.getItem(key) ?? "")
       if (id === DEFAULT_DISPLAY_PROFILE_ID) defaultEntry = entry ?? DEFAULT_DISPLAY_PROFILE_ENTRY
-      else if (entry) others.push({ ...entry, id, isDefault: false })
+      else if (entry) others.push({ ...entry, id })
     }
   } catch (error) {
     console.error("Failed to read Display profiles:", error)
   }
   others.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id))
-  const profiles = [{ ...defaultEntry, ownSortAndFilters: false, id: DEFAULT_DISPLAY_PROFILE_ID, isDefault: true }, ...others]
+  const toProfile = (entry: DisplayProfileEntry, id: string, isDefault: boolean): DisplayProfile => ({
+    ...entry,
+    id,
+    isDefault,
+    usesSameColumns: entry.sameColumns ?? !withColumnSetup.has(id),
+  })
+  const profiles = [
+    toProfile({ ...defaultEntry, ownSortAndFilters: false }, DEFAULT_DISPLAY_PROFILE_ID, true),
+    ...others.map((entry) => toProfile(entry, entry.id, false)),
+  ]
   const activeId = readRaw(ACTIVE_PROFILE_KEY)
   return { profiles, active: profiles.find((profile) => profile.id === activeId) ?? profiles[0] }
 }
 
 /** The profiles and the profile of this browser. The object stays the same until a profile or the pick changes. */
 export function getDisplayProfiles(): DisplayProfilesState {
-  profilesState ??= loadDisplayProfiles()
+  const length = storageLength()
+  if (profilesState === null || length !== profilesStorageLength) {
+    profilesState = loadDisplayProfiles()
+    profilesStorageLength = length
+  }
   return profilesState
 }
 
-/** The storage key that holds a setting for the profile of this browser. */
+/** The storage key that a write of a setting goes to, for the profile of this browser. */
 function resolveKey(key: string): string {
   const { active } = getDisplayProfiles()
-  if (active.isDefault || settingGroup(key) !== "display") return key
-  return profileValueKey(active.id, key)
+  if (settingGroup(key) !== "display") return key
+  const prefix = active.usesSameColumns ? instanceColumnSetupPrefix(key) : undefined
+  return profileStorageKey(active, prefix === undefined ? key : prefix + SHARED_COLUMN_SETUP)
+}
+
+/**
+ * The storage key that a read of a setting comes from. It differs from resolveKey only for an instance that has no
+ * Column setup of its own while Same columns is off: that instance reads the shared setup, the last one it showed.
+ */
+function resolveReadKey(key: string): string {
+  const storageKey = resolveKey(key)
+  const prefix = instanceColumnSetupPrefix(key)
+  if (prefix === undefined || readRaw(storageKey) !== null) return storageKey
+  return profileStorageKey(getDisplayProfiles().active, prefix + SHARED_COLUMN_SETUP)
 }
 
 /** Makes this browser use the profile. Only this browser remembers the pick. Every live setting re-reads at once. */
@@ -457,6 +539,70 @@ export function createDisplayProfile(name: string): string {
   return id
 }
 
+function readLastInstance(): number | null {
+  const raw = readRaw(LAST_INSTANCE_KEY)
+  const id = raw ? Number(raw) : Number.NaN
+  return Number.isInteger(id) ? id : null
+}
+
+/** Records the instance that a torrent table shows (0 is the Unified view), so Settings can name and copy it. */
+export function recordColumnSetupInstance(instanceId: number): void {
+  if (readLastInstance() !== instanceId) writeLocal(LAST_INSTANCE_KEY, String(instanceId))
+}
+
+function subscribeLastInstance(callback: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key == null || event.key === LAST_INSTANCE_KEY) callback()
+  }
+  const onChange = (event: Event) => {
+    if ((event as CustomEvent<{ key?: string }>).detail?.key === LAST_INSTANCE_KEY) callback()
+  }
+  window.addEventListener("storage", onStorage)
+  window.addEventListener(CHANGE_EVENT, onChange)
+  return () => {
+    window.removeEventListener("storage", onStorage)
+    window.removeEventListener(CHANGE_EVENT, onChange)
+  }
+}
+
+/** The last instance that a torrent table of this browser showed, or null when none did. */
+export function useLastColumnSetupInstance(): number | null {
+  return useSyncExternalStore(subscribeLastInstance, readLastInstance)
+}
+
+/**
+ * Sets Same columns on every instance for a profile. Turning it on copies the Column setup of instanceId (by default
+ * the last instance that this browser showed) to the shared setup. Turning it off copies the shared setup to every
+ * instance, so no instance changes on screen.
+ */
+export function setDisplayProfileSameColumns(profileId: string, on: boolean, instanceId: number | null = readLastInstance()): void {
+  const profile = getDisplayProfiles().profiles.find((candidate) => candidate.id === profileId)
+  if (!profile) return
+  if (on && !profile.usesSameColumns && instanceId !== null) {
+    for (const prefix of COLUMN_SETUP_PREFIXES) {
+      const own = readRaw(profileStorageKey(profile, prefix + instanceId))
+      if (own !== null) writeRaw(profileStorageKey(profile, prefix + SHARED_COLUMN_SETUP), own)
+    }
+  }
+  if (!on && profile.usesSameColumns) {
+    const instanceKeys: [string, string][] = []
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const storageKey = localStorage.key(i)
+        const owner = storageKey ? instanceColumnSetupOwner(storageKey) : null
+        if (storageKey && owner?.profileId === profile.id) {
+          instanceKeys.push([storageKey, profileStorageKey(profile, owner.prefix + SHARED_COLUMN_SETUP)])
+        }
+      }
+    } catch (error) {
+      console.error("Failed to copy the shared Column setup to the instances:", error)
+    }
+    // An instance with no setup of its own already reads the shared setup.
+    for (const [storageKey, sharedKey] of instanceKeys) writeRaw(storageKey, readRaw(sharedKey) ?? "")
+  }
+  writeRaw(profileEntryKey(profile.id), JSON.stringify({ ...entryOf(profile), sameColumns: on }))
+}
+
 function subscribeDisplayProfiles(callback: () => void): () => void {
   const onStorage = (event: StorageEvent) => {
     if (event.key == null || isProfileStateKey(event.key)) callback()
@@ -476,12 +622,18 @@ function subscribeDisplayProfiles(callback: () => void): () => void {
 export interface DisplayProfilesApi extends DisplayProfilesState {
   pick: (profileId: string) => void
   create: (name: string) => string
+  setSameColumns: (profileId: string, on: boolean, instanceId?: number | null) => void
 }
 
 /** The Display profiles for the UI. */
 export function useDisplayProfiles(): DisplayProfilesApi {
   const state = useSyncExternalStore(subscribeDisplayProfiles, getDisplayProfiles)
-  return useMemo(() => ({ ...state, pick: pickDisplayProfile, create: createDisplayProfile }), [state])
+  return useMemo(() => ({
+    ...state,
+    pick: pickDisplayProfile,
+    create: createDisplayProfile,
+    setSameColumns: setDisplayProfileSameColumns,
+  }), [state])
 }
 
 // --- server sync (called by useClientSettingsSync) ---
@@ -581,7 +733,7 @@ export function useDropLegacyKey(baseKey: string, enabled: boolean): void {
 export function migrateLegacyLocalValue(legacyKey: string, key: string, isValid: (raw: string) => boolean): void {
   try {
     const legacy = localStorage.getItem(legacyKey)
-    if (legacy && readRaw(resolveKey(key)) == null && isValid(legacy)) writeRaw(resolveKey(key), legacy)
+    if (legacy && readRaw(resolveReadKey(key)) == null && isValid(legacy)) writeRaw(resolveKey(key), legacy)
     localStorage.removeItem(legacyKey)
   } catch (error) {
     console.error("Failed to migrate legacy state key:", legacyKey, error)
@@ -608,7 +760,7 @@ function decode<T>(raw: string | null, { defaultValue, parse }: ClientSettingOpt
 
 /** The current value of one setting, for code outside a component. */
 export function readClientSetting<T>(key: string, options: ClientSettingOptions<T>): T {
-  return decode(readRaw(resolveKey(key)), options)
+  return decode(readRaw(resolveReadKey(key)), options)
 }
 
 /** Stores one setting and queues it for the server, for code outside a component. The setter of useClientSetting calls it too. */
@@ -657,7 +809,7 @@ export function useClientSetting<T>(
     [key]
   )
 
-  const raw = useSyncExternalStore(subscribe, () => readRaw(resolveKey(key)))
+  const raw = useSyncExternalStore(subscribe, () => readRaw(resolveReadKey(key)))
 
   const value = useMemo(() => decode(raw, { defaultValue, parse }), [raw, parse, defaultValue])
 
