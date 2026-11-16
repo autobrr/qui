@@ -14,7 +14,8 @@ import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDispla
 import { RemoteAccessIndicator } from "@/components/instances/RemoteAccessIndicator"
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog"
 import { ResourceList, type ResourceAction, type ResourceRow } from "@/components/kit/ResourceList"
-import { useInstances } from "@/hooks/useInstances"
+import { usePendingIds } from "@/components/kit/use-pending-ids"
+import { instanceStatusKey, useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import { useIncognitoMode } from "@/lib/incognito"
 import type { InstanceResponse } from "@/types"
@@ -35,7 +36,8 @@ const errorText = (error: unknown, fallback: string) => error instanceof Error ?
 /** The qBittorrent instances in their order, each with its state, its on/off switch, a test, a move, and a delete. */
 export function InstanceList({ instances, onEdit, onAdd }: InstanceListProps) {
   const { t } = useTranslation("instances")
-  const { testConnection, setInstanceStatus, updatingStatusId, reorderInstances, isReordering } = useInstances()
+  const { testConnection, setInstanceStatus, reorderInstances, isReordering } = useInstances()
+  const toggling = usePendingIds(instanceStatusKey)
   const [incognito] = useIncognitoMode()
   const [testing, setTesting] = useState<ReadonlySet<number>>(() => new Set())
   // The instance stays in the state while the dialog fades out. A new session gives the dialog fresh state.
@@ -106,7 +108,7 @@ export function InstanceList({ instances, onEdit, onAdd }: InstanceListProps) {
       enabled: {
         checked: instance.isActive,
         onCheckedChange: (isActive) => setActive(instance, isActive),
-        disabled: updatingStatusId === instance.id,
+        disabled: toggling.has(instance.id),
       },
       onOpen: () => onEdit(instance),
       // A wide screen shows Edit, Test, and Delete as buttons, and the moves in the menu.

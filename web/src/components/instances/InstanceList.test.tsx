@@ -26,9 +26,8 @@ const instances = vi.hoisted(() => ({
   reorderInstances: () => {},
   isDeleting: false,
   isReordering: false,
-  updatingStatusId: null,
 }))
-vi.mock("@/hooks/useInstances", () => ({ useInstances: () => instances }))
+vi.mock("@/hooks/useInstances", async (importOriginal) => ({ ...(await importOriginal<object>()), useInstances: () => instances }))
 
 
 // The switch of a row measures itself, and jsdom has no ResizeObserver.
