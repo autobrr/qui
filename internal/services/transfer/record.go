@@ -50,6 +50,10 @@ const (
 	WayBitTorrent Way = "bittorrent"
 )
 
+// ForcedWays maps the way that a user picks to Options.ForcedWay. With
+// "auto" or no value, qui picks the way.
+var ForcedWays = map[string]Way{"": "", "auto": "", "copy": WaySFTP, "bittorrent": WayBitTorrent}
+
 type StartedBy string
 
 const (

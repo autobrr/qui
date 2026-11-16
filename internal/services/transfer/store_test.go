@@ -282,3 +282,34 @@ func normalizeSteps(steps []transfer.Step) []transfer.Step {
 	}
 	return steps
 }
+
+// Only the last Transfer of a torrent counts: a permanent failure waits for
+// the user until a later Transfer of the torrent ends.
+func TestTheLastPermanentFailureWaitsForTheUserPostgresIntegration(t *testing.T) {
+	t.Parallel()
+
+	engines(t, func(t *testing.T, db *database.DB) {
+		store := open(t, db)
+		waits := func(hash string) bool {
+			t.Helper()
+			got, err := store.WaitsForUser(t.Context(), source, hash)
+			require.NoError(t, err)
+			return got
+		}
+		end := func(record *transfer.Record, class transfer.FailureClass) {
+			t.Helper()
+			require.NoError(t, store.Create(t.Context(), record))
+			record.State, record.FailureClass = transfer.StateFailed, class
+			require.NoError(t, store.Save(t.Context(), record))
+			require.NoError(t, store.Finish(t.Context(), record.ID, transfer.StateFailed))
+		}
+
+		require.False(t, waits("aaaa"), "a torrent with no Transfer")
+		end(group("aaaa", "bbbb"), transfer.FailurePermanent)
+		require.True(t, waits("aaaa"))
+		require.True(t, waits("BBBB"), "each member, by any case of its hash")
+		end(group("aaaa"), transfer.FailureTemporary)
+		require.False(t, waits("aaaa"), "a later Transfer ended the wait")
+		require.True(t, waits("bbbb"))
+	})
+}

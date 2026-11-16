@@ -46,54 +46,62 @@ const (
 	reasonSkipped = "Torrents with skipped files are unsupported"
 )
 
-// check runs the entry checks and returns the Transfer to record.
-func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
+// check runs the entry checks and returns the Transfer to record, with the
+// Shared-file group as it read it.
+func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, error) {
 	hash := strings.ToLower(strings.TrimSpace(req.Hash))
 	if hash == "" {
-		return nil, refuse("Name the torrent to transfer.")
+		return nil, nil, refuse("Name the torrent to transfer.")
 	}
 	if req.SourceInstanceID == req.TargetInstanceID {
-		return nil, refuse("The Transfer source and the Transfer target are the same instance.")
+		return nil, nil, refuse("The Transfer source and the Transfer target are the same instance.")
+	}
+	if req.StartedBy == StartedByRule {
+		if waits, err := s.deps.Store.WaitsForUser(ctx, req.SourceInstanceID, hash); err != nil {
+			return nil, nil, err
+		} else if waits {
+			return nil, nil, ErrWaitsForUser
+		}
 	}
 	source, err := s.instance(ctx, req.SourceInstanceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	target, err := s.instance(ctx, req.TargetInstanceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, inst := range []*models.Instance{source, target} {
 		if err := s.supported(ctx, inst); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	way, err := checkWay(source, target, req.Options.ForcedWay)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if s.deps.Store.IsHelper(source.ID, hash) {
-		return nil, refuse("qui added this torrent for a Transfer or a Share.")
+		return nil, nil, refuse("qui added this torrent for a Transfer or a Share.")
 	}
 
 	src, err := s.readSource(ctx, source.ID, hash)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if src == nil {
-		return nil, refuse("%s has no torrent %s.", source.Name, hash)
+		return nil, nil, refuse("%s has no torrent %s.", source.Name, hash)
 	}
 	if err := src.movable(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if onTarget, err := s.has(ctx, target.ID, hash); err != nil {
-		return nil, err
+		return nil, nil, err
 	} else if onTarget {
-		return nil, refuse("Already on the target: %s has this torrent.", target.Name)
+		return nil, nil, refuse("Already on the target: %s has this torrent.", target.Name)
 	}
 	group, err := s.groupOf(ctx, source.ID, src)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	placement := req.Placement
@@ -101,22 +109,22 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 	if placement.SavePath == "" {
 		prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
 		if err != nil {
-			return nil, fmt.Errorf("read the default save path of %s: %w", target.Name, err)
+			return nil, nil, fmt.Errorf("read the default save path of %s: %w", target.Name, err)
 		}
 		placement.SavePath = prefs.SavePath
 	}
 	targetFiles, err := s.deps.Files.GetBackend(ctx, target.ID)
 	if err != nil {
-		return nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
+		return nil, nil, fmt.Errorf("read the files of %s: %w", target.Name, err)
 	}
 	td := targetFiles.Paths()
 	if !td.IsAbs(placement.SavePath) {
-		return nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
+		return nil, nil, refuse("The save path %q on %s is not an absolute path.", placement.SavePath, target.Name)
 	}
 	placement.SavePath = td.Clean(placement.SavePath)
 	members, err := s.members(ctx, source, target, group, placement)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if way == WayLocal && s.seesSameFiles(ctx, source, target, targetFiles, group, members) {
 		way = WayNone
@@ -127,7 +135,7 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 		options.After = AfterRemoveWithFiles
 	}
 	if !slices.Contains([]After{AfterRemoveWithFiles, AfterKeepFiles, AfterKeepSeeding}, options.After) {
-		return nil, refuse("Unknown choice for after the transfer: %q.", options.After)
+		return nil, nil, refuse("Unknown choice for after the transfer: %q.", options.After)
 	}
 	startedBy := req.StartedBy
 	if startedBy == "" {
@@ -146,7 +154,7 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 		Options:          options,
 		Steps:            []Step{{Name: "start", At: s.deps.Now()}},
 		Members:          members,
-	}, nil
+	}, group, nil
 }
 
 func (s *Service) instance(ctx context.Context, id int) (*models.Instance, error) {

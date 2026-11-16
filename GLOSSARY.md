@@ -258,6 +258,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 ## Transfer and Share
 
 - **Transfer**: The move of a torrent, together with each torrent that shares its files, and of those files, from one instance to another. It copies the missing files, adds the torrents on the target, proves the copy, and then removes or keeps the torrents on the source. _Avoid_: Move (that changes the save path inside one instance), migration, export, transfer history (that is the bytes on the Statistics page).
+- **Transfer to Instance**: The Action that starts a Transfer. _Avoid_: Export to Instance (that adds a torrent whose files are already on the target).
 - **Transfer source** / **Transfer target**: The two instances of a Transfer. _Avoid_: Source instance and Cross-seed instance (cross-seed terms), destination.
 - **Proven piece**: A piece of a torrent in a Transfer that qui checked against the .torrent, and whose bytes the target confirmed on disk. A Transfer resumes from its Proven pieces. _Avoid_: resume point, offset, checkpoint.
 - **Transfer torrent**: A temporary private copy of a torrent, with a new infohash and the same pieces, that two instances use to pass the files of a Transfer. No tracker of the real torrent sees it. _Avoid_: shadow torrent, clone.

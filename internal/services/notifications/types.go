@@ -5,7 +5,10 @@ package notifications
 
 import (
 	"fmt"
+	"slices"
 	"strings"
+
+	"github.com/autobrr/qui/internal/rollout"
 )
 
 type EventType string
@@ -29,6 +32,8 @@ const (
 	EventCrossSeedWebhookFailed       EventType = "cross_seed_webhook_failed"
 	EventAutomationsActionsApplied    EventType = "automations_actions_applied"
 	EventAutomationsRunFailed         EventType = "automations_run_failed"
+	EventTransferFailed               EventType = "transfer_failed"
+	EventTransferFinished             EventType = "transfer_finished"
 	EventSystemNotice                 EventType = "system_notice"
 )
 
@@ -57,6 +62,8 @@ var eventDefinitions = []EventDefinition{
 	{Type: EventCrossSeedWebhookFailed, Label: "Cross-seed webhook failed", Description: "A webhook check or apply fails."},
 	{Type: EventAutomationsActionsApplied, Label: "Automations actions applied", Description: "Automation rules applied actions (summary counts and samples; only when actions occur)."},
 	{Type: EventAutomationsRunFailed, Label: "Automations run failed", Description: "Automation rules failed to run for an instance (system error)."},
+	{Type: EventTransferFailed, Label: "Transfer failed", Description: "A Transfer that you or a rule started fails."},
+	{Type: EventTransferFinished, Label: "Transfer finished", Description: "A Transfer that you or a rule started moves its torrents to the target."},
 	{Type: EventSystemNotice, Label: "System notice", Description: "A fault in qui needs an action from you, for example when qui cannot record the Transfer history."},
 }
 
@@ -74,26 +81,32 @@ var eventTypeIndex = func() map[string]int {
 	return idx
 }()
 
-func EventDefinitions() []EventDefinition {
-	out := make([]EventDefinition, len(eventDefinitions))
-	copy(out, eventDefinitions)
-	return out
+// registered reports whether qui offers the event type: the Transfer events
+// only while the switch for Transfers and Shares is on.
+func registered(eventType EventType, switches rollout.Switches) bool {
+	return switches.TransfersAndShares || (eventType != EventTransferFailed && eventType != EventTransferFinished)
 }
 
-func AllEventTypeStrings() []string {
+func EventDefinitions(switches rollout.Switches) []EventDefinition {
+	return slices.DeleteFunc(slices.Clone(eventDefinitions), func(def EventDefinition) bool {
+		return !registered(def.Type, switches)
+	})
+}
+
+func AllEventTypeStrings(switches rollout.Switches) []string {
 	out := make([]string, 0, len(eventDefinitions))
-	for _, def := range eventDefinitions {
+	for _, def := range EventDefinitions(switches) {
 		out = append(out, string(def.Type))
 	}
 	return out
 }
 
-func IsValidEventType(value string) bool {
+func IsValidEventType(value string, switches rollout.Switches) bool {
 	_, ok := eventTypeIndex[value]
-	return ok
+	return ok && registered(EventType(value), switches)
 }
 
-func NormalizeEventTypes(input []string) ([]string, error) {
+func NormalizeEventTypes(input []string, switches rollout.Switches) ([]string, error) {
 	if len(input) == 0 {
 		return nil, nil
 	}
@@ -104,7 +117,7 @@ func NormalizeEventTypes(input []string) ([]string, error) {
 		if value == "" {
 			continue
 		}
-		if !IsValidEventType(value) {
+		if !IsValidEventType(value, switches) {
 			return nil, fmt.Errorf("unknown event type: %s", value)
 		}
 		seen[value] = struct{}{}

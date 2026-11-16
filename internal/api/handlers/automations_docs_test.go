@@ -13,6 +13,7 @@ import (
 	"github.com/yuin/goldmark/text"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/rollout"
 )
 
 // TestAutomationDocsExamples runs each json block on the automations docs page through the rule check, so a docs example cannot drift from the code.
@@ -41,7 +42,7 @@ func TestAutomationDocsExamples(t *testing.T) {
 	}
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	for i, block := range blocks {
-		if _, err := decodeAutomationPayload(bytes.NewReader(block), instance.ID, instance, nil, true); err != nil {
+		if _, err := decodeAutomationPayload(bytes.NewReader(block), instance.ID, instance, nil, true, rollout.Production()); err != nil {
 			t.Errorf("json block %d:\n%s\n%v", i+1, block, err)
 		}
 	}

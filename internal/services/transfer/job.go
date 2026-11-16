@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // failure ends a Transfer with a reason for the user. Its format may wrap
@@ -496,6 +497,7 @@ func (j *job) end(ctx context.Context, runErr error) {
 	if runErr == nil {
 		j.logf("Done.")
 		j.finish(ctx, StateDone)
+		j.notify(ctx, notifications.EventTransferFinished)
 		return
 	}
 	class, reason := FailureTemporary, runErr.Error()
@@ -517,6 +519,7 @@ func (j *job) end(ctx context.Context, runErr error) {
 	if class == FailurePermanent {
 		j.logf("Failed: %s", reason)
 		j.cleanUp(ctx, StateFailed)
+		j.notify(ctx, notifications.EventTransferFailed)
 		return
 	}
 
@@ -530,6 +533,35 @@ func (j *job) end(ctx context.Context, runErr error) {
 		j.startSource(ctx)
 	}
 	j.save(ctx)
+	j.notify(ctx, notifications.EventTransferFailed)
+}
+
+// notify sends the end of the Transfer as an event of the source instance.
+func (j *job) notify(ctx context.Context, eventType notifications.EventType) {
+	if j.svc.deps.Notifier == nil {
+		return
+	}
+	first := j.rec.Members[0]
+	lines := []string{"Torrent: " + first.Name}
+	if len(j.rec.Members) > 1 {
+		lines = append(lines, fmt.Sprintf("Torrents: %d", len(j.rec.Members)))
+	}
+	lines = append(lines, "Target: "+j.target.Name)
+	switch {
+	case eventType != notifications.EventTransferFailed:
+	case j.rec.FailureClass == FailureTemporary:
+		lines = append(lines, "Error: "+j.rec.FailureReason+" qui tries again in an hour.")
+	default:
+		lines = append(lines, "Error: "+j.rec.FailureReason)
+	}
+	j.svc.deps.Notifier.Notify(ctx, notifications.Event{
+		Type:         eventType,
+		InstanceID:   j.source.ID,
+		InstanceName: j.source.Name,
+		TorrentName:  first.Name,
+		TorrentHash:  first.Hash,
+		Message:      strings.Join(lines, "\n"),
+	})
 }
 
 func (j *job) save(ctx context.Context) {

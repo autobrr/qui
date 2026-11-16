@@ -35,6 +35,7 @@ type runPlan struct {
 	move           plannedAction[string] // by save path, with the group members and cross-seeds
 	programs       []pendingProgramExec
 	exports        []pendingExportToInstance
+	transfers      []pendingTransfer
 	deletions      *deletionSelection
 }
 
@@ -304,11 +305,19 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 			export.trackerDomain = in.scope.tracker(&torrent)
 			plan.exports = append(plan.exports, export)
 		}
+
+		if state.transferToInstance != nil && s.transferRunner != nil {
+			if pending, ok := s.planTransfer(ctx, in.instanceID, hash, torrent, state, evalCtx); ok {
+				pending.trackerDomain = in.scope.tracker(&torrent)
+				plan.transfers = append(plan.transfers, pending)
+			}
+		}
 	}
 	plan.category = s.planCategories(ctx, in, categoryTriggers)
 	plan.move = s.planMoves(ctx, in, moveTriggers)
 	var waitingExports []pendingExportToInstance
 	plan.exports, waitingExports = exportsAfterMoves(plan.exports, plan.move.rules)
+	plan.transfers = transfersAfterMoves(plan.transfers, plan.move.rules)
 	if len(waitingExports) > 0 {
 		log.Debug().Int("instanceID", in.instanceID).Int("count", len(waitingExports)).
 			Msg("automations: exports wait for a later run, their torrents are moving")

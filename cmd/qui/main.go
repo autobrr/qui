@@ -686,8 +686,11 @@ func (app *Application) runServer() {
 	}
 	syncManager.SetHelperTorrents(transfers)
 
+	// Nothing starts a Transfer or a Share while the switch for Transfers and
+	// Shares is off.
+	switches := rollout.Production()
 	notificationTargetStore := models.NewNotificationTargetStore(db)
-	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, switches, log.Logger.With().Str("module", "notifications").Logger())
 	notificationCtx, notificationCancel := context.WithCancel(context.Background())
 	defer notificationCancel()
 	if notificationService != nil {
@@ -857,9 +860,6 @@ func (app *Application) runServer() {
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 	dirScanService.SetTransfers(transfers)
 
-	// Nothing starts a Transfer or a Share while the switch for Transfers and
-	// Shares is off.
-	switches := rollout.Production()
 	peerAddresses := peeraddress.New(instanceStore, syncManager)
 	transferService := transfer.NewService(context.Background(), transfer.Deps{
 		Store:      transfers,
@@ -870,10 +870,13 @@ func (app *Application) runServer() {
 		Routes:     crossSeedRoutes,
 		CrossSeeds: crossSeedService,
 		Peers:      peerAddresses,
+		Notifier:   notificationService,
 		Config:     transfer.DefaultConfig(),
 	})
 	// Export to Instance stays on its old path while the Export switch is off.
 	automationService.SetExportRunner(transferService, switches)
+	// Transfer to Instance starts Transfers only while the Transfers and Shares switch is on.
+	automationService.SetTransferRunner(transferService, switches)
 	// qui's own Share tracker listens only while a Share on it is active.
 	shareService := share.NewService(share.Deps{
 		Store:           share.NewStore(db),

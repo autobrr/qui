@@ -149,6 +149,24 @@ func names(plan []file) []string {
 	return out
 }
 
+// groupBytes is the size of the files of the group, a file that two members
+// read at one path once.
+func groupBytes(group []*source) int64 {
+	type place struct{ savePath, name string }
+	seen := map[place]bool{}
+	var total int64
+	for _, src := range group {
+		for _, f := range src.files {
+			at := place{src.torrent.SavePath, f.Name}
+			if !seen[at] {
+				seen[at] = true
+				total += f.Size
+			}
+		}
+	}
+	return total
+}
+
 // diskBytes is the size of the files on the source, a file with hardlinks
 // once.
 func diskBytes(files []*groupFile) int64 {

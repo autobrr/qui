@@ -19,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
 )
 
@@ -28,15 +29,17 @@ type AutomationHandler struct {
 	instanceStore        *models.InstanceStore
 	externalProgramStore *models.ExternalProgramStore
 	service              *automations.Service
+	switches             rollout.Switches
 }
 
-func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service, switches rollout.Switches) *AutomationHandler {
 	return &AutomationHandler{
 		store:                store,
 		activityStore:        activityStore,
 		instanceStore:        instanceStore,
 		externalProgramStore: externalProgramStore,
 		service:              service,
+		switches:             switches,
 	}
 }
 
@@ -357,16 +360,31 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// canReachExportTargets refuses the request when a rule exports to an instance
-// outside the Instance limit of the API key.
+// canReachExportTargets refuses the request when a rule exports or transfers to
+// an instance outside the Instance limit of the API key.
 func canReachExportTargets(w http.ResponseWriter, r *http.Request, rules ...*models.Automation) bool {
 	for _, rule := range rules {
-		if export := rule.Conditions.ExportToInstance; export != nil && export.Enabled && !middleware.ReachesInstance(r, export.TargetInstanceID) {
-			RespondError(w, http.StatusForbidden, middleware.CannotReachInstance(export.TargetInstanceID))
-			return false
+		for _, target := range targetInstances(rule.Conditions) {
+			if !middleware.ReachesInstance(r, target) {
+				RespondError(w, http.StatusForbidden, middleware.CannotReachInstance(target))
+				return false
+			}
 		}
 	}
 	return true
+}
+
+// targetInstances returns the instances that the running Export and Transfer
+// actions of a rule add torrents to.
+func targetInstances(conditions *models.ActionConditions) []int {
+	var targets []int
+	if export := conditions.ExportToInstance; export != nil && export.Enabled {
+		targets = append(targets, export.TargetInstanceID)
+	}
+	if transfer := conditions.TransferToInstance; transfer != nil && transfer.Enabled {
+		targets = append(targets, transfer.TargetInstanceID)
+	}
+	return targets
 }
 
 func activityIDs(activities []*models.AutomationActivity) []int {
@@ -407,20 +425,20 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 		}
 	}
 
-	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored, saves)
+	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored, saves, h.switches)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: invalid rule payload")
 		return nil, http.StatusBadRequest, err.Error()
 	}
 
-	if export := payload.Conditions.ExportToInstance; export != nil && export.Enabled {
-		if !middleware.ReachesInstance(r, export.TargetInstanceID) {
-			return nil, http.StatusForbidden, middleware.CannotReachInstance(export.TargetInstanceID)
+	for _, target := range targetInstances(payload.Conditions) {
+		if !middleware.ReachesInstance(r, target) {
+			return nil, http.StatusForbidden, middleware.CannotReachInstance(target)
 		}
 		if h.instanceStore == nil {
 			return nil, http.StatusInternalServerError, "Instance store not configured"
 		}
-		if _, err := h.instanceStore.Get(ctx, export.TargetInstanceID); err != nil {
+		if _, err := h.instanceStore.Get(ctx, target); err != nil {
 			if errors.Is(err, models.ErrInstanceNotFound) {
 				return nil, http.StatusBadRequest, "Target instance not found"
 			}

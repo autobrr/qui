@@ -481,7 +481,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		s.crossSeedRoutes,
 		s.syncManager,
 	)
-	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
+	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService, s.switches)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	transferHistoryHandler := handlers.NewTransferHistoryHandler(s.transferHistory)
@@ -501,7 +501,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config, s.shuttingDown)
-	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
+	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService, s.switches)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler

@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peeraddress"
 )
 
@@ -93,6 +94,8 @@ type Deps struct {
 	// Peers gives the addresses at which the two clients of a Transfer
 	// torrent reach each other. Nil reads them with peeraddress.
 	Peers PeerAddresses
+	// Notifier gets the event of each end of a Transfer. Nil sends none.
+	Notifier notifications.Notifier
 	// Now is the clock of the steps and the log. Nil is time.Now.
 	Now    func() time.Time
 	Config Config
@@ -234,7 +237,7 @@ func (s *Service) Start(ctx context.Context, req Request) (int64, error) {
 	if s.ctx.Err() != nil {
 		return 0, errShutdown
 	}
-	record, err := s.check(ctx, req)
+	record, _, err := s.check(ctx, req)
 	if err != nil {
 		return 0, err
 	}
@@ -243,6 +246,25 @@ func (s *Service) Start(ctx context.Context, req Request) (int64, error) {
 	}
 	s.enqueue(record) //nolint:contextcheck // the Transfer outlives the request and runs in the context of the Service
 	return record.ID, nil
+}
+
+// Preview is the Transfer that Start would start.
+type Preview struct {
+	Way Way
+	// Bytes is the size of the files of the Shared-file group, a file that
+	// two members read at one path once.
+	Bytes   int64
+	Members []Member
+}
+
+// Preview runs the checks of Start, with its refusals, and records and claims
+// nothing.
+func (s *Service) Preview(ctx context.Context, req Request) (*Preview, error) {
+	record, group, err := s.check(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &Preview{Way: record.Way, Bytes: groupBytes(group), Members: record.Members}, nil
 }
 
 func (s *Service) enqueue(r *Record) {

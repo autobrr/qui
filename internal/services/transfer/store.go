@@ -26,6 +26,9 @@ var (
 	ErrHelper = errors.New("qui added this torrent for a Transfer or a Share")
 	// ErrHelperOwned is a second registration of a helper torrent by another owner.
 	ErrHelperOwned = errors.New("another Transfer or Share owns this helper torrent")
+	// ErrWaitsForUser is the refusal of a rule to transfer a torrent whose
+	// last Transfer failed permanently: the failure waits for the user.
+	ErrWaitsForUser = errors.New("the last Transfer of this torrent failed and waits for the user")
 )
 
 type torrentKey struct {
@@ -342,6 +345,23 @@ func (s *Store) Unfinished(ctx context.Context) ([]int64, error) {
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// WaitsForUser reports whether the last Transfer of the torrent from the
+// instance failed permanently.
+func (s *Store) WaitsForUser(ctx context.Context, instanceID int, hash string) (bool, error) {
+	var state, class string
+	err := s.db.QueryRowContext(ctx, `SELECT t.state, t.failure_class FROM torrent_transfers t
+			JOIN torrent_transfer_members m ON m.transfer_id = t.id
+			WHERE t.kind = ? AND t.source_instance_id = ? AND m.hash = ?
+			ORDER BY t.id DESC LIMIT 1`, string(KindTransfer), instanceID, strings.ToLower(hash)).Scan(&state, &class)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("read the last transfer of %s: %w", hash, err)
+	}
+	return State(state) == StateFailed && FailureClass(class) == FailurePermanent, nil
 }
 
 // HasClaims reports whether an unfinished Transfer holds a torrent. It reads

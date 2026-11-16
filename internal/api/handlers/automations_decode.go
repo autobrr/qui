@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
 )
 
@@ -39,7 +40,7 @@ func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 // The group ID checks skip them the same way, but check the score conditions also when conditions.grouping changed.
 // When saves is true, the request stores the rule, and the running actions must have one condition unless the conditions equal those of stored.
 // It does not check that a referenced instance or external program exists.
-func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation, saves bool) (*AutomationPayload, error) {
+func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation, saves bool, switches rollout.Switches) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
@@ -75,7 +76,7 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	if unmarshalErr != nil {
 		return nil, ruleErrors{"body: " + unmarshalErr.Error()}
 	}
-	if err := automations.ValidateRule(payload.toModel(instanceID, 0), instance); err != nil {
+	if err := automations.ValidateRule(payload.toModel(instanceID, 0), instance, switches); err != nil {
 		return nil, ruleErrors{err.Error()}
 	}
 	if !slices.Contains(unchanged, "conditions") {
@@ -121,7 +122,7 @@ func sameJSON(a, b any) bool {
 
 // checkJSONShape compares a value decoded with UseNumber against the Go type that it decodes into.
 // Like encoding/json, it accepts null for every type. It also runs checkCondition on each condition
-// and checks the action enums (contentLayout, tag and delete mode, share limit action and mode),
+// and checks the action enums (contentLayout, Transfer after and way, tag and delete mode, share limit action and mode),
 // except under the top-level keys in unchanged.
 func checkJSONShape(problems []string, path string, v any, t reflect.Type, unchanged []string) []string {
 	if v == nil {
@@ -209,6 +210,9 @@ func checkRuleValues(problems []string, path string, obj map[string]any, t refle
 		problems = checkCondition(problems, path, obj)
 	case reflect.TypeFor[models.ExportToInstanceAction]():
 		problems = checkEnumKey(problems, path, obj, "contentLayout", automations.ContentLayouts)
+	case reflect.TypeFor[models.TransferToInstanceAction]():
+		problems = checkEnumKey(problems, path, obj, "after", automations.TransferAfters)
+		problems = checkEnumKey(problems, path, obj, "way", automations.TransferWays)
 	case reflect.TypeFor[models.TagAction]():
 		problems = checkEnumKey(problems, path, obj, "mode", automations.TagModes)
 	case reflect.TypeFor[models.DeleteAction]():

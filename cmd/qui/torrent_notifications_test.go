@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -180,7 +181,7 @@ func TestNotifyTorrentsAddedAfterSkipsWaitWithNoListener(t *testing.T) {
 	t.Parallel()
 
 	store := models.NewNotificationTargetStore(testdb.NewMigratedSQLite(t, "added-no-listener"))
-	notifier := notifications.NewService(store, nil, zerolog.Nop())
+	notifier := notifications.NewService(store, nil, rollout.Production(), zerolog.Nop())
 	syncStub := &stubTorrentNotificationSync{}
 
 	start := time.Now()

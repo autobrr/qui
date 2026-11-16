@@ -194,7 +194,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
 	notificationTargetStore := models.NewNotificationTargetStore(db)
-	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger)
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, rollout.Switches{TransfersAndShares: true}, log.Logger)
 	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, encryptionKey)
 	require.NoError(t, err)
 	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey)

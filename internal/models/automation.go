@@ -872,6 +872,9 @@ type ActionConditions struct {
 	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty" doc:"Run an external program for each matching torrent."`
 	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty" doc:"Turn automatic torrent management on or off."`
 	ExportToInstance *ExportToInstanceAction `json:"exportToInstance,omitempty" doc:"Add matching torrents to a different qBittorrent instance."`
+	// The docs leave out the Transfer action until Transfers and Shares
+	// ship. Its fields keep their doc tags for that day.
+	TransferToInstance *TransferToInstanceAction `json:"transferToInstance,omitempty" doc:"-"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -1011,6 +1014,20 @@ type ExportToInstanceAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
+// TransferToInstanceAction starts a Transfer of a torrent, with the torrents
+// that share its files, to a different qBittorrent instance.
+type TransferToInstanceAction struct {
+	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
+	TargetInstanceID int            `json:"targetInstanceId" doc:"The ID of the target instance in this qui. The ID is in the URL of the instance page, '/instances/ID'."`
+	SavePath         string         `json:"savePath" doc:"The save path on the target instance. Supports Go templates, with the variables of 'exportToInstance.savePath'."`
+	Category         string         `json:"category,omitempty" doc:"The category on the target instance."`
+	Tags             []string       `json:"tags,omitempty" doc:"The tags on the target instance."`
+	After            string         `json:"after,omitempty" doc:"What happens on the source instance after the Transfer: 'removeWithFiles' removes the torrent and its files, 'keepFiles' removes the torrent and keeps the files, and 'keepSeeding' keeps the torrent seeding. Default 'removeWithFiles'."`
+	LeaveStopped     bool           `json:"leaveStopped,omitzero" doc:"Leave the torrent stopped on the target instance."`
+	Way              string         `json:"way,omitempty" doc:"How the files reach the target instance: 'copy' copies them through qui, 'bittorrent' lets the two qBittorrent instances pass them, and 'auto' lets qui choose. Default 'auto'."`
+	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
+}
+
 // SkipCheckingEnabled returns the effective skip_checking value (defaults true).
 func (a *ExportToInstanceAction) SkipCheckingEnabled() bool {
 	if a.SkipChecking == nil {
@@ -1099,8 +1116,11 @@ func (ac *ActionConditions) Conditions() iter.Seq[ActionCondition] {
 		if ac.AutoManagement != nil && !emit("autoManagement", true, ac.AutoManagement.Condition) {
 			return
 		}
-		if ac.ExportToInstance != nil {
-			emit("exportToInstance", ac.ExportToInstance.Enabled, ac.ExportToInstance.Condition)
+		if ac.ExportToInstance != nil && !emit("exportToInstance", ac.ExportToInstance.Enabled, ac.ExportToInstance.Condition) {
+			return
+		}
+		if ac.TransferToInstance != nil {
+			emit("transferToInstance", ac.TransferToInstance.Enabled, ac.TransferToInstance.Condition)
 		}
 	}
 }

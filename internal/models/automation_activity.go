@@ -35,6 +35,10 @@ const (
 	ActivityActionRuleSkipped         = "rule_skipped"         // Rule reads a field that the instance does not send
 )
 
+// ActivityActionTransferredToInstance is the start of a Transfer of a
+// torrent to another instance.
+const ActivityActionTransferredToInstance = "transferred_to_instance"
+
 // Activity outcome types
 const (
 	ActivityOutcomeSuccess = "success"

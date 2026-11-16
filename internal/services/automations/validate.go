@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
@@ -37,10 +38,11 @@ func windowsLocalPathSource(instance *models.Instance) bool {
 	return runtime.GOOS == "windows" && instance != nil && models.FilesystemAccessMode(instance) == models.FilesystemModeLocal
 }
 
-// ValidateRule checks a rule against itself and its instance. It normalizes
-// rule.Conditions. A nil instance has no filesystem access. Checks that look up
-// other records, such as an export target, stay with the caller.
-func ValidateRule(rule *models.Automation, instance *models.Instance) error {
+// ValidateRule checks a rule against itself, its instance, and the switches
+// that qui runs with. It normalizes rule.Conditions. A nil instance has no
+// filesystem access. Checks that look up other records, such as an export
+// target, stay with the caller.
+func ValidateRule(rule *models.Automation, instance *models.Instance, switches rollout.Switches) error {
 	if rule.Name == "" {
 		return ruleError("Name is required")
 	}
@@ -61,6 +63,18 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 		if export.TargetInstanceID == rule.InstanceID {
 			return ruleError("Export target cannot be the same as the source instance")
+		}
+	}
+
+	if transfer := conditions.TransferToInstance; transfer != nil {
+		if !switches.TransfersAndShares {
+			return ruleError("Transfer to instance is not available")
+		}
+		if transfer.Enabled && transfer.TargetInstanceID <= 0 {
+			return ruleError("Transfer to instance requires a target instance")
+		}
+		if transfer.Enabled && transfer.TargetInstanceID == rule.InstanceID {
+			return ruleError("Transfer target cannot be the same as the source instance")
 		}
 	}
 

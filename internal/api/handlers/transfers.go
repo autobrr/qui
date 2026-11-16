@@ -34,8 +34,6 @@ type startTransferRequest struct {
 	Way              string         `json:"way"`
 }
 
-var forcedWays = map[string]transfer.Way{"": "", "auto": "", "copy": transfer.WaySFTP, "bittorrent": transfer.WayBitTorrent}
-
 type startTransferResponse struct {
 	ID int64 `json:"id"`
 }
@@ -53,7 +51,7 @@ func (h *TransfersHandler) Start(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "sourceInstanceId, hash, and targetInstanceId are required")
 		return
 	}
-	way, ok := forcedWays[req.Way]
+	way, ok := transfer.ForcedWays[req.Way]
 	if !ok {
 		RespondError(w, http.StatusBadRequest, "way must be auto, copy, or bittorrent")
 		return

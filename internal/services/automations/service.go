@@ -72,6 +72,8 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionMoved:               "Moved torrents",
 	models.ActivityActionExportedToInstance:  "Export to instance",
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
+
+	models.ActivityActionTransferredToInstance: "Transfer to instance",
 }
 
 type automationSummary struct {
@@ -675,6 +677,14 @@ type Service struct {
 	// exportRunner, when set, runs Export to Instance on the Transfer
 	// module.
 	exportRunner exportRunner
+	// transferRunner starts the Transfers of Transfer to Instance. It stays
+	// nil while the switch for Transfers and Shares is off.
+	transferRunner transferRunner
+	// transferHolds holds, by "instanceID:hash", the time until which a rule
+	// does not ask again for a Transfer that the module refused.
+	transferHolds map[string]time.Time
+	// clock reads the time of the Transfer holds. Nil is time.Now.
+	clock func() time.Time
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -1897,6 +1907,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
 			Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
 			Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
+			Int("transferToInstanceNoMatch", stats.TransferConditionNotMet).
 			Msg("automations: rule matched trackers but applied no actions")
 	}
 
@@ -2081,6 +2092,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			}
 		}
+	}
+
+	// A Transfer reads the Shared-file group of its torrent, so it starts after the deletes.
+	if len(plan.transfers) > 0 {
+		s.startTransfers(ctx, instanceID, plan.transfers, summary)
 	}
 
 	// Collect export results before notification.
@@ -3551,6 +3567,10 @@ func (s *Service) recordDryRunActivities(
 		createActivity(models.ActivityActionDeletedCondition, map[string]any{"count": len(hashes)}, func() []ActivityRunTorrent {
 			return buildRunItemsFromHashes(hashes, torrentByHash, scope)
 		})
+	}
+
+	if len(plan.transfers) > 0 {
+		s.recordDryRunTransfers(ctx, r, plan.transfers)
 	}
 
 	if recordNoMatch && len(r.activities) == 0 {
