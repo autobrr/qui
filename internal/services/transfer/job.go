@@ -152,7 +152,33 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
 	}
 
-	d := targetFiles.Paths()
+	if err := j.readParts(ctx, targetFiles.Paths()); err != nil {
+		return err
+	}
+	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
+		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
+	}
+	if err := j.findOnTarget(ctx); err != nil {
+		return err
+	}
+
+	need := copiedBytes(j.files)
+	stat, err := targetFiles.Statfs(ctx, j.rootDir)
+	if err != nil {
+		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+	}
+	if err := j.svc.reserve(j.target.ID, need, stat.BytesAvailable); err != nil {
+		return permanent("Not enough free space on %s: %v", j.target.Name, err)
+	}
+	j.reserved = need
+	j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
+	return nil
+}
+
+// readParts reads each member on the source again, and places it below the
+// root of the Transfer on the target.
+func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
+	var err error
 	saves := make([]string, len(j.rec.Members))
 	for i := range j.rec.Members {
 		saves[i] = j.rec.Members[i].Placement.SavePath
@@ -199,23 +225,6 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("The torrents of the group do not agree on their files: %v", err)
 	}
 
-	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
-		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
-	}
-	if err := j.findOnTarget(ctx); err != nil {
-		return err
-	}
-
-	need := copiedBytes(j.files)
-	stat, err := targetFiles.Statfs(ctx, j.rootDir)
-	if err != nil {
-		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
-	}
-	if err := j.svc.reserve(j.target.ID, need, stat.BytesAvailable); err != nil {
-		return permanent("Not enough free space on %s: %v", j.target.Name, err)
-	}
-	j.reserved = need
-	j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
 	return nil
 }
 

@@ -182,21 +182,8 @@ func (j *job) place(ctx context.Context) error {
 			return permanent("Already on the target: %s has %s.", inst.Name, which)
 		}
 	}
-	for _, f := range j.files {
-		if f.onTarget {
-			continue
-		}
-		temp := j.tempName(f.rel)
-		if _, err := j.root.Lstat(ctx, temp); errors.Is(err, fs.ErrNotExist) {
-			temp += incompleteExt
-		}
-		if err := j.root.RenameNoReplace(ctx, temp, f.rel); err != nil {
-			if errors.Is(err, fs.ErrExist) {
-				return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, f.rel)
-			}
-			return temporary("qui cannot put %s in place on %s: %v", f.rel, j.target.Name, err)
-		}
-		j.placed = append(j.placed, f.rel)
+	if err := j.putInPlace(ctx); err != nil {
+		return err
 	}
 
 	var representative *part
@@ -217,6 +204,28 @@ func (j *job) place(ctx context.Context) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// putInPlace renames each file that qui wrote from its temporary name to its
+// name.
+func (j *job) putInPlace(ctx context.Context) error {
+	for _, f := range j.files {
+		if f.onTarget {
+			continue
+		}
+		temp := j.tempName(f.rel)
+		if _, err := j.root.Lstat(ctx, temp); errors.Is(err, fs.ErrNotExist) {
+			temp += incompleteExt
+		}
+		if err := j.root.RenameNoReplace(ctx, temp, f.rel); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, f.rel)
+			}
+			return temporary("qui cannot put %s in place on %s: %v", f.rel, j.target.Name, err)
+		}
+		j.placed = append(j.placed, f.rel)
 	}
 	return nil
 }
