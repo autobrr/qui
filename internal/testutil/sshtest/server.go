@@ -134,6 +134,7 @@ type Server struct {
 
 	mu             sync.Mutex
 	latency        time.Duration
+	maxConns       int
 	sftpMode       SFTPMode
 	dials          int
 	auths          int
@@ -311,8 +312,14 @@ func (s *Server) serve(conn net.Conn, config *ssh.ServerConfig) {
 	defer func() { _ = sshConn.Close() }()
 
 	s.mu.Lock()
-	s.live[sshConn] = struct{}{}
+	full := s.maxConns > 0 && len(s.live) >= s.maxConns
+	if !full {
+		s.live[sshConn] = struct{}{}
+	}
 	s.mu.Unlock()
+	if full {
+		return
+	}
 	defer func() {
 		s.mu.Lock()
 		delete(s.live, sshConn)
@@ -641,6 +648,14 @@ func (s *Server) sendExitStatus(channel ssh.Channel, status uint32) {
 func (s *Server) SetLatency(d time.Duration) {
 	s.mu.Lock()
 	s.latency = d
+	s.mu.Unlock()
+}
+
+// SetMaxConnections closes each connection that authenticates while n are
+// open, the way a seedbox with a login limit does. Zero allows any number.
+func (s *Server) SetMaxConnections(n int) {
+	s.mu.Lock()
+	s.maxConns = n
 	s.mu.Unlock()
 }
 
