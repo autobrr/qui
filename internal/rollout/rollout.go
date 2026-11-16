@@ -12,6 +12,10 @@ type Switches struct {
 	// TransfersAndShares opens the routes and the services of Transfer and
 	// Share (#4144). The gate, #4170, deletes it.
 	TransfersAndShares bool
+	// ExportOnTransfer runs Export to Instance as Export runs of the
+	// Transfer module (#4166). The gate, #4170, deletes it with the old
+	// Export path.
+	ExportOnTransfer bool
 }
 
 // Production returns the switches of a running qui: every switch off.

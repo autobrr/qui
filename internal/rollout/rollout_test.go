@@ -18,4 +18,5 @@ func TestProductionTurnsEverySwitchOff(t *testing.T) {
 
 	require.Equal(t, rollout.Switches{}, rollout.Production())
 	require.False(t, rollout.Production().TransfersAndShares)
+	require.False(t, rollout.Production().ExportOnTransfer)
 }

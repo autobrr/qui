@@ -672,6 +672,9 @@ type Service struct {
 	routedTorrents crossseedroute.TorrentReader
 	// held is nil until start-up sets it.
 	held heldTorrents
+	// exportRunner, when set, runs Export to Instance on the Transfer
+	// module.
+	exportRunner exportRunner
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -3925,7 +3928,7 @@ func (s *Service) reserveExports(exports []pendingExportToInstance) []pendingExp
 // executeExportToInstance exports torrents from the source instance and adds them to target instances.
 // Returns a channel of activities that is closed when all exports complete.
 // The caller should drain the channel and record activities into the summary before notifying.
-func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID int, executions []pendingExportToInstance) <-chan *models.AutomationActivity {
+func (s *Service) executeExportToInstance(ctx context.Context, sourceInstanceID int, executions []pendingExportToInstance) <-chan *models.AutomationActivity {
 	ch := make(chan *models.AutomationActivity, len(executions))
 	if len(executions) == 0 {
 		close(ch)
@@ -3977,6 +3980,11 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				}
 			}
 			ch <- activity
+			continue
+		}
+
+		if s.exportRunner != nil {
+			wg.Go(func() { s.exportOnTransfers(ctx, sourceInstanceID, exec, ch) })
 			continue
 		}
 

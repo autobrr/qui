@@ -870,6 +870,8 @@ func (app *Application) runServer() {
 		CrossSeeds: crossSeedService,
 		Config:     transfer.DefaultConfig(),
 	})
+	// Export to Instance stays on its old path while the Export switch is off.
+	automationService.SetExportRunner(transferService, switches)
 	// qui's own Share tracker listens only while a Share on it is active.
 	shareService := share.NewService(share.Deps{
 		Store:           share.NewStore(db),
