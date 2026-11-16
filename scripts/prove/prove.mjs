@@ -34,9 +34,11 @@ function playwrightDir() {
 }
 
 const active = new Set()
+let cancelled = false
 // A cancel stops the builds and the runners too. Each runner then stops its own stub and qui.
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, async () => {
+    cancelled = true
     const closing = [...active].map(c => new Promise(r => {
       c.once("close", r)
       try { process.kill(-c.pid, "SIGTERM") } catch { r() }
@@ -48,6 +50,8 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
 
 function run(cmd, args, opts = {}) {
   return new Promise(res => {
+    // A build can finish while a cancel waits for it. Start nothing after a cancel.
+    if (cancelled) return res({ code: -1, stdout: "", stderr: "cancelled" })
     // Its own process group, so a cancel also stops pnpm, go, and the browser under it.
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], detached: true, ...opts })
     active.add(child)
