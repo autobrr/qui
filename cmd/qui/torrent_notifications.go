@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,21 @@ type torrentAddedNotifier interface {
 type torrentNotificationSync interface {
 	GetTorrentRefsFresh(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	ExtractDomainFromURL(rawURL string) string
+}
+
+// helperTorrents is the helper registry: it names the torrents that qui added
+// for a Transfer or a Share. A tag proves nothing.
+type helperTorrents interface {
+	IsHelper(instanceID int, hash string) bool
+}
+
+// notifyTorrentCompleted sends the torrent-completed event of a torrent that
+// is no helper torrent.
+func notifyTorrentCompleted(ctx context.Context, syncManager torrentNotificationSync, notifier notifications.Notifier, helpers helperTorrents, instanceID int, torrent qbt.Torrent) {
+	if helpers.IsHelper(instanceID, torrent.Hash) {
+		return
+	}
+	notifier.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 }
 
 func buildTorrentCompletedEvent(syncManager torrentNotificationSync, instanceID int, torrent qbt.Torrent) notifications.Event {
@@ -67,8 +83,10 @@ func buildTorrentAddedEvent(syncManager torrentNotificationSync, instanceID int,
 }
 
 // notifyTorrentsAddedAfter waits for delay, reads the batch again in one sync,
-// and sends one torrent-added event per torrent. It blocks for the delay.
-func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier torrentAddedNotifier, instanceID int, torrents []*qbt.Torrent, delay time.Duration) {
+// and sends one torrent-added event per torrent that is no helper torrent. It
+// blocks for the delay.
+func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier torrentAddedNotifier, helpers helperTorrents, instanceID int, torrents []*qbt.Torrent, delay time.Duration) {
+	torrents = slices.DeleteFunc(slices.Clone(torrents), func(t *qbt.Torrent) bool { return helpers.IsHelper(instanceID, t.Hash) })
 	if notifier == nil || len(torrents) == 0 {
 		return
 	}
