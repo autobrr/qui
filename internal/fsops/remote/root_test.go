@@ -4,10 +4,12 @@
 package remote
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -140,14 +142,18 @@ func TestRoot_StaysInsideItsFolder(t *testing.T) {
 		_, err := root.Create(t.Context(), name)
 		require.Error(t, err, name)
 	}
-	if runtime.GOOS != "windows" {
-		require.NoError(t, os.Symlink(parent, filepath.Join(parent, "save", "link")))
-		_, err := root.Create(t.Context(), "link/outside.bin")
+	t.Run("through a symlink", func(t *testing.T) {
+		err := os.Symlink(parent, filepath.Join(parent, "save", "link"))
+		if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+			t.Skipf("symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege: %v", err)
+		}
+		require.NoError(t, err)
+		_, err = root.Create(t.Context(), "link/outside.bin")
 		require.Error(t, err)
 		_, err = root.OpenWrite(t.Context(), "link/outside.bin", 0)
 		require.Error(t, err)
 		require.Error(t, root.RenameNoReplace(t.Context(), "a.bin", "link/outside.bin"))
-	}
+	})
 
 	_, err := os.Lstat(filepath.Join(parent, "outside.bin"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
