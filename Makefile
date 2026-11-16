@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-ratchet lint-version typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help themes-fetch themes-clean lint lint-full lint-ratchet lint-version typecheck-frontend lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -118,6 +118,18 @@ test-postgres:
 test-frontend:
 	@echo "Running frontend tests..."
 	cd $(WEB_DIR) && pnpm test
+
+# Run the frontend tests when the branch changes a file under web/ or internal/. Some frontend tests read backend files.
+test-frontend-changed:
+	@base=$$(git merge-base origin/develop HEAD 2>/dev/null || true); \
+		if [ -n "$$base" ]; then \
+			changed=$$({ git diff --name-only "$$base"; git ls-files --others --exclude-standard; } | grep -E '^($(WEB_DIR)|internal)/' || true); \
+			if [ -z "$$changed" ]; then \
+				echo "No changed file under $(WEB_DIR)/ or internal/, skipping the frontend tests."; \
+				exit 0; \
+			fi; \
+		fi; \
+		$(MAKE) test-frontend
 
 # Validate OpenAPI specification
 test-openapi:
@@ -256,8 +268,8 @@ check-mojibake:
 generate:
 	go run ./internal/automationsgen
 
-# Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, then lint
-precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend
+# Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, lint, then the frontend tests when the branch changes web/ or internal/
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend test-frontend-changed
 	@echo "Pre-commit checks passed."
 
 # Warn when the local golangci-lint is not the version that CI pins, because lint and lint-ratchet can then find problems that CI does not
@@ -347,6 +359,7 @@ help:
 	@echo "  make test           - Run all Go tests with race detection"
 	@echo "  make test-postgres  - Run Postgres integration tests with a temporary server"
 	@echo "  make test-frontend  - Run frontend vitest suite"
+	@echo "  make test-frontend-changed - Run frontend vitest suite when the branch changes web/ or internal/"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo "  make mutation       - Mutation test changed Go lines and TypeScript files (MUTATION_BASE=origin/develop)"
 	@echo ""
@@ -362,7 +375,7 @@ help:
 	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
 	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields, API key areas)"
-	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type check)"
+	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type check + frontend tests when web/ or internal/ changed)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"
