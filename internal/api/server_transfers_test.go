@@ -8,32 +8,23 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/autobrr/qui/internal/rollout"
 )
 
 func TestTransferStartRoute(t *testing.T) {
-	const start = `{"sourceInstanceId":1,"hash":"aaaa","targetInstanceId":2}`
-
-	t.Run("switch off answers 404", func(t *testing.T) {
-		rig := newPermissionRig(t, func(deps *Dependencies) { deps.Switches = rollout.Production() })
-		status, body := rig.sendBody(t, http.MethodPost, "/api/transfers", "", rig.sessionCookie(t), start)
-		require.Equal(t, http.StatusNotFound, status)
-		require.Equal(t, "404 page not found\n", body)
-	})
-
 	rig := newPermissionRig(t)
 	cookie := rig.sessionCookie(t)
 
-	t.Run("a body without the torrent answers 400", func(t *testing.T) {
-		status, _ := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie, `{"sourceInstanceId":1,"targetInstanceId":2}`)
-		require.Equal(t, http.StatusBadRequest, status)
-	})
+	status, _ := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie, `{"sourceInstanceId":1,"targetInstanceId":2}`)
+	require.Equal(t, http.StatusBadRequest, status, "a body without the torrent")
 
 	t.Run("a refusal answers 409 with its reason", func(t *testing.T) {
-		status, body := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie, start)
-		require.Equal(t, http.StatusConflict, status)
-		require.Contains(t, body, "Instance 1 does not exist.")
+		// No way and each way reach the checks.
+		for _, way := range []string{"", "auto", "copy", "bittorrent"} {
+			status, body := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie,
+				`{"sourceInstanceId":1,"hash":"aaaa","targetInstanceId":2,"way":"`+way+`"}`)
+			require.Equal(t, http.StatusConflict, status, way)
+			require.Contains(t, body, "Instance 1 does not exist.", way)
+		}
 	})
 
 	t.Run("an unknown way answers 400", func(t *testing.T) {
@@ -42,13 +33,4 @@ func TestTransferStartRoute(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, status)
 		require.Contains(t, body, "way must be auto, copy, or bittorrent")
 	})
-
-	for _, way := range []string{"auto", "copy", "bittorrent"} {
-		t.Run("the way "+way+" reaches the checks", func(t *testing.T) {
-			status, body := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie,
-				`{"sourceInstanceId":1,"hash":"aaaa","targetInstanceId":2,"way":"`+way+`"}`)
-			require.Equal(t, http.StatusConflict, status)
-			require.Contains(t, body, "Instance 1 does not exist.")
-		})
-	}
 }

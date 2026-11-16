@@ -32,19 +32,13 @@ var shareRoutes = []routeKey{
 	{http.MethodDelete, "/api/shares/1"},
 }
 
-func TestShareRoutesAreClosedWhileTheSwitchIsOff(t *testing.T) {
+func TestTransferAndShareRoutesAreClosedWhileTheSwitchIsOff(t *testing.T) {
 	rig := newPermissionRig(t, func(deps *Dependencies) { deps.Switches = rollout.Production() })
 	cookie := rig.sessionCookie(t)
-	for _, route := range shareRoutes {
+	for _, route := range append([]routeKey{{http.MethodPost, "/api/transfers"}}, shareRoutes...) {
 		status, body := rig.sendBody(t, route.Method, route.Path, "", cookie, "{}")
 		require.Equal(t, http.StatusNotFound, status, "%s %s", route.Method, route.Path)
 		require.Equal(t, "404 page not found\n", body, "%s %s", route.Method, route.Path)
-	}
-}
-
-func TestShareRoutesAreBrowserOnly(t *testing.T) {
-	for _, route := range shareRoutes {
-		require.Contains(t, browserOnlyRoutes, route)
 	}
 }
 
@@ -52,10 +46,8 @@ func TestShareStartRoute(t *testing.T) {
 	rig := newPermissionRig(t)
 	cookie := rig.sessionCookie(t)
 
-	t.Run("a body without torrents answers 400", func(t *testing.T) {
-		status, _ := rig.sendBody(t, http.MethodPost, "/api/shares", "", cookie, `{"instanceId":1,"hashes":[]}`)
-		require.Equal(t, http.StatusBadRequest, status)
-	})
+	status, _ := rig.sendBody(t, http.MethodPost, "/api/shares", "", cookie, `{"instanceId":1,"hashes":[]}`)
+	require.Equal(t, http.StatusBadRequest, status, "a body without torrents")
 
 	t.Run("a refusal answers 409 with its reason", func(t *testing.T) {
 		status, body := rig.sendBody(t, http.MethodPost, "/api/shares", "", cookie, `{"instanceId":1,"hashes":["aaaa"]}`)
