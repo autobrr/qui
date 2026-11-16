@@ -22,8 +22,21 @@ const (
 // State is the state of a Transfer or of an Export run.
 type State string
 
+const (
+	// StateWaiting: another Transfer from the same source runs.
+	StateWaiting   State = "waiting"
+	StateCopying   State = "copying"
+	StateChecking  State = "checking"
+	StateFinishing State = "finishing"
+	StateDone      State = "done"
+	StateFailed    State = "failed"
+)
+
 // Way is how a Transfer moves the files, such as SFTP or a Transfer torrent.
 type Way string
+
+// WaySFTP: qui copies the bytes from the source over SFTP.
+const WaySFTP Way = "sftp"
 
 type StartedBy string
 

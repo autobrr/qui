@@ -111,6 +111,7 @@ type Server struct {
 	discScanService                  *discscan.Service
 	transferHistory                  *transferhistory.Module
 	transfers                        *transfer.Store
+	transferService                  *transfer.Service
 	liveSamples                      *livesamples.Recorder
 	systemNotices                    *systemnotice.Module
 	databaseShrink                   *dbshrink.Service
@@ -182,7 +183,10 @@ type Dependencies struct {
 	ActivityHub                      *activity.Hub
 	// Transfers holds the Transfer records and the helper registry.
 	Transfers *transfer.Store
-	Switches  rollout.Switches
+	// TransferService runs Transfers. The router uses it only while the
+	// switch for Transfers and Shares is on.
+	TransferService *transfer.Service
+	Switches        rollout.Switches
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -267,6 +271,7 @@ func NewServer(deps *Dependencies) *Server {
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
 		transfers:                        deps.Transfers,
+		transferService:                  deps.TransferService,
 		switches:                         deps.Switches,
 		shuttingDown:                     streamsCtx.Done(),
 	}
@@ -279,6 +284,16 @@ func NewServer(deps *Dependencies) *Server {
 // Switches returns the server-side switches that the router was built with.
 func (s *Server) Switches() rollout.Switches {
 	return s.switches
+}
+
+// transferRoutes adds the Transfer routes while the switch for Transfers and
+// Shares is on.
+func (s *Server) transferRoutes(r chi.Router) {
+	if !s.switches.TransfersAndShares {
+		return
+	}
+	transfersHandler := handlers.NewTransfersHandler(s.transferService)
+	r.Post("/transfers", transfersHandler.Start)
 }
 
 // newTorrentsHandler builds the handler of the torrent routes. It refuses to
@@ -886,6 +901,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.With(allInstances, settings.Read).Get("/database/shrink", databaseShrinkHandler.Status)
 			r.With(browserOnly).Post("/database/shrink", databaseShrinkHandler.Request)
 			r.With(allInstances, settings.Write).Delete("/database/shrink/result", databaseShrinkHandler.DismissResult)
+			s.transferRoutes(r.With(browserOnly))
 		})
 	})
 

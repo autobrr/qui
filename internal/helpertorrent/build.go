@@ -73,7 +73,7 @@ func Build(torrent []byte, fileNames []string, salt string) (Helper, error) {
 	files := info.UpvertedFiles()
 	realFiles := 0
 	for _, file := range files {
-		if !isPadding(file) {
+		if !IsPadding(file) {
 			realFiles++
 		}
 	}
@@ -139,7 +139,7 @@ func renameFiles(files []metainfo.FileInfo, names [][]string) []helperFile {
 	next := 0
 	for _, file := range files {
 		filePath := file.Path
-		if !isPadding(file) {
+		if !IsPadding(file) {
 			filePath = names[next]
 			next++
 		}
@@ -148,9 +148,11 @@ func renameFiles(files []metainfo.FileInfo, names [][]string) []helperFile {
 	return renamed
 }
 
-// isPadding follows libtorrent, which also counts the padding files of
-// BitComet, so that the files left match the file list of qBittorrent.
-func isPadding(file metainfo.FileInfo) bool {
+// IsPadding reports whether a file of a .torrent is a padding file, which
+// qBittorrent does not list. It follows libtorrent, which also counts the
+// padding files of BitComet, so that the files left match the file list of
+// qBittorrent.
+func IsPadding(file metainfo.FileInfo) bool {
 	return strings.Contains(file.Attr, "p") || strings.Contains(strings.Join(file.Path, "/"), "_____padding_file_")
 }
 

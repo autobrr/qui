@@ -854,6 +854,16 @@ func (app *Application) runServer() {
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 	dirScanService.SetTransfers(transfers)
 
+	// Nothing starts a Transfer while the switch for Transfers and Shares is off.
+	transferService := transfer.NewService(context.Background(), transfer.Deps{
+		Store:     transfers,
+		Instances: instanceStore,
+		Sync:      syncManager,
+		Files:     backendPool,
+		Groups:    crossSeedService,
+		Config:    transfer.DefaultConfig(),
+	})
+
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		notifyTorrentCompleted(ctx, syncManager, notificationService, transfers, instanceID, torrent)
 	}, crossSeedService.HandleTorrentCompletion)
@@ -1013,6 +1023,7 @@ func (app *Application) runServer() {
 		SeasonPackRunStore:               seasonPackRunStore,
 		CrossSeedRoutes:                  crossSeedRoutes,
 		Transfers:                        transfers,
+		TransferService:                  transferService,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DiscScanStore:                    discScanStore,
@@ -1128,7 +1139,8 @@ func (app *Application) runServer() {
 		// Closed here because os.Exit below means a defer would never fire. A
 		// job's next read gets ErrConnectionLost with ErrPoolClosed in its
 		// chain, a read in flight gets ErrConnectionLost, and either ends with
-		// the process.
+		// the process. A running Transfer stops first and keeps its partial data.
+		transferService.Close()
 		sshPool.Close()
 		return nil
 	}

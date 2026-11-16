@@ -255,3 +255,24 @@ func TestAddWaitsForTheNewTorrent(t *testing.T) {
 		})
 	}
 }
+
+// With the stop condition "files checked", a torrent that qBittorrent stops
+// after its check cannot change any more, so the polls end there, also when
+// the check found pieces missing.
+func TestAddEndsWhenTheCheckStopsTheTorrent(t *testing.T) {
+	r := newRig(t, "2.16.2")
+	r.stub.CheckSyncs = 1
+
+	res := r.adder.Add(t.Context(), torrentadd.Request{
+		InstanceID:   r.instanceID,
+		Torrent:      newSample(t).file,
+		Hash:         newSample(t).hash,
+		Settings:     torrentadd.Settings{Stopped: new(false), StopWhenFilesChecked: true},
+		Polls:        1000,
+		PollInterval: time.Millisecond,
+	})
+
+	require.Equal(t, torrentadd.Accepted, res.Outcome, "failure %d: %v", res.Failure, res.Err)
+	require.Equal(t, "stoppedDL", string(res.Torrent.State))
+	require.Less(t, r.stub.Syncs(), 10)
+}

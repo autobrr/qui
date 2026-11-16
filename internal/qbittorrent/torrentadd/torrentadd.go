@@ -58,7 +58,7 @@ type Settings struct {
 	// SeedMode is "Skip hash check": qBittorrent takes the files on trust.
 	SeedMode bool
 	// StopWhenFilesChecked stops the torrent once the check of its files
-	// ends.
+	// ends, and the polls end there.
 	StopWhenFilesChecked bool
 	ShareLimits          *ShareLimits
 	// FilePriorities holds a priority for each file, in the order of the
@@ -127,9 +127,17 @@ type Result struct {
 	Torrent *qbt.Torrent
 }
 
-// final reports whether more polls cannot change the result.
-func (r Result) final() bool {
+// final reports whether more polls cannot change the result. With the stop
+// condition "files checked", a stopped torrent has ended its check.
+func (r Result) final(s Settings) bool {
+	if s.StopWhenFilesChecked && r.Torrent != nil && r.Outcome == Accepted && stopped(r.Torrent.State) {
+		return true
+	}
 	return r.Outcome == Verified || r.Failure == MissingFiles || r.Failure == Errored
+}
+
+func stopped(state qbt.TorrentState) bool {
+	return slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl, qbt.TorrentStateStoppedUp, qbt.TorrentStatePausedUp}, state)
 }
 
 // Add adds the torrent, makes the calls after the add, and polls until
@@ -255,7 +263,7 @@ func (a *Adder) confirm(ctx context.Context, req Request) Result {
 			}
 		}
 		res = a.poll(ctx, owner, req)
-		if res.final() {
+		if res.final(req.Settings) {
 			return res
 		}
 	}

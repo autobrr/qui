@@ -131,6 +131,15 @@ type Server struct {
 	// ListAfterSyncs is how many syncs leave out a torrent after its add, as
 	// qBittorrent lists a new torrent only once libtorrent added it.
 	ListAfterSyncs int
+	// HashCheck makes a check of an added torrent hash each piece against
+	// its .torrent. Without it, a file passes when its size is right.
+	HashCheck bool
+	// IncompleteFilesExt is qBittorrent's setting "Append .!qB extension to
+	// incomplete files": a hash check renames each incomplete file.
+	IncompleteFilesExt bool
+	// OnAdd, when set, runs for each new torrent of torrents/add before the
+	// stub has it. It runs under the lock of the stub.
+	OnAdd func(hash string)
 	// ListenPort is reported as the listen_port preference. qBittorrent
 	// reports 0 when it picks a random port.
 	ListenPort int
@@ -357,18 +366,24 @@ func (s *Server) diskFiles(t *Torrent) []string {
 	return files
 }
 
-func (s *Server) apiFiles(t *Torrent) []map[string]any {
-	var names []string
+// fileNames are the file names that torrents/files reports.
+func (s *Server) fileNames(t *Torrent) []string {
 	switch t.Layout {
 	case SingleFile:
-		names = []string{t.Name}
+		return []string{t.Name}
 	case RootFolder:
+		names := make([]string, 0, len(t.Files))
 		for _, f := range t.Files {
 			names = append(names, path.Join(t.Name, f))
 		}
+		return names
 	case NoRootFolder:
-		names = t.Files
 	}
+	return slices.Clone(t.Files)
+}
+
+func (s *Server) apiFiles(t *Torrent) []map[string]any {
+	names := s.fileNames(t)
 	out := make([]map[string]any, 0, len(names))
 	for i, name := range names {
 		size, priority := int64(1), 1
@@ -698,6 +713,16 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 				s.start(t, true)
 			}
 		}
+	case "torrents/stop", "torrents/pause":
+		for _, t := range s.selected(param("hashes"), "|") {
+			s.stop(t)
+		}
+	case "torrents/export":
+		s.export(w, param)
+	case "torrents/pieceStates":
+		s.pieceStatesOf(w, param)
+	case "torrents/renameFile":
+		s.renameFile(w, param)
 	case "torrents/recheck":
 		for _, t := range s.selected(param("hashes"), "|") {
 			s.recheck(t)

@@ -1,0 +1,29 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package fsops
+
+import "context"
+
+// Root writes new files below one folder and never outside it. Names are
+// slash-separated and relative to that folder. New folders get mode 775 and
+// new files 664 where the filesystem allows it, so that the group of the
+// user can delete them.
+type Root interface {
+	Lstat(ctx context.Context, name string) (*LstatInfo, error)
+	// Create creates a new file and its missing folders. It never opens a
+	// file that exists: the error then wraps fs.ErrExist.
+	Create(ctx context.Context, name string) (FileWriter, error)
+	// RenameNoReplace gives a file a new name. It never replaces a file:
+	// when newName exists, the error wraps fs.ErrExist.
+	RenameNoReplace(ctx context.Context, oldName, newName string) error
+	// Remove removes a file or an empty folder.
+	Remove(ctx context.Context, name string) error
+	Close() error
+}
+
+// RootOpener is a Backend that writes new files through a Root.
+type RootOpener interface {
+	// OpenRoot opens dir as a Root, and creates it when it is missing.
+	OpenRoot(ctx context.Context, dir string) (Root, error)
+}
