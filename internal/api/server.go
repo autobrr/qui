@@ -49,6 +49,7 @@ import (
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transfer"
@@ -112,6 +113,7 @@ type Server struct {
 	transferHistory                  *transferhistory.Module
 	transfers                        *transfer.Store
 	transferService                  *transfer.Service
+	shareService                     *share.Service
 	liveSamples                      *livesamples.Recorder
 	systemNotices                    *systemnotice.Module
 	databaseShrink                   *dbshrink.Service
@@ -186,7 +188,10 @@ type Dependencies struct {
 	// TransferService runs Transfers. The router uses it only while the
 	// switch for Transfers and Shares is on.
 	TransferService *transfer.Service
-	Switches        rollout.Switches
+	// ShareService runs Shares. The router uses it only while the switch for
+	// Transfers and Shares is on.
+	ShareService *share.Service
+	Switches     rollout.Switches
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -272,6 +277,7 @@ func NewServer(deps *Dependencies) *Server {
 		activityHub:                      deps.ActivityHub,
 		transfers:                        deps.Transfers,
 		transferService:                  deps.TransferService,
+		shareService:                     deps.ShareService,
 		switches:                         deps.Switches,
 		shuttingDown:                     streamsCtx.Done(),
 	}
@@ -286,14 +292,15 @@ func (s *Server) Switches() rollout.Switches {
 	return s.switches
 }
 
-// transferRoutes adds the Transfer routes while the switch for Transfers and
-// Shares is on.
+// transferRoutes adds the Transfer and Share routes while the switch for
+// Transfers and Shares is on.
 func (s *Server) transferRoutes(r chi.Router) {
 	if !s.switches.TransfersAndShares {
 		return
 	}
 	transfersHandler := handlers.NewTransfersHandler(s.transferService)
 	r.Post("/transfers", transfersHandler.Start)
+	r.Route("/shares", handlers.NewSharesHandler(s.shareService).Routes)
 }
 
 // newTorrentsHandler builds the handler of the torrent routes. It refuses to

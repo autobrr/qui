@@ -54,8 +54,11 @@ import (
 	"github.com/autobrr/qui/internal/services/lowdisk"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
+	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/services/share"
+	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transfer"
@@ -854,7 +857,9 @@ func (app *Application) runServer() {
 	dirScanService.SetCrossSeedRoutes(crossSeedRoutes)
 	dirScanService.SetTransfers(transfers)
 
-	// Nothing starts a Transfer while the switch for Transfers and Shares is off.
+	// Nothing starts a Transfer or a Share while the switch for Transfers and
+	// Shares is off.
+	switches := rollout.Production()
 	transferService := transfer.NewService(context.Background(), transfer.Deps{
 		Store:      transfers,
 		Instances:  instanceStore,
@@ -865,6 +870,22 @@ func (app *Application) runServer() {
 		CrossSeeds: crossSeedService,
 		Config:     transfer.DefaultConfig(),
 	})
+	// qui's own Share tracker listens only while a Share on it is active.
+	shareService := share.NewService(share.Deps{
+		Store:           share.NewStore(db),
+		Settings:        share.NewSettingsStore(db),
+		TrackerSettings: sharetracker.NewSettingsStore(db),
+		Helpers:         transfers,
+		Instances:       instanceStore,
+		Sync:            syncManager,
+		Peers:           peeraddress.New(instanceStore, syncManager),
+		Switches:        switches,
+		Config:          share.DefaultConfig(),
+	})
+	syncManager.SetTorrentChangeGuard(shareService)
+	shareCtx, shareCancel := context.WithCancel(context.Background())
+	defer shareCancel()
+	go shareService.Run(shareCtx)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		notifyTorrentCompleted(ctx, syncManager, notificationService, transfers, instanceID, torrent)
@@ -1040,7 +1061,8 @@ func (app *Application) runServer() {
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
 		ActivityHub:                      activityHub,
-		Switches:                         rollout.Production(),
+		ShareService:                     shareService,
+		Switches:                         switches,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
@@ -1143,6 +1165,8 @@ func (app *Application) runServer() {
 		// chain, a read in flight gets ErrConnectionLost, and either ends with
 		// the process. A running Transfer stops first and keeps its partial data.
 		transferService.Close()
+		shareCancel()
+		shareService.Close()
 		sshPool.Close()
 		return nil
 	}
