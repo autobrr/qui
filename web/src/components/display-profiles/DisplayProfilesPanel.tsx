@@ -29,6 +29,8 @@ import {
   type DisplayProfileNameError
 } from "@/lib/display-profiles"
 
+import { OwnSortAndFiltersSetting } from "./OwnSortAndFiltersSetting"
+
 interface DisplayProfilesPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -127,6 +129,7 @@ export function DisplayProfilesPanel({ open, onOpenChange }: DisplayProfilesPane
             </li>
           ))}
         </ul>
+        <OwnSortAndFiltersSetting profile={active} />
         <form onSubmit={handleCreate} className="space-y-2">
           <Label htmlFor={nameId}>{t("displayProfiles.panel.newName")}</Label>
           <div className="flex gap-2">
