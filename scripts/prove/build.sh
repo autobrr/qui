@@ -5,8 +5,10 @@ set -euo pipefail
 REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 SHA=$(git -C "$REPO" rev-parse --verify "$1^{commit}")
 CACHE=${QUI_PROVE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/qui-prove}
-BIN=$CACHE/bin/$SHA/qui
 mkdir -p "$CACHE/bin/$SHA"
+# Absolute, because go build writes the binary from inside $SRC.
+CACHE=$(cd "$CACHE" && pwd)
+BIN=$CACHE/bin/$SHA/qui
 exec 9>"$CACHE/bin/$SHA/lock"
 flock 9
 if [ -x "$BIN" ]; then echo "$BIN"; exit 0; fi
