@@ -127,8 +127,8 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		runs:     map[int64]*run{},
 		reserved: map[int]int64{},
 	}
-	s.Wake()
-	go s.tick(deps.Config.WakeInterval)
+	s.Wake()                            //nolint:contextcheck // the Service runs on its own context, s.ctx
+	go s.tick(deps.Config.WakeInterval) //nolint:contextcheck // the Service runs on its own context, s.ctx
 	return s
 }
 
@@ -264,18 +264,18 @@ func (s *Service) runOne(ctx context.Context, id int64) {
 	}
 	j := s.newJob(record)
 	if j.reached(stepCleanUp) {
-		j.cleanUpAgain()
+		j.cleanUpAgain(ctx)
 		return
 	}
 	err = j.run(ctx)
 	switch {
 	case s.cancelled(id):
-		j.rollBack()
+		j.rollBack(ctx)
 	case s.ctx.Err() != nil:
 		j.release()
 		log.Info().Int64("transfer", id).Msg("transfer: stopped, the partial data stays")
 	default:
-		j.end(err)
+		j.end(ctx, err)
 	}
 }
 
@@ -314,24 +314,24 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		r.cancelled = true
 		s.queues[record.SourceInstanceID] = slices.DeleteFunc(s.queues[record.SourceInstanceID], func(queued int64) bool { return queued == id })
 	}
-	s.wg.Go(func() { s.rollBack(id) })
+	s.wg.Go(func() { s.rollBack(context.WithoutCancel(ctx), id) })
 	return nil
 }
 
 // rollBack takes back what a cancelled Transfer did that does not run.
-func (s *Service) rollBack(id int64) {
+func (s *Service) rollBack(ctx context.Context, id int64) {
 	defer func() {
 		s.mu.Lock()
 		delete(s.runs, id)
 		s.mu.Unlock()
 	}()
-	record, err := s.deps.Store.Get(context.WithoutCancel(s.ctx), id)
+	record, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
 		return
 	}
 	if record.FinishedAt.IsZero() {
-		s.newJob(record).rollBack()
+		s.newJob(record).rollBack(ctx)
 	}
 }
 

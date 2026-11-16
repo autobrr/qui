@@ -302,4 +302,3 @@ func countSteps(record *transfer.Record, name string) int {
 	}
 	return n
 }
-

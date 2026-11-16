@@ -318,13 +318,15 @@ func isChecking(state qbt.TorrentState) bool {
 // retryAfter is the least time between a temporary failure and its retry.
 const retryAfter = time.Hour
 
-func (j *job) cleanupContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(j.svc.ctx), 5*time.Minute)
+// cleanupContext outlives the run, so that a stop never cuts a cleanup
+// short.
+func cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 }
 
 // rollBack ends a cancelled Transfer: it takes back what the Transfer did.
-func (j *job) rollBack() {
-	ctx, cancel := j.cleanupContext()
+func (j *job) rollBack(ctx context.Context) {
+	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	defer j.release()
 	// The check marks the instances that the cleanup must not touch.
@@ -334,8 +336,8 @@ func (j *job) rollBack() {
 }
 
 // cleanUpAgain finishes a cleanup that a stop interrupted.
-func (j *job) cleanUpAgain() {
-	ctx, cancel := j.cleanupContext()
+func (j *job) cleanUpAgain(ctx context.Context) {
+	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	defer j.release()
 	_ = j.checkInstances(ctx)
@@ -346,8 +348,8 @@ func (j *job) cleanUpAgain() {
 // end records how the run ended. A temporary failure keeps the partial data
 // and the claims until its retry. A permanent failure takes back what the
 // Transfer did, and waits for the user.
-func (j *job) end(runErr error) {
-	ctx, cancel := j.cleanupContext()
+func (j *job) end(ctx context.Context, runErr error) {
+	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	defer j.release()
 
@@ -362,7 +364,7 @@ func (j *job) end(runErr error) {
 	} else if r, ok := errors.AsType[*RefusalError](runErr); ok {
 		class, reason = FailurePermanent, r.Reason
 	}
-	if off, ok := errors.AsType[*instanceOff](runErr); ok {
+	if off, ok := errors.AsType[*instanceOffError](runErr); ok {
 		j.rec.State = StateWaiting
 		j.logf("Waits until %s is turned on again.", off.name)
 		if j.stoppedSource {

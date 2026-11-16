@@ -39,10 +39,10 @@ const (
 	stepCleanUp          = "clean up"
 )
 
-// instanceOff makes a Transfer wait until its instance is on again.
-type instanceOff struct{ name string }
+// instanceOffError makes a Transfer wait until its instance is on again.
+type instanceOffError struct{ name string }
 
-func (e *instanceOff) Error() string { return e.name + " is turned off." }
+func (e *instanceOffError) Error() string { return e.name + " is turned off." }
 
 // checkInstances reads both instances of the Transfer. A deleted instance or
 // a changed endpoint stops the Transfer for the user, and qui touches that
@@ -69,7 +69,7 @@ func (j *job) checkInstances(ctx context.Context) error {
 			j.away[side.id] = true
 			stop = cmp.Or(stop, permanent("%s changed its address, its SSH server, or its file access, so the Transfer stopped. qui cleans up nothing on %s.", inst.Name, inst.Name))
 		case !inst.IsActive:
-			wait = cmp.Or(wait, error(&instanceOff{name: inst.Name}))
+			wait = cmp.Or(wait, error(&instanceOffError{name: inst.Name}))
 		}
 		*side.into = inst
 	}
