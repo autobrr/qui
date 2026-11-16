@@ -64,37 +64,45 @@ func fullFileSnapshot(files qbt.TorrentFiles) ([32]byte, int64, error) {
 	if len(files) == 0 {
 		return [32]byte{}, 0, errors.New("empty full file table")
 	}
-	ordered := slices.Clone(files)
-	slices.SortFunc(ordered, func(a, b qbt.TorrentFile) int { return strings.Compare(a.Name, b.Name) })
-	h := sha256.New()
-	_ = binary.Write(h, binary.BigEndian, uint64(len(ordered)))
+	type tableEntry struct {
+		name  string
+		size  int64
+		index int
+	}
+	ordered := make([]tableEntry, len(files))
+	snapshotLen := 8
+	for i, file := range files {
+		ordered[i] = tableEntry{name: file.Name, size: file.Size, index: file.Index}
+		snapshotLen += 24 + len(file.Name)
+	}
+	slices.SortFunc(ordered, func(a, b tableEntry) int { return strings.Compare(a.name, b.name) })
+	snapshot := make([]byte, 0, snapshotLen)
+	snapshot = binary.BigEndian.AppendUint64(snapshot, uint64(len(ordered)))
 	seen := make(map[string]struct{}, len(ordered))
 	var total int64
 	for i, file := range ordered {
-		clean, safe := safeTorrentRelativeFilePath(file.Name)
-		if !safe || strings.ContainsRune(file.Name, 0) || clean != file.Name || (i > 0 && ordered[i-1].Name == file.Name) || catalogFileAncestor(file.Name, seen) || file.Size < 0 || file.Size > math.MaxInt64-total {
+		clean, safe := safeTorrentRelativeFilePath(file.name)
+		if !safe || strings.ContainsRune(file.name, 0) || clean != file.name || (i > 0 && ordered[i-1].name == file.name) || catalogFileAncestor(file.name, seen) || file.size < 0 || file.size > math.MaxInt64-total {
 			return [32]byte{}, 0, errors.New("invalid or duplicate full file table entry")
 		}
-		seen[file.Name] = struct{}{}
-		total += file.Size
-		_ = binary.Write(h, binary.BigEndian, uint64(len(file.Name)))
-		_, _ = h.Write([]byte(file.Name))
-		_ = binary.Write(h, binary.BigEndian, file.Size)
-		_ = binary.Write(h, binary.BigEndian, int64(file.Index))
+		seen[file.name] = struct{}{}
+		total += file.size
+		snapshot = binary.BigEndian.AppendUint64(snapshot, uint64(len(file.name)))
+		snapshot = append(snapshot, file.name...)
+		snapshot = binary.BigEndian.AppendUint64(snapshot, uint64(file.size))
+		snapshot = binary.BigEndian.AppendUint64(snapshot, uint64(int64(file.index)))
 	}
 	if total <= 0 {
 		return [32]byte{}, 0, errors.New("nonpositive full torrent size")
 	}
-	return [32]byte(h.Sum(nil)), total, nil
+	return sha256.Sum256(snapshot), total, nil
 }
 
+// catalogFileFamily reads a file table that fullFileSnapshot accepted.
 func catalogFileFamily(files qbt.TorrentFiles) rls.Type {
-	_, total, err := fullFileSnapshot(files)
-	if err != nil {
-		return rls.Unknown
-	}
-	var audio, books int64
+	var total, audio, books int64
 	for _, file := range files {
+		total += file.Size
 		ext := strings.ToLower(path.Ext(file.Name))
 		_, video := videoExtensions[ext]
 		if video || isArchiveFilename(strings.ToLower(file.Name)) {

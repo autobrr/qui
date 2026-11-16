@@ -4,19 +4,21 @@
 package gazellemusic
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	"math"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type MatchKind string
@@ -82,7 +84,7 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 				remote := parseFileList(meta.Torrent.FileList)
 				if fileTotal(remote) == totalSize && !filesConflict(localFiles, remote) {
 					match.Kind = MatchFileList
-					match.RemoteFiles = maps.Clone(remote)
+					match.RemoteFiles = remote
 				}
 				return match, nil
 			}
@@ -126,15 +128,14 @@ func fileTotal(files map[string]int64) int64 {
 }
 
 func parseFileList(fileList string) map[string]int64 {
-	result := make(map[string]int64)
+	result := make(map[string]int64, strings.Count(fileList, "|||")+1)
 
 	for line := range strings.SplitSeq(fileList, "|||") {
-		parts := strings.Split(line, "{{{")
-		if len(parts) != 2 {
+		fileName, sizeField, found := strings.Cut(line, "{{{")
+		if !found || strings.Contains(sizeField, "{{{") {
 			return nil
 		}
-		fileName := parts[0]
-		sizeStr := strings.TrimSuffix(parts[1], "}}}")
+		sizeStr := strings.TrimSuffix(sizeField, "}}}")
 		size, err := strconv.ParseInt(sizeStr, 10, 64)
 		if err != nil || size < 0 || !safeFileListPath(fileName) {
 			return nil
@@ -157,79 +158,74 @@ func filesConflict(localFiles, remoteFiles map[string]int64) bool {
 func FileListFingerprint(files map[string]int64) [32]byte {
 	type fileSig struct {
 		size int64
-		name string // normalized relative path (root folder stripped when consistent)
-	}
-
-	singleRoot := func(files map[string]int64) string {
-		root := ""
-		for name := range files {
-			n := strings.TrimPrefix(path.Clean(strings.ReplaceAll(name, "\\", "/")), "./")
-			n = strings.TrimPrefix(n, "/")
-			if n == "" || n == "." {
-				return ""
-			}
-			parts := strings.Split(n, "/")
-			if len(parts) < 2 {
-				return ""
-			}
-			if parts[0] == "" {
-				return ""
-			}
-			if root == "" {
-				root = parts[0]
-				continue
-			}
-			if root != parts[0] {
-				return ""
-			}
-		}
-		return root
-	}
-
-	root := singleRoot(files)
-
-	normalize := func(name string, root string) string {
-		n := strings.ReplaceAll(name, "\\", "/")
-		n = strings.TrimPrefix(path.Clean(n), "./")
-		n = strings.TrimPrefix(n, "/")
-		if root != "" {
-			prefix := root + "/"
-			if trimmed, ok := strings.CutPrefix(n, prefix); ok {
-				n = trimmed
-			}
-		}
-		if n == "." {
-			n = ""
-		}
-		parts := strings.Split(n, "/")
-		out := make([]string, 0, len(parts))
-		for _, part := range parts {
-			if part == "" || part == "." {
-				continue
-			}
-			out = append(out, normalizeFilenameForCompare(part))
-		}
-		return strings.Join(out, "/")
+		name string // relative path, then normalized with the root folder stripped when consistent
 	}
 
 	sigs := make([]fileSig, 0, len(files))
 	for name, size := range files {
-		sigs = append(sigs, fileSig{size: size, name: normalize(name, root)})
+		n := strings.TrimPrefix(path.Clean(strings.ReplaceAll(name, "\\", "/")), "./")
+		sigs = append(sigs, fileSig{size: size, name: strings.TrimPrefix(n, "/")})
 	}
-	sort.Slice(sigs, func(i, j int) bool {
-		if sigs[i].name != sigs[j].name {
-			return sigs[i].name < sigs[j].name
+
+	rootPrefix := func() string {
+		root := ""
+		for _, sig := range sigs {
+			first, _, nested := strings.Cut(sig.name, "/")
+			if !nested || first == "" {
+				return ""
+			}
+			if root == "" {
+				root = first
+				continue
+			}
+			if root != first {
+				return ""
+			}
 		}
-		return sigs[i].size < sigs[j].size
-	})
-	h := sha256.New()
-	_ = binary.Write(h, binary.BigEndian, uint64(len(sigs)))
-	for _, sig := range sigs {
-		_ = binary.Write(h, binary.BigEndian, uint64(len(sig.name)))
-		_, _ = h.Write([]byte(sig.name))
-		_ = binary.Write(h, binary.BigEndian, sig.size)
+		if root == "" {
+			return ""
+		}
+		return root + "/"
+	}()
+
+	normalize := func(n string) string {
+		if rootPrefix != "" {
+			if trimmed, ok := strings.CutPrefix(n, rootPrefix); ok {
+				n = trimmed
+			}
+		}
+		var out strings.Builder
+		out.Grow(len(n))
+		joined := false
+		for part := range strings.SplitSeq(n, "/") {
+			if part == "" || part == "." {
+				continue
+			}
+			if joined {
+				out.WriteByte('/')
+			}
+			joined = true
+			out.WriteString(normalizeFilenameForCompare(part))
+		}
+		return out.String()
 	}
-	return [32]byte(h.Sum(nil))
+
+	snapshotLen := 8
+	for i := range sigs {
+		sigs[i].name = normalize(sigs[i].name)
+		snapshotLen += 16 + len(sigs[i].name)
+	}
+	slices.SortFunc(sigs, func(a, b fileSig) int {
+		return cmp.Or(strings.Compare(a.name, b.name), cmp.Compare(a.size, b.size))
+	})
+	snapshot := make([]byte, 0, snapshotLen)
+	snapshot = binary.BigEndian.AppendUint64(snapshot, uint64(len(sigs)))
+	for _, sig := range sigs {
+		snapshot = binary.BigEndian.AppendUint64(snapshot, uint64(len(sig.name)))
+		snapshot = append(snapshot, sig.name...)
+		snapshot = binary.BigEndian.AppendUint64(snapshot, uint64(sig.size))
+	}
+	return sha256.Sum256(snapshot)
 }
 
 var musicExtensions = map[string]bool{
@@ -286,19 +282,31 @@ var (
 	zeroWidthChars = regexp.MustCompile("[\x00-\x1F\x7F\u200B-\u200D\uFEFF]")
 )
 
+// normalizeFilenameForCompare drops the runes that zeroWidthChars matches and
+// turns each run of spaces, dots, underscores, and hyphens into one space.
+// Bytes of invalid UTF-8 stay as they are.
 func normalizeFilenameForCompare(name string) string {
 	name = strings.TrimSpace(strings.ToLower(name))
-	name = zeroWidthChars.ReplaceAllString(name, "")
-
-	// Common torrent name separators; keep extensions but make formatting differences match.
-	name = strings.NewReplacer(
-		".", " ",
-		"_", " ",
-		"-", " ",
-	).Replace(name)
-
-	name = multipleSpaces.ReplaceAllString(name, " ")
-	return name
+	var b strings.Builder
+	b.Grow(len(name))
+	inSpace := false
+	for i := 0; i < len(name); {
+		r, size := utf8.DecodeRuneInString(name[i:])
+		chunk := name[i : i+size]
+		i += size
+		switch {
+		case r <= 0x1F || r == 0x7F || (r >= 0x200B && r <= 0x200D) || r == 0xFEFF:
+		case r == ' ' || r == '.' || r == '_' || r == '-':
+			if !inSpace {
+				b.WriteByte(' ')
+			}
+			inSpace = true
+		default:
+			inSpace = false
+			b.WriteString(chunk)
+		}
+	}
+	return b.String()
 }
 
 var genericFilenames = map[string]bool{
