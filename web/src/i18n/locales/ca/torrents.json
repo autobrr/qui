@@ -1730,6 +1730,11 @@
       "title": "Agrupa els teus cross-seeds",
       "description": "Mostra les còpies d'un torrent en una sola fila.",
       "action": "Prova-ho"
+    },
+    "displayProfiles": {
+      "title": "Perfils de visualització",
+      "description": "Dona a cada pantalla les seves pròpies columnes, densitat de files i barres laterals. Tria aquí el perfil d’aquest navegador.",
+      "action": "Crea un perfil"
     }
   },
   "displayProfiles": {

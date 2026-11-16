@@ -135,6 +135,25 @@ describe("FeatureNotice", () => {
     expect(readRaw(FIRST_SEEN)).toBe("true")
   })
 
+  it("closes and stores seen when the control opens", () => {
+    loadServerSnapshot()
+    const view = render(
+      <FeatureNotice id={"first" as FeatureNoticeId} onAction={vi.fn()} controlOpen={false}>
+        <TestButton />
+      </FeatureNotice>
+    )
+    expect(bubbleShown()).toBe(true)
+
+    view.rerender(
+      <FeatureNotice id={"first" as FeatureNoticeId} onAction={vi.fn()} controlOpen={true}>
+        <TestButton />
+      </FeatureNotice>
+    )
+
+    expect(bubbleShown()).toBe(false)
+    expect(readRaw(FIRST_SEEN)).toBe("true")
+  })
+
   it("shows nothing when the server says the notice was seen", () => {
     loadServerSnapshot({ [FIRST_SEEN]: "true" })
     renderNotice("first")

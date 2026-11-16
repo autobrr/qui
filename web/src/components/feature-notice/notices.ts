@@ -7,6 +7,7 @@ import type { ComponentType } from "react"
 
 import { GroupCopiesNoticePicture } from "@/components/torrents/table/GroupCopiesNoticePicture"
 import { readGroupCopies } from "@/hooks/usePersistedGroupCopies"
+import { getDisplayProfiles } from "@/lib/client-settings"
 
 export interface FeatureNoticeEntry {
   id: string
@@ -28,6 +29,13 @@ export const FEATURE_NOTICES = [
     actionLabelKey: "torrents:featureNotice.groupCopies.action",
     Picture: GroupCopiesNoticePicture,
     isInUse: readGroupCopies,
+  },
+  {
+    id: "display-profiles",
+    titleKey: "torrents:featureNotice.displayProfiles.title",
+    descriptionKey: "torrents:featureNotice.displayProfiles.description",
+    actionLabelKey: "torrents:featureNotice.displayProfiles.action",
+    isInUse: () => getDisplayProfiles().profiles.length > 1,
   },
 ] as const satisfies readonly FeatureNoticeEntry[]
 

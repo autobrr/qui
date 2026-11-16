@@ -1814,6 +1814,11 @@
       "title": "Seskupte svá křížová sdílení",
       "description": "Zobrazí kopie jednoho torrentu jako jeden řádek.",
       "action": "Vyzkoušet"
+    },
+    "displayProfiles": {
+      "title": "Profily zobrazení",
+      "description": "Dejte každé obrazovce vlastní sloupce, hustotu řádků a postranní panely. Profil tohoto prohlížeče vyberete tady.",
+      "action": "Vytvořit profil"
     }
   },
   "displayProfiles": {

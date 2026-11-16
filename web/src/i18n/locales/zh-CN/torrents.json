@@ -1646,6 +1646,11 @@
       "title": "合并你的辅种",
       "description": "将同一种子的多个副本显示为一行。",
       "action": "试试看"
+    },
+    "displayProfiles": {
+      "title": "显示配置",
+      "description": "为每块屏幕保留各自的列、行密度和侧边栏。在这里选择此浏览器的配置。",
+      "action": "创建配置"
     }
   },
   "displayProfiles": {

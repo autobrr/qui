@@ -8,6 +8,7 @@ import { Check, ChevronUp, Plus, Settings2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
+import { FeatureNotice } from "@/components/feature-notice/FeatureNotice"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -47,24 +48,26 @@ export function DisplayProfileChip() {
     <>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <Tooltip disableHoverableContent>
-          {/* Focus comes back to the chip after each pick, so only a hover shows the name. */}
-          <TooltipTrigger asChild onFocus={(event) => event.preventDefault()}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={t("displayProfiles.chipAriaLabel", { name: active.name })}
-                className={cn(
-                  "hidden h-6 gap-1 rounded-full border px-1.5 text-xs md:inline-flex lg:px-2",
-                  menuOpen ? "bg-accent text-foreground" : "text-muted-foreground hover:text-accent-foreground"
-                )}
-              >
-                <DisplayProfileGlyph profile={active} />
-                <span className="hidden max-w-[8rem] truncate lg:inline">{active.name}</span>
-                <ChevronUp aria-hidden="true" className="hidden size-3 opacity-60 lg:block" />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
+          <FeatureNotice id="display-profiles" side="top" controlOpen={menuOpen} onAction={() => setNewProfileOpen(true)}>
+            {/* Focus comes back to the chip after each pick, so only a hover shows the name. */}
+            <TooltipTrigger asChild onFocus={(event) => event.preventDefault()}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("displayProfiles.chipAriaLabel", { name: active.name })}
+                  className={cn(
+                    "hidden h-6 gap-1 rounded-full border px-1.5 text-xs md:inline-flex lg:px-2",
+                    menuOpen ? "bg-accent text-foreground" : "text-muted-foreground hover:text-accent-foreground"
+                  )}
+                >
+                  <DisplayProfileGlyph profile={active} />
+                  <span className="hidden max-w-[8rem] truncate lg:inline">{active.name}</span>
+                  <ChevronUp aria-hidden="true" className="hidden size-3 opacity-60 lg:block" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+          </FeatureNotice>
           {!wide && !menuOpen && <TooltipContent>{active.name}</TooltipContent>}
         </Tooltip>
         <DropdownMenuContent
