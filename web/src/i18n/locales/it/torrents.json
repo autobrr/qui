@@ -1596,6 +1596,9 @@
     "trackerDown": "Tracker non raggiungibile",
     "unregistered": "Non registrato",
     "trackerError": "Errore tracker",
+    "helperTransfer": "Helper di trasferimento",
+    "helperShare": "Helper di condivisione",
+    "helperHint": "qui ha aggiunto questo torrent per un trasferimento o una condivisione. I suoi file appartengono a un altro torrent.",
     "now": "adesso",
     "yes": "Sì",
     "no": "No"

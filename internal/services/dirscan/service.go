@@ -79,6 +79,8 @@ type Service struct {
 	notifier                  notifications.Notifier
 	backendPool               *fsops.Pool
 	adder                     *crossseed.Adder
+	// transfers is nil until start-up sets it.
+	transfers transfers
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -986,6 +988,14 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 			scanner.SetFileIDIndex(index)
 		}
 	}
+
+	transferFolders, err := s.runningTransferFolders(ctx, target.instance.ID, target.backend.Paths())
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to read the folders of running Transfers")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+	scanner.ignorePaths = transferFolders
 
 	scanResult, err := scanner.ScanDirectory(ctx, scanRoot)
 	if err != nil {

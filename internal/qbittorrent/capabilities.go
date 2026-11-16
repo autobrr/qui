@@ -64,6 +64,10 @@ const (
 	// .torrent file without its trackers. No capture confirms the bug: the
 	// 4.6.0 and 4.6.7 feature probes in go-qbittorrent keep the tracker.
 	CapExportOmitsTrackers
+	// CapTransferAndShare is the oldest qBittorrent that Transfer and Share
+	// support: 5.1, the first that reports last_external_address_v4. Export
+	// to Instance does not read it.
+	CapTransferAndShare
 )
 
 // versionRange holds the Web API versions of a capability. A nil highest
@@ -106,6 +110,7 @@ var capabilityVersions = map[Capability]versionRange{
 	CapPartialCategoryEdit:        since("2.16.1"), // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
 	CapProcessInfo:                since("2.15.1"),
 	CapFreeSpaceAtPath:            since("2.15.2"), // qBittorrent 5.3
+	CapTransferAndShare:           since("2.11.3"), // qBittorrent 5.1
 	CapExportOmitsTrackers:        {lowest: semver.MustParse("2.9.1"), highest: semver.MustParse("2.9.3")},
 }
 

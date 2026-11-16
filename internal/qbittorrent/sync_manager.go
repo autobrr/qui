@@ -322,6 +322,9 @@ type TorrentView struct {
 	HasTrackerError       *struct{}     `json:"has_tracker_error,omitempty"`
 	HasOtherAnnounceError *struct{}     `json:"has_other_announce_error,omitempty"`
 	TrackerHealth         TrackerHealth `json:"tracker_health,omitempty"`
+	// QuiHelper is the owner kind of a helper torrent, from the helper
+	// registry. The torrent list shows a badge for it.
+	QuiHelper string `json:"qui_helper,omitempty"`
 	// CopyGroup is nil on a flat row and on a plain row of a grouped list.
 	CopyGroup *CopyGroupRow `json:"copy_group,omitempty"`
 	// Reannounce, Popularity and Private are nil when the instance does not
@@ -355,11 +358,14 @@ type rowValues struct {
 type rowBuilder struct {
 	reannounce, popularity bool // the instance sends them in the torrent list
 	values                 []rowValues
+	// helpers is nil when no helper registry is set.
+	helpers    HelperTorrents
+	instanceID int
 }
 
 // newRowBuilder returns a builder for n rows of the instance of c.
-func (c *Client) newRowBuilder(n int) rowBuilder {
-	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5)}
+func (c *Client) newRowBuilder(n int, helpers HelperTorrents) rowBuilder {
+	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5), helpers: helpers, instanceID: c.instanceID}
 	if b.reannounce || b.popularity {
 		b.values = make([]rowValues, n)
 	}
@@ -371,6 +377,9 @@ func (c *Client) newRowBuilder(n int) rowBuilder {
 // Private.
 func (b *rowBuilder) view(i int, t *qbt.Torrent, health TrackerHealth) TorrentView {
 	tv := TorrentView{Torrent: t, TrackerHealth: health}
+	if b.helpers != nil {
+		tv.QuiHelper = b.helpers.HelperKind(b.instanceID, t.Hash)
+	}
 	privateKnown := !PrivateUnknown(t)
 	if !b.reannounce && !b.popularity && !privateKnown {
 		return tv
@@ -619,8 +628,9 @@ type SyncManager struct {
 	// Cached tracker display name map (domain -> displayName), refreshed periodically
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 
-	folderCleanup atomic.Pointer[FolderCleanup]
-	deleteNoter   atomic.Pointer[DeleteNoter]
+	folderCleanup  atomic.Pointer[FolderCleanup]
+	deleteNoter    atomic.Pointer[DeleteNoter]
+	helperTorrents atomic.Pointer[HelperTorrents]
 
 	syncEventSinkMu sync.RWMutex
 	syncEventSink   SyncEventSink
@@ -1779,14 +1789,14 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
-		rows := client.newRowBuilder(len(paginatedTorrents))
+		rows := client.newRowBuilder(len(paginatedTorrents), sm.helpers())
 		for i := range paginatedTorrents {
 			paginatedViews[i] = rows.view(i, paginatedTorrents[i], cachedHealth.Health(paginatedTorrents[i].Hash))
 		}
 	}
 	if len(groupedRows) > 0 {
 		paginatedViews = make([]TorrentView, len(groupedRows))
-		rows := client.newRowBuilder(len(groupedRows))
+		rows := client.newRowBuilder(len(groupedRows), sm.helpers())
 		for i, grouped := range groupedRows {
 			torrent := filteredTorrents[grouped.row]
 			paginatedViews[i] = rows.view(i, torrent, cachedHealth.Health(torrent.Hash))
@@ -1904,7 +1914,7 @@ func (sm *SyncManager) instanceTorrentViews(client *Client, instanceID int, inst
 		cachedHealth = sm.GetTrackerHealthSnapshot(instanceID)
 	}
 
-	rows := client.newRowBuilder(len(torrents))
+	rows := client.newRowBuilder(len(torrents), sm.helpers())
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i := range torrents {
 		views[i] = CrossInstanceTorrentView{

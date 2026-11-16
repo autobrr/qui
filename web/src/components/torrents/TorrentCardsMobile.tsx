@@ -374,6 +374,11 @@ function SwipeableCard({
       onToggle={onToggleCopyGroup}
     />
   )
+  const helperBadge = torrent.qui_helper && (
+    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 flex-shrink-0 ml-1" title={t("tableColumns.helperHint")}>
+      {torrent.qui_helper === "share" ? t("tableColumns.helperShare") : t("tableColumns.helperTransfer")}
+    </Badge>
+  )
   const isComplete = torrent.progress === 1
   const hasSpeeds = torrent.dlspeed > 0 || torrent.upspeed > 0
   const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName
@@ -464,6 +469,8 @@ function SwipeableCard({
 
           {groupPill}
 
+          {helperBadge}
+
           {/* State badge - smaller */}
           <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
             {statusBadgeLabel}
@@ -496,6 +503,7 @@ function SwipeableCard({
               </div>
             </div>
             {groupPill}
+            {helperBadge}
           </div>
 
           {/* Tracker, Size and Ratio on the left, state badge on the right. On a full line, the tracker name gets shorter first, then the size. */}
@@ -540,6 +548,7 @@ function SwipeableCard({
               {displayName}
             </h3>
             {groupPill}
+            {helperBadge}
           </div>
 
           {/* Progress bar */}

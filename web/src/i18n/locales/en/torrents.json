@@ -1596,6 +1596,9 @@
     "trackerDown": "Tracker Down",
     "unregistered": "Unregistered",
     "trackerError": "Tracker Error",
+    "helperTransfer": "Transfer helper",
+    "helperShare": "Share helper",
+    "helperHint": "qui added this torrent for a Transfer or a Share. Its files belong to another torrent.",
     "now": "now",
     "yes": "Yes",
     "no": "No"

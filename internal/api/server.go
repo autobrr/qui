@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
@@ -50,6 +51,7 @@ import (
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/update"
@@ -108,6 +110,7 @@ type Server struct {
 	discScanStore                    *models.DiscScanStore
 	discScanService                  *discscan.Service
 	transferHistory                  *transferhistory.Module
+	transfers                        *transfer.Store
 	liveSamples                      *livesamples.Recorder
 	systemNotices                    *systemnotice.Module
 	databaseShrink                   *dbshrink.Service
@@ -117,6 +120,7 @@ type Server struct {
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
+	switches                         rollout.Switches
 	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
 	shuttingDown <-chan struct{}
 }
@@ -176,6 +180,9 @@ type Dependencies struct {
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
 	ActivityHub                      *activity.Hub
+	// Transfers holds the Transfer records and the helper registry.
+	Transfers *transfer.Store
+	Switches  rollout.Switches
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -259,12 +266,19 @@ func NewServer(deps *Dependencies) *Server {
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
 		activityHub:                      deps.ActivityHub,
+		transfers:                        deps.Transfers,
+		switches:                         deps.Switches,
 		shuttingDown:                     streamsCtx.Done(),
 	}
 	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
 	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
+}
+
+// Switches returns the server-side switches that the router was built with.
+func (s *Server) Switches() rollout.Switches {
+	return s.switches
 }
 
 // ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
@@ -410,6 +424,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler.SetOrphanScan(s.orphanScanService)
 	instancesHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
+	if s.transfers != nil {
+		torrentsHandler.SetHeldTorrents(s.transfers)
+	}
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)

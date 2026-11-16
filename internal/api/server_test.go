@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
@@ -44,6 +45,7 @@ import (
 	"github.com/autobrr/qui/internal/services/peerclienticons"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/internal/update"
@@ -198,6 +200,9 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
 	jackettService := jackett.NewService(torznabIndexerStore)
+	// No Transfer and no helper torrent: the API behaves as it did before Transfers.
+	transfers, err := transfer.NewStore(t.Context(), db)
+	require.NoError(t, err)
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
 	require.NoError(t, err)
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, nil, crossSeedStore, models.NewCrossSeedBlocklistStore(db), jackettService, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)
@@ -256,6 +261,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		TorznabIndexerStore:       torznabIndexerStore,
 		ArrInstanceStore:          arrInstanceStore,
 		ArrService:                arr.NewService(arrInstanceStore, models.NewArrIDCacheStore(db)),
+		Transfers:                 transfers,
+		Switches:                  rollout.Switches{TransfersAndShares: true},
 	}
 }
 

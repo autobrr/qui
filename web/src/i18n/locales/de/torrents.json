@@ -1596,6 +1596,9 @@
     "trackerDown": "Tracker offline",
     "unregistered": "Nicht registriert",
     "trackerError": "Tracker-Fehler",
+    "helperTransfer": "Transfer-Helfer",
+    "helperShare": "Freigabe-Helfer",
+    "helperHint": "qui hat diesen Torrent für einen Transfer oder eine Freigabe hinzugefügt. Seine Dateien gehören zu einem anderen Torrent.",
     "now": "jetzt",
     "yes": "Ja",
     "no": "Nein"

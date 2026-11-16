@@ -668,6 +668,8 @@ type Service struct {
 	crossSeedRoutes   *crossseedroute.Service
 	// routedTorrents reads the torrents of a Cross-seed instance for the hardlink index.
 	routedTorrents crossseedroute.TorrentReader
+	// held is nil until start-up sets it.
+	held heldTorrents
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -1170,6 +1172,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.leaveOutHeld(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1422,6 +1425,7 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.leaveOutHeld(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1745,6 +1749,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.notifyAutomationFailure(ctx, instanceID, err)
 		return nil, err
 	}
+	torrents = s.leaveOutHeld(instanceID, torrents)
 
 	// After the fetch: a full sync update reads the qBittorrent version again.
 	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)

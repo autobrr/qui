@@ -2035,27 +2035,33 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 	h.proxy.ServeHTTP(w, r)
 }
 
-// deleteHashes returns the torrents that a torrents/delete request names, as
-// qBittorrent reads them from a urlencoded or a multipart body
-// (RequestParser::parsePostMessage): the last value of "hashes".
-func deleteHashes(r *http.Request, body []byte) ([]string, bool) {
+// deleteHashes returns the torrents that a torrents/delete request names and
+// whether it deletes their files, as qBittorrent reads them from a urlencoded
+// or a multipart body (RequestParser::parsePostMessage): the last value of
+// each field.
+func deleteHashes(r *http.Request, body []byte) (hashes []string, deleteFiles bool, ok bool) {
 	if form, ok := parseQBTForm(r, body); ok {
-		return splitHashes(form.get("hashes")), true
+		return splitHashes(form.get("hashes")), strings.EqualFold(form.get("deleteFiles"), "true"), true
 	}
 	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" {
-		return nil, false
+		return nil, false, false
 	}
 	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(int64(len(body)))
 	if err != nil {
-		return nil, false
+		return nil, false, false
 	}
 	defer func() { _ = form.RemoveAll() }()
-	values := form.Value["hashes"]
-	if len(values) == 0 {
-		return nil, false
+	last := func(field string) string {
+		if values := form.Value[field]; len(values) > 0 {
+			return values[len(values)-1]
+		}
+		return ""
 	}
-	return splitHashes(values[len(values)-1]), true
+	if len(form.Value["hashes"]) == 0 {
+		return nil, false, false
+	}
+	return splitHashes(last("hashes")), strings.EqualFold(last("deleteFiles"), "true"), true
 }
 
 // handleDeleteTorrents handles /api/v2/torrents/delete and invalidates file cache
@@ -2077,6 +2083,16 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse delete form")
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
 		return
+	}
+
+	noted, deleteFiles, parsed := deleteHashes(r, bodyBytes)
+	if parsed && deleteFiles {
+		if err := h.syncManager.RefuseHelperFiles(ctx, instanceID, noted); err != nil {
+			log.Warn().Err(err).Int("instanceId", instanceID).Str("client", clientAPIKey.ClientName).
+				Msg("Refused a proxied delete with files")
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 	}
 
 	hashes := r.Form.Get("hashes")
@@ -2126,7 +2142,7 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if noted, ok := deleteHashes(r, bodyBytes); ok {
+	if parsed {
 		h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
 	}
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {

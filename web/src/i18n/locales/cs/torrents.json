@@ -1668,6 +1668,9 @@
     "trackerDown": "Tracker nedostupný",
     "unregistered": "Neregistrovaný",
     "trackerError": "Chyba trackeru",
+    "helperTransfer": "Pomocník přenosu",
+    "helperShare": "Pomocník sdílení",
+    "helperHint": "qui přidal tento torrent pro přenos nebo sdílení. Jeho soubory patří jinému torrentu.",
     "now": "nyní",
     "yes": "Ano",
     "no": "Ne"

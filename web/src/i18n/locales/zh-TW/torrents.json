@@ -1502,6 +1502,9 @@
     "trackerDown": "Tracker 離線",
     "unregistered": "未註冊",
     "trackerError": "Tracker 錯誤",
+    "helperTransfer": "傳輸輔助",
+    "helperShare": "共享輔助",
+    "helperHint": "qui 為傳輸或共享新增了此種子。其檔案屬於另一個種子。",
     "now": "現在",
     "yes": "是",
     "no": "否"

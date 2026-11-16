@@ -166,7 +166,9 @@ func effectiveTorznabCrossSeedSearchLimit(limit int) int {
 type Service struct {
 	instanceStore instanceProvider
 	syncManager   qbittorrentSync
-	filesManager  *filesmanager.Service
+	// helpers is nil until start-up sets it.
+	helpers      helperTorrents
+	filesManager *filesmanager.Service
 	// mediaIDCacheStore backs the MKV-metadata external-ID fallback; nil
 	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
 	// real MediaInfo analyzer.

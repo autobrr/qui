@@ -83,6 +83,8 @@ type Service struct {
 
 	activityPublisher activity.Publisher
 	crossSeedRoutes   *crossseedroute.Service
+	// transfers is nil until start-up sets it.
+	transfers transfers
 
 	// Per-instance mutex held for a whole deletion
 	instanceMu map[int]*sync.Mutex
@@ -2037,7 +2039,7 @@ func metadataIgnoreRoots(ctx context.Context, scanRoots, metadataRoots []string,
 }
 
 func scanIgnorePaths(ctx context.Context, configured, scanRoots []string, result *buildFileMapResult, backend fsops.Backend, instance *models.Instance) []string {
-	ignored := append(append([]string(nil), configured...), result.skippedRoots...)
+	ignored := slices.Concat(configured, result.skippedRoots, result.transferFolders)
 	return append(ignored, metadataIgnoreRoots(ctx, scanRoots, result.metadataRoots, backend, instance)...)
 }
 
@@ -2175,10 +2177,14 @@ type buildFileMapResult struct {
 	// peerRoots are the save paths of the merged instances. They are never
 	// scan roots; the scan walks one only when a symlink hides it from the walk.
 	peerRoots []string
+	// transferFolders are the folders of the running Transfers, of this
+	// instance and of the merged instances. The scan and the deletion ignore
+	// them as they ignore a path that the user set.
+	transferFolders []string
 }
 
-// mergeProtection adds the files, skipped roots and metadata roots of
-// another instance to r, never its scan roots, and returns the number of new
+// mergeProtection adds the files, skipped roots, metadata roots and Transfer
+// folders of another instance to r, never its scan roots, and returns the number of new
 // files.
 func (r *buildFileMapResult) mergeProtection(d fsops.PathDialect, other *buildFileMapResult) int {
 	added := r.fileMap.MergeFrom(other.fileMap)
@@ -2186,6 +2192,7 @@ func (r *buildFileMapResult) mergeProtection(d fsops.PathDialect, other *buildFi
 	r.peerRoots = mergeRootLists(d, r.peerRoots, other.scanRoots)
 	r.skippedRoots = mergeRootLists(d, r.skippedRoots, other.skippedRoots)
 	r.metadataRoots = mergeRootLists(d, r.metadataRoots, other.metadataRoots)
+	r.transferFolders = mergeRootLists(d, r.transferFolders, other.transferFolders)
 	r.scanRoots = filterCoveredScanRoots(d, r.scanRoots, r.skippedRoots)
 	return added
 }
@@ -2330,6 +2337,7 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialec
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.leaveOutHelpers(instanceID, torrents)
 
 	return scanRootsFromTorrents(d, torrents), nil
 }
@@ -2373,6 +2381,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.leaveOutHelpers(instanceID, torrents)
 
 	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)
 	filesByHash, err := s.sync.GetTorrentFilesBatch(filesCtx, instanceID, torrentHashes(torrents))
@@ -2382,6 +2391,9 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 
 	result, err := buildFileMapFromTorrents(backend.Paths(), torrents, filesByHash, wantPaths)
 	if err != nil {
+		return nil, err
+	}
+	if result.transferFolders, err = s.runningTransferFolders(ctx, instanceID); err != nil {
 		return nil, err
 	}
 	result.scanRoots = dedupeCaseVariantRoots(ctx, result.scanRoots, backend, scanned)
