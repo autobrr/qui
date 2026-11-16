@@ -280,6 +280,100 @@ describe("push queue", () => {
   })
 })
 
+describe("large batches", () => {
+  const MAX_BODY_BYTES = 64 * 1024
+
+  // About 100 KiB of synced keys that the server does not have yet.
+  function storeLargeLocalSetup(): Record<string, string> {
+    const values: Record<string, string> = {}
+    for (let i = 0; i < 50; i++) {
+      values[`qui-column-visibility:${i}`] = JSON.stringify({ name: true, note: "x".repeat(2_000) })
+    }
+    for (const [key, raw] of Object.entries(values)) localStorage.setItem(key, raw)
+    return values
+  }
+
+  function fakeServer(): Record<string, string> {
+    const server: Record<string, string> = {}
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      Object.assign(server, JSON.parse(String(init.body)))
+      return { ok: true, status: 200 }
+    })
+    return server
+  }
+
+  function bodySizes(): number[] {
+    return fetchMock.mock.calls.map(([, init]) => new TextEncoder().encode(String(init.body)).length)
+  }
+
+  it("syncs every key when the first batch is over 64 KiB", async () => {
+    const values = storeLargeLocalSetup()
+    const server = fakeServer()
+
+    seedAndMarkReady({})
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
+    for (const size of bodySizes()) expect(size).toBeLessThanOrEqual(MAX_BODY_BYTES)
+    expect(server).toEqual(values)
+  })
+
+  it("replays the keys of a failed PUT after a split batch, on the next page load", async () => {
+    const stale: Record<string, string> = {}
+    for (let i = 0; i < 50; i++) stale[`qui-column-visibility:${i}`] = "{}"
+    const server = fakeServer()
+    Object.assign(server, stale)
+    applyServerSettings(stale)
+    seedAndMarkReady(stale)
+    const edited: Record<string, string> = {}
+    for (let i = 0; i < 50; i++) {
+      edited[`qui-column-visibility:${i}`] = JSON.stringify({ name: true, note: "x".repeat(2_000) })
+      writeRaw(`qui-column-visibility:${i}`, edited[`qui-column-visibility:${i}`])
+    }
+    const deliver = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementationOnce(deliver).mockResolvedValueOnce({ ok: false, status: 500 })
+    await vi.runAllTimersAsync()
+    expect(server).not.toEqual(edited)
+
+    // The page closes before another save; the next load gets the stale snapshot.
+    _resetClientSettingsForTests()
+    applyServerSettings({ ...server })
+    seedAndMarkReady({ ...server })
+    await vi.runAllTimersAsync()
+
+    expect(server).toEqual(edited)
+  })
+
+  it("sends a debounced save without keepalive", async () => {
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][1].keepalive).toBeFalsy()
+  })
+
+  it.each([
+    ["pagehide", () => window.dispatchEvent(new Event("pagehide"))],
+    ["a hidden tab", () => {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+      document.dispatchEvent(new Event("visibilitychange"))
+    }],
+  ])("splits the save at %s into keepalive PUTs under 64 KiB", async (_name, hidePage) => {
+    const values = storeLargeLocalSetup()
+    const server = fakeServer()
+    seedAndMarkReady({})
+
+    hidePage()
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
+    for (const [, init] of fetchMock.mock.calls) expect(init.keepalive).toBe(true)
+    for (const size of bodySizes()) expect(size).toBeLessThanOrEqual(MAX_BODY_BYTES)
+    expect(server).toEqual(values)
+  })
+})
+
 describe("outbox persistence", () => {
   it("replays a write whose unload flush never reached the server", async () => {
     // A pagehide keepalive PUT can die in flight (Chrome drops keepalive

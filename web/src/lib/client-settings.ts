@@ -218,7 +218,30 @@ let flushInFlight = false
 // after another tab replaces a batch value.
 let flushRequestedInFlight = false
 
-async function flushPending(): Promise<void> {
+// Chrome refuses a keepalive body over 64 KiB, so no PUT body is larger.
+const MAX_PUT_BODY_BYTES = 64 * 1024
+const utf8 = new TextEncoder()
+
+/** Splits entries into PUT bodies of at most MAX_PUT_BODY_BYTES; an entry over the limit gets a body of its own. */
+function splitIntoBodies(entries: [string, string][]): [string, string][][] {
+  const chunks: [string, string][][] = []
+  let chunk: [string, string][] = []
+  let bytes = 2 // "{}"
+  for (const entry of entries) {
+    const entryBytes = utf8.encode(`${JSON.stringify(entry[0])}:${JSON.stringify(entry[1])}`).length
+    if (chunk.length > 0 && bytes + 1 + entryBytes > MAX_PUT_BODY_BYTES) {
+      chunks.push(chunk)
+      chunk = []
+      bytes = 2
+    }
+    bytes += (chunk.length > 0 ? 1 : 0) + entryBytes
+    chunk.push(entry)
+  }
+  if (chunk.length > 0) chunks.push(chunk)
+  return chunks
+}
+
+async function flushPending(atPageHide = false): Promise<void> {
   if (flushInFlight) {
     flushRequestedInFlight = true
     return
@@ -227,33 +250,36 @@ async function flushPending(): Promise<void> {
   // Keys stay in pending while the PUT is in flight so a concurrent server
   // apply cannot clobber the newer local value (the echo guard checks
   // pending). On failure they simply stay queued for the next flush.
-  const batch = Object.fromEntries(pending)
+  const chunks = splitIntoBodies([...pending])
   flushInFlight = true
   try {
-    // Plain fetch instead of the api client: keepalive lets the tab-hidden
-    // flush finish, and this module must stay import-light (i18n boots on it).
-    const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify(batch),
-      keepalive: true,
-    })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    // Drop what this PUT delivered. Entries replaced in this tab stay queued;
-    // a newer edit from another tab is copied from the shared localStorage.
-    // A server copy is not an edit: pushing it back can be one write old, and
-    // two tabs then flip the value forever (#3424).
-    for (const [key, raw] of Object.entries(batch)) {
-      const latest = readRaw(key)
-      if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
-        pending.set(key, latest)
-        flushRequestedInFlight = true
-      } else if (pending.get(key) === raw) pending.delete(key)
+    // One PUT at a time: Chrome counts every keepalive body in flight against the same 64 KiB.
+    for (const chunk of chunks) {
+      // Plain fetch instead of the api client: this module must stay import-light (i18n boots on it).
+      const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(Object.fromEntries(chunk)),
+        // keepalive lets the PUT outlive the page; Chrome caps its body, so other saves leave it off.
+        keepalive: atPageHide,
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      // Drop what this PUT delivered. Entries replaced in this tab stay queued;
+      // a newer edit from another tab is copied from the shared localStorage.
+      // A server copy is not an edit: pushing it back can be one write old, and
+      // two tabs then flip the value forever (#3424).
+      for (const [key, raw] of chunk) {
+        const latest = readRaw(key)
+        if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
+          pending.set(key, latest)
+          flushRequestedInFlight = true
+        } else if (pending.get(key) === raw) pending.delete(key)
+      }
+      persistPending()
     }
-    persistPending()
   } catch (error) {
     // No self-retry, on purpose: a failed batch stays pending until the next write
     // or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
@@ -267,23 +293,23 @@ async function flushPending(): Promise<void> {
   }
 }
 
-function flushNow(): void {
+function flushAtPageHide(): void {
   if (flushTimer !== null) {
     clearTimeout(flushTimer)
     flushTimer = null
   }
-  void flushPending()
+  void flushPending(true)
 }
 
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flushNow()
+    if (document.visibilityState === "hidden") flushAtPageHide()
   })
   // Chrome does not fire visibilitychange on a same-tab reload or navigation,
   // so a write inside the debounce window would die with the page and the
   // stale server snapshot would revert it at next boot. keepalive lets the
   // PUT outlive the page.
-  window.addEventListener("pagehide", flushNow)
+  window.addEventListener("pagehide", flushAtPageHide)
 }
 
 // --- server sync (called by useClientSettingsSync) ---
