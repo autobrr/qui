@@ -25,6 +25,7 @@ func TestRegistryIDsPinned(t *testing.T) {
 		"swizzin":         {},
 		"kanagawa-dragon": {},
 		"kanagawa-wave":   {},
+		"meridian":        {},
 	}
 
 	for _, theme := range All() {

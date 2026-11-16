@@ -1,0 +1,153 @@
+/* @name: Meridian
+ * @description: Neutral gray theme with a cobalt blue accent for light and dark mode, set in the system fonts
+ * @premium: false
+ */
+
+:root {
+  --background: oklch(0.9900 0 0);
+  --foreground: oklch(0.2050 0 0);
+  --card: oklch(1.0000 0 0);
+  --card-foreground: oklch(0.2050 0 0);
+  --popover: oklch(1.0000 0 0);
+  --popover-foreground: oklch(0.2050 0 0);
+  --primary: oklch(0.4900 0.2170 262.00);
+  --primary-foreground: oklch(1.0000 0 0);
+  --secondary: oklch(0.9550 0 0);
+  --secondary-foreground: oklch(0.2700 0 0);
+  --muted: oklch(0.9500 0 0);
+  --muted-foreground: oklch(0.5000 0 0);
+  --accent: oklch(0.9450 0.0260 262.00);
+  --accent-foreground: oklch(0.2050 0 0);
+  --destructive: oklch(0.5350 0.2180 27.00);
+  --destructive-foreground: oklch(1.0000 0 0);
+  --border: oklch(0.9200 0 0);
+  --input: oklch(0.8700 0 0);
+  --ring: oklch(0.4900 0.2170 262.00);
+  --chart-1: oklch(0.5000 0.1900 295.00);
+  --chart-2: oklch(0.5000 0.1850 262.00);
+  --chart-3: oklch(0.5000 0.1250 152.00);
+  --chart-4: oklch(0.5300 0.1350 50.00);
+  --chart-5: oklch(0.5350 0.1900 25.00);
+  --sidebar: oklch(0.9650 0 0);
+  --sidebar-foreground: oklch(0.2050 0 0);
+  --sidebar-primary: oklch(0.9250 0.0330 262.00);
+  --sidebar-primary-foreground: oklch(0.3300 0.1450 262.00);
+  --sidebar-accent: oklch(0.9350 0 0);
+  --sidebar-accent-foreground: oklch(0.2050 0 0);
+  --sidebar-border: oklch(0.9150 0 0);
+  --sidebar-ring: oklch(0.4900 0.2170 262.00);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter Variable", Inter, "Segoe UI", system-ui, Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+  --font-serif: ui-serif, "New York", Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --radius: 0.5rem;
+  --shadow-2xs: 0px 1px 1px 0px hsl(0 0% 0% / 0.04);
+  --shadow-xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.06);
+  --shadow-sm: 0px 1px 2px 0px hsl(0 0% 0% / 0.05), 0px 1px 1px -1px hsl(0 0% 0% / 0.04);
+  --shadow: 0px 1px 3px 0px hsl(0 0% 0% / 0.07), 0px 1px 2px -1px hsl(0 0% 0% / 0.05);
+  --shadow-md: 0px 2px 6px 0px hsl(0 0% 0% / 0.06), 0px 8px 24px 0px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 16px 40px 0px hsl(0 0% 0% / 0.14);
+  --shadow-xl: 0px 8px 20px 0px hsl(0 0% 0% / 0.10), 0px 24px 64px 0px hsl(0 0% 0% / 0.20);
+  --shadow-2xl: 0px 32px 80px 0px hsl(0 0% 0% / 0.30);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: oklch(0.1700 0 0);
+  --foreground: oklch(0.9300 0 0);
+  --card: oklch(0.2100 0 0);
+  --card-foreground: oklch(0.9300 0 0);
+  --popover: oklch(0.2400 0 0);
+  --popover-foreground: oklch(0.9300 0 0);
+  --primary: oklch(0.7200 0.1450 262.00);
+  --primary-foreground: oklch(0.1800 0.0200 262.00);
+  --secondary: oklch(0.2700 0 0);
+  --secondary-foreground: oklch(0.9300 0 0);
+  --muted: oklch(0.2550 0 0);
+  --muted-foreground: oklch(0.7100 0 0);
+  --accent: oklch(0.3100 0.0350 262.00);
+  --accent-foreground: oklch(0.9700 0 0);
+  --destructive: oklch(0.7550 0.1400 25.00);
+  --destructive-foreground: oklch(0.1800 0.0200 25.00);
+  --border: oklch(0.2750 0 0);
+  --input: oklch(0.3400 0 0);
+  --ring: oklch(0.7200 0.1450 262.00);
+  --chart-1: oklch(0.7400 0.1550 300.00);
+  --chart-2: oklch(0.7200 0.1450 262.00);
+  --chart-3: oklch(0.7800 0.1900 152.00);
+  --chart-4: oklch(0.8000 0.1600 70.00);
+  --chart-5: oklch(0.7550 0.1400 25.00);
+  --sidebar: oklch(0.2000 0 0);
+  --sidebar-foreground: oklch(0.9300 0 0);
+  --sidebar-primary: oklch(0.3000 0.0600 262.00);
+  --sidebar-primary-foreground: oklch(0.8900 0.0500 262.00);
+  --sidebar-accent: oklch(0.2550 0 0);
+  --sidebar-accent-foreground: oklch(0.9300 0 0);
+  --sidebar-border: oklch(0.2750 0 0);
+  --sidebar-ring: oklch(0.7200 0.1450 262.00);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter Variable", Inter, "Segoe UI", system-ui, Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+  --font-serif: ui-serif, "New York", Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --radius: 0.5rem;
+  --shadow-2xs: 0px 1px 1px 0px hsl(0 0% 0% / 0.20);
+  --shadow-xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.24);
+  --shadow-sm: 0px 1px 2px 0px hsl(0 0% 0% / 0.24), 0px 1px 1px -1px hsl(0 0% 0% / 0.20);
+  --shadow: 0px 1px 3px 0px hsl(0 0% 0% / 0.28), 0px 1px 2px -1px hsl(0 0% 0% / 0.24);
+  --shadow-md: 0px 2px 6px 0px hsl(0 0% 0% / 0.28), 0px 8px 24px 0px hsl(0 0% 0% / 0.36);
+  --shadow-lg: 0px 4px 12px 0px hsl(0 0% 0% / 0.32), 0px 16px 40px 0px hsl(0 0% 0% / 0.44);
+  --shadow-xl: 0px 8px 20px 0px hsl(0 0% 0% / 0.36), 0px 24px 64px 0px hsl(0 0% 0% / 0.52);
+  --shadow-2xl: 0px 32px 80px 0px hsl(0 0% 0% / 0.64);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+}

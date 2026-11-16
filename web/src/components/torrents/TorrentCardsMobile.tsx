@@ -216,7 +216,7 @@ const TrackerIcon = ({ title, fallback, src, size = "md", className }: TrackerIc
   }, [src])
 
   return (
-    <div className={cn("flex items-center justify-center", className)} title={title}>
+    <div className={cn("flex items-center justify-center", className)} role={title ? "img" : undefined} aria-label={title || undefined}>
       <div
         className={cn(
           "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
@@ -450,7 +450,7 @@ function SwipeableCard({
                 <h3 className={cn(
                   "font-medium text-xs inline-block",
                   selectionMode && "pr-8"
-                )} title={displayName}>
+                )}>
                   {displayName}
                 </h3>
               </div>
@@ -501,7 +501,7 @@ function SwipeableCard({
                 <h3 className={cn(
                   "font-medium text-sm inline-block whitespace-nowrap",
                   selectionMode && "pr-8"
-                )} title={displayName}>
+                )}>
                   {displayName}
                 </h3>
               </div>
@@ -513,7 +513,7 @@ function SwipeableCard({
           <div className="flex h-[22px] items-center gap-2 text-xs">
             <div className="flex items-center gap-2 text-muted-foreground min-w-0">
               {trackerDisplayName && (
-                <span className="flex items-center gap-1 min-w-0 shrink-[9999]" title={trackerTitle}>
+                <span className="flex items-center gap-1 min-w-0 shrink-[9999]">
                   <TrackerIcon
                     title={trackerTitle}
                     fallback={trackerMeta.fallback}
@@ -680,7 +680,7 @@ function SwipeableCard({
           {/* Left side: Tracker and Category */}
           <div className="flex items-center gap-3 flex-shrink-0">
             {trackerDisplayName && (
-              <div className="flex items-center gap-1" title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}>
+              <div className="flex items-center gap-1">
                 <TrackerIcon
                   title={trackerDisplayInfo.isCustomized ? `${trackerDisplayName} (${trackerMeta.host})` : trackerDisplayName}
                   fallback={trackerMeta.fallback}

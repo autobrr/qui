@@ -98,7 +98,7 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
   }, [src])
 
   return (
-    <div className="flex h-full w-full items-center justify-center" title={title}>
+    <div className="flex h-full w-full items-center justify-center" role={title ? "img" : undefined} aria-label={title || undefined}>
       <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
         {src && !hasError ? (
           <img
@@ -334,7 +334,7 @@ export const createColumns = ({
     cell: ({ row }) => {
       const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
+        <div className="overflow-hidden whitespace-nowrap text-sm font-medium">
           <Badge variant="outline" className="text-xs">
             {instanceName}
           </Badge>
@@ -421,7 +421,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {displayName}
           </div>
         )
@@ -483,7 +483,7 @@ export const createColumns = ({
         return (
           <div
             className="flex h-full w-full items-center justify-center"
-            title={statusLabel}
+            role="img"
             aria-label={statusLabel}
           >
             <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
@@ -629,7 +629,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {displayCategory || ""}
           </div>
         )
@@ -643,7 +643,7 @@ export const createColumns = ({
         const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
         const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayTags}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {displayTags}
           </div>
         )
@@ -880,7 +880,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {displayPath}
           </div>
         )
@@ -961,7 +961,7 @@ export const createColumns = ({
         const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
         const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {infoHash || "-"}
           </div>
         )
@@ -976,7 +976,7 @@ export const createColumns = ({
         const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
         const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          <div className="overflow-hidden whitespace-nowrap text-sm">
             {infoHash || "-"}
           </div>
         )
