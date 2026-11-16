@@ -111,8 +111,11 @@ func (c *crossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequ
 		return nil, err
 	}
 	matched, err := c.r.sync.GetTorrentRefsFresh(ctx, matchedOn, qbittorrent.TorrentRefFilter{Hashes: []string{req.ManualTargetHash}})
-	if err != nil || len(matched) != 1 {
-		return nil, fmt.Errorf("no matched torrent %s: %v", req.ManualTargetHash, err)
+	if err != nil {
+		return nil, err
+	}
+	if len(matched) != 1 {
+		return nil, fmt.Errorf("no matched torrent %s", req.ManualTargetHash)
 	}
 	mi, err := metainfo.Load(bytes.NewReader(data))
 	if err != nil {
