@@ -111,6 +111,10 @@ func (s *Store) Create(ctx context.Context, record *Record) error {
 		if err := insertMember(ctx, tx, id, i, member); err != nil {
 			return err
 		}
+		if record.Kind == KindExport {
+			// An Export run takes nothing from the source.
+			continue
+		}
 		key := torrentKey{record.SourceInstanceID, member.Hash}
 		result, err := tx.ExecContext(ctx, `INSERT INTO torrent_transfer_claims (instance_id, hash, transfer_id)
 			VALUES (?, ?, ?) ON CONFLICT (instance_id, hash) DO NOTHING`, key.instanceID, key.hash, id)

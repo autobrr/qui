@@ -34,6 +34,8 @@ const (
 type crash struct {
 	DB      string
 	Request transfer.Request
+	// Export, when set, runs this Export run instead of the Transfer.
+	Export *transfer.ExportRequest
 	// At is "before:<step>" or "after:<step>" for the save that records
 	// the step, "write:<n>" for the nth write of the copy, or empty when
 	// the parent kills the child.
@@ -250,10 +252,15 @@ func TestTransferCrashChild(t *testing.T) {
 	store, err := transfer.NewStore(t.Context(), at)
 	require.NoError(t, err)
 	deps.Store = store
+	exportPolls(&deps.Config)
 
 	svc := transfer.NewService(t.Context(), deps)
 	t.Cleanup(svc.Close)
-	_, err = svc.Start(t.Context(), plan.Request)
+	if plan.Export != nil {
+		_, _, err = svc.Export(t.Context(), *plan.Export)
+	} else {
+		_, err = svc.Start(t.Context(), plan.Request)
+	}
 	require.NoError(t, err)
 	svc.Wait()
 }

@@ -161,7 +161,7 @@ func (a *Adder) Add(ctx context.Context, req Request) Result {
 			defer cancel()
 		}
 	}
-	return a.confirm(ctx, req)
+	return a.Confirm(ctx, req)
 }
 
 func (s Settings) hasAfterAdd() bool {
@@ -246,9 +246,9 @@ func (s Settings) options() map[string]string {
 	return options
 }
 
-// confirm polls fresh syncs until the torrent is verified or failed, or the
-// polls run out.
-func (a *Adder) confirm(ctx context.Context, req Request) Result {
+// Confirm polls fresh syncs until the torrent is verified or failed, or the
+// polls run out, as Add does after its add. req.Torrent is not used.
+func (a *Adder) Confirm(ctx context.Context, req Request) Result {
 	owner, err := a.sync.GetSyncOwner(ctx, req.InstanceID)
 	if err != nil {
 		return Result{Failure: PollFailed, Err: fmt.Errorf("unable to get sync manager: %w", err)}

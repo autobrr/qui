@@ -48,11 +48,16 @@ type Config struct {
 	// WakeInterval is how often qui looks for a Transfer that may run again.
 	// Zero turns it off.
 	WakeInterval time.Duration
+	// ExportPolls and ExportPollInterval bound the wait of an Export run for
+	// the torrent on the target.
+	ExportPolls        int
+	ExportPollInterval time.Duration
 }
 
 func DefaultConfig() Config {
 	return Config{Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20,
-		Reconnects: 6, ReconnectWait: 10 * time.Second, WakeInterval: time.Minute}
+		Reconnects: 6, ReconnectWait: 10 * time.Second, WakeInterval: time.Minute,
+		ExportPolls: 10, ExportPollInterval: 3 * time.Second}
 }
 
 // GroupFinder finds the torrents that read the files of a torrent, with the
@@ -97,6 +102,8 @@ type Service struct {
 	// reserved is the free space that the running Transfers need on each
 	// target.
 	reserved map[int]int64
+	// exports holds a place for each Export run that runs.
+	exports chan struct{}
 }
 
 // run is a Transfer that the Service holds.
@@ -126,6 +133,7 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		queues:   map[int][]int64{},
 		runs:     map[int64]*run{},
 		reserved: map[int]int64{},
+		exports:  make(chan struct{}, exportsAtATime),
 	}
 	s.Wake()                            //nolint:contextcheck // the Service runs on its own context, s.ctx
 	go s.tick(deps.Config.WakeInterval) //nolint:contextcheck // the Service runs on its own context, s.ctx
@@ -169,6 +177,10 @@ func (s *Service) Wake() {
 		record, err := s.deps.Store.Get(s.ctx, id)
 		if err != nil {
 			log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
+			continue
+		}
+		if record.Kind == KindExport {
+			s.export(record, make(chan ExportResult, 1))
 			continue
 		}
 		if record.Kind != KindTransfer || record.RetryAt.After(now) || s.off(s.ctx, record) {
