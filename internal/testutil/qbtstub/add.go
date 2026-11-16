@@ -44,11 +44,19 @@ func NewTorrentFile(t *testing.T, name string, files ...TorrentFile) (data []byt
 
 // added is the state of a torrent that came in through torrents/add.
 type added struct {
-	sizes      []int64
-	priorities []int
-	stopped    bool
-	forced     bool
-	seedMode   bool
+	// torrent is the .torrent file that torrents/export gives back.
+	torrent     []byte
+	pieceLength int64
+	pieces      []byte
+	sizes       []int64
+	priorities  []int
+	stopped     bool
+	forced      bool
+	seedMode    bool
+	// stopWhenChecked is the stop condition "FilesChecked".
+	stopWhenChecked bool
+	// pieceStates is what the last hash check found, nil before one.
+	pieceStates []int
 	// checked is set once a check ran, or at the add in seed mode.
 	checked  bool
 	checking bool
@@ -78,13 +86,16 @@ func (s *Server) add(w http.ResponseWriter, form *multipart.Form, param func(str
 	}
 	var ids []string
 	for _, header := range form.File["torrents"] {
-		t, ok := s.parseUpload(header)
+		t, ok := parseUpload(header)
 		if !ok {
 			w.WriteHeader(http.StatusUnsupportedMediaType)
 			return
 		}
 		if _, exists := s.torrents[t.Hash]; exists {
 			continue
+		}
+		if s.OnAdd != nil {
+			s.OnAdd(t.Hash)
 		}
 		s.place(t, param)
 		s.torrents[t.Hash] = t
@@ -102,7 +113,7 @@ func (s *Server) add(w http.ResponseWriter, form *multipart.Form, param func(str
 	writeJSON(w, map[string]any{"success_count": len(ids), "failure_count": 0, "pending_count": 0, "added_torrent_ids": ids})
 }
 
-func (s *Server) parseUpload(header *multipart.FileHeader) (*Torrent, bool) {
+func parseUpload(header *multipart.FileHeader) (*Torrent, bool) {
 	file, err := header.Open()
 	if err != nil {
 		return nil, false
@@ -112,6 +123,10 @@ func (s *Server) parseUpload(header *multipart.FileHeader) (*Torrent, bool) {
 	if err != nil {
 		return nil, false
 	}
+	return parseTorrent(data)
+}
+
+func parseTorrent(data []byte) (*Torrent, bool) {
 	mi, err := metainfo.Load(bytes.NewReader(data))
 	if err != nil {
 		return nil, false
@@ -120,7 +135,8 @@ func (s *Server) parseUpload(header *multipart.FileHeader) (*Torrent, bool) {
 	if err != nil {
 		return nil, false
 	}
-	t := &Torrent{Hash: mi.HashInfoBytes().HexString(), Name: info.BestName(), Layout: SingleFile, add: &added{}}
+	t := &Torrent{Hash: mi.HashInfoBytes().HexString(), Name: info.BestName(), Layout: SingleFile,
+		add: &added{torrent: data, pieceLength: info.PieceLength, pieces: info.Pieces}}
 	if info.IsDir() {
 		t.Layout = RootFolder
 	}
@@ -152,6 +168,7 @@ func (s *Server) place(t *Torrent, param func(string) string) {
 	a.stopped = param("stopped") == "true" || param("paused") == "true"
 	a.forced = param("forced") == "true"
 	a.seedMode = param("seedMode") == "true" || param("skip_checking") == "true"
+	a.stopWhenChecked = param("stopCondition") == "FilesChecked"
 	a.listAfter = s.ListAfterSyncs
 	if a.seedMode {
 		a.checked, a.progress = true, 1
@@ -209,7 +226,10 @@ func (s *Server) addedRow(t *Torrent) (state string, progress float64, listed bo
 			a.checkLeft--
 			return "checkingDL", 0, true
 		}
-		a.checking, a.checked, a.progress = false, true, s.onDisk(t)
+		a.checking, a.checked, a.progress = false, true, s.check(t)
+		if a.stopWhenChecked {
+			a.stopped = true
+		}
 	}
 	switch {
 	case a.missing:
