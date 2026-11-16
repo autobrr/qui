@@ -7,6 +7,9 @@
 // PATH. Its Bash checks change between versions, so give it the version that
 // the pinned Agent SDK in .github/scripts/triage bundles. The playbook, AGENTS.md,
 // the triage scripts and the prompt come from this checkout, or from --ref.
+// The discussion-write.sh stand-in and the Bash permissions always come from
+// this checkout, so a --ref from before #4224 fails its writes.
+// --jobs is the most Claude sessions that run at the same time.
 // Results go to <evals-dir>/results/<time>/.
 import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -148,7 +151,8 @@ function runClaude({ tree, prompt, binDir, worldFile, writesFile, transcript, di
     HOME: homedir(),
     USER: process.env.USER,
     LANG: process.env.LANG ?? "C.UTF-8",
-    PATH: `${binDir}:/usr/local/bin:/usr/bin:/bin`,
+    // The gh stand-in runs on this node, which nvm keeps out of /usr/bin.
+    PATH: `${binDir}:${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
     GH_CONFIG_DIR: join(binDir, "gh-config"),
     DISCUSSION_WRITE_ALLOWED_OPS: "add-label,remove-label,comment,close,create-issue",
     CLAUDE_CODE_SCRIPT_CAPS: '{"discussion-write.sh": 8}',
@@ -201,6 +205,21 @@ const binDir = join(workDir, "bin");
 mkdirSync(join(binDir, "gh-config"), { recursive: true });
 writeFileSync(join(binDir, "gh"), `#!/bin/sh\nexec node ${JSON.stringify(join(here, "gh.mjs"))} "$@"\n`, { mode: 0o755 });
 
+const jobs = Math.max(1, Number(opts.jobs) || 1);
+let freeSessions = jobs;
+const waiting = [];
+async function session(start) {
+  if (freeSessions) freeSessions--;
+  else await new Promise((wake) => waiting.push(wake));
+  try {
+    return await start();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else freeSessions++;
+  }
+}
+
 const qbitCommit = (at) => execFileSync("git", ["-C", qbitDir, "rev-list", "-1", `--before=${at}`, "origin/master"], { encoding: "utf8" }).trim();
 
 async function runCase(c) {
@@ -223,12 +242,13 @@ async function runCase(c) {
     runs.push(slot);
     const writesFile = join(caseDir, `run${n}.writes.jsonl`);
     writeFileSync(writesFile, "");
-    const r = await runClaude({ tree, prompt, binDir, worldFile, writesFile, transcript: join(caseDir, `run${n}.jsonl`), discussion: c.discussion });
+    const r = await session(() => runClaude({ tree, prompt, binDir, worldFile, writesFile, transcript: join(caseDir, `run${n}.jsonl`), discussion: c.discussion }));
     const writes = readFileSync(writesFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
     const outcome = check(c, writes);
-    if (!r.result) outcome.failures.unshift(`the run ended without a result (exit ${r.code})`);
+    const ok = r.code === 0 && r.result?.subtype === "success" && !r.result.is_error;
+    if (!ok) outcome.failures.unshift(`the run did not succeed (exit ${r.code}, result ${r.result?.subtype ?? "none"})`);
     Object.assign(slot, {
-      pass: Boolean(r.result) && outcome.pass,
+      pass: ok && outcome.pass,
       failures: outcome.failures,
       writes,
       subtype: r.result?.subtype ?? null,
@@ -251,17 +271,17 @@ async function runCase(c) {
   return summary;
 }
 
-// Runs cases with at most --jobs Claude sessions per case batch.
 const results = [];
 const queue = [...cases];
-const workers = Array.from({ length: Math.max(1, Math.floor(Number(opts.jobs) / Number(opts.runs)) || 1) }, async () => {
+const workers = Array.from({ length: jobs }, async () => {
   while (queue.length) results.push(await runCase(queue.shift()));
 });
-try {
-  await Promise.all(workers);
-} finally {
-  if (!opts.keep) rmSync(workDir, { recursive: true, force: true });
-}
+// Wait for every worker before the cleanup: a failed case must not delete
+// the trees of the runs that still go.
+const settled = await Promise.allSettled(workers);
+if (!opts.keep) rmSync(workDir, { recursive: true, force: true });
+const failed = settled.find((s) => s.status === "rejected");
+if (failed) throw failed.reason;
 
 results.sort((a, b) => a.id.localeCompare(b.id));
 const fmtRun = (r) => `${r.pass ? "pass" : "fail"} (${r.turns ?? "?"} turns, $${r.costUsd?.toFixed(2) ?? "?"})`;

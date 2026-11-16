@@ -22,6 +22,12 @@ function repoOf(value) {
   fail(`GraphQL: Could not resolve to a Repository with the name '${value}'. (repository)`);
 }
 
+// The snapshot holds the labels, issues and discussions of autobrr/qui only.
+function quiOnly(value) {
+  const r = repoOf(value);
+  if (r !== REPO) fail(`the eval snapshot has no labels, issues or discussions of ${r}`);
+}
+
 // --- output shapes, as gh prints them ---
 
 const labelOut = (l) => ({ id: l.id, name: l.name, description: l.description ?? "", color: l.color });
@@ -222,7 +228,7 @@ const labelsCell = (item) => item.labels.map((l) => l.name).join(", ");
 
 function labelList(world, argv) {
   const { values: o } = args(argv, { search: { type: "string", short: "S" }, sort: { type: "string" }, order: { type: "string" } });
-  repoOf(o.repo);
+  quiOnly(o.repo);
   let labels = world.labels.map((l) => ({ ...labelOut(l), createdAt: l.createdAt, isDefault: false, updatedAt: l.createdAt, url: `https://github.com/${REPO}/labels/${encodeURIComponent(l.name)}` }));
   if (o.search) labels = labels.filter((l) => `${l.name} ${l.description}`.toLowerCase().includes(o.search.toLowerCase()));
   if (o.sort === "name") labels.sort((a, b) => a.name.localeCompare(b.name));
@@ -262,7 +268,7 @@ function findIssueOrPull(world, ref) {
 
 function issueView(world, argv) {
   const { values: o, positionals } = args(argv, { comments: { type: "boolean", short: "c" } });
-  repoOf(o.repo);
+  quiOnly(o.repo);
   if (positionals.length !== 1) fail("accepts 1 arg(s), received " + positionals.length);
   const { item, isPull } = findIssueOrPull(world, positionals[0]);
   const json = issueJSON(world, item, isPull);
@@ -297,7 +303,7 @@ function issueList(world, argv) {
     milestone: { type: "string", short: "m" },
     app: { type: "string" },
   });
-  repoOf(o.repo);
+  quiOnly(o.repo);
   const state = o.state ?? "open";
   if (!["open", "closed", "all"].includes(state)) fail(`invalid argument "${state}" for "-s, --state" flag: valid values are {open|closed|all}`);
   const quals = [];
@@ -325,7 +331,7 @@ function discussionList(world, argv) {
     order: { type: "string" },
     after: { type: "string" },
   });
-  repoOf(o.repo);
+  quiOnly(o.repo);
   if (o.after) fail("no more pages");
   const state = o.state ?? "open";
   if (!["open", "closed", "all"].includes(state)) fail(`invalid argument "${state}" for "-s, --state" flag: valid values are {open|closed|all}`);
@@ -366,7 +372,7 @@ function discussionView(world, argv) {
     order: { type: "string" },
     after: { type: "string" },
   });
-  repoOf(o.repo);
+  quiOnly(o.repo);
   if (positionals.length !== 1) fail("accepts 1 arg(s), received " + positionals.length);
   if (o.after) fail("no more pages");
   const ref = positionals[0];
@@ -483,19 +489,23 @@ function searchCode(world, argv) {
   const repo = repoOf(o.repo ?? repoQ?.value);
   const code = world.code[repo];
   if (!code) fail(`code search for ${repo} is not available`);
-  const terms = parsed.groups.map((g) => g[0]);
-  if (!terms.length) fail("specify search keywords or flags");
-  let files = null;
-  for (const term of terms) {
+  if (!parsed.groups.length) fail("specify search keywords or flags");
+  const grep = (term) => {
     let out = "";
     try {
       out = git(code.dir, ["grep", "-l", "-i", "-F", "-I", "-e", term, code.commit]);
     } catch (err) {
       if (err.status !== 1) throw err;
     }
-    const set = new Set(out.split("\n").filter(Boolean).map((l) => l.slice(code.commit.length + 1)));
+    return out.split("\n").filter(Boolean).map((l) => l.slice(code.commit.length + 1));
+  };
+  let files = null;
+  for (const group of parsed.groups) {
+    const set = new Set(group.flatMap(grep));
     files = files ? new Set([...files].filter((f) => set.has(f))) : set;
   }
+  for (const f of parsed.exclude.flatMap(grep)) files.delete(f);
+  const terms = parsed.groups.flat();
   const pathQ = parsed.qualifiers.filter((q) => ["path", "filename", "extension"].includes(q.key));
   if (o.filename) pathQ.push({ key: "filename", value: o.filename });
   if (o.extension) pathQ.push({ key: "extension", value: o.extension });
@@ -505,7 +515,7 @@ function searchCode(world, argv) {
   const nameWithOwner = repo === QBIT ? "qbittorrent/qBittorrent" : REPO;
   const results = list.map((path) => {
     const lines = git(code.dir, ["show", `${code.commit}:${path}`]).split("\n");
-    const fragment = lines.find((l) => l.toLowerCase().includes(terms[0].toLowerCase())) ?? "";
+    const fragment = lines.find((l) => terms.some((t) => l.toLowerCase().includes(t))) ?? "";
     return {
       path,
       repository: { id: "", isFork: false, isPrivate: false, nameWithOwner, url: `https://github.com/${nameWithOwner}` },

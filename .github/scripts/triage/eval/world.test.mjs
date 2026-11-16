@@ -97,6 +97,36 @@ test("a body given for the moment replaces the edited body", () => {
   assert.equal(world.discussions[0].body, "qui shows moving");
 });
 
+// regression: #4224
+test("each body shows its text at the moment, not a later edit", () => {
+  const edits = (...pairs) => pairs.map(([editedAt, body]) => ({ editedAt, body }));
+  const [d, d20] = corpus.discussions;
+  const [ask] = d.comments.nodes;
+  const [reply] = ask.replies.nodes;
+  const [issue] = corpus.issues;
+  const [early] = issue.comments.nodes;
+  const edited = {
+    ...corpus,
+    discussions: [
+      {
+        ...d,
+        body: "qui shows moving, edited",
+        edits: edits([d.createdAt, "qui shows moving"], ["2026-10-02T00:00:00Z", "qui shows moving, edited"]),
+        comments: { nodes: [{ ...ask, replies: { nodes: [{ ...reply, body: "answer, and the log", edits: edits([reply.createdAt, "answer"], ["2026-10-01T04:00:00Z", "answer, and the log"]) }] } }] },
+      },
+      d20,
+    ],
+    issues: [{ ...issue, comments: { nodes: [{ ...early, body: "early, edited", edits: edits([early.createdAt, "early"], ["2026-10-05T00:00:00Z", "early, edited"]) }] } }],
+    pulls: [{ ...corpus.pulls[0], body: "Fixes #5", edits: edits([corpus.pulls[0].createdAt, "WIP"], ["2026-10-05T00:00:00Z", "Fixes #5"]) }],
+  };
+  const w = cutWorld(edited, { at, discussion: 10, labels: [] });
+  assert.equal(w.discussions[0].body, "qui shows moving");
+  assert.equal(w.discussions[0].comments.nodes[0].replies.nodes[0].body, "answer");
+  assert.equal(w.issues[0].comments.nodes[0].body, "early");
+  assert.equal(w.pulls[0].body, "WIP");
+  assert.equal(w.discussions[0].edits, undefined);
+});
+
 test("an issue gets the labels and the state of the moment", () => {
   const i = world.issues[0];
   assert.equal(i.state, "OPEN");
@@ -133,4 +163,9 @@ test("search matches stems, applies qualifiers, and sees only the cut world", ()
   assert.deepEqual(hits("answer", ["discussion"]), ["discussion#10"]);
   assert.deepEqual(hits("late reply", ["discussion"]), []);
   assert.deepEqual(hits("moving is:merged", ["pr"]), []);
+});
+
+// regression: #4224
+test("type:pull-request finds pull requests", () => {
+  assert.deepEqual(search(world, "type:pull-request moving", { kinds: ["pr"] }).map((h) => h.item.number), [7]);
 });

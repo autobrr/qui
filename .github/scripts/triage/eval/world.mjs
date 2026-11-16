@@ -21,12 +21,14 @@ export function loadCorpus(dir) {
 
 // cutWorld returns only what existed at `at`, in the state of that moment.
 // `discussion` gets `labels` in place of its labels from the snapshot, because
-// GitHub keeps no label history for discussions, and `body` when the body was
-// edited after `at`.
+// GitHub keeps no label history for discussions, and `body` in place of its
+// body when it is given.
 export function cutWorld(corpus, { at, discussion, labels, body }) {
   const cutoff = ms(at);
   if (Number.isNaN(cutoff)) throw new Error(`invalid moment: ${at}`);
   const existed = (t) => ms(t) <= cutoff;
+  // snapshot.mjs saves the edits of an edited item, oldest first.
+  const asAt = (item) => ({ ...item, body: item.edits?.findLast((e) => existed(e.editedAt))?.body ?? item.body, edits: undefined });
 
   const repoLabels = corpus.labels.filter((l) => existed(l.createdAt));
   const labelByName = new Map(repoLabels.map((l) => [l.name, l]));
@@ -36,9 +38,9 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
     nodes
       .filter((c) => existed(c.createdAt))
       .map((c) => {
-        if (!c.replies) return c;
-        const replies = c.replies.nodes.filter((r) => existed(r.createdAt));
-        return { ...c, replies: { totalCount: replies.length, nodes: replies } };
+        if (!c.replies) return asAt(c);
+        const replies = c.replies.nodes.filter((r) => existed(r.createdAt)).map(asAt);
+        return { ...asAt(c), replies: { totalCount: replies.length, nodes: replies } };
       });
 
   const lastActivity = (item, comments) => {
@@ -63,7 +65,7 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
         dLabels = labels.map((n) => labelByName.get(n));
       }
       return {
-        ...d,
+        ...asAt(d),
         ...(d.number === discussion && body !== undefined && { body }),
         ...closedState(d),
         updatedAt: lastActivity(d, comments),
@@ -85,7 +87,7 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
       }
       const state = closedState(i);
       return {
-        ...i,
+        ...asAt(i),
         ...state,
         state: state.closed ? "CLOSED" : "OPEN",
         updatedAt: lastActivity(i, comments),
@@ -101,7 +103,7 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
       const merged = existed(p.mergedAt);
       const closed = merged || existed(p.closedAt);
       return {
-        ...p,
+        ...asAt(p),
         closed,
         closedAt: closed ? p.closedAt : null,
         mergedAt: merged ? p.mergedAt : null,
@@ -258,7 +260,7 @@ export function qualifierMatch(item, kind, q, repo) {
       else return undefined;
       break;
     case "type":
-      ok = v === kind || (v === "pr" && kind === "pr");
+      ok = v.replace("pull-request", "pr") === kind;
       break;
     case "label":
       ok = v.split(",").some((n) => labelNames.includes(n));
