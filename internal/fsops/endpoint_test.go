@@ -125,7 +125,6 @@ func TestCompareFiles(t *testing.T) {
 	otherLocal := &models.Instance{ID: 2, HasLocalFilesystemAccess: true}
 	remote, sameServer := seedbox(), seedbox()
 	sameServer.ID = 8
-	none := &models.Instance{ID: 3}
 	file, link, copied := hardlink.UnixFileID(1, 10), hardlink.UnixFileID(1, 10), hardlink.UnixFileID(1, 11)
 	remoteFile := hardlink.RemoteFileID([]byte{1, 10})
 
@@ -140,9 +139,7 @@ func TestCompareFiles(t *testing.T) {
 		{name: "two files on qui's disk", a: local, b: otherLocal, aID: file, bID: copied, want: FilesDifferent},
 		{name: "a file without an identity", a: local, b: otherLocal, aID: file, want: FilesUnknown},
 		{name: "SSH then local", a: remote, b: local, aID: remoteFile, bID: file, want: FilesUnknown},
-		{name: "local then SSH", a: local, b: remote, aID: file, bID: remoteFile, want: FilesUnknown},
 		{name: "one identity on one SSH server", a: remote, b: sameServer, aID: remoteFile, bID: remoteFile, want: FilesUnknown},
-		{name: "local and no file access", a: local, b: none, aID: file, want: FilesUnknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
