@@ -140,6 +140,13 @@ type Server struct {
 	// OnAdd, when set, runs for each new torrent of torrents/add before the
 	// stub has it. It runs under the lock of the stub.
 	OnAdd func(hash string)
+	// DropAddAnswers is how many adds of torrents/add take effect, and then
+	// drop the connection instead of the answer.
+	DropAddAnswers int
+	// OnWrite, when set, runs for each write before the stub answers it,
+	// with its endpoint, such as torrents/stop. It runs under the lock of
+	// the stub.
+	OnWrite func(endpoint string)
 	// ListenPort is reported as the listen_port preference. qBittorrent
 	// reports 0 when it picks a random port.
 	ListenPort int
@@ -493,6 +500,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(strings.NewReader(string(body)))
 		s.bodies[endpoint] = string(body)
 		s.writes[endpoint]++
+		if s.OnWrite != nil {
+			s.OnWrite(endpoint)
+		}
 		if s.Reject != 0 {
 			w.WriteHeader(s.Reject)
 			return

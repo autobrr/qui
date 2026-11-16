@@ -105,6 +105,10 @@ func (s *Server) add(w http.ResponseWriter, form *multipart.Form, param func(str
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
+	if s.DropAddAnswers > 0 {
+		s.DropAddAnswers--
+		panic(http.ErrAbortHandler)
+	}
 	if !s.webAPIAtLeast("2.14.0") {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = io.WriteString(w, "Ok.")
