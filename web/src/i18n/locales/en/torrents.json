@@ -1730,6 +1730,11 @@
       "title": "Group your cross-seeds",
       "description": "Show the copies of one torrent as a single row.",
       "action": "Try it"
+    },
+    "displayProfiles": {
+      "title": "Display profiles",
+      "description": "Give each screen its own columns, row density, and sidebars. Pick the profile of this browser here.",
+      "action": "Create a profile"
     }
   },
   "displayProfiles": {

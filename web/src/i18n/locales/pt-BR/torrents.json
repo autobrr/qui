@@ -1730,6 +1730,11 @@
       "title": "Agrupe seus Cross-Seeds",
       "description": "Mostra as cópias de um torrent em uma única linha.",
       "action": "Experimentar"
+    },
+    "displayProfiles": {
+      "title": "Perfis de exibição",
+      "description": "Dê a cada tela suas próprias colunas, densidade de linhas e barras laterais. Escolha aqui o perfil deste navegador.",
+      "action": "Criar um perfil"
     }
   },
   "displayProfiles": {

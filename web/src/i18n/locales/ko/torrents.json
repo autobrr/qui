@@ -1646,6 +1646,11 @@
       "title": "Cross-Seed 묶기",
       "description": "한 토렌트의 사본을 한 행으로 표시합니다.",
       "action": "사용해 보기"
+    },
+    "displayProfiles": {
+      "title": "표시 프로필",
+      "description": "화면마다 열, 행 밀도, 사이드바를 따로 유지하세요. 이 브라우저의 프로필은 여기에서 고릅니다.",
+      "action": "프로필 만들기"
     }
   },
   "displayProfiles": {

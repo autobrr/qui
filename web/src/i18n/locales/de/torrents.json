@@ -1730,6 +1730,11 @@
       "title": "Cross-Seeds gruppieren",
       "description": "Zeigt die Kopien eines Torrents in einer einzigen Zeile.",
       "action": "Ausprobieren"
+    },
+    "displayProfiles": {
+      "title": "Anzeigeprofile",
+      "description": "Gib jedem Bildschirm eigene Spalten, Zeilendichte und Seitenleisten. Wähle hier das Profil dieses Browsers.",
+      "action": "Profil erstellen"
     }
   },
   "displayProfiles": {

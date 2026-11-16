@@ -1646,6 +1646,11 @@
       "title": "合併你的輔種",
       "description": "將同一種子的多個副本顯示為一行。",
       "action": "試試看"
+    },
+    "displayProfiles": {
+      "title": "顯示設定檔",
+      "description": "為每個螢幕保留各自的欄位、列密度和側邊欄。在這裡選擇此瀏覽器的設定檔。",
+      "action": "建立設定檔"
     }
   },
   "displayProfiles": {
