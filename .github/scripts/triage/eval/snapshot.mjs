@@ -45,7 +45,7 @@ const discussions = paginate(
   (d) => d.repository.discussions,
   `query($n:Int!,$after:String){repository(owner:"autobrr",name:"qui"){discussions(first:$n,after:$after,orderBy:{field:CREATED_AT,direction:ASC}){totalCount pageInfo{hasNextPage endCursor}
     nodes{id number title body url createdAt updatedAt lastEditedAt closed closedAt stateReason locked ${AUTHOR} authorAssociation
-      category{id name slug emoji isAnswerable} ${LABELS}
+      answerChosenAt answerChosenBy{login} category{id name slug emoji isAnswerable} ${LABELS}
       comments(first:100){totalCount nodes{${COMMENT} isAnswer upvoteCount
         replies(first:100){totalCount nodes{${COMMENT} isAnswer upvoteCount}}}}}}}}`,
   20,

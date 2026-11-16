@@ -22,7 +22,28 @@ const tree = git("write-tree");
 const worldFile = join(dir, "world.json");
 writeFileSync(
   worldFile,
-  JSON.stringify({ at: "2026-10-01T00:00:00Z", discussion: 1, labels: [], discussions: [], issues: [], pulls: [], releases: {}, code: { "autobrr/qui": { dir, commit: tree } } }),
+  JSON.stringify({
+    at: "2026-10-01T00:00:00Z",
+    discussion: 1,
+    labels: [],
+    discussions: [1, 2].map((number) => ({
+      number,
+      title: `report ${number}`,
+      body: "",
+      author: { login: "reporter" },
+      category: { name: "Q&A", slug: "q-a" },
+      labels: [],
+      comments: { totalCount: 0, nodes: [] },
+      closed: false,
+      createdAt: "2026-09-01T00:00:00Z",
+      updatedAt: "2026-09-01T00:00:00Z",
+      answered: number === 1,
+    })),
+    issues: [],
+    pulls: [],
+    releases: {},
+    code: { "autobrr/qui": { dir, commit: tree } },
+  }),
 );
 
 function run(...argv) {
@@ -52,4 +73,11 @@ test("a read of a qBittorrent issue, discussion or label fails, not returns qui 
     assert.equal(r.status, 1, argv.join(" "));
     assert.match(r.stderr, /no labels, issues or discussions of qbittorrent\/qbittorrent/);
   }
+});
+
+// regression: #4224
+test("discussion list --answered keeps the answered discussions", () => {
+  const r = run("discussion", "list", "--answered", "--json", "number,answered");
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), [{ number: 1, answered: true }]);
 });

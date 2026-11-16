@@ -44,7 +44,11 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
       });
 
   const lastActivity = (item, comments) => {
-    const times = [item.createdAt, ...comments.flatMap((c) => [c.createdAt, ...(c.replies?.nodes ?? []).map((r) => r.createdAt)])];
+    const times = [
+      item.createdAt,
+      ...(item.edits ?? []).map((e) => e.editedAt).filter(existed),
+      ...comments.flatMap((c) => [c.createdAt, ...(c.replies?.nodes ?? []).map((r) => r.createdAt)]),
+    ];
     if (existed(item.closedAt)) times.push(item.closedAt);
     return times.reduce((a, b) => (ms(b) > ms(a) ? b : a));
   };
@@ -57,7 +61,11 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
   const discussions = corpus.discussions
     .filter((d) => existed(d.createdAt))
     .map((d) => {
-      const comments = cutComments(d.comments.nodes);
+      const answered = existed(d.answerChosenAt);
+      const answer = (c) => ({ ...c, isAnswer: answered && Boolean(c.isAnswer) });
+      const comments = cutComments(d.comments.nodes).map((c) =>
+        c.replies ? { ...answer(c), replies: { ...c.replies, nodes: c.replies.nodes.map(answer) } } : answer(c),
+      );
       let dLabels = keepLabels(d.labels.nodes);
       if (d.number === discussion) {
         const missing = labels.filter((n) => !labelByName.has(n));
@@ -68,6 +76,9 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
         ...asAt(d),
         ...(d.number === discussion && body !== undefined && { body }),
         ...closedState(d),
+        answered,
+        answerChosenAt: answered ? d.answerChosenAt : null,
+        answerChosenBy: answered ? d.answerChosenBy : null,
         updatedAt: lastActivity(d, comments),
         labels: dLabels,
         comments: { totalCount: comments.length, nodes: comments },
@@ -108,7 +119,7 @@ export function cutWorld(corpus, { at, discussion, labels, body }) {
         closedAt: closed ? p.closedAt : null,
         mergedAt: merged ? p.mergedAt : null,
         state: merged ? "MERGED" : closed ? "CLOSED" : "OPEN",
-        updatedAt: lastActivity({ createdAt: p.createdAt, closedAt: closed ? p.closedAt : null }, []),
+        updatedAt: lastActivity({ createdAt: p.createdAt, closedAt: closed ? p.closedAt : null, edits: p.edits }, []),
         labels: keepLabels(p.labels.nodes),
       };
     });
@@ -256,7 +267,7 @@ export function qualifierMatch(item, kind, q, repo) {
       else if (v === "issue") ok = kind === "issue";
       else if (v === "pr" || v === "pull-request") ok = kind === "pr";
       else if (v === "discussion") ok = kind === "discussion";
-      else if (v === "answered") ok = false;
+      else if (v === "answered") ok = Boolean(item.answered);
       else return undefined;
       break;
     case "type":

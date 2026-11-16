@@ -136,9 +136,9 @@ function commentJSON(c, replies) {
 
 function discussionJSON(d, comments) {
   return {
-    answerChosenAt: null,
-    answerChosenBy: null,
-    answered: false,
+    answerChosenAt: isoOrNull(d.answerChosenAt),
+    answerChosenBy: d.answerChosenBy ? discussionAuthor(d.answerChosenBy) : null,
+    answered: Boolean(d.answered),
     author: discussionAuthor(d.author),
     body: d.body,
     category: d.category,
@@ -344,7 +344,7 @@ function discussionList(world, argv) {
   }
   for (const l of (o.label ?? []).flatMap((x) => x.split(","))) items = items.filter((d) => d.labels.some((x) => x.name === l));
   if (o.author) items = items.filter((d) => d.author?.login === o.author);
-  if (o.answered) items = [];
+  if (o.answered) items = items.filter((d) => d.answered);
   if (!o.search || o.sort) {
     const key = o.sort === "created" ? "createdAt" : "updatedAt";
     items.sort((a, b) => Date.parse(b[key]) - Date.parse(a[key]));

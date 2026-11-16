@@ -169,3 +169,27 @@ test("search matches stems, applies qualifiers, and sees only the cut world", ()
 test("type:pull-request finds pull requests", () => {
   assert.deepEqual(search(world, "type:pull-request moving", { kinds: ["pr"] }).map((h) => h.item.number), [7]);
 });
+
+// regression: #4224
+test("an answer and an edit count only from their moment", () => {
+  const [d, d20] = corpus.discussions;
+  const [ask] = d.comments.nodes;
+  const answered = {
+    ...d,
+    answerChosenAt: "2026-10-01T02:30:00Z",
+    answerChosenBy: user,
+    edits: [{ editedAt: d.createdAt, body: d.body }, { editedAt: "2026-10-01T02:45:00Z", body: d.body }],
+    comments: { nodes: [{ ...ask, replies: { nodes: [{ ...ask.replies.nodes[0], isAnswer: true }] } }] },
+  };
+  const c = { ...corpus, discussions: [answered, d20] };
+  const before = cutWorld(c, { at: "2026-10-01T02:15:00Z", discussion: 10, labels: [] }).discussions[0];
+  assert.equal(before.answered, false);
+  assert.equal(before.comments.nodes[0].replies.nodes[0].isAnswer, false);
+  assert.equal(before.updatedAt, "2026-10-01T02:00:00Z");
+  const w = cutWorld(c, { at, discussion: 10, labels: [] });
+  const after = w.discussions[0];
+  assert.equal(after.answered, true);
+  assert.equal(after.comments.nodes[0].replies.nodes[0].isAnswer, true);
+  assert.equal(after.updatedAt, "2026-10-01T02:45:00Z");
+  assert.deepEqual(search(w, "is:answered", { kinds: ["discussion"] }).map((h) => h.item.number), [10]);
+});
