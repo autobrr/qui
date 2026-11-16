@@ -5,33 +5,43 @@ package gazellemusic
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"maps"
 	"math"
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-const maxSearchResults = 20
+type MatchKind string
+
+const (
+	MatchHash     MatchKind = "hash"
+	MatchSize     MatchKind = "size"
+	MatchFileList MatchKind = "filelist"
+)
 
 type Match struct {
-	Host       string
-	SourceFlag string
-	TorrentID  int64
-	GroupID    int64
-	Size       int64
-	Title      string
-	Reason     string // "hash", "size", "filelist"
+	Host        string
+	SourceFlag  string
+	TorrentID   int64
+	GroupID     int64
+	Size        int64
+	Title       string
+	Kind        MatchKind
+	TargetHash  string
+	QueriedHash string
+	RemoteFiles map[string]int64
 }
 
-// FindMatch returns nil, nil when the tracker has no copy. A failed lookup
-// (tracker down, rate limited) returns the error instead of a miss, so the
-// caller does not stamp a cooldown on a torrent that was never checked.
+// FindMatch distinguishes a completed lookup from a transport or identity failure.
 func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles map[string]int64, totalSize int64) (*Match, error) {
-	// 1) Hash-based match (preferred).
 	if torrentBytes != nil {
 		if hashes, err := c.TargetHashes(torrentBytes); err == nil {
 			for _, targetHash := range hashes {
@@ -40,29 +50,20 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 					return nil, err
 				}
 				if res != nil {
-					return &Match{
-						Host:       c.Host(),
-						SourceFlag: c.SourceFlag(),
-						TorrentID:  res.TorrentID,
-						GroupID:    res.GroupID,
-						Size:       res.Size,
-						Title:      res.Title,
-						Reason:     "hash",
-					}, nil
+					if !validIdentity(res.TorrentID, res.Size, res.InfoHash) || !strings.EqualFold(res.InfoHash, targetHash) {
+						return nil, errors.New("hash lookup returned inconsistent target identity")
+					}
+					return &Match{Host: c.Host(), SourceFlag: c.SourceFlag(), TorrentID: res.TorrentID, GroupID: res.GroupID, Size: res.Size, Title: res.Title, Kind: MatchHash, TargetHash: strings.ToLower(res.InfoHash), QueriedHash: targetHash}, nil
 				}
 			}
 		}
 	}
-
-	// 2) Filename search + verify by size/filelist.
 	var lookupErr error
-	searchFiles := selectSearchFilenames(localFiles, 5)
-	for _, fname := range searchFiles {
+	for _, fname := range selectSearchFilenames(localFiles, 5) {
 		query := makeSearchQuery(fname)
 		if query == "" {
 			continue
 		}
-
 		results, err := c.SearchByFilename(ctx, query)
 		if errors.Is(err, ErrAccessDenied) {
 			return nil, err
@@ -71,68 +72,57 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 			lookupErr = err
 			continue
 		}
-
 		for _, r := range results {
-			if r.Size == totalSize && r.TorrentID > 0 {
-				return &Match{
-					Host:       c.Host(),
-					SourceFlag: c.SourceFlag(),
-					TorrentID:  r.TorrentID,
-					GroupID:    r.GroupID,
-					Size:       r.Size,
-					Title:      r.Title,
-					Reason:     "size",
-				}, nil
+			if totalSize > 0 && r.Size == totalSize && r.TorrentID > 0 {
+				meta, err := selectedMetadata(ctx, c, r)
+				if err != nil {
+					return nil, err
+				}
+				match := discoveryMatch(c, r, meta, MatchSize)
+				remote := parseFileList(meta.Torrent.FileList)
+				if fileTotal(remote) == totalSize && !filesConflict(localFiles, remote) {
+					match.Kind = MatchFileList
+					match.RemoteFiles = maps.Clone(remote)
+				}
+				return match, nil
 			}
 		}
-
-		if len(results) > maxSearchResults {
-			continue
-		}
-
-		// Pre-filter by size proximity (within 10% tolerance).
-		sizeTolerance := float64(totalSize) * 0.1
-		for _, r := range results {
-			sizeDiff := math.Abs(float64(r.Size) - float64(totalSize))
-			if sizeDiff > sizeTolerance {
-				continue
-			}
-
-			torrentResp, err := c.GetTorrent(ctx, r.TorrentID)
-			if errors.Is(err, ErrAccessDenied) {
-				return nil, err
-			}
-			if err != nil {
-				lookupErr = err
-				continue
-			}
-			if torrentResp == nil {
-				continue
-			}
-
-			remoteFiles := parseFileList(torrentResp.Torrent.FileList)
-			if filesConflict(localFiles, remoteFiles) {
-				continue
-			}
-
-			return &Match{
-				Host:       c.Host(),
-				SourceFlag: c.SourceFlag(),
-				TorrentID:  r.TorrentID,
-				GroupID:    r.GroupID,
-				Size:       r.Size,
-				Title:      r.Title,
-				Reason:     "filelist",
-			}, nil
-		}
-
-		// Stop early if we already tried a music file.
 		if isMusicFile(fname) {
 			break
 		}
 	}
-
 	return nil, lookupErr
+}
+
+func validIdentity(id, size int64, hash string) bool {
+	decoded, err := hex.DecodeString(hash)
+	return id > 0 && size > 0 && err == nil && len(decoded) == 20
+}
+
+func selectedMetadata(ctx context.Context, c *Client, r TorrentSearchResult) (*TorrentResponse, error) {
+	meta, err := c.GetTorrent(ctx, r.TorrentID)
+	if err != nil {
+		return nil, err
+	}
+	if meta == nil || !validIdentity(meta.Torrent.ID, meta.Torrent.Size, meta.Torrent.InfoHash) || meta.Torrent.ID != r.TorrentID || meta.Torrent.Size != r.Size {
+		return nil, fmt.Errorf("selected torrent %d returned inconsistent target metadata", r.TorrentID)
+	}
+	return meta, nil
+}
+
+func discoveryMatch(c *Client, r TorrentSearchResult, meta *TorrentResponse, kind MatchKind) *Match {
+	return &Match{Host: c.Host(), SourceFlag: c.SourceFlag(), TorrentID: r.TorrentID, GroupID: r.GroupID, Size: meta.Torrent.Size, Title: r.Title, Kind: kind, TargetHash: strings.ToLower(meta.Torrent.InfoHash)}
+}
+
+func fileTotal(files map[string]int64) int64 {
+	var total int64
+	for _, size := range files {
+		if size < 0 || size > math.MaxInt64-total {
+			return 0
+		}
+		total += size
+	}
+	return total
 }
 
 func parseFileList(fileList string) map[string]int64 {
@@ -141,15 +131,17 @@ func parseFileList(fileList string) map[string]int64 {
 	for line := range strings.SplitSeq(fileList, "|||") {
 		parts := strings.Split(line, "{{{")
 		if len(parts) != 2 {
-			continue
+			return nil
 		}
 		fileName := parts[0]
 		sizeStr := strings.TrimSuffix(parts[1], "}}}")
 		size, err := strconv.ParseInt(sizeStr, 10, 64)
-		if err != nil {
-			continue
+		if err != nil || size < 0 || !safeFileListPath(fileName) {
+			return nil
 		}
-		fileName = path.Clean(fileName)
+		if _, duplicate := result[fileName]; duplicate {
+			return nil
+		}
 		result[fileName] = size
 	}
 
@@ -157,10 +149,12 @@ func parseFileList(fileList string) map[string]int64 {
 }
 
 func filesConflict(localFiles, remoteFiles map[string]int64) bool {
-	if len(localFiles) != len(remoteFiles) {
-		return true
-	}
+	return len(localFiles) == 0 || len(localFiles) != len(remoteFiles) || FileListFingerprint(localFiles) != FileListFingerprint(remoteFiles)
+}
 
+// FileListFingerprint uses the same root and name normalization as discovery,
+// retaining multiplicity and nested paths in a length-delimited snapshot.
+func FileListFingerprint(files map[string]int64) [32]byte {
 	type fileSig struct {
 		size int64
 		name string // normalized relative path (root folder stripped when consistent)
@@ -192,8 +186,7 @@ func filesConflict(localFiles, remoteFiles map[string]int64) bool {
 		return root
 	}
 
-	localRoot := singleRoot(localFiles)
-	remoteRoot := singleRoot(remoteFiles)
+	root := singleRoot(files)
 
 	normalize := func(name string, root string) string {
 		n := strings.ReplaceAll(name, "\\", "/")
@@ -219,41 +212,24 @@ func filesConflict(localFiles, remoteFiles map[string]int64) bool {
 		return strings.Join(out, "/")
 	}
 
-	localSigs := make([]fileSig, 0, len(localFiles))
-	for name, size := range localFiles {
-		localSigs = append(localSigs, fileSig{
-			size: size,
-			name: normalize(name, localRoot),
-		})
+	sigs := make([]fileSig, 0, len(files))
+	for name, size := range files {
+		sigs = append(sigs, fileSig{size: size, name: normalize(name, root)})
 	}
-	remoteSigs := make([]fileSig, 0, len(remoteFiles))
-	for name, size := range remoteFiles {
-		remoteSigs = append(remoteSigs, fileSig{
-			size: size,
-			name: normalize(name, remoteRoot),
-		})
-	}
-
-	sort.Slice(localSigs, func(i, j int) bool {
-		if localSigs[i].size != localSigs[j].size {
-			return localSigs[i].size < localSigs[j].size
+	sort.Slice(sigs, func(i, j int) bool {
+		if sigs[i].name != sigs[j].name {
+			return sigs[i].name < sigs[j].name
 		}
-		return localSigs[i].name < localSigs[j].name
+		return sigs[i].size < sigs[j].size
 	})
-	sort.Slice(remoteSigs, func(i, j int) bool {
-		if remoteSigs[i].size != remoteSigs[j].size {
-			return remoteSigs[i].size < remoteSigs[j].size
-		}
-		return remoteSigs[i].name < remoteSigs[j].name
-	})
-
-	for i := range localSigs {
-		if localSigs[i] != remoteSigs[i] {
-			return true
-		}
+	h := sha256.New()
+	_ = binary.Write(h, binary.BigEndian, uint64(len(sigs)))
+	for _, sig := range sigs {
+		_ = binary.Write(h, binary.BigEndian, uint64(len(sig.name)))
+		_, _ = h.Write([]byte(sig.name))
+		_ = binary.Write(h, binary.BigEndian, sig.size)
 	}
-
-	return false
+	return [32]byte(h.Sum(nil))
 }
 
 var musicExtensions = map[string]bool{
@@ -269,7 +245,7 @@ var musicExtensions = map[string]bool{
 }
 
 func isMusicFile(filename string) bool {
-	ext := strings.ToLower(filepath.Ext(filename))
+	ext := strings.ToLower(path.Ext(filename))
 	return musicExtensions[ext]
 }
 
@@ -345,8 +321,8 @@ var genericFilenames = map[string]bool{
 }
 
 func makeSearchQuery(filename string) string {
-	name := filepath.Base(filename)
-	ext := filepath.Ext(name)
+	name := path.Base(filename)
+	ext := path.Ext(name)
 	if ext != "" {
 		name = strings.TrimSuffix(name, ext)
 	}
@@ -360,4 +336,19 @@ func makeSearchQuery(filename string) string {
 		return ""
 	}
 	return name
+}
+
+func safeFileListPath(name string) bool {
+	if name == "" || name != path.Clean(name) || path.IsAbs(name) || strings.ContainsAny(name, "\\\x00") {
+		return false
+	}
+	if len(name) >= 2 && name[1] == ':' && ((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z')) {
+		return false
+	}
+	for part := range strings.SplitSeq(name, "/") {
+		if part == ".." || part == "." {
+			return false
+		}
+	}
+	return true
 }

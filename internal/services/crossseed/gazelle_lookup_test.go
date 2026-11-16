@@ -87,7 +87,7 @@ func gazelleStatuses(lookups []GazelleLookup) map[string]string {
 // A dialog search reports one RED/OPS lookup for each site.
 func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	match := func(context.Context) (*gazellemusic.Match, error) {
-		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Reason: "hash"}, nil
+		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
 	}
 	rejected := func(context.Context) (*gazellemusic.Match, error) {
 		return nil, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied)
@@ -267,7 +267,7 @@ func TestExecuteCompletionSearch_NotificationHasGazelleLine(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"}
 	svc := newGazelleSeamService(t, "https://home.opsfet.ch/announce", settings, gazelleSiteAnswers{
 		"redacted.sh": func(context.Context) (*gazellemusic.Match, error) {
-			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Reason: "hash"}, nil
+			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "redacted.sh", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
 		},
 	})
 	notifier := &recordingNotifier{}

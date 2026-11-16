@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"path"
 	"slices"
@@ -388,4 +389,56 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 
 func isYearBearingMovieRelease(release *rls.Release) bool {
 	return release != nil && release.Type == rls.Movie && release.Year > 0
+}
+
+func (s *Service) readCatalogRelease(name string, files qbt.TorrentFiles, family rls.Type) (namedRelease, error) {
+	if family == rls.Unknown || catalogFileFamily(files) != family {
+		return namedRelease{}, errors.New("unproven file content family")
+	}
+	read := s.matcher().readName(name)
+	read.tagOrigin = read.release
+	// rls keeps episode tags private; retain their origins separately from this structural view.
+	derived := rls.Release{Type: family,
+		Artist:     read.release.Artist,
+		Title:      read.release.Title,
+		Subtitle:   read.release.Subtitle,
+		Alt:        read.release.Alt,
+		Platform:   read.release.Platform,
+		Arch:       read.release.Arch,
+		Source:     read.release.Source,
+		Resolution: read.release.Resolution,
+		FrameRate:  read.release.FrameRate,
+		Collection: read.release.Collection,
+		Year:       read.release.Year,
+		Month:      read.release.Month,
+		Day:        read.release.Day,
+		YearEnd:    read.release.YearEnd,
+		Version:    read.release.Version,
+		Disc:       read.release.Disc,
+		Codec:      read.release.Codec,
+		HDR:        read.release.HDR,
+		BitDepth:   read.release.BitDepth,
+		Audio:      read.release.Audio,
+		Channels:   read.release.Channels,
+		Other:      read.release.Other,
+		Cut:        read.release.Cut,
+		Edition:    read.release.Edition,
+		Language:   read.release.Language,
+		Size:       read.release.Size,
+		Region:     read.release.Region,
+		Container:  read.release.Container,
+		Genre:      read.release.Genre,
+		ID:         read.release.ID,
+		Group:      read.release.Group,
+		Meta:       read.release.Meta,
+		Site:       read.release.Site,
+		Sum:        read.release.Sum,
+		Pass:       read.release.Pass,
+		Req:        read.release.Req,
+		Ext:        read.release.Ext,
+	}
+
+	read.release = &derived
+	read.seasonNumeral = 0
+	return read, nil
 }

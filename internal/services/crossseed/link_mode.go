@@ -261,6 +261,12 @@ func (s *Service) processLinkMode(
 	// matching for content files but does not materialize sidecars on size alone.
 	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
+	if len(candidate.filePairs) > 0 {
+		candidateTorrentFilesToLink = make([]hardlinktree.TorrentFile, 0, len(candidate.filePairs))
+		for _, pair := range candidate.filePairs {
+			candidateTorrentFilesToLink = append(candidateTorrentFilesToLink, hardlinktree.TorrentFile{Path: pair.sourcePath, Size: sourceFiles[pair.sourceIndex].Size})
+		}
+	}
 	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToLink)
 	addPolicy := PolicyForSourceFiles(sourceFiles)
 	facts := AddFacts{
@@ -397,7 +403,11 @@ func (s *Service) processLinkMode(
 		created, linkErr = LinkIntoNewFolder(ctx, backend, presetDir, torrentHash, torrentName, candidateTorrentFilesAll, func(dir string) (*fsops.TreeCreateResult, error) {
 			destDir = dir
 			// Build link tree plan with only the linkable files
-			plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
+			if len(candidate.filePairs) > 0 {
+				plan, planErr = catalogLinkPlan(d, destDir, candidate.filePairs, existingFiles)
+			} else {
+				plan, planErr = hardlinktree.BuildPlan(d, candidateTorrentFilesToLink, existingFiles, layout, torrentName, destDir)
+			}
 			if planErr != nil {
 				return nil, planErr
 			}
