@@ -53,6 +53,7 @@ describe("Section", () => {
     expect(failed.refetch).toHaveBeenCalledOnce()
   })
 
+  // regression: #4233
   it("saves on its submit button and not on a copy button in its facts", () => {
     const onSubmit = vi.fn()
     render(

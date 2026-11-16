@@ -86,6 +86,7 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenCalledTimes(1)
   })
 
+  // regression: #4233
   it("returns to the menu in place when a link opened the section, also after a tap on another section", () => {
     stubWidth("phone")
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
@@ -107,6 +108,7 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
   })
 
+  // regression: #4233
   it("goes back to the menu in place when links left the section that the menu opened and then opened it again", () => {
     stubWidth("phone")
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
@@ -122,6 +124,7 @@ describe("SectionedPage", () => {
     expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
   })
 
+  // regression: #4233
   it("keeps what the user typed in a section when the window narrows to a phone and widens again", () => {
     const resize = stubWidth("desktop")
     renderPage("b", vi.fn(), () => <Draft />)
@@ -137,6 +140,7 @@ describe("SectionedPage", () => {
     expect(key().value).toBe("draft")
   })
 
+  // regression: #4233
   it("shows the menu first on a phone turned sideways", () => {
     stubWidth("sideways")
     renderPage(undefined)
