@@ -12,7 +12,7 @@
     --popover-foreground: oklch(0.25 0.02 285);
 
     /* Kitsune pink - slightly deeper for light mode contrast */
-    --primary: oklch(0.65 0.15 350);
+    --primary: oklch(0.5875 0.1500 350.0000);
     --primary-foreground: oklch(1.00 0 0);
 
     /* Muted surfaces */
@@ -32,24 +32,24 @@
     /* UI */
     --border: oklch(0.88 0.02 350);
     --input: oklch(0.94 0.01 350);
-    --ring: oklch(0.65 0.15 350);
+    --ring: oklch(0.5875 0.1500 350.0000);
 
     /* Charts (pink-biased) */
-    --chart-1: oklch(0.65 0.15 350);
-    --chart-2: oklch(0.60 0.12 330);
-    --chart-3: oklch(0.58 0.10 300);
-    --chart-4: oklch(0.70 0.10 40);
-    --chart-5: oklch(0.55 0.18 25);
+    --chart-1: oklch(0.5575 0.1500 350.0000);
+    --chart-2: oklch(0.5525 0.1200 330.0000);
+    --chart-3: oklch(0.5475 0.1000 300.0000);
+    --chart-4: oklch(0.5475 0.1000 40.0000);
+    --chart-5: oklch(0.3975 0.1611 25.0000);
 
     /* Sidebar */
     --sidebar: oklch(0.97 0.008 350);
     --sidebar-foreground: oklch(0.30 0.02 285);
-    --sidebar-primary: oklch(0.65 0.15 350);
+    --sidebar-primary: oklch(0.5875 0.1500 350.0000);
     --sidebar-primary-foreground: oklch(1.00 0 0);
     --sidebar-accent: oklch(0.92 0.04 350);
     --sidebar-accent-foreground: oklch(0.25 0.02 285);
     --sidebar-border: oklch(0.88 0.02 350);
-    --sidebar-ring: oklch(0.65 0.15 350);
+    --sidebar-ring: oklch(0.5875 0.1500 350.0000);
 
     /* Typography */
     --font-sans: Inter;

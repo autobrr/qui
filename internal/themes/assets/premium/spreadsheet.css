@@ -29,9 +29,9 @@
   /* Office chart palette: green, blue, orange, gray, gold */
   --chart-1: oklch(0.52 0.11 155);
   --chart-2: oklch(0.55 0.13 262);
-  --chart-3: oklch(0.7 0.15 55);
-  --chart-4: oklch(0.72 0.005 260);
-  --chart-5: oklch(0.83 0.16 90);
+  --chart-3: oklch(0.5325 0.1318 55.0000);
+  --chart-4: oklch(0.5525 0.0050 260.0000);
+  --chart-5: oklch(0.5550 0.1133 90.0000);
   /* Nav pane as muted office chrome */
   --sidebar: oklch(0.97 0.002 90);
   --sidebar-foreground: oklch(0.32 0.005 260);
@@ -72,7 +72,7 @@
   --secondary: oklch(0.29 0.002 260);
   --secondary-foreground: oklch(0.92 0.002 90);
   --muted: oklch(0.29 0.002 260);
-  --muted-foreground: oklch(0.67 0.005 260);
+  --muted-foreground: oklch(0.7000 0.0050 260.0000);
   --accent: oklch(0.33 0.03 155);
   --accent-foreground: oklch(0.82 0.07 155);
   --destructive: oklch(0.6 0.18 27);
@@ -83,7 +83,7 @@
   --chart-1: oklch(0.62 0.11 155);
   --chart-2: oklch(0.64 0.12 262);
   --chart-3: oklch(0.74 0.14 55);
-  --chart-4: oklch(0.62 0.005 260);
+  --chart-4: oklch(0.6300 0.0050 260.0000);
   --chart-5: oklch(0.85 0.14 90);
   --sidebar: oklch(0.2 0.002 260);
   --sidebar-foreground: oklch(0.85 0.002 90);

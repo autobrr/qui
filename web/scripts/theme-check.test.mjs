@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 
-import { checkTheme, freeThemeFiles } from "./theme-check.mjs"
+import { builtInThemeFiles, checkTheme } from "./theme-check.mjs"
 
 const WHITE_SURFACES = ["background", "card", "popover", "muted", "secondary", "accent", "sidebar", "sidebar-accent"]
 const BLACK_FILLS = ["primary", "destructive", "sidebar-primary", "ring", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
@@ -93,8 +93,8 @@ const KNOWN_OUTSIDE_SRGB = {
   "wave.css": ["light --variation-pink: oklch(0.6931 0.1971 22.11)"],
 }
 
-test("each free theme keeps its colors inside sRGB", () => {
-  const files = freeThemeFiles()
+test("each built-in theme keeps its colors inside sRGB", () => {
+  const files = builtInThemeFiles()
   assert.ok(files.length > 0)
 
   for (const file of files) {

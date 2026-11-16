@@ -18,7 +18,7 @@
   --secondary: oklch(0.9 0.035 258);
   --secondary-foreground: oklch(0.15 0 0);
   --muted: oklch(0.93 0.025 258);
-  --muted-foreground: oklch(0.52 0.04 255);
+  --muted-foreground: oklch(0.5025 0.0400 255.0000);
   /* Pale selection blue */
   --accent: oklch(0.91 0.03 258);
   --accent-foreground: oklch(0.42 0.13 262);
@@ -30,8 +30,8 @@
   /* Era chart palette: navy, maroon, gold, teal, purple */
   --chart-1: oklch(0.3 0.15 264);
   --chart-2: oklch(0.45 0.12 350);
-  --chart-3: oklch(0.85 0.16 90);
-  --chart-4: oklch(0.55 0.1 195);
+  --chart-3: oklch(0.5475 0.1118 90.0000);
+  --chart-4: oklch(0.5375 0.0916 195.0000);
   --chart-5: oklch(0.45 0.15 300);
   /* Nav pane as blue task pane */
   --sidebar: oklch(0.9 0.035 258);
@@ -73,7 +73,7 @@
   --secondary: oklch(0.9 0.035 258);
   --secondary-foreground: oklch(0.15 0 0);
   --muted: oklch(0.93 0.025 258);
-  --muted-foreground: oklch(0.52 0.04 255);
+  --muted-foreground: oklch(0.5025 0.0400 255.0000);
   --accent: oklch(0.91 0.03 258);
   --accent-foreground: oklch(0.42 0.13 262);
   --destructive: oklch(0.5 0.19 27);
@@ -83,8 +83,8 @@
   --ring: oklch(0.53 0.14 262);
   --chart-1: oklch(0.3 0.15 264);
   --chart-2: oklch(0.45 0.12 350);
-  --chart-3: oklch(0.85 0.16 90);
-  --chart-4: oklch(0.55 0.1 195);
+  --chart-3: oklch(0.5475 0.1118 90.0000);
+  --chart-4: oklch(0.5375 0.0916 195.0000);
   --chart-5: oklch(0.45 0.15 300);
   --sidebar: oklch(0.9 0.035 258);
   --sidebar-foreground: oklch(0.2 0.01 258);
