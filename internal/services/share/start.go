@@ -167,34 +167,8 @@ func (s *Service) prepare(ctx context.Context, req Request) (*prepared, error) {
 	if err != nil || inst == nil {
 		return nil, refuse("Instance %d does not exist.", req.InstanceID)
 	}
-	if err := s.supported(ctx, inst); err != nil {
+	if err := s.admit(ctx, inst, hash, options, kind); err != nil {
 		return nil, err
-	}
-	if s.deps.Helpers.IsHelper(inst.ID, hash) {
-		return nil, refuse("qui added this torrent for a Transfer or a Share.")
-	}
-	unfinished, err := s.deps.Store.Unfinished(ctx)
-	if err != nil {
-		return nil, err
-	}
-	active := 0
-	for _, other := range unfinished {
-		if other.InstanceID == inst.ID && other.Hash == hash {
-			return nil, refuse("A Share of this torrent runs already.")
-		}
-		if other.State == StateActive {
-			active++
-		}
-	}
-	if active >= options.MaxActive {
-		return nil, refuse("Active Shares: %d of %d. Stop a Share first, or raise the limit in Settings → Shares.", active, options.MaxActive)
-	}
-	if kind == TrackerOwn {
-		if _, err := s.deps.Peers.PublicPeerAddress(ctx, inst.ID); errors.Is(err, peeraddress.ErrNoAddress) {
-			return nil, refuse("qui does not know the public peer address of %s. Set it in the settings of the instance.", inst.Name)
-		} else if err != nil {
-			return nil, refuse("qui cannot read the public peer address of %s: %v", inst.Name, err)
-		}
 	}
 
 	src, err := s.readTorrent(ctx, inst, hash)
@@ -245,6 +219,44 @@ func (s *Service) prepare(ctx context.Context, req Request) (*prepared, error) {
 		layout:              helper.ContentLayout,
 		ownerTorrent:        ownerTorrent,
 	}, nil
+}
+
+// admit refuses a Share that the instance, the Shares that run, or the
+// limits do not allow.
+func (s *Service) admit(ctx context.Context, inst *models.Instance, hash string, options Options, kind TrackerKind) error {
+	if err := s.supported(ctx, inst); err != nil {
+		return err
+	}
+	if s.deps.Helpers.IsHelper(inst.ID, hash) {
+		return refuse("qui added this torrent for a Transfer or a Share.")
+	}
+	unfinished, err := s.deps.Store.Unfinished(ctx)
+	if err != nil {
+		return err
+	}
+	active := 0
+	for _, other := range unfinished {
+		if other.InstanceID == inst.ID && other.Hash == hash {
+			return refuse("A Share of this torrent runs already.")
+		}
+		if other.State == StateActive {
+			active++
+		}
+	}
+	if active >= options.MaxActive {
+		return refuse("Active Shares: %d of %d. Stop a Share first, or raise the limit in Settings → Shares.", active, options.MaxActive)
+	}
+	if kind != TrackerOwn {
+		return nil
+	}
+	_, err = s.deps.Peers.PublicPeerAddress(ctx, inst.ID)
+	if errors.Is(err, peeraddress.ErrNoAddress) {
+		return refuse("qui does not know the public peer address of %s. Set it in the settings of the instance.", inst.Name)
+	}
+	if err != nil {
+		return refuse("qui cannot read the public peer address of %s: %v", inst.Name, err)
+	}
+	return nil
 }
 
 // trackerOf picks the Share tracker: qui's own tracker when it has a port

@@ -678,7 +678,7 @@ func (r *rig) ids() []int64 {
 	r.t.Helper()
 	list, err := r.svc.List(r.t.Context())
 	require.NoError(r.t, err)
-	var ids []int64
+	ids := make([]int64, 0, len(list))
 	for _, sh := range list {
 		ids = append(ids, sh.ID)
 	}

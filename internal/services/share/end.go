@@ -151,11 +151,11 @@ func (s *Service) endReason(ctx context.Context, sh *Share, view *clientView) st
 	case view.err != nil:
 		return ""
 	}
-	real := view.torrents[sh.Hash]
+	torrent := view.torrents[sh.Hash]
 	switch {
-	case real == nil:
+	case torrent == nil:
 		return reasonDeleted
-	case real.SavePath != sh.SavePath:
+	case torrent.SavePath != sh.SavePath:
 		return reasonMoved
 	}
 	helper := view.torrents[sh.HelperHash]
@@ -271,7 +271,7 @@ var changeReasons = map[qbittorrent.TorrentChange]string{
 // Share torrent comes back here with a hash that no Share has. While the
 // switch is off, no Share is active in memory.
 func (s *Service) BeforeTorrentChange(ctx context.Context, instanceID int, hashes []string, change qbittorrent.TorrentChange) {
-	var ids []int64
+	ids := make([]int64, 0, len(hashes))
 	s.mu.Lock()
 	for _, hash := range hashes {
 		ids = append(ids, s.active[torrentKey{instanceID, lower(hash)}]...)
