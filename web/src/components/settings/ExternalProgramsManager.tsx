@@ -80,7 +80,9 @@ export function ExternalProgramsManager() {
   const saveMutation = useMutation({
     mutationFn: ({ id, data }: { id: number | null; data: ExternalProgramPayload }) =>
       id === null ? api.createExternalProgram(data) : api.updateExternalProgram(id, data),
-    onSuccess: (_program, { id }) => {
+    onSuccess: (saved, { id }) => {
+      // The switch sends every field of its row, so the row holds the saved values before the switch is in reach again.
+      if (id !== null) queryClient.setQueryData<ExternalProgram[]>(PROGRAMS_KEY, (old) => old?.map((item) => item.id === id ? saved : item))
       void queryClient.invalidateQueries({ queryKey: PROGRAMS_KEY })
       setEditorOpen(false)
       toast.success(t(id === null ? "externalPrograms.toasts.created" : "externalPrograms.toasts.updated"))
@@ -90,7 +92,7 @@ export function ExternalProgramsManager() {
   const setEnabledInCache = (id: number, enabled: boolean) =>
     queryClient.setQueryData<ExternalProgram[]>(PROGRAMS_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
 
-  // The switch of a program takes no input while its save runs, so two saves of one program never overlap.
+  // The switch and the editor of a program take no save while its switch save runs, so two saves of one program never overlap.
   const toggleMutation = useMutation({
     mutationKey: TOGGLE_KEY,
     mutationFn: (program: ExternalProgram) => api.updateExternalProgram(program.id, toPayload(program)),
@@ -189,6 +191,7 @@ export function ExternalProgramsManager() {
         onOpenChange={setEditorOpen}
         program={editing}
         pending={saveMutation.isPending}
+        submitDisabled={editing !== null && toggling.has(editing.id)}
         error={saveMutation.error
           ? t(editing ? "externalPrograms.toasts.updateFailed" : "externalPrograms.toasts.createFailed", { error: errorText(saveMutation.error) })
           : undefined}
@@ -227,6 +230,7 @@ interface ProgramEditorProps {
   /** The program to edit, or null for a new one. */
   program: ExternalProgram | null
   pending: boolean
+  submitDisabled: boolean
   error?: string
   onSave: (data: ExternalProgramPayload) => void
 }
@@ -236,7 +240,7 @@ interface FormErrors {
   path?: string
 }
 
-function ProgramEditor({ open, onOpenChange, program, pending, error, onSave }: ProgramEditorProps) {
+function ProgramEditor({ open, onOpenChange, program, pending, submitDisabled, error, onSave }: ProgramEditorProps) {
   const { t } = useTranslation("settings")
   const [name, setName] = useState(program?.name ?? "")
   const [path, setPath] = useState(program?.path ?? "")
@@ -279,6 +283,7 @@ function ProgramEditor({ open, onOpenChange, program, pending, error, onSave }: 
       submitLabel={t(program ? "externalPrograms.save" : "externalPrograms.createButton")}
       onSubmit={submit}
       pending={pending}
+      submitDisabled={submitDisabled}
       error={error}
     >
       <Field label={t("externalPrograms.nameLabel")} error={errors.name}>

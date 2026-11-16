@@ -61,7 +61,9 @@ export function NotificationsManager() {
   const saveMutation = useMutation({
     mutationFn: ({ id, data }: { id: number | null; data: NotificationTargetRequest }) =>
       id === null ? api.createNotificationTarget(data) : api.updateNotificationTarget(id, data),
-    onSuccess: (_target, { id }) => {
+    onSuccess: (saved, { id }) => {
+      // The switch sends the name and the URL of its row, so the row holds the saved values before the switch is in reach again.
+      if (id !== null) queryClient.setQueryData<NotificationTarget[]>(TARGETS_KEY, (old) => old?.map((item) => item.id === id ? saved : item))
       void queryClient.invalidateQueries({ queryKey: TARGETS_KEY })
       setEditorOpen(false)
       toast.success(t(id === null ? "notifications.toasts.created" : "notifications.toasts.updated"))
@@ -71,7 +73,7 @@ export function NotificationsManager() {
   const setEnabledInCache = (id: number, enabled: boolean) =>
     queryClient.setQueryData<NotificationTarget[]>(TARGETS_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
 
-  // The switch of a target takes no input while its save runs, so two saves of one target never overlap.
+  // The switch and the editor of a target take no save while its switch save runs, so two saves of one target never overlap.
   const toggleMutation = useMutation({
     mutationKey: TOGGLE_KEY,
     // The event list stays out of the request, so the server keeps it as it is.
@@ -181,6 +183,7 @@ export function NotificationsManager() {
           target={editing}
           definitions={definitions}
           pending={saveMutation.isPending}
+          submitDisabled={editing !== null && toggling.has(editing.id)}
           error={saveMutation.error ? getErrorMessage(saveMutation.error, t(editing ? "notifications.toasts.updateFailed" : "notifications.toasts.createFailed")) : undefined}
           onSave={(data) => saveMutation.mutate({ id: editing?.id ?? null, data })}
         />
@@ -196,6 +199,7 @@ interface TargetEditorProps {
   target: NotificationTarget | null
   definitions: readonly NotificationEventDefinition[]
   pending: boolean
+  submitDisabled: boolean
   error?: string
   onSave: (data: NotificationTargetRequest) => void
 }
@@ -206,7 +210,7 @@ interface FormErrors {
   events?: string
 }
 
-function TargetEditor({ open, onOpenChange, target, definitions, pending, error, onSave }: TargetEditorProps) {
+function TargetEditor({ open, onOpenChange, target, definitions, pending, submitDisabled, error, onSave }: TargetEditorProps) {
   const { t } = useTranslation("settings")
   const groups = useMemo(() => groupNotificationEvents(definitions), [definitions])
   const [name, setName] = useState(target?.name ?? "")
@@ -251,6 +255,7 @@ function TargetEditor({ open, onOpenChange, target, definitions, pending, error,
       submitLabel={t(target ? "notifications.dialog.save" : "notifications.addButton")}
       onSubmit={submit}
       pending={pending}
+      submitDisabled={submitDisabled}
       error={error}
     >
       <Field label={t("notifications.form.name")} error={errors.name}>

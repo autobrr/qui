@@ -138,8 +138,9 @@ function IndexersSection({ query }: { query: UseQueryResult<TorznabIndexer[]> })
   const syncMutation = useMutation({
     mutationKey: SYNC_KEY,
     mutationFn: (id: number) => api.syncTorznabCaps(id),
-    onSuccess: (updated) => {
-      patchInCache(updated.id, () => updated)
+    onSuccess: ({ id, capabilities, categories }) => {
+      // The answer carries the whole row, and a switch save can land after the server read it.
+      patchInCache(id, (indexer) => ({ ...indexer, capabilities, categories }))
       toast.success(t("indexers.toast.capsSynced"))
     },
     onError: (error) => toast.error(errorMessage(error, t("indexers.toast.failedToSyncCaps"))),
