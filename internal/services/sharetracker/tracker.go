@@ -220,6 +220,27 @@ func (t *Tracker) Start(ctx context.Context, settings Settings) error {
 	return nil
 }
 
+// CheckPort returns ErrPortBusy when another program listens on port. The
+// port that the tracker listens on is free for it, and port 0 is never busy.
+func (t *Tracker) CheckPort(ctx context.Context, port int) error {
+	if port == 0 {
+		return nil
+	}
+	t.runMu.Lock()
+	defer t.runMu.Unlock()
+	if t.server != nil && t.port == port {
+		return nil
+	}
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort(t.host, strconv.Itoa(port)))
+	if errors.Is(err, errAddrInUse) {
+		return fmt.Errorf("%w: %d", ErrPortBusy, port)
+	}
+	if err != nil {
+		return fmt.Errorf("share tracker: listen on port %d: %w", port, err)
+	}
+	return listener.Close()
+}
+
 // Stop closes the listener and waits for the running announces until ctx
 // ends; then it closes their connections.
 func (t *Tracker) Stop(ctx context.Context) error {

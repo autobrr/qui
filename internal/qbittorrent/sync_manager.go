@@ -631,6 +631,7 @@ type SyncManager struct {
 	folderCleanup  atomic.Pointer[FolderCleanup]
 	deleteNoter    atomic.Pointer[DeleteNoter]
 	helperTorrents atomic.Pointer[HelperTorrents]
+	changeGuard    atomic.Pointer[TorrentChangeGuard]
 
 	syncEventSinkMu sync.RWMutex
 	syncEventSink   SyncEventSink
@@ -2408,6 +2409,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 	case "resume":
 		err = client.ResumeCtx(ctx, canonicalHashes)
 	case "delete":
+		sm.beforeTorrentChange(ctx, instanceID, canonicalHashes, TorrentChangeDelete)
 		sm.noteDelete(instanceID, canonicalHashes, actor)
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, false)
 		// Invalidate caches for deleted torrents
@@ -2422,6 +2424,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 			}
 		}
 	case "deleteWithFiles":
+		sm.beforeTorrentChange(ctx, instanceID, canonicalHashes, TorrentChangeDelete)
 		sm.noteDelete(instanceID, canonicalHashes, actor)
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
@@ -5367,6 +5370,7 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 
 	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Path: location}
 	return sm.editTorrents(ctx, instanceID, hashes, "set location", cleanup, func(client *Client) error {
+		sm.beforeTorrentChange(ctx, instanceID, hashes, TorrentChangeMove)
 		// Set the location - this will disable Auto TMM and move the torrents
 		if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 			return fmt.Errorf("failed to set torrent location: %w", err)
@@ -5477,6 +5481,7 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 			return errors.New("new file path cannot be empty")
 		}
 
+		sm.beforeTorrentChange(ctx, instanceID, []string{hash}, TorrentChangeRename)
 		if err := client.RenameFileCtx(ctx, hash, oldPath, newPath); err != nil {
 			return fmt.Errorf("failed to rename file: %w", err)
 		}
@@ -5512,6 +5517,7 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 			return errors.New("new folder path cannot be empty")
 		}
 
+		sm.beforeTorrentChange(ctx, instanceID, []string{hash}, TorrentChangeRename)
 		if err := client.RenameFolderCtx(ctx, hash, oldPath, newPath); err != nil {
 			return fmt.Errorf("failed to rename folder: %w", err)
 		}
