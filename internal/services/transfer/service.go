@@ -111,7 +111,9 @@ type Service struct {
 
 	mu     sync.Mutex
 	closed bool
-	// queues holds the Transfers of each source, the running one first.
+	// queues holds the Transfers of each source, the running one first. A
+	// source is in it while its worker runs, also when a cancel emptied its
+	// queue before the worker took the first Transfer.
 	queues map[int][]int64
 	// runs holds each Transfer that is queued, runs, or is being cancelled.
 	runs map[int64]*run
@@ -259,9 +261,9 @@ func (s *Service) enqueue(r *Record) {
 		return
 	}
 	s.runs[r.ID] = &run{}
-	queue := s.queues[r.SourceInstanceID]
+	queue, working := s.queues[r.SourceInstanceID]
 	s.queues[r.SourceInstanceID] = append(queue, r.ID)
-	if len(queue) == 0 {
+	if !working {
 		s.wg.Go(func() { s.drain(r.SourceInstanceID) })
 	}
 }
@@ -350,7 +352,11 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		return nil
 	default:
 		r.cancelled = true
-		s.queues[record.SourceInstanceID] = slices.DeleteFunc(s.queues[record.SourceInstanceID], func(queued int64) bool { return queued == id })
+		// An Export run is held but sits in no queue: a source key without
+		// a worker would stop the next Transfer of the source.
+		if queue, ok := s.queues[record.SourceInstanceID]; ok {
+			s.queues[record.SourceInstanceID] = slices.DeleteFunc(queue, func(queued int64) bool { return queued == id })
+		}
 	}
 	s.wg.Go(func() { s.rollBack(context.WithoutCancel(ctx), id) })
 	return nil
