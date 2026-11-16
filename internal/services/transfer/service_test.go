@@ -238,6 +238,9 @@ type side int
 const (
 	overSFTP side = iota
 	onDisk
+	// noAccess: qui reaches only the qBittorrent of the instance, not its
+	// files.
+	noAccess
 )
 
 func newRig(t *testing.T, options ...func(*transfer.Config)) *rig {
@@ -302,7 +305,7 @@ func wire(t *testing.T, db *database.DB, d *disk, now func() time.Time) (transfe
 		Groups:    groups,
 		Now:       now,
 		Config: transfer.Config{Polls: 20, CheckPolls: 20, PollInterval: time.Millisecond, FlushBytes: 32,
-			Reconnects: 20, ReconnectWait: time.Millisecond},
+			Reconnects: 20, ReconnectWait: time.Millisecond, PeerPolls: 3},
 	}, instances, syncManager
 }
 
@@ -356,8 +359,14 @@ func (r *rig) localInstance(name, url string) *models.Instance {
 
 func (r *rig) instanceOn(where side, server *sshtest.Server, name, url string) *models.Instance {
 	r.t.Helper()
-	if where == overSFTP {
+	switch where {
+	case overSFTP:
 		return r.sshInstanceOn(server, name, url)
+	case noAccess:
+		inst, err := r.instances.Create(r.t.Context(), name, url, "", "", nil, nil, false, new(false))
+		require.NoError(r.t, err)
+		return inst
+	case onDisk:
 	}
 	return r.localInstance(name, url)
 }
@@ -533,13 +542,19 @@ func TestTransferRefuses(t *testing.T) {
 			req.TargetInstanceID = r.source.ID
 			return req
 		}, reason: "The Transfer source and the Transfer target are the same instance."},
-		{name: "a target without file access", setup: func(r *rig, s show) transfer.Request {
+		{name: "a copy through qui to a target without file access", setup: func(r *rig, s show) transfer.Request {
 			other, err := r.instances.Create(t.Context(), "other client", r.dst.URL, "", "", nil, nil, false, new(false))
 			require.NoError(t, err)
 			req := r.request(s)
 			req.TargetInstanceID = other.ID
+			req.Options.ForcedWay = transfer.WaySFTP
 			return req
-		}, reason: "For now, a Transfer needs file access to other client, on qui's own disk or over SSH."},
+		}, reason: "A copy through qui needs file access to other client, on qui's own disk or over SSH."},
+		{name: "an unknown way", setup: func(r *rig, s show) transfer.Request {
+			req := r.request(s)
+			req.Options.ForcedWay = "carrier pigeon"
+			return req
+		}, reason: `Unknown way: "carrier pigeon".`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t)

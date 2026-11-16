@@ -63,9 +63,12 @@ type job struct {
 	parts []*part
 	// files holds each file of the group once, and byRel finds one by its
 	// path below the root.
-	files    []*groupFile
-	byRel    map[string]*groupFile
+	files []*groupFile
+	byRel map[string]*groupFile
+	// srcFiles is nil on a source, and blind is set on a target, of a
+	// Transfer torrent whose files qui cannot reach.
 	srcFiles fsops.Backend
+	blind    bool
 	root     fsops.Root
 	// rootDir is the folder on the target that holds every member.
 	rootDir  string
@@ -123,8 +126,16 @@ func (j *job) run(ctx context.Context) error {
 		if err := j.headStart(ctx); err != nil {
 			return err
 		}
-		if err := j.copyAll(ctx); err != nil {
-			return err
+		if j.rec.Way == WayBitTorrent {
+			if err := j.passByBitTorrent(ctx); err != nil {
+				return err
+			}
+		}
+		// A Transfer torrent that fell back leaves the rest to the copy.
+		if j.rec.Way != WayBitTorrent {
+			if err := j.copyAll(ctx); err != nil {
+				return err
+			}
 		}
 		if err := j.prove(ctx); err != nil {
 			return err
@@ -162,35 +173,28 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := j.step(ctx, StateCopying, stepPrepare); err != nil {
 		return err
 	}
+	bitTorrent := j.rec.Way == WayBitTorrent
 	var err error
-	if j.srcFiles, j.source, err = j.svc.deps.Files.Require(ctx, j.rec.SourceInstanceID, models.CapabilityReadBytes); err != nil {
-		return temporary("qui cannot read the files of the Transfer source: %v", err)
+	if !bitTorrent || models.FilesystemAccessMode(j.source) != models.FilesystemModeNone {
+		if j.srcFiles, j.source, err = j.svc.deps.Files.Require(ctx, j.rec.SourceInstanceID, models.CapabilityReadBytes); err != nil {
+			return temporary("qui cannot read the files of the Transfer source: %v", err)
+		}
 	}
-	targetFiles, target, err := j.svc.deps.Files.Require(ctx, j.rec.TargetInstanceID, models.CapabilityWriteBytes)
-	if err != nil {
+	var targetFiles fsops.Backend
+	j.blind = bitTorrent && models.FilesystemAccessMode(j.target) == models.FilesystemModeNone
+	if j.blind {
+		if targetFiles, err = j.svc.deps.Files.GetBackend(ctx, j.rec.TargetInstanceID); err != nil {
+			return temporary("qui cannot read the paths of the Transfer target: %v", err)
+		}
+	} else if targetFiles, j.target, err = j.svc.deps.Files.Require(ctx, j.rec.TargetInstanceID, models.CapabilityWriteBytes); err != nil {
 		return temporary("qui cannot write the files of the Transfer target: %v", err)
-	}
-	j.target = target
-	opener, ok := targetFiles.(fsops.RootOpener)
-	if !ok {
-		return permanent("qui cannot write new files on %s.", j.target.Name)
 	}
 
 	if err := j.readParts(ctx, targetFiles.Paths()); err != nil {
 		return err
 	}
-	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
-		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
-	}
-	find := j.findOnTarget
-	if resumed {
-		find = j.findOnTargetAgain
-	}
-	if err := find(ctx); err != nil {
-		return err
-	}
-	if j.rec.Way == WayLocal && !j.reached(stepPlace) {
-		if err := j.linkFiles(ctx, targetFiles); err != nil {
+	if !j.blind {
+		if err := j.openRoot(ctx, targetFiles, resumed); err != nil {
 			return err
 		}
 	}
@@ -202,34 +206,22 @@ func (j *job) prepare(ctx context.Context) error {
 	if j.reached(stepPlace) {
 		need = 0
 	}
-	stat, err := targetFiles.Statfs(ctx, j.rootDir)
+	free, known, err := j.freeSpace(ctx, targetFiles)
 	if err != nil {
-		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+		return err
 	}
-	if err := j.svc.reserve(j.target.ID, need, stat.BytesAvailable); err != nil {
-		return permanent("Not enough free space on %s: %v", j.target.Name, err)
-	}
-	j.reserved = need
-	if !resumed && j.rec.Way == WayNone {
-		j.logf("No copy: %s sees the same files as %s.", j.target.Name, j.source.Name)
-		return nil
+	if known {
+		if err := j.svc.reserve(j.target.ID, need, free); err != nil {
+			return permanent("Not enough free space on %s: %v", j.target.Name, err)
+		}
+		j.reserved = need
 	}
 	if !resumed {
-		how := "over SFTP"
-		if j.rec.Way == WayLocal {
-			how = "on qui's own disk"
-		}
-		linked, size := linkedBytes(j.files)
-		if linked > 0 {
-			j.logf("Linking %d files (%s) %s from %s to %s.", linked, formatBytes(size), how, j.source.Name, j.target.Name)
-		}
-		if need > 0 || linked == 0 {
-			j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
-		}
+		j.logStart(ctx, need, known)
 		return nil
 	}
 	if err := j.removeHelpers(ctx); err != nil {
-		return temporary("qui cannot remove its helper torrents from %s: %v", j.target.Name, err)
+		return temporary("qui cannot remove its helper torrents: %v", err)
 	}
 	if j.reached(stepPlace) {
 		j.logf("Resumed: the files are in place on %s.", j.target.Name)
@@ -243,6 +235,107 @@ func (j *job) prepare(ctx context.Context) error {
 	j.logf("Resumed: %d of %d pieces are proven, and %s are left to copy.", proven, pieces, formatBytes(need))
 	return nil
 }
+
+func (j *job) openRoot(ctx context.Context, targetFiles fsops.Backend, resumed bool) error {
+	opener, ok := targetFiles.(fsops.RootOpener)
+	if !ok {
+		return permanent("qui cannot write new files on %s.", j.target.Name)
+	}
+	var err error
+	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
+		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
+	}
+	find := j.findOnTarget
+	if resumed {
+		find = j.findOnTargetAgain
+	}
+	if err := find(ctx); err != nil {
+		return err
+	}
+	if j.rec.Way == WayLocal && !j.reached(stepPlace) {
+		return j.linkFiles(ctx, targetFiles)
+	}
+	return nil
+}
+
+// freeSpace is not known on a blind target before qBittorrent 5.3, which
+// reports it only at its default save path.
+func (j *job) freeSpace(ctx context.Context, targetFiles fsops.Backend) (free int64, known bool, err error) {
+	if !j.blind {
+		stat, err := targetFiles.Statfs(ctx, j.rootDir)
+		if err != nil {
+			return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+		}
+		return stat.BytesAvailable, true, nil
+	}
+	free, err = j.svc.deps.Sync.GetFreeSpaceAtPath(ctx, j.target.ID, j.rootDir)
+	if !errors.Is(err, qbittorrent.ErrFreeSpaceAtPathUnsupported) {
+		if err != nil {
+			return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+		}
+		return free, true, nil
+	}
+	prefs, err := j.svc.deps.Sync.GetAppPreferences(ctx, j.target.ID)
+	if err != nil {
+		return 0, false, temporary("qui cannot read the default save path of %s: %v", j.target.Name, err)
+	}
+	if d := targetFiles.Paths(); d.Clean(prefs.SavePath) != j.rootDir {
+		return 0, false, nil
+	}
+	if free, err = j.svc.deps.Sync.GetFreeSpace(ctx, j.target.ID); err != nil {
+		return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+	}
+	return free, true, nil
+}
+
+func (j *job) logStart(ctx context.Context, need int64, known bool) {
+	if !known {
+		j.logf("Free space unknown on %s: before qBittorrent 5.3, qBittorrent reports it only at its default save path.", j.target.Name)
+	}
+	switch j.rec.Way {
+	case WayNone:
+		j.logf("No copy: %s sees the same files as %s.", j.target.Name, j.source.Name)
+		return
+	case WayBitTorrent:
+		j.logf("Passing %s by a Transfer torrent from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
+		if j.blind {
+			j.logf("qui cannot see the files on %s, so a file with other content at the same path can be replaced.", j.target.Name)
+		}
+		j.hint(ctx)
+		return
+	case WayLocal, WaySFTP:
+	}
+	how := "over SFTP"
+	if j.rec.Way == WayLocal {
+		how = "on qui's own disk"
+	}
+	linked, size := linkedBytes(j.files)
+	if linked > 0 {
+		j.logf("Linking %d files (%s) %s from %s to %s.", linked, formatBytes(size), how, j.source.Name, j.target.Name)
+	}
+	if need > 0 || linked == 0 {
+		j.logf("Copying %s %s from %s to %s.", formatBytes(need), how, j.source.Name, j.target.Name)
+	}
+}
+
+func (j *job) hint(ctx context.Context) {
+	for _, inst := range []*models.Instance{j.source, j.target} {
+		prefs, err := j.svc.deps.Sync.GetAppPreferences(ctx, inst.ID)
+		if err != nil || prefs.BittorrentProtocol != bittorrentTCPAndUTP {
+			continue
+		}
+		j.rec.Log = append(j.rec.Log, LogLine{
+			At: j.svc.deps.Now(),
+			Message: fmt.Sprintf(`%s uses qBittorrent's default "TCP and μTP". In qui's tests, "TCP only" was about three times faster. `+
+				"qui does not change this setting.", inst.Name),
+			Hint: &Hint{Kind: HintTCPAndUTP, InstanceID: inst.ID},
+		})
+	}
+}
+
+// bittorrentTCPAndUTP is "TCP and μTP" in qBittorrent's "Peer connection
+// protocol".
+const bittorrentTCPAndUTP = 0
 
 // readParts reads each member on the source again, and places it below the
 // root of the Transfer on the target.
@@ -405,10 +498,8 @@ func (j *job) end(ctx context.Context, runErr error) {
 	j.rec.State = StateFailed
 	j.rec.RetryAt = j.svc.deps.Now().Add(retryAfter)
 	j.logf("Failed: %s qui tries again in an hour, and keeps what it copied.", reason)
-	if j.reaches(j.target) {
-		if err := j.removeHelpers(ctx); err != nil {
-			j.logf("qui could not remove its helper torrents from %s: %v", j.target.Name, err)
-		}
+	if err := j.removeHelpers(ctx); err != nil {
+		j.logf("qui could not remove its helper torrents: %v", err)
 	}
 	if j.stoppedSource {
 		j.startSource(ctx)

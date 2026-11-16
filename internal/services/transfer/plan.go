@@ -85,6 +85,9 @@ type part struct {
 	// headStartProven is set when the check of the files that were on the
 	// target passed every piece of the member.
 	headStartProven bool
+	// passed is set once the target has every piece of the Transfer torrent
+	// of the member: BitTorrent checked each piece.
+	passed bool
 }
 
 func (p *part) rel(f file) string {

@@ -169,22 +169,35 @@ func (s *Service) supported(ctx context.Context, inst *models.Instance) error {
 	return nil
 }
 
-// checkWay picks how qui copies the files: on its own disk when it has both
-// sides there, and else over SFTP through qui. It refuses a side without
-// file access.
+// checkWay picks a copy through qui when qui reaches the files of a side on
+// its own disk, and else a Transfer torrent between the clients.
 func checkWay(source, target *models.Instance, forced Way) (Way, error) {
-	if forced != "" && forced != WaySFTP {
-		return "", refuse("qui cannot transfer by %s yet.", forced)
-	}
-	for _, inst := range []*models.Instance{source, target} {
-		if models.FilesystemAccessMode(inst) == models.FilesystemModeNone {
-			return "", refuse("For now, a Transfer needs file access to %s, on qui's own disk or over SSH.", inst.Name)
+	from, to := models.FilesystemAccessMode(source), models.FilesystemAccessMode(target)
+	switch forced {
+	case "":
+		switch {
+		case from == models.FilesystemModeNone || to == models.FilesystemModeNone:
+			return WayBitTorrent, nil
+		case from == models.FilesystemModeLocal && to == models.FilesystemModeLocal:
+			return WayLocal, nil
+		case from == models.FilesystemModeLocal || to == models.FilesystemModeLocal:
+			return WaySFTP, nil
 		}
+		return WayBitTorrent, nil
+	case WaySFTP:
+		for _, inst := range []*models.Instance{source, target} {
+			if models.FilesystemAccessMode(inst) == models.FilesystemModeNone {
+				return "", refuse("A copy through qui needs file access to %s, on qui's own disk or over SSH.", inst.Name)
+			}
+		}
+		if from == models.FilesystemModeLocal && to == models.FilesystemModeLocal {
+			return WayLocal, nil
+		}
+		return WaySFTP, nil
+	case WayBitTorrent:
+		return WayBitTorrent, nil
 	}
-	if models.FilesystemAccessMode(source) == models.FilesystemModeLocal && models.FilesystemAccessMode(target) == models.FilesystemModeLocal {
-		return WayLocal, nil
-	}
-	return WaySFTP, nil
+	return "", refuse("Unknown way: %q.", forced)
 }
 
 // seesSameFiles reports whether each file of the group, at its place on the

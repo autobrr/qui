@@ -158,7 +158,18 @@ type Server struct {
 	// ListenPort is reported as the listen_port preference. qBittorrent
 	// reports 0 when it picks a random port.
 	ListenPort int
+	// BittorrentProtocol is reported as the bittorrent_protocol preference:
+	// 0 is qBittorrent's default "TCP and μTP", 1 "TCP", and 2 "μTP".
+	BittorrentProtocol int
+	// FreeSpace is the free space that the server state reports for the
+	// default save path, and app/getFreeSpaceAtPath for any path from
+	// qBittorrent 5.3.
+	FreeSpace int64
+	// Unreachable is a closed port: no peer of the swarm connects to the
+	// stub, and the stub still connects to its peers.
+	Unreachable bool
 
+	swarm                  *Swarm
 	externalV4, externalV6 string
 
 	calls        map[string]int
@@ -576,7 +587,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, map[string]any{"save_path": s.savePath, "temp_path": downloadPath,
 			"temp_path_enabled": !s.DownloadPathOff, "use_subcategories": !s.SubcategoriesOff, "torrent_changed_tmm_enabled": true,
-			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs, "listen_port": s.ListenPort})
+			"category_changed_tmm_enabled": true, "scan_dirs": s.ScanDirs, "listen_port": s.ListenPort,
+			"bittorrent_protocol": s.BittorrentProtocol})
 	case "sync/maindata":
 		s.syncs++
 		if ch, ok := s.synced[s.syncs]; ok {
@@ -611,6 +623,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			if state != "" {
 				row["state"] = state
 			}
+			if t.add != nil {
+				row["downloaded"] = t.add.downloaded
+			}
 			if s.webAPIAtLeast("2.11.2") { // qBittorrent 5.0.0
 				row["popularity"], row["has_metadata"] = t.Popularity, !t.NoMetadata
 				if t.NoMetadata {
@@ -628,7 +643,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		full := !s.PartialUpdates || param("rid") == "0"
 		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
 			"server_state": map[string]any{"connection_status": "connected",
-				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6}})
+				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6, "free_space_on_disk": s.FreeSpace}})
 	case "sync/torrentPeers":
 		t, ok := s.torrents[strings.ToLower(param("hash"))]
 		if !ok {
@@ -758,6 +773,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		s.export(w, param)
 	case "torrents/pieceStates":
 		s.pieceStatesOf(w, param)
+	case "torrents/addPeers":
+		s.addPeers(w, param)
+	case "app/getFreeSpaceAtPath":
+		s.freeSpaceAt(w, r)
 	case "torrents/renameFile":
 		s.renameFile(w, param)
 	case "torrents/recheck":

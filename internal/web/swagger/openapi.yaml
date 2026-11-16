@@ -6817,11 +6817,11 @@ paths:
         - Transfers
       summary: Start a Transfer
       description: >-
-        Moves one torrent from the Transfer source to the Transfer target. qui copies its files from a source that it
-        reaches over SSH to its own disk on the target, checks every piece, adds the torrent to the target, and then
-        handles the source as the "after" field says. The route answers when the Transfer is recorded, before the copy
-        starts. Transfers from the same source run one at a time, in the order they started. Only a signed-in browser
-        can use this route. The route is not available yet.
+        Moves one torrent from the Transfer source to the Transfer target. qui copies its files through qui, on its
+        own disk or over SSH, or the two qBittorrents pass them by a Transfer torrent. Then qui checks every piece,
+        adds the torrent to the target, and handles the source as the "after" field says. The route answers when the
+        Transfer is recorded, before the copy starts. Transfers from the same source run one at a time, in the order
+        they started. Only a signed-in browser can use this route. The route is not available yet.
       security:
         - SessionAuth: []
       requestBody:
@@ -6868,6 +6868,18 @@ paths:
                 leaveStopped:
                   type: boolean
                   description: Keep the torrent stopped on the target
+                way:
+                  type: string
+                  enum:
+                    - auto
+                    - copy
+                    - bittorrent
+                  default: auto
+                  description: >-
+                    How the files move. auto lets qui pick: a copy through qui when qui reaches the files of a side on
+                    its own disk, and else a Transfer torrent between the two qBittorrents, which falls back to a copy
+                    over SSH when the clients do not connect. copy forces a copy through qui, which needs file access
+                    to both instances. bittorrent forces a Transfer torrent.
       responses:
         '202':
           description: The Transfer is recorded and waits for its turn
@@ -6882,7 +6894,7 @@ paths:
                     type: integer
                     format: int64
         '400':
-          description: The body is invalid, or it does not name the source, the torrent, and the target
+          description: The body is invalid, it does not name the source, the torrent, and the target, or it names an unknown way
           content:
             application/json:
               schema:

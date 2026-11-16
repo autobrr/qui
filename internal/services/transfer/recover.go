@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"path"
@@ -208,28 +209,40 @@ func (j *job) keepProven() {
 }
 
 // removeHelpers removes the helper torrents of the Transfer that are still
-// on the target, also those that a stop left there.
+// on the target or the source, also those that a stop left there. It keeps
+// their files.
 func (j *job) removeHelpers(ctx context.Context) error {
 	helpers, err := j.svc.deps.Store.HelpersOf(ctx, OwnerTransfer, j.rec.ID)
 	if err != nil || len(helpers) == 0 {
 		return err
 	}
-	hashes := make([]string, 0, len(helpers))
-	for _, h := range helpers {
-		if h.InstanceID == j.target.ID {
-			hashes = append(hashes, h.Hash)
+	for _, inst := range []*models.Instance{j.target, j.source} {
+		if !j.reaches(inst) {
+			continue
 		}
-	}
-	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.target.ID, qbittorrent.TorrentRefFilter{Hashes: hashes})
-	if err != nil || len(present) == 0 {
-		return err
-	}
-	gone := make([]string, 0, len(present))
-	for _, t := range present {
-		gone = append(gone, t.Hash)
-	}
-	if err := j.svc.deps.Sync.DeleteTorrents(ctx, j.target.ID, gone, false, j.actor()); err != nil {
-		return err
+		var hashes []string
+		for _, h := range helpers {
+			if h.InstanceID == inst.ID {
+				hashes = append(hashes, h.Hash)
+			}
+		}
+		if len(hashes) == 0 {
+			continue
+		}
+		present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+		if err != nil {
+			return fmt.Errorf("%s: %w", inst.Name, err)
+		}
+		if len(present) == 0 {
+			continue
+		}
+		gone := make([]string, 0, len(present))
+		for _, t := range present {
+			gone = append(gone, t.Hash)
+		}
+		if err := j.svc.deps.Sync.DeleteTorrents(ctx, inst.ID, gone, false, j.actor()); err != nil {
+			return fmt.Errorf("%s: %w", inst.Name, err)
+		}
 	}
 	j.helper = ""
 	return nil
@@ -245,6 +258,9 @@ func (j *job) cleanup(ctx context.Context) {
 		j.logf("The removal from the source started, so qui takes nothing back.")
 		return
 	}
+	if err := j.removeHelpers(ctx); err != nil {
+		j.logf("qui could not remove its helper torrents: %v", err)
+	}
 	if j.reaches(j.target) {
 		j.cleanTarget(ctx)
 	}
@@ -254,9 +270,6 @@ func (j *job) cleanup(ctx context.Context) {
 }
 
 func (j *job) cleanTarget(ctx context.Context) {
-	if err := j.removeHelpers(ctx); err != nil {
-		j.logf("qui could not remove its helper torrents from %s: %v", j.target.Name, err)
-	}
 	// keepPlaced keeps the files in place for a member that qui may not have
 	// added.
 	keepPlaced := false
@@ -270,6 +283,10 @@ func (j *job) cleanTarget(ctx context.Context) {
 			}
 			keepPlaced = keepPlaced || keep
 		}
+	}
+	if j.rec.Way == WayBitTorrent && models.FilesystemAccessMode(j.target) == models.FilesystemModeNone {
+		j.logf("qui cannot reach the files on %s, so the files of the Transfer torrent stay there.", j.target.Name)
+		return
 	}
 	if !j.readGroup(ctx) {
 		j.logf("qui cannot read the names of the files of %s, so it leaves the files that it wrote on %s.", j.torrents("the"), j.target.Name)

@@ -67,6 +67,8 @@ type added struct {
 	missing  bool
 	// listAfter counts the syncs that still leave the torrent out.
 	listAfter int
+	// downloaded is the bytes that the torrent got from its peers.
+	downloaded int64
 }
 
 // add answers torrents/add for uploaded .torrent files, as qBittorrent 5

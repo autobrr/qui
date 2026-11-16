@@ -55,14 +55,17 @@ func TestTransferPushesToATargetOverSFTP(t *testing.T) {
 	}
 }
 
-// A relay copies between two instances over SFTP, through qui.
+// A relay copies between two instances over SFTP, through qui, when the
+// Transfer forces a copy through qui.
 func TestTransferRelaysBetweenTwoSFTPSides(t *testing.T) {
 	r := newRigOn(t, overSFTP, overSFTP)
 	r.dstSSH.SetFsync(true)
 	s := newShow(t, showName)
 	r.seed(s)
+	req := r.request(s)
+	req.Options.ForcedWay = transfer.WaySFTP
 
-	record := r.run(r.request(s))
+	record := r.run(req)
 
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, transfer.WaySFTP, record.Way)
@@ -280,7 +283,9 @@ func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
 		}
 	}
 
-	record := r.run(r.request(s))
+	req := r.request(s)
+	req.Options.ForcedWay = transfer.WaySFTP
+	record := r.run(req)
 
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
@@ -311,9 +316,13 @@ func TestTransferServiceIdleInEveryDirection(t *testing.T) {
 		{name: "push", source: onDisk, target: overSFTP},
 		{name: "relay", source: overSFTP, target: overSFTP},
 		{name: "local", source: onDisk, target: onDisk},
+		{name: "BitTorrent from a source without file access", source: noAccess, target: overSFTP},
+		{name: "BitTorrent to a target without file access", source: overSFTP, target: noAccess},
+		{name: "BitTorrent without file access", source: noAccess, target: noAccess},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, tc.source, tc.target)
+			r.connect()
 			s := newShow(t, showName)
 			r.seed(s)
 

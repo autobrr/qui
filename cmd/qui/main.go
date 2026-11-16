@@ -860,6 +860,7 @@ func (app *Application) runServer() {
 	// Nothing starts a Transfer or a Share while the switch for Transfers and
 	// Shares is off.
 	switches := rollout.Production()
+	peerAddresses := peeraddress.New(instanceStore, syncManager)
 	transferService := transfer.NewService(context.Background(), transfer.Deps{
 		Store:      transfers,
 		Instances:  instanceStore,
@@ -868,6 +869,7 @@ func (app *Application) runServer() {
 		Groups:     crossSeedService,
 		Routes:     crossSeedRoutes,
 		CrossSeeds: crossSeedService,
+		Peers:      peerAddresses,
 		Config:     transfer.DefaultConfig(),
 	})
 	// Export to Instance stays on its old path while the Export switch is off.
@@ -880,7 +882,7 @@ func (app *Application) runServer() {
 		Helpers:         transfers,
 		Instances:       instanceStore,
 		Sync:            syncManager,
-		Peers:           peeraddress.New(instanceStore, syncManager),
+		Peers:           peerAddresses,
 		Switches:        switches,
 		Config:          share.DefaultConfig(),
 	})

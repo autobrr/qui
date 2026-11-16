@@ -1,0 +1,429 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package transfer_test
+
+import (
+	"bytes"
+	"net/netip"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
+)
+
+// The public peer addresses of the two stubs of a rig.
+var (
+	sourcePeer = netip.MustParseAddrPort("198.51.100.1:6881")
+	targetPeer = netip.MustParseAddrPort("198.51.100.2:6881")
+)
+
+// connect lets the two stubs of the rig reach each other as BitTorrent
+// peers, and gives the target free space that its qBittorrent reports.
+func (r *rig) connect() {
+	swarm := qbtstub.NewSwarm()
+	swarm.Join(r.src, sourcePeer)
+	swarm.Join(r.dst, targetPeer)
+	r.dst.FreeSpace = 1 << 30
+}
+
+// requireNoHelpers fails when a Transfer torrent of the Transfer is still in
+// a client.
+func (r *rig) requireNoHelpers(record *transfer.Record) {
+	r.t.Helper()
+	helpers, err := r.store.HelpersOf(r.t.Context(), transfer.OwnerTransfer, record.ID)
+	require.NoError(r.t, err)
+	for _, h := range helpers {
+		require.False(r.t, r.src.Has(h.Hash), "the Transfer torrent left the source")
+		require.False(r.t, r.dst.Has(h.Hash), "the Transfer torrent left the target")
+	}
+}
+
+// A Transfer to a target without file access passes the files by a
+// Transfer torrent: the target downloads them from the source, adds the
+// real torrent on them, and qui removes the Transfer torrent from both
+// clients.
+func TestTransferPassesByBitTorrentToATargetWithoutFileAccess(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	s := newShow(t, showName)
+	r.seed(s)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayBitTorrent, record.Way)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the target downloaded the files")
+	require.True(t, r.seeding(r.target.ID, s.hash))
+	require.False(t, r.src.Has(s.hash))
+	require.Empty(t, tree(t, r.srcDir), logOf(record))
+	r.requireNoHelpers(record)
+	require.Contains(t, logOf(record), "Passing 70 B by a Transfer torrent from seedbox to homelab.")
+	require.Contains(t, logOf(record), "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.")
+	require.Contains(t, logOf(record), "Proof: BitTorrent checked every piece on homelab.")
+}
+
+// When no byte arrives on the target from the source, qui asks the source to
+// connect to the target.
+func TestTransferTorrentConnectsTheOtherWay(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	r.src.Unreachable = true
+	s := newShow(t, showName)
+	r.seed(s)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayBitTorrent, record.Way)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Contains(t, logOf(record), "No byte arrived on homelab from seedbox. qui asks seedbox to connect to homelab.")
+	require.Equal(t, 1, r.dst.Calls("torrents/addPeers"))
+	require.Equal(t, 1, r.src.Calls("torrents/addPeers"))
+	r.requireNoHelpers(record)
+}
+
+// When the clients do not connect either way, a Transfer between two SFTP
+// sides copies the files over SFTP instead.
+func TestTransferTorrentFallsBackToSFTP(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		connect func(r *rig)
+		reason  string
+	}{
+		{name: "unreachable", connect: func(r *rig) {
+			r.connect()
+			r.src.Unreachable, r.dst.Unreachable = true, true
+		}, reason: "The clients did not connect: homelab did not reach seedbox at 198.51.100.1:6881, " +
+			"and seedbox did not reach homelab at 198.51.100.2:6881."},
+		{name: "no public peer address", connect: func(*rig) {},
+			reason: "The clients did not connect: seedbox has no public peer address, and homelab has no public peer address."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, overSFTP)
+			tc.connect(r)
+			s := newShow(t, showName)
+			r.seed(s)
+
+			record := r.run(r.request(s))
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, transfer.WaySFTP, record.Way)
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the copy over SFTP left no temporary file")
+			require.Contains(t, logOf(record), tc.reason+" qui copies the files over SFTP instead.")
+			require.Empty(t, tree(t, r.srcDir))
+			r.requireNoHelpers(record)
+		})
+	}
+}
+
+// Without a copy over SFTP to fall back to, a Transfer torrent whose clients
+// do not connect fails for a retry. qui removes the Transfer torrent from
+// both clients, and the torrent seeds on the source as before.
+func TestTransferTorrentFailsWithoutAWayBack(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		source, target side
+		forced         transfer.Way
+	}{
+		{name: "a target without file access", source: overSFTP, target: noAccess},
+		{name: "a source without file access", source: noAccess, target: overSFTP},
+		{name: "forced BitTorrent", source: overSFTP, target: overSFTP, forced: transfer.WayBitTorrent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, tc.source, tc.target)
+			r.connect()
+			r.src.Unreachable, r.dst.Unreachable = true, true
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			req.Options.ForcedWay = tc.forced
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, transfer.FailureTemporary, record.FailureClass)
+			require.Equal(t, "The clients did not connect: homelab did not reach seedbox at 198.51.100.1:6881, "+
+				"and seedbox did not reach homelab at 198.51.100.2:6881.", record.FailureReason)
+			require.Equal(t, transfer.WayBitTorrent, record.Way)
+			r.requireNoHelpers(record)
+			require.True(t, r.seeding(r.source.ID, s.hash), "the torrent seeds on the source")
+			require.False(t, r.dst.Has(s.hash))
+		})
+	}
+}
+
+// A forced Transfer torrent to a target with file access downloads into
+// the temporary names of the copy, which qui renames into place. The source
+// seeds the Transfer torrent under the names of its own files.
+func TestTransferTorrentWritesTheTemporaryNamesOfTheCopy(t *testing.T) {
+	r := newRigOn(t, overSFTP, onDisk)
+	r.connect()
+	s := newShow(t, showName)
+	r.seed(s)
+	req := r.request(s)
+	req.Options.ForcedWay = transfer.WayBitTorrent
+
+	record := r.run(req)
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayBitTorrent, record.Way)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "no temporary name is left")
+	require.Equal(t, 2, r.src.Writes("torrents/renameFile"), "the source renames both files of the Transfer torrent")
+	require.True(t, r.seeding(r.target.ID, s.hash))
+	require.Empty(t, tree(t, r.srcDir))
+	r.requireNoHelpers(record)
+}
+
+// qui picks a copy through qui when it reaches the files of a side on its
+// own disk, and else a Transfer torrent. A forced way wins.
+func TestTransferPicksTheWay(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		source, target side
+		forced         transfer.Way
+		want           transfer.Way
+	}{
+		{name: "both on qui's own disk", source: onDisk, target: onDisk, want: transfer.WayLocal},
+		{name: "the source on qui's own disk", source: onDisk, target: overSFTP, want: transfer.WaySFTP},
+		{name: "the target on qui's own disk", source: overSFTP, target: onDisk, want: transfer.WaySFTP},
+		{name: "both over SFTP", source: overSFTP, target: overSFTP, want: transfer.WayBitTorrent},
+		{name: "a source without file access", source: noAccess, target: onDisk, want: transfer.WayBitTorrent},
+		{name: "a target without file access", source: onDisk, target: noAccess, want: transfer.WayBitTorrent},
+		{name: "no file access", source: noAccess, target: noAccess, want: transfer.WayBitTorrent},
+		{name: "a forced copy over SFTP", source: overSFTP, target: overSFTP, forced: transfer.WaySFTP, want: transfer.WaySFTP},
+		{name: "a forced copy on qui's own disk", source: onDisk, target: onDisk, forced: transfer.WaySFTP, want: transfer.WayLocal},
+		{name: "forced BitTorrent", source: onDisk, target: onDisk, forced: transfer.WayBitTorrent, want: transfer.WayBitTorrent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, tc.source, tc.target)
+			r.connect()
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			req.Options.ForcedWay = tc.forced
+
+			record := r.run(req)
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, tc.want, record.Way)
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+			require.True(t, r.seeding(r.target.ID, s.hash))
+			require.Empty(t, tree(t, r.srcDir))
+		})
+	}
+}
+
+// A Transfer torrent records a hint for each client that uses qBittorrent's
+// default "TCP and μTP", and none for a client on "TCP only".
+func TestTransferTorrentHintsAtTCPOnly(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	r.src.BittorrentProtocol = 1 // TCP only
+	s := newShow(t, showName)
+	r.seed(s)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	var hints []transfer.LogLine
+	for _, line := range record.Log {
+		if line.Hint != nil {
+			hints = append(hints, line)
+		}
+	}
+	require.Len(t, hints, 1)
+	require.Equal(t, transfer.Hint{Kind: transfer.HintTCPAndUTP, InstanceID: r.target.ID}, *hints[0].Hint)
+	require.Equal(t, `homelab uses qBittorrent's default "TCP and μTP". In qui's tests, "TCP only" was about three times faster. `+
+		"qui does not change this setting.", hints[0].Message)
+	require.Equal(t, 1, r.src.BittorrentProtocol, "qui leaves the setting alone")
+	require.Zero(t, r.dst.Writes("app/setPreferences"))
+	require.Zero(t, r.src.Writes("app/setPreferences"))
+}
+
+// A copy through qui records no hint.
+func TestTransferCopyHasNoHint(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	for _, line := range record.Log {
+		require.Nil(t, line.Hint, line.Message)
+	}
+}
+
+// On a target without file access, qBittorrent reads the free space: from
+// 5.3 at the save path, and before 5.3 only at its default save path.
+func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		webAPI    string
+		free      int64
+		elsewhere bool
+		reason    string
+		log       string
+	}{
+		{name: "5.3 refuses a full disk", webAPI: "2.15.2", free: 69,
+			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
+		{name: "5.3 at another save path", webAPI: "2.15.2", free: 70, elsewhere: true},
+		{name: "5.1 refuses a full disk at the default save path", free: 69,
+			reason: "Not enough free space on homelab: not enough free space on the target: the Transfer needs 70 B, and 69 B is free"},
+		{name: "5.1 elsewhere", free: 69, elsewhere: true,
+			log: "Free space unknown on homelab: before qBittorrent 5.3, qBittorrent reports it only at its default save path."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, noAccess)
+			r.connect()
+			r.dst.WebAPIVersion = tc.webAPI
+			r.dst.FreeSpace = tc.free
+			s := newShow(t, showName)
+			r.seed(s)
+			req := r.request(s)
+			saveDir := r.dstDir
+			if tc.elsewhere {
+				saveDir = filepath.Join(r.dstDir, "elsewhere")
+				req.Placement.SavePath = saveDir
+			}
+
+			record := r.run(req)
+
+			if tc.reason != "" {
+				require.Equal(t, transfer.StateFailed, record.State)
+				require.Equal(t, tc.reason, record.FailureReason)
+				require.Zero(t, r.dst.Writes("torrents/add"), "qui adds nothing on the target")
+				return
+			}
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, contents(s, showName), tree(t, saveDir))
+			if tc.log != "" {
+				require.Contains(t, logOf(record), tc.log)
+			} else {
+				require.NotContains(t, logOf(record), "Free space unknown")
+			}
+		})
+	}
+}
+
+// On a target without file access, a Transfer torrent that downloaded no
+// byte found the files there before the Transfer. The target may read the
+// files of the source, so qui keeps them.
+func TestTransferTorrentKeepsTheFilesThatTheTargetHad(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Contains(t, logOf(record), "Removed the torrent from seedbox and kept its files, because homelab had the files before the Transfer")
+	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+	require.Zero(t, r.src.Writes("torrents/add"), "the target needed no seed")
+	r.requireNoHelpers(record)
+}
+
+// On a source without file access, qBittorrent removes the files with the
+// torrent, unless the target had some of them: qui cannot remove only the
+// files that it copied.
+func TestTransferTorrentFromASourceWithoutFileAccess(t *testing.T) {
+	t.Run("removes the files", func(t *testing.T) {
+		r := newRigOn(t, noAccess, onDisk)
+		r.connect()
+		s := newShow(t, showName)
+		r.seed(s)
+
+		record := r.run(r.request(s))
+
+		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+		require.Equal(t, "true", r.src.LastParams("torrents/delete").Get("deleteFiles"))
+		require.Empty(t, tree(t, r.srcDir))
+		require.Contains(t, logOf(record), "Removed the torrent and its files from seedbox.")
+	})
+	t.Run("keeps them after a head start", func(t *testing.T) {
+		r := newRigOn(t, noAccess, onDisk)
+		r.connect()
+		s := newShow(t, showName)
+		r.seed(s)
+		before := r.placeOnTarget(map[string][]byte{"Show.S01E01.mkv": s.files["Show.S01E01.mkv"]})
+
+		record := r.run(r.request(s))
+
+		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+		r.requireUntouched(before, s.files)
+		require.Equal(t, "false", r.src.LastParams("torrents/delete").Get("deleteFiles"))
+		require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+		require.Contains(t, logOf(record), "because qui cannot reach the files on seedbox to remove only the files that it copied")
+	})
+}
+
+// A Transfer torrent downloads only the files that the target misses. The
+// check of the files on the target runs first, and a file that fails it
+// stops the Transfer before the clients connect.
+func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
+	t.Run("passes the check", func(t *testing.T) {
+		r := newRigOn(t, overSFTP, overSFTP)
+		r.connect()
+		s := newShow(t, showName)
+		r.seed(s)
+		before := r.placeOnTarget(map[string][]byte{"Show.S01E01.mkv": s.files["Show.S01E01.mkv"]})
+
+		record := r.run(r.request(s))
+
+		require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+		require.Equal(t, transfer.WayBitTorrent, record.Way)
+		r.requireUntouched(before, s.files)
+		require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+		require.Equal(t, map[string]string{showName + "/Show.S01E01.mkv": string(s.files["Show.S01E01.mkv"])}, tree(t, r.srcDir),
+			"the file that the target had stays on the source")
+	})
+	t.Run("fails the check", func(t *testing.T) {
+		r := newRigOn(t, overSFTP, overSFTP)
+		r.connect()
+		s := newShow(t, showName)
+		r.seed(s)
+		other := map[string][]byte{"Show.S01E01.mkv": bytes.Repeat([]byte("x"), len(s.files["Show.S01E01.mkv"]))}
+		before := r.placeOnTarget(other)
+
+		record := r.run(r.request(s))
+
+		require.Equal(t, transfer.StateFailed, record.State)
+		require.Contains(t, record.FailureReason, "Conflict: the file at")
+		r.requireUntouched(before, other)
+		require.Zero(t, r.src.Writes("torrents/add"), "no Transfer torrent")
+		require.Zero(t, r.dst.Calls("torrents/addPeers"))
+	})
+}
+
+// A Transfer torrent that failed for a retry runs again from the start: qui
+// removed its Transfer torrents, and adds new ones.
+func TestTransferTorrentRetries(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	r.src.Unreachable, r.dst.Unreachable = true, true
+	s := newShow(t, showName)
+	r.seed(s)
+	first := r.run(r.request(s))
+	require.Equal(t, transfer.StateFailed, first.State)
+	require.Equal(t, transfer.FailureTemporary, first.FailureClass)
+
+	r.src.Unreachable = false
+	r.setClock(clock.Add(time.Hour))
+	r.svc.Wake()
+	r.svc.Wait()
+
+	record := r.get(first.ID)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	r.requireNoHelpers(record)
+	helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
+	require.NoError(t, err)
+	require.Len(t, helpers, 4, "each run adds a Transfer torrent with a new infohash on both clients")
+}

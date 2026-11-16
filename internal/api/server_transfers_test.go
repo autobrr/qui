@@ -35,4 +35,20 @@ func TestTransferStartRoute(t *testing.T) {
 		require.Equal(t, http.StatusConflict, status)
 		require.Contains(t, body, "Instance 1 does not exist.")
 	})
+
+	t.Run("an unknown way answers 400", func(t *testing.T) {
+		status, body := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie,
+			`{"sourceInstanceId":1,"hash":"aaaa","targetInstanceId":2,"way":"sneakernet"}`)
+		require.Equal(t, http.StatusBadRequest, status)
+		require.Contains(t, body, "way must be auto, copy, or bittorrent")
+	})
+
+	for _, way := range []string{"auto", "copy", "bittorrent"} {
+		t.Run("the way "+way+" reaches the checks", func(t *testing.T) {
+			status, body := rig.sendBody(t, http.MethodPost, "/api/transfers", "", cookie,
+				`{"sourceInstanceId":1,"hash":"aaaa","targetInstanceId":2,"way":"`+way+`"}`)
+			require.Equal(t, http.StatusConflict, status)
+			require.Contains(t, body, "Instance 1 does not exist.")
+		})
+	}
 }

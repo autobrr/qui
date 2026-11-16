@@ -31,7 +31,10 @@ type startTransferRequest struct {
 	Tags             []string       `json:"tags"`
 	After            transfer.After `json:"after"`
 	LeaveStopped     bool           `json:"leaveStopped"`
+	Way              string         `json:"way"`
 }
+
+var forcedWays = map[string]transfer.Way{"": "", "auto": "", "copy": transfer.WaySFTP, "bittorrent": transfer.WayBitTorrent}
 
 type startTransferResponse struct {
 	ID int64 `json:"id"`
@@ -50,13 +53,18 @@ func (h *TransfersHandler) Start(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "sourceInstanceId, hash, and targetInstanceId are required")
 		return
 	}
+	way, ok := forcedWays[req.Way]
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "way must be auto, copy, or bittorrent")
+		return
+	}
 
 	id, err := h.service.Start(r.Context(), transfer.Request{
 		SourceInstanceID: req.SourceInstanceID,
 		Hash:             req.Hash,
 		TargetInstanceID: req.TargetInstanceID,
 		Placement:        transfer.Placement{SavePath: req.SavePath, Category: req.Category, Tags: req.Tags},
-		Options:          transfer.Options{After: req.After, LeaveStopped: req.LeaveStopped},
+		Options:          transfer.Options{After: req.After, LeaveStopped: req.LeaveStopped, ForcedWay: way},
 		StartedBy:        transfer.StartedByUser,
 	})
 	_, refused := errors.AsType[*transfer.RefusalError](err)

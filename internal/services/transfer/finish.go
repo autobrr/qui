@@ -40,6 +40,9 @@ func (j *job) prove(ctx context.Context) error {
 		case p.headStartProven:
 			j.logf("Proof: every file%s was on %s, and the check passed all %d pieces.", j.of(p), j.target.Name, p.src.info.NumPieces())
 			continue
+		case p.passed:
+			j.logf("Proof: BitTorrent checked every piece%s on %s.", j.of(p), j.target.Name)
+			continue
 		case !p.hasOnTarget() && j.rec.FlushState == FlushConfirmed && p.allProven():
 			j.logf("Proof: qui checked every piece%s, and %s confirmed each flush.", j.of(p), j.target.Name)
 			continue
@@ -191,8 +194,12 @@ func (j *job) place(ctx context.Context) error {
 			return permanent("Already on the target: %s has %s.", inst.Name, which)
 		}
 	}
-	if err := j.putInPlace(ctx, again); err != nil {
-		return err
+	// A Transfer torrent on a target that qui cannot reach downloaded the
+	// files in place.
+	if !j.blind {
+		if err := j.putInPlace(ctx, again); err != nil {
+			return err
+		}
 	}
 
 	var representative *part
@@ -477,9 +484,11 @@ func (j *job) finishRemoval(ctx context.Context) error {
 	if err := j.stepWith(ctx, StateFinishing, stepRemoveFromSource, keep); err != nil {
 		return err
 	}
-	var err error
-	if j.srcFiles, _, err = j.svc.deps.Files.Require(ctx, j.source.ID, models.CapabilityReadBytes); err != nil {
-		return temporary("qui cannot read the files of the Transfer source: %v", err)
+	if models.FilesystemAccessMode(j.source) != models.FilesystemModeNone {
+		var err error
+		if j.srcFiles, _, err = j.svc.deps.Files.Require(ctx, j.source.ID, models.CapabilityReadBytes); err != nil {
+			return temporary("qui cannot read the files of the Transfer source: %v", err)
+		}
 	}
 	if !j.readGroup(ctx) {
 		return permanent("qui cannot read the names of the files of %s, so it cannot finish the removal from %s.", j.torrents("the"), j.source.Name)
@@ -488,18 +497,20 @@ func (j *job) finishRemoval(ctx context.Context) error {
 }
 
 // removeFromSource removes the torrents from the source, and their files
-// unless keep says why they stay or the user chose to keep them.
+// unless keep says why they stay or the user chose to keep them. On a source
+// whose files qui cannot reach, qBittorrent removes the files.
 func (j *job) removeFromSource(ctx context.Context, keep string) error {
 	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
 		return temporary("qui cannot read the torrents of %s: %v", j.source.Name, err)
 	}
+	withFiles := j.srcFiles == nil && j.rec.Options.After == AfterRemoveWithFiles && keep == ""
 	if len(present) > 0 {
 		hashes := make([]string, 0, len(present))
 		for _, t := range present {
 			hashes = append(hashes, t.Hash)
 		}
-		if err := j.svc.deps.Sync.DeleteTorrents(ctx, j.source.ID, hashes, false, j.actor()); err != nil {
+		if err := j.svc.deps.Sync.DeleteTorrents(ctx, j.source.ID, hashes, withFiles, j.actor()); err != nil {
 			return temporary("qui cannot remove %s from %s: %v", j.torrents("the"), j.source.Name, err)
 		}
 	}
@@ -509,6 +520,8 @@ func (j *job) removeFromSource(ctx context.Context, keep string) error {
 		j.logf("Removed %s from %s and kept %s files: %s stay in use.", j.torrents("the"), j.source.Name, j.its(), formatBytes(diskBytes(j.files)))
 	case keep != "":
 		j.logf("Removed %s from %s and kept %s files, because %s: %s stay in use.", j.torrents("the"), j.source.Name, j.its(), keep, formatBytes(diskBytes(j.files)))
+	case withFiles:
+		j.logf("Removed %s and %s files from %s.", j.torrents("the"), j.its(), j.source.Name)
 	default:
 		j.removeSourceFiles(ctx)
 	}
@@ -553,6 +566,13 @@ func (j *job) startTarget(ctx context.Context, p *part) error {
 func (j *job) keepReason(ctx context.Context) string {
 	if j.rec.Way == WayNone {
 		return j.target.Name + " reads the same files"
+	}
+	if j.blind && j.downloaded() == 0 {
+		// The target may see the files of the source.
+		return j.target.Name + " had the files before the Transfer"
+	}
+	if j.srcFiles == nil && slices.ContainsFunc(j.files, func(f *groupFile) bool { return f.onTarget }) {
+		return "qui cannot reach the files on " + j.source.Name + " to remove only the files that it copied"
 	}
 	instances, err := j.svc.deps.Instances.List(ctx)
 	if err != nil {

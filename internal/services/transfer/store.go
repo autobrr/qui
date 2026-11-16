@@ -268,7 +268,8 @@ func (s *Store) members(ctx context.Context, transferID int64) ([]Member, error)
 }
 
 // Save writes what changes while a Transfer runs: the state, the steps, the
-// log, the flush state, the reserved bytes, the retry, and the failure.
+// log, the flush state, the reserved bytes, the retry, the failure, and the
+// way after a fall back.
 func (s *Store) Save(ctx context.Context, r *Record) error {
 	steps, err := json.Marshal(r.Steps)
 	if err != nil {
@@ -279,9 +280,9 @@ func (s *Store) Save(ctx context.Context, r *Record) error {
 		return err
 	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE torrent_transfers SET state = ?, steps_json = ?, log_json = ?, flush_state = ?,
-			reserved_bytes = ?, retry_at = ?, failure_class = ?, failure_reason = ? WHERE id = ?`,
+			reserved_bytes = ?, retry_at = ?, failure_class = ?, failure_reason = ?, way = ? WHERE id = ?`,
 		string(r.State), string(steps), string(logLines), string(r.FlushState),
-		r.ReservedBytes, nullTime(r.RetryAt), string(r.FailureClass), r.FailureReason, r.ID); err != nil {
+		r.ReservedBytes, nullTime(r.RetryAt), string(r.FailureClass), r.FailureReason, string(r.Way), r.ID); err != nil {
 		return fmt.Errorf("save transfer %d: %w", r.ID, err)
 	}
 	return nil

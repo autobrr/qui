@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/peeraddress"
 )
 
 var (
@@ -55,12 +56,21 @@ type Config struct {
 	// the torrent on the target.
 	ExportPolls        int
 	ExportPollInterval time.Duration
+	// PeerPolls bounds the wait for the first bytes of a Transfer torrent in
+	// each direction, and a download that gets no byte, PollInterval apart.
+	PeerPolls int
 }
 
 func DefaultConfig() Config {
 	return Config{Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20, ReadBytes: 16 << 20,
 		Reconnects: 6, ReconnectWait: 10 * time.Second, WakeInterval: time.Minute,
-		ExportPolls: 10, ExportPollInterval: 3 * time.Second}
+		ExportPolls: 10, ExportPollInterval: 3 * time.Second, PeerPolls: 120}
+}
+
+// PeerAddresses gives the public peer address of an instance as host:port,
+// and peeraddress.ErrNoAddress when it has none.
+type PeerAddresses interface {
+	PublicPeerAddress(ctx context.Context, instanceID int) (string, error)
 }
 
 // GroupFinder finds the torrents that read the files of a torrent, with the
@@ -80,6 +90,9 @@ type Deps struct {
 	// the target.
 	Routes     RouteReader
 	CrossSeeds CrossSeeder
+	// Peers gives the addresses at which the two clients of a Transfer
+	// torrent reach each other. Nil reads them with peeraddress.
+	Peers PeerAddresses
 	// Now is the clock of the steps and the log. Nil is time.Now.
 	Now    func() time.Time
 	Config Config
@@ -125,6 +138,9 @@ type run struct {
 func NewService(ctx context.Context, deps Deps) *Service {
 	if deps.Now == nil {
 		deps.Now = time.Now
+	}
+	if deps.Peers == nil {
+		deps.Peers = peeraddress.New(deps.Instances, deps.Sync)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Service{

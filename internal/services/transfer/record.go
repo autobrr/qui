@@ -45,6 +45,9 @@ const (
 	WayLocal Way = "local"
 	// WayNone: the target sees the files of the source, and no byte moves.
 	WayNone Way = "none"
+	// WayBitTorrent: the two qBittorrents pass the files by a Transfer
+	// torrent, and no byte goes through qui.
+	WayBitTorrent Way = "bittorrent"
 )
 
 type StartedBy string
@@ -111,7 +114,9 @@ type Record struct {
 type Options struct {
 	After        After `json:"after"`
 	LeaveStopped bool  `json:"leaveStopped"`
-	// ForcedWay is empty when qui picks the way.
+	// ForcedWay is empty when qui picks the way. WaySFTP forces a copy
+	// through qui, on qui's own disk or over SFTP, and WayBitTorrent a
+	// Transfer torrent between the clients.
 	ForcedWay Way `json:"forcedWay"`
 	// Paused and SkipChecking are the fields of Export to Instance.
 	Paused       bool  `json:"paused"`
@@ -129,6 +134,23 @@ type Step struct {
 type LogLine struct {
 	At      time.Time `json:"at"`
 	Message string    `json:"message"`
+	// Hint is set on a line that gives advice that the page can show next to
+	// the Transfer.
+	Hint *Hint `json:"hint,omitzero"`
+}
+
+// HintKind names the advice of a Hint.
+type HintKind string
+
+// HintTCPAndUTP: the client uses qBittorrent's default "TCP and μTP". In
+// qui's tests, "TCP only" passed a Transfer torrent about three times
+// faster. qui never changes the setting.
+const HintTCPAndUTP HintKind = "tcpAndUtp"
+
+// Hint is advice about one instance of a Transfer.
+type Hint struct {
+	Kind       HintKind `json:"kind"`
+	InstanceID int      `json:"instanceId"`
 }
 
 // Member is one torrent of a Transfer, by its infohash on the Transfer source.
