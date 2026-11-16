@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { ChevronDown } from "lucide-react"
-import { useState } from "react"
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
+import { Check, ChevronUp, Plus, Settings2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -13,52 +14,96 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { useDisplayProfiles } from "@/lib/client-settings"
+import { cn } from "@/lib/utils"
 
 import { DisplayProfilesPanel } from "./DisplayProfilesPanel"
 import { DisplayProfileGlyph, DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
-/** The Display profile of this browser in the status bar of the torrent table, with a picker. */
+/** The Display profile of this browser in the status bar of the desktop torrent table, with a picker. */
 export function DisplayProfileChip() {
   const { t } = useTranslation("torrents")
   const { profiles, active, pick } = useDisplayProfiles()
+  const wide = useMediaQuery("(min-width: 1024px)")
+  const [menuOpen, setMenuOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const [newProfileOpen, setNewProfileOpen] = useState(false)
+  const activeRowRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    // Radix focuses the menu, or its first row, when it opens. The row of this browser's profile comes after that.
+    const frame = requestAnimationFrame(() => activeRowRef.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [menuOpen])
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t("displayProfiles.chipAriaLabel", { name: active.name })}
-            className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
-          >
-            <DisplayProfileGlyph profile={active} />
-            <span className="max-w-[8rem] truncate">{active.name}</span>
-            <ChevronDown className="h-3 w-3" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <Tooltip disableHoverableContent>
+          {/* Focus comes back to the chip after each pick, so only a hover shows the name. */}
+          <TooltipTrigger asChild onFocus={(event) => event.preventDefault()}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={t("displayProfiles.chipAriaLabel", { name: active.name })}
+                className={cn(
+                  "hidden h-6 gap-1 rounded-full border px-1.5 text-xs md:inline-flex lg:px-2",
+                  menuOpen ? "bg-accent text-foreground" : "text-muted-foreground hover:text-accent-foreground"
+                )}
+              >
+                <DisplayProfileGlyph profile={active} />
+                <span className="hidden max-w-[8rem] truncate lg:inline">{active.name}</span>
+                <ChevronUp aria-hidden="true" className="hidden size-3 opacity-60 lg:block" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          {!wide && !menuOpen && <TooltipContent>{active.name}</TooltipContent>}
+        </Tooltip>
+        <DropdownMenuContent
+          side="top"
+          align="end"
+          sideOffset={8}
+          className="w-64 max-w-[calc(100vw-1rem)]"
+        >
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("displayProfiles.menuLabel")}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={active.id} onValueChange={pick}>
+          <DropdownMenuPrimitive.RadioGroup
+            value={active.id}
+            onValueChange={pick}
+            className="max-h-[min(18rem,calc(var(--radix-dropdown-menu-content-available-height)-6rem))] overflow-y-auto"
+          >
             {profiles.map((profile) => (
-              <DropdownMenuRadioItem key={profile.id} value={profile.id}>
+              <DropdownMenuPrimitive.RadioItem
+                key={profile.id}
+                ref={profile.id === active.id ? activeRowRef : undefined}
+                value={profile.id}
+                textValue={profile.name}
+                className="flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[state=checked]:font-medium"
+              >
                 <DisplayProfileTile profile={profile} size="sm" />
-                <span className="truncate" title={profile.name}>{profile.name}</span>
-              </DropdownMenuRadioItem>
+                <span className="min-w-0 flex-1 truncate" title={profile.name}>{profile.name}</span>
+                <DropdownMenuPrimitive.ItemIndicator className="flex size-4 shrink-0 items-center justify-center">
+                  <Check aria-hidden="true" className="size-4" />
+                </DropdownMenuPrimitive.ItemIndicator>
+              </DropdownMenuPrimitive.RadioItem>
             ))}
-          </DropdownMenuRadioGroup>
+          </DropdownMenuPrimitive.RadioGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setNewProfileOpen(true)}>{t("displayProfiles.newProfile")}</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setPanelOpen(true)}>{t("displayProfiles.manage")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setNewProfileOpen(true)}>
+            <Plus />
+            {t("displayProfiles.newProfile")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setPanelOpen(true)}>
+            <Settings2 />
+            {t("displayProfiles.manage")}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <DisplayProfilesPanel open={panelOpen} onOpenChange={setPanelOpen} onNewProfile={() => setNewProfileOpen(true)} />
