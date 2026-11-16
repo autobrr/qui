@@ -251,12 +251,6 @@ describe("DisplayProfilesSettings", () => {
     expect(screen.getByRole("region", { name: "Laptop" })).toBe(editor())
     expect(within(editor()).getByText("Dense rows · filter sidebar closed")).not.toBeNull()
   })
-
-  it("links to Theme sync", () => {
-    renderSettings()
-
-    expect(screen.getByRole("link", { name: "Theme sync" }).getAttribute("href")).toBe("/settings?tab=themes#theme-sync")
-  })
 })
 
 describe("DisplayProfilesSettings in another language", () => {

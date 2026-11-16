@@ -318,6 +318,7 @@ describe("push queue", () => {
   })
 })
 
+// regression: #4194
 describe("large batches", () => {
   const MAX_BODY_BYTES = 64 * 1024
 

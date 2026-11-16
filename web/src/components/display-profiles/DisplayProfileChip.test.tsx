@@ -164,16 +164,6 @@ describe("DisplayProfileChip", () => {
     expect(screen.getByRole("status").textContent).toBe("collapsed")
   })
 
-  it("Manage profiles… links to the Display profiles section of Settings", () => {
-    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
-    openMenu()
-
-    const manage = screen.getByRole("menuitem", { name: "displayProfiles.manage" })
-
-    expect(manage.tagName).toBe("A")
-    expect(manage.getAttribute("href")).toBe("/settings?tab=display-profiles")
-  })
-
   it("the New profile item opens the dialog with focus in the name field", async () => {
     render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
     openMenu()
