@@ -696,6 +696,7 @@ func (app *Application) runServer() {
 	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
+	transferHistoryAdapter.SetHelperTorrents(transfers)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
 	syncManager.SetDeleteNoter(transferHistoryAdapter)
 	liveSamples := livesamples.New(clientPool)
@@ -757,6 +758,7 @@ func (app *Application) runServer() {
 	// Initialize automation activity store and external programs service
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
+	externalProgramService.SetHelperTorrents(transfers)
 
 	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
 	// backups, automations, indexer activity, etc.) onto the SSE stream so the
@@ -816,6 +818,7 @@ func (app *Application) runServer() {
 	crossSeedService.SetMediaIDCacheStore(models.NewMediaIDCacheStore(db))
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
+	reannounceService.SetHelperTorrents(transfers)
 
 	sshPool := sshpool.NewPool(sshpool.NewDialer(instanceStore))
 	backendPool := fsops.NewPoolWithRemote(instanceStore, localbackend.NewBackend(), func(inst *models.Instance) fsops.Backend {
@@ -852,11 +855,11 @@ func (app *Application) runServer() {
 	dirScanService.SetTransfers(transfers)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
+		notifyTorrentCompleted(ctx, syncManager, notificationService, transfers, instanceID, torrent)
 	}, crossSeedService.HandleTorrentCompletion)
 
 	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
-		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, transfers, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -893,6 +896,7 @@ func (app *Application) runServer() {
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
 	backupService.SetActivityPublisher(activityHub)
+	backupService.SetHelperTorrents(transfers)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
