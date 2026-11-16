@@ -13,6 +13,8 @@ A target that cannot confirm a flush has no Proven pieces. This is an SFTP serve
 
 For speed, the copy uses four SSH connections for each Transfer. A big file splits into four byte ranges, and small files go many at a time. The measurements came from a test server at Hetzner, 28 ms away over a line of about 1 Gbit (raw TCP: 90 MiB/s on one stream, 103 MiB/s on four). Pull of a 2 GiB episode, a 15 GiB pack of ten files, a 10 GiB movie, and a 50 GiB remux: SFTP on four connections 92, 102, 100, and 100 MiB/s. rsync, a tar stream, and SFTP on one connection 62 to 65 MiB/s. rclone with tuned flags 66 to 68 MiB/s, with 111 to 248 MiB of RAM on the qui host against 22 to 53 MiB for SFTP. Eight connections added nothing on this line. The x/crypto SSH library gives each channel a fixed window of 2 MiB, so one connection moves at most about 2 MiB for each round trip.
 
+Small files go up to 128 at a time across the connections. In tests, 2,000 files of 128 KiB moved at 30 MiB/s this way, against 6 MiB/s with 8 at a time. A piece that crosses the edge of a byte range or of a file is checked when all of its bytes arrived. A host that refuses extra connections gets the copy on fewer, down to one, and the Transfer goes on. There is no setting for the count.
+
 ## Considered options
 
 - **rsync over ssh.** Rejected. Resume: with `--partial`, rsync keeps a file that stopped halfway and continues it. It compares the copy with the source file and not with the .torrent, so qui must still check every piece after it. Tools: the Docker image and Windows have no rsync or ssh client, and an SFTP-only seedbox key cannot run it. Speed: one SSH connection, so it stops near 63 MiB/s like plain SFTP. Its delta transfer gives nothing for files that do not change.

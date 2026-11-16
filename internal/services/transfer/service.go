@@ -41,6 +41,9 @@ type Config struct {
 	// FlushBytes is how many bytes qui copies between two flushes. A piece
 	// becomes a Proven piece at the confirmed flush after it.
 	FlushBytes int64
+	// ReadBytes is how many bytes all the connections of a copy read at
+	// once. Zero reads one piece at a time.
+	ReadBytes int64
 	// Reconnects is how many times in a row the copy goes on after a
 	// dropped connection that proved no piece, ReconnectWait apart.
 	Reconnects    int
@@ -51,7 +54,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20,
+	return Config{Polls: 30, CheckPolls: 3600, PollInterval: time.Second, FlushBytes: 64 << 20, ReadBytes: 16 << 20,
 		Reconnects: 6, ReconnectWait: 10 * time.Second, WakeInterval: time.Minute}
 }
 

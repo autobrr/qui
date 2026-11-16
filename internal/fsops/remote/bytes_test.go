@@ -165,3 +165,44 @@ func TestByteCallsReportADroppedTransportAsConnectionLost(t *testing.T) {
 		})
 	}
 }
+
+// Each backend that Connections gives reads on a connection of its own. A
+// host with a login limit gives fewer.
+func TestConnections_ReadOnAConnectionEach(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "four connections", want: 4},
+		{name: "a host that allows two", limit: 2, want: 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			file := remotePath(t.TempDir(), "file.bin")
+			writeFile(t, file, "0123456789")
+			b, server := newBackend(t)
+			server.SetMaxConnections(tt.limit)
+
+			conns, err := b.Connections(t.Context(), 4)
+			require.NoError(t, err)
+			require.Len(t, conns, tt.want)
+			for i, conn := range conns {
+				r, err := conn.OpenRead(t.Context(), file, int64(i))
+				require.NoError(t, err)
+				got, err := io.ReadAll(r)
+				require.NoError(t, err)
+				require.NoError(t, r.Close())
+				assert.Equal(t, "0123456789"[i:], string(got))
+			}
+			readers := map[int]bool{}
+			for _, read := range server.ReadRanges() {
+				readers[read.Conn] = true
+			}
+			assert.Len(t, readers, tt.want, "each backend read on a connection of its own")
+		})
+	}
+}
