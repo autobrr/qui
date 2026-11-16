@@ -24,6 +24,7 @@ import { useIsPhone } from "@/hooks/useMediaQuery"
 import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
 import { ALL_LEVELS_SET, ALL_LOG_LEVELS, usePersistedLogLevels, type LogLevel } from "@/hooks/usePersistedLogLevels"
 import { api } from "@/lib/api"
+import { useClientSettingsSettled } from "@/lib/client-settings"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { LogSettings, LogSettingsUpdate } from "@/types"
 
@@ -75,8 +76,8 @@ type NumberField = "maxSize" | "maxBackups"
 
 /** The number in the text, without its decimals, when it is at least min. */
 function parseCount(text: string, min: number): number | undefined {
-  const value = Number.parseInt(text, 10)
-  return Number.isNaN(value) || value < min ? undefined : value
+  const value = text.trim() === "" ? Number.NaN : Math.trunc(Number(text))
+  return Number.isSafeInteger(value) && value >= min ? value : undefined
 }
 
 function LogSettingsForm({ settings, query }: { settings: LogSettings; query: UseQueryResult<LogSettings> }) {
@@ -103,14 +104,16 @@ function LogSettingsForm({ settings, query }: { settings: LogSettings; query: Us
   })
 
   const submit = () => {
+    // A locked field cannot change, and the environment can lock a value that the form rejects, such as a max size of 0.
+    const isLocked = (name: NumberField) => settings.locked?.[name] !== undefined
     const maxSize = parseCount(draft.maxSize, 1)
     const maxBackups = parseCount(draft.maxBackups, 0)
     const next = {
-      maxSize: maxSize === undefined ? t("logs.validation.maxSize") : undefined,
-      maxBackups: maxBackups === undefined ? t("logs.validation.maxBackups") : undefined,
+      maxSize: maxSize === undefined && !isLocked("maxSize") ? t("logs.validation.maxSize") : undefined,
+      maxBackups: maxBackups === undefined && !isLocked("maxBackups") ? t("logs.validation.maxBackups") : undefined,
     }
     setErrors(next)
-    if (maxSize === undefined || maxBackups === undefined) {
+    if (next.maxSize || next.maxBackups) {
       inputs.current[next.maxSize ? "maxSize" : "maxBackups"]?.focus()
       return
     }
@@ -118,8 +121,8 @@ function LogSettingsForm({ settings, query }: { settings: LogSettings; query: Us
     const update: LogSettingsUpdate = {}
     if (draft.level !== normalizeLogLevel(settings.level)) update.level = draft.level
     if (draft.path !== (settings.path ?? "")) update.path = draft.path
-    if (maxSize !== (settings.maxSize ?? 50)) update.maxSize = maxSize
-    if (maxBackups !== (settings.maxBackups ?? 3)) update.maxBackups = maxBackups
+    if (maxSize !== undefined && maxSize !== (settings.maxSize ?? 50)) update.maxSize = maxSize
+    if (maxBackups !== undefined && maxBackups !== (settings.maxBackups ?? 3)) update.maxBackups = maxBackups
     if (Object.keys(update).length > 0) mutation.mutate(update)
   }
 
@@ -284,7 +287,7 @@ function LogEntry({
   const isClickable = entry.isJson
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (isClickable && (e.key === "Enter" || e.key === " ")) {
+    if (isClickable && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault()
       onSelect()
     }
@@ -740,6 +743,8 @@ interface LogFilterProps {
 /** The level filter and the muted messages of the viewer, behind one button. */
 function LogFilter({ selectedLevels, onSelectedLevelsChange, exclusions, onExclusionsChange }: LogFilterProps) {
   const { t } = useTranslation("settings")
+  // Until the server answers, the levels show the default, and a pick would be lost.
+  const settled = useClientSettingsSettled()
   const summary = selectedLevels.size === ALL_LOG_LEVELS.length
     ? t("logs.viewer.allLevels")
     : selectedLevels.size === 0 ? t("logs.viewer.none") : t("logs.viewer.levelCount", { count: selectedLevels.size })
@@ -775,17 +780,17 @@ function LogFilter({ selectedLevels, onSelectedLevelsChange, exclusions, onExclu
           <div className="mb-1 flex items-center justify-between gap-2 pl-2">
             <span className="text-xs font-medium">{t("logs.viewer.levels")}</span>
             <span className="flex">
-              <Button variant="ghost" size="sm" className={smallButton} onClick={() => onSelectedLevelsChange(() => new Set(ALL_LOG_LEVELS))}>
+              <Button variant="ghost" size="sm" className={smallButton} disabled={!settled} onClick={() => onSelectedLevelsChange(() => new Set(ALL_LOG_LEVELS))}>
                 {t("logs.viewer.all")}
               </Button>
-              <Button variant="ghost" size="sm" className={smallButton} onClick={() => onSelectedLevelsChange(() => new Set())}>
+              <Button variant="ghost" size="sm" className={smallButton} disabled={!settled} onClick={() => onSelectedLevelsChange(() => new Set())}>
                 {t("logs.viewer.none")}
               </Button>
             </span>
           </div>
           {ALL_LOG_LEVELS.map((level) => (
             <label key={level} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted pointer-coarse:py-2.5">
-              <Checkbox checked={selectedLevels.has(level)} onCheckedChange={() => toggleLevel(level)} />
+              <Checkbox checked={selectedLevels.has(level)} disabled={!settled} onCheckedChange={() => toggleLevel(level)} />
               <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium uppercase", LEVEL_BADGE_COLORS[level])}>{level}</span>
             </label>
           ))}
