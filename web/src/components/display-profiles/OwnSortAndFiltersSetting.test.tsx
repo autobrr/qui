@@ -54,7 +54,7 @@ describe("OwnSortAndFiltersSetting", () => {
     expect(screen.queryByRole("switch")).toBeNull()
     expect(screen.getByText("Always shares sort and filters")).not.toBeNull()
     expect(screen.getByRole("complementary").textContent).toBe(
-      "Default always shares the sort, the filters, and the other view choices with every profile. To keep your own, make another profile and turn on Own sort and filters."
+      "Default always shares the sort, the filters, and the other view choices with every profile that does not keep its own. To keep your own, make another profile and turn on Own sort and filters."
     )
   })
 })

@@ -1860,10 +1860,10 @@
     },
     "ownSortAndFilters": {
       "label": "Vlastní řazení a filtry",
-      "help": "<lead>Když je zapnuto, tento profil si drží vlastní:</lead><list><item>řazení seznamu torrentů</item><item>filtry sloupců a filtry postranního panelu</item><item>instance, které ukazuje sjednocený pohled</item><item>Seskupit kopie, zapnuto nebo vypnuto</item><item>poslední otevřená karta panelu podrobností</item><item>instance, kterou ukazují stránky záloh a RSS</item></list><note>Změna těchto hodnot v tomto profilu se nedostane do jiných profilů. Když je vypnuto, tento profil je sdílí se všemi ostatními profily. Vypnutím se vlastní hodnoty tohoto profilu smažou.</note>",
+      "help": "<lead>Když je zapnuto, tento profil si drží vlastní:</lead><list><item>řazení seznamu torrentů</item><item>filtry sloupců a filtry postranního panelu</item><item>instance, které ukazuje sjednocený pohled</item><item>Seskupit kopie, zapnuto nebo vypnuto</item><item>poslední otevřená karta panelu podrobností</item><item>instance, kterou ukazují stránky záloh a RSS</item></list><note>Změna těchto hodnot v tomto profilu se nedostane do jiných profilů. Když je vypnuto, tento profil je sdílí se všemi ostatními profily, které nemají vlastní. Vypnutím se vlastní hodnoty tohoto profilu smažou.</note>",
       "offWarning": "Vypnutím se smaže vlastní řazení a filtry profilu {{name}}.",
       "defaultShares": "Vždy sdílí řazení a filtry",
-      "defaultSharesHelp": "Default vždy sdílí řazení, filtry a další volby zobrazení se všemi profily. Chcete-li mít vlastní, vytvořte jiný profil a zapněte Vlastní řazení a filtry."
+      "defaultSharesHelp": "Default vždy sdílí řazení, filtry a další volby zobrazení se všemi profily, které nemají vlastní. Chcete-li mít vlastní, vytvořte jiný profil a zapněte Vlastní řazení a filtry."
     },
     "deletedToast": "Profil {{name}} byl smazán. Tento prohlížeč teď používá {{defaultName}}.",
     "newProfile": "Nový profil z tohoto nastavení…",

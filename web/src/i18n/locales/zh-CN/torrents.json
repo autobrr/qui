@@ -1692,10 +1692,10 @@
     },
     "ownSortAndFilters": {
       "label": "独立的排序和筛选",
-      "help": "<lead>开启后，此配置会单独保存：</lead><list><item>种子列表的排序方式</item><item>列筛选和侧边栏筛选</item><item>统一视图显示的实例</item><item>合并副本的开关</item><item>详情面板上次打开的标签页</item><item>备份和 RSS 页面显示的实例</item></list><note>在此配置中对这些内容的更改不会影响其他配置。关闭后，此配置与其他所有配置共享这些内容。关闭会删除此配置单独保存的值。</note>",
+      "help": "<lead>开启后，此配置会单独保存：</lead><list><item>种子列表的排序方式</item><item>列筛选和侧边栏筛选</item><item>统一视图显示的实例</item><item>合并副本的开关</item><item>详情面板上次打开的标签页</item><item>备份和 RSS 页面显示的实例</item></list><note>在此配置中对这些内容的更改不会影响其他配置。关闭后，此配置与其他所有未单独保存的配置共享这些内容。关闭会删除此配置单独保存的值。</note>",
       "offWarning": "关闭此设置会删除 {{name}} 单独保存的排序和筛选。",
       "defaultShares": "始终共享排序和筛选",
-      "defaultSharesHelp": "Default 始终与所有配置共享排序、筛选和其他视图选项。如需单独保存，请创建另一个配置并开启“独立的排序和筛选”。"
+      "defaultSharesHelp": "Default 始终与所有未单独保存的配置共享排序、筛选和其他视图选项。如需单独保存，请创建另一个配置并开启“独立的排序和筛选”。"
     },
     "deletedToast": "{{name}} 配置已删除。此浏览器现在使用 {{defaultName}}。",
     "newProfile": "用当前设置新建配置文件…",

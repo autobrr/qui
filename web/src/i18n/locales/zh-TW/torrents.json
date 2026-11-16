@@ -1692,10 +1692,10 @@
     },
     "ownSortAndFilters": {
       "label": "獨立的排序和篩選",
-      "help": "<lead>開啟後，此設定檔會單獨保存：</lead><list><item>種子清單的排序方式</item><item>欄位篩選和側邊欄篩選</item><item>統一檢視顯示的執行個體</item><item>合併副本的開關</item><item>詳細資料面板上次開啟的分頁</item><item>備份和 RSS 頁面顯示的執行個體</item></list><note>在此設定檔中對這些內容的變更不會影響其他設定檔。關閉後，此設定檔與其他所有設定檔共用這些內容。關閉會刪除此設定檔單獨保存的值。</note>",
+      "help": "<lead>開啟後，此設定檔會單獨保存：</lead><list><item>種子清單的排序方式</item><item>欄位篩選和側邊欄篩選</item><item>統一檢視顯示的執行個體</item><item>合併副本的開關</item><item>詳細資料面板上次開啟的分頁</item><item>備份和 RSS 頁面顯示的執行個體</item></list><note>在此設定檔中對這些內容的變更不會影響其他設定檔。關閉後，此設定檔與其他所有未單獨保存的設定檔共用這些內容。關閉會刪除此設定檔單獨保存的值。</note>",
       "offWarning": "關閉此設定會刪除 {{name}} 單獨保存的排序和篩選。",
       "defaultShares": "一律共用排序和篩選",
-      "defaultSharesHelp": "Default 一律與所有設定檔共用排序、篩選和其他檢視選項。如需單獨保存，請建立另一個設定檔並開啟「獨立的排序和篩選」。"
+      "defaultSharesHelp": "Default 一律與所有未單獨保存的設定檔共用排序、篩選和其他檢視選項。如需單獨保存，請建立另一個設定檔並開啟「獨立的排序和篩選」。"
     },
     "deletedToast": "{{name}} 設定檔已刪除。此瀏覽器現在使用 {{defaultName}}。",
     "newProfile": "用目前設定新增設定檔…",
