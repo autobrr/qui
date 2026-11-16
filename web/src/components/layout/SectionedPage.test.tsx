@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { useState, type ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { SIDEWAYS_PHONE_QUERY } from "@/hooks/useMediaQuery"
 
@@ -18,20 +19,34 @@ afterEach(() => {
 const GROUPS = [{ label: "General", sections: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }] }] as const
 type Section = "a" | "b"
 
-function stubWidth(kind: "phone" | "sideways" | "desktop") {
+type Width = "phone" | "sideways" | "desktop"
+
+/** Returns a resize to another width, which tells the media queries that listen. */
+function stubWidth(initial: Width) {
+  let kind = initial
+  const listeners = new Set<() => void>()
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: (kind === "phone" && query === "(max-width: 767px)") || (kind === "sideways" && query === SIDEWAYS_PHONE_QUERY),
     media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
   }))
+  return (next: Width) => act(() => {
+    kind = next
+    listeners.forEach((listener) => listener())
+  })
 }
 
-function renderPage(section: Section | undefined, onSectionChange = vi.fn()) {
+function Draft() {
+  const [value, setValue] = useState("")
+  return <input aria-label="Key" value={value} onChange={(event) => setValue(event.target.value)} />
+}
+
+function renderPage(section: Section | undefined, onSectionChange = vi.fn(), content: (shown: Section) => ReactNode = (shown) => <p>content of {shown}</p>) {
   const page = (current: Section | undefined) => (
     <main>
       <SectionedPage title="Settings" description="All settings" groups={GROUPS} section={current} defaultSection="a" onSectionChange={onSectionChange}>
-        {(shown) => <p>content of {shown}</p>}
+        {content}
       </SectionedPage>
     </main>
   )
@@ -90,6 +105,36 @@ describe("SectionedPage", () => {
 
     expect(back).not.toHaveBeenCalled()
     expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
+  })
+
+  it("goes back to the menu in place when links left the section that the menu opened and then opened it again", () => {
+    stubWidth("phone")
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
+    const { onSectionChange, rerender } = renderPage(undefined)
+    fireEvent.click(screen.getByRole("button", { name: "Beta" }))
+    rerender("b")
+    // Links, for example in the bottom nav of a phone, open Alpha and then Beta, each with a new history entry.
+    rerender("a")
+    rerender("b")
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }))
+
+    expect(back).not.toHaveBeenCalled()
+    expect(onSectionChange).toHaveBeenLastCalledWith(undefined, { replace: true })
+  })
+
+  it("keeps what the user typed in a section when the window narrows to a phone and widens again", () => {
+    const resize = stubWidth("desktop")
+    renderPage("b", vi.fn(), () => <Draft />)
+    const key = () => screen.getByRole<HTMLInputElement>("textbox", { name: "Key" })
+    fireEvent.change(key(), { target: { value: "draft" } })
+
+    resize("phone")
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Beta")
+    expect(key().value).toBe("draft")
+
+    resize("desktop")
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Settings")
+    expect(key().value).toBe("draft")
   })
 
   it("shows the menu first on a phone turned sideways", () => {

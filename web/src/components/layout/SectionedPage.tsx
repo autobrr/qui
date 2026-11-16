@@ -8,7 +8,7 @@ import { ShownSectionContext } from "@/components/layout/shown-section"
 import { SIDEWAYS_PHONE_QUERY, useIsMobile, useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn } from "@/lib/utils"
 import { ChevronRight } from "lucide-react"
-import { useLayoutEffect, useRef, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react"
 
 /** A group without a label shows its sections without a heading. Labels arrive translated. */
 export interface SectionNavGroup<S extends string> {
@@ -48,7 +48,8 @@ export function SectionedPage<S extends string>({ title, description, badge, not
   const phone = useIsMobile() || sideways
   const showMenu = phone && section === undefined
   // The section that a tap in the menu of a phone opened. While it shows, the history entry before it is the menu.
-  // A link or the command palette can then open another section, and that one has no menu entry before it.
+  // A link or the command palette can then open another section, and that one has no menu entry before it, also when a
+  // later link opens the tapped section again.
   const openedFromMenu = useRef<S | undefined>(undefined)
   // Where the menu of a phone was scrolled to, so that a return to it, also with the back gesture, lands there again.
   const menuScrollTop = useRef(0)
@@ -60,6 +61,10 @@ export function SectionedPage<S extends string>({ title, description, badge, not
     const main = scroller()
     if (showMenu && main) main.scrollTop = menuScrollTop.current
   }, [showMenu])
+
+  useEffect(() => {
+    if (section !== openedFromMenu.current) openedFromMenu.current = undefined
+  }, [section])
 
   const openSection = (next: S, fromMenu: boolean) => {
     const main = scroller()
@@ -92,46 +97,39 @@ export function SectionedPage<S extends string>({ title, description, badge, not
 
   const shown = section ?? defaultSection
   const sectionLabel = groups.flatMap((group) => group.sections).find((entry) => entry.value === shown)?.label ?? title
+  const header = phone ? { title: sectionLabel, back: { label: title, onClick: backToMenu } } : { title, description, badge }
 
-  if (phone) {
-    return (
-      <Page title={sectionLabel} back={{ label: title, onClick: backToMenu }}>
-        <div ref={rootRef} className="space-y-6">
-          {notice}
-          <ShownSectionContext.Provider value={sectionLabel}>{children(shown)}</ShownSectionContext.Provider>
-        </div>
-      </Page>
-    )
-  }
-
+  // One tree for both widths, so that a resize across the width of a phone keeps the section and what the user typed.
   return (
-    <Page title={title} description={description} badge={badge}>
+    <Page {...header}>
       {notice}
-      <div ref={rootRef} className="flex items-start gap-6">
-        <nav className="sticky top-4 max-h-[calc(100dvh-7rem)] w-56 shrink-0 space-y-5 overflow-y-auto lg:top-6" aria-label={title}>
-          {groups.map((group) => (
-            <div key={group.sections[0].value} className="space-y-1">
-              {group.label && <p className="px-3 pb-1 text-sm font-semibold text-foreground">{group.label}</p>}
-              {group.sections.map((entry) => (
-                <button
-                  key={entry.value}
-                  type="button"
-                  onClick={() => openSection(entry.value, false)}
-                  aria-current={shown === entry.value ? "page" : undefined}
-                  className={cn(
-                    "w-full rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors",
-                    shown === entry.value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-                  )}
-                >
-                  {entry.label}
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
+      <div ref={rootRef} className={cn(!phone && "flex items-start gap-6")}>
+        {!phone && (
+          <nav className="sticky top-4 max-h-[calc(100dvh-7rem)] w-56 shrink-0 space-y-5 overflow-y-auto lg:top-6" aria-label={title}>
+            {groups.map((group) => (
+              <div key={group.sections[0].value} className="space-y-1">
+                {group.label && <p className="px-3 pb-1 text-sm font-semibold text-foreground">{group.label}</p>}
+                {group.sections.map((entry) => (
+                  <button
+                    key={entry.value}
+                    type="button"
+                    onClick={() => openSection(entry.value, false)}
+                    aria-current={shown === entry.value ? "page" : undefined}
+                    className={cn(
+                      "w-full rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors",
+                      shown === entry.value ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                    )}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
+        )}
 
-        <div className="min-w-0 max-w-5xl flex-1 space-y-6">
-          {children(shown)}
+        <div className={cn("space-y-6", !phone && "min-w-0 max-w-5xl flex-1")}>
+          <ShownSectionContext.Provider value={phone ? sectionLabel : null}>{children(shown)}</ShownSectionContext.Provider>
         </div>
       </div>
     </Page>
