@@ -1,4 +1,5 @@
 import argparse
+import ast
 import re
 import subprocess
 import sys
@@ -18,7 +19,7 @@ GO_CASE = re.compile(r"\bfunc (?:Test|Benchmark)\w*\(|\b[tb]\.Run\(")
 WEB_CASE = re.compile(
     r"(?<![\w.$])(?:it|test)"
     r"(?:\.(?:each|only|skip|todo|concurrent|sequential|fails|for|skipIf|runIf))*"
-    r"\s*[(`]"
+    r"(?:<.*?>)?\s*[(`]"
 )
 
 
@@ -41,6 +42,13 @@ def kind(path):
     return None
 
 
+def header_path(line):
+    name = line[4:].rstrip("\t")
+    if name.startswith('"'):
+        name = ast.literal_eval(name).encode("latin-1").decode("utf-8")
+    return name[2:] if name.startswith(("a/", "b/")) else None
+
+
 def count(diff):
     files = {}
     path = None
@@ -49,8 +57,10 @@ def count(diff):
         if line.startswith("diff --git "):
             path = None
             in_hunk = False
-        elif not in_hunk and line.startswith(("--- a/", "+++ b/")):
-            path = line[6:] if kind(line[6:]) else None
+        elif not in_hunk and line.startswith(("--- ", "+++ ")):
+            name = header_path(line)
+            if name is not None:
+                path = name if kind(name) else None
         elif line.startswith("@@"):
             in_hunk = True
         elif in_hunk and path and line[:1] in ("+", "-"):

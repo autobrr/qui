@@ -101,6 +101,38 @@ index 1111111..2222222 100644
 +func TestHelper(t *testing.T) {}
 """
 
+TYPED_EACH = """diff --git a/web/src/d.test.ts b/web/src/d.test.ts
+index 7777777..8888888 100644
+--- a/web/src/d.test.ts
++++ b/web/src/d.test.ts
+@@ -3,0 +4,2 @@
++  it.each<[string, number]>([
++  it.each<[Parameters<typeof view>[0], number]>([
+"""
+
+SPECIAL_PATHS = """diff --git a/web/a b.test.ts b/web/a b.test.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/web/a b.test.ts\t
+@@ -0,0 +1 @@
++it("space", () => {})
+diff --git "a/web/q\\"x.test.ts" "b/web/q\\"x.test.ts"
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ "b/web/q\\"x.test.ts"
+@@ -0,0 +1 @@
++it("quote", () => {})
+diff --git "a/web/\\303\\251.test.ts" "b/web/\\303\\251.test.ts"
+deleted file mode 100644
+index 3333333..0000000
+--- "a/web/\\303\\251.test.ts"
++++ /dev/null
+@@ -1 +0,0 @@
+-it("accent", () => {})
+"""
+
 REMOVED_DASHES = """diff --git a/internal/a/a_test.go b/internal/a/a_test.go
 index 1111111..2222222 100644
 --- a/internal/a/a_test.go
@@ -122,6 +154,7 @@ class TestCount(unittest.TestCase):
             ("web modifiers", WEB_MODIFIERS, {"go": (0, 0), "web": (3, 10)}),
             ("table row is not a case", GO_TABLE_ROW, {"go": (0, 2), "web": (0, 0)}),
             ("not a test file", NOT_A_TEST_FILE, {"go": (0, 0), "web": (0, 0)}),
+            ("typed each", TYPED_EACH, {"go": (0, 0), "web": (2, 2)}),
             ("hunk lines that look like headers", REMOVED_DASHES, {"go": (0, 1), "web": (0, 0)}),
             ("all at once", GO_ADDED + DELETED_FILE + WEB_MODIFIERS, {"go": (4, 9), "web": (1, 10)}),
         ]
@@ -139,6 +172,16 @@ class TestFiles(unittest.TestCase):
                 "internal/a/a_test.go": Growth(added_cases=4, added_lines=9),
                 "web/src/old.test.ts": Growth(removed_cases=2),
                 "web/src/b.test.tsx": Growth(added_cases=1, added_lines=1),
+            },
+        )
+
+    def test_paths_that_git_quotes(self):
+        self.assertEqual(
+            count(SPECIAL_PATHS),
+            {
+                "web/a b.test.ts": Growth(added_cases=1, added_lines=1),
+                'web/q"x.test.ts': Growth(added_cases=1, added_lines=1),
+                "web/\u00e9.test.ts": Growth(removed_cases=1),
             },
         )
 
