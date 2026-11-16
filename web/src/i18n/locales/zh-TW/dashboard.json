@@ -98,7 +98,6 @@
   },
   "attention": {
     "title": "需要注意",
-    "none": "無。所有實例均有回應，且沒有種子回報問題。",
     "offline": "{{name}} 已離線",
     "lowDisk": "{{name}}：剩餘 {{free}}",
     "firewalled": "{{name}} 受防火牆限制"

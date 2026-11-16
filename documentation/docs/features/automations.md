@@ -479,7 +479,13 @@ For content-path-based grouping where `Content Path == Save Path` (ambiguous), y
 
 ## Actions
 
-You can combine actions, except Delete. Delete must be standalone. Each action supports an optional condition override.
+You can combine actions, except Delete. Delete must be standalone.
+
+All actions of a workflow use the same condition. qui does not save a workflow if two of its enabled actions have different conditions, and the error names the two actions. An Auto Management action counts as enabled also when it turns the mode off. To run an action on a different condition, make a second workflow.
+
+A workflow that an earlier version of qui saved with different conditions continues to run as saved. You can still rename it, switch it on and off, reorder it, and run it. A change to its actions or conditions must leave one condition. When you open such a workflow in the editor, a warning shows below the conditions. If you save in the editor, every enabled action gets the condition that the editor shows. To keep the other conditions, make one workflow for each condition before you save.
+
+The editor does not show a disabled action. When you save in the editor, qui keeps each disabled action as saved, with its own condition. If you add Delete in the editor, the save removes the disabled tag actions. qui does not save Delete together with a tag action, also when the tag action is disabled.
 
 ### Speed limits
 
@@ -546,7 +552,6 @@ Force recheck matching torrents.
 
 - Triggers a qBittorrent recheck for matched torrents.
 - You can combine this action with other actions.
-- Supports an optional condition override, as other actions do.
 
 ### Force reannounce
 
@@ -554,7 +559,6 @@ Force reannounce matching torrents.
 
 - Triggers an immediate tracker reannounce for matched torrents.
 - You can combine this action with other actions.
-- Supports an optional condition override, as other actions do.
 
 ### Delete
 
@@ -749,7 +753,6 @@ When torrents match the automation rule, run a configured external program. This
 | Field | Description |
 | --- | --- |
 | **Program** | Select from enabled external programs |
-| **Condition Override** | Optional condition specific to this action |
 
 **Behavior:**
 
@@ -792,7 +795,6 @@ The action assumes the data already exists on the target (moved with rclone, Qui
 | **Skip checking** | Skip hash check on target (default: enabled) |
 | **Paused** | Add torrent paused on target |
 | **Content layout** | `Default`, `Original`, `Create subfolder`, or `Don't create subfolder`. In JSON, `contentLayout` is `Original`, `Subfolder`, or `NoSubfolder`. With `Default`, the JSON has no `contentLayout`, and the target instance uses its own default layout. |
-| **Condition Override** | Optional condition specific to this action |
 
 **Behavior:**
 
@@ -1108,7 +1110,7 @@ A partially downloaded pack still counts as a pack. Add a `PROGRESS` condition t
 
 #### Example: tag packs, packed, and unpacked
 
-One rule per status. The rule editor keeps one condition per rule and applies it to every tag action in that rule, so three tag actions with three conditions cannot live in one rule. Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
+One rule per status. A rule has one condition, and every tag action in the rule uses it. Thus three tag actions with three conditions cannot be in one rule, and qui does not save such a rule (see [Actions](#actions)). Mode `full` removes a tag again when the torrent stops matching, for example after you delete the pack. Import each rule on its own.
 
 ```json
 {

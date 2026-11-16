@@ -69,7 +69,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, getTrackerMatchMode, getTrackerTokens, type ActionType, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, firstActionCondition, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
@@ -397,6 +397,8 @@ type FormState = {
   categoryEnabled: boolean
   moveEnabled: boolean
   externalProgramEnabled: boolean
+  // Actions that the loaded rule switches off. The editor does not show them.
+  switchedOffActions: SwitchedOffActions
   // Speed limits settings (mode-based)
   exprUploadMode: SpeedLimitMode
   exprUploadValue?: number // KiB/s, only used when mode is "custom"
@@ -472,6 +474,7 @@ const emptyFormState: FormState = {
   categoryEnabled: false,
   moveEnabled: false,
   externalProgramEnabled: false,
+  switchedOffActions: {},
   exprUploadMode: "no_change",
   exprUploadValue: undefined,
   exprDownloadMode: "no_change",
@@ -588,6 +591,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
   }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
+  const mixedActionConditions = useMemo(() => rule != null && hasMixedActionConditions(rule), [rule])
   const loadedForm = useRef<FormState | null>(null)
   const currentForm = useRef(formState)
   const saveCheckRun = useRef(0)
@@ -1003,22 +1007,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         if (conditions) {
           exprGrouping = conditions.grouping
-          // Get condition from any enabled action (they should all be the same)
-          actionCondition = conditions.speedLimits?.condition
-            ?? conditions.shareLimits?.condition
-            ?? conditions.pause?.condition
-            ?? conditions.resume?.condition
-            ?? conditions.recheck?.condition
-            ?? conditions.reannounce?.condition
-            ?? conditions.autoManagement?.condition
-            ?? conditions.delete?.condition
-            ?? conditions.tags?.[0]?.condition
-            ?? conditions.tag?.condition
-            ?? conditions.category?.condition
-            ?? conditions.move?.condition
-            ?? conditions.externalProgram?.condition
-            ?? conditions.exportToInstance?.condition
-            ?? null
+          actionCondition = firstActionCondition(rule)
 
           if (conditions.speedLimits?.enabled) {
             speedLimitsEnabled = true
@@ -1139,6 +1128,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           categoryEnabled,
           moveEnabled,
           externalProgramEnabled,
+          switchedOffActions: getSwitchedOffActions(rule),
           exprUploadMode,
           exprUploadValue,
           exprDownloadMode,
@@ -1347,7 +1337,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   // Build payload from form state (shared by preview and save)
   const buildPayload = useCallback((input: FormState): AutomationInput => {
-    const conditions: ActionConditions = { schemaVersion: "1" }
+    const { tags: switchedOffTags = [], ...switchedOffActions } = input.switchedOffActions
+    const conditions: ActionConditions = { schemaVersion: "1", ...switchedOffActions }
     if (input.exprGrouping) {
       conditions.grouping = input.exprGrouping
     }
@@ -1455,25 +1446,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
-    if (input.tagEnabled) {
-      const tagActions = input.exprTagActions
-        .filter((action) => action.useTrackerAsTag || action.tags.length > 0)
-        .map((action) => ({
-          enabled: true,
-          tags: action.tags,
-          mode: action.mode,
-          includeCrossSeeds: action.includeCrossSeeds,
-          deleteFromClient: action.deleteFromClient,
-          useTrackerAsTag: action.useTrackerAsTag,
-          useDisplayName: action.useDisplayName,
-          condition: input.actionCondition ?? undefined,
-        }))
-
-      if (tagActions.length > 0) {
-        conditions.tags = tagActions
-        // Keep legacy single-tag payload for backward compatibility.
-        conditions.tag = tagActions[0]
-      }
+    const formTagActions = !input.tagEnabled ? [] : input.exprTagActions
+      .filter((action) => action.useTrackerAsTag || action.tags.length > 0)
+      .map((action) => ({
+        enabled: true,
+        tags: action.tags,
+        mode: action.mode,
+        includeCrossSeeds: action.includeCrossSeeds,
+        deleteFromClient: action.deleteFromClient,
+        useTrackerAsTag: action.useTrackerAsTag,
+        useDisplayName: action.useDisplayName,
+        condition: input.actionCondition ?? undefined,
+      }))
+    // The server refuses a delete rule with any tag action, also a switched-off one.
+    const tagActions = input.deleteEnabled ? formTagActions : [...formTagActions, ...switchedOffTags]
+    if (tagActions.length > 0) {
+      conditions.tags = tagActions
+      // Keep legacy single-tag payload for backward compatibility.
+      conditions.tag = tagActions[0]
     }
     if (input.categoryEnabled && input.exprCategory !== undefined) {
       conditions.category = {
@@ -2497,6 +2487,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                     groupOptions={groupedConditionOptions}
                   />
+                  {mixedActionConditions && (
+                    <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
+                      <p>{t("preferences.workflowDialog.mixedActionConditions")}</p>
+                    </div>
+                  )}
                   {formState.deleteEnabled && !formState.actionCondition && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
                       <p className="font-medium text-destructive">{t("preferences.workflowDialog.toast.deleteRequiresCondition")}</p>

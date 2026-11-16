@@ -106,7 +106,6 @@
   },
   "attention": {
     "title": "Vyžaduje pozornost",
-    "none": "Nic. Každá instance odpovídá a žádný torrent nehlásí problém.",
     "offline": "{{name}} je offline",
     "lowDisk": "{{name}}: volno {{free}}",
     "firewalled": "{{name}} je za firewallem"

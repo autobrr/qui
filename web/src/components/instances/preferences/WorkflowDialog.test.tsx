@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { Automation, FilesystemCapabilities } from "@/types"
+import type { Automation, FilesystemCapabilities, RuleCondition } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string) => key
@@ -192,7 +192,7 @@ describe("WorkflowDialog tracker pattern", () => {
   })
 })
 
-function renderDialog(dialogRule: Automation) {
+function renderDialog(dialogRule: Automation | null) {
   // Radix scrolls focused select options; jsdom has no layout.
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
   mocks.instancesQuery.data = []
@@ -705,5 +705,116 @@ describe("WorkflowDialog Save flow", () => {
       expect(screen.getByText(key("enableDryRunPrompt.title"))).not.toBeNull()
       cleanup()
     }
+  })
+})
+
+// regression: #3012
+describe("WorkflowDialog mixed action conditions", () => {
+  const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
+  const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
+  const tag = (tags: string[], condition: RuleCondition) => ({ enabled: true, tags, mode: "full" as const, condition })
+  const mixedTags: Automation["conditions"] = { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] }
+  const notice = key("mixedActionConditions")
+
+  it.each([
+    { name: "a rule whose actions have different conditions", shown: true, dialogRule: { ...rule, conditions: mixedTags } },
+    { name: "a rule whose actions have one condition", shown: false, dialogRule: { ...rule, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed)], pause: { enabled: true, condition: packed } } } },
+    { name: "a new rule", shown: false, dialogRule: null },
+  ])("shows the notice for $name: $shown", ({ shown, dialogRule }) => {
+    const client = renderDialog(dialogRule)
+    expect(screen.queryByText(notice) !== null).toBe(shown)
+    client.clear()
+  })
+
+  it("keeps save enabled and saves one condition on every action", async () => {
+    mocks.save.mockResolvedValue(rule)
+    const client = renderDialog({ ...rule, conditions: mixedTags })
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    const tags = mocks.save.mock.calls[0][2].conditions.tags
+    expect(tags.map((t: { condition: unknown }) => t.condition)).toEqual([packed, packed])
+    client.clear()
+  })
+})
+
+// regression: #4188
+describe("WorkflowDialog switched-off actions", () => {
+  const shown: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "shown" }
+  const other: RuleCondition = { field: "RATIO", operator: "GREATER_THAN", value: "3" }
+  const runningTag = { enabled: true, tags: ["running"], mode: "full" as const, condition: shown }
+  const switchedOffTag = { enabled: false, tags: ["later"], mode: "add" as const, useDisplayName: true, condition: other }
+  const switchedOffSpeedLimits = { enabled: false, uploadKiB: 512, downloadKiB: 0, condition: other }
+  const tagRule: Automation = {
+    ...rule,
+    conditions: { schemaVersion: "1", tags: [runningTag, switchedOffTag], speedLimits: switchedOffSpeedLimits },
+  }
+
+  const pick = async (trigger: string, option: string) => {
+    fireEvent.keyDown(screen.getAllByText(key(trigger))[0], { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key(option) }))
+  }
+  const save = async (label = "save") => {
+    fireEvent.click(screen.getByRole("button", { name: key(label) }))
+    await waitFor(() => expect(mocks.save.mock.calls.length + mocks.create.mock.calls.length).toBe(1))
+    return (mocks.save.mock.calls[0]?.[2] ?? mocks.create.mock.calls[0][1]).conditions
+  }
+
+  beforeEach(() => {
+    mocks.save.mockResolvedValue(rule)
+    mocks.create.mockResolvedValue(rule)
+  })
+
+  it("keeps each switched-off action with its own keys and condition on a rename", async () => {
+    const client = renderDialog(tagRule)
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    const conditions = await save()
+
+    expect(conditions.speedLimits).toEqual(switchedOffSpeedLimits)
+    expect(conditions.tags).toEqual([{ ...runningTag, includeCrossSeeds: false, deleteFromClient: false, useTrackerAsTag: false, useDisplayName: false }, switchedOffTag])
+    client.clear()
+  })
+
+  it("saves the speed limits of the form when the user switches them on", async () => {
+    const client = renderDialog(tagRule)
+
+    await pick("actions.addAction", "actions.speedLimits")
+    await pick("option.noChange", "option.unlimited")
+    const conditions = await save()
+
+    expect(conditions.speedLimits).toEqual({ enabled: true, uploadKiB: 0, condition: shown })
+    client.clear()
+  })
+
+  it("leaves out the switched-off tags when the user switches on Delete, and keeps the other switched-off actions", async () => {
+    const client = renderDialog({
+      ...rule,
+      conditions: { schemaVersion: "1", pause: { enabled: true, condition: shown }, tags: [switchedOffTag], speedLimits: switchedOffSpeedLimits },
+    })
+
+    const pauseSection = screen.getByText(key("actions.pause")).parentElement!
+    fireEvent.click(within(pauseSection).getByRole("button"))
+    await pick("actions.selectAction", "actions.deleteStandalone")
+    const conditions = await save()
+
+    expect(conditions.delete).toEqual(expect.objectContaining({ enabled: true, condition: shown }))
+    expect(conditions.tags).toBeUndefined()
+    expect(conditions.tag).toBeUndefined()
+    expect(conditions.speedLimits).toEqual(switchedOffSpeedLimits)
+    client.clear()
+  })
+
+  it("saves a new rule with only the actions of the form", async () => {
+    const client = renderDialog(null)
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "New" } })
+    fireEvent.click(screen.getByRole("switch", { name: key("allTrackers") }))
+    await pick("actions.selectAction", "actions.pause")
+    const conditions = await save("create")
+
+    expect(conditions).toEqual({ schemaVersion: "1", pause: { enabled: true } })
+    client.clear()
   })
 })

@@ -98,7 +98,6 @@
   },
   "attention": {
     "title": "주의 필요",
-    "none": "없습니다. 모든 인스턴스가 응답하고 문제를 보고하는 토렌트가 없습니다.",
     "offline": "{{name}} 오프라인",
     "lowDisk": "{{name}}: {{free}} 남음",
     "firewalled": "{{name}} 방화벽 차단됨"

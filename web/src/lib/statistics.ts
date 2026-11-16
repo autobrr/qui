@@ -4,7 +4,7 @@
  */
 
 import { formatBytes } from "@/lib/utils"
-import type { LiveTrackerGroup, TransferHistoryBytes, TransferHistoryInstance, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
+import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryInstance, TransferHistoryRow, TransferHistoryTorrent } from "@/types"
 
 // A browser that cannot find its zone reports Etc/Unknown. The days are then UTC days.
 export const BROWSER_TIME_ZONE = ((zone: string) => zone === "Etc/Unknown" ? undefined : zone)(Intl.DateTimeFormat().resolvedOptions().timeZone)
@@ -24,6 +24,8 @@ export interface StatisticsPeriod {
 }
 
 export const PERIOD_PRESETS: PeriodPreset[] = ["24h", "7d", "30d", "1y", "all"]
+
+export const TABLE_GROUPINGS: TableGrouping[] = ["tracker", "category", "releaseGroup", "resolution", "source", "contentType"]
 
 const PRESET_DAYS: Record<Exclude<PeriodPreset, "all">, number> = { "24h": 1, "7d": 7, "30d": 30, "1y": 365 }
 

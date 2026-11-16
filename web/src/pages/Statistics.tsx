@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { PageHeader } from "@/components/layout/PageHeader"
+import { Page } from "@/components/layout/Page"
 import { DeletedTorrents } from "@/components/statistics/DeletedTorrents"
 import { EventsChart } from "@/components/statistics/EventsChart"
 import { GroupTable } from "@/components/statistics/GroupTable"
 import { InstanceFilter, PeriodPicker, SeriesColorPicker, type InstanceOption, type PeriodChoice } from "@/components/statistics/StatisticsControls"
 import { LibraryGrowthChart } from "@/components/statistics/LibraryGrowthChart"
 import { TopTorrents } from "@/components/statistics/TopTorrents"
+import { useStatisticsPeriod } from "@/hooks/useStatisticsPeriod"
+import { useClientSettingsSettled } from "@/lib/client-settings"
 import { useTopTorrents } from "@/hooks/useTopTorrents"
 import { TransferChart } from "@/components/statistics/TransferChart"
 import { YearView } from "@/components/statistics/YearView"
@@ -17,7 +19,8 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTransferHistoryLibrary } from "@/hooks/useTransferHistoryLibrary"
-import { useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
+import { useIsPhone } from "@/hooks/useMediaQuery"
+import { usePrefetchTransferHistoryRows, useTransferHistoryRows, useTransferHistoryStatus } from "@/hooks/useTransferHistoryRows"
 import { api } from "@/lib/api"
 import { useTrackerGroupName } from "@/hooks/useTrackerGroupName"
 import { getLinuxCategoryName, getLinuxReleaseGroup, useIncognitoMode } from "@/lib/incognito"
@@ -37,6 +40,7 @@ import {
   recordingSince,
   showsYearView,
   sumBytes,
+  TABLE_GROUPINGS,
   topGroups,
   type Metric,
   type PeriodPreset,
@@ -47,7 +51,7 @@ import { buildEventDays } from "@/lib/statistics-events"
 import { buildLibraryPoints, newestUniqueSize } from "@/lib/statistics-library"
 import { cn, formatBytes } from "@/lib/utils"
 import type { LiveTrackerGroup, TableGrouping, TransferHistoryBytes, TransferHistoryGrouping, TransferHistoryLibraryRow, TransferHistoryRow } from "@/types"
-import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query"
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
 import { getRouteApi } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
@@ -96,18 +100,56 @@ function relativeChange(now: number, before: number): number | undefined {
   return before > 0 ? (now - before) / before : undefined
 }
 
+/** The state of a preset period that the user picked, which ends now. */
+function presetState(preset: PeriodPreset): PeriodState {
+  return { choice: preset, period: presetPeriod(preset, new Date()), moved: false }
+}
+
 const statisticsRoute = getRouteApi("/_authenticated/statistics")
 
+/**
+ * Opens on the period of the address, saves it, and removes it from the address, so that a reload opens on the saved
+ * period. The page waits until the first read of the saved settings ends (see useClientSettingsSettled), and saves the
+ * address period after it, so that the read does not replace that period.
+ */
 export function StatisticsRoute() {
+  const { t } = useTranslation("statistics")
   const { period } = statisticsRoute.useSearch()
+  const navigate = statisticsRoute.useNavigate()
+  const [, savePreset] = useStatisticsPeriod()
+  const settingsLoaded = useClientSettingsSettled()
+  useEffect(() => {
+    if (!period || !settingsLoaded) return
+    savePreset(period)
+    void navigate({ search: previous => ({ ...previous, period: undefined }), replace: true })
+  }, [period, settingsLoaded, savePreset, navigate])
+  if (!settingsLoaded) {
+    return (
+      <Page title={t("title")}>
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      </Page>
+    )
+  }
   return <Statistics initialPreset={period} />
 }
 
-export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPreset }) {
+export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [incognitoMode] = useIncognitoMode()
-  const [periodState, setPeriodState] = useState<PeriodState>(() => ({ choice: initialPreset, period: presetPeriod(initialPreset, new Date()), moved: false }))
+  const narrow = useIsPhone()
+  const [savedPreset, savePreset] = useStatisticsPeriod()
+  const [periodState, setPeriodState] = useState<PeriodState>(() => presetState(initialPreset ?? savedPreset))
+  // A preset saved after the page opened, by the first read of the server or by another tab or device, opens here too, except over a custom range.
+  const [followedPreset, setFollowedPreset] = useState(savedPreset)
+  if (followedPreset !== savedPreset) {
+    setFollowedPreset(savedPreset)
+    if (periodState.choice !== "custom" && periodState.choice !== savedPreset) {
+      setPeriodState(presetState(savedPreset))
+    }
+  }
   const { choice } = periodState
 
   useEffect(() => {
@@ -160,15 +202,29 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
   const activeIds = useMemo(() => new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id)), [instancesQuery.data])
   const liveIds = useMemo(() => selected.map(status => status.instanceId).filter(id => activeIds.has(id)), [activeIds, selected])
+  const liveQuery = (instanceId: number) => ({ queryKey: ["tracker-groups", instanceId], queryFn: () => api.getTrackerGroups(instanceId) })
   const live = useQueries({
-    queries: liveIds.map(instanceId => ({
-      queryKey: ["tracker-groups", instanceId],
-      queryFn: () => api.getTrackerGroups(instanceId),
-      enabled: byTracker,
-      refetchInterval: HISTORY_WRITE_MS,
-    })),
+    queries: liveIds.map(instanceId => ({ ...liveQuery(instanceId), enabled: byTracker, refetchInterval: HISTORY_WRITE_MS })),
     combine: combineLiveGroups,
   })
+
+  const queryClient = useQueryClient()
+  const prefetchRows = usePrefetchTransferHistoryRows()
+  const prefetchGroupings = (only?: TableGrouping) => {
+    if (!ready) {
+      return
+    }
+    for (const other of only ? [only] : TABLE_GROUPINGS) {
+      if (other === grouping) {
+        continue
+      }
+      if (other === "tracker") {
+        liveIds.forEach(instanceId => void queryClient.prefetchQuery({ ...liveQuery(instanceId), staleTime: HISTORY_WRITE_MS }))
+      } else {
+        prefetchRows(selected, { from: period.from, to: period.to, bucket: "total", groupBy: other })
+      }
+    }
+  }
 
   // A new period gives new query keys, so the queries hold no previous data to show while they load. After a move,
   // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
@@ -234,7 +290,9 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
   }, [displayName, incognitoMode, t])
 
   const formatDay = (date: Date) => date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
-  const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatDay(period.from), to: formatDay(new Date(period.to.getTime() - 1)) }) : undefined
+  // A phone leaves out the year of this year, so that the range leaves room for the instances.
+  const formatRangeDay = (date: Date) => narrow && date.getFullYear() === new Date().getFullYear() ? date.toLocaleDateString(locale, { day: "numeric", month: "short" }) : formatDay(date)
+  const customLabel = periodState.choice === "custom" && period.from ? t("customRange.range", { from: formatRangeDay(period.from), to: formatRangeDay(new Date(period.to.getTime() - 1)) }) : undefined
   const formatChange = new Intl.NumberFormat(locale, { style: "percent", signDisplay: "exceptZero", maximumFractionDigits: 0 })
   const error = statusQuery.error ?? (chart.error ? undefined : allTime.error ?? compared.error ?? before.error)
   const loading = statusQuery.isPending || (!keep && (chart.pending || allTime.pending))
@@ -244,202 +302,214 @@ export function Statistics({ initialPreset = "30d" }: { initialPreset?: PeriodPr
     return change === undefined ? undefined : t("tiles.change", { change: formatChange.format(change) })
   }
 
+  const periodPicker = (
+    <PeriodPicker
+      value={periodState.choice}
+      customLabel={customLabel}
+      onPreset={preset => {
+        savePreset(preset)
+        setPeriodState(presetState(preset))
+      }}
+      onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
+    />
+  )
+  const instanceFilter = options.length > 1 && <InstanceFilter options={options} selected={selectedIds} onChange={setSelectedIds} />
+  const recording = (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {since ? t("recordingSince", { date: formatDay(since) }) : !statusQuery.isPending && t("notRecording")}
+      {partial && <Badge variant="outline" className="py-0 font-normal text-muted-foreground">{t("partial")}</Badge>}
+    </span>
+  )
+  // The period choice and the instance selection. A new one starts the lists of deletes and of top torrents again at their first rows.
+  const listScope = `${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`
+
   return (
-    <div className="space-y-6 p-4 pb-16 lg:p-6">
-      <PageHeader
-        title={t("title")}
-        description={
-          <span className="inline-flex flex-wrap items-center gap-2">
-            {since ? t("recordingSince", { date: formatDay(since) }) : !statusQuery.isPending && t("notRecording")}
-            {partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-yellow-600 dark:text-yellow-500">{t("partial")}</Badge>}
-          </span>
-        }
-        actions={
-          <>
-            <SeriesColorPicker />
-            {options.length > 1 && <InstanceFilter
-              options={options}
-              selected={selectedIds}
-              onChange={setSelectedIds}
-            />}
-            <PeriodPicker
-              value={periodState.choice}
-              customLabel={customLabel}
-              onPreset={preset => setPeriodState({ choice: preset, period: presetPeriod(preset, new Date()), moved: false })}
-              onCustom={(firstDay, lastDay) => setPeriodState({ choice: "custom", period: customPeriod(firstDay, lastDay, new Date()), moved: false })}
-            />
-          </>
-        }
-      />
+    <Page
+      title={t("title")}
+      description={recording}
+      controls={narrow ? (
+        <>
+          {periodPicker}
+          {instanceFilter}
+          <SeriesColorPicker />
+        </>
+      ) : (
+        <>
+          <SeriesColorPicker />
+          {instanceFilter}
+          {periodPicker}
+        </>
+      )}
+    >
+      {/* On a phone, the cards of this page are 16 px apart. */}
+      <div className="space-y-4 sm:space-y-6">
+        {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-      {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
-
-      {/* A phone shows the five numbers as lines of one card. Six tracks give rows of 3 and 2 without an empty cell. */}
-      <div className="grid max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5">
-        <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
-        <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
-        <Tile
-          label={t("tiles.ratio")}
-          value={totals && formatRatio(totals)}
-          hint={totals && formatBuffer(totals) && t("tiles.buffer", { buffer: formatBuffer(totals) })}
-        />
-        <Tile
-          label={t("tiles.crossSeed")}
-          value={totals && formatBytes(totals.statisticsCrossSeedUploaded)}
-          hint={totals && totals.uploaded > 0 ? t("tiles.crossSeedShare", { percent: Math.round((totals.statisticsCrossSeedUploaded / totals.uploaded) * 100) }) : undefined}
-          wide
-        />
-        <Tile
-          label={t("tiles.unique")}
-          value={unique && formatBytes(unique.uniqueSize)}
-          hint={unique ? t("tiles.uniqueTotal", { size: formatBytes(unique.totalSize) }) : libraryPoints && libraryPoints.length > 0 && t("tiles.uniqueNone")}
-          wide
-        />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{yearView ? t("yearView.title") : t("chart.title")}</CardTitle>
-          <CardDescription>{yearView ? t("yearView.description") : period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
-          {!yearView && <CardAction>
-            <Tabs value={metric} onValueChange={value => setMetric(value as Metric)}>
-              <TabsList>
-                <TabsTrigger value="uploaded" className="px-3">{t("chart.upload")}</TabsTrigger>
-                <TabsTrigger value="downloaded" className="px-3">{t("chart.download")}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </CardAction>}
-        </CardHeader>
-        <CardContent>
-          {chart.error ? (
-            <div className="flex h-[300px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: chart.error.message })}</div>
-          ) : loading ? (
-            <div className="flex h-[300px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-          ) : bars.some(bar => bar.bytes.size > 0) ? yearView ? (
-            <YearView bars={bars} groups={groups} to={shown.period.to} since={since} displayName={displayName} />
-          ) : (
-            <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
-          ) : (
-            <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">{t("chart.empty")}</div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="gap-0 overflow-hidden pb-4">
-        <CardHeader className="pb-4">
-          <CardTitle>{t("table.title")}</CardTitle>
-          <CardDescription>{grouping === "tracker" ? t("table.descriptionTracker") : grouping === "category" ? t("table.descriptionCategory") : t("table.descriptionRelease")}</CardDescription>
-        </CardHeader>
-        <GroupTable
-          grouping={grouping}
-          onGroupingChange={setGrouping}
-          rows={loading ? undefined : tableRows}
-          error={statusQuery.error ?? chart.error ?? (period.from ? undefined : allTime.error) ?? (byTracker ? undefined : grouped.error)}
-          liveLoaded={liveIds.length > 0 && live.groups !== undefined}
-          liveError={live.error}
-          period={shown.period}
-          since={since}
-          series={shown.series}
-          instances={selected}
-          seriesGroups={groups}
-          displayName={tableName}
-        />
-      </Card>
-
-      <Card className="gap-0 overflow-hidden pb-4">
-        <CardHeader className="pb-4">
-          <CardTitle>{t("topTorrents.title")}</CardTitle>
-          <CardDescription>{t("topTorrents.description")}</CardDescription>
-        </CardHeader>
-        {statusQuery.error ? (
-          <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
-        ) : ready ? (
-          <TopTorrents torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
-        ) : (
-          <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-        )}
-        <div className="space-y-1 px-6 pt-3 text-xs text-muted-foreground">
-          <p>{t("topTorrents.note")}</p>
-          {!period.from && <p>{t("table.baselineNote")}</p>}
-        </div>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("growth.title")}</CardTitle>
-            <CardDescription>{newestCount !== undefined ? t("growth.description", { torrents: newestCount.toLocaleString(locale) }) : t("growth.descriptionEmpty")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {growthError ? (
-              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
-            ) : !libraryPoints ? (
-              <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-            ) : libraryPoints.length > 0 ? (
-              <>
-                <LibraryGrowthChart points={libraryPoints} />
-                {libraryPoints.some(point => point.totalSize !== null && point.uniqueSize === null) && <p className="pt-2 text-xs text-muted-foreground">{t("growth.gapNote")}</p>}
-              </>
-            ) : (
-              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("growth.empty")}</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("events.title")}</CardTitle>
-            <CardDescription>{t("events.description")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {growthError ? (
-              <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
-            ) : !eventDays ? (
-              <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-            ) : eventDays.some(day => day.added + day.completed + day.deleted > 0) ? (
-              <EventsChart days={eventDays} />
-            ) : (
-              <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("events.empty")}</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="gap-0 overflow-hidden pb-4">
-        <CardHeader className="pb-4">
-          <CardTitle>{t("deletes.title")}</CardTitle>
-          <CardDescription>{t("deletes.description")}</CardDescription>
-        </CardHeader>
-        {statusQuery.error ? (
-          <div className="flex h-24 items-center justify-center px-6 text-sm text-destructive">{t("errors.load", { message: statusQuery.error.message })}</div>
-        ) : ready ? (
-          <DeletedTorrents
-            scope={`${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`}
-            instances={selected}
-            period={period}
-            displayGroup={displayName}
+        {/* A phone shows the five numbers in two columns of one card, the last across both, and a phone turned sideways in one row. Six tracks give rows of 3 and 2 without an empty cell. */}
+        <div className="grid grid-cols-2 max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5 sideways:grid-cols-5 sideways:gap-2 max-sm:sideways:gap-0">
+          <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
+          <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
+          <Tile
+            label={t("tiles.ratio")}
+            value={totals && formatRatio(totals)}
+            hint={totals && formatBuffer(totals) && t("tiles.buffer", { buffer: formatBuffer(totals) })}
           />
-        ) : (
-          <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-        )}
-      </Card>
+          <Tile
+            label={t("tiles.crossSeed")}
+            value={totals && formatBytes(totals.statisticsCrossSeedUploaded)}
+            hint={totals && totals.uploaded > 0 ? t("tiles.crossSeedShare", { percent: Math.round((totals.statisticsCrossSeedUploaded / totals.uploaded) * 100) }) : undefined}
+            wide
+          />
+          <Tile
+            label={t("tiles.unique")}
+            value={unique && formatBytes(unique.uniqueSize)}
+            hint={unique ? t("tiles.uniqueTotal", { size: formatBytes(unique.totalSize) }) : libraryPoints && libraryPoints.length > 0 && t("tiles.uniqueNone")}
+            wide
+          />
+        </div>
 
-      <div className="space-y-1 text-xs text-muted-foreground">
-        {!period.from && <p>{t("allTimeNote")}</p>}
+        <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
+          <CardHeader className="px-4 sm:px-6">
+            <CardTitle>{yearView ? t("yearView.title") : t("chart.title")}</CardTitle>
+            <CardDescription>{yearView ? t("yearView.description") : period.unit === "hour" ? t("chart.descriptionHour") : t("chart.descriptionDay")}</CardDescription>
+            {!yearView && <CardAction>
+              <Tabs value={metric} onValueChange={value => setMetric(value as Metric)}>
+                <TabsList className="max-sm:h-8">
+                  <TabsTrigger value="uploaded" className="px-3 max-sm:px-2 max-sm:text-xs">{t("chart.upload")}</TabsTrigger>
+                  <TabsTrigger value="downloaded" className="px-3 max-sm:px-2 max-sm:text-xs">{t("chart.download")}</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </CardAction>}
+          </CardHeader>
+          <CardContent className="px-4 sm:px-6">
+            {chart.error ? (
+              <div className="flex h-[260px] items-center justify-center text-sm text-destructive sm:h-[300px] sideways:h-[220px]">{t("errors.load", { message: chart.error.message })}</div>
+            ) : loading ? (
+              <div className="flex h-[260px] items-center justify-center sm:h-[300px] sideways:h-[220px]"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            ) : bars.some(bar => bar.bytes.size > 0) ? yearView ? (
+              <YearView bars={bars} groups={groups} to={shown.period.to} since={since} displayName={displayName} />
+            ) : (
+              <TransferChart bars={bars} groups={groups} metric={metric} unit={shown.period.unit} displayName={displayName} />
+            ) : (
+              <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground sm:h-[300px] sideways:h-[220px]">{t("chart.empty")}</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+          <GroupTable
+            listScope={listScope}
+            grouping={grouping}
+            onGroupingChange={setGrouping}
+            rows={loading ? undefined : tableRows}
+            error={statusQuery.error ?? chart.error ?? (period.from ? undefined : allTime.error) ?? (byTracker ? undefined : grouped.error)}
+            liveLoaded={liveIds.length > 0 && live.groups !== undefined}
+            liveError={live.error}
+            period={shown.period}
+            since={since}
+            series={shown.series}
+            instances={selected}
+            seriesGroups={groups}
+            displayName={tableName}
+            onPrefetch={prefetchGroupings}
+          />
+        </Card>
+
+        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+          <CardHeader className="px-4 pb-4 sm:px-6">
+            <CardTitle>{t("topTorrents.title")}</CardTitle>
+            <CardDescription>{t("topTorrents.description")}</CardDescription>
+          </CardHeader>
+          {statusQuery.error ? (
+            <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
+          ) : ready ? (
+            <TopTorrents scope={listScope} torrents={shown.torrents} error={top.error} period={shown.period} instances={selected} since={since} displayGroup={displayName} />
+          ) : (
+            <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+          )}
+          <div className="space-y-1 px-4 pt-3 text-xs text-muted-foreground sm:px-6">
+            <p>{t("topTorrents.note")}</p>
+            {!period.from && <p>{t("table.baselineNote")}</p>}
+          </div>
+        </Card>
+
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle>{t("growth.title")}</CardTitle>
+              <CardDescription>{newestCount !== undefined ? t("growth.description", { torrents: newestCount.toLocaleString(locale) }) : t("growth.descriptionEmpty")}</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 sm:px-6">
+              {growthError ? (
+                <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
+              ) : !libraryPoints ? (
+                <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+              ) : libraryPoints.length > 0 ? (
+                <>
+                  <LibraryGrowthChart points={libraryPoints} />
+                  {libraryPoints.some(point => point.totalSize !== null && point.uniqueSize === null) && <p className="pt-2 text-xs text-muted-foreground">{t("growth.gapNote")}</p>}
+                </>
+              ) : (
+                <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("growth.empty")}</div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="gap-4 py-4 sm:gap-6 sm:py-6">
+            <CardHeader className="px-4 sm:px-6">
+              <CardTitle>{t("events.title")}</CardTitle>
+              <CardDescription>{t("events.description")}</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 sm:px-6">
+              {growthError ? (
+                <div className="flex h-[240px] items-center justify-center text-sm text-destructive">{t("errors.load", { message: growthError.message })}</div>
+              ) : !eventDays ? (
+                <div className="flex h-[240px] items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+              ) : eventDays.some(day => day.added + day.completed + day.deleted > 0) ? (
+                <EventsChart days={eventDays} />
+              ) : (
+                <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">{t("events.empty")}</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
+          <CardHeader className="px-4 pb-4 sm:px-6">
+            <CardTitle>{t("deletes.title")}</CardTitle>
+            <CardDescription>{t("deletes.description")}</CardDescription>
+          </CardHeader>
+          {statusQuery.error ? (
+            <div className="flex h-24 items-center justify-center px-4 text-sm text-destructive sm:px-6">{t("errors.load", { message: statusQuery.error.message })}</div>
+          ) : ready ? (
+            <DeletedTorrents
+              scope={listScope}
+              instances={selected}
+              period={period}
+              displayGroup={displayName}
+            />
+          ) : (
+            <div className="flex h-24 items-center justify-center"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+          )}
+        </Card>
+
+        {!period.from && <p className="text-xs text-muted-foreground">{t("allTimeNote")}</p>}
       </div>
-    </div>
+    </Page>
   )
 }
 
 function Tile({ label, value, hint, wide = false }: { label: string; value?: string; hint?: ReactNode; wide?: boolean }) {
   return (
     <Card className={cn(
-      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:first:border-t-0 xl:col-span-1",
+      "gap-2 py-4 max-sm:gap-0 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:bg-transparent max-sm:py-3 max-sm:shadow-none max-sm:nth-[-n+2]:border-t-0 max-sm:even:border-l max-sm:last:col-span-2 xl:col-span-1 sideways:col-span-1 sideways:last:col-span-1 sideways:gap-1 sideways:py-3 max-sm:sideways:border-t-0 max-sm:sideways:border-l max-sm:sideways:first:border-l-0",
       wide ? "sm:col-span-3" : "sm:col-span-2"
     )}>
-      <CardContent className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 px-4 sm:block">
-        <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="whitespace-nowrap text-right text-xl font-semibold tabular-nums sm:mt-1 sm:text-left sm:text-2xl">{value ?? "–"}</div>
-        <div className="col-start-2 text-right text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:text-left sm:empty:block">{hint}</div>
+      <CardContent className="px-4 max-sm:sideways:px-2">
+        <div className="text-xs text-muted-foreground sm:text-sm sideways:text-xs">{label}</div>
+        <div>
+          <div className="mt-0.5 whitespace-nowrap text-lg font-semibold tabular-nums sm:mt-1 sm:text-2xl sideways:mt-0.5 sideways:text-lg max-sm:sideways:text-base">{value ?? "–"}</div>
+          <div className="text-xs text-muted-foreground empty:hidden sm:mt-1 sm:min-h-4 sm:empty:block">{hint}</div>
+        </div>
       </CardContent>
     </Card>
   )

@@ -37,8 +37,9 @@ func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 // stored is the rule that an update replaces, or nil. The field, operator and enum checks skip the conditions and the sorting
 // when they equal those of stored, so a stored rule with a bad operator can still be switched on or off and renamed.
 // The group ID checks skip them the same way, but check the score conditions also when conditions.grouping changed.
+// When saves is true, the request stores the rule, and the running actions must have one condition unless the conditions equal those of stored.
 // It does not check that a referenced instance or external program exists.
-func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation) (*AutomationPayload, error) {
+func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation, saves bool) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
 	if err != nil {
 		return nil, err
@@ -81,6 +82,11 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 		if err := automations.ConditionGroupIDsError(payload.Conditions); err != nil {
 			return nil, ruleErrors{err.Error()}
 		}
+		if saves {
+			if problem := differentConditions(payload.Conditions); problem != "" {
+				return nil, ruleErrors{problem}
+			}
+		}
 	}
 	if !scoreGroupsUnchanged && payload.Conditions != nil {
 		if err := automations.ScoreRuleGroupIDsError(payload.Conditions.Grouping, payload.SortingConfig); err != nil {
@@ -88,6 +94,23 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 		}
 	}
 	return &payload, nil
+}
+
+// differentConditions names the first two running actions that have different conditions, or returns "".
+// An action runs when it is enabled. An action without a condition differs from one that has a condition,
+// and the order of child conditions counts.
+func differentConditions(conditions *models.ActionConditions) string {
+	var first *models.ActionCondition
+	for c := range conditions.Conditions() {
+		switch {
+		case !c.Enabled:
+		case first == nil:
+			first = &c
+		case !sameJSON(first.Condition, c.Condition):
+			return first.Path + " and " + c.Path + " differ. All actions in a workflow must use the same condition. Make one workflow for each condition."
+		}
+	}
+	return ""
 }
 
 func sameJSON(a, b any) bool {

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -621,47 +622,47 @@ func TestOrphanScan_MarkDeletingRunsFailed(t *testing.T) {
 	}
 }
 
-func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T) {
+// regression: #4146
+func TestOrphanScan_RecoverStuckRuns_FailsEveryInterruptedRun(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
-	// The stuck-run cutoff is a bound time, so the store needs a connection
-	// from the database module.
 	db := testdb.NewMigratedSQLite(t, "orphanscan-recover-stuck-runs")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	if err != nil {
 		t.Fatalf("instance store: %v", err)
 	}
-	if _, err := instances.Create(ctx, "t", "http://127.0.0.1:8080", "u", "p", nil, nil, false, nil); err != nil {
+	interrupted, err := instances.Create(ctx, "interrupted", "http://127.0.0.1:8080", "u", "p", nil, nil, false, nil)
+	if err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+	previewed, err := instances.Create(ctx, "previewed", "http://127.0.0.1:8081", "u", "p", nil, nil, false, nil)
+	if err != nil {
 		t.Fatalf("create instance: %v", err)
 	}
 
-	// A deleting run should be failed immediately on startup.
-	res, err := db.ExecContext(ctx, `
-		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, scan_paths, files_found)
-		VALUES (1, 'deleting', 'manual', '[]', 2)
-	`)
-	if err != nil {
-		t.Fatalf("insert deleting run: %v", err)
-	}
-	deletingID, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("last insert id: %v", err)
+	insertRun := func(instanceID int, status string, startedAt time.Time) int64 {
+		t.Helper()
+		res, err := db.ExecContext(ctx, `
+			INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, scan_paths, files_found, started_at)
+			VALUES (?, ?, 'manual', '[]', 2, ?)
+		`, instanceID, status, startedAt.UTC().Format(time.DateTime))
+		if err != nil {
+			t.Fatalf("insert %s run: %v", status, err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			t.Fatalf("last insert id: %v", err)
+		}
+		return id
 	}
 
-	// A fresh pending run should not be touched (threshold-based).
-	res, err = db.ExecContext(ctx, `
-		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by, scan_paths, files_found)
-		VALUES (1, 'pending', 'manual', '[]', 0)
-	`)
-	if err != nil {
-		t.Fatalf("insert pending run: %v", err)
-	}
-	pendingID, err := res.LastInsertId()
-	if err != nil {
-		t.Fatalf("last insert id: %v", err)
-	}
+	now := time.Now()
+	deletingID := insertRun(interrupted.ID, "deleting", now.Add(-5*time.Minute))
+	scanningID := insertRun(interrupted.ID, "scanning", now.Add(-5*time.Minute))
+	pendingID := insertRun(interrupted.ID, "pending", now)
+	previewID := insertRun(previewed.ID, "preview_ready", now.Add(-5*time.Minute))
 
 	store := models.NewOrphanScanStore(db)
 	svc := NewService(DefaultConfig(), nil, store, nil, nil, nil)
@@ -669,32 +670,36 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 		t.Fatalf("recoverStuckRuns: %v", err)
 	}
 
-	deletingRun, err := store.GetRun(ctx, deletingID)
-	if err != nil {
-		t.Fatalf("GetRun deleting: %v", err)
-	}
-	if deletingRun == nil {
-		t.Fatalf("expected deleting run, got nil")
-	}
-	if deletingRun.Status != "failed" {
-		t.Fatalf("expected deleting run failed, got %q", deletingRun.Status)
-	}
-	if deletingRun.ErrorMessage != "Deletion interrupted by restart" {
-		t.Fatalf("expected error message %q, got %q", "Deletion interrupted by restart", deletingRun.ErrorMessage)
-	}
-	if deletingRun.CompletedAt == nil {
-		t.Fatalf("expected completed_at set for deleting run")
+	for id, wantMessage := range map[int64]string{
+		deletingID: "Deletion interrupted by restart",
+		scanningID: "Scan interrupted by restart",
+		pendingID:  "Scan interrupted by restart",
+	} {
+		run, err := store.GetRun(ctx, id)
+		if err != nil {
+			t.Fatalf("GetRun %d: %v", id, err)
+		}
+		if run.Status != "failed" {
+			t.Fatalf("run %d: expected failed, got %q", id, run.Status)
+		}
+		if run.ErrorMessage != wantMessage {
+			t.Fatalf("run %d: expected error message %q, got %q", id, wantMessage, run.ErrorMessage)
+		}
+		if run.CompletedAt == nil {
+			t.Fatalf("run %d: expected completed_at set", id)
+		}
 	}
 
-	pendingRun, err := store.GetRun(ctx, pendingID)
+	previewRun, err := store.GetRun(ctx, previewID)
 	if err != nil {
-		t.Fatalf("GetRun pending: %v", err)
+		t.Fatalf("GetRun preview: %v", err)
 	}
-	if pendingRun == nil {
-		t.Fatalf("expected pending run, got nil")
+	if previewRun.Status != "preview_ready" {
+		t.Fatalf("expected preview_ready run unchanged, got %q", previewRun.Status)
 	}
-	if pendingRun.Status != "pending" {
-		t.Fatalf("expected pending run unchanged, got %q", pendingRun.Status)
+
+	if _, err := store.CreateRunIfNoActive(ctx, interrupted.ID, "scheduled"); err != nil {
+		t.Fatalf("expected a new run after recovery: %v", err)
 	}
 }
 

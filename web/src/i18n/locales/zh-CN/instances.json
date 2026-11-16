@@ -1144,6 +1144,7 @@
         "notSupportedForScoreMultiplier": "不支持得分乘数"
       },
       "conditionsLabel": "条件（可选）",
+      "mixedActionConditions": "此工作流中的每个操作都有各自的条件。qui 现在每个工作流只使用一个条件。保存后，所有操作都将使用上方的条件。要保留其他条件，请先为每个条件创建一个工作流。",
       "actions": {
         "title": "操作",
         "addAction": "添加操作",

@@ -5,8 +5,8 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 ## Commands
 
 - `make precommit`: `check-mojibake` and `generate`, then fmt + gofix on changed files, then `make lint`, `make lint-ratchet`, and `make typecheck-frontend`.
-- `make lint`: golangci-lint on Go issues that are new since the `develop` merge-base, then the `unused` linter on the whole repo, then the full `pnpm lint`. A change can make unchanged code unused, so the `unused` run does not stop at changed lines. A frontend lint error in any file fails it, not only an error in a changed file.
-- `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request. The target compares with `git merge-base HEAD develop`, which uses your local `develop`. If a merge is not committed yet, or your local `develop` is behind, the target reports growth that is not real. Commit the merge first, or run `git fetch origin develop` and then `go run ./scripts/ratchet`, which compares with `origin/develop`.
+- `make lint`: golangci-lint on Go issues that are new since the `origin/develop` merge-base, then the `unused` linter on the whole repo, then the full `pnpm lint`. A change can make unchanged code unused, so the `unused` run does not stop at changed lines. A frontend lint error in any file fails it, not only an error in a changed file.
+- `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. CI runs it on each pull request. The target compares with the allowlist on `origin/develop`. If a merge is not committed yet, or your `origin/develop` is behind, the target reports growth that is not real. Commit the merge first, or run `git fetch origin develop`.
 - `make typecheck-frontend`: `tsc -b` in `web/`, the type check that the frontend build runs first. ESLint and Vitest do not report type errors.
 - `make lint-json`: write lint output to `lint-report.json`.
 - `make fmt`: gofmt + frontend eslint fix on changed files.
@@ -22,6 +22,8 @@ The project uses golangci-lint v2. `.golangci.yml` lists the enabled linters and
 ## Version Pin
 
 CI pins the golangci-lint version in `.github/workflows/lint.yml`. A local golangci-lint must read the export data that your Go toolchain writes. A golangci-lint that is older than your Go toolchain can fail to read that export data. With such a pair, lint reports false `typecheck` errors in packages that compile, and these errors can hide real issues.
+
+A local golangci-lint that is newer than the pin can find problems that the pinned version does not find. Then `make lint-ratchet` can fail on a file that your branch does not change, while the ratchet job in CI passes. `make lint` and `make lint-ratchet` print a warning when your golangci-lint is not the CI pin. To get the counts that CI gets, install the pinned version with `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<pin>`, where `<pin>` is the version in `lint.yml`.
 
 Bump the CI pin in its own PR. Run `make lint-full` first, because `make lint` reports only new issues, and a new golangci-lint version can find issues in old code.
 

@@ -40,10 +40,10 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
   const formatPercent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 })
 
   return (
-    <div className="space-y-8" data-chart={CHART_ID}>
+    <div className="space-y-6 sm:space-y-8" data-chart={CHART_ID}>
       <ChartStyle id={CHART_ID} config={config} />
       <Calendar days={days} />
-      <dl className="grid gap-6 sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6">
         <YearFact
           label={t("yearView.bestDay")}
           value={summary.bestDay && formatBytes(summary.bestDay.uploaded)}
@@ -55,6 +55,7 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
           detail={summary.bestMonth && formatBytes(summary.bestMonth.uploaded)}
         />
         <YearFact
+          className="col-span-2 sm:col-span-1"
           label={t("yearView.weekends")}
           value={summary.weekendShare === undefined ? undefined : formatPercent.format(summary.weekendShare)}
           detail={t("yearView.weekendsDetail")}
@@ -137,7 +138,8 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                       onMouseEnter={() => setShown(day.start)}
                       onClick={() => setShown(day.start)}
                       className={cn(
-                        "size-3 rounded-[3px]",
+                        // The hit area covers the gaps around the cell, so that each tap in the calendar lands on a day.
+                        "relative size-3 rounded-[3px] after:absolute after:-inset-[1.5px]",
                         day.uploaded === undefined ? "border border-dashed border-border" : !day.uploaded && "bg-muted",
                         day.gapSeconds > 0 && "ring-1 ring-yellow-500",
                         shown === day.start && "outline outline-1 outline-foreground"
@@ -155,11 +157,11 @@ function Calendar({ days }: { days: CalendarDay[] }) {
   )
 }
 
-function YearFact({ label, value, detail }: { label: string; value?: string; detail?: string }) {
+function YearFact({ label, value, detail, className }: { label: string; value?: string; detail?: string; className?: string }) {
   return (
-    <div className="border-l-2 pl-3" style={{ borderLeftColor: "var(--color-heat)" }}>
+    <div className={cn("min-w-0 border-l-2 pl-3", className)} style={{ borderLeftColor: "var(--color-heat)" }}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-xl font-semibold tabular-nums" title={value}>{value ?? "–"}</dd>
+      <dd className="mt-0.5 text-lg font-semibold tabular-nums sm:truncate sm:text-xl" title={value}>{value ?? "–"}</dd>
       {detail && <dd className="truncate text-sm text-muted-foreground" title={detail}>{detail}</dd>}
     </div>
   )

@@ -374,15 +374,15 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
 
   if (isLoading) {
     return (
-      <Card className="gap-4 py-4">
-        <CardHeader className="px-4">
+      <Card>
+        <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Palette className="h-5 w-5" />
+            <Palette className="size-4" />
             {t("themes.selector.title")}
           </CardTitle>
           <CardDescription>{t("themes.selector.loadingDescription")}</CardDescription>
         </CardHeader>
-        <CardContent className="animate-pulse space-y-4 px-4">
+        <CardContent className="animate-pulse space-y-4">
           <div className="flex items-center gap-4">
             <div className="aspect-[16/10] w-24 shrink-0 rounded-md bg-muted sm:w-48" />
             <div className="w-full max-w-64 space-y-2">
@@ -403,11 +403,11 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
 
   return (
     <>
-      <Card className="gap-4 py-4">
-        <CardHeader className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4">
+      <Card>
+        <CardHeader className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="space-y-1.5">
             <CardTitle className="flex items-center gap-2">
-              <Palette className="h-5 w-5" />
+              <Palette className="size-4" />
               {t("themes.selector.title")}
             </CardTitle>
             <CardDescription>{t("themes.selector.description")}</CardDescription>
@@ -429,7 +429,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
             onOpenRequestHandled={onMenuOpened}
           />
         </CardHeader>
-        <CardContent className="space-y-4 px-4">
+        <CardContent className="space-y-4">
           {defaultThemeVisit && (
             <Alert role="status">
               <Info className="h-4 w-4" />
@@ -563,29 +563,29 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
         </CardContent>
       </Card>
 
-      <Card className="gap-4 py-4">
-        <CardHeader className="px-4">
+      <Card>
+        <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <MonitorSmartphone className="h-5 w-5" />
+            <MonitorSmartphone className="size-4" />
             {t("themes.layout.title")}
           </CardTitle>
         </CardHeader>
-        <CardContent className="px-4">
+        <CardContent>
           <ThemeLayoutSettings />
         </CardContent>
       </Card>
 
-      <Card className="gap-4 py-4">
-        <CardHeader className="px-4">
+      <Card>
+        <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" />
+            <FolderOpen className="size-4" />
             {t("themes.custom.title")}
           </CardTitle>
           <CardDescription>
             {hasPremiumAccess ? t("themes.custom.description") : t("themes.custom.lockedDescription")}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 px-4">
+        <CardContent className="space-y-3">
           {!hasPremiumAccess ? (
             <Button variant="outline" size="sm" onClick={scrollToLicenseManager}>
               <Lock className="h-3 w-3" />

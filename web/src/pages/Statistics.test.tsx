@@ -9,8 +9,10 @@ import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
-import { Statistics } from "@/pages/Statistics"
+import { _resetClientSettingsForTests, applyServerSettings, readRaw, seedAndMarkReady, writeRaw } from "@/lib/client-settings"
+import { Statistics, StatisticsRoute } from "@/pages/Statistics"
 import { server } from "@/test/msw/server"
+import { stubPhone } from "@/test/stubPhone"
 import type { StatisticsBar } from "@/lib/statistics"
 import type { EventDay } from "@/lib/statistics-events"
 import type { LibraryPoint } from "@/lib/statistics-library"
@@ -24,8 +26,15 @@ const mocks = vi.hoisted(() => {
   return {
     i18n: { t, i18n: { resolvedLanguage: "en", language: "en" } },
     incognitoMode: [false, () => {}] as [boolean, () => void],
+    search: {} as { period?: string },
+    navigate: vi.fn(),
   }
 })
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@tanstack/react-router")>(),
+  getRouteApi: () => ({ useSearch: () => mocks.search, useNavigate: () => mocks.navigate }),
+}))
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
@@ -112,29 +121,37 @@ function recordedDaysAgo(instanceId: number, name: string, days: number): Transf
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <Statistics />
     </QueryClientProvider>
   )
+  return { ...view, queryClient }
 }
 
 async function expectTile(label: string, expected: string) {
   const labelNode = await screen.findByText(label)
   await vi.waitFor(() => {
-    const value = labelNode.nextElementSibling
+    const value = labelNode.nextElementSibling?.firstElementChild
     expect(`${value?.textContent} | ${value?.nextElementSibling?.textContent}`).toBe(expected)
   })
+}
+
+/** The text of a node as a wide table shows it, without the numbers that a narrow table puts below the name. */
+function wideText(node: Element): string {
+  const copy = node.cloneNode(true) as Element
+  copy.querySelectorAll("[data-narrow]").forEach(narrow => narrow.remove())
+  return copy.textContent ?? ""
 }
 
 /** Returns the text of each cell of the table row whose first cell holds name. */
 function cells(table: HTMLElement, name: string): string[] {
   const nameNode = within(table).getByText(name)
-  return [...(nameNode.closest("tr")?.querySelectorAll("td") ?? [])].map(cell => cell.textContent ?? "")
+  return [...(nameNode.closest("tr")?.querySelectorAll("td") ?? [])].map(wideText)
 }
 
 function expandedRows(table: HTMLElement): string[] {
-  return [...table.querySelectorAll("button[aria-expanded=true]")].map(button => button.textContent ?? "")
+  return [...table.querySelectorAll("button[aria-expanded=true]")].map(wideText)
 }
 
 async function expectFact(label: string, expected: string) {
@@ -193,6 +210,106 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+  localStorage.clear()
+  _resetClientSettingsForTests()
+  mocks.search = {}
+  mocks.navigate.mockReset()
+})
+
+function renderRoute() {
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <StatisticsRoute />
+    </QueryClientProvider>
+  )
+}
+
+// The two calls that useClientSettingsSync makes for the first server snapshot.
+function loadServerSnapshot(settings: Record<string, string> = {}) {
+  act(() => {
+    applyServerSettings(settings)
+    seedAndMarkReady(settings)
+  })
+}
+
+function selectedPeriod(): string | undefined {
+  return screen.getAllByRole("tab").find(tab => tab.textContent?.startsWith("periods.") && tab.getAttribute("aria-selected") === "true")?.textContent ?? undefined
+}
+
+describe("Statistics period", () => {
+  it("opens on the preset period that the user picked last", async () => {
+    localStorage.setItem("qui-statistics-period", JSON.stringify("7d"))
+    renderPage()
+
+    await screen.findByText("periods.7d")
+    expect(selectedPeriod()).toBe("periods.7d")
+  })
+
+  it("saves a picked preset, and keeps it when the user then applies a custom range", async () => {
+    const { unmount } = renderPage()
+    fireEvent.mouseDown(await screen.findByText("periods.24h"), { button: 0 })
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+
+    fireEvent.click(screen.getByText("periods.custom"))
+    fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: "2026-01-05" } })
+    fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: "2026-01-06" } })
+    fireEvent.click(screen.getByText("customRange.apply"))
+    expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+    unmount()
+
+    renderPage()
+    await screen.findByText("periods.24h")
+    expect(selectedPeriod()).toBe("periods.24h")
+  })
+
+  // regression: #4192
+  it("moves to a preset that the server or another tab saves after the page opened", async () => {
+    renderPage()
+    await screen.findByText("periods.7d")
+    expect(selectedPeriod()).toBe("periods.30d")
+
+    act(() => writeRaw("qui-statistics-period", JSON.stringify("7d")))
+    expect(selectedPeriod()).toBe("periods.7d")
+  })
+
+  // regression: #4192
+  it("waits for the saved period from the server before it shows the periods, so that a tap is not lost", async () => {
+    renderRoute()
+    expect(screen.queryByText("periods.30d")).toBeNull()
+
+    loadServerSnapshot({ "qui-statistics-period": JSON.stringify("7d") })
+    await screen.findByText("periods.7d")
+    expect(selectedPeriod()).toBe("periods.7d")
+  })
+
+  // regression: #4192
+  it("keeps the period of the address over an older server value when the local copy already holds it", async () => {
+    localStorage.setItem("qui-statistics-period", JSON.stringify("24h"))
+    mocks.search = { period: "24h" }
+    renderRoute()
+    loadServerSnapshot({ "qui-statistics-period": JSON.stringify("7d") })
+
+    await screen.findByText("periods.24h")
+    expect(selectedPeriod()).toBe("periods.24h")
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+  })
+
+  it("opens on the period of the address, saves it, and removes it from the address", async () => {
+    localStorage.setItem("qui-statistics-period", JSON.stringify("7d"))
+    mocks.search = { period: "24h" }
+    renderRoute()
+    loadServerSnapshot()
+
+    await screen.findByText("periods.24h")
+    expect(selectedPeriod()).toBe("periods.24h")
+    expect(readRaw("qui-statistics-period")).toBe(JSON.stringify("24h"))
+    expect(mocks.navigate).toHaveBeenCalledWith(expect.objectContaining({ replace: true }))
+    const { search } = mocks.navigate.mock.calls[0][0] as { search: (previous: { period?: string }) => { period?: string } }
+    expect(search({ period: "24h" }).period).toBeUndefined()
+  })
 })
 
 describe("Statistics", () => {
@@ -720,6 +837,98 @@ describe("Statistics", () => {
     expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
   })
 
+  // regression: #4179
+  it("puts the numbers of a top torrent that a narrow table has no column for below its name, without an empty First 24 hours", async () => {
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 3072, { uploadFirst24h: 1024 }, { downloaded: 1024 }), torrentRow("h2", "Bravo", 2048)] : []
+    renderPage()
+    const facts = async (name: string) => {
+      const node = await within(await screen.findByRole("table")).findByText(name)
+      return [...node.closest("td")?.querySelector("[data-narrow]")?.children ?? []].map(fact => fact.textContent)
+    }
+
+    expect(await facts("Alpha")).toEqual(["table.columns.downloaded 1 KiB", "table.columns.ratio 3.00", "topTorrents.columns.first24h 1 KiB"])
+    expect(await facts("Bravo")).toEqual(["table.columns.downloaded 0 B", "table.columns.ratio ∞"])
+  })
+
+  // regression: #4179
+  it("shows five top torrents on a phone, each after Show all, and five again after Show fewer", async () => {
+    stubPhone("upright")
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await within(table).findByText("Torrent 5")
+    expect(within(table).queryByText("Torrent 6")).toBeNull()
+    expect(screen.getByText("table.shown shown=5 total=7")).toBeTruthy()
+
+    fireEvent.click(screen.getByText("table.showAll"))
+
+    expect(within(table).getByText("Torrent 7")).toBeTruthy()
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    fireEvent.click(screen.getByText("table.showFewer"))
+
+    expect(within(table).queryByText("Torrent 6")).toBeNull()
+    expect(screen.getByText("table.shown shown=5 total=7")).toBeTruthy()
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+  })
+
+  // regression: #4179
+  it("shows five top torrents on a phone turned sideways, which is wider than the phone layout", async () => {
+    stubPhone("sideways")
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    renderPage()
+
+    await within(await screen.findByRole("table")).findByText("Torrent 5")
+    expect(within(screen.getByRole("table")).queryByText("Torrent 6")).toBeNull()
+  })
+
+  // regression: #4179
+  it("shows ten group rows and five top torrents again on a phone after a return to an earlier period", async () => {
+    stubPhone("upright")
+    Element.prototype.scrollIntoView = vi.fn()
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" || bucket === "hour" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: bucket })) : []
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    const pickPeriod = async (shown: string, next: string) => {
+      fireEvent.keyDown(screen.getAllByRole("combobox").find(picker => picker.textContent === shown)!, { key: "Enter" })
+      fireEvent.click(await screen.findByRole("option", { name: next }))
+    }
+    renderPage()
+    await screen.findByText("table.shown shown=10 total=12")
+    await screen.findByText("table.shown shown=5 total=7")
+    for (const button of screen.getAllByText("table.showAll")) {
+      fireEvent.click(button)
+    }
+    expect(screen.getByText("table.shown shown=12 total=12")).toBeTruthy()
+
+    await pickPeriod("periods.30d", "periods.7d")
+    await screen.findByText("table.shown shown=10 total=12")
+    await pickPeriod("periods.7d", "periods.30d")
+
+    await vi.waitFor(() => expect(screen.getAllByRole("combobox").some(picker => picker.textContent === "periods.30d")).toBe(true))
+    await screen.findByText("table.shown shown=10 total=12")
+    expect(screen.getByText("table.shown shown=5 total=7")).toBeTruthy()
+  })
+
+  // regression: #4179
+  it("shows five top torrents again on a phone after another period", async () => {
+    stubPhone("upright")
+    Element.prototype.scrollIntoView = vi.fn()
+    torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("Torrent 5")
+    fireEvent.click(screen.getByText("table.showAll"))
+    expect(within(screen.getByRole("table")).getByText("Torrent 7")).toBeTruthy()
+
+    fireEvent.keyDown(screen.getAllByRole("combobox").find(picker => picker.textContent === "periods.30d")!, { key: "Enter" })
+    fireEvent.click(await screen.findByRole("option", { name: "periods.7d" }))
+
+    await within(await screen.findByRole("table")).findByText("Torrent 5")
+    expect(within(screen.getByRole("table")).queryByText("Torrent 6")).toBeNull()
+    expect(screen.getByText("table.showAll")).toBeTruthy()
+  })
+
   // regression: #4113
   it("keeps the top torrents on the period of the other numbers while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
@@ -922,6 +1131,242 @@ describe("Statistics", () => {
     renderPage()
 
     await expectTile("tiles.unique", "– | tiles.uniqueNone")
+  })
+
+  // regression: #4179
+  it("keeps the description of the last grouping until the rows of the next grouping load", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" ? [row("1080p", 1024, 0, { width: "total" })] : bucket === "day" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("a.test")
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+    fireEvent.mouseDown(screen.getByText("table.groupings.resolution"), { button: 0 })
+
+    await vi.waitFor(() => expect(requests.some(request => request.groupBy === "resolution" && request.bucket === "total")).toBe(true))
+    expect(screen.getByText("table.descriptionTracker")).toBeTruthy()
+    expect(screen.queryByText("table.descriptionRelease")).toBeNull()
+
+    release()
+    expect(await screen.findByText("table.descriptionRelease")).toBeTruthy()
+  })
+
+  // regression: #4179
+  it("shows ten rows of the table again on a phone after another custom range", async () => {
+    stubPhone("upright")
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    const day = (daysAgo: number) => {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo)
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+    }
+    const applyRange = async (firstDaysAgo: number) => {
+      fireEvent.click(screen.getByRole("button", { name: "periods.custom" }))
+      fireEvent.change(await screen.findByLabelText("customRange.from"), { target: { value: day(firstDaysAgo) } })
+      fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: day(0) } })
+      fireEvent.click(screen.getByText("customRange.apply"))
+    }
+    answer = ({ bucket }) => bucket === "day" || bucket === "hour" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: bucket })) : []
+    renderPage()
+    await applyRange(10)
+    await within(await screen.findByRole("table")).findByText("t10.test")
+    fireEvent.click(screen.getByText("table.showAll"))
+    expect(within(screen.getByRole("table")).getByText("t12.test")).toBeTruthy()
+
+    await applyRange(5)
+
+    await vi.waitFor(() => expect(screen.getByText("table.shown shown=10 total=12")).toBeTruthy())
+    expect(within(screen.getByRole("table")).queryByText("t11.test")).toBeNull()
+  })
+
+  // regression: #4179
+  it("keeps the rows of the last grouping, dimmed, until the rows of the next grouping load", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" ? [row("1080p", 1024, 0, { width: "total" })] : bucket === "day" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("a.test")
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+    fireEvent.mouseDown(screen.getByText("table.groupings.resolution"), { button: 0 })
+
+    await vi.waitFor(() => expect(requests.some(request => request.groupBy === "resolution" && request.bucket === "total")).toBe(true))
+    expect(within(screen.getByRole("table")).getByText("a.test")).toBeTruthy()
+    expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("true")
+
+    release()
+    await vi.waitFor(() => expect(cells(screen.getByRole("table"), "1080p")[1]).toBe("2 KiB"))
+    expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("false")
+  })
+
+  // regression: #4179
+  it("puts the live numbers of a Tracker group in its detail band, for a narrow table that has no column for them", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: "day" })] : []
+    liveGroups = () => [{ group: "a.test", torrents: 2, size: 2048, uploaded: 4096 }]
+    renderPage()
+    const table = await screen.findByRole("table")
+    await vi.waitFor(() => expect(cells(table, "a.test")[5]).toBe("4"))
+    fireEvent.click(within(table).getByText("a.test"))
+
+    const facts = (await screen.findByText("detail.share")).closest("dl")!
+    expect(within(facts).getByText("table.columns.torrents").nextElementSibling?.textContent).toBe("4")
+    expect(within(facts).getByText("table.columns.size").nextElementSibling?.textContent).toBe("4 KiB")
+    expect(within(facts).getByText("table.columns.seeded").nextElementSibling?.textContent).toBe("table.seededValue value=2.00")
+  })
+
+  // regression: #4179
+  it("puts the Buffer of a group in its detail band, for a phone row that has no room for it", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? [row("a.test", 3072, 1024, { start: yesterday.toISOString(), width: "day" })] : []
+    renderPage()
+    fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
+
+    const facts = (await screen.findByText("detail.share")).closest("dl")!
+    // Each of the two instances adds 2 KiB.
+    expect(within(facts).getByText("table.columns.buffer").nextElementSibling?.textContent).toBe("+4 KiB")
+  })
+
+  // regression: #4179
+  it("shows no rows of the last period while the rows of another period load", async () => {
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket }) => bucket === "day" || bucket === "hour" ? [row("a.test", 1024, 0, { start: yesterday.toISOString(), width: bucket })] : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("a.test")
+    hold = new Promise(resolve => { release = resolve })
+    fireEvent.mouseDown(screen.getByText("periods.7d"), { button: 0 })
+
+    await vi.waitFor(() => expect(screen.queryByRole("table")).toBeNull())
+    release()
+    await within(await screen.findByRole("table")).findByText("a.test")
+  })
+
+  // regression: #4179
+  it("leaves the year of this year out of the custom range on a phone", async () => {
+    stubPhone("upright")
+    const year = new Date().getFullYear()
+    renderPage()
+    fireEvent.click(await screen.findByRole("button", { name: "periods.custom" }))
+    fireEvent.change(screen.getByLabelText("customRange.from"), { target: { value: `${year}-01-01` } })
+    fireEvent.change(screen.getByLabelText("customRange.to"), { target: { value: `${year}-01-01` } })
+    fireEvent.click(screen.getByText("customRange.apply"))
+
+    const day = new Date(year, 0, 1).toLocaleDateString("en", { day: "numeric", month: "short" })
+    expect(await screen.findByText(`customRange.range from=${day} to=${day}`)).toBeTruthy()
+  })
+
+  // regression: #4179
+  it("loads the rows of a grouping once when the pointer reaches its tab, and shows them at once on a click", async () => {
+    const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
+    answer = ({ bucket, groupBy }) => groupBy === "category" && bucket === "total" ? [row("tv", 1024, 0, { width: "total" })] : []
+    const { queryClient } = renderPage()
+    // The chart asks for its rows once the status loaded.
+    await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
+    expect(preloads()).toHaveLength(0)
+    const category = screen.getByText("table.groupings.category")
+
+    fireEvent.pointerEnter(category)
+
+    // One query for each of the two instances, and none for the other groupings.
+    await vi.waitFor(() => expect(preloads().map(request => request.groupBy)).toEqual(["category", "category"]))
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    fireEvent.pointerLeave(category)
+    fireEvent.pointerEnter(category)
+    fireEvent.pointerEnter(screen.getByText("table.groupings.source"))
+
+    // A preload starts its request at once, so no running query means that each request reached the server.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"])
+
+    fireEvent.mouseDown(category, { button: 0 })
+
+    expect(cells(screen.getByRole("table"), "tv")[1]).toBe("2 KiB")
+    // The table reads its cached rows again in the background. A request that lands after the test would count in the next one.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
+  })
+
+  // regression: #4179
+  it("loads the rows of each other grouping when a phone opens the grouping picker, and shows them at once on a pick", async () => {
+    stubPhone("upright")
+    Element.prototype.scrollIntoView = vi.fn()
+    const preloads = () => new Set(requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent").map(request => request.groupBy))
+    answer = ({ bucket, groupBy }) => groupBy === "resolution" && bucket === "total" ? [row("1080p", 1024, 0, { width: "total" })] : []
+    const { queryClient } = renderPage()
+    await vi.waitFor(() => expect(requests.some(request => request.bucket === "day")).toBe(true))
+    expect(preloads().size).toBe(0)
+
+    const picker = screen.getByText("table.groupBy").parentElement!.querySelector("[role=combobox]")!
+    fireEvent.keyDown(picker, { key: "Enter" })
+
+    await vi.waitFor(() => expect(preloads()).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
+    // Ten preloads and the queries of the page take more than the 1 s default of waitFor.
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0), { timeout: 5000 })
+
+    fireEvent.click(await screen.findByRole("option", { name: "table.groupings.resolution" }))
+
+    expect(within(screen.getByRole("table")).getByText("1080p")).toBeTruthy()
+    await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
+  })
+
+  // regression: #4179
+  it("shows ten rows of the table on a phone, each row after Show all, and ten again after Show fewer", async () => {
+    stubPhone("upright")
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    answer = ({ bucket }) => bucket === "day" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: "day" })) : []
+    renderPage()
+    const table = await screen.findByRole("table")
+    await within(table).findByText("t10.test")
+    expect(within(table).queryByText("t11.test")).toBeNull()
+    expect(screen.getByText("table.shown shown=10 total=12")).toBeTruthy()
+
+    fireEvent.click(screen.getByText("table.showAll"))
+
+    expect(within(table).getByText("t12.test")).toBeTruthy()
+    expect(screen.queryByText("table.showAll")).toBeNull()
+
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    fireEvent.click(screen.getByText("table.showFewer"))
+
+    expect(within(table).queryByText("t11.test")).toBeNull()
+    expect(screen.getByText("table.shown shown=10 total=12")).toBeTruthy()
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+  })
+
+  // regression: #4179
+  it("keeps each row of the last grouping on a phone after Show all until the next grouping loads, then shows ten of it", async () => {
+    stubPhone("upright")
+    Element.prototype.scrollIntoView = vi.fn()
+    const now = new Date()
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    let release = () => {}
+    answer = ({ bucket, groupBy }) => groupBy === "resolution"
+      ? Array.from({ length: 12 }, (_, index) => row(`r${index + 1}`, (12 - index) * 1024, 0, { width: "total" }))
+      : bucket === "day" ? Array.from({ length: 12 }, (_, index) => row(`t${index + 1}.test`, (12 - index) * 1024, 0, { start: yesterday.toISOString(), width: "day" })) : []
+    renderPage()
+    await within(await screen.findByRole("table")).findByText("t10.test")
+    fireEvent.click(screen.getByText("table.showAll"))
+    hold = new Promise(resolve => { release = resolve })
+    holdBucket = "total"
+
+    fireEvent.keyDown(screen.getByText("table.groupBy").parentElement!.querySelector("[role=combobox]")!, { key: "Enter" })
+    fireEvent.click(await screen.findByRole("option", { name: "table.groupings.resolution" }))
+
+    await vi.waitFor(() => expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("true"))
+    expect(within(screen.getByRole("table")).getByText("t12.test")).toBeTruthy()
+
+    release()
+    await within(screen.getByRole("table")).findByText("r10")
+    expect(within(screen.getByRole("table")).queryByText("r11")).toBeNull()
   })
 })
 

@@ -60,6 +60,8 @@ const SYNCED_KEYS = new Set<string>([
   "qui-theme-visibility",
   "qui-group-copies",
   "qui-statistics-series-colors",
+  "qui-statistics-period",
+  "qui-dashboard-chart-view",
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",
@@ -140,6 +142,24 @@ function subscribeSyncReady(callback: () => void): () => void {
 /** True once the first server snapshot is in localStorage, so a read returns the server value. */
 export function useClientSettingsLoaded(): boolean {
   return useSyncExternalStore(subscribeSyncReady, () => syncReady)
+}
+
+// Set when the first read of the server failed. The push gate stays closed.
+let snapshotFailed = false
+
+/** Records that the first read of the server failed, so that pages stop waiting for it and use the local values. */
+export function markClientSettingsUnavailable(): void {
+  if (snapshotFailed) return
+  snapshotFailed = true
+  for (const listener of syncReadyListeners) listener()
+}
+
+/**
+ * True once the first read of the server ended, with or without success. Before that, a setting can show the default
+ * or an old local value that the read then replaces, so a pick of the value that looks selected is lost.
+ */
+export function useClientSettingsSettled(): boolean {
+  return useSyncExternalStore(subscribeSyncReady, () => syncReady || snapshotFailed)
 }
 
 // Durable outbox: the dirty key list mirrored to localStorage. The pagehide
@@ -322,6 +342,7 @@ export function _resetClientSettingsForTests(): void {
   flushTimer = null
   flushInFlight = false
   flushRequestedInFlight = false
+  snapshotFailed = false
   setSyncReady(false)
   loadPersistedPending()
 }

@@ -50,7 +50,6 @@ export function InstanceSettingsButton({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-11 sm:size-7"
                 onClick={handleClick}
                 aria-label={t("header.instanceSettings", { ns: "common" })}
               >

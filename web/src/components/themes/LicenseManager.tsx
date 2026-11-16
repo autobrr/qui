@@ -159,15 +159,15 @@ export function LicenseManager({
 
   if (isLoading) {
     return (
-      <Card className="gap-4 py-4">
-        <CardHeader className="px-4">
+      <Card>
+        <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
+            <Key className="size-4" />
             {t("themes.license.loadingTitle")}
           </CardTitle>
           <CardDescription>{t("themes.license.loadingDescription")}</CardDescription>
         </CardHeader>
-        <CardContent className="px-4">
+        <CardContent>
           <div className="animate-pulse space-y-2">
             <div className="h-4 bg-muted rounded w-3/4"></div>
             <div className="h-4 bg-muted rounded w-1/2"></div>
@@ -179,15 +179,15 @@ export function LicenseManager({
 
   return (
     <>
-      <Card className="gap-4 py-4">
-        <CardHeader className="px-4">
+      <Card>
+        <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
+            <div className="space-y-1.5">
               <CardTitle className="flex items-center gap-2">
-                <Key className="h-4 w-4 sm:h-5 sm:w-5" />
+                <Key className="size-4" />
                 {t("themes.license.managementTitle")}
               </CardTitle>
-              <CardDescription className="text-xs sm:text-sm mt-1">
+              <CardDescription>
                 {t("themes.license.managementDescription")}
               </CardDescription>
             </div>
@@ -205,7 +205,7 @@ export function LicenseManager({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="px-4">
+        <CardContent>
           {/* Premium License Status */}
           <div className="rounded-lg bg-muted/30 p-3">
             {/* Status header */}

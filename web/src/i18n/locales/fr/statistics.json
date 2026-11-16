@@ -117,9 +117,9 @@
   "allTimeNote": "Depuis le début inclut la base de départ : les octets que les torrents avaient quand qui les a enregistrés pour la première fois. Le graphique ne montre pas la base de départ, car elle n’a pas de date.",
   "table": {
     "title": "Par groupe",
-    "descriptionTracker": "Le transfert de la période pour chaque tracker. Cliquez sur une ligne pour ouvrir son détail.",
-    "descriptionCategory": "Le transfert de la période pour chaque catégorie, sous la catégorie que chaque torrent avait quand les octets ont été transférés. Cliquez sur une ligne pour ouvrir son détail.",
-    "descriptionRelease": "Le transfert de la période pour chaque valeur que qui lit dans les noms des torrents. Cliquez sur une ligne pour ouvrir son détail.",
+    "descriptionTracker": "Le transfert de la période pour chaque tracker. Sélectionnez une ligne pour ouvrir son détail.",
+    "descriptionCategory": "Le transfert de la période pour chaque catégorie, sous la catégorie que chaque torrent avait quand les octets ont été transférés. Sélectionnez une ligne pour ouvrir son détail.",
+    "descriptionRelease": "Le transfert de la période pour chaque valeur que qui lit dans les noms des torrents. Sélectionnez une ligne pour ouvrir son détail.",
     "groupBy": "Grouper par",
     "groupings": {
       "tracker": "Tracker",
@@ -141,6 +141,9 @@
     },
     "seededValue": "{{value}}x",
     "total": "Total",
+    "shown": "{{shown}} sur {{total}}",
+    "showAll": "Tout afficher",
+    "showFewer": "Afficher moins",
     "noCategory": "Aucune catégorie",
     "none": "Aucun",
     "liveError": "Impossible de charger les torrents qui sont dans qBittorrent maintenant : {{message}}",
@@ -167,7 +170,7 @@
   },
   "topTorrents": {
     "title": "Meilleurs torrents",
-    "description": "Les torrents avec le plus d'envoi sur la période. Cliquez sur une ligne pour voir son envoi par jour.",
+    "description": "Les torrents avec le plus d'envoi sur la période. Sélectionnez une ligne pour voir son envoi par jour.",
     "columns": {
       "torrent": "Torrent",
       "first24h": "Premières 24 heures"

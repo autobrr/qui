@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Nicht unterstützt für Score-Multiplikatoren"
       },
       "conditionsLabel": "Bedingungen (optional)",
+      "mixedActionConditions": "Jede Aktion in diesem Workflow hat ihre eigene Bedingung. qui verwendet jetzt eine Bedingung pro Workflow. Wenn du speicherst, erhält jede Aktion die Bedingung oben. Um die anderen zu behalten, erstelle zuerst einen Workflow für jede Bedingung.",
       "actions": {
         "title": "Aktion",
         "addAction": "Aktion hinzufügen",

@@ -5,6 +5,8 @@
 
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
+import { useTapTooltip } from "@/components/statistics/useTapTooltip"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useSeriesColors } from "@/hooks/useSeriesColors"
 import type { LibraryPoint } from "@/lib/statistics-library"
 import { byteTicks } from "@/lib/statistics"
@@ -28,6 +30,8 @@ export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { formatStart, formatTick } = useBucketFormat("day")
   const colors = useSeriesColors()
+  const tooltip = useTapTooltip()
+  const narrow = useIsPhone()
 
   const config = useMemo<ChartConfig>(() => {
     const labels = { totalSize: t("growth.totalSize"), uniqueSize: t("growth.uniqueSize") }
@@ -36,12 +40,13 @@ export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
   const ticks = useMemo(() => byteTicks(Math.max(0, ...points.map(point => point.totalSize ?? 0))), [points])
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[240px] w-full">
-      <AreaChart data={points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+    <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[240px] w-full">
+      <AreaChart data={points} margin={{ top: 8, right: narrow ? 8 : 16, bottom: 0, left: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value))} />
-        <YAxis tickLine={false} axisLine={false} width={72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
+        <YAxis tickLine={false} axisLine={false} width={narrow ? "auto" : 72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
         <ChartTooltip
+          {...tooltip.tooltip}
           cursor={{ stroke: "var(--border)" }}
           filterNull={false}
           isAnimationActive={false}

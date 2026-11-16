@@ -3805,6 +3805,56 @@ paths:
         '500':
           description: Failed to read tracker groups
 
+  /api/live-samples:
+    get:
+      tags:
+        - Instances
+      summary: Get the Live samples
+      description: >-
+        Returns the upload and download speed of each instance for the last 3 minutes, which the Live view of the
+        Dashboard chart shows. qui takes a sample after each successful sync of an instance and sends no extra request
+        to qBittorrent, so an instance that nothing syncs has samples about one minute apart, or none. qui keeps the
+        samples in memory only, and a restart clears them. An API key with an instance limit cannot use this route.
+      responses:
+        '200':
+          description: The time of the server and the samples of each instance, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [now, instances]
+                properties:
+                  now:
+                    type: string
+                    format: date-time
+                    description: The time of the server at the read. The window of 3 minutes ends at this time.
+                  instances:
+                    type: array
+                    items:
+                      type: object
+                      required: [instanceId, samples]
+                      properties:
+                        instanceId:
+                          type: integer
+                        samples:
+                          type: array
+                          items:
+                            type: object
+                            required: [time, up, down]
+                            properties:
+                              time:
+                                type: string
+                                format: date-time
+                                description: The time of the sync that gave the sample
+                              up:
+                                type: integer
+                                format: int64
+                                description: Upload speed in bytes per second
+                              down:
+                                type: integer
+                                format: int64
+                                description: Download speed in bytes per second
+
   /api/transfer-history/status:
     get:
       tags:

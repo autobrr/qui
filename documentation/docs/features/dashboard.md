@@ -20,9 +20,9 @@ The switch above the chart has two views:
 | View | Content |
 |------|---------|
 | **24 h** | The bytes that qui recorded in each hour of the last 24 hours. The data comes from the [transfer history](./statistics.md). |
-| **Live** | The speed of the last 3 minutes. qui keeps these samples in the browser while the page is open. The chart starts empty when you open the page, and again when you come back to a hidden tab. |
+| **Live** | The speed of the last 3 minutes. The qui server keeps these samples for 3 minutes. It takes a sample each time that it reads an instance, and it sends no extra request to qBittorrent. While the Dashboard is open in a browser, qui reads each instance about every 2 seconds. Thus, if you open the page in a new tab or on another device, the chart shows the last 3 minutes at once. If no browser had the Dashboard open, qui reads each instance about once a minute. Then the chart starts empty and fills from the right. If qui did not read an instance for more than 6 seconds, that time shows as an empty stretch. A restart of qui clears the samples. |
 
-The page opens on **24 h**. If no active instance recorded any transfer in the last 24 hours, the page opens on **Live**, and **24 h** is off. Its tooltip gives the reason. If qui cannot read the history, the chart shows the error in place of the numbers.
+The page opens on the view that you selected last. qui keeps this choice on the server, so it applies in each browser and on each device. If no active instance recorded any transfer in the last 24 hours, the page opens on **Live**, and **24 h** is off. qui keeps your choice for the time when history is available again. Its tooltip gives the reason. If qui cannot read the history, the chart shows the error in place of the numbers.
 
 The upload speed and the download speed of this moment are the two large numbers above and below the chart. Below each number is a caption:
 
@@ -68,6 +68,8 @@ This list shows each item that needs an action:
 | An instance with a disk that is almost full | Red |
 | An instance that is firewalled | Yellow |
 | A count of torrents that are unregistered, have a tracker that is down, have a tracker error, or have an error | The color of the problem |
+
+If no item needs an action, the page does not show the list.
 
 A disk is almost full when the free space is less than 5% of the free space plus the Unique size of the instance. A System notice is not in this list. qui shows a System notice in the sidebar, the header, and the mobile footer.
 

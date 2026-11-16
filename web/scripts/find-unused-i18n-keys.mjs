@@ -4,7 +4,10 @@ import ts from "typescript"
 
 import { walkFiles } from "./find-hardcoded-i18n-literals.mjs"
 
-const webRoot = path.resolve(import.meta.dirname, "..")
+// With --preserve-symlinks-main, import.meta.filename can be a symlink outside the repository, so the root comes from
+// the real path.
+const scriptPath = fs.realpathSync(import.meta.filename)
+const webRoot = path.resolve(path.dirname(scriptPath), "..")
 const srcRoot = path.join(webRoot, "src")
 const englishLocaleRoot = path.join(srcRoot, "i18n", "locales", "en")
 
@@ -226,7 +229,9 @@ function loadEnglishBundles() {
   return bundles
 }
 
-if (process.argv[1] === import.meta.filename) {
+// A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
+// names no file.
+if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const localeKeys = collectLocaleKeys(loadEnglishBundles())
   const references = mergeReferences(
     walkFiles(srcRoot).map((file) => collectKeyReferencesFromSource(

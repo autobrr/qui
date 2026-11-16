@@ -1173,6 +1173,7 @@
         "notSupportedForScoreMultiplier": "Not supported for score multipliers"
       },
       "conditionsLabel": "Conditions (optional)",
+      "mixedActionConditions": "Each action in this workflow has its own condition. qui now uses one condition per workflow. If you save, every action gets the condition above. To keep the others, make one workflow for each condition first.",
       "actions": {
         "title": "Action",
         "addAction": "Add action",

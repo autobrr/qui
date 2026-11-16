@@ -121,7 +121,7 @@ describe("Dashboard header", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Turn on incognito mode" })[0])
     expect(readRaw("qui-incognito-mode")).toBe("true")
-    expect(screen.getAllByRole("button", { name: "Turn off incognito mode" }).map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "true"])
+    expect(screen.getAllByRole("button", { name: "Turn off incognito mode" }).map(button => button.getAttribute("aria-pressed"))).toEqual(["true"])
 
     fireEvent.click(screen.getAllByRole("button", { name: "Turn off incognito mode" })[0])
     expect(readRaw("qui-incognito-mode")).toBe("false")

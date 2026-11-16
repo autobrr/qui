@@ -102,7 +102,6 @@
   },
   "attention": {
     "title": "Needs attention",
-    "none": "Nothing. Each instance answers, and no torrent reports a problem.",
     "offline": "{{name}} is offline",
     "lowDisk": "{{name}}: {{free}} free",
     "firewalled": "{{name}} is firewalled"
