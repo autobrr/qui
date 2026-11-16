@@ -1,9 +1,11 @@
 // Replays frozen discussions through the triage playbook and checks each outcome.
 //
-// Usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--keep]
+// Usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--claude <path>] [--keep]
 //
 // <evals-dir> holds cases/*.json and corpus/ (from snapshot.mjs). Each run uses
-// the Claude Code CLI on the signed-in subscription. The playbook, AGENTS.md,
+// the Claude Code CLI on the signed-in subscription: --claude, or claude on
+// PATH. Its Bash checks change between versions, so give it the version that
+// the pinned Agent SDK in .github/scripts/triage bundles. The playbook, AGENTS.md,
 // the triage scripts and the prompt come from this checkout, or from --ref.
 // Results go to <evals-dir>/results/<time>/.
 import { execFileSync, spawn } from "node:child_process";
@@ -26,11 +28,12 @@ const { values: opts, positionals } = parseArgs({
     ref: { type: "string" },
     runs: { type: "string", default: "2" },
     jobs: { type: "string", default: "2" },
+    claude: { type: "string" },
     keep: { type: "boolean" },
   },
 });
 if (positionals.length !== 1) {
-  console.error("usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--keep]");
+  console.error("usage: node run.mjs <evals-dir> [--case <id>]... [--ref <git-ref>] [--runs 2] [--jobs 2] [--claude <path>] [--keep]");
   process.exit(2);
 }
 const evalsDir = resolve(positionals[0]);
@@ -96,7 +99,8 @@ function buildTree(c, dir) {
 
 // --- one Claude Code run ---
 
-const claudeBin = execFileSync("sh", ["-c", "command -v claude"], { encoding: "utf8" }).trim();
+const claudeBin = opts.claude ? resolve(opts.claude) : execFileSync("sh", ["-c", "command -v claude"], { encoding: "utf8" }).trim();
+const claudeVersion = execFileSync(claudeBin, ["--version"], { encoding: "utf8" }).trim();
 const ALLOWED = [
   "Read",
   "Grep",
@@ -263,7 +267,7 @@ const table = [
   "| --- | --- | --- | --- |",
   ...results.map((s) => `| ${s.id} | ${s.source} | ${s.verdict} | ${s.runs.map(fmtRun).join("; ")} |`),
 ].join("\n");
-writeFileSync(join(resultsDir, "summary.md"), `Playbook: ${opts.ref ?? "working tree"}\n\n${table}\n`);
+writeFileSync(join(resultsDir, "summary.md"), `Playbook: ${opts.ref ?? "working tree"}\nClaude Code: ${claudeVersion}\n\n${table}\n`);
 writeFileSync(join(resultsDir, "summary.json"), JSON.stringify(results, null, 2));
-console.log(`\n${table}\n\nresults: ${resultsDir}`);
+console.log(`\nClaude Code: ${claudeVersion}\n\n${table}\n\nresults: ${resultsDir}`);
 process.exitCode = results.every((s) => s.verdict === "pass") ? 0 : 1;
