@@ -475,6 +475,45 @@ describe("large batches", () => {
     expect(server["qui-test-bool"]).toBe("2")
   })
 
+  // regression: #4206
+  it("sends the newer value again when the page-hide PUT commits after a newer PUT but answers first", async () => {
+    const server: Record<string, string> = {}
+    const puts: { commit: () => void; answer: () => void }[] = []
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((resolve) => {
+      puts.push({
+        commit: () => Object.assign(server, JSON.parse(String(init.body))),
+        answer: () => resolve({ ok: true, status: 200 }),
+      })
+    }))
+    const settle = () => vi.advanceTimersByTimeAsync(0)
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "1")
+    await vi.advanceTimersByTimeAsync(1_000)
+    window.dispatchEvent(new Event("pagehide"))
+    writeRaw("qui-test-bool", "2")
+    expect(puts).toHaveLength(2)
+
+    puts[0].commit()
+    puts[0].answer()
+    await settle()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(puts).toHaveLength(3)
+    puts[2].commit()
+    puts[1].commit()
+    puts[1].answer()
+    await settle()
+    puts[2].answer()
+    await settle()
+    await vi.advanceTimersByTimeAsync(1_000)
+    for (let i = 3; i < puts.length; i++) {
+      puts[i].commit()
+      puts[i].answer()
+      await settle()
+    }
+
+    expect(server["qui-test-bool"]).toBe("2")
+  })
+
   it.each([
     ["pagehide", () => window.dispatchEvent(new Event("pagehide"))],
     ["a hidden tab", () => {

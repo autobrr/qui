@@ -230,6 +230,19 @@ export function writeRaw(key: string, raw: string): void {
 // --- push queue ---
 
 const pending = new Map<string, string>()
+// Grows each time a key is queued. A PUT drops a key only when nothing queued it again after the PUT read it.
+const queuedGeneration = new Map<string, number>()
+let generation = 0
+
+function queue(key: string, raw: string): void {
+  pending.set(key, raw)
+  queuedGeneration.set(key, ++generation)
+}
+
+function unqueue(key: string): void {
+  pending.delete(key)
+  queuedGeneration.delete(key)
+}
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 // Opens after the first successful GET, so nothing fires while logged out.
 let syncReady = false
@@ -296,7 +309,7 @@ function loadPersistedPending(): void {
       // A key gone from localStorage has no value to replay; "" would push
       // the cleared sentinel, so skip it.
       const value = readRaw(key)
-      if (value !== null) pending.set(key, value)
+      if (value !== null) queue(key, value)
     }
   } catch {
     // Corrupt outbox: drop it, the values themselves are still in localStorage.
@@ -306,7 +319,7 @@ function loadPersistedPending(): void {
 loadPersistedPending()
 
 function enqueuePush(key: string, raw: string): void {
-  pending.set(key, raw)
+  queue(key, raw)
   persistPending()
   scheduleFlush()
 }
@@ -360,6 +373,7 @@ async function putPending(keepalive: boolean): Promise<void> {
   if (keepalive) keepaliveInFlight = true
   putsInFlight++
   try {
+    const sentGeneration = new Map(queuedGeneration)
     // One PUT at a time: Chrome counts every keepalive body in flight against the same 64 KiB.
     for (const chunk of splitIntoBodies([...pending])) {
       // Plain fetch instead of the api client: this module must stay import-light (i18n boots on it).
@@ -381,12 +395,12 @@ async function putPending(keepalive: boolean): Promise<void> {
       for (const [key, raw] of chunk) {
         const latest = readRaw(key)
         if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
-          pending.set(key, latest)
+          queue(key, latest)
           flushRequestedInFlight = true
-        } else if (pending.get(key) === raw) {
+        } else if (pending.get(key) === raw && queuedGeneration.get(key) === sentGeneration.get(key)) {
           // The other PUT can land an older value after this one, so the key stays queued and goes out once more.
           if (putsInFlight > 1) flushRequestedInFlight = true
-          else pending.delete(key)
+          else unqueue(key)
         }
       }
       persistPending()
@@ -864,7 +878,7 @@ function dropPendingOfProfile(profileId: string): void {
   let dropped = false
   for (const key of pending.keys()) {
     if (!isKeyOfProfile(key, profileId)) continue
-    pending.delete(key)
+    unqueue(key)
     dropped = true
   }
   if (dropped) persistPending()
@@ -915,7 +929,7 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
   for (const key of storedKeys()) {
     if (!isSyncedKey(key) || key in serverSettings || pending.has(key) || isValueOfDeletedProfile(key)) continue
     const raw = readRaw(key)
-    if (raw !== null) pending.set(key, raw)
+    if (raw !== null) queue(key, raw)
   }
   setSyncReady(true)
   scheduleFlush()
@@ -925,6 +939,7 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
 // boot: in-memory state resets, then the persisted outbox loads back in.
 export function _resetClientSettingsForTests(): void {
   pending.clear()
+  queuedGeneration.clear()
   if (flushTimer !== null) clearTimeout(flushTimer)
   flushTimer = null
   flushInFlight = false
