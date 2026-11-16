@@ -63,6 +63,7 @@ import {
   isAllInstancesScope,
   normalizeUnifiedInstanceIds
 } from "@/lib/instances"
+import { modShortcut } from "@/lib/keyboard"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { hasSelection } from "@/lib/torrent-selection"
 import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
@@ -236,7 +237,8 @@ export function Header({
     setSearchValue(prev => (prev.trim() === routeQuery ? prev : routeQuery))
   }, [selectedInstanceId, routeSearch?.q])
 
-  // Update URL search param after debounce
+  // Update URL search param after debounce. Only new text writes the URL: on a
+  // change of page, the debounced text is older than the q of the new URL.
   useEffect(() => {
     if (!shouldShowInstanceControls) return
     const trimmedSearch = debouncedSearch.trim()
@@ -245,7 +247,7 @@ export function Header({
     else delete next.q
     navigateWithSearch({ navigate, search: next, replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, shouldShowInstanceControls])
+  }, [debouncedSearch])
 
   const isGlobSearch = !!searchValue && /[*?]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
@@ -263,21 +265,16 @@ export function Header({
     setFilterSidebarCollapsed((prev) => !prev)
   }, [setFilterSidebarCollapsed])
 
-  // Detect platform for appropriate key display
-  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
-  const shortcutKey = isMac ? "⌘K" : "Ctrl+K"
-
-  // Global keyboard shortcut to focus search
+  // Many layouts type "/" with Shift, for example Shift+7 on a Nordic or a German keyboard.
   useHotkeys(
-    "meta+k, ctrl+k",
-    (event) => {
-      event.preventDefault()
-      searchInputRef.current?.focus()
-    },
+    ["/", "shift+/"],
+    () => searchInputRef.current?.focus(),
     {
+      useKey: true,
       preventDefault: true,
-      enableOnFormTags: ["input", "textarea", "select"],
       enabled: shouldShowInstanceControls,
+      // A narrow window hides the search field, and the key then stays with the browser.
+      ignoreEventWhen: event => !searchInputRef.current?.offsetParent || (event.target instanceof Element && event.target.closest("[role=\"dialog\"]") !== null),
     },
     [shouldShowInstanceControls]
   )
@@ -678,7 +675,8 @@ export function Header({
                         <li>• {t("header.smartSearchFields")}</li>
                         <li>• {t("header.smartSearchEnter")}</li>
                         <li>• {t("header.smartSearchAuto")}</li>
-                        <li>• {t("header.smartSearchShortcut", { shortcutKey })}</li>
+                        <li>• {t("header.smartSearchShortcut", { shortcutKey: "/" })}</li>
+                        <li>• {t("header.smartSearchPalette", { shortcutKey: modShortcut("K") })}</li>
                       </ul>
                     </div>
                   </TooltipContent>

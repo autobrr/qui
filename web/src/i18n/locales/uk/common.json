@@ -59,6 +59,7 @@
     "smartSearchEnter": "Натисніть Enter для миттєвого пошуку",
     "smartSearchAuto": "Автопошук після паузи 500 мс",
     "smartSearchShortcut": "Натисніть {{shortcutKey}}, щоб перейти до пошуку",
+    "smartSearchPalette": "Натисніть {{shortcutKey}}, щоб відкрити палітру команд",
     "torrentCreationTasksTitle": "Завдання створення торента",
     "updateAvailable": "Доступне оновлення",
     "updateVersion": "Версія {{version}}",
@@ -76,6 +77,35 @@
     "collapseScope": "Згорнути об'єднану область",
     "expandScope": "Розгорнути об'єднану область",
     "allActive": "Всі активні ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Палітра команд",
+    "placeholder": "Пошук сторінок, налаштувань і торентів...",
+    "placeholderIn": "{{name}}: пошук...",
+    "groups": {
+      "pages": "Сторінки",
+      "actions": "Дії"
+    },
+    "current": "Зараз відкрито",
+    "statisticsNote": "Історія вивантаження і завантаження ваших екземплярів",
+    "searchTorrentsFor": "Шукати торенти: \"{{query}}\"",
+    "torrentMatches_one": "Знайдено {{count}} торент",
+    "torrentMatches_few": "Знайдено {{count}} торенти",
+    "torrentMatches_many": "Знайдено {{count}} торентів",
+    "torrentMatches_other": "Знайдено {{count}} торента",
+    "noTorrentMatches": "Торентів не знайдено",
+    "searching": "Пошук...",
+    "searchFailed": "Не вдалося виконати пошук торентів",
+    "listFiltersApply": "Застосовано фільтри списку",
+    "noMatchIn": "{{name}}: нічого не знайдено",
+    "moreOf": "{{name}}: більше",
+    "hints": {
+      "navigate": "Навігація",
+      "open": "Відкрити",
+      "more": "Більше",
+      "searchTorrents": "Пошук торентів",
+      "back": "Назад"
+    }
   },
   "mobileNav": {
     "dashboard": "Панель керування",

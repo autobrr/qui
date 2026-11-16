@@ -1583,19 +1583,11 @@
     "incognito": "Anonymní",
     "add": "Přidat",
     "tasks": "Úlohy",
-    "done": "Dokončeno",
     "actionsForCount": "Akce pro {{count}} torrent(y)",
     "actionsForAll": "Akce pro všechny {{count}} torrent(y)",
     "selection": {
       "selectedCount": "{{count}} vybráno",
       "allSelectedCount": "Všechny {{count}} vybrány(o)"
-    },
-    "searchModal": {
-      "title": "Hledat torrenty",
-      "description": "Hledat podle názvu, kategorie nebo tagů. Podporuje globální vzory jako *.mkv nebo *1080p*.",
-      "placeholder": "Hledat torrenty...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Automatické hledání po zadání"
     },
     "ratio": "Poměr:",
     "added": "Přidáno {{time}}"

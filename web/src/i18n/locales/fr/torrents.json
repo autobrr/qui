@@ -1511,19 +1511,11 @@
     "incognito": "Incognito",
     "add": "Ajouter",
     "tasks": "Tâches",
-    "done": "Terminé",
     "actionsForCount": "Actions pour {{count}} torrent(s)",
     "actionsForAll": "Actions pour tous les {{count}} torrent(s)",
     "selection": {
       "selectedCount": "{{count}} sélectionné(s)",
       "allSelectedCount": "Tous les {{count}} sélectionnés"
-    },
-    "searchModal": {
-      "title": "Rechercher des torrents",
-      "description": "Recherche par nom, catégorie, ou tags. Supporte les modèles globaux comme *.mkv ou *1080p*.",
-      "placeholder": "Chercher des torrents...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Recherche automatique pendant la frappe"
     },
     "ratio": "Ratio :",
     "added": "Ajouté {{time}}"

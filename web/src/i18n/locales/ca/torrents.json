@@ -667,19 +667,11 @@
     "incognito": "Incògnit",
     "add": "Afegeix",
     "tasks": "Tasques",
-    "done": "Fet",
     "actionsForCount": "Accions per a {{count}} torrent(s)",
     "actionsForAll": "Accions per als {{count}} torrent(s)",
     "selection": {
       "selectedCount": "{{count}} seleccionats",
       "allSelectedCount": "Tots {{count}} seleccionats"
-    },
-    "searchModal": {
-      "title": "Cerca torrents",
-      "description": "Cerca per nom, categoria o etiquetes. Admet patrons glob com ara *.mkv o *1080p*.",
-      "placeholder": "Cerca torrents...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Cerca automàticament mentre escrius"
     },
     "ratio": "Ràtio:",
     "added": "Afegit {{time}}"

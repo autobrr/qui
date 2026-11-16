@@ -59,6 +59,7 @@
     "smartSearchEnter": "Prem Retorn per cercar a l'instant",
     "smartSearchAuto": "Cerca automàticament després d'una pausa de 500 ms",
     "smartSearchShortcut": "Prem {{shortcutKey}} per anar a la cerca",
+    "smartSearchPalette": "Prem {{shortcutKey}} per obrir la paleta d'ordres",
     "torrentCreationTasksTitle": "Tasques de creació de torrents",
     "updateAvailable": "Actualització disponible",
     "updateVersion": "Versió {{version}}",
@@ -76,6 +77,33 @@
     "collapseScope": "Redueix l'àmbit unificat",
     "expandScope": "Amplia l'àmbit unificat",
     "allActive": "Totes les actives ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Paleta d'ordres",
+    "placeholder": "Cerca pàgines, configuració i torrents...",
+    "placeholderIn": "Cerca a {{name}}...",
+    "groups": {
+      "pages": "Pàgines",
+      "actions": "Accions"
+    },
+    "current": "Actual",
+    "statisticsNote": "Historial de pujada i baixada de les teves instàncies",
+    "searchTorrentsFor": "Cerca \"{{query}}\" als torrents",
+    "torrentMatches_one": "{{count}} torrent coincideix",
+    "torrentMatches_other": "{{count}} torrents coincideixen",
+    "noTorrentMatches": "Cap torrent coincideix",
+    "searching": "S'està cercant...",
+    "searchFailed": "La cerca de torrents ha fallat",
+    "listFiltersApply": "S'apliquen els filtres de la llista",
+    "noMatchIn": "No hi ha cap coincidència a {{name}}",
+    "moreOf": "Més opcions de {{name}}",
+    "hints": {
+      "navigate": "Navega",
+      "open": "Obre",
+      "more": "Més",
+      "searchTorrents": "Cerca torrents",
+      "back": "Enrere"
+    }
   },
   "mobileNav": {
     "dashboard": "Tauler",

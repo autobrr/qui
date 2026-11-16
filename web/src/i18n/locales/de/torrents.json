@@ -1511,19 +1511,11 @@
     "incognito": "Incognito",
     "add": "Hinzufügen",
     "tasks": "Aufgaben",
-    "done": "Fertig",
     "actionsForCount": "Aktionen für {{count}} Torrent(s)",
     "actionsForAll": "Aktionen für alle {{count}} Torrent(s)",
     "selection": {
       "selectedCount": "{{count}} ausgewählt",
       "allSelectedCount": "Alle {{count}} ausgewählt"
-    },
-    "searchModal": {
-      "title": "Torrents durchsuchen",
-      "description": "Suche nach Name, Kategorie oder Tags. Unterstützt Glob-Muster wie *.mkv oder *1080p*.",
-      "placeholder": "Torrents durchsuchen...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Sucht automatisch nach der Eingabe"
     },
     "ratio": "Ratio:",
     "added": "Hinzugefügt {{time}}"

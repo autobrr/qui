@@ -1663,19 +1663,11 @@
     "incognito": "Інкогніто",
     "add": "Додати",
     "tasks": "Завдання",
-    "done": "Готово",
     "actionsForCount": "Дії для {{count}} торент(ів)",
     "actionsForAll": "Дії для всіх {{count}} торент(ів)",
     "selection": {
       "selectedCount": "Вибрано {{count}}",
       "allSelectedCount": "Вибрано усі {{count}}"
-    },
-    "searchModal": {
-      "title": "Пошук торентів",
-      "description": "Пошук за назвою, категорією або тегами. Підтримує глобальні шаблони, як-от *.mkv або *1080p*.",
-      "placeholder": "Пошук торентів...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Автоматичний пошук після введення"
     },
     "ratio": "Співвідношення:",
     "added": "Додано {{time}}"

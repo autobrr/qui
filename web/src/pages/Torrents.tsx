@@ -150,7 +150,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     }))
   }, [getTorrentInstanceId, isAllInstances, openMobileDetails])
 
-  // Handle deep link to a specific torrent (from cross-seed navigation)
+  // Handle deep link to a specific torrent (from cross-seed navigation or the command palette)
   useEffect(() => {
     if (!search.torrent) return
     // Already selected (mobile keeps the hash in the URL); nothing to fetch

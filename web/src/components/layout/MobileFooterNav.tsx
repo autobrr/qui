@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { openCommandPalette } from "@/components/command-palette/open"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
 import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
@@ -273,7 +274,7 @@ export function MobileFooterNav() {
         {!isDemo && <Link
           to="/dashboard"
           className={cn(
-            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
             location.pathname === "/dashboard" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -281,19 +282,29 @@ export function MobileFooterNav() {
             "h-5 w-5",
             location.pathname === "/dashboard" && "text-primary"
           )} />
-          <span className="truncate">{t("mobileNav.dashboard")}</span>
+          <span className="max-w-full truncate">{t("mobileNav.dashboard")}</span>
         </Link>}
 
         {!isDemo && <Link
           to="/statistics"
           className={cn(
-            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
             location.pathname === "/statistics" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
           <ChartColumn className="h-5 w-5" />
-          <span className="truncate">{t("mobileNav.statistics")}</span>
+          <span className="max-w-full truncate">{t("mobileNav.statistics")}</span>
         </Link>}
+
+        {/* Command palette. A phone shows no search field for the torrent list, so the palette opens with the search of the list. */}
+        <button
+          type="button"
+          onClick={() => openCommandPalette(isOnInstancePage ? String(routeSearch?.q ?? "") : "")}
+          className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground hover:cursor-pointer"
+        >
+          <SearchIcon className="h-5 w-5" />
+          <span className="max-w-full truncate">{t("actions.search")}</span>
+        </button>
 
         {/* Clients access */}
         {hasClientScopeEntry ? (
@@ -302,7 +313,7 @@ export function MobileFooterNav() {
               <button
                 type="button"
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                  "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
                   isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -319,7 +330,7 @@ export function MobileFooterNav() {
                   </Badge>
                 </div>
                 <span
-                  className="block max-w-[7.5rem] truncate text-center"
+                  className="block max-w-full truncate text-center"
                   title={currentInstanceLabel ?? t("mobileNav.clients")}
                 >
                   {currentInstanceLabel ?? t("mobileNav.clients")}
@@ -413,21 +424,21 @@ export function MobileFooterNav() {
           </DropdownMenu>
         ) : isLoadingInstances ? (
           <button
-            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
             type="button"
             disabled
           >
             <HardDrive className="h-5 w-5 animate-pulse" />
-            <span className="block max-w-[7.5rem] truncate text-center text-xs">{t("mobileNav.loading")}</span>
+            <span className="block max-w-full truncate text-center text-xs">{t("mobileNav.loading")}</span>
           </button>
         ) : (
           <button
-            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
             type="button"
             disabled
           >
             <HardDrive className="h-5 w-5" />
-            <span className="block max-w-[7.5rem] truncate text-center">{t("mobileNav.noActiveClients")}</span>
+            <span className="block max-w-full truncate text-center">{t("mobileNav.noActiveClients")}</span>
           </button>
         )}
 
@@ -436,7 +447,7 @@ export function MobileFooterNav() {
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
-                "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
                 location.pathname === "/settings" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -457,7 +468,7 @@ export function MobileFooterNav() {
                   </Badge>
                 )}
               </div>
-              <span className="truncate">{t("mobileNav.settings")}</span>
+              <span className="max-w-full truncate">{t("mobileNav.settings")}</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className={cn("mb-2", systemNotices.length > 0 ? "w-72" : "w-56")}>
