@@ -102,3 +102,16 @@ test("each built-in theme keeps its colors inside sRGB", () => {
     assert.deepEqual(checkTheme(fs.readFileSync(file, "utf8")).outsideSrgb, KNOWN_OUTSIDE_SRGB[name] ?? [], name)
   }
 })
+
+// regression: #4230
+test("each community theme keeps its ratio colors readable on the plain and the striped row", () => {
+  const files = builtInThemeFiles().filter(file => path.basename(path.dirname(file)) === "premium")
+  assert.ok(files.length > 0)
+
+  for (const file of files) {
+    const faint = checkTheme(fs.readFileSync(file, "utf8")).pairs
+      .filter(pair => !pair.ok && /^chart-\d text on (row|striped row)$/.test(pair.label))
+      .map(pair => `${pair.mode} ${pair.label}`)
+    assert.deepEqual(faint, [], path.basename(file))
+  }
+})
