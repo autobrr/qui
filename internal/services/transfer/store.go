@@ -428,6 +428,25 @@ func (s *Store) HelpersOf(ctx context.Context, owner OwnerKind, ownerID int64) (
 	return helpers, rows.Err()
 }
 
+// RemoveHelpers deletes the rows of the helper torrents of one Transfer or
+// Share. Call it only when the helper torrents are gone from the clients:
+// from then on, qui protects them no more.
+func (s *Store) RemoveHelpers(ctx context.Context, owner OwnerKind, ownerID int64) error {
+	helpers, err := s.HelpersOf(ctx, owner, ownerID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM helper_torrents WHERE owner_kind = ? AND owner_id = ?`, string(owner), ownerID); err != nil {
+		return fmt.Errorf("remove helper torrents: %w", err)
+	}
+	s.mu.Lock()
+	for _, h := range helpers {
+		delete(s.helpers, torrentKey{h.InstanceID, strings.ToLower(h.Hash)})
+	}
+	s.mu.Unlock()
+	return nil
+}
+
 // IsClaimed reports whether a running Transfer holds the torrent.
 func (s *Store) IsClaimed(instanceID int, hash string) bool {
 	s.mu.RLock()

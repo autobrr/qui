@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,6 +21,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -65,6 +67,12 @@ type Torrent struct {
 	Popularity float64
 	Private    bool
 	NoMetadata bool
+	// AddedOn is the Unix time at which qBittorrent added the torrent.
+	AddedOn int64
+	// Uploaded is the bytes that the torrent sent, and Peers its connected
+	// peers, which sync/torrentPeers reports.
+	Uploaded int64
+	Peers    []qbt.TorrentPeer
 
 	// movingFrom is where the content still sits during a slow move.
 	movingFrom *Torrent
@@ -257,6 +265,14 @@ func (s *Server) DeleteElsewhere(hash string) {
 		s.remove(t)
 		delete(s.torrents, hash)
 	}
+}
+
+// DeleteElsewhereKeepFiles removes a torrent as another client does, and
+// keeps its files.
+func (s *Server) DeleteElsewhereKeepFiles(hash string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.torrents, hash)
 }
 
 // Writes counts the write requests qBittorrent received on an endpoint.
@@ -591,7 +607,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
 				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
-				"tags": strings.Join(t.Tags, ", ")}
+				"tags": strings.Join(t.Tags, ", "), "added_on": t.AddedOn, "uploaded": t.Uploaded}
 			if state != "" {
 				row["state"] = state
 			}
@@ -613,6 +629,17 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
 			"server_state": map[string]any{"connection_status": "connected",
 				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6}})
+	case "sync/torrentPeers":
+		t, ok := s.torrents[strings.ToLower(param("hash"))]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		peers := map[string]qbt.TorrentPeer{}
+		for _, p := range t.Peers {
+			peers[net.JoinHostPort(p.IP, strconv.Itoa(p.Port))] = p
+		}
+		writeJSON(w, map[string]any{"rid": 1, "full_update": true, "peers": peers})
 	case "torrents/files":
 		if t, ok := s.torrents[strings.ToLower(param("hash"))]; ok {
 			writeJSON(w, s.apiFiles(t))

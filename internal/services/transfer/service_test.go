@@ -457,10 +457,6 @@ func TestTransferRefuses(t *testing.T) {
 			r.dst.Seed(s.data, r.dstDir)
 			return r.request(s)
 		}, reason: "Already on the target: homelab has this torrent."},
-		{name: "a Shared-file group", setup: func(r *rig, s show) transfer.Request {
-			r.seedEpisode(s)
-			return r.request(s)
-		}, reason: "Other torrents on seedbox share the files of this torrent."},
 		{name: "a helper torrent", setup: func(r *rig, s show) transfer.Request {
 			require.NoError(t, r.store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: r.source.ID, Hash: s.hash,
 				Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1}))

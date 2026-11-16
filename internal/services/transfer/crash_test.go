@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,6 +52,8 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		unconfirmed bool
 		damage      bool
 		headStart   bool
+		// group adds a torrent of the first episode, which shares its file.
+		group bool
 		// killAtAdd kills qui at the nth add of a torrent to the target.
 		killAtAdd int
 		// killAtRemoval kills qui once the source removed the torrent, before
@@ -75,6 +78,9 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		{killAtAdd: 1, headStart: true, want: "done"},
 		{at: "after:copy the missing files", headStart: true, want: "done"},
 		{at: "after:clean up", unconfirmed: true, damage: true, want: "cleaned up"},
+		{at: "after:added", group: true, want: "done"},
+		// The adds are the check of the episode, the season, and the episode.
+		{killAtAdd: 3, group: true, want: "ownership unknown"},
 	} {
 		name := tc.at
 		switch {
@@ -89,10 +95,17 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		if tc.headStart {
 			name += ", head start"
 		}
+		if tc.group {
+			name += ", group"
+		}
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t)
 			s := newShow(t, showName)
 			r.seed(s)
+			members := []string{s.hash}
+			if tc.group {
+				members = append(members, r.seedEpisode(s))
+			}
 			srcLeft := map[string]string{}
 			if tc.headStart {
 				write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode1: s.files[episode1]})
@@ -105,9 +118,11 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 
 			child := make(chan *os.Process, 1)
 			var added []string
+			killed := ""
 			r.dst.OnAdd = func(hash string) {
 				added = append(added, hash)
 				if len(added) == tc.killAtAdd {
+					killed = hash
 					require.NoError(t, (<-child).Kill())
 				}
 			}
@@ -126,10 +141,10 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 			record := r.get(id)
 			require.False(t, record.FinishedAt.IsZero(), "the Transfer ended after the restart")
 			require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
-			torrents := 0
+			adds := map[string]int{}
 			for _, hash := range added {
-				if hash == s.hash {
-					torrents++
+				if slices.Contains(members, hash) {
+					adds[hash]++
 				} else {
 					require.False(t, r.dst.Has(hash), "qui removes each helper torrent")
 				}
@@ -137,17 +152,22 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 			switch tc.want {
 			case "done":
 				require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-				require.Equal(t, 1, torrents, "qui adds the torrent once")
-				require.True(t, r.dst.Has(s.hash))
+				for _, hash := range members {
+					require.Equal(t, 1, adds[hash], "qui adds each torrent once")
+					require.True(t, r.dst.Has(hash))
+				}
 				require.Equal(t, contents(s, showName), tree(t, r.dstDir))
-				require.False(t, r.src.Has(s.hash))
+				for _, hash := range members {
+					require.False(t, r.src.Has(hash))
+				}
 				require.Equal(t, 1, r.src.Writes("torrents/delete"))
 				require.Equal(t, srcLeft, tree(t, r.srcDir))
 			case "ownership unknown":
 				require.Equal(t, transfer.StateFailed, record.State)
 				require.Contains(t, record.FailureReason, "Ownership unknown")
-				require.Equal(t, 1, torrents)
-				require.True(t, r.dst.Has(s.hash), "qui keeps a torrent that it may not have added")
+				for _, hash := range members {
+					require.Equal(t, hash == killed, r.dst.Has(hash), "qui keeps the torrent that it may not have added, and removes the ones it added")
+				}
 				require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 			case "cleaned up":
 				require.Equal(t, transfer.StateFailed, record.State)
@@ -157,8 +177,10 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 				require.False(t, r.dst.Has(s.hash))
 			}
 			if tc.want != "done" {
-				require.True(t, r.src.Has(s.hash))
-				require.False(t, r.src.Stopped(s.hash))
+				for _, hash := range members {
+					require.True(t, r.src.Has(hash))
+					require.False(t, r.src.Stopped(hash))
+				}
 				require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 			}
 

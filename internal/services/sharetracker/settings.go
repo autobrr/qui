@@ -29,7 +29,9 @@ type Settings struct {
 	TrustedProxies []string `json:"trustedProxies"`
 }
 
-func (s Settings) validate() error {
+// Validate returns ErrInvalidSettings for settings that the tracker does not
+// take.
+func (s Settings) Validate() error {
 	if s.Port < 0 || s.Port > 65535 {
 		return fmt.Errorf("%w: the port is not between 0 and 65535", ErrInvalidSettings)
 	}
@@ -94,7 +96,7 @@ func (s *SettingsStore) Settings(ctx context.Context) (Settings, error) {
 
 // SaveSettings saves settings, or returns ErrInvalidSettings.
 func (s *SettingsStore) SaveSettings(ctx context.Context, settings Settings) error {
-	if err := settings.validate(); err != nil {
+	if err := settings.Validate(); err != nil {
 		return err
 	}
 	proxies, err := json.Marshal(settings.TrustedProxies)

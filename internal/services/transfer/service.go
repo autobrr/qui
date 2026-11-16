@@ -67,6 +67,11 @@ type Deps struct {
 	Sync      *qbittorrent.SyncManager
 	Files     *fsops.Pool
 	Groups    GroupFinder
+	// Routes and CrossSeeds send the cross-seeds of a group to the
+	// Cross-seed instance of the target. Without them, a group lands whole on
+	// the target.
+	Routes     RouteReader
+	CrossSeeds CrossSeeder
 	// Now is the clock of the steps and the log. Nil is time.Now.
 	Now    func() time.Time
 	Config Config
