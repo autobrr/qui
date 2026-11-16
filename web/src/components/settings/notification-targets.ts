@@ -66,6 +66,8 @@ export function maskNotificationUrl(rawUrl: string): string {
   }
 }
 
+const DISCORD_HOSTS = ["discord.com", "discordapp.com"]
+
 function convertDiscordWebhookUrl(rawUrl: string): string | null {
   let parsed: URL
   try {
@@ -78,7 +80,7 @@ function convertDiscordWebhookUrl(rawUrl: string): string | null {
   if (protocol !== "https:" && protocol !== "http:") return null
 
   const host = parsed.hostname.toLowerCase()
-  if (!host.endsWith("discord.com") && !host.endsWith("discordapp.com")) return null
+  if (!DISCORD_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`))) return null
 
   const parts = parsed.pathname.split("/").filter(Boolean)
   const [apiPrefix, webhookPrefix, webhookId, token] = parts

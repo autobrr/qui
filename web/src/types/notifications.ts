@@ -14,7 +14,7 @@ export interface NotificationTarget {
   name: string
   url: string
   enabled: boolean
-  /** Null on a target that an older qui saved with no list: it gets each event except the system notice. */
+  /** Null when the database holds no list, which only a hand edit of the row makes: it gets each event except the system notice. */
   eventTypes: string[] | null
   createdAt: string
   updatedAt: string
