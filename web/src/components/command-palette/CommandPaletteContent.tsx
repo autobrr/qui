@@ -194,8 +194,14 @@ export function CommandPaletteContent({ close, startText = "" }: { close: () => 
               className="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
             />
           </CommandPrimitive.Input>
-          {/* A touch screen has no Escape key. */}
-          <button type="button" onClick={close} aria-label={t("common:actions.close")} className="-m-3 hidden p-3 text-muted-foreground pointer-coarse:block">
+          {/* A touch screen has no Escape key. cmdk runs the highlighted row on an Enter that reaches it, so Enter stays with the button. */}
+          <button
+            type="button"
+            onClick={close}
+            onKeyDown={event => event.key === "Enter" && event.stopPropagation()}
+            aria-label={t("common:actions.close")}
+            className="-m-3 hidden p-3 text-muted-foreground pointer-coarse:block"
+          >
             <X className="size-5" />
           </button>
         </div>

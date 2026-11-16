@@ -71,6 +71,7 @@ function openPalette() {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   mocks.torrentSearch.noMatch = false
 })
 
@@ -154,6 +155,16 @@ describe("CommandPaletteContent", () => {
 
     expect(pressGoesToTheBrowser).toBe(false)
     expect(screen.getAllByRole("option").map(row => row.textContent)).toEqual(["Locked"])
+  })
+
+  it("leaves Enter on the Close button to the button, and runs no row", () => {
+    const run = vi.spyOn(mocks.destinations[0].entries[0], "run")
+    openPalette()
+
+    const enterGoesToTheBrowser = fireEvent.keyDown(screen.getByRole("button", { name: "common:actions.close" }), { key: "Enter" })
+
+    expect(run).not.toHaveBeenCalled()
+    expect(enterGoesToTheBrowser).toBe(true)
   })
 
   it("puts the highlight on the page after a click on Back with text in the field", () => {
