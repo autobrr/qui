@@ -46,8 +46,13 @@ const (
 	CapabilityTrustedIdentity FilesystemCapability = "trustedIdentity"
 	// CapabilityWrite is creating and removing link trees.
 	CapabilityWrite FilesystemCapability = "write"
-	// CapabilityContent is reading file bytes.
+	// CapabilityContent is reading file bytes for downloads, MediaInfo, and
+	// disc scans, which expect the files on qui's own disk.
 	CapabilityContent FilesystemCapability = "content"
+	// CapabilityReadBytes is reading file bytes through the file layer.
+	CapabilityReadBytes FilesystemCapability = "readBytes"
+	// CapabilityWriteBytes is writing file bytes through the file layer.
+	CapabilityWriteBytes FilesystemCapability = "writeBytes"
 )
 
 // FilesystemCapabilities is what qui can do with one instance's files.
@@ -57,6 +62,9 @@ type FilesystemCapabilities struct {
 	TrustedIdentity bool `json:"trustedIdentity"`
 	Write           bool `json:"write"`
 	Content         bool `json:"content"`
+	// ReadBytes and WriteBytes are not in the API: no page reads them.
+	ReadBytes  bool `json:"-"`
+	WriteBytes bool `json:"-"`
 }
 
 func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
@@ -71,13 +79,18 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 		return c.Write
 	case CapabilityContent:
 		return c.Content
+	case CapabilityReadBytes:
+		return c.ReadBytes
+	case CapabilityWriteBytes:
+		return c.WriteBytes
 	}
 	return false
 }
 
 // FilesystemCapabilitiesOf maps an instance's filesystem mode to what qui may
-// do with its files. A remote instance has Read and Write (#2725, #2942), and
-// Identity when its key reaches the exec tier (#2726).
+// do with its files. A remote instance has Read, Write (#2725, #2942),
+// ReadBytes, and WriteBytes, and Identity when its key reaches the exec tier
+// (#2726).
 //
 // Some callers narrow Write by reading the mode themselves, because no
 // capability names what they need: reflink mode needs a cloning filesystem
@@ -86,9 +99,9 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	switch FilesystemAccessMode(inst) {
 	case FilesystemModeLocal:
-		return FilesystemCapabilities{Read: true, Identity: true, TrustedIdentity: true, Write: true, Content: true}
+		return FilesystemCapabilities{Read: true, Identity: true, TrustedIdentity: true, Write: true, Content: true, ReadBytes: true, WriteBytes: true}
 	case FilesystemModeRemote:
-		return FilesystemCapabilities{Read: true, Identity: inst.SSHTier == SSHTierExec, Write: true}
+		return FilesystemCapabilities{Read: true, Identity: inst.SSHTier == SSHTierExec, Write: true, ReadBytes: true, WriteBytes: true}
 	case FilesystemModeNone:
 	}
 	return FilesystemCapabilities{}

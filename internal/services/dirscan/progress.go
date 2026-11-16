@@ -6,7 +6,6 @@ package dirscan
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/rs/zerolog"
@@ -20,25 +19,11 @@ type trackedFilesIndex struct {
 	byPath   map[string]*models.DirScanFile
 	byFileID map[fsops.FileKey]*models.DirScanFile
 	instance *models.Instance
-	// endpoint ends every stored remote identity, see endpointTag.
+	// endpoint (fsops.WalkedEndpointTag) ends every stored remote identity,
+	// since the same device and inode on another server is another file. It
+	// lives in the row so a run that overlaps an SSH edit, which still writes
+	// the old identity, needs no cleanup.
 	endpoint []byte
-}
-
-// endpointTag names the endpoint a stored identity was read through, since the
-// same device and inode on another server is another file. It lives in the row
-// so a run that overlaps an SSH edit, which still writes the old identity, needs
-// no cleanup. A new tag costs a row its rename detection until its next walk. On a
-// host with no identity, an already_seeding row stays so until Reset Scan Progress.
-func endpointTag(instance *models.Instance) []byte {
-	if instance == nil {
-		return nil
-	}
-	endpoint := fsops.WalkedEndpoint(instance)
-	if endpoint == "" {
-		return nil
-	}
-	sum := sha256.Sum256([]byte(endpoint))
-	return sum[:8]
 }
 
 // storedFileID is the dir_scan_files.file_id value for id.
@@ -78,7 +63,7 @@ func (s *Service) loadTrackedFilesIndex(ctx context.Context, directoryID int, in
 		byPath:   make(map[string]*models.DirScanFile),
 		byFileID: make(map[fsops.FileKey]*models.DirScanFile),
 		instance: instance,
-		endpoint: endpointTag(instance),
+		endpoint: fsops.WalkedEndpointTag(instance),
 	}
 
 	offset := 0
