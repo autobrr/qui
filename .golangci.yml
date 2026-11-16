@@ -70,6 +70,15 @@ linters:
           files: ["**/pkg/**", "!$test"]
           deny:
             - { pkg: github.com/autobrr/qui/internal, desc: pkg packages stand alone and never import internal }
+        sftp-stays-in-the-file-layer:
+          files:
+            - $all
+            - "!**/internal/sshpool/**"
+            - "!**/internal/fsops/**"
+            - "!**/internal/testutil/sshtest/**"
+            - "!**/internal/api/handlers/instances_ssh_test.go"
+          deny:
+            - { pkg: github.com/pkg/sftp, desc: "only the SSH pool and the file layer use sftp; copy file bytes through the file layer (fsops.Backend OpenRead and OpenWrite)" }
         gatherer-never-parses:
           files: ["**/internal/services/crossseed/search_gather.go"]
           deny:
