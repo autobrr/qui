@@ -173,6 +173,24 @@ describe("DisplayProfileChip", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("displayProfiles.newDialog.name"))
   })
 
+  it.each([
+    ["Esc", () => fireEvent.keyDown(document.activeElement as Element, { key: "Escape" })],
+    ["Create", () => {
+      fireEvent.change(screen.getByLabelText("displayProfiles.newDialog.name"), { target: { value: "Laptop" } })
+      fireEvent.click(screen.getByRole("button", { name: "displayProfiles.newDialog.create" }))
+    }],
+  ])("%s in the New profile dialog moves focus back to the chip", async (_, close) => {
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
+    openMenu()
+    fireEvent.click(screen.getByRole("menuitem", { name: "displayProfiles.newProfile" }))
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+
+    close()
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(chip()))
+  })
+
   it("creates a profile from the dialog, and the chip then shows it", () => {
     render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
     openMenu()

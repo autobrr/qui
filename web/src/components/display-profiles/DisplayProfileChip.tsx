@@ -36,6 +36,7 @@ export function DisplayProfileChip() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [newProfileOpen, setNewProfileOpen] = useState(false)
   const activeRowRef = useRef<HTMLDivElement>(null)
+  const chipRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -59,6 +60,7 @@ export function DisplayProfileChip() {
             <TooltipTrigger asChild onFocus={(event) => event.preventDefault()}>
               <DropdownMenuTrigger asChild>
                 <Button
+                  ref={chipRef}
                   variant="ghost"
                   size="sm"
                   aria-label={t("displayProfiles.chipAriaLabel", { name: active.name })}
@@ -118,7 +120,7 @@ export function DisplayProfileChip() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <NewDisplayProfileDialog open={newProfileOpen} onOpenChange={setNewProfileOpen} />
+      <NewDisplayProfileDialog open={newProfileOpen} onOpenChange={setNewProfileOpen} returnFocusRef={chipRef} />
     </>
   )
 }

@@ -6,7 +6,7 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
 import { Link } from "@tanstack/react-router"
 import { Plus, Settings2 } from "lucide-react"
-import { useState } from "react"
+import { useState, type RefObject } from "react"
 import { useTranslation } from "react-i18next"
 
 import { DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
@@ -16,6 +16,7 @@ import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileList } from "./DisplayProfileList"
 import { DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
+import { useReturnFocus } from "./use-return-focus"
 
 /** "Display profile" with the profile of this browser, and a separator under it, for the menu of the mobile torrent list. */
 export function DisplayProfileMenuItem({ onSelect }: { onSelect: () => void }) {
@@ -41,13 +42,16 @@ export function DisplayProfileMenuItem({ onSelect }: { onSelect: () => void }) {
 interface DisplayProfileSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Gets the focus when the sheet, or the New profile dialog from it, closes: the menu item that opened the sheet is gone. */
+  returnFocusRef: RefObject<HTMLElement | null>
 }
 
 /** The profile list in a bottom sheet for a phone. A tap on a row picks that profile for this browser and closes the sheet. */
-export function DisplayProfileSheet({ open, onOpenChange }: DisplayProfileSheetProps) {
+export function DisplayProfileSheet({ open, onOpenChange, returnFocusRef }: DisplayProfileSheetProps) {
   const { t } = useTranslation("torrents")
   const { active, settled, pick } = useNamedDisplayProfiles()
   const [newProfileOpen, setNewProfileOpen] = useState(false)
+  const returnFocus = useReturnFocus(returnFocusRef)
 
   const openNewProfile = () => {
     onOpenChange(false)
@@ -57,7 +61,13 @@ export function DisplayProfileSheet({ open, onOpenChange }: DisplayProfileSheetP
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="max-h-[85dvh] gap-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <SheetContent
+          side="bottom"
+          className="max-h-[85dvh] gap-0 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+          onOpenAutoFocus={returnFocus.remember}
+          // New profile hands the focus to its dialog, which returns it on close.
+          onCloseAutoFocus={(event) => (newProfileOpen ? event.preventDefault() : returnFocus.restore(event))}
+        >
           <SheetHeader className="pb-2">
             <SheetTitle>{t("displayProfiles.menuLabel")}</SheetTitle>
             <SheetDescription>{t("displayProfiles.sheetDescription")}</SheetDescription>
@@ -95,7 +105,7 @@ export function DisplayProfileSheet({ open, onOpenChange }: DisplayProfileSheetP
           </div>
         </SheetContent>
       </Sheet>
-      <NewDisplayProfileDialog open={newProfileOpen} onOpenChange={setNewProfileOpen} />
+      <NewDisplayProfileDialog open={newProfileOpen} onOpenChange={setNewProfileOpen} returnFocusRef={returnFocusRef} />
     </>
   )
 }

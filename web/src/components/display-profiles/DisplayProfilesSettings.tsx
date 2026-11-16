@@ -18,6 +18,7 @@ import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileEditor } from "./DisplayProfileEditor"
 import { DisplayProfileList } from "./DisplayProfileList"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
+import { useReturnFocus } from "./use-return-focus"
 
 /**
  * Settings > General > Display profiles: the profiles in a list next to an editor. Below 768 px only the list shows:
@@ -30,6 +31,7 @@ export function DisplayProfilesSettings() {
   const [selectedId, setSelectedId] = useState(active.id)
   // The sheet keeps its profile after it closes, so the editor stays in the sheet while it slides out.
   const [sheet, setSheet] = useState<{ profileId: string; open: boolean } | null>(null)
+  const editReturnFocus = useReturnFocus()
   const [newProfileOpen, setNewProfileOpen] = useState(false)
   // A deleted profile leaves the editor on the profile of this browser, and closes the sheet.
   const shown = profiles.find((profile) => profile.id === selectedId) ?? active
@@ -91,9 +93,11 @@ export function DisplayProfilesSettings() {
           className="max-h-[90dvh] gap-0 overflow-y-auto pb-[calc(1rem+env(safe-area-inset-bottom))]"
           onOpenAutoFocus={(event) => {
             event.preventDefault()
+            editReturnFocus.remember()
             const sheet = event.currentTarget as HTMLElement
             sheet.focus()
           }}
+          onCloseAutoFocus={editReturnFocus.restore}
         >
           <SheetHeader className="pb-2">
             <SheetTitle>{t("displayProfiles.settings.editTitle")}</SheetTitle>

@@ -750,6 +750,7 @@ export function TorrentCardsMobile({
 
   const [showActionsSheet, setShowActionsSheet] = useState(false)
   const [showProfileSheet, setShowProfileSheet] = useState(false)
+  const sortButtonRef = useRef<HTMLButtonElement>(null)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const sortField = sortState.field
   const sortOrder = sortState.order
@@ -1131,6 +1132,7 @@ export function TorrentCardsMobile({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
+                    ref={sortButtonRef}
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
@@ -1610,7 +1612,7 @@ export function TorrentCardsMobile({
         </SheetContent>
       </Sheet>
 
-      <DisplayProfileSheet open={showProfileSheet} onOpenChange={setShowProfileSheet} />
+      <DisplayProfileSheet open={showProfileSheet} onOpenChange={setShowProfileSheet} returnFocusRef={sortButtonRef} />
 
       {/* Search Modal */}
       <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -338,6 +338,16 @@ describe("DisplayProfilesSettings below 768 px", () => {
 
     await user.click(within(list()).getByRole("button", { name: "Edit Default" }))
     expect(within(screen.getByRole("dialog", { name: "Edit profile" })).getByRole("region", { name: "Default" })).not.toBeNull()
+  })
+
+  it("closing the editor sheet moves focus back to the › that opened it", async () => {
+    const user = userEvent.setup()
+    renderWithThreeProfiles()
+
+    await user.click(within(list()).getByRole("button", { name: "Edit Phone" }))
+    await user.click(within(screen.getByRole("dialog", { name: "Edit profile" })).getByRole("button", { name: "Close" }))
+
+    await waitFor(() => expect(document.activeElement).toBe(within(list()).getByRole("button", { name: "Edit Phone" })))
   })
 
   it("the editor sheet opens with focus on the sheet, so no help tooltip opens while the controls wait for the server", async () => {

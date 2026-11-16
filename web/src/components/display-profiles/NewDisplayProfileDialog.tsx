@@ -17,25 +17,31 @@ import { findDisplayProfileIcon } from "./display-profile-icons"
 import { useDisplayProfileNameCheck, useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileIconPicker } from "./DisplayProfileIconPicker"
 import { DisplayProfileTile } from "./DisplayProfileTile"
+import { useReturnFocus } from "./use-return-focus"
 
 interface NewDisplayProfileDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Called with the id of the new profile, after this browser starts to use it. */
   onCreated?: (profileId: string) => void
+  /** Gets the focus when the dialog closes, for an opener that a menu removes. Default: the element focused at open. */
+  returnFocusRef?: RefObject<HTMLElement | null>
 }
 
 /** Makes a profile from the setup of this browser, and this browser then uses it. */
-export function NewDisplayProfileDialog({ open, onOpenChange, onCreated }: NewDisplayProfileDialogProps) {
+export function NewDisplayProfileDialog({ open, onOpenChange, onCreated, returnFocusRef }: NewDisplayProfileDialogProps) {
   const nameRef = useRef<HTMLInputElement>(null)
+  const returnFocus = useReturnFocus(returnFocusRef)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-md"
         onOpenAutoFocus={(event) => {
           event.preventDefault()
+          returnFocus.remember()
           nameRef.current?.focus()
         }}
+        onCloseAutoFocus={returnFocus.restore}
       >
         {/* The content unmounts on close, so a cancelled draft does not come back. */}
         <NewDisplayProfileForm
