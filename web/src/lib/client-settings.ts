@@ -955,12 +955,16 @@ export function useDropLegacyKey(baseKey: string, enabled: boolean): void {
 
 /**
  * Moves the value of a local-only legacy key into a setting of the active profile, when the setting has no value and
- * isValid accepts the legacy value. Drops the legacy key either way.
+ * isValid accepts the legacy value. Drops the legacy key, except when the storage refuses the move.
  */
 export function migrateLegacyLocalValue(legacyKey: string, key: string, isValid: (raw: string) => boolean): void {
   try {
     const legacy = localStorage.getItem(legacyKey)
-    if (legacy && readRaw(resolveReadKey(key)) == null && isValid(legacy)) writeRaw(resolveKey(key), legacy)
+    if (legacy && readRaw(resolveReadKey(key)) == null && isValid(legacy)) {
+      const target = resolveKey(key)
+      writeRaw(target, legacy)
+      if (readRaw(target) !== legacy) return
+    }
     localStorage.removeItem(legacyKey)
   } catch (error) {
     console.error("Failed to migrate legacy state key:", legacyKey, error)

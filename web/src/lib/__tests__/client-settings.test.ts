@@ -1222,6 +1222,22 @@ describe("migrateLegacyLocalValue", () => {
     expect(localStorage.getItem("qui-column-sizing")).toBeNull()
   })
 
+  it("keeps the legacy key when the full storage refuses the new value", () => {
+    setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
+    localStorage.setItem("qui-column-sizing", "{\"name\":600}")
+    const setItem = Storage.prototype.setItem
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key === "qui-column-sizing:1") throw new DOMException("quota", "QuotaExceededError")
+      setItem.call(this, key, value)
+    })
+
+    migrateLegacyLocalValue("qui-column-sizing", "qui-column-sizing:1", () => true)
+
+    expect(localStorage.getItem("qui-column-sizing:1")).toBeNull()
+    expect(localStorage.getItem("qui-column-sizing")).toBe("{\"name\":600}")
+  })
+
   it("keeps a stored value and skips an invalid legacy value", () => {
     setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false)
     writeClientSetting("qui-column-sizing:1", { name: 300 })
