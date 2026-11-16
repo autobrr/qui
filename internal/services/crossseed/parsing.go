@@ -296,7 +296,7 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name := stringutils.SanitizeUTF8(infoVal.Name)
+	name := pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(infoVal.Name))
 	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string
 	if infoVal.HasV2() {
@@ -309,6 +309,9 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 	}
 
 	files := BuildTorrentFilesFromInfo(name, infoVal)
+	if len(files) == 0 {
+		return TorrentMetadata{}, errors.New("torrent path is empty after removing directional characters")
+	}
 
 	return TorrentMetadata{
 		Name:   name,
@@ -321,6 +324,7 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
 func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentFiles {
+	rootName = pathutil.StripTorrentPathControls(rootName)
 	var files qbt.TorrentFiles
 	pieceLength := info.PieceLength
 	if pieceLength <= 0 {
@@ -361,6 +365,9 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	var offset int64
 	for i, f := range info.Files {
 		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(&info, &f))
+		if displayPath == "" && len(f.BestPath()) > 0 {
+			return nil
+		}
 		name := rootName
 		if info.IsDir() && displayPath != "" {
 			name = rootName + "/" + displayPath
@@ -409,13 +416,16 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 // The non-directory branch is kept so this stays a drop-in for DisplayPath.
 func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) string {
 	if !info.IsDir() {
-		return info.BestName()
+		return pathutil.StripTorrentPathControls(info.BestName())
 	}
 
 	parts := f.BestPath()
 	components := make([]string, len(parts))
 	for i, part := range parts {
 		components[i] = pathutil.TorrentPathComponent(part)
+		if components[i] == "" {
+			return ""
+		}
 	}
 	return strings.Join(components, "/")
 }

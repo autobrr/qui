@@ -79,14 +79,29 @@ func IsWindowsDeviceName(component string) bool {
 // libtorrent's sanitize_append_path_element replaces an empty component with "_"
 // instead of dropping it, on every release line qBittorrent ships (1.1, 1.2, 2.0).
 // Go's path.Join drops it, which would place a link tree one directory above where
-// qBittorrent looks for the data. Only this rule is mirrored: libtorrent's handling
-// of "." and ".." differs between 1.x and 2.0, so copying it would produce wrong
-// paths for whichever version we did not target.
+// qBittorrent looks for the data. This and directional-character removal are
+// mirrored; dot-component handling differs between libtorrent 1.x and 2.0.
 func TorrentPathComponent(component string) string {
 	if component == "" {
 		return "_"
 	}
-	return component
+	return StripTorrentPathControls(component)
+}
+
+// StripTorrentPathControls removes the directional characters libtorrent filters
+// from torrent names and file paths, preserving other Unicode characters. An empty
+// result must be refused: libtorrent 1.2 and 2.0 place filtered-empty names differently.
+func StripTorrentPathControls(name string) string {
+	// Both libtorrent 1.2 and 2.0 use this set in filter_path_character:
+	// https://github.com/arvidn/libtorrent/blob/RC_1_2/src/torrent_info.cpp
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e':
+			return -1
+		default:
+			return r
+		}
+	}, name)
 }
 
 // maxIsolationNameBytes keeps room for "--<shortHash>" in a folder name of

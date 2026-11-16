@@ -5,6 +5,7 @@ package dirscan
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -372,7 +373,11 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		return nil, fmt.Errorf("unmarshal info: %w", err)
 	}
 
-	name := stringutils.SanitizeUTF8(info.BestName())
+	rawName := stringutils.SanitizeUTF8(info.BestName())
+	name := pathutil.StripTorrentPathControls(rawName)
+	if rawName != "" && name == "" {
+		return nil, errors.New("torrent name is empty after removing directional characters")
+	}
 
 	parsed := &ParsedTorrent{
 		Name:        name,
@@ -415,11 +420,14 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 			//
 			// The comparison runs before the empty-component mapping below, or a torrent named
 			// "_" whose paths start with an empty component would lose one level.
-			if root == "" || len(pathParts) == 0 || pathParts[0] != root {
+			if root == "" || len(pathParts) == 0 || pathutil.StripTorrentPathControls(pathParts[0]) != root {
 				pathParts = append([]string{root}, pathParts...)
 			}
 			for j, part := range pathParts {
 				pathParts[j] = pathutil.TorrentPathComponent(part)
+				if pathParts[j] == "" {
+					return nil, errors.New("torrent path is empty after removing directional characters")
+				}
 			}
 			tf := TorrentFile{
 				Path:   path.Join(pathParts...),

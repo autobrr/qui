@@ -9,6 +9,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 
+	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -155,7 +156,7 @@ func BuildFilesForBoundaryCheck(
 
 	// Single-file torrent
 	if len(info.Files) == 0 {
-		name := stringutils.SanitizeUTF8(info.Name)
+		name := pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(info.Name))
 		return []TorrentFileForBoundaryCheck{
 			{
 				Path:      name,
@@ -170,7 +171,7 @@ func BuildFilesForBoundaryCheck(
 	// - When info.IsDir(): rootName + "/" + displayPath
 	// - Otherwise: displayPath
 	files := make([]TorrentFileForBoundaryCheck, 0, len(info.Files))
-	rootName := stringutils.SanitizeUTF8(info.Name)
+	rootName := pathutil.StripTorrentPathControls(stringutils.SanitizeUTF8(info.Name))
 	for i := range info.Files {
 		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(info, &info.Files[i]))
 		var path string

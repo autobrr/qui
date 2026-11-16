@@ -108,6 +108,33 @@ func TestParseTorrentBytes_InvalidUTF8RootPrefixNotDoubled(t *testing.T) {
 	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/file.mkv", parsed.Files[0].Path)
 }
 
+// regression: #4211
+func TestParseTorrentBytes_DirectionalControls(t *testing.T) {
+	for _, filePath := range [][]string{nil, {"Disc\u200f 1", "01 - Étoiles\u202e.flac"}, {"Mira Calder - Étoiles", "Disc\u200f 1", "01 - Étoiles\u202e.flac"}} {
+		info := metainfo.Info{Name: "Mira Calder - Étoiles\u200e", Length: 1, PieceLength: 16384}
+		wantPath := "Mira Calder - Étoiles"
+		if filePath != nil {
+			info.Length = 0
+			info.Files = []metainfo.FileInfo{{Path: filePath, Length: 1}}
+			wantPath += "/Disc 1/01 - Étoiles.flac"
+		}
+		parsed, err := ParseTorrentBytes(buildTorrentBytes(t, &info))
+		require.NoError(t, err)
+		require.Equal(t, "Mira Calder - Étoiles", parsed.Name)
+		require.Len(t, parsed.Files, 1)
+		require.Equal(t, wantPath, parsed.Files[0].Path)
+		require.Equal(t, int64(1), parsed.TotalSize)
+	}
+
+	for _, info := range []metainfo.Info{
+		{Name: "\u200e", PieceLength: 16384, Files: []metainfo.FileInfo{{Path: []string{"track.flac"}, Length: 1}}},
+		{Name: "Example Album", PieceLength: 16384, Files: []metainfo.FileInfo{{Path: []string{"\u200e", "track.flac"}, Length: 1}}},
+	} {
+		_, err := ParseTorrentBytes(buildTorrentBytes(t, &info))
+		require.Error(t, err)
+	}
+}
+
 func TestParseTorrentBytes_MultiFileNormalizesEmptyPathComponents(t *testing.T) {
 	tests := []struct {
 		name     string
