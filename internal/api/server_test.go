@@ -44,7 +44,10 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/livesamples"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/peerclienticons"
+	"github.com/autobrr/qui/internal/services/share"
+	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/services/transfer"
@@ -217,6 +220,20 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		Config:    transfer.DefaultConfig(),
 	})
 	t.Cleanup(transferService.Close)
+	// No Share and every Share setting at its default.
+	shareService := share.NewService(share.Deps{
+		Store:           share.NewStore(db),
+		Settings:        share.NewSettingsStore(db),
+		TrackerSettings: sharetracker.NewSettingsStore(db),
+		Helpers:         transfers,
+		Instances:       instanceStore,
+		Sync:            syncManager,
+		Peers:           peeraddress.New(instanceStore, syncManager),
+		Switches:        rollout.Switches{TransfersAndShares: true},
+		TrackerHost:     "127.0.0.1",
+		Config:          share.DefaultConfig(),
+	})
+	t.Cleanup(shareService.Close)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
@@ -274,6 +291,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		ArrService:                arr.NewService(arrInstanceStore, models.NewArrIDCacheStore(db)),
 		Transfers:                 transfers,
 		TransferService:           transferService,
+		ShareService:              shareService,
 		Switches:                  rollout.Switches{TransfersAndShares: true},
 	}
 }
