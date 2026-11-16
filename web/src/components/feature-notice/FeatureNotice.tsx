@@ -18,6 +18,10 @@ interface FeatureNoticeProps {
   id: FeatureNoticeId
   /** Turns the feature on. Called from the primary button of the bubble. */
   onAction: () => void
+  /** True while the control shows its own menu or dialog. Opening it counts as seen. */
+  controlOpen?: boolean
+  /** The side of the control that the bubble prefers. */
+  side?: "top" | "bottom"
   /** The control the bubble points at. It must take a ref and a className. */
   children: ReactNode
 }
@@ -25,14 +29,14 @@ interface FeatureNoticeProps {
 /**
  * Points a one-time bubble at the wrapped control while its notice is due. The
  * notice counts as seen after Got it, the primary button, or once the feature
- * is in use while the control is in the page.
+ * is in use or the control opens while the control is in the page.
  */
 export function FeatureNotice(props: FeatureNoticeProps) {
   if (isDemo) return props.children
   return <FeatureNoticeBubble {...props} />
 }
 
-function FeatureNoticeBubble({ id, onAction, children }: FeatureNoticeProps) {
+function FeatureNoticeBubble({ id, onAction, controlOpen = false, side = "bottom", children }: FeatureNoticeProps) {
   const notice: FeatureNoticeEntry = FEATURE_NOTICES.find((entry) => entry.id === id)!
 
   const loaded = useClientSettingsLoaded()
@@ -42,8 +46,8 @@ function FeatureNoticeBubble({ id, onAction, children }: FeatureNoticeProps) {
   const present = control !== null
 
   useEffect(() => {
-    if (loaded && present && inUse && !seen) setSeen(true)
-  }, [loaded, present, inUse, seen, setSeen])
+    if (loaded && present && (inUse || controlOpen) && !seen) setSeen(true)
+  }, [loaded, present, inUse, controlOpen, seen, setSeen])
 
   const open = loaded && present && !seen && !inUse && getDueNoticeId() === id
 
@@ -65,6 +69,7 @@ function FeatureNoticeBubble({ id, onAction, children }: FeatureNoticeProps) {
       {open && (
         <NoticeBubble
           notice={notice}
+          side={side}
           onDismiss={close}
           onAction={(button) => {
             close(button)
@@ -78,11 +83,12 @@ function FeatureNoticeBubble({ id, onAction, children }: FeatureNoticeProps) {
 
 interface NoticeBubbleProps {
   notice: FeatureNoticeEntry
+  side: "top" | "bottom"
   onDismiss: (button: HTMLElement) => void
   onAction: (button: HTMLElement) => void
 }
 
-function NoticeBubble({ notice, onDismiss, onAction }: NoticeBubbleProps) {
+function NoticeBubble({ notice, side, onDismiss, onAction }: NoticeBubbleProps) {
   const { t } = useTranslation()
   const titleId = useId()
 
@@ -90,12 +96,12 @@ function NoticeBubble({ notice, onDismiss, onAction }: NoticeBubbleProps) {
   // No portal: the bubble follows its control in the tab order.
   return (
     <PopperPrimitive.Content
-      side="bottom"
+      side={side}
       sideOffset={5}
       collisionPadding={8}
       role="region"
       aria-labelledby={titleId}
-      className="z-50 w-80 origin-(--radix-popper-transform-origin) rounded-xl border border-foreground/15 bg-popover p-3 text-popover-foreground shadow-xl outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-top-1"
+      className="z-50 w-80 origin-(--radix-popper-transform-origin) rounded-xl border border-foreground/15 bg-popover p-3 text-popover-foreground shadow-xl outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:data-[side=bottom]:slide-in-from-top-1 motion-safe:data-[side=top]:slide-in-from-bottom-1"
     >
       {notice.Picture && <notice.Picture />}
       <p id={titleId} className={cn("text-sm font-semibold leading-5", notice.Picture && "pt-3")}>{t(notice.titleKey)}</p>

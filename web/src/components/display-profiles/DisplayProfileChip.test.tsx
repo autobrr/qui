@@ -8,12 +8,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   _resetClientSettingsForTests,
+  applyServerSettings,
   createDisplayProfile,
   parseJsonBoolean,
   pickDisplayProfile,
+  seedAndMarkReady,
   useClientSetting,
   writeClientSetting
 } from "@/lib/client-settings"
+import { _resetFeatureNoticesForTests } from "@/components/feature-notice/due-notice"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 
@@ -154,5 +157,79 @@ describe("DisplayProfileChip", () => {
     expect(screen.getByRole("button", { name: "displayProfiles.chipAriaLabel" }).textContent).toBe("Laptop")
     openMenu()
     expect(screen.getByRole("menuitemradio", { name: "Laptop" }).getAttribute("aria-checked")).toBe("true")
+  })
+})
+
+describe("DisplayProfileChip Feature notice", () => {
+  const noticeTitle = "torrents:featureNotice.displayProfiles.title"
+  const noticeShown = () => screen.queryByText(noticeTitle) !== null
+
+  // The first server snapshot, as useClientSettingsSync loads it. Feature notices wait for it.
+  function loadServerSnapshot(): void {
+    act(() => {
+      applyServerSettings({})
+      seedAndMarkReady({})
+    })
+  }
+
+  function renderChip(): void {
+    render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
+  }
+
+  // A page load picks the due notice again.
+  function reloadPage(): void {
+    cleanup()
+    _resetFeatureNoticesForTests()
+    renderChip()
+  }
+
+  beforeEach(() => {
+    _resetFeatureNoticesForTests()
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    // The notice of Group copies comes first in the list.
+    writeClientSetting("qui-feature-notice-seen:group-copies", true)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("opening the picker hides the notice for good", async () => {
+    loadServerSnapshot()
+    renderChip()
+    expect(noticeShown()).toBe(true)
+
+    openMenu()
+    expect(noticeShown()).toBe(false)
+    await pressAndExpectFocus("Escape", chip)
+    expect(noticeShown()).toBe(false)
+
+    reloadPage()
+    expect(noticeShown()).toBe(false)
+  })
+
+  it("shows nothing when a second profile exists", () => {
+    createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    loadServerSnapshot()
+    renderChip()
+
+    expect(noticeShown()).toBe(false)
+  })
+
+  it("the button opens the New profile dialog", () => {
+    loadServerSnapshot()
+    renderChip()
+
+    fireEvent.click(screen.getByRole("button", { name: "torrents:featureNotice.displayProfiles.action" }))
+
+    expect(noticeShown()).toBe(false)
+    expect(screen.getByRole("dialog")).not.toBeNull()
+    expect(screen.getByLabelText("displayProfiles.newDialog.name")).not.toBeNull()
   })
 })
