@@ -5,7 +5,6 @@
 package orphanscan
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -2267,7 +2266,7 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []*qbt.Torrent, file
 
 // getOverlapCandidateInstances returns the other instances whose torrents can
 // protect scanned's files. Overlap compares path strings, which only mean the
-// same file on one filesystem. Instances on the same SSH server (sameSSHServer)
+// same file on one filesystem. Instances on the same SSH server (fsops.SameSSHServer)
 // pair in both modes, whatever their key or local flag, since a seedbox can be
 // reached over SSH by one instance and through a mount by another. A local scan
 // also pairs with every local instance. The endpoint and
@@ -2298,24 +2297,10 @@ func (s *Service) overlapPeer(scanned *models.Instance, scannedPin []byte, inst 
 	switch {
 	case inst.HasLocalFilesystemAccess && models.FilesystemAccessMode(scanned) != models.FilesystemModeRemote:
 		return "local-access instance", true
-	case s.sameSSHServer(scanned, scannedPin, inst):
+	case fsops.SameSSHServer(scanned, scannedPin, inst, s.hostKeyPin):
 		return "remote instance on the same host", true
 	}
 	return "", false
-}
-
-// sameSSHServer reports whether a and b reach one SSH server: the same stored
-// host and port, or the same pinned host key under any name or port (an IP and
-// a hostname for one seedbox). aPin is a's pin. A pin only ever adds a match, so
-// an instance without one, or whose pin cannot be read, still pairs by host and port.
-func (s *Service) sameSSHServer(a *models.Instance, aPin []byte, b *models.Instance) bool {
-	if a.SSHHost == "" || b.SSHHost == "" {
-		return false
-	}
-	if a.SSHHost == b.SSHHost && a.SSHPort == b.SSHPort {
-		return true
-	}
-	return len(aPin) > 0 && bytes.Equal(aPin, s.hostKeyPin(b))
 }
 
 func (s *Service) hostKeyPin(inst *models.Instance) []byte {
