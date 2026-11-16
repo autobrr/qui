@@ -62,6 +62,9 @@ type job struct {
 	// placed lists the files that qui renamed into place.
 	placed        []string
 	stoppedSource bool
+	// headStartProven is set when the check of the files that were on the
+	// target passed every piece.
+	headStartProven bool
 }
 
 func (j *job) member() *Member { return &j.rec.Members[0] }
@@ -76,6 +79,9 @@ func (j *job) tempName(name string) string {
 
 func (j *job) run(ctx context.Context) error {
 	if err := j.prepare(ctx); err != nil {
+		return err
+	}
+	if err := j.headStart(ctx); err != nil {
 		return err
 	}
 	if err := j.copy(ctx); err != nil {
@@ -140,8 +146,15 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("The files of the torrent do not match its .torrent: %v", err)
 	}
 
-	need := diskBytes(j.plan)
-	stat, err := targetFiles.Statfs(ctx, nearestFolder(ctx, targetFiles, j.savePath()))
+	if j.root, err = opener.OpenRoot(ctx, j.savePath()); err != nil {
+		return permanent("qui cannot open the save path %s on %s: %v", j.savePath(), j.target.Name, err)
+	}
+	if err := j.findOnTarget(ctx); err != nil {
+		return err
+	}
+
+	need := copiedBytes(j.plan)
+	stat, err := targetFiles.Statfs(ctx, j.savePath())
 	if err != nil {
 		return temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
 	}
@@ -149,34 +162,8 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("Not enough free space on %s: %v", j.target.Name, err)
 	}
 	j.reserved = need
-
-	if j.root, err = opener.OpenRoot(ctx, j.savePath()); err != nil {
-		return permanent("qui cannot open the save path %s on %s: %v", j.savePath(), j.target.Name, err)
-	}
-	for _, name := range names(j.plan) {
-		for _, candidate := range []string{name, j.tempName(name), j.tempName(name) + incompleteExt} {
-			if _, err := j.root.Lstat(ctx, candidate); !errors.Is(err, fs.ErrNotExist) {
-				return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, path.Join(j.savePath(), candidate))
-			}
-		}
-	}
 	j.logf("Copying %s over SFTP from %s to %s.", formatBytes(need), j.source.Name, j.target.Name)
 	return nil
-}
-
-// nearestFolder is path or its closest parent that exists.
-func nearestFolder(ctx context.Context, files fsops.Backend, dir string) string {
-	paths := files.Paths()
-	for {
-		if _, err := files.Lstat(ctx, dir); err == nil {
-			return dir
-		}
-		parent := paths.Dir(dir)
-		if parent == dir {
-			return dir
-		}
-		dir = parent
-	}
 }
 
 // checkSource fails when the torrent on the source moved, was renamed, is

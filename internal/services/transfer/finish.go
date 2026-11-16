@@ -29,30 +29,70 @@ import (
 
 // prove proves the copy before qui touches the source: by its own check of
 // every piece with a confirmed flush, or else by a check-only helper torrent
-// that checks every piece on the target.
+// that checks every piece on the target. qui's own check never covers the
+// files that were on the target before the Transfer.
 func (j *job) prove(ctx context.Context) error {
-	if j.rec.FlushState == FlushConfirmed && j.allProven() {
+	onTarget := slices.ContainsFunc(j.plan, func(f file) bool { return f.onTarget })
+	switch {
+	case j.headStartProven:
+		j.logf("Proof: every file was on %s, and the check passed all %d pieces.", j.target.Name, j.src.info.NumPieces())
+		return nil
+	case !onTarget && j.rec.FlushState == FlushConfirmed && j.allProven():
 		j.logf("Proof: qui checked every piece, and %s confirmed each flush.", j.target.Name)
 		return nil
 	}
 	if err := j.step(ctx, StateChecking, "check on the target"); err != nil {
 		return err
 	}
+	states, err := j.checkOnTarget(ctx)
+	if err != nil {
+		return err
+	}
+	var failed []string
+	for piece, state := range states {
+		if state != qbt.PieceStateAlreadyDownloaded {
+			failed = append(failed, strconv.Itoa(piece))
+		}
+	}
+	if len(failed) > 0 {
+		shown := failed[:min(len(failed), 20)]
+		more := ""
+		if len(failed) > len(shown) {
+			more = fmt.Sprintf(" and %d more", len(failed)-len(shown))
+		}
+		return permanent("The check on %s failed %d of %d pieces: %s%s.", j.target.Name, len(failed), len(states), strings.Join(shown, ", "), more)
+	}
+	j.logf("Proof: the check on %s passed all %d pieces.", j.target.Name, len(states))
+	return nil
+}
+
+// checkOnTarget checks every piece on the target with a check-only helper
+// torrent and returns what the check found. The helper finds each file that
+// qui writes under its temporary name, and each file that was on the target
+// through a hardlink, so that qBittorrent renames no file that qui did not
+// write. The links are gone when it returns.
+func (j *job) checkOnTarget(ctx context.Context) ([]qbt.PieceState, error) {
+	defer j.unlink(context.WithoutCancel(ctx))
+	if err := j.link(ctx); err != nil {
+		return nil, err
+	}
 	salt := make([]byte, 16)
 	_, _ = rand.Read(salt)
 	random := hex.EncodeToString(salt)
-	temps := make([]string, 0, len(j.plan))
-	for _, name := range names(j.plan) {
-		temps = append(temps, j.tempName(name))
+	checkNames := make([]string, 0, len(j.plan))
+	for _, f := range j.plan {
+		if !f.pad {
+			checkNames = append(checkNames, j.checkName(f))
+		}
 	}
-	helper, err := helpertorrent.Build(j.src.export, temps, random)
+	helper, err := helpertorrent.Build(j.src.export, checkNames, random)
 	if err != nil {
-		return permanent("qui cannot build the helper torrent: %v", err)
+		return nil, permanent("qui cannot build the helper torrent: %v", err)
 	}
 	if err := j.svc.deps.Store.RegisterHelper(ctx, Helper{
 		InstanceID: j.target.ID, Hash: helper.InfoHash, Random: []byte(random), Owner: OwnerTransfer, OwnerID: j.rec.ID,
 	}); err != nil {
-		return err
+		return nil, err
 	}
 	j.helper = helper.InfoHash
 	cfg := j.svc.deps.Config
@@ -73,37 +113,22 @@ func (j *job) prove(ctx context.Context) error {
 		PollInterval: cfg.PollInterval,
 	})
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	if res.Outcome == torrentadd.Failed || res.Outcome == torrentadd.Checking {
-		return temporary("The check on %s did not end: %s", j.target.Name, describe(res))
+		return nil, temporary("The check on %s did not end: %s", j.target.Name, describe(res))
 	}
 	states, err := j.svc.deps.Sync.GetTorrentPieceStates(ctx, j.target.ID, helper.InfoHash)
 	if err != nil {
-		return temporary("qui cannot read the check on %s: %v", j.target.Name, err)
+		return nil, temporary("qui cannot read the check on %s: %v", j.target.Name, err)
 	}
 	if err := j.removeHelper(ctx); err != nil {
-		return temporary("qui cannot remove its helper torrent from %s: %v", j.target.Name, err)
+		return nil, temporary("qui cannot remove its helper torrent from %s: %v", j.target.Name, err)
 	}
 	if len(states) != j.src.info.NumPieces() {
-		return temporary("The check on %s reported %d pieces of %d.", j.target.Name, len(states), j.src.info.NumPieces())
+		return nil, temporary("The check on %s reported %d pieces of %d.", j.target.Name, len(states), j.src.info.NumPieces())
 	}
-	var failed []string
-	for piece, state := range states {
-		if state != qbt.PieceStateAlreadyDownloaded {
-			failed = append(failed, strconv.Itoa(piece))
-		}
-	}
-	if len(failed) > 0 {
-		shown := failed[:min(len(failed), 20)]
-		more := ""
-		if len(failed) > len(shown) {
-			more = fmt.Sprintf(" and %d more", len(failed)-len(shown))
-		}
-		return permanent("The check on %s failed %d of %d pieces: %s%s.", j.target.Name, len(failed), len(states), strings.Join(shown, ", "), more)
-	}
-	j.logf("Proof: the check on %s passed all %d pieces.", j.target.Name, len(states))
-	return nil
+	return states, nil
 }
 
 func describe(res torrentadd.Result) string {
@@ -135,7 +160,11 @@ func (j *job) place(ctx context.Context) error {
 	} else if onTarget {
 		return permanent("Already on the target: %s has this torrent.", j.target.Name)
 	}
-	for _, name := range names(j.plan) {
+	for _, f := range j.plan {
+		if f.pad || f.onTarget {
+			continue
+		}
+		name := f.name
 		temp := j.tempName(name)
 		if _, err := j.root.Lstat(ctx, temp); errors.Is(err, fs.ErrNotExist) {
 			temp += incompleteExt
@@ -333,9 +362,13 @@ func (j *job) removeSourceFiles(ctx context.Context) {
 	paths := j.srcFiles.Paths()
 	saveRoot := paths.Clean(j.src.torrent.SavePath)
 	folders := map[string]struct{}{}
-	var kept int64
+	var kept, notCopied int64
 	for _, f := range j.plan {
 		if f.pad {
+			continue
+		}
+		if f.onTarget {
+			notCopied += f.size
 			continue
 		}
 		p := paths.Join(saveRoot, paths.FromSlash(f.name))
@@ -355,6 +388,9 @@ func (j *job) removeSourceFiles(ctx context.Context) {
 	}
 	for _, dir := range slices.SortedFunc(maps.Keys(folders), func(a, b string) int { return len(b) - len(a) }) {
 		_ = j.srcFiles.Remove(ctx, dir, fsops.RemoveOptions{})
+	}
+	if notCopied > 0 {
+		j.logf("%s stay on %s, because qui did not copy them: %s had them before the Transfer.", formatBytes(notCopied), j.source.Name, j.target.Name)
 	}
 	if kept > 0 {
 		j.logf("Removed the torrent and its files from %s. %s stay in use.", j.source.Name, formatBytes(kept))
