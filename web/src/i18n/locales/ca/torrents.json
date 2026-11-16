@@ -1748,6 +1748,13 @@
       "empty": "Introdueix un nom.",
       "tooLong": "Fes servir {{max}} caràcters o menys.",
       "duplicate": "Un altre perfil ja té aquest nom."
+    },
+    "ownSortAndFilters": {
+      "label": "Ordre i filtres propis",
+      "help": "<lead>Quan això està activat, aquest perfil té els seus propis:</lead><list><item>ordre de la llista de torrents</item><item>filtres de columna i filtres de la barra lateral</item><item>instàncies que mostra la vista Unificada</item><item>Agrupa les còpies, activat o desactivat</item><item>última pestanya oberta del panell de detalls</item><item>instància que mostren les pàgines de còpies de seguretat i RSS</item></list><note>Un canvi en aquests valors en aquest perfil no arriba a altres perfils. Quan això està desactivat, aquest perfil els comparteix amb tots els altres perfils. Desactivar-ho elimina els valors propis d'aquest perfil.</note>",
+      "offWarning": "Desactivar això elimina l'ordre i els filtres propis de {{name}}.",
+      "defaultShares": "Sempre comparteix l'ordre i els filtres",
+      "defaultSharesHelp": "Default sempre comparteix l'ordre, els filtres i les altres opcions de vista amb tots els perfils. Per tenir els teus propis, crea un altre perfil i activa Ordre i filtres propis."
     }
   }
 }
