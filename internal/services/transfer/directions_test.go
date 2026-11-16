@@ -237,9 +237,10 @@ func lose(t *testing.T, name string, offset, n int64) {
 // Transfer on the target do not hold whole and right.
 func failedPieces(t *testing.T, s show, dir string, id int64) []int64 {
 	t.Helper()
+	names := []string{"Show.S01E01.mkv", "Show.S01E02.mkv"}
 	var want, got []byte
-	var missing [][2]int
-	for _, name := range []string{"Show.S01E01.mkv", "Show.S01E02.mkv"} {
+	missing := make([][2]int, 0, len(names))
+	for _, name := range names {
 		file := s.files[name]
 		data, err := os.ReadFile(filepath.Join(dir, showName, name+".qui-transfer-"+strconv.FormatInt(id, 10)))
 		if !errors.Is(err, fs.ErrNotExist) {
