@@ -1826,12 +1826,18 @@
       "thisBrowser": "Tento prohlížeč",
       "use": "Použít",
       "newName": "Nový profil z tohoto nastavení",
-      "create": "Vytvořit"
+      "create": "Vytvořit",
+      "renameAriaLabel": "Přejmenovat {{name}}",
+      "deleteAriaLabel": "Smazat {{name}}",
+      "deleteTitle": "Smazat {{name}}?",
+      "deleteDescription": "Ostatní prohlížeče, které ho používají, přejdou na {{defaultName}}.",
+      "deleteConfirm": "Smazat"
     },
     "nameErrors": {
       "empty": "Zadejte název.",
       "tooLong": "Použijte nejvýše {{max}} znaků.",
       "duplicate": "Tento název už má jiný profil."
-    }
+    },
+    "deletedToast": "Profil {{name}} byl smazán. Tento prohlížeč teď používá {{defaultName}}."
   }
 }

@@ -1658,12 +1658,18 @@
       "thisBrowser": "此瀏覽器",
       "use": "使用",
       "newName": "從目前設定建立新設定檔",
-      "create": "建立"
+      "create": "建立",
+      "renameAriaLabel": "重新命名 {{name}}",
+      "deleteAriaLabel": "刪除 {{name}}",
+      "deleteTitle": "刪除 {{name}}？",
+      "deleteDescription": "使用它的其他瀏覽器將切換到 {{defaultName}}。",
+      "deleteConfirm": "刪除"
     },
     "nameErrors": {
       "empty": "請輸入名稱。",
       "tooLong": "最多 {{max}} 個字元。",
       "duplicate": "已有其他設定檔使用此名稱。"
-    }
+    },
+    "deletedToast": "{{name}} 設定檔已刪除。此瀏覽器現在使用 {{defaultName}}。"
   }
 }

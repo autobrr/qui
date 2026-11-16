@@ -1658,12 +1658,18 @@
       "thisBrowser": "此浏览器",
       "use": "使用",
       "newName": "从当前设置新建配置",
-      "create": "创建"
+      "create": "创建",
+      "renameAriaLabel": "重命名 {{name}}",
+      "deleteAriaLabel": "删除 {{name}}",
+      "deleteTitle": "删除 {{name}}？",
+      "deleteDescription": "使用它的其他浏览器将切换到 {{defaultName}}。",
+      "deleteConfirm": "删除"
     },
     "nameErrors": {
       "empty": "请输入名称。",
       "tooLong": "最多 {{max}} 个字符。",
       "duplicate": "已有其他配置使用此名称。"
-    }
+    },
+    "deletedToast": "{{name}} 配置已删除。此浏览器现在使用 {{defaultName}}。"
   }
 }

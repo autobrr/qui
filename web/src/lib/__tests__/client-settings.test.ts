@@ -9,12 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   _resetClientSettingsForTests,
   createDisplayProfile,
+  deleteDisplayProfile,
   getDisplayProfiles,
   migrateLegacyLocalValue,
+  onActiveDisplayProfileDeleted,
   pickDisplayProfile,
   applyServerSettings,
   parseJsonBoolean,
   readClientSetting,
+  renameDisplayProfile,
   seedAndMarkReady,
   useClientSetting,
   useDisplayProfiles,
@@ -576,6 +579,155 @@ describe("display profiles", () => {
     })
 
     expect(result.current.active.id).toBe(laptop)
+  })
+
+  it("delete blanks the entry and every value of the profile, and pushes the blanks", async () => {
+    seedAndMarkReady({})
+    localStorage.setItem("qui-column-visibility:1", "{\"ratio\":false}")
+    const laptop = createDisplayProfile("Laptop")
+    writeClientSetting("qui-sidebar-collapsed", true)
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    await vi.runAllTimersAsync()
+    fetchMock.mockClear()
+
+    deleteDisplayProfile(laptop)
+    await vi.runAllTimersAsync()
+
+    const blanked = {
+      [`qui-display-profile-entry:${laptop}`]: "",
+      [`qui-display-profile:${laptop}:qui-column-visibility:1`]: "",
+      [`qui-display-profile:${laptop}:qui-sidebar-collapsed`]: "",
+    }
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(blanked)
+    for (const [key, raw] of Object.entries(blanked)) expect(localStorage.getItem(key)).toBe(raw)
+    expect(localStorage.getItem("qui-column-visibility:1")).toBe("{\"ratio\":false}")
+    expect(getDisplayProfiles().profiles.map((profile) => profile.id)).toEqual([DEFAULT_DISPLAY_PROFILE_ID])
+  })
+
+  it("delete refuses Default", () => {
+    writeClientSetting("qui-sidebar-collapsed", true)
+
+    expect(() => deleteDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)).toThrow()
+    expect(localStorage.getItem("qui-sidebar-collapsed")).toBe("true")
+    expect(localStorage.getItem("qui-display-profile-entry:default")).toBeNull()
+  })
+
+  it("a browser that deletes the profile that it uses moves to Default", () => {
+    writeClientSetting("qui-sidebar-collapsed", false)
+    const laptop = createDisplayProfile("Laptop")
+    writeClientSetting("qui-sidebar-collapsed", true)
+    const { result } = renderHook(() => useClientSetting("qui-sidebar-collapsed", boolSetting))
+    expect(result.current[0]).toBe(true)
+
+    act(() => deleteDisplayProfile(laptop))
+
+    expect(localStorage.getItem("qui-display-profile-active")).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(result.current[0]).toBe(false)
+  })
+
+  it("a browser on a profile that another browser deleted moves to Default, drops its unsaved writes, and keeps the outbox right", async () => {
+    writeClientSetting("qui-sidebar-collapsed", false)
+    const laptop = createDisplayProfile("Laptop")
+    writeClientSetting("qui-sidebar-collapsed", true)
+    writeClientSetting("qui-speed-units", "bits", String)
+    const deleted = vi.fn()
+    const unsubscribe = onActiveDisplayProfileDeleted(deleted)
+    const { result } = renderHook(() => useClientSetting("qui-sidebar-collapsed", boolSetting))
+
+    const snapshot = { [`qui-display-profile-entry:${laptop}`]: "", [`qui-display-profile:${laptop}:qui-sidebar-collapsed`]: "" }
+    act(() => {
+      applyServerSettings(snapshot)
+    })
+    unsubscribe()
+
+    expect(localStorage.getItem("qui-display-profile-active")).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(result.current[0]).toBe(false)
+    expect(deleted).toHaveBeenCalledTimes(1)
+    expect(deleted.mock.calls[0][0]).toMatchObject({ id: laptop, name: "Laptop" })
+    const outbox = JSON.parse(localStorage.getItem("qui-client-settings-outbox") ?? "[]") as string[]
+    expect(outbox.sort()).toEqual(["qui-sidebar-collapsed", "qui-speed-units"])
+
+    seedAndMarkReady(snapshot)
+    await vi.runAllTimersAsync()
+    expect(Object.keys(JSON.parse(fetchMock.mock.calls[0][1].body)).sort()).toEqual(["qui-sidebar-collapsed", "qui-speed-units"])
+  })
+
+  it("a browser that still has a local copy of a deleted profile does not bring it back on a page load", async () => {
+    const server: Record<string, string> = {}
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      Object.assign(server, JSON.parse(String(init.body)))
+      return { ok: true, status: 200 }
+    })
+    seedAndMarkReady({})
+    const laptop = createDisplayProfile("Laptop")
+    writeClientSetting("qui-sidebar-collapsed", true)
+    await vi.runAllTimersAsync()
+    const browserA = { ...localStorage }
+    deleteDisplayProfile(laptop)
+    await vi.runAllTimersAsync()
+
+    // Browser A missed the delete: it renamed Laptop and wrote a new value, and the page died before the push.
+    localStorage.clear()
+    for (const [key, raw] of Object.entries(browserA)) localStorage.setItem(key, raw)
+    renameDisplayProfile(laptop, "Old laptop")
+    writeClientSetting("qui-column-order:2", ["name"])
+    localStorage.setItem(`qui-display-profile:${laptop}:qui-column-sizing:2`, "{\"name\":600}")
+    _resetClientSettingsForTests()
+    fetchMock.mockClear()
+
+    applyServerSettings({ ...server })
+    seedAndMarkReady({ ...server })
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(server[`qui-display-profile-entry:${laptop}`]).toBe("")
+    expect(getDisplayProfiles().profiles.map((profile) => profile.id)).toEqual([DEFAULT_DISPLAY_PROFILE_ID])
+    expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+  })
+
+  it("rename keeps the rest of the entry and refuses a name that the name rule rejects", () => {
+    const laptop = createDisplayProfile("Laptop")
+    createDisplayProfile("Phone")
+
+    renameDisplayProfile(laptop, "LAPTOP")
+    renameDisplayProfile(laptop, " laptop 13 ")
+    renameDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID, "Workstation")
+
+    expect(() => renameDisplayProfile(laptop, "PHONE")).toThrow()
+    expect(() => renameDisplayProfile(laptop, " ")).toThrow()
+    expect(getDisplayProfiles().profiles.map(({ id, name, icon }) => ({ id, name, icon }))).toEqual([
+      { id: DEFAULT_DISPLAY_PROFILE_ID, name: "Workstation", icon: "app-window" },
+      { id: laptop, name: "laptop 13", icon: "bookmark" },
+      { id: expect.any(String), name: "Phone", icon: "bookmark" },
+    ])
+  })
+
+  it("a rename shows in another browser", async () => {
+    const server: Record<string, string> = {}
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      Object.assign(server, JSON.parse(String(init.body)))
+      return { ok: true, status: 200 }
+    })
+    seedAndMarkReady({})
+    const laptop = createDisplayProfile("Laptop")
+    await vi.runAllTimersAsync()
+    const browserB = { ...localStorage }
+    renameDisplayProfile(laptop, "Workstation")
+    renameDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID, "Home")
+    await vi.runAllTimersAsync()
+
+    localStorage.clear()
+    for (const [key, raw] of Object.entries(browserB)) localStorage.setItem(key, raw)
+    _resetClientSettingsForTests()
+    const { result } = renderHook(() => useDisplayProfiles())
+    expect(result.current.active.name).toBe("Laptop")
+
+    act(() => {
+      applyServerSettings({ ...server })
+    })
+
+    expect(result.current.profiles.map((profile) => profile.name)).toEqual(["Home", "Workstation"])
+    expect(result.current.active.name).toBe("Workstation")
   })
 })
 

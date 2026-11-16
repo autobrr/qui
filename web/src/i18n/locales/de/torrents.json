@@ -1742,12 +1742,18 @@
       "thisBrowser": "Dieser Browser",
       "use": "Verwenden",
       "newName": "Neues Profil aus dieser Einrichtung",
-      "create": "Erstellen"
+      "create": "Erstellen",
+      "renameAriaLabel": "{{name}} umbenennen",
+      "deleteAriaLabel": "{{name}} löschen",
+      "deleteTitle": "{{name}} löschen?",
+      "deleteDescription": "Andere Browser, die es verwenden, wechseln zu {{defaultName}}.",
+      "deleteConfirm": "Löschen"
     },
     "nameErrors": {
       "empty": "Gib einen Namen ein.",
       "tooLong": "Verwende höchstens {{max}} Zeichen.",
       "duplicate": "Ein anderes Profil hat diesen Namen."
-    }
+    },
+    "deletedToast": "Das Profil {{name}} wurde gelöscht. Dieser Browser verwendet jetzt {{defaultName}}."
   }
 }

@@ -1742,12 +1742,18 @@
       "thisBrowser": "Questo browser",
       "use": "Usa",
       "newName": "Nuovo profilo da questa configurazione",
-      "create": "Crea"
+      "create": "Crea",
+      "renameAriaLabel": "Rinomina {{name}}",
+      "deleteAriaLabel": "Elimina {{name}}",
+      "deleteTitle": "Eliminare {{name}}?",
+      "deleteDescription": "Gli altri browser che lo usano passano a {{defaultName}}.",
+      "deleteConfirm": "Elimina"
     },
     "nameErrors": {
       "empty": "Inserisci un nome.",
       "tooLong": "Usa al massimo {{max}} caratteri.",
       "duplicate": "Un altro profilo ha già questo nome."
-    }
+    },
+    "deletedToast": "Il profilo {{name}} è stato eliminato. Questo browser ora usa {{defaultName}}."
   }
 }

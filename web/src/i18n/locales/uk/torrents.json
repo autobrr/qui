@@ -1910,12 +1910,18 @@
       "thisBrowser": "Цей браузер",
       "use": "Використати",
       "newName": "Новий профіль із цього налаштування",
-      "create": "Створити"
+      "create": "Створити",
+      "renameAriaLabel": "Перейменувати {{name}}",
+      "deleteAriaLabel": "Видалити {{name}}",
+      "deleteTitle": "Видалити {{name}}?",
+      "deleteDescription": "Інші браузери, що його використовують, перейдуть на {{defaultName}}.",
+      "deleteConfirm": "Видалити"
     },
     "nameErrors": {
       "empty": "Введіть назву.",
       "tooLong": "Використайте не більше {{max}} символів.",
       "duplicate": "Інший профіль уже має цю назву."
-    }
+    },
+    "deletedToast": "Профіль {{name}} видалено. Цей браузер тепер використовує {{defaultName}}."
   }
 }

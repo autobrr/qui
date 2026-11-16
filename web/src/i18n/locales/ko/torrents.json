@@ -1658,12 +1658,18 @@
       "thisBrowser": "이 브라우저",
       "use": "사용",
       "newName": "현재 설정으로 새 프로필 만들기",
-      "create": "만들기"
+      "create": "만들기",
+      "renameAriaLabel": "{{name}} 이름 바꾸기",
+      "deleteAriaLabel": "{{name}} 삭제",
+      "deleteTitle": "{{name}}을(를) 삭제할까요?",
+      "deleteDescription": "이 프로필을 사용하는 다른 브라우저는 {{defaultName}}(으)로 전환됩니다.",
+      "deleteConfirm": "삭제"
     },
     "nameErrors": {
       "empty": "이름을 입력하세요.",
       "tooLong": "{{max}}자 이하로 입력하세요.",
       "duplicate": "다른 프로필이 이 이름을 사용합니다."
-    }
+    },
+    "deletedToast": "{{name}} 프로필이 삭제되었습니다. 이 브라우저는 이제 {{defaultName}}을(를) 사용합니다."
   }
 }

@@ -1742,12 +1742,18 @@
       "thisBrowser": "Este navegador",
       "use": "Usar",
       "newName": "Novo perfil a partir desta configuração",
-      "create": "Criar"
+      "create": "Criar",
+      "renameAriaLabel": "Renomear {{name}}",
+      "deleteAriaLabel": "Excluir {{name}}",
+      "deleteTitle": "Excluir {{name}}?",
+      "deleteDescription": "Outros navegadores que o usam passam para {{defaultName}}.",
+      "deleteConfirm": "Excluir"
     },
     "nameErrors": {
       "empty": "Digite um nome.",
       "tooLong": "Use no máximo {{max}} caracteres.",
       "duplicate": "Outro perfil já tem este nome."
-    }
+    },
+    "deletedToast": "O perfil {{name}} foi excluído. Este navegador agora usa {{defaultName}}."
   }
 }

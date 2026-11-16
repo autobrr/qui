@@ -457,6 +457,45 @@ export function createDisplayProfile(name: string): string {
   return id
 }
 
+/** Renames a profile for every browser. Default can be renamed too. Throws when validateDisplayProfileName rejects the name. */
+export function renameDisplayProfile(profileId: string, name: string): void {
+  const { profiles } = getDisplayProfiles()
+  const profile = profiles.find((candidate) => candidate.id === profileId)
+  if (!profile) throw new Error(`unknown Display profile: ${profileId}`)
+  const error = validateDisplayProfileName(name, profiles, profileId)
+  if (error) throw new Error(`invalid Display profile name: ${error}`)
+  const { id: _id, isDefault: _isDefault, ...entry } = profile
+  writeRaw(profileEntryKey(profileId), JSON.stringify({ ...entry, name: name.trim() }))
+}
+
+/** The storage keys that hold the values of a profile other than Default. */
+function profileValueKeys(profileId: string): string[] {
+  const prefix = profileValueKey(profileId, "")
+  const keys: string[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(prefix)) keys.push(key)
+    }
+  } catch (error) {
+    console.error("Failed to read the values of a Display profile:", error)
+  }
+  return keys
+}
+
+/**
+ * Deletes a profile for every browser: its entry and its values become "". A browser that uses it moves to Default.
+ * Throws for Default.
+ */
+export function deleteDisplayProfile(profileId: string): void {
+  if (profileId === DEFAULT_DISPLAY_PROFILE_ID) throw new Error("the Default Display profile cannot be deleted")
+  const wasActive = readRaw(ACTIVE_PROFILE_KEY) === profileId
+  // The entry first, so another browser on this profile moves to Default before it reads blank values.
+  writeRaw(profileEntryKey(profileId), "")
+  for (const key of profileValueKeys(profileId)) writeRaw(key, "")
+  if (wasActive) pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+}
+
 function subscribeDisplayProfiles(callback: () => void): () => void {
   const onStorage = (event: StorageEvent) => {
     if (event.key == null || isProfileStateKey(event.key)) callback()
@@ -476,26 +515,79 @@ function subscribeDisplayProfiles(callback: () => void): () => void {
 export interface DisplayProfilesApi extends DisplayProfilesState {
   pick: (profileId: string) => void
   create: (name: string) => string
+  rename: (profileId: string, name: string) => void
+  delete: (profileId: string) => void
 }
 
 /** The Display profiles for the UI. */
 export function useDisplayProfiles(): DisplayProfilesApi {
   const state = useSyncExternalStore(subscribeDisplayProfiles, getDisplayProfiles)
-  return useMemo(() => ({ ...state, pick: pickDisplayProfile, create: createDisplayProfile }), [state])
+  return useMemo(
+    () => ({ ...state, pick: pickDisplayProfile, create: createDisplayProfile, rename: renameDisplayProfile, delete: deleteDisplayProfile }),
+    [state]
+  )
 }
 
 // --- server sync (called by useClientSettingsSync) ---
+
+const activeProfileDeletedListeners = new Set<(profile: DisplayProfile) => void>()
+
+/**
+ * Calls back when a server snapshot deletes the profile of this browser, after the browser moved to Default. The
+ * listener gets the deleted profile. Returns the unsubscribe.
+ */
+export function onActiveDisplayProfileDeleted(listener: (profile: DisplayProfile) => void): () => void {
+  activeProfileDeletedListeners.add(listener)
+  return () => activeProfileDeletedListeners.delete(listener)
+}
+
+function deletedProfileIds(settings: Record<string, string>): string[] {
+  return Object.entries(settings)
+    .filter(([key, raw]) => raw === "" && key.startsWith(PROFILE_ENTRY_PREFIX))
+    .map(([key]) => key.slice(PROFILE_ENTRY_PREFIX.length))
+    .filter((id) => id !== DEFAULT_DISPLAY_PROFILE_ID)
+}
+
+function isKeyOfProfile(key: string, profileId: string): boolean {
+  return key === profileEntryKey(profileId) || key.startsWith(profileValueKey(profileId, ""))
+}
+
+function isValueOfDeletedProfile(key: string): boolean {
+  if (!key.startsWith(PROFILE_VALUE_PREFIX)) return false
+  const profileId = key.slice(PROFILE_VALUE_PREFIX.length).split(":", 1)[0]
+  return readRaw(profileEntryKey(profileId)) === ""
+}
+
+function dropPendingOfProfile(profileId: string): void {
+  let dropped = false
+  for (const key of pending.keys()) {
+    if (!isKeyOfProfile(key, profileId)) continue
+    pending.delete(key)
+    dropped = true
+  }
+  if (dropped) persistPending()
+}
 
 /**
  * Apply a server snapshot to localStorage. Keys with a pending local push and
  * keys already equal are skipped. Returns the keys that changed.
  */
 export function applyServerSettings(settings: Record<string, string>): string[] {
+  const { active } = getDisplayProfiles()
+  const deletedIds = deletedProfileIds(settings)
+  // A delete wins over the unsaved writes of this browser, so they cannot bring the profile back.
+  for (const id of deletedIds) dropPendingOfProfile(id)
+
   const changed: string[] = []
   for (const [key, raw] of Object.entries(settings)) {
     if (pending.has(key)) continue
     if (readRaw(key) === raw) continue
     if (writeLocal(key, raw, true)) changed.push(key)
+  }
+
+  if (!active.isDefault && deletedIds.includes(active.id)) {
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    for (const listener of activeProfileDeletedListeners) listener(active)
   }
   return changed
 }
@@ -521,7 +613,7 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (!key || !isSyncedKey(key) || key in serverSettings || pending.has(key)) continue
+      if (!key || !isSyncedKey(key) || key in serverSettings || pending.has(key) || isValueOfDeletedProfile(key)) continue
       const raw = localStorage.getItem(key)
       if (raw !== null) pending.set(key, raw)
     }

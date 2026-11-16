@@ -1742,12 +1742,18 @@
       "thisBrowser": "This browser",
       "use": "Use",
       "newName": "New profile from this setup",
-      "create": "Create"
+      "create": "Create",
+      "renameAriaLabel": "Rename {{name}}",
+      "deleteAriaLabel": "Delete {{name}}",
+      "deleteTitle": "Delete {{name}}?",
+      "deleteDescription": "Other browsers that use it move to {{defaultName}}.",
+      "deleteConfirm": "Delete"
     },
     "nameErrors": {
       "empty": "Enter a name.",
       "tooLong": "Use {{max}} characters or fewer.",
       "duplicate": "Another profile has this name."
-    }
+    },
+    "deletedToast": "The {{name}} profile was deleted. This browser now uses {{defaultName}}."
   }
 }
