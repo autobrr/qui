@@ -1,0 +1,105 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package sharetracker
+
+import (
+	"errors"
+	"net/netip"
+	"time"
+)
+
+var errFull = errors.New("this Share has as many peers as it takes")
+
+// peerLife is how long the tracker keeps a client that stopped announcing.
+const peerLife = 2 * Interval
+
+// swarm is what the tracker knows of the clients of one Share. holder is the
+// address of the first downloader while a Share with FirstDownloaderOnly is
+// locked.
+type swarm struct {
+	ownerSeen  time.Time
+	recipients map[netip.AddrPort]time.Time
+	holder     netip.Addr
+}
+
+// answer is the peer list of one announce. owner is true when the client also
+// gets the public peer address of the user's own client.
+type answer struct {
+	owner bool
+	peers []netip.AddrPort
+}
+
+// join records the announce of client in the swarm of its Share and returns
+// the peers that the client gets. A new recipient client of a Share that has
+// its peers per Share gets errFull. With FirstDownloaderOnly, the first
+// recipient client that announces with something left to download takes the
+// lock, and from then on the user's client and that address see only each
+// other.
+func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req announceRequest) (answer, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for id := range t.swarms {
+		if !table.has(id) {
+			delete(t.swarms, id)
+		}
+	}
+	s := t.swarms[client.share.ID]
+	if s == nil {
+		s = &swarm{recipients: make(map[netip.AddrPort]time.Time)}
+		t.swarms[client.share.ID] = s
+	}
+	now := t.now()
+	for p, seen := range s.recipients {
+		if now.Sub(seen) > peerLife {
+			delete(s.recipients, p)
+		}
+	}
+	if now.Sub(s.ownerSeen) > peerLife {
+		s.ownerSeen = time.Time{}
+	}
+	lock := client.share.FirstDownloaderOnly
+	if client.owner {
+		s.ownerSeen = now
+		if req.event == EventStopped {
+			s.ownerSeen = time.Time{}
+		}
+		var peers []netip.AddrPort
+		for p := range s.recipients {
+			if !lock || p.Addr() == s.holder {
+				peers = append(peers, p)
+			}
+		}
+		return answer{peers: peers}, nil
+	}
+	if req.event == EventStopped {
+		delete(s.recipients, peer)
+		return answer{}, nil
+	}
+	if _, known := s.recipients[peer]; !known && len(s.recipients) >= table.peersPerShare {
+		return answer{}, errFull
+	}
+	s.recipients[peer] = now
+	if lock && !s.holder.IsValid() && req.left > 0 {
+		s.holder = peer.Addr()
+	}
+	if lock {
+		return answer{owner: peer.Addr() == s.holder && !s.ownerSeen.IsZero()}, nil
+	}
+	a := answer{owner: !s.ownerSeen.IsZero()}
+	for p := range s.recipients {
+		if p != peer {
+			a.peers = append(a.peers, p)
+		}
+	}
+	return a, nil
+}
+
+// Unlock lets the next downloader of the Share take the lock.
+func (t *Tracker) Unlock(shareID int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if s := t.swarms[shareID]; s != nil {
+		s.holder = netip.Addr{}
+	}
+}
