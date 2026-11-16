@@ -118,6 +118,9 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	if way == WayLocal && s.seesSameFiles(ctx, source, target, targetFiles, group, members) {
+		way = WayNone
+	}
 
 	options := req.Options
 	if options.After == "" {
@@ -182,6 +185,29 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 		return WayLocal, nil
 	}
 	return WaySFTP, nil
+}
+
+// seesSameFiles reports whether each file of the group, at its place on the
+// target, is the file of the source, as the endpoint module tells it.
+func (s *Service) seesSameFiles(ctx context.Context, source, target *models.Instance, targetFiles fsops.Backend, group []*source, members []Member) bool {
+	srcFiles, err := s.deps.Files.GetBackend(ctx, source.ID)
+	if err != nil {
+		return false
+	}
+	d, td := srcFiles.Paths(), targetFiles.Paths()
+	for i, src := range group {
+		for _, f := range src.files {
+			a, err := srcFiles.Lstat(ctx, d.Join(src.torrent.SavePath, d.FromSlash(f.Name)))
+			if err != nil {
+				return false
+			}
+			b, err := targetFiles.Lstat(ctx, td.Join(members[i].Placement.SavePath, td.FromSlash(f.Name)))
+			if err != nil || fsops.CompareFiles(source, a.FileID, target, b.FileID) != fsops.FilesSame {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // source is the torrent on the Transfer source as one fresh read found it.

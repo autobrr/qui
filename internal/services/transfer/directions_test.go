@@ -125,3 +125,28 @@ func TestTransferOnQuisOwnDisk(t *testing.T) {
 		})
 	}
 }
+
+// When both instances see the same files, no byte moves: the target adds the
+// torrent on the files of the source, and the source keeps them.
+func TestTransferWithNoCopy(t *testing.T) {
+	r := newRigOn(t, onDisk, onDisk)
+	s := newShow(t, showName)
+	r.seed(s)
+	req := r.request(s)
+	req.Placement.SavePath = r.srcDir
+
+	record := r.run(req)
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayNone, record.Way)
+	require.Contains(t, logOf(record), "No copy: homelab sees the same files as seedbox.")
+	require.Contains(t, logOf(record), "Removed the torrent from seedbox and kept its files, because homelab reads the same files: 70 B stay in use.")
+	writes, creates := r.disk.log()
+	require.Empty(t, writes)
+	require.Empty(t, creates)
+	require.Equal(t, contents(s, showName), tree(t, r.srcDir), "the files stay, and no file of qui is left")
+	require.Empty(t, tree(t, r.dstDir))
+	require.True(t, r.dst.Has(s.hash))
+	require.Equal(t, r.srcDir, r.dst.LastParams("torrents/add").Get("savepath"))
+	require.False(t, r.src.Has(s.hash))
+}

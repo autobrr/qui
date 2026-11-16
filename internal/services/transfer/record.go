@@ -43,6 +43,8 @@ const (
 	// WayLocal: both sides are on qui's own disk. qui copies the files, or
 	// links them when both are on one filesystem.
 	WayLocal Way = "local"
+	// WayNone: the target sees the files of the source, and no byte moves.
+	WayNone Way = "none"
 )
 
 type StartedBy string

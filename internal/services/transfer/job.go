@@ -207,6 +207,10 @@ func (j *job) prepare(ctx context.Context) error {
 		return permanent("Not enough free space on %s: %v", j.target.Name, err)
 	}
 	j.reserved = need
+	if !resumed && j.rec.Way == WayNone {
+		j.logf("No copy: %s sees the same files as %s.", j.target.Name, j.source.Name)
+		return nil
+	}
 	if !resumed {
 		how := "over SFTP"
 		if j.rec.Way == WayLocal {
