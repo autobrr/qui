@@ -1064,6 +1064,11 @@ func TestValidateRule(t *testing.T) {
 		{name: "free space path source without instance", edit: freeSpacePath, wantMsg: errMsgPathSourceAccessRequired},
 		{name: "free space path source with local access", edit: freeSpacePath, instance: local, wantMsg: localFreeSpacePathMsg},
 		{name: "free space path source with SSH access", edit: freeSpacePath, instance: remote},
+		{name: "free space only in the sorting still checks the source", instance: remote, wantMsg: errMsgAllowanceSourceAccessRequired,
+			edit: func(r *models.Automation) {
+				r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldFreeSpace, Direction: models.SortDirectionASC}
+				r.FreeSpaceSource = &models.FreeSpaceSource{Type: models.FreeSpaceSourceAllowance, Path: "/home/user", AllowanceBytes: 1500}
+			}},
 	}
 
 	for _, tt := range tests {

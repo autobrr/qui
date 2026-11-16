@@ -173,7 +173,7 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		if (source.Type == models.FreeSpaceSourcePath || source.Type == models.FreeSpaceSourceAllowance) && windowsLocalPathSource(instance) {
 			return ruleError(errMsgWindowsPathSourceNotSupported)
 		}
-		if msg, err := validateFreeSpaceSource(source, instance, conditionsUseFreeSpace(conditions)); err != nil {
+		if msg, err := validateFreeSpaceSource(source, instance, ruleUsesCondition(rule, FieldFreeSpace)); err != nil {
 			return ruleError(msg)
 		}
 	}
