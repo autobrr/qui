@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Check, Funnel, Plus } from "lucide-react"
+import { Check, ChevronRight, Funnel, Plus } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -18,10 +18,12 @@ interface DisplayProfileListProps {
   selectedId: string
   onSelect: (profile: DisplayProfile) => void
   onNewProfile: () => void
+  /** Adds a › on each row that opens the profile in the editor. */
+  onEdit?: (profile: DisplayProfile) => void
 }
 
 /** The profiles in rows of 56 px. While only Default exists, a dashed tile below it opens the New profile dialog. */
-export function DisplayProfileList({ selectedId, onSelect, onNewProfile }: DisplayProfileListProps) {
+export function DisplayProfileList({ selectedId, onSelect, onNewProfile, onEdit }: DisplayProfileListProps) {
   const { t } = useTranslation("torrents")
   const { profiles, active } = useDisplayProfiles()
 
@@ -58,12 +60,25 @@ export function DisplayProfileList({ selectedId, onSelect, onNewProfile }: Displ
               <Tooltip>
                 <TooltipTrigger
                   aria-label={t("displayProfiles.ownSortAndFilters.label")}
-                  className="mr-2 grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  className={cn(
+                    "grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                    !onEdit && "mr-2"
+                  )}
                 >
                   <Funnel className="size-4" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs"><OwnSortAndFiltersHelp /></TooltipContent>
               </Tooltip>
+            )}
+            {onEdit && (
+              <button
+                type="button"
+                aria-label={t("displayProfiles.settings.editAriaLabel", { name: profile.name })}
+                onClick={() => onEdit(profile)}
+                className="mr-1 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <ChevronRight aria-hidden="true" className="size-5" />
+              </button>
             )}
           </li>
         )

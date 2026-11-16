@@ -1741,6 +1741,7 @@
     "chipAriaLabel": "Profilo di visualizzazione: {{name}}",
     "menuLabel": "Profilo di visualizzazione",
     "manage": "Gestisci profili…",
+    "sheetDescription": "Ogni browser sceglie il proprio profilo.",
     "settings": {
       "title": "Profili di visualizzazione",
       "holds": "Contiene: colonne · densità delle righe · barre laterali · sezioni dei filtri · alberi delle categorie · filtri vuoti",
@@ -1752,6 +1753,8 @@
       "renameAriaLabel": "Rinomina {{name}}",
       "saveName": "Salva il nome",
       "cancelRename": "Annulla la rinomina",
+      "editAriaLabel": "Modifica {{name}}",
+      "editTitle": "Modifica il profilo",
       "delete": "Elimina…",
       "deleteTitle": "Eliminare {{name}}?",
       "deleteDescription": "Gli altri browser che lo usano passano a {{defaultName}}.",
