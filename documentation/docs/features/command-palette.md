@@ -83,7 +83,7 @@ If the torrent list has a search text, the palette opens with that text. The pal
 On a touch screen, the palette shows no keys, and these rules apply:
 
 - The row **Search torrents for "text"** is the first row. Type the text, then tap this row or the Enter key of the on-screen keyboard. The list then shows only the torrents that match.
-- If no torrent matches the text, the destinations come first. The Enter key then opens the first destination.
+- If no torrent matches the text, the destinations come first. The Enter key then opens the first destination. If an instance does not answer the search and no other instance has a match, the row **Search torrents for "text"** shows **The torrent search failed** and stays first. The palette searches again every 3 seconds until each instance answers.
 - To open a different row, tap it.
 - To see the second list of a row, tap the arrow on its right. To go back, tap the arrow next to the search field.
 - To close the palette, tap the X or tap outside the palette.

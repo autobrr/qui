@@ -34,6 +34,8 @@ import type { PaletteEntry } from "./palette"
 const RESULT_LIMIT = 6
 // One letter matches most of a library, so the search starts at two.
 const MIN_QUERY_LENGTH = 2
+// An instance without a first sync answers once the sync that the search starts on the server ends, which takes seconds.
+export const PARTIAL_RETRY_MS = 3_000
 const NO_TORRENTS: CrossInstanceTorrent[] = []
 const torrentKey = (torrent: CrossInstanceTorrent) => `${torrent.instanceId}:${torrent.hash}`
 
@@ -113,6 +115,7 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
     // While the user types, the rows of the text before stay in view, so the list does not flash empty.
     placeholderData: keepPreviousData,
     staleTime: 10_000,
+    refetchInterval: ({ state }) => (state.data?.partialResults ? PARTIAL_RETRY_MS : false),
   })
   const found = searches ? search.data : undefined
   const rows = found?.crossInstanceTorrents ?? NO_TORRENTS
@@ -133,6 +136,8 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
   let noMatch = false
   if (searches && search.isError) matches = t("commandPalette.searchFailed")
   else if (searches && (found === undefined || !settled)) matches = t("commandPalette.searching")
+  // An instance that did not answer can hold a match.
+  else if (found?.partialResults && found.total === 0) matches = t("commandPalette.searchFailed")
   else if (found !== undefined) {
     noMatch = found.total === 0
     matches = noMatch ? t("commandPalette.noTorrentMatches") : t("commandPalette.torrentMatches", { count: found.total })
