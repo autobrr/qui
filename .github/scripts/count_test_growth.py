@@ -9,6 +9,10 @@ LINE_THRESHOLD = 600
 MARKER = "<!-- qui-test-growth -->"
 STANDARDS_URL = "https://github.com/autobrr/qui/blob/develop/docs/standards/tests.md"
 PATHSPECS = ["*_test.go", "*.test.ts", "*.test.tsx"]
+TOP_FILES = 5
+PROMPT = """Read docs/standards/tests.md. For each test and each table row that this
+pull request adds, name the code path that no other test runs. Fold or
+delete each one that has no such code path. Do not add tests."""
 
 GO_CASE = re.compile(r"\bfunc (?:Test|Benchmark)\w*\(|\b[tb]\.Run\(")
 WEB_CASE = re.compile(
@@ -38,54 +42,113 @@ def kind(path):
 
 
 def count(diff):
-    growth = {"go": Growth(), "web": Growth()}
-    current = None
+    files = {}
+    path = None
     in_hunk = False
     for line in diff.splitlines():
         if line.startswith("diff --git "):
-            current = None
+            path = None
             in_hunk = False
         elif not in_hunk and line.startswith(("--- a/", "+++ b/")):
-            current = kind(line[6:])
+            path = line[6:] if kind(line[6:]) else None
         elif line.startswith("@@"):
             in_hunk = True
-        elif in_hunk and current and line[:1] in ("+", "-"):
-            pattern = GO_CASE if current == "go" else WEB_CASE
+        elif in_hunk and path and line[:1] in ("+", "-"):
+            pattern = GO_CASE if kind(path) == "go" else WEB_CASE
             cases = len(pattern.findall(line[1:]))
+            growth = files.setdefault(path, Growth())
             if line[0] == "+":
-                growth[current].added_cases += cases
-                growth[current].added_lines += 1
+                growth.added_cases += cases
+                growth.added_lines += 1
             else:
-                growth[current].removed_cases += cases
-    return growth
+                growth.removed_cases += cases
+    return files
 
 
-def is_large(growth):
-    net = sum(g.net_cases for g in growth.values())
-    lines = sum(g.added_lines for g in growth.values())
-    return net >= CASE_THRESHOLD or lines >= LINE_THRESHOLD
+def total(growths):
+    result = Growth()
+    for growth in growths:
+        result.added_cases += growth.added_cases
+        result.removed_cases += growth.removed_cases
+        result.added_lines += growth.added_lines
+    return result
+
+
+def totals(files):
+    return {side: total(g for path, g in files.items() if kind(path) == side) for side in ("go", "web")}
+
+
+def is_large(files):
+    growth = total(files.values())
+    return growth.net_cases >= CASE_THRESHOLD or growth.added_lines >= LINE_THRESHOLD
 
 
 def signed(n):
-    return f"+{n}" if n > 0 else str(n)
+    return f"+{n:,}" if n > 0 else f"{n:,}"
 
 
-def comment(growth):
-    go, web = growth["go"], growth["web"]
+def plural(n, word):
+    return f"{n:,} {word}" if n == 1 else f"{n:,} {word}s"
+
+
+def row(label, growth, bold=False):
+    cells = [label, signed(growth.net_cases), f"{growth.added_lines:,}"]
+    if bold:
+        cells = [f"**{cell}**" for cell in cells]
+    return "| " + " | ".join(cells) + " |"
+
+
+def comment(files):
+    growth = total(files.values())
+    if growth.net_cases >= 0:
+        cases = f"adds {plural(growth.net_cases, 'test case')} and"
+    else:
+        cases = f"removes {plural(-growth.net_cases, 'test case')} and adds"
+    ranked = sorted(files.items(), key=lambda item: (-item[1].net_cases, -item[1].added_lines, item[0]))
+    shown = ranked if len(ranked) <= TOP_FILES + 1 else ranked[:TOP_FILES]
+    rows = [row("`" + path.replace("|", "\\|") + "`", g) for path, g in shown]
+    rest = ranked[len(shown):]
+    if rest:
+        rows.append(row(f"{len(rest):,} more files", total(g for _, g in rest)))
+    sides = totals(files)
+    rows += [
+        row(name, sides[side], bold=True)
+        for side, name in (("go", "Go"), ("web", "Web"))
+        if any(kind(path) == side for path in files)
+    ]
     return "\n".join([
         MARKER,
-        "This pull request adds many tests.",
+        f"**This pull request {cases} {plural(growth.added_lines, 'line')} of tests.** "
+        "It does not block the merge.",
         "",
-        "| | Go | Web | Total |",
-        "|---|---:|---:|---:|",
-        f"| Test cases, added minus removed | {signed(go.net_cases)} | {signed(web.net_cases)} | {signed(go.net_cases + web.net_cases)} |",
-        f"| Lines added to test files | {go.added_lines} | {web.added_lines} | {go.added_lines + web.added_lines} |",
+        "<details>",
+        f"<summary>Where the tests are ({plural(len(files), 'file')})</summary>",
+        "",
+        "| File | Test cases | Lines |",
+        "|---|---:|---:|",
+        *rows,
+        "",
+        "</details>",
+        "",
+        "<details>",
+        "<summary>Why this comment appears</summary>",
         "",
         "A test case is a Go test or benchmark function, a subtest, or a web `it` or `test` call. "
-        f"This comment appears when a pull request adds {CASE_THRESHOLD} or more test cases, or {LINE_THRESHOLD} or more lines to test files. "
-        "It does not block the merge. "
-        f"Make sure that each new test obeys the [test standards]({STANDARDS_URL}). "
-        "For example, a new table row must run a branch that no other row runs.",
+        f"This comment appears when a pull request adds {CASE_THRESHOLD} or more test cases, "
+        f"or {LINE_THRESHOLD} or more lines to test files.",
+        "",
+        "</details>",
+        "",
+        "<details>",
+        "<summary>Prompt for an AI agent</summary>",
+        "",
+        "```text",
+        PROMPT,
+        "```",
+        "",
+        "</details>",
+        "",
+        f'<sub>This comment updates on each push. Read the <a href="{STANDARDS_URL}">test standards</a>.</sub>',
         "",
     ])
 
@@ -109,14 +172,14 @@ def main(argv=None):
         help="print the pull request comment, or nothing when the change is below both thresholds",
     )
     args = parser.parse_args(argv)
-    growth = count(git_diff(args.base, args.head))
+    files = count(git_diff(args.base, args.head))
     if args.comment:
-        if is_large(growth):
-            sys.stdout.write(comment(growth))
+        if is_large(files):
+            sys.stdout.write(comment(files))
         return
-    for name, g in growth.items():
+    for name, g in totals(files).items():
         print(f"{name}: cases {signed(g.net_cases)} (+{g.added_cases} -{g.removed_cases}), lines +{g.added_lines}")
-    print(f"comment: {'yes' if is_large(growth) else 'no'}")
+    print(f"comment: {'yes' if is_large(files) else 'no'}")
 
 
 if __name__ == "__main__":

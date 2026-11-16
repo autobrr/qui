@@ -1,10 +1,10 @@
 import unittest
 
-from count_test_growth import comment, count, is_large
+from count_test_growth import Growth, comment, count, is_large, totals
 
 
 def summary(diff):
-    return {name: (g.net_cases, g.added_lines) for name, g in count(diff).items()}
+    return {name: (g.net_cases, g.added_lines) for name, g in totals(count(diff)).items()}
 
 
 GO_ADDED = """diff --git a/internal/a/a_test.go b/internal/a/a_test.go
@@ -130,38 +130,147 @@ class TestCount(unittest.TestCase):
                 self.assertEqual(summary(diff), want)
 
 
-def growth_with(cases, lines):
-    growth = count("")
-    growth["go"].added_cases = cases
-    growth["go"].added_lines = lines
-    return growth
+class TestFiles(unittest.TestCase):
+    def test_counts_for_each_file(self):
+        files = count(GO_ADDED + DELETED_FILE + RENAMED_FILE + RENAMED_AND_EDITED + NOT_A_TEST_FILE)
+        self.assertEqual(
+            files,
+            {
+                "internal/a/a_test.go": Growth(added_cases=4, added_lines=9),
+                "web/src/old.test.ts": Growth(removed_cases=2),
+                "web/src/b.test.tsx": Growth(added_cases=1, added_lines=1),
+            },
+        )
+
+
+def grown(cases, lines):
+    return Growth(added_cases=cases, added_lines=lines)
 
 
 class TestThreshold(unittest.TestCase):
     def test_is_large(self):
         cases = [
-            ("below both", 19, 599, False),
-            ("cases at threshold", 20, 0, True),
-            ("lines at threshold", 0, 600, True),
+            ("below both", {"a_test.go": grown(19, 599)}, False),
+            ("cases at threshold", {"a_test.go": grown(20, 0)}, True),
+            ("lines at threshold", {"a_test.go": grown(0, 600)}, True),
+            ("sum over files", {"a_test.go": grown(10, 300), "b.test.ts": grown(10, 300)}, True),
+            ("removed cases count", {"a_test.go": grown(25, 0), "b.test.ts": Growth(removed_cases=6)}, False),
         ]
-        for name, cases_added, lines_added, want in cases:
+        for name, files, want in cases:
             with self.subTest(name):
-                self.assertEqual(is_large(growth_with(cases_added, lines_added)), want)
+                self.assertEqual(is_large(files), want)
 
-    def test_net_cases_use_removed_cases(self):
-        growth = growth_with(25, 0)
-        growth["web"].removed_cases = 6
-        self.assertFalse(is_large(growth))
+
+def table(body):
+    return [line for line in body.splitlines() if line.startswith("| ") and not line.startswith("| File ")]
 
 
 class TestComment(unittest.TestCase):
-    def test_numbers(self):
-        growth = count(GO_ADDED + DELETED_FILE + WEB_MODIFIERS)
-        body = comment(growth)
-        self.assertTrue(body.startswith("<!-- qui-test-growth -->\n"))
-        self.assertIn("| Test cases, added minus removed | +4 | +1 | +5 |", body)
-        self.assertIn("| Lines added to test files | 9 | 10 | 19 |", body)
-        self.assertIn("docs/standards/tests.md", body)
+    def test_layout(self):
+        body = comment(count(GO_ADDED + DELETED_FILE + WEB_MODIFIERS))
+        self.assertEqual(
+            body,
+            """<!-- qui-test-growth -->
+**This pull request adds 5 test cases and 19 lines of tests.** It does not block the merge.
+
+<details>
+<summary>Where the tests are (3 files)</summary>
+
+| File | Test cases | Lines |
+|---|---:|---:|
+| `internal/a/a_test.go` | +4 | 9 |
+| `web/src/c.test.ts` | +3 | 10 |
+| `web/src/old.test.ts` | -2 | 0 |
+| **Go** | **+4** | **9** |
+| **Web** | **+1** | **10** |
+
+</details>
+
+<details>
+<summary>Why this comment appears</summary>
+
+A test case is a Go test or benchmark function, a subtest, or a web `it` or `test` call. This comment appears when a pull request adds 20 or more test cases, or 600 or more lines to test files.
+
+</details>
+
+<details>
+<summary>Prompt for an AI agent</summary>
+
+```text
+Read docs/standards/tests.md. For each test and each table row that this
+pull request adds, name the code path that no other test runs. Fold or
+delete each one that has no such code path. Do not add tests.
+```
+
+</details>
+
+<sub>This comment updates on each push. Read the <a href="https://github.com/autobrr/qui/blob/develop/docs/standards/tests.md">test standards</a>.</sub>
+""",
+        )
+
+    def test_rows(self):
+        def files(n):
+            return {f"f{i}_test.go": grown(i, 10) for i in range(1, n + 1)}
+
+        cases = [
+            (
+                "five files, no more row",
+                files(5),
+                ["f5_test.go", "f4_test.go", "f3_test.go", "f2_test.go", "f1_test.go", "**Go**"],
+            ),
+            (
+                "one more file gets its own row",
+                files(6),
+                ["f6_test.go", "f5_test.go", "f4_test.go", "f3_test.go", "f2_test.go", "f1_test.go", "**Go**"],
+            ),
+            (
+                "two more files fold into one row",
+                files(7),
+                ["f7_test.go", "f6_test.go", "f5_test.go", "f4_test.go", "f3_test.go", "2 more files | +3 | 20", "**Go**"],
+            ),
+            (
+                "lines break a tie",
+                {"a_test.go": grown(2, 5), "b_test.go": grown(2, 50), "c_test.go": grown(3, 1)},
+                ["c_test.go", "b_test.go", "a_test.go", "**Go**"],
+            ),
+            (
+                "files that remove as many or more cases than they add",
+                {
+                    "a.test.ts": Growth(added_cases=1, removed_cases=4, added_lines=3),
+                    "b.test.ts": grown(1, 1),
+                    "c.test.ts": Growth(added_cases=1, removed_cases=1, added_lines=2),
+                },
+                ["b.test.ts` | +1 | 1", "c.test.ts` | 0 | 2", "a.test.ts` | -3 | 3", "**Web** | **-2** | **6**"],
+            ),
+            (
+                "a pipe in a path",
+                {"web/a|b.test.ts": grown(1, 1)},
+                ["`web/a\\|b.test.ts` | +1 | 1", "**Web**"],
+            ),
+        ]
+        for name, given, want in cases:
+            with self.subTest(name):
+                rows = table(comment(given))
+                self.assertEqual(len(rows), len(want), rows)
+                for row, part in zip(rows, want):
+                    self.assertIn(part, row)
+
+    def test_headline(self):
+        cases = [
+            ("commas", {"a_test.go": grown(1234, 5678)}, "adds 1,234 test cases and 5,678 lines of tests.", "(1 file)"),
+            ("singular", {"a_test.go": grown(1, 1)}, "adds 1 test case and 1 line of tests.", "(1 file)"),
+            (
+                "net removal",
+                {"a_test.go": Growth(added_cases=2, removed_cases=7, added_lines=700), "b.test.ts": grown(0, 1)},
+                "removes 5 test cases and adds 701 lines of tests.",
+                "(2 files)",
+            ),
+        ]
+        for name, files, headline, summary in cases:
+            with self.subTest(name):
+                body = comment(files)
+                self.assertIn(f"**This pull request {headline}**", body)
+                self.assertIn(f"<summary>Where the tests are {summary}</summary>", body)
 
 
 if __name__ == "__main__":
