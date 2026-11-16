@@ -137,11 +137,7 @@ func (r Result) final(s Settings) bool {
 }
 
 func stopped(state qbt.TorrentState) bool {
-	switch state {
-	case qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl, qbt.TorrentStateStoppedUp, qbt.TorrentStatePausedUp:
-		return true
-	}
-	return false
+	return slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl, qbt.TorrentStateStoppedUp, qbt.TorrentStatePausedUp}, state)
 }
 
 // Add adds the torrent, makes the calls after the add, and polls until

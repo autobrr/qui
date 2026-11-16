@@ -36,9 +36,9 @@ func DefaultConfig() Config {
 }
 
 // GroupFinder finds the torrents that read the files of a torrent, with the
-// checks of the delete mode "keep files if qui detects cross-seeds".
+// check of the delete dialog.
 type GroupFinder interface {
-	OpenCrossMatchSession(ctx context.Context, instanceID int, needs crossseed.CrossMatchNeeds) (crossseed.CrossMatchSession, error)
+	FindDeleteMatches(ctx context.Context, selection map[int][]string) (*crossseed.DeleteMatchesResponse, error)
 }
 
 type Deps struct {
@@ -89,7 +89,7 @@ func NewService(ctx context.Context, deps Deps) *Service {
 
 // Start checks the Transfer of one torrent, records it with its claim on the
 // torrent, and runs it after the Transfers from the same source that started
-// before it. A *Refusal says why qui does not start it, and ErrClaimed that
+// before it. A *RefusalError says why qui does not start it, and ErrClaimed that
 // another Transfer holds the torrent.
 func (s *Service) Start(ctx context.Context, req Request) (int64, error) {
 	if s.ctx.Err() != nil {

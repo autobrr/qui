@@ -64,7 +64,6 @@ func newShow(t *testing.T, name string) show {
 // watches during the copy.
 type disk struct {
 	*local.Backend
-	mu          sync.Mutex
 	free        int64
 	unconfirmed bool
 	// damage flips the byte at an offset of the file with this final name.
@@ -395,7 +394,7 @@ func TestTransferRefuses(t *testing.T) {
 
 			_, err := r.svc.Start(t.Context(), req)
 
-			var refusal *transfer.Refusal
+			var refusal *transfer.RefusalError
 			require.ErrorAs(t, err, &refusal)
 			require.Contains(t, refusal.Reason, tc.reason)
 			require.False(t, r.store.IsClaimed(r.source.ID, s.hash), "a refused Transfer claims nothing")
@@ -599,7 +598,7 @@ func TestTransferCheckOnTheTargetFindsBadPieces(t *testing.T) {
 }
 
 func logOf(record *transfer.Record) string {
-	var lines []string
+	lines := make([]string, 0, len(record.Log))
 	for _, line := range record.Log {
 		lines = append(lines, line.Message)
 	}

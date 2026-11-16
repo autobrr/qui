@@ -211,11 +211,7 @@ func (j *job) checkSource(ctx context.Context) error {
 }
 
 func isChecking(state qbt.TorrentState) bool {
-	switch state {
-	case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
-		return true
-	}
-	return false
+	return slices.Contains([]qbt.TorrentState{qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData}, state)
 }
 
 // end finishes the Transfer as done, or as failed after the cleanup.
@@ -229,7 +225,7 @@ func (j *job) end(runErr error) {
 		state = StateFailed
 		if f, ok := errors.AsType[*failure](runErr); ok {
 			j.rec.FailureClass, j.rec.FailureReason = f.class, f.reason
-		} else if r, ok := errors.AsType[*Refusal](runErr); ok {
+		} else if r, ok := errors.AsType[*RefusalError](runErr); ok {
 			j.rec.FailureClass, j.rec.FailureReason = FailurePermanent, r.Reason
 		} else {
 			j.rec.FailureClass, j.rec.FailureReason = FailureTemporary, runErr.Error()

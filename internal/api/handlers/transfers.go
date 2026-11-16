@@ -59,7 +59,7 @@ func (h *TransfersHandler) Start(w http.ResponseWriter, r *http.Request) {
 		Options:          transfer.Options{After: req.After, LeaveStopped: req.LeaveStopped},
 		StartedBy:        transfer.StartedByUser,
 	})
-	_, refused := errors.AsType[*transfer.Refusal](err)
+	_, refused := errors.AsType[*transfer.RefusalError](err)
 	switch {
 	case refused, errors.Is(err, transfer.ErrClaimed):
 		RespondError(w, http.StatusConflict, err.Error())

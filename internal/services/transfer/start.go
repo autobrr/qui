@@ -34,13 +34,13 @@ type Request struct {
 	RuleID    *int
 }
 
-// Refusal is why qui does not start a Transfer, for the user.
-type Refusal struct{ Reason string }
+// RefusalError is why qui does not start a Transfer, for the user.
+type RefusalError struct{ Reason string }
 
-func (r *Refusal) Error() string { return r.Reason }
+func (r *RefusalError) Error() string { return r.Reason }
 
 func refuse(format string, args ...any) error {
-	return &Refusal{Reason: fmt.Sprintf(format, args...)}
+	return &RefusalError{Reason: fmt.Sprintf(format, args...)}
 }
 
 const (
@@ -253,16 +253,14 @@ func (s *Service) has(ctx context.Context, instanceID int, hash string) (bool, e
 // of the torrent, and with otherInstances, a torrent on another instance. A
 // torrent that qui could not check counts as read.
 func (s *Service) othersRead(ctx context.Context, instanceID int, hash string, otherInstances bool) (bool, error) {
-	session, err := s.deps.Groups.OpenCrossMatchSession(ctx, instanceID, crossseed.CrossMatchNeeds{SameContent: true, OtherShared: otherInstances})
+	res, err := s.deps.Groups.FindDeleteMatches(ctx, map[int][]string{instanceID: {hash}})
 	if err != nil {
 		return true, err
 	}
-	res := session.Resolve(ctx, crossseed.ResolveRequest{Hashes: []string{hash}, Groups: true, OtherShared: otherInstances})
-	if res.Err != nil {
-		return true, res.Err
+	if otherInstances && len(res.Unchecked) > 0 {
+		return true, nil
 	}
-	_, unknown := res.SameInstanceUnknown[hash]
-	_, shared := res.OtherInstanceShared[hash]
-	_, sharedUnknown := res.OtherInstanceSharedUnknown[hash]
-	return len(res.SameInstanceContentByHash[hash]) > 0 || unknown || shared || sharedUnknown, nil
+	return slices.ContainsFunc(res.Matches, func(m crossseed.LocalMatch) bool {
+		return otherInstances || m.InstanceID == instanceID
+	}), nil
 }

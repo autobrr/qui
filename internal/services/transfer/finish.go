@@ -284,11 +284,11 @@ func (j *job) startTarget(ctx context.Context) error {
 			continue
 		}
 		last = torrent.State
-		switch torrent.State {
-		case qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateForcedUp, qbt.TorrentStateQueuedUp:
+		switch {
+		case slices.Contains([]qbt.TorrentState{qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateForcedUp, qbt.TorrentStateQueuedUp}, torrent.State):
 			j.logf("The torrent seeds on %s.", j.target.Name)
 			return nil
-		case qbt.TorrentStateMissingFiles, qbt.TorrentStateError:
+		case torrent.State == qbt.TorrentStateMissingFiles || torrent.State == qbt.TorrentStateError:
 			_ = j.svc.deps.Sync.BulkAction(ctx, j.target.ID, []string{j.hash()}, "pause")
 			return permanent("The torrent on %s does not find its files: qBittorrent shows %s.", j.target.Name, torrent.State)
 		}
