@@ -93,10 +93,17 @@ type stream struct {
 	confirmed bool
 }
 
+// targetError is an error of the target, so that copyAll names the target when
+// the connection there dropped.
+type targetError struct{ error }
+
+func (e targetError) Unwrap() error { return e.error }
+
 // copyAll copies the pieces that are not Proven pieces, and on a target
 // that confirmed no flush, the pieces that fail a check of the partial
-// files. After a dropped connection it goes on with the pieces that are
-// still missing, until Config.Reconnects drops in a row flushed no piece.
+// files. After a dropped connection to either side it goes on with the
+// pieces that are still missing, until Config.Reconnects drops in a row
+// flushed no piece.
 func (j *job) copyAll(ctx context.Context) error {
 	cfg := j.svc.deps.Config
 	for drops := 0; ; {
@@ -114,7 +121,11 @@ func (j *job) copyAll(ctx context.Context) error {
 		if drops++; drops > cfg.Reconnects {
 			return err
 		}
-		j.logf("The connection to %s dropped. qui goes on with the pieces that are not proven yet.", j.source.Name)
+		side := j.source.Name
+		if _, ok := errors.AsType[targetError](err); ok {
+			side = j.target.Name
+		}
+		j.logf("The connection to %s dropped. qui goes on with the pieces that are not proven yet.", side)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -259,6 +270,9 @@ func (c *copier) create(ctx context.Context, tasks []task) error {
 func (j *job) createTemp(ctx context.Context, f *groupFile) error {
 	name := j.tempName(f.rel)
 	w, err := j.root.Create(ctx, name)
+	if errors.Is(err, fsops.ErrConnectionLost) {
+		return temporary("qui cannot create %s on %s: %w", name, j.target.Name, targetError{err})
+	}
 	if err != nil {
 		return permanent("qui cannot create %s on %s: %v", name, j.target.Name, err)
 	}
@@ -267,7 +281,7 @@ func (j *job) createTemp(ctx context.Context, f *groupFile) error {
 		confirmed, err := w.Flush()
 		if err != nil {
 			_ = w.Close()
-			return temporary("qui cannot flush %s on %s: %v", f.rel, j.target.Name, err)
+			return temporary("qui cannot flush %s on %s: %w", f.rel, j.target.Name, targetError{err})
 		}
 		if err := j.recordFlush(ctx, confirmed); err != nil {
 			_ = w.Close()
@@ -275,7 +289,7 @@ func (j *job) createTemp(ctx context.Context, f *groupFile) error {
 		}
 	}
 	if err := w.Close(); err != nil {
-		return temporary("qui cannot close %s on %s: %v", f.rel, j.target.Name, err)
+		return temporary("qui cannot close %s on %s: %w", f.rel, j.target.Name, targetError{err})
 	}
 	return nil
 }
@@ -491,7 +505,7 @@ func (s *stream) write(ctx context.Context, p *part, seg segment, data []byte) e
 		return err
 	}
 	if _, err := o.writer.Write(data); err != nil {
-		return temporary("qui cannot write on %s: %v", s.c.target, err)
+		return temporary("qui cannot write on %s: %w", s.c.target, targetError{err})
 	}
 	o.next += seg.n
 	s.dirty[f] = struct{}{}
@@ -520,7 +534,7 @@ func (s *stream) writer(ctx context.Context, f *groupFile, offset int64) (*open,
 			w, err = s.c.j.root.OpenWrite(ctx, name+incompleteExt, offset)
 		}
 		if err != nil {
-			return nil, temporary("qui cannot open %s on %s: %v", name, s.c.target, err)
+			return nil, temporary("qui cannot open %s on %s: %w", name, s.c.target, targetError{err})
 		}
 		o = &open{writer: w, next: offset}
 		s.open[f] = o
@@ -536,11 +550,11 @@ func (s *stream) finish(f *groupFile) error {
 	confirmed, err := o.writer.Flush()
 	if err != nil {
 		_ = o.writer.Close()
-		return temporary("qui cannot flush %s on %s: %v", f.rel, s.c.target, err)
+		return temporary("qui cannot flush %s on %s: %w", f.rel, s.c.target, targetError{err})
 	}
 	s.confirmed = s.confirmed && confirmed
 	if err := o.writer.Close(); err != nil {
-		return temporary("qui cannot close %s on %s: %v", f.rel, s.c.target, err)
+		return temporary("qui cannot close %s on %s: %w", f.rel, s.c.target, targetError{err})
 	}
 	return nil
 }
@@ -552,7 +566,7 @@ func (s *stream) checkpoint(ctx context.Context) error {
 	for f := range s.dirty {
 		confirmed, err := s.open[f].writer.Flush()
 		if err != nil {
-			return temporary("qui cannot flush %s on %s: %v", f.rel, s.c.target, err)
+			return temporary("qui cannot flush %s on %s: %w", f.rel, s.c.target, targetError{err})
 		}
 		s.confirmed = s.confirmed && confirmed
 	}

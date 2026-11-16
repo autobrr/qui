@@ -256,7 +256,7 @@ func (j *job) freeSpace(ctx context.Context) (free int64, known bool, err error)
 	if !j.blind {
 		stat, err := j.dstFiles.Statfs(ctx, j.rootDir)
 		if err != nil {
-			return 0, false, temporary("qui cannot read the free space on %s: %v", j.target.Name, err)
+			return 0, false, temporary("qui cannot read the free space on %s: %w", j.target.Name, targetError{err})
 		}
 		return stat.BytesAvailable, true, nil
 	}

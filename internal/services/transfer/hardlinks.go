@@ -53,7 +53,8 @@ func (j *job) linksCopyLater(f *groupFile) bool {
 // linkCopies makes the temporary file of each hardlink of the group a
 // hardlink to the temporary file of the file that it links to, so that qui
 // copies the bytes once. A file that the target cannot link gets a copy of
-// its own, and qui reserves the free space for it.
+// its own, and qui reserves the free space for it. A dropped connection is
+// no sign that the target cannot link: copyAll links the file again.
 func (j *job) linkCopies(ctx context.Context) error {
 	for _, f := range j.files {
 		if !j.linksCopyLater(f) {
@@ -70,6 +71,9 @@ func (j *job) linkCopies(ctx context.Context) error {
 			f.linksCopy = true
 			j.made[f] = f.size
 			continue
+		}
+		if errors.Is(err, fsops.ErrConnectionLost) {
+			return temporary("qui cannot link %s on %s: %w", f.rel, j.target.Name, targetError{err})
 		}
 		j.logf("qui cannot link %s on %s, so it copies the file: %v", f.rel, j.target.Name, err)
 		if _, err := j.reserve(ctx, f.size); err != nil {

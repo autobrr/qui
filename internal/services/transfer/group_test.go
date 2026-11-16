@@ -19,10 +19,13 @@ import (
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/remote"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
@@ -436,6 +439,76 @@ func TestTransferKeepsTheLinksOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 	}
 	require.True(t, r.seeding(r.target.ID, crossSeedHash))
 	require.Empty(t, tree(t, r.srcDir))
+}
+
+// A connection that drops while qui links a hardlink on the target is no
+// sign that the target cannot link. qui reconnects and links the path of the
+// cross-seed to the copy, and writes no second copy.
+// regression: #4231
+func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
+	r := newRigOn(t, onDisk, overSFTP)
+	r.disk.otherFilesystem = true
+	s := newShow(t, showName)
+	r.seed(s)
+	_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+	r.dropAtFirstLink()
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Contains(t, logOf(record), "The connection to homelab dropped.")
+	require.NotContains(t, logOf(record), "so it copies the file")
+	require.Equal(t, map[string]bool{showName: true}, r.writtenFolders(), "qui writes no byte of the cross-seed")
+	for name := range s.files {
+		require.True(t, sameFile(t, filepath.Join(r.dstDir, showName, name), filepath.Join(r.dstDir, "links", showName, name)), name)
+	}
+	require.True(t, r.seeding(r.target.ID, crossSeedHash))
+}
+
+// dropAtFirstLink starts qui again on an SFTP target whose connections drop
+// at the first hardlink that qui makes there, before the link.
+func (r *rig) dropAtFirstLink() {
+	r.t.Helper()
+	ssh := sshpool.NewPool(sshpool.NewDialer(r.instances))
+	r.t.Cleanup(ssh.Close)
+	var dropped atomic.Bool
+	drop := func() bool {
+		if !dropped.CompareAndSwap(false, true) {
+			return false
+		}
+		r.dstSSH.DropConnections()
+		return true
+	}
+	r.deps.Files = fsops.NewPoolWithRemote(r.instances, r.disk, func(inst *models.Instance) fsops.Backend {
+		return &linkDrops{sftpFiles: &sftpFiles{Backend: remote.New(ssh, inst), d: r.disk}, drop: drop}
+	})
+	r.restart()
+}
+
+type linkDrops struct {
+	*sftpFiles
+	drop func() bool
+}
+
+func (f *linkDrops) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
+	root, err := f.sftpFiles.OpenRoot(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	return &linkDropRoot{Root: root, drop: f.drop}, nil
+}
+
+type linkDropRoot struct {
+	fsops.Root
+	drop func() bool
+}
+
+// Link fails as the remote backend fails on a dropped connection.
+func (r *linkDropRoot) Link(ctx context.Context, oldName, newName string) error {
+	if r.drop() {
+		return fmt.Errorf("link %s: %w", newName, fsops.ErrConnectionLost)
+	}
+	return r.Root.Link(ctx, oldName, newName)
 }
 
 // writtenFolders returns the folders below the root of the Transfer of the

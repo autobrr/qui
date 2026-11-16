@@ -311,6 +311,33 @@ func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
 	}
 }
 
+// A dropped connection to an SFTP target resumes the copy at once, as a drop
+// on the source does: qui writes on into the temporary files that it made.
+// regression: #4231
+func TestTransferPushGoesOnAfterTheTargetDrops(t *testing.T) {
+	r := newRigOn(t, onDisk, overSFTP, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
+	r.dstSSH.SetFsync(true)
+	s := newBigShow(t)
+	r.seed(s)
+	count := 0
+	r.disk.onWrite = func(string) {
+		if count++; count == 10 || count == 30 || count == 50 {
+			r.dstSSH.DropConnections()
+		}
+	}
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Contains(t, logOf(record), "The connection to homelab dropped.")
+	require.NotContains(t, logOf(record), "The connection to seedbox dropped.")
+	_, creates := r.disk.log()
+	for name, n := range creates {
+		require.Equal(t, 1, n, "qui made %s once, and wrote into it after each drop", name)
+	}
+}
+
 // With no Transfer rows, the Service touches no instance in any direction:
 // no SSH dial, no request to qBittorrent, and no write.
 func TestTransferServiceIdleInEveryDirection(t *testing.T) {
