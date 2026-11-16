@@ -1,4 +1,5 @@
 name: Claude Discussion Triage
+run-name: "Claude Discussion Triage ${{ (inputs.discussion_number || github.event.discussion.number) && format('#{0}', inputs.discussion_number || github.event.discussion.number) || github.event_name }}"
 on:
   discussion_comment:
     types: [created]
