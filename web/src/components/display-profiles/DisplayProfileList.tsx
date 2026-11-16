@@ -73,7 +73,7 @@ export function DisplayProfileList({ selectedId, onSelect, onNewProfile }: Displ
           <button
             type="button"
             onClick={onNewProfile}
-            className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm text-muted-foreground outline-none hover:bg-accent/50 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-dashed px-3 py-1.5 text-left text-sm text-muted-foreground outline-none hover:bg-accent/50 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md border border-dashed">
               <Plus className="size-4" />
