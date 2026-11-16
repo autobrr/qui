@@ -139,6 +139,16 @@ type FileWriter interface {
 	Flush() (confirmed bool, err error)
 }
 
+// Connector is a Backend that reaches its instance on several connections,
+// so that a copy can read on all of them at once.
+type Connector interface {
+	// Connections returns up to n backends of the instance, each bound to a
+	// connection of its own. A host that refuses extra connections gives
+	// fewer, down to one. A bound backend does not redial: once its
+	// connection drops, each call fails with ErrConnectionLost.
+	Connections(ctx context.Context, n int) ([]Backend, error)
+}
+
 // BatchStater is a Backend that answers many paths in one request, so a
 // remote host costs a few round trips per batch and not a few per path.
 type BatchStater interface {

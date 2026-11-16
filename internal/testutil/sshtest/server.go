@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -149,6 +150,9 @@ type Server struct {
 	maxInFlight    int
 	commands       [][]string
 	live           map[*ssh.ServerConn]struct{}
+	admitted       map[*ssh.ServerConn]int
+	reads          []ReadRange
+	readIndex      map[readKey]int
 	sessionWaiters []chan struct{}
 	dropOnExec     *execDrop
 
@@ -168,7 +172,8 @@ type Server struct {
 func NewServer(t testing.TB, hostKey ssh.Signer, exec ExecMode) *Server {
 	t.Helper()
 
-	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{}, stallRelease: make(chan struct{}), stalled: make(chan struct{})}
+	server := &Server{exec: exec, HostKey: hostKey.PublicKey(), live: map[*ssh.ServerConn]struct{}{},
+		admitted: map[*ssh.ServerConn]int{}, readIndex: map[readKey]int{}, stallRelease: make(chan struct{}), stalled: make(chan struct{})}
 	server.releaseStall = sync.OnceFunc(func() { close(server.stallRelease) })
 	server.markStalled = sync.OnceFunc(func() { close(server.stalled) })
 	config := &ssh.ServerConfig{
@@ -402,6 +407,7 @@ func (s *Server) admit(conn *ssh.ServerConn) bool {
 		return false
 	}
 	s.live[conn] = struct{}{}
+	s.admitted[conn] = len(s.admitted) + 1
 	return true
 }
 
@@ -837,6 +843,9 @@ func (t *requestCutter) Read(p []byte) (int, error) {
 	}
 	if t.readRequestType(p[:n]) {
 		t.server.requested()
+		if p[0] == fxpRead {
+			t.server.read(t.conn, p[:n])
+		}
 		if t.mode() == SFTPHoldNextMutation {
 			t.holdMutation(p[0])
 		}
@@ -857,6 +866,55 @@ func (t *requestCutter) readRequestType(b []byte) bool {
 	first := t.bodyLeft == t.bodyLen
 	t.bodyLeft = max(t.bodyLeft-len(b), 0)
 	return first
+}
+
+// ReadRange is the part of a file that one handle read on one connection.
+type ReadRange struct {
+	// Conn numbers the connection in the order that the server admitted it,
+	// from 1.
+	Conn     int
+	From, To int64
+}
+
+type readKey struct {
+	conn   *ssh.ServerConn
+	handle string
+}
+
+const fxpRead = 5
+
+// ReadRanges returns the lowest and the highest offset that each file handle
+// read, in the order of the first read of each handle.
+func (s *Server) ReadRanges() []ReadRange {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.reads)
+}
+
+// read records a READ request: its handle, offset and length.
+func (s *Server) read(conn *ssh.ServerConn, body []byte) {
+	// type, id, and the length of the handle
+	if len(body) < 9 {
+		return
+	}
+	handleLen := int(binary.BigEndian.Uint32(body[5:9]))
+	rest := body[9:]
+	if len(rest) < handleLen+12 {
+		return
+	}
+	offset := int64(binary.BigEndian.Uint64(rest[handleLen:]))
+	end := offset + int64(binary.BigEndian.Uint32(rest[handleLen+8:]))
+	key := readKey{conn: conn, handle: string(rest[:handleLen])}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i, ok := s.readIndex[key]
+	if !ok {
+		s.readIndex[key] = len(s.reads)
+		s.reads = append(s.reads, ReadRange{Conn: s.admitted[conn], From: offset, To: end})
+		return
+	}
+	s.reads[i].From, s.reads[i].To = min(s.reads[i].From, offset), max(s.reads[i].To, end)
 }
 
 func (s *Server) requested() {

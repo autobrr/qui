@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
+	"io"
 	"io/fs"
 	"maps"
 	"net"
@@ -812,7 +813,19 @@ func TestTransferServiceIdleWithoutTransfers(t *testing.T) {
 
 	require.Zero(t, r.src.Requests())
 	require.Zero(t, r.dst.Requests())
+	require.Zero(t, r.ssh.Dials(), "no SSH connection")
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+
+	backend, err := r.deps.Files.GetBackend(t.Context(), r.source.ID)
+	require.NoError(t, err)
+	for range 2 {
+		reader, err := backend.OpenRead(t.Context(), filepath.ToSlash(filepath.Join(r.srcDir, showName, "Show.S01E01.mkv")), 0)
+		require.NoError(t, err)
+		_, err = io.ReadAll(reader)
+		require.NoError(t, err)
+		require.NoError(t, reader.Close())
+	}
+	require.Equal(t, 1, r.ssh.Accepts(), "other file features read on one connection")
 }
 
 // A finished Transfer stays finished: a Wake and a restart send nothing.

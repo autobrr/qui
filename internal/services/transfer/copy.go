@@ -5,13 +5,17 @@ package transfer
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
 	"io"
 	"math/bits"
 	"slices"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
@@ -20,16 +24,25 @@ import (
 // extension to incomplete files" gives each incomplete file that it checks.
 const incompleteExt = ".!qB"
 
-// open is a file of the group that qui writes on the target.
+const (
+	// maxConnections is how many SSH connections a copy reads on. Four
+	// filled a 1 Gbit line 28 ms away (ADR 0056).
+	maxConnections = 4
+	// minRange is the least that a connection of its own copies.
+	minRange = 1 << 20
+	// maxFiles bounds the files that a copy reads at once.
+	maxFiles = 128
+)
+
+// open is a file of the group that a stream writes on the target.
 type open struct {
 	writer fsops.FileWriter
 	// next is the offset in the file of the next byte of writer.
 	next int64
-	// done is set once every byte of the file is written.
-	done bool
 }
 
 type reading struct {
+	name   string
 	reader io.ReadCloser
 	pos    int64
 }
@@ -39,15 +52,44 @@ type copied struct {
 	piece int
 }
 
-// copier copies the pieces of each member in order and checks each one.
+// task is a run of pieces of a member, from and up to to, that one stream
+// copies in order.
+type task struct {
+	p        *part
+	from, to int
+}
+
+// copier copies the pieces of a run on several streams, each on a
+// connection of its own to the source.
 type copier struct {
-	j       *job
-	open    map[*groupFile]*open
+	j *job
+	// source and target name the instances in messages, because the checks
+	// of a stream read the instances again.
+	source, target string
+	// files bounds the files that the streams read at once.
+	files chan struct{}
+	// window is how many bytes a stream reads at once.
+	window int64
+
+	// mu guards confirmed and the Proven pieces of the parts.
+	mu sync.Mutex
+	// confirmed is false once a flush was not confirmed.
+	confirmed bool
+	checks    sync.Mutex
+}
+
+// stream copies its tasks on one connection to the source.
+type stream struct {
+	c       *copier
+	src     fsops.Backend
+	buf     []byte
 	reads   map[string]*reading
+	open    map[*groupFile]*open
 	dirty   map[*groupFile]struct{}
 	pending []copied
 	written int64
-	// confirmed is false once a flush was not confirmed.
+	// confirmed is false once a flush since the last checkpoint was not
+	// confirmed.
 	confirmed bool
 }
 
@@ -97,27 +139,38 @@ func provenCount(proven []byte) int {
 // source to temporary files on the target. qui checks each piece against the
 // .torrent before it writes it, and records it as a Proven piece once the
 // target confirmed the flush of its bytes. A piece that holds no file that
-// the member writes stays unproven: the check on the target proves it.
+// the member writes stays unproven: the check on the target proves it. The
+// copy splits the pieces into one range for each connection to the source,
+// and reads many files at once.
 func (j *job) copy(ctx context.Context) error {
-	c := &copier{j: j, open: map[*groupFile]*open{}, reads: map[string]*reading{}, dirty: map[*groupFile]struct{}{}, confirmed: true}
-	defer c.close()
+	c := &copier{j: j, source: j.source.Name, target: j.target.Name, files: make(chan struct{}, maxFiles), confirmed: true}
 	if j.made == nil {
 		j.made = map[*groupFile]int64{}
 	}
-	for _, f := range j.files {
-		if _, made := j.made[f]; f.size == 0 && !f.onTarget && !made {
-			if _, err := c.writer(ctx, f, 0); err != nil {
-				return err
-			}
-			c.open[f].done = true
-		}
+	runs, total := j.runs()
+	conns, err := c.connections(ctx, total)
+	if err != nil {
+		return err
 	}
-	for _, p := range j.parts {
-		if err := c.part(ctx, p); err != nil {
-			return err
-		}
+	tasks := split(runs, total, len(conns))
+	if err := c.create(ctx, tasks); err != nil {
+		return err
 	}
-	if err := c.flush(ctx); err != nil {
+	c.window = j.svc.deps.Config.ReadBytes / int64(len(conns))
+	queue := make(chan task, len(tasks))
+	for _, t := range tasks {
+		queue <- t
+	}
+	close(queue)
+	g, streamCtx := errgroup.WithContext(ctx)
+	for _, src := range conns {
+		s := &stream{c: c, src: src, reads: map[string]*reading{}, open: map[*groupFile]*open{}, dirty: map[*groupFile]struct{}{}, confirmed: true}
+		g.Go(func() error { return s.run(streamCtx, queue) })
+	}
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	if err := c.check(ctx); err != nil {
 		return err
 	}
 	j.rec.FlushState = FlushConfirmed
@@ -127,63 +180,263 @@ func (j *job) copy(ctx context.Context) error {
 	return j.checkSourceSizes(ctx)
 }
 
-func (c *copier) part(ctx context.Context, p *part) error {
-	info := p.src.info
-	p.proven = make([]byte, (info.NumPieces()+7)/8)
-	copy(p.proven, p.ProvenPieces)
-	buf := make([]byte, info.PieceLength)
-	for piece := range info.NumPieces() {
+// runs lists the runs of pieces that the copy copies: the pieces that are
+// not Proven pieces and hold a file that their member writes. total is their
+// bytes.
+func (j *job) runs() (runs []task, total int64) {
+	for _, p := range j.parts {
+		info := p.src.info
+		p.proven = make([]byte, (info.NumPieces()+7)/8)
+		copy(p.proven, p.ProvenPieces)
+		for piece := range info.NumPieces() {
+			start := int64(piece) * info.PieceLength
+			length := min(info.PieceLength, info.TotalLength()-start)
+			if p.isProven(piece) || !slices.ContainsFunc(p.segments(start, length), func(s segment) bool { return j.writes(p, s) }) {
+				continue
+			}
+			total += length
+			if last := len(runs) - 1; last >= 0 && runs[last].p == p && runs[last].to == piece {
+				runs[last].to++
+			} else {
+				runs = append(runs, task{p: p, from: piece, to: piece + 1})
+			}
+		}
+	}
+	return runs, total
+}
+
+// split cuts the runs at pieces into tasks of about total/n bytes.
+func split(runs []task, total int64, n int) []task {
+	size := (total + int64(n) - 1) / int64(n)
+	var out []task
+	for _, run := range runs {
+		length := run.p.src.info.PieceLength
+		pieces := max(1, int((size+length-1)/length))
+		for from := run.from; from < run.to; from += pieces {
+			out = append(out, task{p: run.p, from: from, to: min(from+pieces, run.to)})
+		}
+	}
+	return out
+}
+
+// connections returns the source on a connection of its own for each
+// minRange of the copy, at most maxConnections. A host that refuses extra
+// connections gives fewer, down to one.
+func (c *copier) connections(ctx context.Context, total int64) ([]fsops.Backend, error) {
+	want := int(min(max((total+minRange-1)/minRange, 1), maxConnections))
+	connector, ok := c.j.srcFiles.(fsops.Connector)
+	if !ok || want == 1 {
+		return []fsops.Backend{c.j.srcFiles}, nil
+	}
+	conns, err := connector.Connections(ctx, want)
+	if err != nil {
+		return nil, temporary("qui cannot read the files on %s: %w", c.source, err)
+	}
+	return conns, nil
+}
+
+// create makes the temporary file of each file that the tasks write and that
+// qui did not make yet, so that each stream writes into a file that exists.
+// A file of no bytes is complete once it exists.
+func (c *copier) create(ctx context.Context, tasks []task) error {
+	written := map[*groupFile]bool{}
+	for _, t := range tasks {
+		info := t.p.src.info
+		start := int64(t.from) * info.PieceLength
+		for _, s := range t.p.segments(start, min(int64(t.to)*info.PieceLength, info.TotalLength())-start) {
+			if c.j.writes(t.p, s) {
+				written[c.j.byRel[t.p.rel(t.p.plan[s.file])]] = true
+			}
+		}
+	}
+	for _, f := range c.j.files {
+		if _, made := c.j.made[f]; made || f.onTarget || f.size > 0 && !written[f] {
+			continue
+		}
+		name := c.j.tempName(f.rel)
+		w, err := c.j.root.Create(ctx, name)
+		if err != nil {
+			return permanent("qui cannot create %s on %s: %v", name, c.target, err)
+		}
+		c.j.made[f] = 0
+		if f.size == 0 {
+			confirmed, err := w.Flush()
+			if err != nil {
+				_ = w.Close()
+				return temporary("qui cannot flush %s on %s: %v", f.rel, c.target, err)
+			}
+			c.confirmed = c.confirmed && confirmed
+		}
+		if err := w.Close(); err != nil {
+			return temporary("qui cannot close %s on %s: %v", f.rel, c.target, err)
+		}
+	}
+	return nil
+}
+
+// prove records the pieces that a checkpoint flushed as Proven pieces, when
+// the target confirmed every flush.
+func (c *copier) prove(ctx context.Context, pending []copied, confirmed bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.confirmed = c.confirmed && confirmed
+	if !confirmed || len(pending) == 0 {
+		return nil
+	}
+	var parts []*part
+	for _, done := range pending {
+		done.part.proven[done.piece/8] |= 0x80 >> (done.piece % 8)
+		if !slices.Contains(parts, done.part) {
+			parts = append(parts, done.part)
+		}
+	}
+	for _, p := range parts {
+		p.ProvenPieces = p.proven
+		if err := c.j.svc.deps.Store.SaveProven(ctx, c.j.rec.ID, p.position, p.proven); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// check fails when an instance or the source torrent changed.
+func (c *copier) check(ctx context.Context) error {
+	c.checks.Lock()
+	defer c.checks.Unlock()
+	if err := c.j.checkInstances(ctx); err != nil {
+		return err
+	}
+	return c.j.checkSource(ctx)
+}
+
+func (s *stream) run(ctx context.Context, tasks <-chan task) error {
+	defer s.close()
+	for t := range tasks {
+		if err := s.task(ctx, t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// task copies the pieces of t, a window of pieces at a time.
+func (s *stream) task(ctx context.Context, t task) error {
+	info := t.p.src.info
+	window := max(1, int(s.c.window/info.PieceLength))
+	for from := t.from; from < t.to; from += window {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if !p.isProven(piece) {
-			if err := c.piece(ctx, p, piece, buf); err != nil {
-				return err
-			}
+		to := min(from+window, t.to)
+		start := int64(from) * info.PieceLength
+		end := min(int64(to)*info.PieceLength, info.TotalLength())
+		if int64(cap(s.buf)) < end-start {
+			s.buf = make([]byte, end-start)
 		}
-		if c.written >= c.j.svc.deps.Config.FlushBytes || piece == info.NumPieces()-1 {
-			if err := c.flush(ctx); err != nil {
+		data := s.buf[:end-start]
+		if err := s.read(ctx, t.p, start, data); err != nil {
+			return err
+		}
+		for piece := from; piece < to; piece++ {
+			at := int64(piece)*info.PieceLength - start
+			if err := s.piece(ctx, t.p, piece, data[at:min(at+info.PieceLength, end-start)]); err != nil {
 				return err
 			}
-			if err := c.j.checkInstances(ctx); err != nil {
-				return err
-			}
-			if err := c.j.checkSource(ctx); err != nil {
-				return err
+			if s.written >= s.c.j.svc.deps.Config.FlushBytes || piece == t.to-1 {
+				if err := s.checkpoint(ctx); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// piece reads one piece from the source, checks it against the .torrent,
-// and writes the files of the member to the temporary files.
-func (c *copier) piece(ctx context.Context, p *part, piece int, buf []byte) error {
-	info := p.src.info
-	start := int64(piece) * info.PieceLength
-	data := buf[:min(start+info.PieceLength, info.TotalLength())-start]
+// read reads the bytes of the member from start into data, from each of
+// their files at the same time.
+func (s *stream) read(ctx context.Context, p *part, start int64, data []byte) error {
 	segments := p.segments(start, int64(len(data)))
-	if !slices.ContainsFunc(segments, func(s segment) bool { return c.j.writes(p, s) }) {
-		return nil
+	paths := s.src.Paths()
+	reads := make([]*reading, len(segments))
+	errs := make([]error, len(segments))
+	var wg sync.WaitGroup
+	for i, seg := range segments {
+		f := p.plan[seg.file]
+		into := data[seg.at : seg.at+seg.n]
+		if f.pad {
+			clear(into)
+			continue
+		}
+		name := paths.Join(p.src.torrent.SavePath, paths.FromSlash(f.name))
+		r := s.reads[name]
+		delete(s.reads, name)
+		wg.Go(func() { reads[i], errs[i] = s.readFile(ctx, f, name, r, seg.offset, into) })
 	}
-	for _, s := range segments {
-		if err := c.read(ctx, p, s, data[s.at:s.at+s.n]); err != nil {
-			return err
+	wg.Wait()
+	for _, r := range reads {
+		if r != nil {
+			s.reads[r.name] = r
 		}
 	}
+	return cmp.Or(errs...)
+}
+
+// readFile reads into from offset of a file of the source, on r when r
+// stands at offset. It returns the reader while the file goes on.
+func (s *stream) readFile(ctx context.Context, f file, name string, r *reading, offset int64, into []byte) (*reading, error) {
+	if r != nil && r.pos != offset {
+		_ = r.reader.Close()
+		r = nil
+	}
+	select {
+	case s.c.files <- struct{}{}:
+	case <-ctx.Done():
+		if r != nil {
+			_ = r.reader.Close()
+		}
+		return nil, ctx.Err()
+	}
+	defer func() { <-s.c.files }()
+	if r == nil {
+		reader, err := s.src.OpenRead(ctx, name, offset)
+		if err != nil {
+			return nil, temporary("qui cannot read %s on %s: %w", f.name, s.c.source, err)
+		}
+		r = &reading{name: name, reader: reader, pos: offset}
+	}
+	n, err := io.ReadFull(r.reader, into)
+	r.pos += int64(n)
+	if err != nil {
+		_ = r.reader.Close()
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+			return nil, sourceChanged("the file " + f.name + " got shorter")
+		}
+		return nil, temporary("qui cannot read %s on %s: %w", f.name, s.c.source, err)
+	}
+	if r.pos == f.size {
+		_ = r.reader.Close()
+		return nil, nil
+	}
+	return r, nil
+}
+
+// piece checks one piece against the .torrent, and writes the files of the
+// member to the temporary files.
+func (s *stream) piece(ctx context.Context, p *part, piece int, data []byte) error {
+	info := p.src.info
 	sum := sha1.Sum(data) //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	if !bytes.Equal(sum[:], info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size]) {
-		return permanent("Piece %d on %s does not match the .torrent. qBittorrent can find the damage with a recheck.", piece, c.j.source.Name)
+		return permanent("Piece %d on %s does not match the .torrent. qBittorrent can find the damage with a recheck.", piece, s.c.source)
 	}
-	for _, s := range segments {
-		if c.j.writes(p, s) {
-			if err := c.write(ctx, p, s, data[s.at:s.at+s.n]); err != nil {
+	for _, seg := range p.segments(int64(piece)*info.PieceLength, int64(len(data))) {
+		if s.c.j.writes(p, seg) {
+			if err := s.write(ctx, p, seg, data[seg.at:seg.at+seg.n]); err != nil {
 				return err
 			}
 		}
 	}
-	c.pending = append(c.pending, copied{part: p, piece: piece})
-	c.written += int64(len(data))
+	s.pending = append(s.pending, copied{part: p, piece: piece})
+	s.written += int64(len(data))
 	return nil
 }
 
@@ -215,154 +468,91 @@ func (j *job) writes(p *part, s segment) bool {
 	return !f.pad && !f.onTarget && j.byRel[p.rel(f)].owner == p
 }
 
-func (c *copier) read(ctx context.Context, p *part, s segment, into []byte) error {
-	f := p.plan[s.file]
-	if f.pad {
-		clear(into)
-		return nil
-	}
-	paths := c.j.srcFiles.Paths()
-	name := paths.Join(p.src.torrent.SavePath, paths.FromSlash(f.name))
-	r := c.reads[name]
-	if r != nil && r.pos != s.offset {
-		_ = r.reader.Close()
-		r = nil
-	}
-	if r == nil {
-		reader, err := c.j.srcFiles.OpenRead(ctx, name, s.offset)
-		if err != nil {
-			return temporary("qui cannot read %s on %s: %w", f.name, c.j.source.Name, err)
-		}
-		r = &reading{reader: reader, pos: s.offset}
-		c.reads[name] = r
-	}
-	n, err := io.ReadFull(r.reader, into)
-	r.pos += int64(n)
-	if err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
-			return sourceChanged("the file " + f.name + " got shorter")
-		}
-		return temporary("qui cannot read %s on %s: %w", f.name, c.j.source.Name, err)
-	}
-	if r.pos == f.size {
-		_ = r.reader.Close()
-		delete(c.reads, name)
-	}
-	return nil
-}
-
-func (c *copier) write(ctx context.Context, p *part, s segment, data []byte) error {
-	f := c.j.byRel[p.rel(p.plan[s.file])]
-	w, err := c.writer(ctx, f, s.offset)
+func (s *stream) write(ctx context.Context, p *part, seg segment, data []byte) error {
+	f := s.c.j.byRel[p.rel(p.plan[seg.file])]
+	o, err := s.writer(ctx, f, seg.offset)
 	if err != nil {
 		return err
 	}
-	if _, err := w.Write(data); err != nil {
-		return temporary("qui cannot write on %s: %v", c.j.target.Name, err)
+	if _, err := o.writer.Write(data); err != nil {
+		return temporary("qui cannot write on %s: %v", s.c.target, err)
 	}
-	c.open[f].next += s.n
-	c.dirty[f] = struct{}{}
-	if s.offset+s.n == f.size {
-		c.open[f].done = true
+	o.next += seg.n
+	s.dirty[f] = struct{}{}
+	if o.next == f.size {
+		return s.finish(f)
 	}
 	return nil
 }
 
-// writer returns the writer of the temporary file of a file at offset. It
-// creates the temporary file at its first byte, and writes into the one that
-// qui made before. Proven pieces lie between the last write and offset when
-// they differ: the writer starts again there after a flush.
-func (c *copier) writer(ctx context.Context, f *groupFile, offset int64) (fsops.FileWriter, error) {
-	o, ok := c.open[f]
-	if !ok {
-		o = &open{}
-		c.open[f] = o
-	}
-	if o.writer != nil && o.next != offset {
-		if err := c.flush(ctx); err != nil {
+// writer returns the writer of the temporary file of f at offset. Proven
+// pieces lie between the last write and offset when they differ: the writer
+// starts again there after a flush.
+func (s *stream) writer(ctx context.Context, f *groupFile, offset int64) (*open, error) {
+	o := s.open[f]
+	if o != nil && o.next != offset {
+		if err := s.finish(f); err != nil {
 			return nil, err
 		}
-		if o.writer != nil {
-			if err := o.writer.Close(); err != nil {
-				return nil, temporary("qui cannot close %s on %s: %v", f.rel, c.j.target.Name, err)
-			}
-			o.writer = nil
-		}
+		o = nil
 	}
-	if o.writer == nil {
-		name := c.j.tempName(f.rel)
-		var (
-			w   fsops.FileWriter
-			err error
-		)
-		if _, made := c.j.made[f]; made {
-			if w, err = c.j.root.OpenWrite(ctx, name, offset); err != nil {
-				return nil, temporary("qui cannot open %s on %s: %v", name, c.j.target.Name, err)
-			}
-		} else {
-			if w, err = c.j.root.Create(ctx, name); err != nil {
-				return nil, permanent("qui cannot create %s on %s: %v", name, c.j.target.Name, err)
-			}
-			c.j.made[f] = 0
+	if o == nil {
+		name := s.c.j.tempName(f.rel)
+		w, err := s.c.j.root.OpenWrite(ctx, name, offset)
+		if err != nil {
+			return nil, temporary("qui cannot open %s on %s: %v", name, s.c.target, err)
 		}
-		o.writer, o.next = w, offset
-		c.dirty[f] = struct{}{}
+		o = &open{writer: w, next: offset}
+		s.open[f] = o
 	}
-	return o.writer, nil
+	return o, nil
 }
 
-// flush flushes each file written since the last flush and closes the files
-// that are complete. When the target confirms every flush, the pieces
-// written since the last flush become Proven pieces.
-func (c *copier) flush(ctx context.Context) error {
-	confirmed := true
-	for f := range c.dirty {
-		o := c.open[f]
-		ok, err := o.writer.Flush()
-		if err != nil {
-			return temporary("qui cannot flush %s on %s: %v", f.rel, c.j.target.Name, err)
-		}
-		confirmed = confirmed && ok
-		if o.done {
-			if err := o.writer.Close(); err != nil {
-				return temporary("qui cannot close %s on %s: %v", f.rel, c.j.target.Name, err)
-			}
-			o.writer = nil
-		}
+// finish flushes and closes the writer of f.
+func (s *stream) finish(f *groupFile) error {
+	o := s.open[f]
+	delete(s.open, f)
+	delete(s.dirty, f)
+	confirmed, err := o.writer.Flush()
+	if err != nil {
+		_ = o.writer.Close()
+		return temporary("qui cannot flush %s on %s: %v", f.rel, s.c.target, err)
 	}
-	clear(c.dirty)
-	c.confirmed = c.confirmed && confirmed
-	pending := c.pending
-	c.pending, c.written = nil, 0
-	if !confirmed || len(pending) == 0 {
-		return nil
-	}
-	var parts []*part
-	for _, done := range pending {
-		done.part.proven[done.piece/8] |= 0x80 >> (done.piece % 8)
-		if !slices.Contains(parts, done.part) {
-			parts = append(parts, done.part)
-		}
-	}
-	for _, p := range parts {
-		p.ProvenPieces = p.proven
-		if err := c.j.svc.deps.Store.SaveProven(ctx, c.j.rec.ID, p.position, p.proven); err != nil {
-			return err
-		}
+	s.confirmed = s.confirmed && confirmed
+	if err := o.writer.Close(); err != nil {
+		return temporary("qui cannot close %s on %s: %v", f.rel, s.c.target, err)
 	}
 	return nil
 }
 
-// close closes the files of a copy that stopped. A writer is closed without
-// a flush, so its pieces stay unproven.
-func (c *copier) close() {
-	for _, r := range c.reads {
+// checkpoint flushes each file that the stream wrote since the last
+// checkpoint, records the pieces of those bytes as Proven pieces when the
+// target confirmed every flush, and checks both sides.
+func (s *stream) checkpoint(ctx context.Context) error {
+	for f := range s.dirty {
+		confirmed, err := s.open[f].writer.Flush()
+		if err != nil {
+			return temporary("qui cannot flush %s on %s: %v", f.rel, s.c.target, err)
+		}
+		s.confirmed = s.confirmed && confirmed
+	}
+	clear(s.dirty)
+	pending, confirmed := s.pending, s.confirmed
+	s.pending, s.written, s.confirmed = nil, 0, true
+	if err := s.c.prove(ctx, pending, confirmed); err != nil {
+		return err
+	}
+	return s.c.check(ctx)
+}
+
+// close closes the files of a stream that stopped. A writer is closed
+// without a flush, so its pieces stay unproven.
+func (s *stream) close() {
+	for _, r := range s.reads {
 		_ = r.reader.Close()
 	}
-	for _, o := range c.open {
-		if o.writer != nil {
-			_ = o.writer.Close()
-		}
+	for _, o := range s.open {
+		_ = o.writer.Close()
 	}
 }
 
