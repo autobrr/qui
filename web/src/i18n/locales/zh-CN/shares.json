@@ -94,6 +94,15 @@
       "ending": "正在结束",
       "ended": "已结束",
       "unknown": "未知"
+    },
+    "endReason": {
+      "downloaded": "接收者已拿到文件。",
+      "expired": "分享已过期。",
+      "stopped": "已被用户停止。",
+      "torrent_deleted": "种子已被删除。",
+      "torrent_moved": "种子已被移动。",
+      "files_renamed": "种子的文件已被重命名。",
+      "share_torrent_gone": "分享种子已不在客户端中。"
     }
   }
 }

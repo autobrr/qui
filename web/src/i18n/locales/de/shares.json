@@ -96,6 +96,15 @@
       "ending": "Endet",
       "ended": "Beendet",
       "unknown": "Unbekannt"
+    },
+    "endReason": {
+      "downloaded": "Der Empfänger hat die Dateien.",
+      "expired": "Die Freigabe ist abgelaufen.",
+      "stopped": "Vom Benutzer gestoppt.",
+      "torrent_deleted": "Der Torrent wurde gelöscht.",
+      "torrent_moved": "Der Torrent wurde verschoben.",
+      "files_renamed": "Die Dateien des Torrents wurden umbenannt.",
+      "share_torrent_gone": "Der Freigabe-Torrent ist nicht mehr im Client."
     }
   }
 }

@@ -96,6 +96,15 @@
       "ending": "Ending",
       "ended": "Ended",
       "unknown": "Unknown"
+    },
+    "endReason": {
+      "downloaded": "The recipient has the files.",
+      "expired": "The Share expired.",
+      "stopped": "Stopped by the user.",
+      "torrent_deleted": "The torrent was deleted.",
+      "torrent_moved": "The torrent was moved.",
+      "files_renamed": "The files of the torrent were renamed.",
+      "share_torrent_gone": "The Share torrent is gone from the client."
     }
   }
 }

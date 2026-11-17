@@ -30,6 +30,9 @@ const stateIcons: Record<ShareState, { icon: LucideIcon; className: string }> = 
   ended: { icon: CircleSlash, className: "text-muted-foreground" },
 }
 
+/** The end reason codes that have a text in each language. The server sends "other" for a reason with no code. */
+const translatedEndReasons = new Set(["downloaded", "expired", "stopped", "torrent_deleted", "torrent_moved", "files_renamed", "share_torrent_gone"])
+
 /** The Shares section of the Transfers page: one row for each Share, the newest first. */
 export function SharesTab() {
   const { t } = useTranslation("shares")
@@ -127,7 +130,15 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
           <StateLabel state={share.state} />
           {progress}
         </div>
-        {!active && share.endReason && <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{share.endReason}</p>}
+        {!active && share.endReason && (
+          <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+            {translatedEndReasons.has(share.endReasonCode)
+              ? t(`tab.endReason.${share.endReasonCode}`)
+              // A reason with no code, such as a failed start, has no translation, so the row shows the English text of the server.
+              // That text can name the instance, so incognito mode hides it.
+              : display.text(share.endReason)}
+          </p>
+        )}
         <div className="mt-2 text-xs">
           <div className="text-muted-foreground">{outside ? t("tab.connectedPeers") : t("tab.announced")}</div>
           {share.peers.length === 0 ? (

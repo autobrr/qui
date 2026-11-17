@@ -62,6 +62,7 @@ function startedShare(request: StartSharesRequest): Share {
     firstDownloaderOnly: request.firstDownloaderOnly,
     state: "active",
     endReason: "",
+    endReasonCode: "",
     createdAt: "2026-11-17T10:00:00Z",
     expiresAt: "2026-11-24T10:00:00Z",
     endedAt: null,

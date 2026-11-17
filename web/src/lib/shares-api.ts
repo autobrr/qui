@@ -28,7 +28,13 @@ export interface Share {
   endAtFirstDownload: boolean
   firstDownloaderOnly: boolean
   state: ShareState
+  /** Why the Share ended, in English. */
   endReason: string
+  /**
+   * The code of endReason, for the UI to translate: "" while the Share has not
+   * ended, and "other" for a reason with no code of its own.
+   */
+  endReasonCode: string
   createdAt: string
   expiresAt: string
   endedAt: string | null

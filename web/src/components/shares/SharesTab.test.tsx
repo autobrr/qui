@@ -36,6 +36,7 @@ const active: Share = {
   firstDownloaderOnly: true,
   state: "active",
   endReason: "",
+  endReasonCode: "",
   createdAt: "2026-11-17T10:00:00Z",
   expiresAt: "2026-11-24T10:00:00Z",
   endedAt: null,
@@ -165,7 +166,7 @@ describe("SharesTab", () => {
   })
 
   it("shows why an ended Share ended, and removes its row before the 30 days", async () => {
-    shares = [{ ...active, state: "ended", endReason: "The recipient has the files.", endedAt: "2026-11-18T09:00:00Z" }]
+    shares = [{ ...active, state: "ended", endReason: "The recipient has the files.", endReasonCode: "downloaded", endedAt: "2026-11-18T09:00:00Z" }]
     renderTab()
 
     const row = await findRow(active.name)
@@ -176,6 +177,40 @@ describe("SharesTab", () => {
 
     fireEvent.click(within(row).getByRole("button", { name: "Remove" }))
     await waitFor(() => expect(writes).toEqual(["DELETE /api/shares/41"]))
+  })
+
+  // regression: #4242
+  it("shows the end reason in the language of the user, by its code", async () => {
+    shares = [{ ...active, state: "ended", endReason: "A text that the code replaces", endReasonCode: "expired", endedAt: "2026-11-18T09:00:00Z" }]
+    renderTab()
+
+    const row = await findRow(active.name)
+    expect(row.textContent).toContain("The Share expired.")
+    expect(row.textContent).not.toContain("A text that the code replaces")
+  })
+
+  // regression: #4242
+  it.each(["other", "a_code_of_a_newer_server"])("shows the text of the server for the end reason code %s", async (code) => {
+    shares = [{ ...active, state: "ended", endReason: "qBittorrent did not seed the Share torrent.", endReasonCode: code, endedAt: "2026-11-18T09:00:00Z" }]
+    renderTab()
+
+    const row = await findRow(active.name)
+    expect(row.textContent).toContain("qBittorrent did not seed the Share torrent.")
+  })
+
+  // regression: #4242
+  it("hides an end reason of the server in incognito mode, and shows a translated one", async () => {
+    incognito.on = true
+    shares = [
+      { ...active, state: "ended", endReason: "qBittorrent did not seed the Share torrent.", endReasonCode: "other", endedAt: "2026-11-18T09:00:00Z" },
+      { ...active, id: 42, hash: "bbbb2222", state: "ended", endReason: "The Share expired.", endReasonCode: "expired", endedAt: "2026-11-18T09:00:00Z" },
+    ]
+    renderTab()
+
+    const other = await findRow(getLinuxIsoName("aaaa1111"))
+    expect(other.textContent).not.toContain("qBittorrent did not seed")
+    expect(other.textContent).toContain("Hidden in incognito mode")
+    expect((await findRow(getLinuxIsoName("bbbb2222"))).textContent).toContain("The Share expired.")
   })
 
   // regression: #4242

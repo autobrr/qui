@@ -96,6 +96,15 @@
       "ending": "Fin en cours",
       "ended": "Terminé",
       "unknown": "Inconnu"
+    },
+    "endReason": {
+      "downloaded": "Le destinataire a les fichiers.",
+      "expired": "Le Partage a expiré.",
+      "stopped": "Arrêté par l'utilisateur.",
+      "torrent_deleted": "Le torrent a été supprimé.",
+      "torrent_moved": "Le torrent a été déplacé.",
+      "files_renamed": "Les fichiers du torrent ont été renommés.",
+      "share_torrent_gone": "Le torrent du Partage n'est plus dans le client."
     }
   }
 }

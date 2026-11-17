@@ -96,6 +96,15 @@
       "ending": "Acabant",
       "ended": "Acabada",
       "unknown": "Desconeguda"
+    },
+    "endReason": {
+      "downloaded": "El destinatari ja té els fitxers.",
+      "expired": "La Compartició ha caducat.",
+      "stopped": "Aturada per l'usuari.",
+      "torrent_deleted": "El torrent s'ha suprimit.",
+      "torrent_moved": "El torrent s'ha mogut.",
+      "files_renamed": "Els fitxers del torrent s'han reanomenat.",
+      "share_torrent_gone": "El torrent de la Compartició ja no és al client."
     }
   }
 }
