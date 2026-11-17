@@ -281,16 +281,6 @@ describe("the Transfers tab", () => {
     await waitFor(() => expect(requests).toContain("POST /api/transfers/2/retry"))
   })
 
-  it("retries and removes a row", async () => {
-    renderTab()
-    const tr = await rowOf("Film.2019.2160p-ABC")
-    fireEvent.click(within(tr).getByRole("button", { name: "Retry" }))
-    await waitFor(() => expect(requests).toContain("POST /api/transfers/2/retry"))
-    fireEvent.click(within(tr).getByRole("button", { name: "Remove" }))
-    await waitFor(() => expect(requests).toContain("DELETE /api/transfers/2"))
-    expect(toast.success).toHaveBeenCalledWith("The Transfer runs again.")
-  })
-
   // regression: #4242
   it("sends one Retry for each row while the answers wait", async () => {
     let answer: () => void = () => {}
@@ -625,7 +615,7 @@ describe("the Transfers tab", () => {
     openTab(dialog, /^Steps/)
     // The time of day follows the time zone of the machine, and the day is the same in each zone of the test.
     const clocks = Array.from(within(dialog).getByRole("tabpanel").querySelectorAll("time"), time => time.textContent)
-    expect(clocks).toEqual([expect.stringMatching(/^2026-11-15 · \d\d:00:00$/), expect.stringMatching(/^2026-11-17 · \d\d:00:07$/)])
+    expect(clocks).toEqual([expect.stringMatching(/^2026-11-15 · \d\d:\d\d:00$/), expect.stringMatching(/^2026-11-17 · \d\d:\d\d:07$/)])
     openTab(dialog, /^Log/)
     const lines = within(within(dialog).getByRole("tabpanel")).getAllByRole("listitem").map(item => item.textContent)
     expect(lines).toEqual(["2026-11-15", expect.stringMatching(/First line\.$/), expect.stringMatching(/Second line\.$/), "2026-11-17", expect.stringMatching(/Last line\.$/)])

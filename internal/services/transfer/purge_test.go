@@ -5,6 +5,7 @@ package transfer_test
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -32,6 +33,12 @@ func (r *rig) endedWithHelper(hash string, state transfer.State, instanceID int,
 	require.NoError(r.t, r.store.RegisterHelper(ctx, transfer.Helper{InstanceID: instanceID, Hash: helperHash,
 		Random: []byte{1}, Owner: transfer.OwnerTransfer, OwnerID: record.ID}))
 	require.NoError(r.t, r.store.Finish(ctx, record.ID, state))
+	// qui counts a sync as later than the end only when its time is later, and
+	// the clock of Windows moves in steps of up to 16 ms. Wait for the next
+	// step, so that a sync after this call is later on every host.
+	for end := time.Now().Round(0); !time.Now().Round(0).After(end); {
+		runtime.Gosched()
+	}
 	return record.ID
 }
 

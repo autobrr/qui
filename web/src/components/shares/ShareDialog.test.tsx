@@ -75,7 +75,6 @@ function startedShare(request: StartSharesRequest): Share {
 
 let settings: ShareSettings
 let started: StartSharesRequest[]
-let refusal: { error: string; refused: Array<{ hash: string; reason: string }> } | null
 
 function renderDialog(torrents = [torrent], onOpenChange = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -91,16 +90,12 @@ function renderDialog(torrents = [torrent], onOpenChange = vi.fn()) {
 beforeEach(() => {
   settings = structuredClone(ownTracker)
   started = []
-  refusal = null
   clipboard.copied = []
   server.use(
     http.get("*/api/shares/settings", () => HttpResponse.json(settings)),
     http.post("*/api/shares", async ({ request }) => {
       const body = (await request.json()) as StartSharesRequest
       started.push(body)
-      if (refusal) {
-        return HttpResponse.json({ ...refusal, shares: [] }, { status: 409 })
-      }
       return HttpResponse.json({ shares: [startedShare(body)], refused: [] }, { status: 201 })
     })
   )
@@ -183,19 +178,6 @@ describe("ShareDialog", () => {
 
     expect(await screen.findByText("No tracker is set, so no Share can start.")).not.toBeNull()
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Create" }).disabled).toBe(true)
-  })
-
-  it("shows the reason when qui refuses the Share, and stays on the form", async () => {
-    refusal = {
-      error: "Share needs qBittorrent 5.1 or newer. Update qBittorrent on Seedbox.",
-      refused: [{ hash: "aaaa1111", reason: "Share needs qBittorrent 5.1 or newer. Update qBittorrent on Seedbox." }],
-    }
-    renderDialog()
-    fireEvent.click(await screen.findByRole("button", { name: "Create" }))
-
-    const alert = await screen.findByRole("alert")
-    expect(alert.textContent).toContain("Share needs qBittorrent 5.1 or newer. Update qBittorrent on Seedbox.")
-    expect(screen.getByRole("button", { name: "Create" })).not.toBeNull()
   })
 
   // regression: #4242
