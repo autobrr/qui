@@ -753,38 +753,38 @@ func (j *job) keepReason(ctx context.Context) string {
 		return "another torrent reads them"
 	}
 	if j.srcFiles != nil {
-		switch renamed, known := j.renamedOnSource(ctx); {
-		case !known:
-			return "qui cannot read the names of the files on " + j.source.Name
-		case renamed:
-			return "a file was renamed on " + j.source.Name
-		}
+		return j.changedOnSource(ctx)
 	}
 	return ""
 }
 
-// renamedOnSource reports whether a member on the source names its files
-// otherwise than the files that qui copied. qui removes the files on the
-// source by these names, so a file of someone else may now have one.
-func (j *job) renamedOnSource(ctx context.Context) (renamed, known bool) {
+// changedOnSource says why qui keeps the files when a member on the source
+// moved or names its files otherwise than when qui copied them. qui removes
+// the files on the source by the recorded save path and names, so a file of
+// someone else may now have one of these paths.
+func (j *job) changedOnSource(ctx context.Context) string {
 	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
-		return false, false
+		return "qui cannot read the torrents on " + j.source.Name
 	}
 	for _, p := range j.parts {
-		if !slices.ContainsFunc(present, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) }) {
+		i := slices.IndexFunc(present, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) })
+		if i < 0 {
 			continue
+		}
+		if present[i].SavePath != p.SourceSavePath {
+			return "a torrent moved on " + j.source.Name
 		}
 		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash)
 		if err != nil || files == nil {
-			return false, false
+			return "qui cannot read the names of the files on " + j.source.Name
 		}
 		plan, err := planFiles(p.src.info, *files)
 		if err != nil || !slices.Equal(names(plan), names(p.plan)) {
-			return true, true
+			return "a file was renamed on " + j.source.Name
 		}
 	}
-	return false, true
+	return ""
 }
 
 func (j *job) hostKeyPin(inst *models.Instance) []byte {
