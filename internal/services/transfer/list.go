@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 // Filter is a filter chip of the Transfers page. FilterAll lists every row.
@@ -175,9 +177,14 @@ func (s *Store) counts(ctx context.Context) (Counts, error) {
 	return c, rows.Err()
 }
 
-// Remove deletes a finished Transfer. It returns ErrNotFinished for a
-// Transfer that holds its torrents.
-func (s *Store) Remove(ctx context.Context, id int64) error {
+// HelperGone reports whether qui can see that the instance no longer has the
+// helper torrent hash, from a sync after since.
+type HelperGone func(instanceID int, hash string, since time.Time) bool
+
+// Remove deletes a finished Transfer, and the registry rows of its helper
+// torrents that gone reports. It returns ErrNotFinished for a Transfer that
+// holds its torrents.
+func (s *Store) Remove(ctx context.Context, id int64, gone HelperGone) error {
 	record, err := s.Get(ctx, id)
 	if err != nil {
 		return err
@@ -185,61 +192,113 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 	if record.FinishedAt.IsZero() {
 		return fmt.Errorf("%w: %d", ErrNotFinished, id)
 	}
-	return s.remove(ctx, []int64{id})
+	return s.remove(ctx, []finished{{id, record.FinishedAt}}, gone)
 }
 
-// RemoveFinishedBefore deletes each Transfer that finished before t, and
-// returns how many it deleted.
-func (s *Store) RemoveFinishedBefore(ctx context.Context, t time.Time) (int, error) {
+// RemoveFinishedBefore deletes each Transfer that finished before t, and the
+// registry rows of their helper torrents that gone reports. It returns how
+// many Transfers it deleted.
+func (s *Store) RemoveFinishedBefore(ctx context.Context, t time.Time, gone HelperGone) (int, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, finished_at FROM torrent_transfers WHERE finished_at IS NOT NULL`)
 	if err != nil {
 		return 0, fmt.Errorf("read finished transfers: %w", err)
 	}
 	defer rows.Close()
-	var ids []int64
+	var old []finished
 	for rows.Next() {
-		var id int64
-		var finishedAt time.Time
-		if err := rows.Scan(&id, &finishedAt); err != nil {
+		var f finished
+		if err := rows.Scan(&f.id, &f.at); err != nil {
 			return 0, fmt.Errorf("read finished transfers: %w", err)
 		}
 		// Compared here, not in SQL: SQLite compares stored times as text,
 		// and Finish stores them in the local zone.
-		if finishedAt.Before(t) {
-			ids = append(ids, id)
+		if f.at.Before(t) {
+			old = append(old, f)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return 0, fmt.Errorf("read finished transfers: %w", err)
 	}
 	rows.Close()
-	if len(ids) == 0 {
+	if len(old) == 0 {
 		return 0, nil
 	}
-	return len(ids), s.remove(ctx, ids)
+	return len(old), s.remove(ctx, old, gone)
 }
 
-// remove deletes the rows of the Transfers and keeps the registry rows of
-// their helper torrents: a cleanup that could not reach a client only logged
-// that the helper stays there, and the registry is what protects it.
-func (s *Store) remove(ctx context.Context, ids []int64) error {
+// finished is a Transfer that ended at at.
+type finished struct {
+	id int64
+	at time.Time
+}
+
+// remove deletes the rows of the Transfers. It keeps the registry row of a
+// helper torrent unless gone reports it: a cleanup that could not reach a
+// client only logged that the helper stays there, and the registry is what
+// protects it.
+func (s *Store) remove(ctx context.Context, transfers []finished, gone HelperGone) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin remove of transfers: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM torrent_transfer_members WHERE transfer_id = ?`, id); err != nil {
-			return fmt.Errorf("remove members of transfer %d: %w", id, err)
+	var dropped []torrentKey
+	for _, f := range transfers {
+		keys, err := dropGoneHelpers(ctx, tx, f, gone)
+		if err != nil {
+			return err
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM torrent_transfers WHERE id = ? AND finished_at IS NOT NULL`, id); err != nil {
-			return fmt.Errorf("remove transfer %d: %w", id, err)
+		dropped = append(dropped, keys...)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM torrent_transfer_members WHERE transfer_id = ?`, f.id); err != nil {
+			return fmt.Errorf("remove members of transfer %d: %w", f.id, err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM torrent_transfers WHERE id = ? AND finished_at IS NOT NULL`, f.id); err != nil {
+			return fmt.Errorf("remove transfer %d: %w", f.id, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit remove of transfers: %w", err)
 	}
+	s.mu.Lock()
+	for _, key := range dropped {
+		delete(s.helpers, key)
+	}
+	s.mu.Unlock()
 	return nil
+}
+
+// dropGoneHelpers deletes the registry rows of the helper torrents of f that
+// gone reports, and returns their keys.
+func dropGoneHelpers(ctx context.Context, tx dbinterface.TxQuerier, f finished, gone HelperGone) ([]torrentKey, error) {
+	if gone == nil {
+		return nil, nil
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT instance_id, hash FROM helper_torrents WHERE owner_kind = ? AND owner_id = ?`, string(OwnerTransfer), f.id)
+	if err != nil {
+		return nil, fmt.Errorf("read helper torrents of transfer %d: %w", f.id, err)
+	}
+	var keys []torrentKey
+	for rows.Next() {
+		var key torrentKey
+		if err := rows.Scan(&key.instanceID, &key.hash); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("read helper torrents of transfer %d: %w", f.id, err)
+		}
+		if gone(key.instanceID, key.hash, f.at) {
+			keys = append(keys, key)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read helper torrents of transfer %d: %w", f.id, err)
+	}
+	for _, key := range keys {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM helper_torrents WHERE instance_id = ? AND hash = ?`, key.instanceID, key.hash); err != nil {
+			return nil, fmt.Errorf("remove helper torrent of transfer %d: %w", f.id, err)
+		}
+	}
+	return keys, nil
 }
 
 // keepFinished is how long the row of a finished Transfer stays.
@@ -251,7 +310,7 @@ const purgeInterval = time.Hour
 // purge removes the rows that finished more than keepFinished ago.
 func (s *Service) purge() {
 	s.purged = s.deps.Now()
-	n, err := s.deps.Store.RemoveFinishedBefore(s.ctx, s.purged.Add(-keepFinished))
+	n, err := s.deps.Store.RemoveFinishedBefore(s.ctx, s.purged.Add(-keepFinished), s.helperGone())
 	switch {
 	case err != nil && s.ctx.Err() == nil:
 		log.Error().Err(err).Msg("transfer: cannot remove old Transfers")
@@ -264,5 +323,14 @@ func (s *Service) purge() {
 // ErrNotFound for an unknown id, and ErrNotFinished for a Transfer that has
 // not ended.
 func (s *Service) Remove(ctx context.Context, id int64) error {
-	return s.deps.Store.Remove(ctx, id)
+	return s.deps.Store.Remove(ctx, id, s.helperGone())
+}
+
+// helperGone forgets a helper torrent only when the synced torrent list of a
+// connected client shows that it is gone. It asks qBittorrent nothing.
+func (s *Service) helperGone() HelperGone {
+	if s.deps.Sync == nil {
+		return nil
+	}
+	return s.deps.Sync.TorrentGoneSince
 }

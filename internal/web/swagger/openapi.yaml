@@ -7044,8 +7044,9 @@ paths:
         - Transfers
       summary: Remove a finished Transfer
       description: >-
-        Removes the row of a finished Transfer or Export to Instance run before the 30 days are over. qui still knows
-        its helper torrents, so it keeps their files safe. Only a signed-in browser can use this route.
+        Removes the row of a finished Transfer or Export to Instance run before the 30 days are over. qui keeps
+        protecting each helper torrent of the run, unless the synced torrent list of its connected instance already
+        shows that the helper torrent is gone. Only a signed-in browser can use this route.
       security:
         - SessionAuth: []
       parameters:

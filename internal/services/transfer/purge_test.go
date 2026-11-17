@@ -17,11 +17,18 @@ import (
 // in the registry.
 func (r *rig) ended(hash string, state transfer.State) int64 {
 	r.t.Helper()
+	return r.endedWithHelper(hash, state, r.target.ID, "helper"+hash)
+}
+
+// endedWithHelper stores a Transfer of hash that ended in state, with the
+// helper torrent helperHash on instanceID in the registry.
+func (r *rig) endedWithHelper(hash string, state transfer.State, instanceID int, helperHash string) int64 {
+	r.t.Helper()
 	ctx := r.t.Context()
 	record := group(hash)
 	record.SourceInstanceID, record.TargetInstanceID = r.source.ID, r.target.ID
 	require.NoError(r.t, r.store.Create(ctx, record))
-	require.NoError(r.t, r.store.RegisterHelper(ctx, transfer.Helper{InstanceID: r.target.ID, Hash: "helper" + hash,
+	require.NoError(r.t, r.store.RegisterHelper(ctx, transfer.Helper{InstanceID: instanceID, Hash: helperHash,
 		Random: []byte{1}, Owner: transfer.OwnerTransfer, OwnerID: record.ID}))
 	require.NoError(r.t, r.store.Finish(ctx, record.ID, state))
 	return record.ID
@@ -61,11 +68,13 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 }
 
 // regression: #4242
-// A helper torrent stays a helper after its Transfer row goes, by the user or
-// after 30 days, also after a restart: the cleanup of the Transfer may not
-// have taken it off the client.
-func TestAHelperStaysProtectedAfterTheRowOfItsTransferGoes(t *testing.T) {
-	for _, tc := range []struct {
+// When the row of a Transfer goes, by the user or after 30 days, qui forgets
+// a helper torrent only when it sees that the helper is gone: the client is
+// connected and its synced torrent list, from a sync after the end of the
+// Transfer, does not hold it. A helper that is still there, or one on an
+// offline instance, stays protected, also after a restart.
+func TestTheRowOfATransferTakesOnlyItsGoneHelpersAlong(t *testing.T) {
+	removals := []struct {
 		name   string
 		remove func(r *rig, id int64)
 	}{
@@ -76,23 +85,64 @@ func TestAHelperStaysProtectedAfterTheRowOfItsTransferGoes(t *testing.T) {
 			r.setClock(time.Now().Add(31 * 24 * time.Hour))
 			r.restart()
 		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newRig(t)
-			id := r.ended("aaaa", transfer.StateCancelled)
-			tc.remove(r, id)
-			require.False(t, r.exists(id))
-			protected := func() {
-				t.Helper()
-				r.sync.SetHelperTorrents(r.store)
-				require.True(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
-				err := r.sync.RefuseHelperFiles(t.Context(), r.target.ID, []string{"helperaaaa"})
-				require.ErrorIs(t, err, qbittorrent.ErrHelperTorrentFiles)
-			}
-			protected()
-			r.restart()
-			protected()
-		})
+	}
+	helpers := []struct {
+		name string
+		// helper registers the helper torrent, and returns its instance and
+		// its hash.
+		helper    func(r *rig) (int, string)
+		protected bool
+		// stale leaves the last sync of the target before the end.
+		stale bool
+	}{
+		{name: "still on the client", protected: true, helper: func(r *rig) (int, string) {
+			file, hash := singleFileTorrent(r.t, "Show.S01E01.mkv", []byte("helper"))
+			r.dst.Seed(file, r.dstDir)
+			return r.target.ID, hash
+		}},
+		{name: "on an offline instance", protected: true, helper: func(r *rig) (int, string) {
+			offline, err := r.instances.Create(r.t.Context(), "offline", "http://127.0.0.1:1", "", "", nil, nil, false, new(false))
+			require.NoError(r.t, err)
+			return offline.ID, "1111111111111111111111111111111111111111"
+		}},
+		{name: "gone from the client", protected: false, helper: func(r *rig) (int, string) {
+			return r.target.ID, "2222222222222222222222222222222222222222"
+		}},
+		{name: "gone, with no sync since the end", protected: true, stale: true, helper: func(r *rig) (int, string) {
+			return r.target.ID, "3333333333333333333333333333333333333333"
+		}},
+	}
+	for _, removal := range removals {
+		for _, tc := range helpers {
+			t.Run(removal.name+", "+tc.name, func(t *testing.T) {
+				r := newRig(t)
+				instanceID, hash := tc.helper(r)
+				owner, err := r.sync.GetSyncOwner(t.Context(), r.target.ID)
+				require.NoError(t, err)
+				require.NoError(t, owner.Sync(t.Context()))
+				id := r.endedWithHelper("aaaa", transfer.StateCancelled, instanceID, hash)
+				if !tc.stale {
+					require.NoError(t, owner.Sync(t.Context()), "the target syncs after the end")
+				}
+
+				removal.remove(r, id)
+				require.False(t, r.exists(id))
+				check := func() {
+					t.Helper()
+					r.sync.SetHelperTorrents(r.store)
+					require.Equal(t, tc.protected, r.store.IsHelper(instanceID, hash))
+					err := r.sync.RefuseHelperFiles(t.Context(), instanceID, []string{hash})
+					if tc.protected {
+						require.ErrorIs(t, err, qbittorrent.ErrHelperTorrentFiles)
+					} else {
+						require.NoError(t, err)
+					}
+				}
+				check()
+				r.restart()
+				check()
+			})
+		}
 	}
 }
 
