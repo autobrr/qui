@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/fsops"
@@ -502,7 +503,7 @@ func (s *Store) HelperKinds(instanceID int) func(hash string) string {
 	if kinds == nil {
 		return nil
 	}
-	return func(hash string) string { return string(kinds[strings.ToLower(hash)]) }
+	return func(hash string) string { return string(kinds[lowerHash(hash)]) }
 }
 
 // HelperCheck is IsHelper for a pass over the torrents of one instance: it
@@ -516,7 +517,7 @@ func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
 		return nil
 	}
 	return func(hash string) bool {
-		_, ok := kinds[strings.ToLower(hash)]
+		_, ok := kinds[lowerHash(hash)]
 		return ok
 	}
 }
@@ -532,7 +533,7 @@ func (s *Store) HoldCheck(instanceID int) func(hash string) bool {
 		return nil
 	}
 	return func(hash string) bool {
-		hash = strings.ToLower(hash)
+		hash = lowerHash(hash)
 		_, claimed := claims[hash]
 		_, helper := helpers[hash]
 		return claimed || helper
@@ -553,6 +554,18 @@ func hashesOn[V any](entries map[torrentKey]V, instanceID int) map[string]V {
 		hashes[key.hash] = value
 	}
 	return hashes
+}
+
+// lowerHash is strings.ToLower for the hash of a torrent. qBittorrent sends
+// the hash in lower case, and on a hex hash strings.ToLower costs a pass over
+// the torrents about 100 ns per torrent.
+func lowerHash(hash string) string {
+	for i := 0; i < len(hash); i++ {
+		if c := hash[i]; c >= utf8.RuneSelf || 'A' <= c && c <= 'Z' {
+			return strings.ToLower(hash)
+		}
+	}
+	return hash
 }
 
 type endpointJSON struct {
