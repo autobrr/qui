@@ -25,11 +25,12 @@ type swarm struct {
 
 // answer is the peer list of one announce. owner is true when the client also
 // gets the public peer address of the user's own client. locked is true when
-// the client took the lock.
+// the client took the lock, and blocked when the lock keeps it out.
 type answer struct {
-	owner  bool
-	locked bool
-	peers  []netip.AddrPort
+	owner   bool
+	locked  bool
+	blocked bool
+	peers   []netip.AddrPort
 }
 
 // join records the announce of client in the swarm of its Share and returns
@@ -91,7 +92,8 @@ func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req 
 		if locked {
 			s.holder = peer.Addr()
 		}
-		return answer{owner: peer.Addr() == s.holder && !s.ownerSeen.IsZero(), locked: locked}, nil
+		held := peer.Addr() == s.holder
+		return answer{owner: held && !s.ownerSeen.IsZero(), locked: locked, blocked: !held}, nil
 	}
 	a := answer{owner: !s.ownerSeen.IsZero()}
 	for p := range s.recipients {

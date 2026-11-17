@@ -290,7 +290,8 @@ func resolve(ctx context.Context, hostPort string) (netip.AddrPort, error) {
 // that the user's client sent, and the address and the progress of a
 // recipient. It stores the address of a recipient that takes the lock before
 // the tracker answers, so that the lock outlives a restart of qui. A recipient
-// that completed wakes Run.
+// that completed wakes Run. The progress of a recipient that the lock keeps
+// out does not count.
 func (s *Service) Announced(ctx context.Context, r sharetracker.Report) {
 	if r.Locked {
 		if err := s.saveHolder(context.WithoutCancel(ctx), r.ShareID, r.Peer.Addr()); err != nil {
@@ -315,6 +316,9 @@ func (s *Service) Announced(ctx context.Context, r sharetracker.Report) {
 		progress = float64(max(l.size-r.Left, 0)) / float64(l.size)
 	}
 	l.peers[address] = Peer{Address: address, Progress: progress, SeenAt: s.deps.Now().UTC()}
+	if r.Blocked {
+		return
+	}
 	l.downloaded = max(l.downloaded, l.size-r.Left)
 	if r.Event == sharetracker.EventCompleted || (r.Left == 0 && known && before.Progress < 1) {
 		l.completed = true
