@@ -172,8 +172,13 @@ const sensitiveJSONFieldName = `[A-Za-z0-9_. -]*(?i:key|pass|token|secret|auth)[
 // up to the first escaped quote that is not itself escaped.
 const escapedQuotedValue = `\\"(?:[^"\\]|\\[^"\\]|\\\\(?:\\\\|\\"|[^"\\]))*\\"`
 
+// flatJSONItem matches one part of a flat list or object: a character, an
+// escape such as \n, or a whole quoted string, so that a bracket inside a
+// string does not end the list.
+const flatJSONItem = `(?:[^\[\]{}"\\]|\\[^"\[\]{}]|"(?:[^"\\]|\\.)*"|` + escapedQuotedValue + `)`
+
 var (
-	jsonSecretFlatRegex    = regexp.MustCompile(`((\\?)"` + sensitiveJSONFieldName + `\\?"\s*:\s*)(?:\[[^\[\]{}]*\]|\{[^{}\[\]]*\})`)
+	jsonSecretFlatRegex    = regexp.MustCompile(`((\\?)"` + sensitiveJSONFieldName + `\\?"\s*:\s*)(?:\[` + flatJSONItem + `*\]|\{` + flatJSONItem + `*\})`)
 	jsonSecretStringRegex  = regexp.MustCompile(`("` + sensitiveJSONFieldName + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
 	jsonSecretScalarRegex  = regexp.MustCompile(`(\\?"` + sensitiveJSONFieldName + `\\?"\s*:\s*)[^\s,}\]"{\[\\]+`)
 	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveJSONFieldName + `\\"\s*:\s*)` + escapedQuotedValue)

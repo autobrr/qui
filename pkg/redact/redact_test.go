@@ -411,6 +411,11 @@ func TestText(t *testing.T) {
 			want:  `{"apiKeys":"REDACTED","auth":"REDACTED","message":"body {\"tokens\":\"REDACTED\"}","user":"bob"}`,
 		},
 		{
+			name:  "json array or object under a secret name with a bracket inside a string",
+			input: `{"apiKeys":["abc]def123","uvw[xyz987","a\"]b456"],"secrets":{"a":"x}y{z123"},"message":"body {\"tokens\":[\"abc]def789\",\"x[y\"]}","user":"bob"}`,
+			want:  `{"apiKeys":"REDACTED","secrets":"REDACTED","message":"body {\"tokens\":\"REDACTED\"}","user":"bob"}`,
+		},
+		{
 			name:  "host name in a url is not a key value pair",
 			input: "dial https://auth.example.test:8443/login failed",
 			want:  "dial https://auth.example.test:8443/login failed",
