@@ -240,6 +240,74 @@ func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
 }
 
+// holdCreate holds the first write of a Transfer after its commit, once
+// armed, until release closes.
+type holdCreate struct {
+	dbinterface.Querier
+	armed   *atomic.Bool
+	held    chan struct{}
+	release chan struct{}
+}
+
+func (h holdCreate) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := h.Querier.BeginTx(ctx, opts)
+	if err != nil || !h.armed.CompareAndSwap(true, false) {
+		return tx, err
+	}
+	return heldCommit{TxQuerier: tx, held: h.held, release: h.release}, nil
+}
+
+type heldCommit struct {
+	dbinterface.TxQuerier
+	held    chan struct{}
+	release chan struct{}
+}
+
+func (c heldCommit) Commit() error {
+	err := c.TxQuerier.Commit()
+	close(c.held)
+	<-c.release
+	return err
+}
+
+// regression: #4242
+// A cancel that ends an Export run between its record and its start keeps
+// it cancelled: the run adds nothing to the target.
+func TestCancelBeforeAnExportRunStartsKeepsItCancelled(t *testing.T) {
+	r := newRig(t, exportPolls)
+	var armed atomic.Bool
+	hold := holdCreate{Querier: r.db, armed: &armed, held: make(chan struct{}), release: make(chan struct{})}
+	r.restartOn(hold)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+
+	armed.Store(true)
+	type started struct {
+		done <-chan transfer.ExportResult
+		err  error
+	}
+	export := make(chan started, 1)
+	go func() {
+		_, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
+		export <- started{done, err}
+	}()
+	<-hold.held
+	ids, err := r.store.Unfinished(t.Context())
+	require.NoError(t, err)
+	require.Len(t, ids, 1)
+	require.NoError(t, r.svc.Cancel(t.Context(), ids[0]))
+	r.svc.Wait()
+	close(hold.release)
+	run := <-export
+	require.NoError(t, run.err)
+	<-run.done
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateCancelled, r.get(ids[0]).State)
+	require.False(t, r.dst.Has(s.hash), "the cancelled run adds nothing")
+}
+
 // regression: #4242
 // A cancel that comes while an Export run records its end leaves the run as
 // it ends, with its torrent on the target, and answers that the run ended.
