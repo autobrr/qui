@@ -489,17 +489,19 @@ func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
 // A connection that drops while qui links a hardlink on the target, or
 // creates a temporary file there, is no sign that the target cannot link. qui
 // reconnects, makes again a name that the target may have made before the
-// drop, and links the path of the cross-seed to the copy. It writes no second
-// copy.
+// drop, also when the removal of that name drops, and links the path of the
+// cross-seed to the copy. It writes no second copy.
 // regression: #4231
 func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		drop targetDrop
+		name  string
+		drops []targetDrop
 	}{
-		{name: "before a link", drop: targetDrop{op: "link"}},
-		{name: "after a link", drop: targetDrop{op: "link", served: true}},
-		{name: "after a create", drop: targetDrop{op: "create", served: true}},
+		{name: "before a link", drops: []targetDrop{{op: "link"}}},
+		{name: "after a link", drops: []targetDrop{{op: "link", served: true}}},
+		{name: "after a link and at its removal", drops: []targetDrop{{op: "link", served: true}, {op: "remove"}}},
+		{name: "after a create", drops: []targetDrop{{op: "create", served: true}}},
+		{name: "after a create and at its removal", drops: []targetDrop{{op: "create", served: true}, {op: "remove"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRigOn(t, onDisk, overSFTP)
@@ -507,7 +509,7 @@ func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 			s := newShow(t, showName)
 			r.seed(s)
 			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
-			r.dropAtFirst(tc.drop)
+			r.dropAtFirst(tc.drops...)
 
 			record := r.run(r.request(s))
 
@@ -524,20 +526,20 @@ func TestTransferLinksAHardlinkedCrossSeedAfterTheTargetDrops(t *testing.T) {
 }
 
 // targetDrop drops the connections to an SFTP target once, at the first
-// request op of qui there: "link" or "create". With served, the target takes
-// the request, and only its answer is lost.
+// request op of qui there: "link", "create", or "remove". With served, the
+// target takes the request, and only its answer is lost.
 type targetDrop struct {
 	op     string
 	served bool
 }
 
 // dropAtFirst starts qui again on an SFTP target whose connections drop as
-// d says.
-func (r *rig) dropAtFirst(d targetDrop) {
+// each of ds says, in turn.
+func (r *rig) dropAtFirst(ds ...targetDrop) {
 	r.t.Helper()
 	ssh := sshpool.NewPool(sshpool.NewDialer(r.instances))
 	r.t.Cleanup(ssh.Close)
-	drops := &drops{targetDrop: d, server: r.dstSSH}
+	drops := &drops{pending: ds, server: r.dstSSH}
 	r.deps.Files = fsops.NewPoolWithRemote(r.instances, r.disk, func(inst *models.Instance) fsops.Backend {
 		return &dropFiles{sftpFiles: &sftpFiles{Backend: remote.New(ssh, inst), d: r.disk}, drops: drops}
 	})
@@ -545,18 +547,24 @@ func (r *rig) dropAtFirst(d targetDrop) {
 }
 
 type drops struct {
-	targetDrop
 	server  *sshtest.Server
-	dropped atomic.Bool
+	mu      sync.Mutex
+	pending []targetDrop
 }
 
 // request runs a request op on name, and fails it as the remote backend
-// fails on a dropped connection when it is the request that drops.
+// fails on a dropped connection when it is the request that drops next.
 func (d *drops) request(op, name string, request func() error) error {
-	if op != d.op || !d.dropped.CompareAndSwap(false, true) {
+	d.mu.Lock()
+	next := targetDrop{}
+	if len(d.pending) > 0 && d.pending[0].op == op {
+		next, d.pending = d.pending[0], d.pending[1:]
+	}
+	d.mu.Unlock()
+	if next.op == "" {
 		return request()
 	}
-	if d.served {
+	if next.served {
 		if err := request(); err != nil {
 			return err
 		}
@@ -585,6 +593,10 @@ type dropRoot struct {
 
 func (r *dropRoot) Link(ctx context.Context, oldName, newName string) error {
 	return r.drops.request("link", newName, func() error { return r.Root.Link(ctx, oldName, newName) })
+}
+
+func (r *dropRoot) Remove(ctx context.Context, name string) error {
+	return r.drops.request("remove", name, func() error { return r.Root.Remove(ctx, name) })
 }
 
 func (r *dropRoot) Create(ctx context.Context, name string) (fsops.FileWriter, error) {
