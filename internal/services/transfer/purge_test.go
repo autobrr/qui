@@ -239,6 +239,60 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 }
 
 // regression: #4242
+// A partial sync of qBittorrent before 5.3.0rc1 can name a new torrent
+// without its fields, and qui leaves it out of the synced torrent list until
+// the next full sync. A helper torrent that a sync left out is not gone: qui
+// keeps it protected, at the removal of the row and at the hourly recheck,
+// until a sync that leaves nothing out shows it gone.
+func TestAHelperThatASyncLeftOutStaysProtectedUntilAFullSync(t *testing.T) {
+	ways := []struct {
+		name string
+		// leftOut removes the row of id around a sync that leaves the helper
+		// out, and runs each check that must then keep the helper.
+		leftOut func(r *rig, id int64, sync func())
+	}{
+		{name: "the user removes the row", leftOut: func(r *rig, id int64, sync func()) {
+			sync()
+			require.NoError(r.t, r.svc.Remove(r.t.Context(), id))
+		}},
+		{name: "the hourly recheck", leftOut: func(r *rig, id int64, sync func()) {
+			require.NoError(r.t, r.svc.Remove(r.t.Context(), id))
+			sync()
+			forgot, err := r.store.ForgetGoneHelpers(r.t.Context(), r.sync.TorrentGoneSince)
+			require.NoError(r.t, err)
+			require.Zero(r.t, forgot)
+		}},
+	}
+	for _, way := range ways {
+		t.Run(way.name, func(t *testing.T) {
+			r := newRig(t)
+			r.dst.PartialUpdates, r.dst.LeaveOutNew = true, true
+			owner, err := r.sync.GetSyncOwner(t.Context(), r.target.ID)
+			require.NoError(t, err)
+			sync := func() {
+				t.Helper()
+				require.NoError(t, owner.Sync(t.Context()))
+			}
+			sync() // a full sync, before qui adds the helper
+			file, hash := singleFileTorrent(t, "Show.S01E01.mkv", []byte("helper"))
+			r.dst.Seed(file, r.dstDir)
+			id := r.endedWithHelper("aaaa", transfer.StateCancelled, r.target.ID, hash)
+
+			way.leftOut(r, id, sync)
+			require.False(t, r.exists(id))
+			require.True(t, r.store.IsHelper(r.target.ID, hash), "the sync left the helper out")
+
+			r.dst.DeleteElsewhere(hash)
+			sync() // a full sync, which qui asks for after a sync left a torrent out
+			forgot, err := r.store.ForgetGoneHelpers(t.Context(), r.sync.TorrentGoneSince)
+			require.NoError(t, err)
+			require.Equal(t, 1, forgot, "the full sync shows the helper gone")
+			require.False(t, r.store.IsHelper(r.target.ID, hash))
+		})
+	}
+}
+
+// regression: #4242
 // A removal that comes between the two reads of Get leaves the Transfer
 // without its torrents: Get reports it as not found.
 func TestGetOfATransferThatARemovalTook(t *testing.T) {

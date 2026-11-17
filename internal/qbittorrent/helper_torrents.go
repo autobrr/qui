@@ -71,20 +71,18 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 }
 
 // TorrentGoneSince reports whether qui can see that the instance no longer
-// has the torrent: its client is connected, it synced after since, and that
-// synced torrent list does not hold hash. It sends no request to qBittorrent,
-// so it reports false while the instance is offline or has not synced since.
+// has the torrent: its client is connected, and the torrent list of a sync
+// after since that left no torrent out does not hold hash. It sends no
+// request to qBittorrent, so it reports false while the instance is offline
+// or has no such sync. A sync that left torrents out does not count: qui
+// cannot tell which torrents it left out.
 func (sm *SyncManager) TorrentGoneSince(instanceID int, hash string, since time.Time) bool {
 	client, err := sm.clientPool.GetClientOffline(context.Background(), instanceID)
 	if err != nil || !client.IsHealthy() {
 		return false
 	}
-	owner := client.SyncOwner()
-	if owner == nil || !owner.LastSuccessfulSyncTime().After(since) {
-		return false
-	}
-	snapshot := owner.SnapshotUnchecked()
-	if snapshot == nil {
+	snapshot := client.fullList.Load()
+	if snapshot == nil || !snapshot.Time().After(since) {
 		return false
 	}
 	_, listed := snapshot.Torrent(strings.ToLower(hash))

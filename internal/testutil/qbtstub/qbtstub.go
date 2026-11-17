@@ -136,6 +136,11 @@ type Server struct {
 	// PartialUpdates answers a sync with a nonzero rid as a partial update, as
 	// qBittorrent does. Without it, each sync is a full update.
 	PartialUpdates bool
+	// LeaveOutNew makes a partial update send a torrent that the last full
+	// update did not list without its added_on, as qBittorrent before
+	// 5.3.0rc1 does after it lost a sync response. qui leaves such a torrent
+	// out of its cache until the next full update.
+	LeaveOutNew bool
 	// FailSyncs makes the first FailSyncs sync/maindata requests answer 500.
 	FailSyncs int
 	// CheckSyncs is how many syncs a check of an added torrent reports
@@ -192,6 +197,8 @@ type Server struct {
 	versionReads int
 	// freeSpacePath is the path of the last app/getFreeSpaceAtPath request.
 	freeSpacePath string
+	// listed holds the hashes of the last full update.
+	listed map[string]bool
 }
 
 // New starts a stub whose default save path is savePath.
@@ -698,6 +705,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			categories[name] = s.categoryJSON(name)
 		}
 		full := !s.PartialUpdates || param("rid") == "0"
+		if full {
+			s.listed = map[string]bool{}
+			for h := range torrents {
+				s.listed[h] = true
+			}
+		} else if s.LeaveOutNew {
+			for h, row := range torrents {
+				if !s.listed[h] {
+					delete(row.(map[string]any), "added_on")
+				}
+			}
+		}
 		writeJSON(w, map[string]any{"rid": s.rid, "full_update": full, "torrents": torrents, "categories": categories,
 			"server_state": map[string]any{"connection_status": "connected",
 				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6, "free_space_on_disk": s.FreeSpace}})
