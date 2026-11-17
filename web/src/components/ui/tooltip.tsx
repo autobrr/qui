@@ -95,8 +95,9 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
 type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger> & {
   /**
    * Whether a tap on a touch device opens the tooltip. By default a tap opens it unless the tap also acts: it lands on
-   * an enabled link, button, form control, or menu item, at the trigger or around it. Set it on a button that only
-   * explains, or on a trigger whose tooltip must open even when the tap also reaches a control around it.
+   * an enabled link, button, form field, label of an enabled field, option, or menu item, at the trigger or around it.
+   * A bare trigger (no asChild) always opens. Set it on a button that only explains, or on a trigger whose tooltip must
+   * open even when the tap also reaches a control around it.
    */
   openOnTap?: boolean
 }
