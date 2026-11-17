@@ -449,14 +449,17 @@ describe("allowanceInputOf", () => {
     expect(allowanceInputOf(1397 * 1024 ** 3)).toEqual({ allowance: "1397", allowanceUnit: 1024 ** 3 })
     expect(allowanceInputOf(500 * 1024 ** 3)).toEqual({ allowance: "500", allowanceUnit: 1024 ** 3 })
     expect(allowanceInputOf(750 * 1024 ** 2)).toEqual({ allowance: "750", allowanceUnit: 1024 ** 2 })
+    // A plan in steps of 1000 keeps its own unit.
+    expect(allowanceInputOf(1500000000000)).toEqual({ allowance: "1.5", allowanceUnit: 1000 ** 4 })
+    expect(allowanceInputOf(500 * 1000 ** 3)).toEqual({ allowance: "500", allowanceUnit: 1000 ** 3 })
   })
 
   it("keeps the bytes of an allowance that no short figure holds", () => {
-    // 1.5 TB in bytes, as a rule saved through the API holds it.
-    const input = allowanceInputOf(1500000000000)
-    expect(input).toEqual({ allowance: "1430511.474609375", allowanceUnit: 1024 ** 2 })
+    // One byte above 1.5 TB, as a rule saved through the API can hold it.
+    const input = allowanceInputOf(1500000000001)
+    expect(input).toEqual({ allowance: "1430511.4746103287", allowanceUnit: 1024 ** 2 })
     expect(freeSpaceSourceOf({ type: "allowance", path: "/home/user", ...input }))
-      .toEqual({ type: "allowance", path: "/home/user", allowanceBytes: 1500000000000 })
+      .toEqual({ type: "allowance", path: "/home/user", allowanceBytes: 1500000000001 })
   })
 })
 

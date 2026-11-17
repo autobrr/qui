@@ -1314,7 +1314,7 @@ If qBittorrent cannot measure the path, qui treats the read as failed. Free Spac
 
 On a shared seedbox, the free space of the disk is not the space that you may fill: the disk belongs to all users, and your plan gives you a part of it. Select "Allowance on a path", enter the space that your plan allows, and enter the folder that holds your files, for example your home directory. Free Space is then the allowance minus the size of the files under that folder.
 
-- Most providers count in steps of 1000, not 1024. A plan of 1.5 TB is 1.364 TiB, so enter 1.364 TiB.
+- Enter the allowance in the unit that your provider uses. Most providers count in steps of 1000 (MB, GB, TB), not 1024 (MiB, GiB, TiB). A plan of 1.5 TB is 1.364 TiB.
 - qui measures the folder at the start of each run. It counts hidden files, counts a hardlinked file one time, and does not follow symlinks.
 - When the files take more space than the allowance, the rule first has to free the excess. For example, with 50 GiB above the allowance, a rule "Free Space below 100 GiB" frees 150 GiB.
 - Match only torrents that are stored under the folder. A delete of a torrent that is stored elsewhere frees no space under the folder, but qui counts it as freed.

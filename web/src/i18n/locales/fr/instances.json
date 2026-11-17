@@ -1300,7 +1300,12 @@
         "allowanceLabel": "Espace alloué",
         "allowancePathLabel": "Dossier à mesurer",
         "allowanceUnitAria": "Unité de l'espace alloué",
-        "allowanceHelp": "Entrez l'espace que votre offre autorise. qui en soustrait la taille des fichiers sous le chemin. La plupart des fournisseurs comptent par paliers de 1000, et non de 1024 : le chiffre de l'offre est donc environ 9 % plus petit en {{unit}}.",
+        "allowanceHelp": "Entrez l'espace que votre offre autorise, dans l'unité qu'utilise votre fournisseur. qui en soustrait la taille des fichiers sous le chemin. La plupart des fournisseurs comptent par paliers de 1000 ({{decimalUnit}}), et non de 1024 ({{binaryUnit}}) : l'écart est d'environ 9 %.",
+        "allowanceUnits": {
+          "MB": "Mo",
+          "GB": "Go",
+          "TB": "To"
+        },
         "allowancePathHelp": "Par exemple, votre répertoire personnel"
       },
       "grouping": {

@@ -1306,7 +1306,12 @@
         "allowanceLabel": "Espaço permitido",
         "allowancePathLabel": "Pasta a medir",
         "allowanceUnitAria": "Unidade do espaço permitido",
-        "allowanceHelp": "Informe o espaço que o seu plano permite. O qui subtrai o tamanho dos arquivos sob o caminho. A maioria dos provedores conta em passos de 1000, não de 1024, então o número do plano é cerca de 9% menor em {{unit}}.",
+        "allowanceHelp": "Informe o espaço que o seu plano permite, na unidade que o seu provedor usa. O qui subtrai o tamanho dos arquivos sob o caminho. A maioria dos provedores conta em passos de 1000 ({{decimalUnit}}), não de 1024 ({{binaryUnit}}): a diferença é de cerca de 9%.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "Por exemplo, o seu diretório pessoal"
       },
       "grouping": {

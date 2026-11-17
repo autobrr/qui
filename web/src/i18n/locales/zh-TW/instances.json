@@ -1277,7 +1277,12 @@
         "allowanceLabel": "允許空間",
         "allowancePathLabel": "要統計的資料夾",
         "allowanceUnitAria": "允許空間單位",
-        "allowanceHelp": "輸入方案允許使用的空間。qui 會減去該路徑下檔案的大小。多數供應商以 1000 進位，而不是 1024，因此方案數值換算為 {{unit}} 後約小 9%。",
+        "allowanceHelp": "依供應商使用的單位輸入方案允許使用的空間。qui 會減去該路徑下檔案的大小。多數供應商以 1000 進位（{{decimalUnit}}），而不是 1024（{{binaryUnit}}），兩者相差約 9%。",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "例如你的家目錄"
       },
       "grouping": {

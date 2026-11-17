@@ -1306,7 +1306,12 @@
         "allowanceLabel": "Spazio consentito",
         "allowancePathLabel": "Cartella da misurare",
         "allowanceUnitAria": "Unità dello spazio consentito",
-        "allowanceHelp": "Inserisci lo spazio consentito dal tuo piano. qui sottrae la dimensione dei file sotto il percorso. La maggior parte dei provider conta a passi di 1000, non di 1024, quindi la cifra del piano è circa il 9% più piccola in {{unit}}.",
+        "allowanceHelp": "Inserisci lo spazio consentito dal tuo piano, nell'unità usata dal tuo provider. qui sottrae la dimensione dei file sotto il percorso. La maggior parte dei provider conta a passi di 1000 ({{decimalUnit}}), non di 1024 ({{binaryUnit}}): la differenza è di circa il 9%.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "Ad esempio, la tua directory home"
       },
       "grouping": {

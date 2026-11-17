@@ -1277,7 +1277,12 @@
         "allowanceLabel": "允许空间",
         "allowancePathLabel": "要统计的文件夹",
         "allowanceUnitAria": "允许空间单位",
-        "allowanceHelp": "输入套餐允许使用的空间。qui 会减去该路径下文件的大小。多数服务商按 1000 进位，而不是 1024，因此套餐数值换算为 {{unit}} 后约小 9%。",
+        "allowanceHelp": "按服务商使用的单位输入套餐允许使用的空间。qui 会减去该路径下文件的大小。多数服务商按 1000 进位（{{decimalUnit}}），而不是 1024（{{binaryUnit}}），两者相差约 9%。",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "例如你的主目录"
       },
       "grouping": {

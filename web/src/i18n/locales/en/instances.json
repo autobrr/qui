@@ -1306,7 +1306,12 @@
         "allowanceLabel": "Allowance",
         "allowancePathLabel": "Folder to measure",
         "allowanceUnitAria": "Allowance unit",
-        "allowanceHelp": "Enter the space that your plan allows. qui subtracts the size of the files under the path. Most providers count in steps of 1000, not 1024, so a plan figure is about 9% smaller in {{unit}}.",
+        "allowanceHelp": "Enter the space that your plan allows, in the unit that your provider uses. qui subtracts the size of the files under the path. Most providers count in steps of 1000 ({{decimalUnit}}), not 1024 ({{binaryUnit}}): the two differ by about 9%.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "For example, your home directory"
       },
       "grouping": {

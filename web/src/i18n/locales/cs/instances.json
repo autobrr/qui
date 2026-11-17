@@ -1341,7 +1341,12 @@
         "allowanceLabel": "Povolené místo",
         "allowancePathLabel": "Složka k měření",
         "allowanceUnitAria": "Jednotka povoleného místa",
-        "allowanceHelp": "Zadejte místo, které povoluje váš tarif. qui od něj odečte velikost souborů pod cestou. Většina poskytovatelů počítá po 1000, ne po 1024, takže údaj z tarifu je v {{unit}} asi o 9 % menší.",
+        "allowanceHelp": "Zadejte místo, které povoluje váš tarif, v jednotce, kterou používá váš poskytovatel. qui od něj odečte velikost souborů pod cestou. Většina poskytovatelů počítá po 1000 ({{decimalUnit}}), ne po 1024 ({{binaryUnit}}): rozdíl je asi 9 %.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "Například váš domovský adresář"
       },
       "grouping": {

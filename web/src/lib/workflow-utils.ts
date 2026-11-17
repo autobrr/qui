@@ -319,6 +319,9 @@ export interface FreeSpaceSourceInput {
 
 const ALLOWANCE_DECIMALS = 3
 
+/** The units of a plan that counts in steps of 1000, as most providers do. */
+export const ALLOWANCE_DECIMAL_UNITS = { MB: 1000 ** 2, GB: 1000 ** 3, TB: 1000 ** 4 } as const
+
 function allowanceBytesOf(allowance: string, unit: number): number {
   return Math.round((parseFloat(allowance) || 0) * unit)
 }
@@ -334,9 +337,11 @@ export function freeSpaceSourceOf(input: FreeSpaceSourceInput): FreeSpaceSource 
 
 /** The figure and unit that show a saved allowance without a change to its bytes, so a save of an untouched rule keeps the figure. */
 export function allowanceInputOf(allowanceBytes: number): Pick<FreeSpaceSourceInput, "allowance" | "allowanceUnit"> {
-  for (const allowanceUnit of [BYTES_PER_UNIT.TiB, BYTES_PER_UNIT.GiB, BYTES_PER_UNIT.MiB]) {
+  const { TB, GB, MB } = ALLOWANCE_DECIMAL_UNITS
+  for (const allowanceUnit of [BYTES_PER_UNIT.TiB, BYTES_PER_UNIT.GiB, BYTES_PER_UNIT.MiB, TB, GB, MB]) {
     const allowance = String(Number((allowanceBytes / allowanceUnit).toFixed(ALLOWANCE_DECIMALS)))
-    if (allowanceBytesOf(allowance, allowanceUnit) === allowanceBytes) {
+    // A figure below 1 reads better in the next unit down: 500 GB, not 0.5 TB.
+    if (Number(allowance) >= 1 && allowanceBytesOf(allowance, allowanceUnit) === allowanceBytes) {
       return { allowance, allowanceUnit }
     }
   }

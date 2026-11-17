@@ -69,7 +69,7 @@ import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, allowanceInputOf, firstActionCondition, freeSpaceSourceOf, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, ALLOWANCE_DECIMAL_UNITS, allowanceInputOf, firstActionCondition, freeSpaceSourceOf, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
@@ -3922,7 +3922,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5">
                           <Label htmlFor="free-space-allowance" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowanceLabel")}</Label>
-                          <TooltipProvider delayDuration={150}><FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { unit: unitLabel("TiB") })}</FieldHelp></TooltipProvider>
+                          <TooltipProvider delayDuration={150}><FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { decimalUnit: t("preferences.workflowDialog.freeSpace.allowanceUnits.TB"), binaryUnit: unitLabel("TiB") })}</FieldHelp></TooltipProvider>
                         </div>
                         <div className="flex gap-2">
                           <Input
@@ -3946,6 +3946,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value={String(ALLOWANCE_DECIMAL_UNITS.MB)}>{t("preferences.workflowDialog.freeSpace.allowanceUnits.MB")}</SelectItem>
+                              <SelectItem value={String(ALLOWANCE_DECIMAL_UNITS.GB)}>{t("preferences.workflowDialog.freeSpace.allowanceUnits.GB")}</SelectItem>
+                              <SelectItem value={String(ALLOWANCE_DECIMAL_UNITS.TB)}>{t("preferences.workflowDialog.freeSpace.allowanceUnits.TB")}</SelectItem>
                               {(["MiB", "GiB", "TiB"] as const).map(unit => (
                                 <SelectItem key={unit} value={String(BYTES_PER_UNIT[unit])}>{unitLabel(unit)}</SelectItem>
                               ))}

@@ -969,7 +969,12 @@
         "allowanceLabel": "Espai permès",
         "allowancePathLabel": "Carpeta que cal mesurar",
         "allowanceUnitAria": "Unitat de l'espai permès",
-        "allowanceHelp": "Introdueix l'espai que permet el teu pla. qui en resta la mida dels fitxers que hi ha sota el camí. La majoria de proveïdors compten en passos de 1000, no de 1024, de manera que la xifra del pla és un 9% més petita en {{unit}}.",
+        "allowanceHelp": "Introdueix l'espai que permet el teu pla, en la unitat que fa servir el teu proveïdor. qui en resta la mida dels fitxers que hi ha sota el camí. La majoria de proveïdors compten en passos de 1000 ({{decimalUnit}}), no de 1024 ({{binaryUnit}}): la diferència és d'un 9%.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "Per exemple, el teu directori d'inici"
       },
       "grouping": {

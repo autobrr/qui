@@ -1306,7 +1306,12 @@
         "allowanceLabel": "Kontingent",
         "allowancePathLabel": "Zu messender Ordner",
         "allowanceUnitAria": "Einheit des Kontingents",
-        "allowanceHelp": "Gib den Speicher ein, den dein Tarif erlaubt. qui zieht die Größe der Dateien unter dem Pfad ab. Die meisten Anbieter rechnen in Schritten von 1000, nicht 1024, daher ist die Tarifangabe in {{unit}} etwa 9 % kleiner.",
+        "allowanceHelp": "Gib den Speicher ein, den dein Tarif erlaubt, in der Einheit, die dein Anbieter verwendet. qui zieht die Größe der Dateien unter dem Pfad ab. Die meisten Anbieter rechnen in Schritten von 1000 ({{decimalUnit}}), nicht 1024 ({{binaryUnit}}): Der Unterschied beträgt etwa 9 %.",
+        "allowanceUnits": {
+          "MB": "MB",
+          "GB": "GB",
+          "TB": "TB"
+        },
         "allowancePathHelp": "Zum Beispiel dein Home-Verzeichnis"
       },
       "grouping": {
