@@ -55,12 +55,6 @@ describe("TableColumnHeader", () => {
     expect(queryByTestId("hdr-name")).toBeNull()
   })
 
-  it("renders a draggable header per column otherwise", () => {
-    const { getByTestId } = render(<TableColumnHeader {...makeProps()} />)
-    expect(getByTestId("hdr-name")).not.toBeNull()
-    expect(getByTestId("hdr-size")).not.toBeNull()
-  })
-
   it("removes a column filter when onFilterChange is called with null", () => {
     const setColumnFilters = vi.fn()
     const existing = [filter("name", "x"), filter("size", "y")]

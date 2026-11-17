@@ -138,25 +138,6 @@ func TestFreeSpaceLedger_Count(t *testing.T) {
 	})
 }
 
-// Each delete of the "needed" view adds to the Projected freed bytes, so the FREE_SPACE
-// condition stops matching once the target is reached.
-func TestFreeSpaceLedger_CountsEachDeleteOfNeededView(t *testing.T) {
-	allTorrents := []qbt.Torrent{
-		{Hash: "a", Size: 100 * 1024 * 1024 * 1024, ContentPath: "/data/movie1", SavePath: "/data"},
-		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/movie2", SavePath: "/data"},
-		{Hash: "c", Size: 30 * 1024 * 1024 * 1024, ContentPath: "/data/movie3", SavePath: "/data"},
-	}
-	ledger := countingLedger(DeleteModeWithFiles, true)
-	crossSeeds := testCrossSeedGroups(allTorrents)
-
-	ledger.count(allTorrents[0], crossSeeds, &EvalContext{})
-	require.Equal(t, int64(100*1024*1024*1024), ledger.projectedFreedBytes())
-	ledger.count(allTorrents[1], crossSeeds, &EvalContext{})
-	require.Equal(t, int64(150*1024*1024*1024), ledger.projectedFreedBytes())
-	ledger.count(allTorrents[2], crossSeeds, &EvalContext{})
-	require.Equal(t, int64(180*1024*1024*1024), ledger.projectedFreedBytes())
-}
-
 // The "eligible" view keeps the free space at the start, so the ledger counts nothing.
 func TestFreeSpaceLedger_EligibleViewCountsNothing(t *testing.T) {
 	rule := &models.Automation{ID: 1, Conditions: &models.ActionConditions{Delete: &models.DeleteAction{

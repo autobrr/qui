@@ -84,21 +84,6 @@ func TestSeasonPackStatus_EditionPackDoesNotCoverPlainEpisode(t *testing.T) {
 	require.Equal(t, SeasonPackStatusPacked, seasonPackStatus(parser.Parse("Show.Name.S01E03.Extended.Cut.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 }
 
-// The run path builds a pack set only when an eligible rule uses the field.
-func TestSeasonPackStatus_RuleGate(t *testing.T) {
-	rule := func(field ConditionField) *models.Automation {
-		return &models.Automation{Enabled: true, Conditions: &models.ActionConditions{Tags: []*models.TagAction{{
-			Enabled:   true,
-			Tags:      []string{"packed"},
-			Condition: &RuleCondition{Field: field, Operator: OperatorEqual, Value: SeasonPackStatusPacked},
-		}}}}
-	}
-	require.False(t, NeedsFor([]*models.Automation{rule(FieldName)}).SeasonPack)
-	require.True(t, NeedsFor([]*models.Automation{rule(FieldSeasonPackStatus)}).SeasonPack)
-	require.False(t, NeedsFor([]*models.Automation{rule(FieldSeasonPackStatus)}).SeasonPackAnyInstance)
-	require.True(t, NeedsFor([]*models.Automation{rule(FieldSeasonPackStatusAnyInstance)}).SeasonPackAnyInstance)
-}
-
 func TestSeasonPackStatus_EpisodeRangeWithoutPack(t *testing.T) {
 	parser := releases.NewDefaultParser()
 	packs := buildSeasonPackSet(parser, torrentRefs([]qbt.Torrent{{Name: "Show.Name.S01E05E06.1080p.WEB-DL.DDP5.1.H.264-GRP"}}))

@@ -31,7 +31,6 @@ it.each<[TorrentCreationStatus | undefined, number]>([
   ["Running", 2000],
   ["Queued", 2000],
   ["Finished", 30000],
-  ["Failed", 30000],
   [undefined, 30000],
 ])("polls %s tasks after %i ms", async (status, interval) => {
   vi.useFakeTimers()

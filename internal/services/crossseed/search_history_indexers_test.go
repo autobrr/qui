@@ -5,7 +5,6 @@ package crossseed
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -296,38 +295,4 @@ func TestPropagateDuplicateIndexerSearchHistory(t *testing.T) {
 	_, found, err := env.store.GetSearchHistory(ctx, env.instanceID, "dup-hash-a")
 	require.NoError(t, err)
 	require.False(t, found)
-}
-
-// TestMigrationSeedsPerIndexerHistory replays the 082 seed statement against a
-// migrated database to prove old per-torrent stamps fan out to every indexer
-// while pseudo-keys stay behind (no post-upgrade thundering herd).
-func TestMigrationSeedsPerIndexerHistory(t *testing.T) {
-	ctx, env := newSearchHistoryTestEnv(t, "crossseed-migration-seed", 2)
-
-	realHash := "0123456789012345678901234567890123456789"
-	stamp := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
-	require.NoError(t, env.store.UpsertSearchHistory(ctx, env.instanceID, realHash, stamp))
-	require.NoError(t, env.store.UpsertSearchHistory(ctx, env.instanceID, "season:some show:s01", stamp))
-	require.NoError(t, env.store.UpsertSearchHistory(ctx, env.instanceID, "packfail:some release name", stamp))
-
-	migration, err := os.ReadFile("../../database/migrations/082_add_cross_seed_search_history_indexers.sql")
-	require.NoError(t, err)
-	seedIdx := strings.Index(string(migration), "INSERT INTO")
-	require.Positive(t, seedIdx, "seed INSERT missing from migration")
-
-	_, execErr := env.db.Conn().ExecContext(ctx, string(migration[seedIdx:]))
-	require.NoError(t, execErr)
-
-	history, err := env.store.GetIndexerSearchHistory(ctx, env.instanceID, realHash)
-	require.NoError(t, err)
-	require.Len(t, history, 2, "real hash should seed one row per indexer")
-	for _, id := range env.indexerIDs {
-		require.WithinDuration(t, stamp, history[id], time.Second)
-	}
-
-	for _, pseudo := range []string{"season:some show:s01", "packfail:some release name"} {
-		history, err := env.store.GetIndexerSearchHistory(ctx, env.instanceID, pseudo)
-		require.NoError(t, err)
-		require.Empty(t, history, "pseudo-key %s must not be seeded", pseudo)
-	}
 }

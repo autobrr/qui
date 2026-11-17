@@ -62,10 +62,6 @@ type torznabSubcatNode struct {
 	Name string `xml:"name,attr"`
 }
 
-func parseTorznabCaps(r io.Reader) (*TorznabCaps, error) {
-	return parseTorznabCapsResponse(r, "")
-}
-
 func parseTorznabCapsResponse(r io.Reader, retryAfter string) (*TorznabCaps, error) {
 	var resp torznabCapsResponse
 	if err := xml.NewDecoder(r).Decode(&resp); err != nil {

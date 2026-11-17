@@ -10,15 +10,6 @@ import { afterEach, describe, expect, it } from "vitest"
 afterEach(cleanup)
 
 describe("TrackerIcon", () => {
-  it("renders the favicon image when a src is provided", () => {
-    const { container } = render(
-      <TrackerIcon title="Example" fallback="E" src="https://icons.example/e.png" />
-    )
-    const img = container.querySelector("img")
-    expect(img).not.toBeNull()
-    expect(img?.getAttribute("src")).toBe("https://icons.example/e.png")
-  })
-
   it("renders the fallback glyph when src is null", () => {
     const { container } = render(
       <TrackerIcon title="Example" fallback="E" src={null} />

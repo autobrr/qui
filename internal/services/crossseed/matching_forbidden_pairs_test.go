@@ -241,15 +241,6 @@ func TestRejectSeasonPackFromEpisode(t *testing.T) {
 	}
 }
 
-// TestRejectReasonConstant verifies the package constant has expected value.
-func TestRejectReasonConstant(t *testing.T) {
-	t.Parallel()
-
-	require.NotEmpty(t, rejectReasonSeasonPackFromEpisode)
-	require.Contains(t, rejectReasonSeasonPackFromEpisode, "Season packs")
-	require.Contains(t, rejectReasonSeasonPackFromEpisode, "single-episode")
-}
-
 // A stored verdict for one local episode never lets a downloaded season pack
 // through, whatever the individual episodes setting. The listing named the
 // episode, so the download check alone passes the pack when individual

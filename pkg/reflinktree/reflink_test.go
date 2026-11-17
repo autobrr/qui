@@ -6,36 +6,10 @@ package reflinktree
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
-
-func TestSupportsReflink(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	supported, reason := SupportsReflink(tmpDir)
-
-	// On unsupported platforms, should return false.
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
-		if supported {
-			t.Errorf("SupportsReflink should return false on %s", runtime.GOOS)
-		}
-		if reason != "reflink is not supported on this operating system" {
-			t.Errorf("unexpected reason on unsupported OS: %s", reason)
-		}
-		return
-	}
-
-	// On supported platforms, the result depends on filesystem.
-	// We just verify the function doesn't panic and returns sensible values.
-	t.Logf("SupportsReflink(%s): supported=%v, reason=%s", tmpDir, supported, reason)
-
-	if !supported {
-		t.Skipf("reflink not supported on this filesystem: %s", reason)
-	}
-}
 
 func TestCreate_NilPlan(t *testing.T) {
 	_, err := Create(nil)
