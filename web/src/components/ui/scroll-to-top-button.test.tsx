@@ -13,6 +13,7 @@ const oneSelected = { isAllSelected: false, selected: new Set(["a"]), excluded: 
 
 // Each mock returns the same object until a test swaps it.
 const state = vi.hoisted(() => ({
+  isMobile: true,
   mobileScroll: { isFooterVisible: true },
   selectionContext: { selection: {} as unknown },
   translation: { t: (key: string) => key },
@@ -20,6 +21,10 @@ const state = vi.hoisted(() => ({
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => state.translation,
+}))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  useIsMobile: () => state.isMobile,
 }))
 
 vi.mock("@/contexts/MobileScrollContext", () => ({
@@ -30,11 +35,11 @@ vi.mock("@/contexts/TorrentSelectionContext", () => ({
   useTorrentSelectionContext: () => state.selectionContext,
 }))
 
-function renderButton(extraBottomBars?: string) {
+function renderButton(extraBottomBarsRem?: number) {
   const container = document.createElement("div")
   const ref = createRef<HTMLElement>()
   ref.current = container
-  render(<ScrollToTopButton scrollContainerRef={ref} extraBottomBars={extraBottomBars} />)
+  render(<ScrollToTopButton scrollContainerRef={ref} extraBottomBarsRem={extraBottomBarsRem} />)
   return container
 }
 
@@ -54,11 +59,13 @@ function scrollTo(container: HTMLElement, scrollTop: number) {
 }
 
 function bottomOf(el: HTMLElement) {
-  return el.style.getPropertyValue("--scroll-top-bottom")
+  return el.style.bottom
 }
 
+// regression: #4264 (the CSS breakpoints themselves need a browser; jsdom applies none)
 describe("ScrollToTopButton", () => {
   beforeEach(() => {
+    state.isMobile = true
     state.mobileScroll = { isFooterVisible: true }
     state.selectionContext = { selection: noSelection }
     vi.spyOn(window, "requestAnimationFrame").mockImplementation(cb => {
@@ -72,7 +79,6 @@ describe("ScrollToTopButton", () => {
     vi.restoreAllMocks()
   })
 
-  // regression: #4264 (the width part needs a browser; jsdom applies no breakpoints)
   it("shows only past the scroll threshold, and stays out of the tab order until then", () => {
     const container = renderButton()
     expect(shownButton()).toBeNull()
@@ -87,19 +93,25 @@ describe("ScrollToTopButton", () => {
   })
 
   it("sits above the bottom navigation bar and the caller's bars", () => {
-    renderButton("3.5rem")
-    expect(bottomOf(button())).toBe("calc(1rem + 4rem + 3.5rem + env(safe-area-inset-bottom))")
+    renderButton(3.5)
+    expect(bottomOf(button())).toBe("calc(8.5rem + env(safe-area-inset-bottom))")
   })
 
-  it("drops the navigation bar height when the bar slides away", () => {
+  it("drops to the screen edge when the bars slide away", () => {
     state.mobileScroll = { isFooterVisible: false }
     renderButton()
-    expect(bottomOf(button())).toBe("calc(1rem + 0px + 0px + env(safe-area-inset-bottom))")
+    expect(bottomOf(button())).toBe("calc(1.5rem + env(safe-area-inset-bottom))")
   })
 
   it("drops the navigation bar height in selection mode, where the bar is gone", () => {
     state.selectionContext = { selection: oneSelected }
-    renderButton("4rem")
-    expect(bottomOf(button())).toBe("calc(1rem + 0px + 4rem + env(safe-area-inset-bottom))")
+    renderButton(4)
+    expect(bottomOf(button())).toBe("calc(5rem + env(safe-area-inset-bottom))")
+  })
+
+  it("leaves the screen offset to the card list, and sits in the table's corner", () => {
+    state.isMobile = false
+    renderButton()
+    expect(bottomOf(button())).toBe("")
   })
 })

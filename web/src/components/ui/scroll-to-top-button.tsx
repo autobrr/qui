@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { hasSelection } from "@/lib/torrent-selection"
 import { cn } from "@/lib/utils"
 
@@ -16,26 +17,24 @@ const threshold = 300
 
 interface ScrollToTopButtonProps {
   scrollContainerRef: React.RefObject<HTMLElement | null>
-  /**
-   * Height of the caller's own fixed bars above the bottom navigation bar, as
-   * a CSS length. Applies below 768px only.
-   */
-  extraBottomBars?: string
+  /** Height in rem of the caller's own fixed bars above the bottom navigation. Applies to the card list only. */
+  extraBottomBarsRem?: number
 }
 
-// Shows past the scroll threshold at every width. Below 768px (useIsMobile, the
-// card list) it is fixed above the bottom navigation and the caller's bars;
-// from 768px it sits in the corner of its list.
+// Shows past the scroll threshold at every width. Where useIsMobile picks the
+// card list, it is fixed above the bottom navigation and the caller's bars;
+// elsewhere it sits in the corner of its list.
 export function ScrollToTopButton({
   scrollContainerRef,
-  extraBottomBars = "0px",
+  extraBottomBarsRem = 0,
 }: ScrollToTopButtonProps) {
   const { t } = useTranslation("common")
+  const isMobile = useIsMobile()
   const { isFooterVisible } = useMobileScroll()
   const { selection } = useTorrentSelectionContext()
   // MobileFooterNav renders nothing in selection mode
-  const isFooterNavShown = isFooterVisible && !hasSelection(selection)
-  const footerNavHeight = isFooterNavShown ? "4rem" : "0px"
+  const barsRem = (isFooterVisible && !hasSelection(selection) ? 4 : 0) + extraBottomBarsRem
+  const gapRem = barsRem > 0 ? 1 : 1.5
   const [isVisible, setIsVisible] = useState(false)
   const animationFrameRef = useRef<number | undefined>(undefined)
 
@@ -76,13 +75,11 @@ export function ScrollToTopButton({
       variant="outline"
       size="icon"
       className={cn(
-        "fixed md:absolute z-30 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-200",
-        "bottom-(--scroll-top-bottom) right-[calc(1.5rem+env(safe-area-inset-right))] md:bottom-4 md:right-6",
+        "z-30 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-300",
+        isMobile ? "fixed right-8" : "absolute bottom-4 right-6",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
       )}
-      style={{
-        "--scroll-top-bottom": `calc(1rem + ${footerNavHeight} + ${extraBottomBars} + env(safe-area-inset-bottom))`,
-      } as React.CSSProperties}
+      style={isMobile ? { bottom: `calc(${barsRem + gapRem}rem + env(safe-area-inset-bottom))` } : undefined}
       aria-label={t("actions.scrollToTop")}
       aria-hidden={!isVisible}
       tabIndex={isVisible ? undefined : -1}

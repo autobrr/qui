@@ -1757,7 +1757,7 @@ export function TorrentCardsMobile({
 
       <ScrollToTopButton
         scrollContainerRef={parentRef}
-        extraBottomBars={selectionBarVisible ? "4rem" : !selectionMode && isFooterVisible ? "3.5rem" : "0px"}
+        extraBottomBarsRem={selectionBarVisible ? 4 : !selectionMode && isFooterVisible ? 3.5 : 0}
       />
     </div>
   )
