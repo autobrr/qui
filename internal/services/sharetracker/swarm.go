@@ -81,7 +81,7 @@ func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req 
 	}
 	if req.event == EventStopped {
 		delete(s.recipients, peer)
-		return answer{}, nil
+		return answer{blocked: lock && peer.Addr() != s.holder}, nil
 	}
 	if _, known := s.recipients[peer]; !known && len(s.recipients) >= table.peersPerShare {
 		return answer{}, errFull

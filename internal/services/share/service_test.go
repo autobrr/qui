@@ -973,30 +973,34 @@ func TestTheCheckStoresTheLockHolderAfterAFailedWrite(t *testing.T) {
 	require.Equal(t, netip.MustParseAddr(first), r.stored(sh.ID).Holder, "the lock holder outlives a restart of qui")
 }
 
-// A recipient that the lock keeps out cannot end the Share: only the
-// progress of the first downloader counts.
+// A recipient that the lock keeps out cannot end the Share, also with the
+// announce that stops it: only the progress of the first downloader counts.
 // regression: #4231
 func TestALockedOutDownloaderDoesNotEndTheShare(t *testing.T) {
-	r := newRig(t)
-	require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
-		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port), TrustedProxies: []string{"127.0.0.1"},
-	}))
-	sh := r.start(share.Request{FirstDownloaderOnly: new(true)})
-	ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
-	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
-	const first, next = "198.51.100.7", "198.51.100.8"
-	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
-	r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 70, "started")
-	r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "started")
+	for _, event := range []string{"completed", "stopped"} {
+		t.Run(event, func(t *testing.T) {
+			r := newRig(t)
+			require.NoError(t, r.trackerSettings.SaveSettings(t.Context(), sharetracker.Settings{
+				Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port), TrustedProxies: []string{"127.0.0.1"},
+			}))
+			sh := r.start(share.Request{FirstDownloaderOnly: new(true)})
+			ownerURL, _, _ := torrentOf(t, r.clientTorrent(sh.HelperHash))
+			recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+			const first, next = "198.51.100.7", "198.51.100.8"
+			r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
+			r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 70, "started")
+			r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 70, "started")
 
-	r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 0, "completed")
-	r.check()
-	require.Equal(t, share.StateActive, r.get(sh.ID).State)
-	require.Zero(t, r.get(sh.ID).Downloaded)
+			r.sendAnnounce(next, recipientURL, sh.HelperHash, 6881, 0, event)
+			r.check()
+			require.Equal(t, share.StateActive, r.get(sh.ID).State)
+			require.Zero(t, r.get(sh.ID).Downloaded)
 
-	r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 0, "completed")
-	r.check()
-	r.requireEnded(sh.ID, "The recipient has the files.")
+			r.sendAnnounce(first, recipientURL, sh.HelperHash, 6881, 0, event)
+			r.check()
+			r.requireEnded(sh.ID, "The recipient has the files.")
+		})
+	}
 }
 
 func TestUnlockIsRefused(t *testing.T) {
