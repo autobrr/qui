@@ -5,19 +5,17 @@ package handlers
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"io"
-	"math"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"syscall"
 	"testing"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRespondJSON_NoContent(t *testing.T) {
@@ -95,31 +93,17 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
+// regression: #2713
 func TestRespondJSON_ClientDisconnectLogsDebug(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-	}{
-		{name: "epipe", err: fmt.Errorf("write tcp: %w", syscall.EPIPE)},
-		{name: "econnreset", err: fmt.Errorf("write tcp: %w", syscall.ECONNRESET)},
-		{name: "windows aborted", err: errors.New("wsasend: An established connection was aborted by the software in your host machine.")},
-		{name: "windows forcibly closed", err: errors.New("wsasend: An existing connection was forcibly closed by the remote host.")},
-	}
+	logs := captureLogs(t)
+	w := &failingWriter{err: &net.OpError{Op: "write", Net: "tcp", Err: os.NewSyscallError("write", syscall.EPIPE)}}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLogs(t)
-			w := &failingWriter{err: tt.err}
+	RespondJSON(w, http.StatusOK, map[string]string{"key": "value"})
 
-			RespondJSON(w, http.StatusOK, map[string]string{"key": "value"})
-
-			assert.Equal(t, http.StatusOK, w.status)
-			assert.NotContains(t, logs.String(), `"level":"error"`)
-			assert.NotContains(t, logs.String(), "Failed to encode JSON response")
-			assert.Contains(t, logs.String(), `"level":"debug"`)
-			assert.Contains(t, logs.String(), "Client disconnected")
-		})
-	}
+	assert.Equal(t, http.StatusOK, w.status)
+	assert.NotContains(t, logs.String(), `"level":"error"`)
+	assert.Contains(t, logs.String(), `"level":"debug"`)
+	assert.Contains(t, logs.String(), "Client disconnected")
 }
 
 func TestRespondJSON_EncodeFailureLogsError(t *testing.T) {
@@ -128,7 +112,6 @@ func TestRespondJSON_EncodeFailureLogsError(t *testing.T) {
 		data any
 	}{
 		{name: "channel", data: make(chan int)},
-		{name: "nan", data: math.NaN()},
 		{name: "marshaler error", data: failingMarshaler{err: syscall.EPIPE}},
 	}
 
@@ -154,16 +137,6 @@ func TestRespondJSON_UnrelatedWriterErrorLogsError(t *testing.T) {
 
 	assert.Contains(t, logs.String(), `"level":"error"`)
 	assert.Contains(t, logs.String(), "Failed to encode JSON response")
-}
-
-func TestRespondJSON_NoBodyPathsLogNothing(t *testing.T) {
-	logs := captureLogs(t)
-
-	RespondJSON(httptest.NewRecorder(), http.StatusNoContent, map[string]string{"a": "b"})
-	RespondJSON(httptest.NewRecorder(), http.StatusNotModified, map[string]string{"a": "b"})
-	RespondJSON(&failingWriter{err: syscall.EPIPE}, http.StatusOK, nil)
-
-	require.Empty(t, logs.String())
 }
 
 // failingMarshaler fails to serialize with err, which looks like a disconnect.

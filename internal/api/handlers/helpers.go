@@ -54,10 +54,10 @@ func RespondJSON(w http.ResponseWriter, status int, data any) {
 // isEncodeFailure reports whether err came from serializing the payload rather
 // than from writing it to the client.
 func isEncodeFailure(err error) bool {
-	var marshalerErr *json.MarshalerError
-	var unsupportedType *json.UnsupportedTypeError
-	var unsupportedValue *json.UnsupportedValueError
-	return errors.As(err, &marshalerErr) || errors.As(err, &unsupportedType) || errors.As(err, &unsupportedValue)
+	_, marshaler := errors.AsType[*json.MarshalerError](err)
+	_, unsupportedType := errors.AsType[*json.UnsupportedTypeError](err)
+	_, unsupportedValue := errors.AsType[*json.UnsupportedValueError](err)
+	return marshaler || unsupportedType || unsupportedValue
 }
 
 // RespondError sends an error response

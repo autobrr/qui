@@ -1466,7 +1466,7 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	if _, err := message.WriteTo(w); err != nil {
 		m.eventsDropped.Add(1)
 		event := log.Error()
-		if isClientDisconnect(err) {
+		if httphelpers.IsClientDisconnect(err) {
 			event = log.Debug()
 		}
 		event.Err(err).Str("type", payload.Type).Msg("Failed to write SSE payload")
@@ -1476,7 +1476,7 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	if err := flushSession(w); err != nil {
 		m.eventsDropped.Add(1)
 		event := log.Error()
-		if isClientDisconnect(err) {
+		if httphelpers.IsClientDisconnect(err) {
 			event = log.Debug()
 		}
 		event.Err(err).Str("type", payload.Type).Msg("Failed to flush SSE payload")
@@ -1484,12 +1484,6 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	}
 	m.eventsPublished.Add(1)
 	return true
-}
-
-// isClientDisconnect reports whether err is an expected client-side SSE socket
-// close rather than an internal server write failure.
-func isClientDisconnect(err error) bool {
-	return httphelpers.IsClientDisconnect(err)
 }
 
 // isContextStopped reports caller-side cancellation and deadline expiry, including retry-wrapped errors.
