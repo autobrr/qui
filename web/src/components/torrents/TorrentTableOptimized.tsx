@@ -1581,13 +1581,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           />
         )}
 
-        {/* Scroll to top button*/}
-        <div className="hidden lg:block">
-          <ScrollToTopButton
-            scrollContainerRef={parentRef}
-            className="bottom-4 right-6"
-          />
-        </div>
+        <ScrollToTopButton scrollContainerRef={parentRef} />
       </div>
     </>
   )
