@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "季度包自动组装已关闭。本次运行不会搜索季度包。",
     "maxAddedAgeLabel": "种子最长添加时间（天）",
     "maxAddedAgeDescription": "跳过添加时间超过该天数的种子。0 表示不限制。从未搜索过某个种子的索引器始终包含在内。",
-    "categories": "分类",
-    "tags": "标签",
-    "allCategoriesAll": "所有分类（留空表示全部）",
-    "allTagsAll": "所有标签（留空表示全部）",
-    "selectInstanceToLoadCategories": "选择一个实例以加载分类",
-    "selectInstanceToLoadTags": "选择一个实例以加载标签",
-    "categoriesLoadAfterInstance": "选择实例后加载分类；你仍可手动输入分类名称。",
-    "allCategoriesIncluded": "所有分类都将包含在扫描中。",
-    "selectedCategoriesScanned": "仅扫描已选择的 {{count}} 个分类。",
-    "tagsLoadAfterInstance": "选择实例后加载标签；你仍可手动输入标签。",
-    "allTagsIncluded": "所有标签都将包含在扫描中。",
-    "selectedTagsScanned": "仅扫描已选择的 {{count}} 个标签。",
     "sourceInstance": "源实例",
     "selectAnInstance": "选择一个实例",
     "addInstanceToSearch": "添加一个实例以搜索你已做种的种子。",
@@ -208,6 +196,34 @@
         "notMusic": "不是音乐",
         "other": "其他"
       }
+    },
+    "schedule": {
+      "enableLabel": "按计划运行",
+      "enableHelp": "qui 每隔几小时使用此卡片中已保存的设置启动一次计划运行。计划运行只搜索最近添加的种子，从最新的开始，并在达到搜索上限时停止。失败的索引器仍保持待搜索状态，下一次计划运行会再次查询它。“立即运行计划”会马上启动一次计划运行，并重新开始计时。",
+      "intervalLabel": "运行间隔（小时）",
+      "intervalHelp": "从一次计划运行开始到下一次计划运行开始的时间。qui 重启后仍保留这段时间。",
+      "maxSearchesLabel": "每次运行的最大搜索数",
+      "maxSearchesHelp": "当这么多种子发送过搜索后，计划运行停止。被冷却时间或筛选条件跳过的种子不计入。剩余的种子等待下一次运行。",
+      "maxAgeLabel": "只搜索最近添加的种子（天）",
+      "maxAgeHelp": "计划运行会跳过添加时间早于这么多天的每个种子，对从未搜索过它的索引器也是如此。“开始运行”不使用此限制。",
+      "runNow": "立即运行计划",
+      "runStarted": "计划运行已启动",
+      "runAlreadyActive": "做种库扫描已在运行。",
+      "nextRun": "下次计划运行：{{time}}",
+      "dueNow": "计划运行现在到期",
+      "dueAfterCurrentRun": "计划运行将在当前运行结束后开始",
+      "scheduledRunActive": "计划运行正在进行。"
+    },
+    "runKind": {
+      "scheduled": "计划",
+      "manual": "手动"
+    },
+    "stoppedAtLimit_other": "已在 {{limit}} 次搜索的上限处停止。{{count}} 个种子等待下一次运行。",
+    "runFilters": {
+      "include": "包含：{{filters}}",
+      "exclude": "排除：{{filters}}",
+      "categories": "分类 {{list}}",
+      "tags": "标签 {{list}}"
     }
   },
   "rules": {
@@ -486,7 +502,8 @@
   "validation": {
     "minInterval": "最少 {{min}} 分钟",
     "minIntervalSeconds": "最少 {{min}} 秒",
-    "minCooldown": "最少 {{min}} 分钟"
+    "minCooldown": "最少 {{min}} 分钟",
+    "atLeast": "最少为 {{min}}"
   },
   "blocklist": {
     "title": "辅种屏蔽列表",

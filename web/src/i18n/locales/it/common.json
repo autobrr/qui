@@ -251,6 +251,28 @@
         "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Orpheus e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Orpheus ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Orpheus.",
         "menuFix": "Incolla una nuova chiave nelle impostazioni",
         "action": "Apri le impostazioni Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Pianificazione della scansione bloccata",
+        "title": "La pianificazione della scansione della libreria non può partire",
+        "effect": "qui non può avviare l'esecuzione pianificata della scansione della libreria. Riprova ogni ora.",
+        "fix": "Controlla le impostazioni della scansione della libreria. qui riprova ogni ora.",
+        "menuFix": "Controlla le impostazioni della scansione",
+        "action": "Apri le impostazioni della scansione della libreria",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab è disattivato nelle impostazioni della scansione della libreria, e nessuna chiave API RED o OPS è impostata. Attiva Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",
+            "menuFix": "Attiva Torznab, o aggiungi una chiave RED o OPS"
+          },
+          "no_indexer": {
+            "fix": "Nessun indexer è attivo. Attiva un indexer Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",
+            "menuFix": "Attiva un indexer"
+          },
+          "instance_missing": {
+            "fix": "L'istanza nelle impostazioni salvate della scansione della libreria non esiste. Scegli un'istanza nelle impostazioni della scansione della libreria, poi salva. qui riprova ogni ora.",
+            "menuFix": "Scegli un'istanza, poi salva"
+          }
+        }
       }
     },
     "actions": {

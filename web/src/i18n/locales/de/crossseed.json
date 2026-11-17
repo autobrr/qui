@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "Die automatische Season-Pack-Zusammenstellung ist aus. Dieser Lauf sucht nicht nach Season Packs.",
     "maxAddedAgeLabel": "Maximales Torrent-Alter (Tage)",
     "maxAddedAgeDescription": "Überspringt Torrents, die vor mehr als dieser Anzahl an Tagen hinzugefügt wurden. 0 deaktiviert das Limit. Indexer, die einen Torrent noch nie durchsucht haben, werden immer einbezogen.",
-    "categories": "Kategorien",
-    "tags": "Tags",
-    "allCategoriesAll": "Alle Kategorien (leer lassen für alle)",
-    "allTagsAll": "Alle Tags (leer lassen für alle)",
-    "selectInstanceToLoadCategories": "Wähle eine Instanz aus, um Kategorien zu laden",
-    "selectInstanceToLoadTags": "Wähle eine Instanz aus, um Tags zu laden",
-    "categoriesLoadAfterInstance": "Kategorien werden nach Auswahl einer Instanz geladen; du kannst trotzdem einen Kategorienamen eintippen.",
-    "allCategoriesIncluded": "Alle Kategorien werden in den Scan einbezogen.",
-    "selectedCategoriesScanned": "Nur {{count}} ausgewählte Kategorie(n) wird/werden gescannt.",
-    "tagsLoadAfterInstance": "Tags werden nach Auswahl einer Instanz geladen; du kannst trotzdem einen Tag eintippen.",
-    "allTagsIncluded": "Alle Tags werden in den Scan einbezogen.",
-    "selectedTagsScanned": "Nur {{count}} ausgewählte(r) Tag(s) wird/werden gescannt.",
     "sourceInstance": "Quell-Instanz",
     "selectAnInstance": "Wähle eine Instanz aus",
     "addInstanceToSearch": "Füge eine Instanz hinzu, um die Torrents zu durchsuchen, die du bereits seedest.",
@@ -211,6 +199,35 @@
         "notMusic": "keine Musik",
         "other": "sonstige"
       }
+    },
+    "schedule": {
+      "enableLabel": "Nach Zeitplan ausführen",
+      "enableHelp": "qui startet alle paar Stunden einen geplanten Lauf mit den gespeicherten Einstellungen dieser Karte. Ein geplanter Lauf durchsucht nur kürzlich hinzugefügte Torrents, die neuesten zuerst, und stoppt am Suchlimit. Ein Indexer, der fehlgeschlagen ist, bleibt fällig, und der nächste geplante Lauf fragt ihn erneut. „Zeitplan jetzt ausführen“ startet sofort einen geplanten Lauf und setzt die Uhr zurück.",
+      "intervalLabel": "Ausführen alle (Stunden)",
+      "intervalHelp": "Die Zeit vom Start eines geplanten Laufs bis zum Start des nächsten. qui behält diese Zeit auch nach einem Neustart.",
+      "maxSearchesLabel": "Max. Suchen pro Lauf",
+      "maxSearchesHelp": "Ein geplanter Lauf stoppt, wenn so viele Torrents eine Suche gesendet haben. Ein Torrent, den der Cooldown oder die Filter überspringen, zählt nicht. Die übrigen Torrents warten auf den nächsten Lauf.",
+      "maxAgeLabel": "Nur Torrents der letzten (Tage)",
+      "maxAgeHelp": "Ein geplanter Lauf überspringt jeden Torrent, der vor mehr als so vielen Tagen hinzugefügt wurde, auch für einen Indexer, der ihn nie durchsucht hat. „Lauf starten“ nutzt dieses Limit nicht.",
+      "runNow": "Zeitplan jetzt ausführen",
+      "runStarted": "Geplanter Lauf gestartet",
+      "runAlreadyActive": "Ein Bibliotheks-Scan läuft bereits.",
+      "nextRun": "Nächster geplanter Lauf: {{time}}",
+      "dueNow": "Geplanter Lauf jetzt fällig",
+      "dueAfterCurrentRun": "Geplanter Lauf startet nach dem aktuellen Lauf",
+      "scheduledRunActive": "Ein geplanter Lauf ist aktiv."
+    },
+    "runKind": {
+      "scheduled": "Geplant",
+      "manual": "Manuell"
+    },
+    "stoppedAtLimit_one": "Am Limit von {{limit}} Suchen gestoppt. {{count}} Torrent wartet auf den nächsten Lauf.",
+    "stoppedAtLimit_other": "Am Limit von {{limit}} Suchen gestoppt. {{count}} Torrents warten auf den nächsten Lauf.",
+    "runFilters": {
+      "include": "Einschließen: {{filters}}",
+      "exclude": "Ausschließen: {{filters}}",
+      "categories": "Kategorien {{list}}",
+      "tags": "Tags {{list}}"
     }
   },
   "rules": {
@@ -495,7 +512,8 @@
   "validation": {
     "minInterval": "Muss mindestens {{min}} Minuten betragen",
     "minIntervalSeconds": "Muss mindestens {{min}} Sekunden betragen",
-    "minCooldown": "Muss mindestens {{min}} Minuten betragen"
+    "minCooldown": "Muss mindestens {{min}} Minuten betragen",
+    "atLeast": "Muss mindestens {{min}} sein"
   },
   "blocklist": {
     "title": "Cross-Seed-Blocklist",

@@ -120,18 +120,6 @@
     "skipIndividualEpisodesAutomationOff": "L'automatització de packs de temporada està desactivada. Aquesta execució no cerca packs de temporada.",
     "maxAddedAgeLabel": "Antiguitat màxima per repetir cerques (dies)",
     "maxAddedAgeDescription": "Un indexador que ja hagi cercat un torrent no el torna a cercar passats aquests dies. Un indexador que no hagi cercat mai un torrent el cerca sigui quina sigui l'antiguitat, si les seves capacitats hi encaixen. Amb 0, aquesta regla es desactiva.",
-    "categories": "Categories",
-    "tags": "Etiquetes",
-    "allCategoriesAll": "Totes les categories (deixa-ho buit per a totes)",
-    "allTagsAll": "Totes les etiquetes (deixa-ho buit per a totes)",
-    "selectInstanceToLoadCategories": "Selecciona una instància per carregar les categories",
-    "selectInstanceToLoadTags": "Selecciona una instància per carregar les etiquetes",
-    "categoriesLoadAfterInstance": "Les categories es carreguen després de seleccionar una instància; igualment pots escriure un nom de categoria.",
-    "allCategoriesIncluded": "S'inclouran totes les categories a l'exploració.",
-    "selectedCategoriesScanned": "Només s'exploraran {{count}} categoria/es seleccionada/es.",
-    "tagsLoadAfterInstance": "Les etiquetes es carreguen després de seleccionar una instància; igualment pots escriure una etiqueta.",
-    "allTagsIncluded": "S'inclouran totes les etiquetes a l'exploració.",
-    "selectedTagsScanned": "Només s'exploraran {{count}} etiqueta/es seleccionada/es.",
     "sourceInstance": "Instància d'origen",
     "selectAnInstance": "Selecciona una instància",
     "addInstanceToSearch": "Afegeix una instància per cercar entre els torrents que ja sembres.",
@@ -211,6 +199,35 @@
         "notMusic": "no és música",
         "other": "altres"
       }
+    },
+    "schedule": {
+      "enableLabel": "Executa segons una programació",
+      "enableHelp": "qui inicia una execució programada cada poques hores amb la configuració desada d'aquesta targeta. Una execució programada només cerca els torrents afegits fa poc, del més nou al més antic, i s'atura al límit de cerques. Un indexador que ha fallat queda pendent, i la propera execució programada el torna a consultar. «Executa la programació ara» inicia de seguida una execució programada i reinicia el rellotge.",
+      "intervalLabel": "Executa cada (hores)",
+      "intervalHelp": "El temps entre l'inici d'una execució programada i l'inici de la següent. qui conserva aquest temps després d'un reinici.",
+      "maxSearchesLabel": "Cerques màximes per execució",
+      "maxSearchesHelp": "Una execució programada s'atura quan aquest nombre de torrents ha enviat una cerca. Un torrent que el temps d'espera o els filtres ometen no compta. Els torrents que queden esperen la propera execució.",
+      "maxAgeLabel": "Només torrents afegits els darrers (dies)",
+      "maxAgeHelp": "Una execució programada omet cada torrent afegit fa més d'aquest nombre de dies, també per a un indexador que no l'ha cercat mai. «Inicia l'execució» no fa servir aquest límit.",
+      "runNow": "Executa la programació ara",
+      "runStarted": "Execució programada iniciada",
+      "runAlreadyActive": "Ja hi ha una exploració de la biblioteca en curs.",
+      "nextRun": "Propera execució programada: {{time}}",
+      "dueNow": "Execució programada pendent ara",
+      "dueAfterCurrentRun": "L'execució programada comença després de l'execució actual",
+      "scheduledRunActive": "Hi ha una execució programada en curs."
+    },
+    "runKind": {
+      "scheduled": "Programada",
+      "manual": "Manual"
+    },
+    "stoppedAtLimit_one": "Aturada al límit de {{limit}} cerques. {{count}} torrent espera la propera execució.",
+    "stoppedAtLimit_other": "Aturada al límit de {{limit}} cerques. {{count}} torrents esperen la propera execució.",
+    "runFilters": {
+      "include": "Inclou: {{filters}}",
+      "exclude": "Exclou: {{filters}}",
+      "categories": "categories {{list}}",
+      "tags": "etiquetes {{list}}"
     }
   },
   "rules": {
@@ -495,7 +512,8 @@
   "validation": {
     "minInterval": "Ha de ser com a mínim de {{min}} minuts",
     "minIntervalSeconds": "Ha de ser com a mínim de {{min}} segons",
-    "minCooldown": "Ha de ser com a mínim de {{min}} minuts"
+    "minCooldown": "Ha de ser com a mínim de {{min}} minuts",
+    "atLeast": "Ha de ser com a mínim {{min}}"
   },
   "blocklist": {
     "title": "Llista de bloqueig de cross-seed",

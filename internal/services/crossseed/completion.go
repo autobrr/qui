@@ -769,6 +769,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}, scope, gazelleClients)
 	if searchResp != nil {
 		logCompletionGazelleLookups(instanceID, torrent, searchResp.GazelleLookups)
+		s.stampCompletionSearchHistory(ctx, instanceID, torrent.Hash, startedAt, searchResp)
 	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -921,4 +922,15 @@ func logCompletionSearchSummary(instanceID int, torrent *qbt.Torrent, added, fai
 
 func hasCrossSeedTag(rawTags string) bool {
 	return slices.Contains(splitTags(rawTags), "cross-seed")
+}
+
+// stampCompletionSearchHistory marks the Torznab indexers that answered every
+// pass of a completion search, and the RED/OPS lookups that need no retry, as
+// the Library Scan does. A failed or rate-limited indexer stays unmarked, so
+// the next scheduled run asks it again.
+func (s *Service) stampCompletionSearchHistory(ctx context.Context, instanceID int, hash string, searchedAt time.Time, resp *TorrentSearchResponse) {
+	if s.automationStore == nil || ctx.Err() != nil {
+		return
+	}
+	s.stampTorrentSearchHistory(ctx, instanceID, hash, searchedAt, resp.CoveredIndexerIDs, resp.GazelleLookups)
 }
