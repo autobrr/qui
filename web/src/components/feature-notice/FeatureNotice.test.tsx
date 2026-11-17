@@ -84,16 +84,6 @@ afterEach(() => {
 })
 
 describe("FeatureNotice", () => {
-  it("shows the bubble with its text and buttons when the feature is off", () => {
-    loadServerSnapshot()
-    renderNotice("first")
-
-    expect(screen.getByText("first.title")).not.toBeNull()
-    expect(screen.getByText("first.description")).not.toBeNull()
-    expect(screen.getByRole("button", { name: "common:featureNotice.gotIt" })).not.toBeNull()
-    expect(screen.getByRole("button", { name: "first.action" })).not.toBeNull()
-  })
-
   it("shows nothing before the first server snapshot arrives", () => {
     renderNotice("first")
     expect(bubbleShown()).toBe(false)

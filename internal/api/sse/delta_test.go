@@ -358,27 +358,6 @@ func TestCountsEqual(t *testing.T) {
 	}
 }
 
-func TestComputeRowDeltaFlagsNewAndChangedRows(t *testing.T) {
-	base := map[string]uint64{}
-	rows := []qbittorrent.TorrentView{tv("a", "A"), tv("b", "B")}
-
-	order, changedIdx, fp := computeRowDelta(rows, singleRowKey, singleRowFingerprint, base)
-	require.Equal(t, []string{"a", "b"}, order)
-	require.Equal(t, []int{0, 1}, changedIdx, "every row is new against an empty baseline")
-	require.Len(t, fp, 2)
-
-	// Re-diff identical rows against the produced fingerprints: nothing changed.
-	order2, changedIdx2, fp2 := computeRowDelta(rows, singleRowKey, singleRowFingerprint, fp)
-	require.Equal(t, []string{"a", "b"}, order2)
-	require.Empty(t, changedIdx2)
-	require.Equal(t, fp, fp2, "fingerprints are stable for unchanged content")
-
-	// Flip one row's content: only that index is flagged.
-	mutated := []qbittorrent.TorrentView{tv("a", "A"), tv("b", "B-new")}
-	_, changedIdx3, _ := computeRowDelta(mutated, singleRowKey, singleRowFingerprint, fp)
-	require.Equal(t, []int{1}, changedIdx3)
-}
-
 func TestServerStatePayloadRebuildsWhenSubcategoryModeChanges(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}

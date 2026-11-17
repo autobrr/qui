@@ -55,7 +55,7 @@ export const TruncatedText = React.forwardRef<HTMLSpanElement, TruncatedTextProp
 
     return (
       <Tooltip>
-        <TooltipTrigger asChild>
+        <TooltipTrigger asChild openOnTap>
           <span
             ref={innerRef}
             className={cn("truncate", className)}

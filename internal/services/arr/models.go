@@ -124,15 +124,6 @@ type ExternalIDsLookupResult struct {
 	EpisodeMap *models.EpisodeMap
 }
 
-// ExtractExternalIDs extracts external IDs from a Sonarr parse response
-func (r *SonarrParseResponse) ExtractExternalIDs() *models.ExternalIDs {
-	result := r.ExtractLookupResult()
-	if result == nil {
-		return nil
-	}
-	return result.IDs
-}
-
 // ExtractLookupResult extracts external IDs, title aliases, and the episode map
 // from a Sonarr parse response.
 func (r *SonarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
@@ -202,15 +193,6 @@ func lookupResultFromSonarrSeries(series *SonarrSeries) *ExternalIDsLookupResult
 		IDs:    ids,
 		Titles: titles,
 	}
-}
-
-// ExtractExternalIDs extracts external IDs from a Radarr parse response
-func (r *RadarrParseResponse) ExtractExternalIDs() *models.ExternalIDs {
-	result := r.ExtractLookupResult()
-	if result == nil {
-		return nil
-	}
-	return result.IDs
 }
 
 // ExtractLookupResult extracts external IDs and title aliases from a Radarr parse response.

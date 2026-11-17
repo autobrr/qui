@@ -116,7 +116,7 @@ A view stores the sidebar filter selection only. It does not include search text
 | Ctrl/Cmd + A | Selects all torrents in the current view |
 | Arrow Up / Arrow Down | Moves the selection one row |
 | Enter | Opens the details panel for the focused row |
-| Escape | Closes the details panel and clears the selection |
+| Escape | Closes the details panel and clears the selection. If no row is selected and the panel is closed, Escape clears the search text of the list. |
 
 The arrow keys replace the selection with the focused row, the same as a plain click. When the details panel is open, it follows the arrow keys. If you type in an input field or open a dialog, hotkeys are inactive.
 

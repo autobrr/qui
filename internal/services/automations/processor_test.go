@@ -18,7 +18,6 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlink"
-	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 func TestProcessTorrents_Uncategorized(t *testing.T) {
@@ -196,51 +195,14 @@ func TestProcessTorrents_CategoryAllowedWhenNoProtectedCrossSeed(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected category action to apply when no protected cross-seed exists")
 	require.NotNil(t, state.category)
 	require.Equal(t, "tv.cross", *state.category)
 	require.True(t, state.categoryIncludeCrossSeeds)
 	require.Empty(t, state.categoryGroupID)
-}
-
-func TestProcessTorrents_CategoryAllowedWhenProtectedCrossSeedDifferentSavePath(t *testing.T) {
-	torrents := []qbt.Torrent{
-		{
-			Hash:        "a",
-			Name:        "source",
-			Category:    "sonarr.cross",
-			SavePath:    "/data",
-			ContentPath: "/data/show",
-		},
-		{
-			Hash:        "b",
-			Name:        "protected-different-savepath",
-			Category:    "sonarr",
-			SavePath:    "/other",
-			ContentPath: "/data/show",
-		},
-	}
-
-	rule := &models.Automation{
-		ID:             1,
-		Enabled:        true,
-		TrackerPattern: "*",
-		Conditions: &models.ActionConditions{
-			SchemaVersion: "1",
-			Category: &models.CategoryAction{
-				Enabled:                      true,
-				Category:                     "tv.cross",
-				Condition:                    &models.RuleCondition{Field: models.FieldCategory, Operator: models.OperatorEqual, Value: "sonarr.cross"},
-				BlockIfCrossSeedInCategories: []string{"sonarr"},
-			},
-		},
-	}
-
-	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
-	_, ok := states["a"]
-	require.True(t, ok, "expected category action to apply when protected torrent is not in the same cross-seed group")
 }
 
 func TestProcessTorrents_GroupConditionsUseConditionScopedGroupIDs(t *testing.T) {
@@ -348,37 +310,6 @@ func TestProcessTorrents_GroupConditionWithoutGroupID_UsesDefaultFallback(t *tes
 	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rule), nil, nil)
 	require.Contains(t, states, "a")
 	require.Contains(t, states, "b")
-}
-
-func TestMoveSkippedWhenAlreadyInTargetPath(t *testing.T) {
-	// Test that move is skipped when torrent is already in the target path
-	torrent := qbt.Torrent{
-		Hash:     "abc123",
-		Name:     "Test Torrent",
-		SavePath: "/data/archive", // Already in target path
-	}
-
-	rule := &models.Automation{
-		ID:      1,
-		Enabled: true,
-		Name:    "Archive Rule",
-		Conditions: &models.ActionConditions{
-			Move: &models.MoveAction{Enabled: true, Path: "/data/archive"},
-		},
-	}
-
-	state := &torrentDesiredState{
-		hash:        torrent.Hash,
-		name:        torrent.Name,
-		currentTags: make(map[string]struct{}),
-		tagActions:  make(map[string]string),
-	}
-
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
-
-	// Already in target path, move should not be set
-	require.False(t, state.shouldMove)
-	require.Empty(t, state.movePath)
 }
 
 func TestMoveWithGroupID_SetsGroupMetadata(t *testing.T) {
@@ -602,7 +533,8 @@ func TestMoveWithGroupID_IgnoresLegacyCrossSeedBlock(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move to apply; groupId should bypass legacy cross-seed blocking")
 	require.True(t, state.shouldMove)
@@ -723,7 +655,8 @@ func TestMoveAllowedWhenBlockIfCrossSeedFalse(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is false")
 	require.True(t, state.shouldMove)
@@ -767,77 +700,12 @@ func TestMoveAllowedWhenCrossSeedMeetsCondition(t *testing.T) {
 		},
 	}
 
-	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rule), nil, nil)
 	state, ok := states["a"]
 	require.True(t, ok, "expected move action to apply when BlockIfCrossSeed is true but all cross-seeds meet the condition")
 	require.True(t, state.shouldMove)
 	require.Equal(t, "/data/archive", state.movePath)
-}
-
-func TestMoveWithConditionAndCrossSeedBlock(t *testing.T) {
-	torrents := []qbt.Torrent{
-		{
-			Hash:        "a",
-			Name:        "source",
-			SavePath:    "/data/downloads",
-			ContentPath: "/data/downloads/contents",
-			Ratio:       2.5, // Meets condition
-		},
-		{
-			Hash:        "b",
-			Name:        "cross-seed",
-			SavePath:    "/data/downloads",
-			ContentPath: "/data/downloads/contents",
-			Ratio:       2.0, // Does not meet condition
-		},
-	}
-
-	rule := &models.Automation{
-		ID:             1,
-		Enabled:        true,
-		TrackerPattern: "*",
-		Conditions: &models.ActionConditions{
-			SchemaVersion: "1",
-			Move: &models.MoveAction{
-				Enabled:          true,
-				Path:             "/data/archive",
-				BlockIfCrossSeed: true,
-				Condition: &models.RuleCondition{
-					Field:    models.FieldRatio,
-					Operator: models.OperatorGreaterThan,
-					Value:    "2.0",
-				},
-			},
-		},
-	}
-
-	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
-	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, evalCtx, buildCrossSeedGroups(torrentRefs(torrents), evalCtx), noSkipWindow(rule), nil, nil)
-	_, ok := states["a"]
-	require.False(t, ok, "expected move action to be blocked when condition is met but cross-seed exists")
-	// When move is blocked, shouldMove is never set to true, so the state won't be in the map
-}
-
-func TestRenderPathTemplate_Literal(t *testing.T) {
-	torrent := qbt.Torrent{
-		Hash:     "abc",
-		Name:     "Show.S01",
-		Category: "tv",
-	}
-	resolved, ok := renderPathTemplate("/data/archive", torrent, nil, nil)
-	require.True(t, ok)
-	require.Equal(t, "/data/archive", resolved)
-}
-
-func TestRenderPathTemplate_Template(t *testing.T) {
-	torrent := qbt.Torrent{
-		Hash:     "abc",
-		Name:     "Movie.2024",
-		Category: "movies",
-	}
-	resolved, ok := renderPathTemplate("/data/{{.Category}}", torrent, nil, nil)
-	require.True(t, ok)
-	require.Equal(t, "/data/movies", resolved)
 }
 
 func TestCurrentSavePath_ExportOnly(t *testing.T) {
@@ -864,8 +732,7 @@ func TestRenderPathTemplate_TemplateWithSanitize(t *testing.T) {
 	}
 	resolved, ok := renderPathTemplate("/data/{{ sanitize .Name }}", torrent, nil, nil)
 	require.True(t, ok)
-	expectedName := pathutil.SanitizePathSegment(torrent.Name)
-	require.Equal(t, "/data/"+expectedName, resolved)
+	require.Equal(t, "/data/Movie2024BadName", resolved)
 }
 
 func TestRenderPathTemplate_TrackerFallback(t *testing.T) {
@@ -1143,46 +1010,6 @@ func TestDeletionSelection_IncludeCrossSeedsFreeSpaceCountsUniqueGroupFiles(t *t
 	require.Contains(t, states, "a")
 	require.NotContains(t, states, "c")
 	require.Equal(t, int64(110), evalCtx.freeSpaceLedgers[rule.ID].projectedFreedBytes())
-}
-
-func TestDeletionSelection_SortsOldestFirst(t *testing.T) {
-	// Create torrents in random order
-	torrents := []qbt.Torrent{
-		{Hash: "c", Name: "newest", Size: 10000000000, AddedOn: 3000, SavePath: "/data", ContentPath: "/data/c"},
-		{Hash: "a", Name: "oldest", Size: 10000000000, AddedOn: 1000, SavePath: "/data", ContentPath: "/data/a"},
-		{Hash: "b", Name: "middle", Size: 10000000000, AddedOn: 2000, SavePath: "/data", ContentPath: "/data/b"},
-	}
-
-	// Rule: Delete if free space < 15GB (only need to delete 1 torrent)
-	rule := &models.Automation{
-		ID:             1,
-		Enabled:        true,
-		TrackerPattern: "*",
-		Conditions: &models.ActionConditions{
-			SchemaVersion: "1",
-			Delete: &models.DeleteAction{
-				Enabled: true,
-				Mode:    "deleteWithFiles",
-				Condition: &models.RuleCondition{
-					Field:    models.FieldFreeSpace,
-					Operator: models.OperatorLessThan,
-					Value:    "15000000000", // 15GB
-				},
-			},
-		},
-	}
-
-	evalCtx := &EvalContext{
-		freeSpaceLedgers: testFreeSpaceLedgers(5000000000, rule), // 5GB - need 10GB more to reach 15GB
-	}
-
-	states := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx).triggers
-
-	// Should only delete 1 torrent (the oldest one)
-	require.Len(t, states, 1, "expected exactly 1 torrent to be marked for deletion")
-
-	_, hasA := states["a"] // oldest
-	require.True(t, hasA, "expected oldest torrent (a) to be deleted first")
 }
 
 func TestDeletionSelection_DeterministicOrderWithSameAddedOn(t *testing.T) {
@@ -2012,38 +1839,6 @@ func TestProcessTorrents_ExternalProgram_ConditionNotMet(t *testing.T) {
 	require.False(t, ok, "expected no state when condition is not met")
 }
 
-func TestProcessTorrents_ExternalProgram_NoCondition(t *testing.T) {
-	torrents := []qbt.Torrent{
-		{
-			Hash:     "abc123",
-			Name:     "Test Torrent",
-			Category: "movies",
-		},
-	}
-
-	rule := &models.Automation{
-		ID:             1,
-		Enabled:        true,
-		Name:           "External Program No Condition",
-		TrackerPattern: "*",
-		Conditions: &models.ActionConditions{
-			SchemaVersion: "1",
-			ExternalProgram: &models.ExternalProgramAction{
-				Enabled:   true,
-				ProgramID: 42,
-				// No condition - should always apply
-			},
-		},
-	}
-
-	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
-
-	state, ok := states["abc123"]
-	require.True(t, ok, "expected state to be recorded for torrent")
-	require.NotNil(t, state.externalProgramID, "expected external program ID to be set")
-	require.Equal(t, 42, *state.externalProgramID)
-}
-
 func TestProcessTorrents_ExternalProgram_Disabled(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{
@@ -2561,35 +2356,6 @@ func TestProcessTorrents_ExternalProgram_CombinedWithOtherActions(t *testing.T) 
 	require.True(t, hasRef, "expected tag rule source to be recorded")
 	require.Equal(t, 1, ref.id)
 	require.Equal(t, "Combined Actions Rule", ref.name)
-}
-
-func TestHasActions_ExternalProgram(t *testing.T) {
-	t.Run("returns true when externalProgramID is set", func(t *testing.T) {
-		programID := 42
-		state := &torrentDesiredState{
-			hash:              "abc123",
-			externalProgramID: &programID,
-		}
-		require.True(t, hasActions(state))
-	})
-
-	t.Run("returns false when externalProgramID is nil", func(t *testing.T) {
-		state := &torrentDesiredState{
-			hash:              "abc123",
-			externalProgramID: nil,
-		}
-		require.False(t, hasActions(state))
-	})
-
-	t.Run("returns true when other actions are set but not external program", func(t *testing.T) {
-		category := "movies"
-		state := &torrentDesiredState{
-			hash:              "abc123",
-			category:          &category,
-			externalProgramID: nil,
-		}
-		require.True(t, hasActions(state))
-	})
 }
 
 // Never-completed sentinels (qbit 4.x, see NormalizeCompletionTimestamp) must

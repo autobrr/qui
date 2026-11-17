@@ -548,7 +548,7 @@ export function LeafCondition({
             </SelectContent>
           </Select>
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger asChild openOnTap>
               <button
                 type="button"
                 className="inline-flex items-center text-muted-foreground hover:text-foreground"
@@ -738,7 +738,7 @@ export function LeafCondition({
               </SelectContent>
             </Select>
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger asChild openOnTap>
                 <button
                   type="button"
                   className="inline-flex items-center text-muted-foreground hover:text-foreground"

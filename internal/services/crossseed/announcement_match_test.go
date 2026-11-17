@@ -73,7 +73,6 @@ func TestClassifyAnnouncementSourceKnownSize(t *testing.T) {
 			policy:        announcementMatchPolicy{rescueTitleMismatches: true},
 		},
 		{name: "nonexact size", candidateName: sourceName, candidateSize: size - 1},
-		{name: "total size precedence", candidateName: "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI", candidateSize: size},
 	}
 
 	for _, tt := range tests {

@@ -381,7 +381,7 @@ export const createColumns = ({
       accessorKey: "priority",
       header: () => (
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild openOnTap>
             <div className="flex items-center justify-center">
               <ListOrdered className="h-4 w-4" />
             </div>
@@ -472,7 +472,7 @@ export const createColumns = ({
       accessorFn: (torrent) => torrent.state,
       header: () => (
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger asChild openOnTap>
             <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={statusIconLabel}>
               <PlayCircle className="h-4 w-4" aria-hidden="true" />
             </div>
@@ -698,7 +698,7 @@ export const createColumns = ({
 
         return (
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger asChild openOnTap>
               <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={trackerIconLabel}>
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </div>

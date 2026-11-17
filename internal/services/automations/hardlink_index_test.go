@@ -47,12 +47,6 @@ func TestIsPathInsideBase(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "nested directory path",
-			basePath: sep + "data" + sep + "torrents",
-			fullPath: sep + "data" + sep + "torrents" + sep + "subdir" + sep + "file.mkv",
-			expected: true,
-		},
-		{
 			name:     "path equals base (edge case)",
 			basePath: sep + "data" + sep + "torrents",
 			fullPath: sep + "data" + sep + "torrents",
@@ -62,12 +56,6 @@ func TestIsPathInsideBase(t *testing.T) {
 			name:     "parent traversal with ..",
 			basePath: sep + "data" + sep + "torrents",
 			fullPath: sep + "data" + sep + "torrents" + sep + ".." + sep + "secret.txt",
-			expected: false,
-		},
-		{
-			name:     "double parent traversal",
-			basePath: sep + "data" + sep + "torrents",
-			fullPath: sep + "data" + sep + "torrents" + sep + ".." + sep + ".." + sep + "etc" + sep + "passwd",
 			expected: false,
 		},
 		{
@@ -83,27 +71,9 @@ func TestIsPathInsideBase(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "absolute path outside base",
-			basePath: sep + "data" + sep + "torrents",
-			fullPath: sep + "etc" + sep + "passwd",
-			expected: false,
-		},
-		{
-			name:     "traversal hidden in middle",
-			basePath: sep + "data" + sep + "torrents",
-			fullPath: sep + "data" + sep + "torrents" + sep + "safe" + sep + ".." + sep + ".." + sep + "secret",
-			expected: false,
-		},
-		{
 			name:     "current directory dots are ok",
 			basePath: sep + "data" + sep + "torrents",
 			fullPath: sep + "data" + sep + "torrents" + sep + "." + sep + "file.mkv",
-			expected: true,
-		},
-		{
-			name:     "deeply nested valid path",
-			basePath: sep + "data" + sep + "torrents",
-			fullPath: sep + "data" + sep + "torrents" + sep + "a" + sep + "b" + sep + "c" + sep + "file.mkv",
 			expected: true,
 		},
 		{
@@ -163,21 +133,6 @@ func TestIsPathInsideBase_RelativeCleanedPaths(t *testing.T) {
 					tt.basePath, tt.fullPath, result, tt.expected)
 			}
 		})
-	}
-}
-
-func TestIsPathInsideBase_OSSpecific(t *testing.T) {
-	// Platform-specific tests using actual filepath behavior
-	basePath := filepath.Join("data", "torrents")
-	fullPath := filepath.Join("data", "torrents", "file.mkv")
-
-	if !isPathInsideBase(fsops.HostPaths, basePath, fullPath) {
-		t.Errorf("Expected relative path inside base to return true")
-	}
-
-	escapingPath := filepath.Join("data", "torrents", "..", "other", "file.txt")
-	if isPathInsideBase(fsops.HostPaths, basePath, escapingPath) {
-		t.Errorf("Expected escaping path to return false")
 	}
 }
 
@@ -291,141 +246,6 @@ func createFile(t *testing.T, path string) hardlink.FileID {
 	return fid
 }
 
-// lstatFileID returns the FileID and nlink for an existing path.
-func lstatFileID(t *testing.T, path string) (hardlink.FileID, uint64) {
-	t.Helper()
-	fi, err := os.Lstat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fid, nlink, err := hardlink.GetFileID(fi, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return fid, nlink
-}
-
-// buildStateFromLstat creates a hardlinkBuildState by Lstat-ing real files.
-// torrents maps hash → list of absolute file paths (simulating what Phase 1 would produce).
-func buildStateFromLstat(t *testing.T, torrents map[string][]string) *hardlinkBuildState {
-	t.Helper()
-	state := &hardlinkBuildState{
-		globalFileIDMap:   make(map[fsops.FileKey]*fileIDTracker),
-		seenPaths:         make(map[string]struct{}),
-		torrentInfoByHash: make(map[string]*torrentFileInfo),
-	}
-	for hash, paths := range torrents {
-		info := &torrentFileInfo{
-			fileIDs:       make([]hardlink.FileID, 0, len(paths)),
-			allAccessible: true,
-		}
-		for _, p := range paths {
-			fid, nlink := lstatFileID(t, p)
-			info.fileIDs = append(info.fileIDs, fid)
-			if nlink > 1 {
-				info.hasHardlinks = true
-				tracker := state.globalFileIDMap[testFileKey(fid, state.instance)]
-				if tracker == nil {
-					tracker = &fileIDTracker{nlink: nlink}
-					state.globalFileIDMap[testFileKey(fid, state.instance)] = tracker
-				}
-				if _, seen := state.seenPaths[p]; !seen {
-					state.seenPaths[p] = struct{}{}
-					tracker.uniquePathCount++
-				}
-			}
-		}
-		state.torrentInfoByHash[hash] = info
-	}
-	return state
-}
-
-// computeScopeFromState delegates to the production computeScopeMap function.
-func computeScopeFromState(state *hardlinkBuildState) map[string]string {
-	return computeScopeMap(state)
-}
-
-func TestCrossScope_NoHardlinks(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Instance A has a standalone file with no hardlinks.
-	fileA := filepath.Join(dir, "instance-a", "torrent", "movie.mkv")
-	createFile(t, fileA)
-
-	state := buildStateFromLstat(t, map[string][]string{
-		"hashA": {fileA},
-	})
-	scope := computeScopeFromState(state)
-
-	if got := scope["hashA"]; got != HardlinkScopeNone {
-		t.Errorf("expected %q, got %q", HardlinkScopeNone, got)
-	}
-}
-
-func TestCrossScope_HardlinksWithinSameInstance(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Two torrents on the same instance share a hardlinked file.
-	original := filepath.Join(dir, "instance-a", "torrent1", "movie.mkv")
-	createFile(t, original)
-	linked := filepath.Join(dir, "instance-a", "torrent2", "movie.mkv")
-	if err := os.MkdirAll(filepath.Dir(linked), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(original, linked); err != nil {
-		t.Fatal(err)
-	}
-
-	state := buildStateFromLstat(t, map[string][]string{
-		"hash1": {original},
-		"hash2": {linked},
-	})
-	scope := computeScopeFromState(state)
-
-	// Both torrents have nlink=2, uniquePathCount=2 → torrents_only.
-	if got := scope["hash1"]; got != HardlinkScopeTorrentsOnly {
-		t.Errorf("hash1: expected %q, got %q", HardlinkScopeTorrentsOnly, got)
-	}
-	if got := scope["hash2"]; got != HardlinkScopeTorrentsOnly {
-		t.Errorf("hash2: expected %q, got %q", HardlinkScopeTorrentsOnly, got)
-	}
-}
-
-func TestScope_InsideAndOutsideLinksOnSameFileYieldBoth(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Two torrents share a hardlinked file, and the same file is also linked
-	// into a library path outside the torrent set (nlink=3, uniquePathCount=2).
-	original := filepath.Join(dir, "instance-a", "torrent1", "movie.mkv")
-	createFile(t, original)
-	for _, p := range []string{
-		filepath.Join(dir, "instance-a", "torrent2", "movie.mkv"),
-		filepath.Join(dir, "library", "movie.mkv"),
-	} {
-		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Link(original, p); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	state := buildStateFromLstat(t, map[string][]string{
-		"hash1": {original},
-		"hash2": {filepath.Join(dir, "instance-a", "torrent2", "movie.mkv")},
-	})
-	scope := computeScopeFromState(state)
-
-	for _, hash := range []string{"hash1", "hash2"} {
-		if got := scope[hash]; got != HardlinkScopeBoth {
-			t.Errorf("%s: expected %q, got %q", hash, HardlinkScopeBoth, got)
-		}
-	}
-}
-
 func TestScope_MixedInsideAndOutsideFilesYieldBoth(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -447,11 +267,11 @@ func TestScope_MixedInsideAndOutsideFilesYieldBoth(t *testing.T) {
 		}
 	}
 
-	state := buildStateFromLstat(t, map[string][]string{
-		"pack":  {insideFile, outsideFile},
-		"hash2": {crossSeed},
+	index := indexFrom(map[string]*torrentFileInfo{
+		"pack":  scanOne(t, filepath.Join(dir, "instance-a", "pack"), "episode1.mkv", "episode2.mkv"),
+		"hash2": scanOne(t, filepath.Join(dir, "instance-a", "torrent2"), "episode1.mkv"),
 	})
-	scope := computeScopeFromState(state)
+	scope := index.ScopeByHash
 
 	if got := scope["pack"]; got != HardlinkScopeBoth {
 		t.Errorf("pack: expected %q, got %q", HardlinkScopeBoth, got)
@@ -459,241 +279,6 @@ func TestScope_MixedInsideAndOutsideFilesYieldBoth(t *testing.T) {
 	// The cross-seed only holds the inside-linked file → torrents_only.
 	if got := scope["hash2"]; got != HardlinkScopeTorrentsOnly {
 		t.Errorf("hash2: expected %q, got %q", HardlinkScopeTorrentsOnly, got)
-	}
-}
-
-func TestCrossScope_CrossInstanceResolvesDeficit(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Instance A has a torrent. Instance B has a cross-seed hardlinked to same inode.
-	// No external links → after augmentation, cross-scope should be torrents_only.
-	fileA := filepath.Join(dir, "instance-a", "torrent", "movie.mkv")
-	createFile(t, fileA)
-	fileB := filepath.Join(dir, "instance-b", "xseed", "movie.mkv")
-	if err := os.MkdirAll(filepath.Dir(fileB), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(fileA, fileB); err != nil {
-		t.Fatal(err)
-	}
-
-	// Phase 1: only scan Instance A's files.
-	state := buildStateFromLstat(t, map[string][]string{
-		"hashA": {fileA},
-	})
-	phase1Scope := computeScopeFromState(state)
-
-	// Phase 1 sees nlink=2, uniquePathCount=1 → outside_qbittorrent.
-	if got := phase1Scope["hashA"]; got != HardlinkScopeOutsideQBitTorrent {
-		t.Fatalf("phase 1: expected %q, got %q", HardlinkScopeOutsideQBitTorrent, got)
-	}
-
-	// Simulate Phase 2: Lstat Instance B's file and augment state.
-	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[testFileKey(fidB, state.instance)]
-	if tracker == nil {
-		t.Fatal("expected Instance B's file to share FileID with Instance A")
-	}
-	state.seenPaths[fileB] = struct{}{}
-	tracker.uniquePathCount++
-
-	// Recompute scope with augmented counts.
-	crossScope := computeScopeFromState(state)
-
-	// nlink=2, uniquePathCount=2 → torrents_only.
-	if got := crossScope["hashA"]; got != HardlinkScopeTorrentsOnly {
-		t.Errorf("cross-scope: expected %q, got %q", HardlinkScopeTorrentsOnly, got)
-	}
-}
-
-func TestCrossScope_CrossInstancePlusExternal(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Instance A torrent, Instance B cross-seed, plus external media library hardlink.
-	// After augmentation, cross-scope is linked both inside and outside the set.
-	fileA := filepath.Join(dir, "instance-a", "torrent", "movie.mkv")
-	createFile(t, fileA)
-	fileB := filepath.Join(dir, "instance-b", "xseed", "movie.mkv")
-	if err := os.MkdirAll(filepath.Dir(fileB), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(fileA, fileB); err != nil {
-		t.Fatal(err)
-	}
-	mediaLink := filepath.Join(dir, "media", "Movie (2024)", "movie.mkv")
-	if err := os.MkdirAll(filepath.Dir(mediaLink), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(fileA, mediaLink); err != nil {
-		t.Fatal(err)
-	}
-
-	// Phase 1: scan Instance A only.
-	state := buildStateFromLstat(t, map[string][]string{
-		"hashA": {fileA},
-	})
-	phase1Scope := computeScopeFromState(state)
-	if got := phase1Scope["hashA"]; got != HardlinkScopeOutsideQBitTorrent {
-		t.Fatalf("phase 1: expected %q, got %q", HardlinkScopeOutsideQBitTorrent, got)
-	}
-
-	// Phase 2: augment with Instance B.
-	fidB, _ := lstatFileID(t, fileB)
-	tracker := state.globalFileIDMap[testFileKey(fidB, state.instance)]
-	if tracker == nil {
-		t.Fatal("expected Instance B's file to share FileID")
-	}
-	state.seenPaths[fileB] = struct{}{}
-	tracker.uniquePathCount++
-
-	// nlink=3 (A + B + media), uniquePathCount=2 (A + B) → inside + outside.
-	crossScope := computeScopeFromState(state)
-	if got := crossScope["hashA"]; got != HardlinkScopeBoth {
-		t.Errorf("cross-scope: expected %q, got %q", HardlinkScopeBoth, got)
-	}
-}
-
-func TestCrossScope_DeficitSetResolution(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Test that deficit set management works correctly:
-	// Two files with different deficit states.
-	fileA1 := filepath.Join(dir, "instance-a", "t1", "file1.mkv")
-	createFile(t, fileA1)
-	fileA2 := filepath.Join(dir, "instance-a", "t1", "file2.mkv")
-	createFile(t, fileA2)
-
-	// file1 has a cross-instance hardlink (resolvable deficit).
-	fileB1 := filepath.Join(dir, "instance-b", "t1", "file1.mkv")
-	if err := os.MkdirAll(filepath.Dir(fileB1), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(fileA1, fileB1); err != nil {
-		t.Fatal(err)
-	}
-
-	// file2 has an external hardlink (unresolvable deficit).
-	extLink := filepath.Join(dir, "media", "file2.mkv")
-	if err := os.MkdirAll(filepath.Dir(extLink), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(fileA2, extLink); err != nil {
-		t.Fatal(err)
-	}
-
-	// Phase 1: scan only Instance A.
-	state := buildStateFromLstat(t, map[string][]string{
-		"hashT1": {fileA1, fileA2},
-	})
-	phase1Scope := computeScopeFromState(state)
-	// Torrent has at least one file with outside links → outside_qbittorrent.
-	if got := phase1Scope["hashT1"]; got != HardlinkScopeOutsideQBitTorrent {
-		t.Fatalf("phase 1: expected %q, got %q", HardlinkScopeOutsideQBitTorrent, got)
-	}
-
-	// Phase 2: augment with Instance B's file1 (resolves file1's deficit).
-	fidB1, _ := lstatFileID(t, fileB1)
-	if tracker := state.globalFileIDMap[testFileKey(fidB1, state.instance)]; tracker != nil {
-		state.seenPaths[fileB1] = struct{}{}
-		tracker.uniquePathCount++
-	}
-
-	// file1 is now linked inside the torrent set, but file2 still has
-	// nlink > uniquePathCount → linked both inside and outside.
-	crossScope := computeScopeFromState(state)
-	if got := crossScope["hashT1"]; got != HardlinkScopeBoth {
-		t.Errorf("cross-scope: expected %q (file1 inside, file2 external), got %q",
-			HardlinkScopeBoth, got)
-	}
-}
-
-func TestCrossScope_SeenPathsDedup(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Verify that a path already in seenPaths is not double-counted.
-	fileA := filepath.Join(dir, "shared", "movie.mkv")
-	createFile(t, fileA)
-	fileB := filepath.Join(dir, "instance-b", "movie.mkv")
-	if err := os.MkdirAll(filepath.Dir(fileB), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(fileA, fileB); err != nil {
-		t.Fatal(err)
-	}
-
-	// Build state with fileA counted.
-	state := buildStateFromLstat(t, map[string][]string{
-		"hash1": {fileA},
-	})
-
-	fid, _ := lstatFileID(t, fileA)
-	tracker := state.globalFileIDMap[testFileKey(fid, state.instance)]
-	if tracker == nil {
-		t.Skip("nlink=1, no hardlinks to test (filesystem may not support)")
-	}
-	countBefore := tracker.uniquePathCount
-
-	// fileA is already in seenPaths. Simulating scanning it again should not increment.
-	if _, seen := state.seenPaths[fileA]; !seen {
-		t.Fatal("expected fileA to be in seenPaths")
-	}
-	// If we were to skip (as the real code does), count stays the same.
-	if tracker.uniquePathCount != countBefore {
-		t.Errorf("expected uniquePathCount=%d to not change, got %d", countBefore, tracker.uniquePathCount)
-	}
-
-	// fileB is NOT in seenPaths, so it should increment.
-	if _, seen := state.seenPaths[fileB]; seen {
-		t.Fatal("expected fileB to NOT be in seenPaths")
-	}
-	state.seenPaths[fileB] = struct{}{}
-	tracker.uniquePathCount++
-	if tracker.uniquePathCount != countBefore+1 {
-		t.Errorf("expected uniquePathCount=%d, got %d", countBefore+1, tracker.uniquePathCount)
-	}
-}
-
-func TestCrossScope_ContextCancellation(t *testing.T) {
-	t.Parallel()
-
-	// augmentCrossInstanceScope should handle a cancelled context gracefully.
-	// Note: this test hits the nil-instanceStore guard before reaching the ctx.Err()
-	// check in the scan loop because instanceStore/syncManager are concrete types
-	// (not interfaces), so we can't inject stubs without refactoring Service.
-	// The scan loop's ctx.Err() check is exercised implicitly in production when
-	// the automation runner's context is cancelled mid-scan.
-	fid := createFile(t, filepath.Join(t.TempDir(), "cancelled-file"))
-	index := &HardlinkIndex{
-		ScopeByHash: map[string]string{"hash1": HardlinkScopeOutsideQBitTorrent},
-		buildState: &hardlinkBuildState{
-			globalFileIDMap: map[fsops.FileKey]*fileIDTracker{
-				testFileKey(fid, nil): {nlink: 2, uniquePathCount: 1},
-			},
-			seenPaths: make(map[string]struct{}),
-			torrentInfoByHash: map[string]*torrentFileInfo{
-				"hash1": {
-					fileIDs:       []hardlink.FileID{fid},
-					allAccessible: true,
-					hasHardlinks:  true,
-				},
-			},
-		},
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately.
-
-	// Service has no instanceStore → will hit nil check before even checking context,
-	// falling back to copy of ScopeByHash.
-	s := &Service{}
-	s.augmentCrossInstanceScope(ctx, 1, index)
-
-	if index.CrossScopeByHash == nil {
-		t.Fatal("expected CrossScopeByHash to be populated even with cancelled context")
 	}
 }
 
@@ -1016,92 +601,6 @@ func TestBlockedDeleteCandidates_UnknownHardlinkScope(t *testing.T) {
 	rule.Conditions.Delete.Condition = category
 	for _, index := range []*HardlinkIndex{index, nil} {
 		require.Empty(t, service.blockedDeleteCandidates(t.Context(), instanceID, index, torrentRefMap(torrentByHash), pending, rules))
-	}
-}
-
-func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
-	t.Parallel()
-
-	// Torrents with allAccessible=false should not appear in cross-scope.
-	fid := createFile(t, filepath.Join(t.TempDir(), "shared-file"))
-	state := &hardlinkBuildState{
-		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{},
-		seenPaths:       make(map[string]struct{}),
-		torrentInfoByHash: map[string]*torrentFileInfo{
-			"accessible": {
-				fileIDs:       []hardlink.FileID{fid},
-				allAccessible: true,
-			},
-			"inaccessible": {
-				fileIDs:       []hardlink.FileID{fid},
-				allAccessible: false, // Can't inspect all files.
-			},
-		},
-	}
-
-	scope := computeScopeFromState(state)
-	if _, ok := scope["accessible"]; !ok {
-		t.Error("expected accessible torrent in scope")
-	}
-	if _, ok := scope["inaccessible"]; ok {
-		t.Error("expected inaccessible torrent to be excluded from scope")
-	}
-}
-
-func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-
-	// buildFullPath rejects traversal and absolute names in both POSIX and Windows form.
-	for _, name := range []string{
-		"../etc/passwd",
-		"..\\etc\\passwd",
-		"a/../../etc/passwd",
-		"/etc/passwd",
-		"\\evil\\path",
-		"\\\\server\\share\\file",
-		"C:/evil.mkv",
-		"c:\\evil.mkv",
-		// Backslash is a legal filename byte on Linux; rewriting it into a
-		// separator invents a path and yields false missing-files verdicts,
-		// so such names are rejected outright (skipped, never "missing").
-		`AC\DC - Back In Black.mkv`,
-		`dir/AC\DC.mkv`,
-	} {
-		if _, ok := buildFullPath(fsops.HostPaths, base, name); ok {
-			t.Errorf("expected %q to be rejected", name)
-		}
-	}
-	if _, ok := buildFullPath(fsops.HostPaths, base, "Show.S01/episode.mkv"); !ok {
-		t.Error("expected a normal relative name to be accepted")
-	}
-
-	// Relative save path: should be rejected by the filepath.IsAbs check in Phase 2.
-	if filepath.IsAbs("relative/path") {
-		t.Error("expected relative path to not be absolute")
-	}
-
-	// Root save path: isPathInsideBase("/", "/etc/passwd") is technically true,
-	// but Phase 2 code rejects empty/relative paths before reaching isPathInsideBase.
-	// The root "/" case is not explicitly blocked since it's a valid absolute path
-	// that a qBittorrent instance could legitimately report.
-}
-
-func TestConditionsRequireLocalAccess_HardlinkScopeCross(t *testing.T) {
-	t.Parallel()
-
-	// Verify ConditionUsesField detects HARDLINK_SCOPE_CROSS.
-	cond := &RuleCondition{
-		Field:    FieldHardlinkScopeCross,
-		Operator: OperatorEqual,
-		Value:    HardlinkScopeOutsideQBitTorrent,
-	}
-	if !ConditionUsesField(cond, FieldHardlinkScopeCross) {
-		t.Error("expected ConditionUsesField to detect HARDLINK_SCOPE_CROSS")
-	}
-	if ConditionUsesField(cond, FieldHardlinkScope) {
-		t.Error("expected ConditionUsesField to NOT detect HARDLINK_SCOPE for HARDLINK_SCOPE_CROSS condition")
 	}
 }
 

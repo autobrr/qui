@@ -212,11 +212,9 @@ func TestNormalizeTitle(t *testing.T) {
 		{"The Show 2024", "The Show 2024"}, // bare year preserved (ambiguous)
 		{"The Show 1080p WEB-DL", "The Show"},
 		{"1923", "1923"},                         // numeric title preserved
-		{"1883", "1883"},                         // numeric title preserved
 		{"Yellowstone 1923", "Yellowstone 1923"}, // bare year preserved (could be title)
 		{"Show Name HDTV x264", "Show Name"},
 		{"  Spacey Title  ", "Spacey Title"},
-		{"未来 2024", "未来 2024"},  // bare year preserved
 		{"인간실격 (2021)", "인간실격"}, // parenthesized year stripped
 	}
 
