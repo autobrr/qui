@@ -511,8 +511,9 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 const resolvePeerAddressTimeout = 3 * time.Second
 
 // resolvedPublicPeerAddress is the public peer address that qui works out for
-// the instance, or "" when it has none. It asks only a connected qBittorrent,
-// so that an instance that is down does not hold up the list.
+// the instance from its last sync, or "" when it has none. It sends qBittorrent
+// no sync, and it asks only a connected qBittorrent, so that an instance that
+// is down does not hold up the list.
 func (h *InstancesHandler) resolvedPublicPeerAddress(ctx context.Context, instance *models.Instance, connected bool) string {
 	if instance.PublicPeerAddress != "" {
 		return instance.PublicPeerAddress
@@ -522,7 +523,7 @@ func (h *InstancesHandler) resolvedPublicPeerAddress(ctx context.Context, instan
 	}
 	ctx, cancel := context.WithTimeout(ctx, resolvePeerAddressTimeout)
 	defer cancel()
-	address, err := h.peers.PublicPeerAddress(ctx, instance.ID)
+	address, err := h.peers.LastPublicPeerAddress(ctx, instance.ID)
 	if err != nil && !errors.Is(err, peeraddress.ErrNoAddress) {
 		log.Debug().Err(err).Int("instanceID", instance.ID).Msg("Failed to work out the public peer address")
 	}

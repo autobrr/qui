@@ -150,8 +150,8 @@ func TestUpdateInstanceClearsConnectionBackoff(t *testing.T) {
 }
 
 // An update that saves another setting keeps an empty public peer address
-// empty, and the list shows the address that qui works out apart from the
-// address that the user set.
+// empty, and the list shows the address that qui works out from the last sync
+// apart from the address that the user set. The list itself sends no sync.
 func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
 	stub := qbtstub.New(t, t.TempDir())
 	stub.ListenPort = 51413
@@ -198,6 +198,9 @@ func TestUpdateInstanceKeepsThePublicPeerAddress(t *testing.T) {
 	rec := update(`,"tlsSkipVerify":true`)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, addresses{ResolvedPublicPeerAddress: "203.0.113.7:51413"}, list())
+	syncs := stub.Calls("sync/maindata")
+	list()
+	require.Equal(t, syncs, stub.Calls("sync/maindata"), "the list sends no sync")
 
 	rec = update(`,"publicPeerAddress":"seedbox.example.org:6881"`)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())

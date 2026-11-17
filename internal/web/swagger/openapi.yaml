@@ -8790,7 +8790,7 @@ components:
           description: The instance that gets the torrent
         savePath:
           type: string
-          description: The save path on the target. Empty is the default save path of the target.
+          description: The save path on the target. Empty is the save path that the target uses for the category, or the default save path of the target when the category is empty too.
         category:
           type: string
           description: The category of the torrent on the target

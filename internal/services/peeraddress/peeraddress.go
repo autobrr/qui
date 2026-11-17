@@ -39,6 +39,17 @@ func New(instances *models.InstanceStore, sync *qbittorrent.SyncManager) *Resolv
 // qBittorrent reports. It syncs the instance first, so each call sees a new
 // external address. Without an address it returns ErrNoAddress.
 func (r *Resolver) PublicPeerAddress(ctx context.Context, instanceID int) (string, error) {
+	return r.address(ctx, instanceID, true)
+}
+
+// LastPublicPeerAddress is PublicPeerAddress from the last sync of the
+// instance. It sends no sync/maindata request, so a list of the instances
+// costs qBittorrent nothing. Before the first sync it returns ErrNoAddress.
+func (r *Resolver) LastPublicPeerAddress(ctx context.Context, instanceID int) (string, error) {
+	return r.address(ctx, instanceID, false)
+}
+
+func (r *Resolver) address(ctx context.Context, instanceID int, sync bool) (string, error) {
 	instance, err := r.instances.Get(ctx, instanceID)
 	if err != nil {
 		return "", err
@@ -50,8 +61,10 @@ func (r *Resolver) PublicPeerAddress(ctx context.Context, instanceID int) (strin
 	if err != nil {
 		return "", err
 	}
-	if err := owner.Sync(ctx); err != nil {
-		return "", fmt.Errorf("refresh maindata: %w", err)
+	if sync {
+		if err := owner.Sync(ctx); err != nil {
+			return "", fmt.Errorf("refresh maindata: %w", err)
+		}
 	}
 	state := owner.GetServerStateUnchecked()
 	host := cmp.Or(state.LastExternalAddressV4, state.LastExternalAddressV6)
