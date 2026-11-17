@@ -456,16 +456,30 @@ func (r *rig) moveTheCrossSeedInstance() (show, int64, *qbtstub.Server) {
 	r.t.Helper()
 	cs := r.withCrossSeedInstance()
 	cs.strand = "alignment_failed"
+	s := r.seedRouted()
+	record := r.run(r.request(s))
+	require.Equal(r.t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
+	require.True(r.t, cs.stub.Has(s.hash), "the add left the member on the Cross-seed instance")
+	return s, record.ID, r.moveCrossSeed(cs, s)
+}
+
+// seedRouted seeds a show and an older cross-seed of it on the source, so
+// that the show goes to the Cross-seed instance.
+func (r *rig) seedRouted() show {
+	r.t.Helper()
 	s := newShow(r.t, showName)
 	r.seed(s)
 	crossSeed, crossSeedHash := crossSeedOf(r.t, s)
 	r.src.Seed(crossSeed, r.srcPath())
 	r.src.Edit(crossSeedHash, func(t *qbtstub.Torrent) { t.AddedOn = 100 })
 	r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.AddedOn = 200 })
-	record := r.run(r.request(s))
-	require.Equal(r.t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
-	require.True(r.t, cs.stub.Has(s.hash), "the add left the member on the Cross-seed instance")
+	return s
+}
 
+// moveCrossSeed gives the Cross-seed instance the address of another client
+// that has a torrent with the hash of s, and starts qui again.
+func (r *rig) moveCrossSeed(cs *crossSeeds, s show) *qbtstub.Server {
+	r.t.Helper()
 	other := r.t.TempDir()
 	moved := qbtstub.New(r.t, other)
 	moved.Seed(s.data, other)
@@ -477,7 +491,7 @@ func (r *rig) moveTheCrossSeedInstance() (show, int64, *qbtstub.Server) {
 	deps.Routes, deps.CrossSeeds, deps.Config = r.deps.Routes, r.deps.CrossSeeds, r.deps.Config
 	r.deps, r.sync = deps, sync
 	r.restart()
-	return s, record.ID, moved
+	return moved
 }
 
 // A new address of the Cross-seed instance stops the Transfer, as a new
@@ -515,6 +529,35 @@ func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *te
 	require.Equal(t, transfer.StateCancelled, r.get(id).State)
 	require.Zero(t, sent(moved), "qui sends nothing to the new address")
 	require.True(t, moved.Has(s.hash))
+}
+
+// A stop during the copy, and then a new address of the Cross-seed
+// instance, stops the Transfer, and the cleanup still removes the partial
+// copy on the target.
+// regression: #4231
+func TestTransferRemovesItsCopyWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
+	r := newRig(t)
+	cs := r.withCrossSeedInstance()
+	s := r.seedRouted()
+	writes := 0
+	r.disk.onWrite = func(string) {
+		if writes++; writes == 5 {
+			r.cancel()
+		}
+	}
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	r.svc.Wait()
+	require.NotEmpty(t, tree(t, r.dstDir), "the stop leaves part of the copy")
+
+	moved := r.moveCrossSeed(cs, s)
+	r.svc.Wait()
+
+	record := r.get(id)
+	require.Equal(t, transfer.FailurePermanent, record.FailureClass, record.FailureReason)
+	require.Contains(t, record.FailureReason, "The Cross-seed instance homelab cross-seed changed its address")
+	require.Empty(t, tree(t, r.dstDir), "the cleanup removes the partial copy")
+	require.Zero(t, sent(moved), "qui sends nothing to the new address")
 }
 
 // A failure after qui stopped the source starts again only the torrents

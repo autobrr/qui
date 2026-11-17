@@ -406,9 +406,13 @@ func (j *job) unclaim(bytes int64) {
 }
 
 // readParts reads each member on the source again, and places it below the
-// root of the Transfer on the target.
+// root of the Transfer on the target. It sets the parts only with the files
+// of the whole group, so that a cleanup after a failure reads them again.
 func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
-	var err error
+	var (
+		err   error
+		parts []*part
+	)
 	saves := make([]string, len(j.rec.Members))
 	for i := range j.rec.Members {
 		saves[i] = j.rec.Members[i].Placement.SavePath
@@ -438,9 +442,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 		if p.dir = d.ToSlash(rel); p.dir == "." {
 			p.dir = ""
 		}
-		j.parts = append(j.parts, p)
+		parts = append(parts, p)
 	}
-	for _, p := range j.parts {
+	for _, p := range parts {
 		if p.TargetInstanceID == j.target.ID || j.crossSeed != nil {
 			continue
 		}
@@ -456,9 +460,10 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 				"so the Transfer stopped. qui cleans up nothing on %s.", j.crossSeed.Name, j.crossSeed.Name)
 		}
 	}
-	if j.files, j.byRel, err = groupFiles(j.parts); err != nil {
+	if j.files, j.byRel, err = groupFiles(parts); err != nil {
 		return permanent("The torrents of the group do not agree on their files: %v", err)
 	}
+	j.parts = parts
 	j.findHardlinks(ctx)
 	return nil
 }
