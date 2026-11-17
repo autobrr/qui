@@ -82,25 +82,30 @@ func (j *job) linkCopies(ctx context.Context) error {
 		if err := j.createTemp(ctx, f); err != nil {
 			return err
 		}
+		if err := j.stepWith(ctx, StateCopying, stepOwnCopy, f.rel); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // relink keeps the temporary file of each hardlink that an earlier run
-// linked to the temporary file of the file that it links to. It removes the
+// linked to the temporary file of the file that it links to, and the copy
+// of its own of each hardlink that the target could not link. It removes the
 // other temporary files of hardlinks, so that linkCopies links them again.
 func (j *job) relink(ctx context.Context) {
 	for _, f := range j.files {
 		if _, made := j.made[f]; !made || f.hardlinkOf == nil {
 			continue
 		}
-		if j.sameFile(ctx, j.tempName(f.rel), j.tempName(f.hardlinkOf.rel)) {
+		switch {
+		case j.sameFile(ctx, j.tempName(f.rel), j.tempName(f.hardlinkOf.rel)):
 			f.linksCopy = true
 			j.made[f] = f.size
-			continue
+		case !j.reachedFor(stepOwnCopy, f.rel):
+			j.remove(ctx, j.tempName(f.rel))
+			delete(j.made, f)
 		}
-		j.remove(ctx, j.tempName(f.rel))
-		delete(j.made, f)
 	}
 }
 

@@ -389,33 +389,61 @@ func TestTransferNeedsSpaceForACopyThatTheTargetCannotLink(t *testing.T) {
 	require.True(t, r.seeding(r.source.ID, crossSeedHash))
 }
 
-// A Transfer that resumes keeps the links that it made on the target, and
-// copies each file once.
-func TestTransferKeepsTheLinksOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
-	r := newRigOn(t, onDisk, onDisk)
-	r.disk.otherFilesystem = true
-	r.disk.free = 70
-	s := newShow(t, showName)
-	r.seed(s)
-	_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
-	stop := sync.OnceFunc(r.cancel)
-	r.disk.onWrite = func(string) { stop() }
+// A Transfer that resumes keeps the temporary files that it made for a
+// hardlinked cross-seed: the links, or the copies where the target cannot
+// link. It creates each temporary file once.
+func TestTransferKeepsTheFilesOfAHardlinkedCrossSeedOverARestart(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		noLinks bool
+		free    int64
+		// stopAt is the start of the name of the first write that stops qui.
+		stopAt          string
+		writtenFolders  map[string]bool
+		oneFileOnTarget bool
+	}{
+		{name: "the links", free: 70, stopAt: showName + "/",
+			writtenFolders: map[string]bool{showName: true}, oneFileOnTarget: true},
+		// regression: #4231
+		{name: "a copy where the target cannot link", noLinks: true, free: 140, stopAt: "links/" + showName + "/Show.S01E02.mkv",
+			writtenFolders: map[string]bool{showName: true, "links/" + showName: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, onDisk, onDisk)
+			r.disk.otherFilesystem = true
+			r.disk.noLinks = tc.noLinks
+			r.disk.free = tc.free
+			s := newShow(t, showName)
+			r.seed(s)
+			_, crossSeedHash := r.seedHardlinkedCrossSeed(s)
+			stop := sync.OnceFunc(r.cancel)
+			r.disk.onWrite = func(name string) {
+				if strings.HasPrefix(filepath.ToSlash(name), tc.stopAt) {
+					stop()
+				}
+			}
 
-	id, err := r.svc.Start(t.Context(), r.request(s))
-	require.NoError(t, err)
-	r.svc.Wait()
-	require.True(t, r.get(id).FinishedAt.IsZero(), "the stop keeps the Transfer unfinished")
-	r.restart()
-	r.svc.Wait()
+			id, err := r.svc.Start(t.Context(), r.request(s))
+			require.NoError(t, err)
+			r.svc.Wait()
+			require.True(t, r.get(id).FinishedAt.IsZero(), "the stop keeps the Transfer unfinished")
+			r.restart()
+			r.svc.Wait()
 
-	record := r.get(id)
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Equal(t, map[string]bool{showName: true}, r.writtenFolders(), "qui writes no byte of the cross-seed")
-	for name := range s.files {
-		require.True(t, sameFile(t, filepath.Join(r.dstDir, showName, name), filepath.Join(r.dstDir, "links", showName, name)), name)
+			record := r.get(id)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, tc.writtenFolders, r.writtenFolders())
+			_, creates := r.disk.log()
+			for name, n := range creates {
+				require.Equal(t, 1, n, "qui creates %s once", name)
+			}
+			for name := range s.files {
+				require.Equal(t, tc.oneFileOnTarget, sameFile(t, filepath.Join(r.dstDir, showName, name), filepath.Join(r.dstDir, "links", showName, name)), name)
+			}
+			require.True(t, r.seeding(r.target.ID, crossSeedHash))
+			require.Empty(t, tree(t, r.srcDir))
+		})
 	}
-	require.True(t, r.seeding(r.target.ID, crossSeedHash))
-	require.Empty(t, tree(t, r.srcDir))
 }
 
 // A connection that drops while qui links a hardlink on the target is no

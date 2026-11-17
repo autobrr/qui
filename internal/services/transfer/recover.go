@@ -25,6 +25,9 @@ import (
 const (
 	stepPrepare = "prepare"
 	stepCheck   = "check on the target"
+	// stepOwnCopy holds the path below the root of a hardlink that the
+	// target could not link. qui copies its bytes into its temporary file.
+	stepOwnCopy = "copy a hardlink"
 	// stepPlace holds the paths below the root of the files that were on
 	// the target before the Transfer, as JSON.
 	stepPlace = "place"
