@@ -156,7 +156,7 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		reserved: map[int]int64{},
 		exports:  make(chan struct{}, exportsAtATime),
 	}
-	s.Wake()                            //nolint:contextcheck // the Service runs on its own context, s.ctx
+	s.wake(true)                        //nolint:contextcheck // the Service runs on its own context, s.ctx
 	go s.tick(deps.Config.WakeInterval) //nolint:contextcheck // the Service runs on its own context, s.ctx
 	return s
 }
@@ -183,6 +183,13 @@ func (s *Service) tick(interval time.Duration) {
 // interrupted, one whose retry time came, and one whose instances are on
 // again.
 func (s *Service) Wake() {
+	s.wake(false)
+}
+
+// wake with exports also runs each Export run that a stop of qui
+// interrupted. Only the start does: later, an Export run that the Service
+// does not hold is one whose Export call has not started it yet.
+func (s *Service) wake(exports bool) {
 	ids, err := s.deps.Store.Unfinished(s.ctx)
 	if err != nil {
 		if s.ctx.Err() == nil {
@@ -205,7 +212,9 @@ func (s *Service) Wake() {
 			continue
 		}
 		if record.Kind == KindExport {
-			s.export(record, make(chan ExportResult, 1))
+			if exports {
+				s.export(record, make(chan ExportResult, 1))
+			}
 			continue
 		}
 		if record.Kind != KindTransfer || record.RetryAt.After(now) || s.off(s.ctx, record) {

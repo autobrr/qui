@@ -310,6 +310,51 @@ func TestExportResumesAfterACrash(t *testing.T) {
 	}
 }
 
+// wakeAtCommit wakes the Service after each commit on the store, as the
+// loop of Wake can between the record of an Export run and its start.
+type wakeAtCommit struct {
+	dbinterface.Querier
+	wake func()
+}
+
+func (w wakeAtCommit) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := w.Querier.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return wakeTx{TxQuerier: tx, wake: w.wake}, nil
+}
+
+type wakeTx struct {
+	dbinterface.TxQuerier
+	wake func()
+}
+
+func (t wakeTx) Commit() error {
+	err := t.TxQuerier.Commit()
+	if err == nil {
+		t.wake()
+	}
+	return err
+}
+
+// A Wake that reads a new Export run before its Export call starts it
+// leaves the run to that call, so the caller gets the result.
+// regression: #4231
+func TestExportSendsItsResultWhenAWakeComesFirst(t *testing.T) {
+	r := newRig(t, exportPolls)
+	r.restartOn(wakeAtCommit{Querier: r.db, wake: func() { r.svc.Wake() }})
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+
+	record, res := r.export(r.exportRequest(s))
+
+	require.Empty(t, res.Failure)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, 1, r.dst.Writes("torrents/add"))
+}
+
 // qBittorrent does not check a torrent that was added stopped. When qui
 // stops between a paused add and its recheck, the run sends the recheck
 // after the restart, and the torrent passes its check on the target.
