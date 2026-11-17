@@ -413,6 +413,7 @@ describe("LibraryTab schedule controls", () => {
     expect(screen.getByRole("button", { name: "automation.cancel" })).toBeTruthy()
   })
 
+  // regression: #4246
   it.each([
     { name: "a manual run", run: { kind: "manual" }, shown: true },
     { name: "a capped scheduled run", run: { kind: "scheduled", searchLimit: 400 }, shown: false },
