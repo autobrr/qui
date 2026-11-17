@@ -1755,16 +1755,10 @@ export function TorrentCardsMobile({
         </div>
       )}
 
-      {/* Scroll to top button - only on mobile */}
-      <div className="sm:hidden">
-        <ScrollToTopButton
-          scrollContainerRef={parentRef}
-          className={cn(
-            "right-8 z-[60]",
-            selectionBarVisible? "bottom-[calc(5rem+env(safe-area-inset-bottom))]": isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
-          )}
-        />
-      </div>
+      <ScrollToTopButton
+        scrollContainerRef={parentRef}
+        extraBottomBars={selectionBarVisible ? "4rem" : !selectionMode && isFooterVisible ? "3.5rem" : "0px"}
+      />
     </div>
   )
 }
