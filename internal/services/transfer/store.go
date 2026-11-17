@@ -29,6 +29,10 @@ var (
 	// ErrWaitsForUser is the refusal of a rule to transfer a torrent whose
 	// last Transfer failed permanently: the failure waits for the user.
 	ErrWaitsForUser = errors.New("the last Transfer of this torrent failed and waits for the user")
+	// ErrNotFound: no Transfer has the id.
+	ErrNotFound = errors.New("no Transfer has this id")
+	// ErrNotFinished refuses to remove a Transfer that holds its torrents.
+	ErrNotFinished = errors.New("the Transfer has not ended")
 )
 
 type torrentKey struct {
@@ -216,6 +220,9 @@ func (s *Store) Get(ctx context.Context, id int64) (*Record, error) {
 		&source, &target, &options, &steps, &logLines,
 		&flushState, &r.ReservedBytes, &retryAt, &failureClass, &r.FailureReason, &r.CreatedAt, &finishedAt,
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %d", ErrNotFound, id)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read transfer %d: %w", id, err)
 	}

@@ -94,23 +94,32 @@ func (s *Service) export(record *Record, done chan<- ExportResult) {
 		close(done)
 		return
 	}
-	s.runs[record.ID] = &run{}
+	ctx, cancel := context.WithCancel(s.ctx)
+	s.runs[record.ID] = &run{cancel: cancel}
 	s.wg.Go(func() {
 		defer close(done)
+		defer cancel()
 		defer func() {
 			s.mu.Lock()
 			delete(s.runs, record.ID)
 			s.mu.Unlock()
 		}()
+		e := &exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}
 		select {
 		case s.exports <- struct{}{}:
-		case <-s.ctx.Done():
+		case <-ctx.Done():
+			if s.cancelled(record.ID) {
+				done <- e.cancel(ctx)
+			}
 			return
 		}
 		defer func() { <-s.exports }()
-		e := &exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}
-		if res, ended := e.run(s.ctx); ended {
+		res, ended := e.run(ctx)
+		switch {
+		case ended:
 			done <- res
+		case s.cancelled(record.ID):
+			done <- e.cancel(ctx)
 		}
 	})
 }
@@ -245,6 +254,9 @@ func (e *exportJob) mark(ctx context.Context, state State, name string) error {
 // off the target and keeps its files there, so that the next run of the
 // rule tries again.
 func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportResult {
+	if e.svc.cancelled(e.rec.ID) {
+		return e.cancel(ctx)
+	}
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	m := e.member()
@@ -272,6 +284,21 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 	event.Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Int("source", e.rec.SourceInstanceID).
 		Int("target", m.TargetInstanceID).Str("hash", m.Hash).Msg("transfer: the Export run ended")
 	return e.result
+}
+
+// cancel ends a run that the user cancelled. A torrent that the run added
+// comes off the target, with its files kept there. One whose add did not
+// answer stays, because qui cannot tell who added it.
+func (e *exportJob) cancel(ctx context.Context) ExportResult {
+	ctx, cancel := cleanupContext(ctx)
+	defer cancel()
+	e.logf("Cancelled.")
+	if e.reached(stepAdded) {
+		e.removeFromTarget(ctx)
+	}
+	e.finish(ctx, StateCancelled)
+	log.Info().Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Msg("transfer: the Export run was cancelled")
+	return ExportResult{Failure: "Cancelled."}
 }
 
 func (e *exportJob) removeFromTarget(ctx context.Context) {
