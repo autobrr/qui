@@ -289,8 +289,13 @@ func (src *source) movable() error {
 	if src.torrent.Progress < 1 || slices.ContainsFunc(src.files, func(f qbt.TorrentFile) bool { return f.Progress < 1 }) {
 		return refuse("Only complete torrents can move, and %s is not complete.", src.torrent.Name)
 	}
-	if _, err := planFiles(src.info, src.files); err != nil {
+	plan, err := planFiles(src.info, src.files)
+	if err != nil {
 		return refuse("The files of %s do not match its .torrent: %v", src.torrent.Name, err)
+	}
+	if name := takenName(src.info, plan); name != "" {
+		return refuse("%s has the original name of another file of %s. Rename the files on the source so that no file "+
+			"takes the original name of another.", name, src.torrent.Name)
 	}
 	return nil
 }

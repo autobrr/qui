@@ -613,6 +613,24 @@ func TestTransferRefuses(t *testing.T) {
 			return r.request(s)
 		}, reason: "v2 and hybrid torrents are unsupported"},
 		// regression: #4231
+		{name: "a source that swapped two file names", setup: func(r *rig, s show) transfer.Request {
+			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E01.tmp", "Show.S01E02.mkv", "Show.S01E01.mkv",
+				"Show.S01E01.tmp", "Show.S01E02.mkv")
+			return r.request(s)
+		}, reason: showName + "/Show.S01E02.mkv has the original name of another file of " + showName + "."},
+		// regression: #4231
+		{name: "a source that moved a file to the original name of another", setup: func(r *rig, s show) transfer.Request {
+			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E00.mkv", "Show.S01E02.mkv", "Show.S01E01.mkv")
+			return r.request(s)
+		}, reason: showName + "/Show.S01E01.mkv has the original name of another file of " + showName + "."},
+		// regression: #4231
+		{name: "a source without a common folder that moved a file to the original name of another", setup: func(r *rig, s show) transfer.Request {
+			for _, rename := range [][2]string{{"Show.S01E01.mkv", "Show.S01E02.mkv"}, {"Show.S01E02.mkv", "Extras/Show.S01E02.mkv"}} {
+				require.NoError(t, r.sync.RenameTorrentFile(t.Context(), r.source.ID, s.hash, showName+"/"+rename[0], rename[1]))
+			}
+			return r.request(s)
+		}, reason: "Show.S01E02.mkv has the original name of another file of " + showName + "."},
+		// regression: #4231
 		{name: "a torrent that qBittorrent moves", setup: func(r *rig, s show) transfer.Request {
 			r.src.Edit(s.hash, func(t *qbtstub.Torrent) { t.Moving = true })
 			return r.request(s)
@@ -668,6 +686,37 @@ func TestTransferRefuses(t *testing.T) {
 			require.Zero(t, r.dst.Writes("torrents/add"))
 		})
 	}
+}
+
+// renameOnSource renames files of s on the source, in pairs of the old and
+// the new name below the folder of the show.
+func (r *rig) renameOnSource(s show, names ...string) {
+	r.t.Helper()
+	for pair := range slices.Chunk(names, 2) {
+		require.NoError(r.t, r.sync.RenameTorrentFile(r.t.Context(), r.source.ID, s.hash, showName+"/"+pair[0], showName+"/"+pair[1]))
+	}
+}
+
+// A file that the source renamed to a name that no other file of the
+// torrent had keeps that name on the target.
+// regression: #4231
+func TestTransferKeepsTheFileNamesOfTheSource(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E00.mkv", "Show.S01E02.mkv", "Show.S01E03.mkv")
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, map[string]string{
+		showName + "/Show.S01E00.mkv": string(s.files["Show.S01E01.mkv"]),
+		showName + "/Show.S01E03.mkv": string(s.files["Show.S01E02.mkv"]),
+	}, tree(t, r.dstDir))
+	files, err := r.sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(t.Context()), r.target.ID, s.hash)
+	require.NoError(t, err)
+	require.Equal(t, []string{showName + "/Show.S01E00.mkv", showName + "/Show.S01E03.mkv"},
+		[]string{(*files)[0].Name, (*files)[1].Name})
 }
 
 // seedEpisode seeds a torrent of one file that is a file of s, as a

@@ -302,10 +302,6 @@ func (j *job) add(ctx context.Context, p *part) error {
 	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
 		return err
 	}
-	layout := qbt.ContentLayoutOriginal
-	if p.src.info.IsDir() && commonRoot(names(p.plan)) == "" {
-		layout = qbt.ContentLayoutSubfolderNone
-	}
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
 		InstanceID: j.target.ID,
@@ -315,7 +311,7 @@ func (j *job) add(ctx context.Context, p *part) error {
 			SavePath:        p.Placement.SavePath,
 			Category:        p.Placement.Category,
 			Tags:            p.Placement.Tags,
-			ContentLayout:   layout,
+			ContentLayout:   addLayout(p.src.info, p.plan),
 			Stopped:         new(true),
 			AutoTMM:         new(false),
 			UseDownloadPath: new(false),
