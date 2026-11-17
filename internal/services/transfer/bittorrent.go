@@ -200,6 +200,7 @@ func (j *job) addHelper(ctx context.Context, inst *models.Instance, helper helpe
 	}
 	settings.ContentLayout = qbt.ContentLayout(helper.ContentLayout)
 	settings.AutoTMM, settings.UseDownloadPath = new(false), new(false)
+	settings.Tags = []string{TransferHelperTag}
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
 		InstanceID:   inst.ID,
 		Torrent:      helper.TorrentFile,

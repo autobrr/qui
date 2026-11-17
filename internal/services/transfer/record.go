@@ -187,6 +187,14 @@ const (
 	OwnerShare    OwnerKind = "share"
 )
 
+// The tags that qui gives a helper torrent when it adds it. qBittorrent's
+// own "run on add" and "run on finished" programs see helper torrents, and
+// a script skips one by its tag. qui itself trusts only the registry.
+const (
+	TransferHelperTag = "qui-transfer"
+	ShareHelperTag    = "qui-share"
+)
+
 // Helper is a helper torrent: a Transfer torrent or a Share torrent.
 type Helper struct {
 	InstanceID int

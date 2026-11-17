@@ -72,6 +72,7 @@ func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
 		Hash:       sh.HelperHash,
 		Settings: torrentadd.Settings{
 			SavePath:        sh.SavePath,
+			Tags:            []string{transfer.ShareHelperTag},
 			ContentLayout:   qbt.ContentLayout(sh.layout),
 			Stopped:         new(false),
 			Forced:          true,

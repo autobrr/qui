@@ -316,6 +316,7 @@ func TestAShareSeedsAShareTorrentThatQuisTrackerAnnounces(t *testing.T) {
 	require.Equal(t, "true", add.Get("seedMode"))
 	require.Equal(t, "true", add.Get("forced"))
 	require.Equal(t, "false", add.Get("autoTMM"))
+	require.Equal(t, []string{"qui-share"}, r.stub.Tags(sh.HelperHash), "a script of qBittorrent skips the Share torrent by its tag")
 	require.Equal(t, r.dir, add.Get("savepath"))
 	require.Equal(t, r.clock.Now().Add(7*24*time.Hour), sh.ExpiresAt)
 	require.True(t, listening(r.port), "the Share tracker listens while a Share runs")

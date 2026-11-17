@@ -101,6 +101,7 @@ func (s *Server) add(w http.ResponseWriter, form *multipart.Form, param func(str
 		}
 		s.place(t, param)
 		s.torrents[t.Hash] = t
+		s.addedTags[t.Hash] = slices.Clone(t.Tags)
 		ids = append(ids, t.Hash)
 	}
 	if len(ids) == 0 {
