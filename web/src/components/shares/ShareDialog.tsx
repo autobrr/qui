@@ -50,7 +50,7 @@ export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("dialog.title")}</DialogTitle>
           <DialogDescription>{t("dialog.description", { count: torrents.length, name: torrents[0]?.name ?? "" })}</DialogDescription>
