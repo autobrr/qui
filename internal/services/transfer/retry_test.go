@@ -192,6 +192,54 @@ func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 	require.True(t, r.src.Has(s.hash))
 }
 
+// pauseRead holds the next read of the torrents of a Transfer, once armed,
+// until release closes.
+type pauseRead struct {
+	dbinterface.Querier
+	armed   *atomic.Bool
+	held    chan struct{}
+	release chan struct{}
+}
+
+func (p pauseRead) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if strings.Contains(query, "FROM torrent_transfer_members") && p.armed.CompareAndSwap(true, false) {
+		close(p.held)
+		<-p.release
+	}
+	return p.Querier.QueryContext(ctx, query, args...)
+}
+
+// regression: #4242
+// A cancel that read an Export run just before the run ended leaves the done
+// run as it is, with its torrent on the target.
+func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
+	r := newRig(t, exportPolls)
+	hold := newHoldAt(r.db, "added")
+	var armed atomic.Bool
+	pause := pauseRead{Querier: hold, armed: &armed, held: make(chan struct{}), release: make(chan struct{})}
+	r.restartOn(pause)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+
+	id, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
+	require.NoError(t, err)
+	<-hold.held
+	armed.Store(true)
+	cancelled := make(chan error, 1)
+	go func() { cancelled <- r.svc.Cancel(t.Context(), id) }()
+	<-pause.held
+	close(hold.release)
+	require.Empty(t, (<-done).Failure)
+	r.svc.Wait()
+	close(pause.release)
+
+	require.ErrorIs(t, <-cancelled, transfer.ErrFinished)
+	r.svc.Wait()
+	require.Equal(t, transfer.StateDone, r.get(id).State)
+	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
+}
+
 // Retry keeps the category and tags of the torrent on the target, also when
 // the torrent of the request went to the Cross-seed instance. A cancelled
 // Transfer starts again as a new Transfer by the user, with the same choices,
