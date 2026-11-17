@@ -94,11 +94,15 @@ func (s *Service) export(record *Record, done chan<- ExportResult) {
 		close(done)
 		return
 	}
-	// A cancel may have ended the run since the caller read it, and a cancel
-	// leaves s.runs once its cleanup ends.
-	if current, err := s.deps.Store.Get(s.ctx, record.ID); err == nil && !current.FinishedAt.IsZero() {
-		close(done)
-		return
+	// A cancel may have ended the run since the caller read it, or saved its
+	// cleanup and failed to record the end, and a cancel leaves s.runs once
+	// its cleanup ends.
+	if current, err := s.deps.Store.Get(s.ctx, record.ID); err == nil {
+		if !current.FinishedAt.IsZero() {
+			close(done)
+			return
+		}
+		record = current
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	s.runs[record.ID] = &run{cancel: cancel}

@@ -278,42 +278,72 @@ func (c heldCommit) Commit() error {
 	return err
 }
 
+// failTx refuses each transaction while failing is set: the record of the
+// end of a Transfer fails, and a save of its steps goes through.
+type failTx struct {
+	dbinterface.Querier
+	failing *atomic.Bool
+}
+
+func (f failTx) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	if f.failing.Load() {
+		return nil, errors.New("database is locked")
+	}
+	return f.Querier.BeginTx(ctx, opts)
+}
+
 // regression: #4242
 // A cancel that ends an Export run between its record and its start keeps
-// it cancelled: the run adds nothing to the target.
+// it cancelled: the run adds nothing to the target. When the cancel saved
+// its cleanup but could not record the end, the run finishes the cancel.
 func TestCancelBeforeAnExportRunStartsKeepsItCancelled(t *testing.T) {
-	r := newRig(t, exportPolls)
-	var armed atomic.Bool
-	hold := holdCreate{Querier: r.db, armed: &armed, held: make(chan struct{}), release: make(chan struct{})}
-	r.restartOn(hold)
-	s := newShow(t, showName)
-	r.seed(s)
-	write(t, filepath.Join(r.dstDir, showName), s.files)
+	for _, tc := range []struct {
+		name        string
+		finishFails bool
+	}{
+		{name: "the cancel records the end"},
+		{name: "the record of the end fails", finishFails: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t, exportPolls)
+			var armed, failing atomic.Bool
+			hold := holdCreate{Querier: r.db, armed: &armed, held: make(chan struct{}), release: make(chan struct{})}
+			r.restartOn(failTx{Querier: hold, failing: &failing})
+			s := newShow(t, showName)
+			r.seed(s)
+			write(t, filepath.Join(r.dstDir, showName), s.files)
 
-	armed.Store(true)
-	type started struct {
-		done <-chan transfer.ExportResult
-		err  error
+			armed.Store(true)
+			type started struct {
+				done <-chan transfer.ExportResult
+				err  error
+			}
+			export := make(chan started, 1)
+			go func() {
+				_, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
+				export <- started{done, err}
+			}()
+			<-hold.held
+			ids, err := r.store.Unfinished(t.Context())
+			require.NoError(t, err)
+			require.Len(t, ids, 1)
+			failing.Store(tc.finishFails)
+			require.NoError(t, r.svc.Cancel(t.Context(), ids[0]))
+			r.svc.Wait()
+			failing.Store(false)
+			require.Equal(t, tc.finishFails, r.get(ids[0]).FinishedAt.IsZero())
+			close(hold.release)
+			run := <-export
+			require.NoError(t, run.err)
+			<-run.done
+			r.svc.Wait()
+
+			record := r.get(ids[0])
+			require.Equal(t, transfer.StateCancelled, record.State)
+			require.False(t, record.FinishedAt.IsZero())
+			require.False(t, r.dst.Has(s.hash), "the cancelled run adds nothing")
+		})
 	}
-	export := make(chan started, 1)
-	go func() {
-		_, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
-		export <- started{done, err}
-	}()
-	<-hold.held
-	ids, err := r.store.Unfinished(t.Context())
-	require.NoError(t, err)
-	require.Len(t, ids, 1)
-	require.NoError(t, r.svc.Cancel(t.Context(), ids[0]))
-	r.svc.Wait()
-	close(hold.release)
-	run := <-export
-	require.NoError(t, run.err)
-	<-run.done
-	r.svc.Wait()
-
-	require.Equal(t, transfer.StateCancelled, r.get(ids[0]).State)
-	require.False(t, r.dst.Has(s.hash), "the cancelled run adds nothing")
 }
 
 // regression: #4242
