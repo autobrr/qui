@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
@@ -899,6 +900,67 @@ func TestPoolSFTPConnsTakesFewerWhenTheHostRefuses(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, again, 2)
 	assert.Equal(t, dials+2, server.Dials(), "the next caller asks the host again")
+}
+
+// An sftp init that never returns, also after its connection closes, ends at
+// the dial timeout, and the connection closes. x/crypto never answers a
+// session that it opens just as the host drops the connection, and the wait
+// held the instance.
+// regression: #4231
+func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	// The dials share this timeout, so it leaves them room on a slow runner.
+	pool.dialer.timeout = time.Second
+	t.Cleanup(pool.Close)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	var inits atomic.Int32
+	stuck := make(chan *ssh.Client, 1)
+	pool.newSFTP = func(client *ssh.Client, calls *sftpCalls) (*sftp.Client, error) {
+		if inits.Add(1) == 1 {
+			return newSFTPClient(client, calls)
+		}
+		stuck <- client
+		<-release
+		return nil, errors.New("released")
+	}
+
+	type result struct {
+		clients []*sftp.Client
+		err     error
+	}
+	done := make(chan result, 1)
+	go func() {
+		clients, err := pool.SFTPConns(t.Context(), inst, 2)
+		done <- result{clients, err}
+	}()
+	select {
+	case r := <-done:
+		require.NoError(t, r.err)
+		assert.Len(t, r.clients, 1, "the extra connection got no sftp session")
+	case <-time.After(10 * time.Second):
+		t.Fatal("SFTPConns still waits for the sftp init of the extra connection")
+	}
+
+	var client *ssh.Client
+	select {
+	case client = <-stuck:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the extra connection never reached its sftp init")
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	closed := make(chan error, 1)
+	go func() { closed <- client.Wait() }()
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the extra connection stays open on the host")
+	}
 }
 
 // An extra connection that nobody uses closes on its own, the first one stays

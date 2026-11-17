@@ -57,6 +57,8 @@ const (
 // session each and no exec sessions.
 type Pool struct {
 	dialer *Dialer
+	// newSFTP opens the sftp session on a new connection.
+	newSFTP func(*ssh.Client, *sftpCalls) (*sftp.Client, error)
 
 	mu     sync.Mutex
 	conns  map[int]*entry
@@ -105,7 +107,7 @@ type extra struct {
 func (x *extra) touch() { x.lastUsed.Store(time.Now().UnixNano()) }
 
 func NewPool(dialer *Dialer) *Pool {
-	return &Pool{dialer: dialer, conns: make(map[int]*entry)}
+	return &Pool{dialer: dialer, newSFTP: newSFTPClient, conns: make(map[int]*entry)}
 }
 
 // SFTP returns the instance's SFTP client, dialing if there is no live one. A
@@ -271,28 +273,36 @@ func (p *Pool) open(ctx context.Context, row *models.Instance, calls *sftpCalls)
 	}
 
 	// The subsystem request and the sftp init block inside x/crypto with no
-	// ctx and, on a persistent connection, no socket deadline either; closing
-	// the client is the only way to unwedge a host that stalls after auth.
+	// ctx and, on a persistent connection, no socket deadline either. A close
+	// of the client does not always end them: x/crypto never answers a
+	// session that it opens just as the host drops the connection. So the
+	// init runs aside, and the wait ends at the timeout; the close below ends
+	// an init that can still end.
 	initCtx, cancel := context.WithTimeout(ctx, p.dialer.timeout)
 	defer cancel()
-	stop := context.AfterFunc(initCtx, func() { _ = client.Close() })
-	sftpClient, err := newSFTPClient(client, calls)
-	if !stop() && err == nil {
-		// The close ran between the init finishing and stop: the client in
-		// hand is dead and must not be handed out.
-		err = initCtx.Err()
+	type initResult struct {
+		sftp *sftp.Client
+		err  error
 	}
-	if err == nil {
-		return client, sftpClient, nil
-	}
-	_ = client.Close()
+	done := make(chan initResult, 1)
+	go func() {
+		sftpClient, err := p.newSFTP(client, calls)
+		done <- initResult{sftpClient, err}
+	}()
 	// The memo hands this text to every caller in the backoff window, so it
 	// names the host and, when the subsystem never answered, says so.
 	addr := net.JoinHostPort(row.SSHHost, strconv.Itoa(row.SSHPort))
-	if initCtx.Err() != nil {
-		return nil, nil, fmt.Errorf("open sftp session on %s: no answer within %s: %w", addr, p.dialer.timeout, err)
+	select {
+	case r := <-done:
+		if r.err == nil {
+			return client, r.sftp, nil
+		}
+		err = fmt.Errorf("open sftp session on %s: %w", addr, r.err)
+	case <-initCtx.Done():
+		err = fmt.Errorf("open sftp session on %s: no answer within %s", addr, p.dialer.timeout)
 	}
-	return nil, nil, fmt.Errorf("open sftp session on %s: %w", addr, err)
+	_ = client.Close()
+	return nil, nil, err
 }
 
 // grow opens extra connections, all at once, until the entry holds want of
