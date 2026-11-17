@@ -85,6 +85,9 @@ type disk struct {
 	mu      sync.Mutex
 	writes  []diskWrite
 	creates map[string]int
+	// writers is how many writers are open, and mostWriters the most that
+	// were open at one time.
+	writers, mostWriters int
 }
 
 // diskWrite is one write of the copy: n bytes at an offset of a file.
@@ -174,7 +177,7 @@ func (r *diskRoot) Create(ctx context.Context, name string) (fsops.FileWriter, e
 	}
 	r.d.creates[name]++
 	r.d.mu.Unlock()
-	return &diskWriter{FileWriter: w, d: r.d, name: name}, nil
+	return r.d.opened(&diskWriter{FileWriter: w, d: r.d, name: name}), nil
 }
 
 func (r *diskRoot) Remove(ctx context.Context, name string) error {
@@ -189,14 +192,33 @@ func (r *diskRoot) OpenWrite(ctx context.Context, name string, offset int64) (fs
 	if err != nil {
 		return nil, err
 	}
-	return &diskWriter{FileWriter: w, d: r.d, name: name, at: offset}, nil
+	return r.d.opened(&diskWriter{FileWriter: w, d: r.d, name: name, at: offset}), nil
 }
 
 type diskWriter struct {
 	fsops.FileWriter
-	d    *disk
-	name string
-	at   int64
+	d      *disk
+	name   string
+	at     int64
+	closed bool
+}
+
+func (d *disk) opened(w *diskWriter) *diskWriter {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.writers++
+	d.mostWriters = max(d.mostWriters, d.writers)
+	return w
+}
+
+func (w *diskWriter) Close() error {
+	if !w.closed {
+		w.closed = true
+		w.d.mu.Lock()
+		w.d.writers--
+		w.d.mu.Unlock()
+	}
+	return w.FileWriter.Close()
 }
 
 func (w *diskWriter) Write(p []byte) (int, error) {

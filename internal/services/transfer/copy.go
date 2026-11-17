@@ -337,9 +337,12 @@ func (c *copier) check(ctx context.Context) error {
 }
 
 func (s *stream) run(ctx context.Context, tasks <-chan task) error {
-	defer s.close()
 	for t := range tasks {
-		if err := s.task(ctx, t); err != nil {
+		err := s.task(ctx, t)
+		// A stream keeps no file open between tasks: the next task copies
+		// other pieces, mostly of other files.
+		s.close()
+		if err != nil {
 			return err
 		}
 	}
@@ -580,8 +583,9 @@ func (s *stream) checkpoint(ctx context.Context) error {
 	return s.c.check(ctx)
 }
 
-// close closes the files of a stream that stopped. A writer is closed
-// without a flush, so its pieces stay unproven.
+// close closes the files of a task. A writer is closed without a flush: a
+// task that ended wrote nothing since its last checkpoint, and the pieces of
+// a task that stopped stay unproven.
 func (s *stream) close() {
 	for _, r := range s.reads {
 		_ = r.reader.Close()
@@ -589,6 +593,9 @@ func (s *stream) close() {
 	for _, o := range s.open {
 		_ = o.writer.Close()
 	}
+	clear(s.reads)
+	clear(s.open)
+	clear(s.dirty)
 }
 
 // checkSourceSizes fails when a source file has another size than at the
