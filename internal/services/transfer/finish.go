@@ -339,7 +339,8 @@ func (j *job) add(ctx context.Context, p *part) error {
 // links to the files of the representative. The cross-seed add starts a
 // check of the member and leaves it stopped. qui records the add once the
 // member is on the Cross-seed instance, so the next run adds a member that
-// the cross-seed add refused again.
+// the cross-seed add refused again. A member that was there before the add
+// stays someone else's.
 func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	if representative == nil {
 		return permanent("%s has no torrent on %s to link %s to.", j.crossSeed.Name, j.target.Name, p.Name)
@@ -360,6 +361,7 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 		return temporary("%s did not take %s: %v", j.crossSeed.Name, p.Name, err)
 	}
 	why := "the cross-seed add reported no result"
+	existed := false
 	for _, r := range res.Results {
 		if r.InstanceID != j.target.ID {
 			continue
@@ -367,12 +369,16 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 		if r.Success && r.CrossSeedInstanceID == p.TargetInstanceID {
 			return j.stepWith(ctx, StateFinishing, stepAdded, p.Hash)
 		}
+		existed = existed || r.Status == crossseed.StatusExists
 		why = r.Status
 		if r.Message != "" {
 			why += ": " + r.Message
 		}
 	}
 	if onTarget, err := j.svc.has(ctx, j.crossSeed.ID, p.Hash); err == nil && onTarget {
+		if existed {
+			return j.ownershipUnknown(p)
+		}
 		if err := j.stepWith(ctx, StateFinishing, stepAdded, p.Hash); err != nil {
 			return err
 		}
