@@ -36,6 +36,9 @@ const (
 	// the hash of the member.
 	stepAdd   = "add"
 	stepAdded = "added"
+	// stepAfter holds the hashes of the members that ran on the source
+	// before qui stopped them, as JSON, and nothing when the source keeps
+	// seeding.
 	stepAfter = "after"
 	// stepRemoveFromSource holds why qui keeps the files on the source,
 	// empty when it removes them.
@@ -135,6 +138,25 @@ func (j *job) findOnTargetAgain(ctx context.Context) error {
 	j.markOnTarget()
 	j.keepProven()
 	return nil
+}
+
+// stoppedByQui returns the members that qui stopped on the source, from
+// each step after: a run that resumes after a stop finds them stopped by
+// the run before it.
+func (j *job) stoppedByQui() []string {
+	var hashes []string
+	for _, step := range j.rec.Steps {
+		var running []string
+		if step.Name != stepAfter || json.Unmarshal([]byte(step.Detail), &running) != nil {
+			continue
+		}
+		for _, hash := range running {
+			if !slices.Contains(hashes, hash) {
+				hashes = append(hashes, hash)
+			}
+		}
+	}
+	return hashes
 }
 
 // headStartFiles returns the files that were on the target before the
@@ -271,7 +293,7 @@ func (j *job) cleanup(ctx context.Context) {
 	if j.reaches(j.target) {
 		j.cleanTarget(ctx)
 	}
-	if j.reaches(j.source) && (j.stoppedSource || j.reached(stepAfter) && j.rec.Options.After != AfterKeepSeeding) {
+	if j.reaches(j.source) {
 		j.startSource(ctx)
 	}
 }

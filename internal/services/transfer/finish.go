@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -466,10 +467,21 @@ func (j *job) rename(ctx context.Context, p *part) error {
 // torrents on the source as the user chose. A cancel rolls back until the
 // removal from the source starts.
 func (j *job) after(ctx context.Context) error {
-	if err := j.step(ctx, StateFinishing, stepAfter); err != nil {
+	if err := j.checkInstances(ctx); err != nil {
 		return err
 	}
 	after := j.rec.Options.After
+	var detail []byte
+	if after != AfterKeepSeeding {
+		running, err := j.running(ctx)
+		if err != nil {
+			return err
+		}
+		detail, _ = json.Marshal(running)
+	}
+	if err := j.stepWith(ctx, StateFinishing, stepAfter, string(detail)); err != nil {
+		return err
+	}
 	if after != AfterKeepSeeding {
 		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, j.hashes(), "pause"); err != nil {
 			return temporary("qui cannot stop %s on %s: %v", j.torrents("the"), j.source.Name, err)
@@ -498,6 +510,21 @@ func (j *job) after(ctx context.Context) error {
 		return err
 	}
 	return j.removeFromSource(ctx, keep)
+}
+
+// running returns the members that run on the source.
+func (j *job) running(ctx context.Context) ([]string, error) {
+	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	if err != nil {
+		return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
+	}
+	running := []string{}
+	for _, t := range torrents {
+		if !slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedUp, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl}, t.State) {
+			running = append(running, t.Hash)
+		}
+	}
+	return running, nil
 }
 
 // finishRemoval goes on with the removal from the source after a stop. It

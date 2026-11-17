@@ -7,6 +7,7 @@ import (
 	"context"
 	"math/rand/v2"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -440,6 +441,77 @@ func TestTransferStopsWhenAnEndpointChanges(t *testing.T) {
 	require.NotEmpty(t, tree(t, r.dstDir), "qui removes nothing there")
 	require.True(t, r.src.Has(s.hash))
 	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+}
+
+// A failure after qui stopped the source starts again only the torrents
+// that ran before. A member that was stopped before the Transfer stays
+// stopped, also when the cleanup runs after a restart, and when qui stopped
+// at the stop of the source and the resumed run finds every member stopped.
+// regression: #4231
+func TestTransferRollbackStartsOnlyWhatQuiStopped(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// reject makes the target refuse the start of the torrent, a failure
+		// for a retry. Without it the target misses a file, a failure for
+		// good.
+		reject bool
+		// restart runs the Transfer in a qui that ends after it records the
+		// cleanup, and killAtStop in one that the parent kills at the stop of
+		// the source.
+		restart, killAtStop bool
+		class               transfer.FailureClass
+	}{
+		{name: "a permanent failure", class: transfer.FailurePermanent},
+		{name: "a temporary failure", reject: true, class: transfer.FailureTemporary},
+		{name: "a cleanup after a restart", restart: true, class: transfer.FailurePermanent},
+		{name: "a failure after a restart at the stop", killAtStop: true, class: transfer.FailurePermanent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			s := newShow(t, showName)
+			r.seed(s)
+			episode := r.seedEpisode(s)
+			require.NoError(t, r.sync.BulkAction(t.Context(), r.source.ID, []string{episode}, "pause"))
+			r.dst.OnWrite = func(endpoint string) {
+				r.dst.Reject = 0
+				switch {
+				case endpoint != "torrents/start":
+				case tc.reject:
+					r.dst.Reject = http.StatusInternalServerError
+				default:
+					_ = os.Remove(filepath.Join(r.dstDir, showName, episode2))
+				}
+			}
+
+			var id int64
+			if tc.restart || tc.killAtStop {
+				plan := crash{DB: r.dbPath, Request: r.request(s), At: "after:clean up"}
+				child := make(chan *os.Process, 1)
+				if tc.killAtStop {
+					plan.At = ""
+					r.src.OnWrite = func(endpoint string) {
+						if endpoint == "torrents/stop" {
+							require.NoError(t, (<-child).Kill())
+						}
+					}
+				}
+				runCrashChild(t, plan, child, tc.killAtStop)
+				r.src.OnWrite = nil
+				r.restart()
+				r.svc.Wait()
+				require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+			} else {
+				id = r.run(r.request(s)).ID
+			}
+
+			record := r.get(id)
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Equal(t, tc.class, record.FailureClass, record.FailureReason)
+			require.Len(t, record.Members, 2)
+			require.False(t, r.src.Stopped(s.hash), "qui starts the torrent that it stopped")
+			require.True(t, r.src.Stopped(episode), "the torrent that was stopped before the Transfer stays stopped")
+		})
+	}
 }
 
 // Cancel stops a Transfer, removes the files that qui wrote and the torrents

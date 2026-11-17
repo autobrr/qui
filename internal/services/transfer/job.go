@@ -575,9 +575,11 @@ func (j *job) release() {
 }
 
 func (j *job) startSource(ctx context.Context) {
-	if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, j.hashes(), "resume"); err != nil {
-		j.logf("qui could not start %s on %s again: %v", j.torrents("the"), j.source.Name, err)
-		return
+	if hashes := j.stoppedByQui(); len(hashes) > 0 {
+		if err := j.svc.deps.Sync.BulkAction(ctx, j.source.ID, hashes, "resume"); err != nil {
+			j.logf("qui could not start %s on %s again: %v", j.torrents("the"), j.source.Name, err)
+			return
+		}
 	}
 	j.stoppedSource = false
 }
