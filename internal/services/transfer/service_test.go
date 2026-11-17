@@ -5,6 +5,7 @@ package transfer_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 pieces are SHA-1
 	"errors"
@@ -86,8 +87,8 @@ type disk struct {
 	// failOpenRoots is how many of the next OpenRoot calls fail.
 	failOpenRoots int
 	// lostAt fails the Lstat of each name that it reports, below a root or
-	// on an SFTP instance, as the remote backend fails it on a dropped
-	// connection.
+	// on an SFTP instance, and the read of each folder on this disk that it
+	// reports, as the remote backend fails them on a dropped connection.
 	lostAt func(name string) bool
 
 	mu      sync.Mutex
@@ -125,6 +126,13 @@ func (d *disk) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) 
 		return false, nil
 	}
 	return d.Backend.SameFilesystem(ctx, p1, p2)
+}
+
+func (d *disk) ReadDir(ctx context.Context, dir string) ([]fsops.DirEntry, error) {
+	if d.lostAt != nil && d.lostAt(dir) {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: fsops.ErrConnectionLost}
+	}
+	return d.Backend.ReadDir(ctx, dir)
 }
 
 func (d *disk) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
@@ -913,22 +921,42 @@ func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
 		at       string
 		onSource bool
 		rename   []string
-		// resumed ends qui at the third write of the copy first.
+		// theirs puts a file of the size of the episode at its name on a
+		// target that tells case apart.
+		theirs bool
+		// resumed ends qui at the third write of the copy first, or at
+		// crashAt.
 		resumed bool
+		crashAt string
+		// placed links the temporary file of the episode to its name after
+		// the end, as a stop between the link and the remove of the rename
+		// leaves it.
+		placed bool
 	}{
 		{name: "a name of the Transfer torrent on the source", at: temp, onSource: true},
 		{name: "a temporary name", at: temp},
 		{name: "a file of the torrent", at: episode},
 		{name: "the original name of a renamed file", at: episode, rename: []string{episode, "Show.S01E00.mkv"}},
+		{name: "the folder of a file renamed in case", at: showName, rename: []string{episode, "Show.S01e01.mkv"}, theirs: true},
 		{name: "a file of the torrent on a resume", at: episode, resumed: true},
 		{name: "a temporary file on a resume", at: temp, resumed: true},
+		{name: "a file in place on a resume", at: temp, resumed: true, crashAt: "after:place", placed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t)
+			if tc.theirs && ignoresCase(t, r.dstDir) {
+				t.Skip("the target ignores case, so it cannot hold a second file at the old name")
+			}
 			s := newShow(t, showName)
 			r.seed(s)
 			r.renameOnSource(s, tc.rename...)
 			source := tree(t, r.srcDir)
+			want := maps.Clone(source)
+			if tc.theirs {
+				theirs := bytes.Repeat([]byte("t"), len(s.files[episode]))
+				write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode: theirs})
+				want[showName+"/"+episode] = string(theirs)
+			}
 			req := r.request(s)
 			if tc.onSource {
 				r.connect()
@@ -941,7 +969,11 @@ func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
 			var record *transfer.Record
 			var copied map[string]string
 			if tc.resumed {
-				runCrashChild(t, crash{DB: r.dbPath, Request: req, At: "write:3"}, make(chan *os.Process, 1), false)
+				runCrashChild(t, crash{DB: r.dbPath, Request: req, At: cmp.Or(tc.crashAt, "write:3")}, make(chan *os.Process, 1), false)
+				if tc.placed {
+					dir := filepath.Join(r.dstDir, showName)
+					require.NoError(t, os.Link(filepath.Join(dir, temp), filepath.Join(dir, episode)))
+				}
 				copied = tree(t, r.dstDir)
 				require.NotEmpty(t, copied)
 				r.disk.lostAt = lost
@@ -965,7 +997,7 @@ func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
 			case tc.resumed:
 				require.Equal(t, copied, tree(t, r.dstDir), "qui keeps what it copied")
 			case tc.rename != nil:
-				require.Equal(t, source, tree(t, r.dstDir), "qui keeps the copy in place")
+				require.Equal(t, want, tree(t, r.dstDir), "qui keeps the copy in place")
 			case tc.onSource:
 				require.Zero(t, r.src.Writes("torrents/renameFile"))
 				r.requireNoHelpers(record)
