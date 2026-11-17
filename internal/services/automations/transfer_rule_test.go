@@ -31,12 +31,20 @@ type transfers struct {
 	// answers a Transfer of the torrent alone of 10 bytes, the way of the
 	// request or "sftp".
 	preview map[string]*transfer.Preview
+	// onStart runs at each Start, before Start reads its context.
+	onStart func()
 }
 
-func (f *transfers) Start(_ context.Context, req transfer.Request) (int64, error) {
+func (f *transfers) Start(ctx context.Context, req transfer.Request) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.started = append(f.started, req)
+	if f.onStart != nil {
+		f.onStart()
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	if err := f.startErr[req.Hash]; err != nil {
 		return 0, err
 	}
@@ -292,6 +300,25 @@ func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 	run()
 	require.Equal(t, 2, count(runner.hashes(), runningHash))
 	require.Len(t, storedTransferActivities(t, db, instanceIDs[0]), 2)
+}
+
+// When the run ends during a Start, the Transfers that did not start get no
+// hold, and the next run starts them.
+func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T) {
+	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents(), transfersOn)
+	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
+	ctx, cancel := context.WithCancel(t.Context())
+	runner.onStart = cancel
+
+	_, _ = svc.applyRulesForInstance(ctx, instanceIDs[0], true, rules, false)
+	require.Len(t, runner.hashes(), 1, "the run ends during its first Start")
+
+	runner.onStart = nil
+	_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, false)
+	require.NoError(t, err)
+	hashes := runner.hashes()
+	require.Len(t, hashes, 4, "the next run starts each torrent")
+	require.Subset(t, hashes, []string{runningHash, stoppedHash, doomedHash})
 }
 
 func count(hashes []string, hash string) int {

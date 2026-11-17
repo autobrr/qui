@@ -235,6 +235,11 @@ func TestNeedsForTrackerNames(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "transfer save path uses Tracker",
+			rule: rule(&models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}"}}),
+			want: true,
+		},
+		{
 			name: "move path uses index Tracker",
 			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: `/data/{{ index . "Tracker" }}`}}),
 			want: true,

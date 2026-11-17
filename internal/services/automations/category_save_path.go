@@ -21,14 +21,17 @@ func usesSavePathVariable(path string) bool {
 	return strings.Contains(path, categorySavePathVariable) || strings.Contains(path, defaultSavePathVariable)
 }
 
-// ruleTemplatesUseSavePaths reports whether an enabled move path or export save
-// path references .CategorySavePath or .DefaultSavePath.
+// ruleTemplatesUseSavePaths reports whether an enabled move path, export save
+// path, or transfer save path references .CategorySavePath or .DefaultSavePath.
 func ruleTemplatesUseSavePaths(ac *models.ActionConditions) bool {
 	if move := ac.Move; move != nil && move.Enabled && usesSavePathVariable(move.Path) {
 		return true
 	}
-	export := ac.ExportToInstance
-	return export != nil && export.Enabled && usesSavePathVariable(export.SavePath)
+	if export := ac.ExportToInstance; export != nil && export.Enabled && usesSavePathVariable(export.SavePath) {
+		return true
+	}
+	transfer := ac.TransferToInstance
+	return transfer != nil && transfer.Enabled && usesSavePathVariable(transfer.SavePath)
 }
 
 // buildCategorySavePaths resolves every category's save path the way

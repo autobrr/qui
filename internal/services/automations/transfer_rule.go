@@ -126,13 +126,20 @@ func quiet(err error) bool {
 
 // startTransfers starts the planned Transfers and records each start and each
 // refusal. After a refusal, the rule asks again no sooner than an hour later.
+// When the run ends first, the Transfers that did not start wait for the next
+// run.
 func (s *Service) startTransfers(ctx context.Context, instanceID int, transfers []pendingTransfer, summary *automationSummary) {
-	for _, pending := range transfers {
+	for i, pending := range transfers {
 		reason := pending.failureReason
 		if reason == "" {
 			_, err := s.transferRunner.Start(ctx, pending.request(instanceID))
 			if quiet(err) {
 				continue
+			}
+			if err != nil && ctx.Err() != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("waiting", len(transfers)-i).
+					Msg("automations: the run ended before each Transfer to Instance started")
+				return
 			}
 			if err != nil {
 				reason = err.Error()
