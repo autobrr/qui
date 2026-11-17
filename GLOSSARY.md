@@ -155,7 +155,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 
 - **Dir Scan**: The cross-seed search that reads content from folders on disk and searches indexers for releases that match it. It needs no torrent in qBittorrent. _Avoid_: Directory scan (outside UI copy), dirscan.
 - **Library Scan**: The cross-seed search that goes through the torrents an instance already seeds and searches indexers for each one. _Avoid_: Seeded search, search run.
-- **Library Scan schedule**: The setting that starts a Library Scan run every few hours with the saved Library settings. It searches only recently added torrents, newest first, up to a set number of searches. _Avoid_: auto search, daily search, seeded search.
+- **Library Scan schedule**: The setting that starts a Library Scan run every few hours with the saved Library settings. It searches only recently added torrents, up to a set number of searches. Torrents that an indexer never searched go first, and each group goes newest first. _Avoid_: auto search, daily search, seeded search.
 - **Scheduled run**: A Library Scan run that the Library Scan schedule starts, also from "Run schedule now". _Avoid_: automatic run.
 - **Manual run**: A Library Scan run that the user starts with Start, with the values on the card. _Avoid_: on-demand run.
 - **Searchee**: A top-level folder or file in a Dir Scan directory that Dir Scan tries to match to a release.

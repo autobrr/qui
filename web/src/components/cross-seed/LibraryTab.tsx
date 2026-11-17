@@ -190,26 +190,26 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const [search, global] = await Promise.all([
-        api.patchCrossSeedSearchSettings({
-          instanceId: searchInstanceId,
-          ...searchFilters,
-          indexerIds: seededSearchEffectiveIndexerIds,
-          intervalSeconds: searchIntervalSeconds,
-          cooldownMinutes: searchCooldownMinutes,
-          maxAddedAgeDays,
-          skipIndividualEpisodes,
-          torznabEnabled: seededSearchTorznabEnabled,
-          scheduleEnabled,
-          scheduleIntervalHours,
-          scheduleMaxSearches,
-          scheduleMaxAgeDays,
-        }),
-        api.patchCrossSeedSettings({
-          seededSearchTags,
-          skipAutoResumeSeededSearch: skipAutoResume,
-        }),
-      ])
+      // The tags and auto-resume go first: saving the schedule on can start a
+      // scheduled run at once, and that run reads them.
+      const global = await api.patchCrossSeedSettings({
+        seededSearchTags,
+        skipAutoResumeSeededSearch: skipAutoResume,
+      })
+      const search = await api.patchCrossSeedSearchSettings({
+        instanceId: searchInstanceId,
+        ...searchFilters,
+        indexerIds: seededSearchEffectiveIndexerIds,
+        intervalSeconds: searchIntervalSeconds,
+        cooldownMinutes: searchCooldownMinutes,
+        maxAddedAgeDays,
+        skipIndividualEpisodes,
+        torznabEnabled: seededSearchTorznabEnabled,
+        scheduleEnabled,
+        scheduleIntervalHours,
+        scheduleMaxSearches,
+        scheduleMaxAgeDays,
+      })
       return { search, global }
     },
     onSuccess: ({ search, global }) => {

@@ -155,6 +155,8 @@ describe("LibraryTab save", () => {
       seededSearchTags: ["cross-seed"],
       skipAutoResumeSeededSearch: true,
     })
+    // A scheduled run that the search settings start reads the saved auto-resume.
+    expect(mocks.patchSettings.mock.invocationCallOrder[0]).toBeLessThan(mocks.patchSearch.mock.invocationCallOrder[0])
   })
 
   it("refetches the search settings when one of the two saves fails", async () => {

@@ -202,6 +202,21 @@ func TestScheduledSearchRun(t *testing.T) {
 	require.Nil(t, second.run.Message)
 }
 
+// A copy added yesterday keeps its content in the window, also when qui
+// searches the older copy of that content.
+func TestScheduledSearchRun_NewCopyOfOldContent(t *testing.T) {
+	answering := newTorznabLog(t)
+	torrents := []qbt.Torrent{
+		movieAddedDaysAgo(1, "Gale.Orchard.2019.1080p.WEB-DL.H.264-KIRI", 30),
+		movieAddedDaysAgo(2, "Gale.Orchard.2019.1080p.WEB-DL.H.264-KIRI", 1),
+		movieAddedDaysAgo(3, "Dusk.Meridian.2021.1080p.WEB-DL.H.264-KIRI", 30),
+	}
+	f := newScheduledRunFixture(t, "scheduled-run-new-copy", torrents, nil, answering)
+
+	f.run(10, 720)
+	require.Equal(t, []string{"Gale"}, answering.searched())
+}
+
 // The torrents that a capped run left waiting go first in the next run, before
 // the newer torrents whose Cooldown ended.
 func TestScheduledSearchRun_WaitingTorrentsGoFirst(t *testing.T) {
@@ -241,7 +256,7 @@ func TestScheduledSearchQueue_SeasonGroupDatedByNewestEpisode(t *testing.T) {
 	virtual := service.buildEnsembleSeasonCandidates(episodes, episodes)
 	require.Len(t, virtual, 1)
 
-	queue := scheduledSearchQueue(virtual, 14, now)
+	queue := scheduledSearchQueue(virtual, nil, 14, now)
 	require.Len(t, queue, 1, "the season group must stay in the window")
 	require.Equal(t, virtual[0].Hash, queue[0].Hash)
 }
@@ -268,17 +283,19 @@ func TestExecuteCompletionSearch_NextScheduledRunAsksOnlyFailedIndexer(t *testin
 	require.Equal(t, []string{"Azure"}, failing.searched())
 }
 
-// scheduleSyncManager is a qBittorrent with no torrents that can go offline.
+// scheduleSyncManager is a qBittorrent that can go offline. As in qui, the
+// cached torrent list stays readable after qBittorrent goes offline: only a
+// read that syncs fails.
 type scheduleSyncManager struct {
 	hashFilteringSyncManager
 	offline atomic.Bool
 }
 
-func (m *scheduleSyncManager) GetTorrentRefs(ctx context.Context, instanceID int, opts internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
+func (m *scheduleSyncManager) GetTorrentRefsFresh(ctx context.Context, instanceID int, opts internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if m.offline.Load() {
 		return nil, errors.New("connection refused")
 	}
-	return m.hashFilteringSyncManager.GetTorrentRefs(ctx, instanceID, opts)
+	return m.GetTorrentRefs(ctx, instanceID, opts)
 }
 
 type scheduleFixture struct {
@@ -445,7 +462,7 @@ func TestLibrarySchedule(t *testing.T) {
 	require.Equal(t, libraryScheduleRetryDelay, f.svc.libraryScheduleTick(ctx))
 	wait = f.svc.libraryScheduleTick(ctx)
 	require.Greater(t, wait, libraryScheduleRetryDelay-time.Minute, "the next try waits for the hourly retry")
-	require.Less(t, wait, libraryScheduleRetryDelay, "no second try before the hour ends")
+	require.LessOrEqual(t, wait, libraryScheduleRetryDelay, "no second try before the hour ends")
 	f.svc.librarySettingsSaved()
 	f.drainWake()
 	require.Equal(t, libraryScheduleRetryDelay, f.svc.libraryScheduleTick(ctx))

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -106,6 +107,14 @@ func (s *Service) RunScheduledSearchNow(ctx context.Context) (*models.CrossSeedS
 	return s.startScheduledSearchRun(ctx, settings)
 }
 
+// freshTorrentReader reads the torrents after a sync with qBittorrent. The
+// sync manager of qui has it. Most test fakes do not.
+type freshTorrentReader interface {
+	GetTorrentRefsFresh(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
+}
+
+var _ freshTorrentReader = (*qbittorrent.SyncManager)(nil)
+
 // startScheduledSearchRun starts a scheduled run with the saved Library
 // settings and saves its start as the last scheduled start.
 func (s *Service) startScheduledSearchRun(ctx context.Context, settings *models.CrossSeedSearchSettings) (*models.CrossSeedSearchRun, error) {
@@ -117,9 +126,15 @@ func (s *Service) startScheduledSearchRun(ctx context.Context, settings *models.
 		return nil, ErrSearchRunActive
 	}
 	// A scheduled run that cannot read the torrents does not start, so the
-	// schedule tries again in an hour and not after a full interval.
+	// schedule tries again in an hour and not after a full interval. The read
+	// syncs with qBittorrent, because the cached list stays after qBittorrent
+	// goes offline.
 	if s.syncManager != nil {
-		if _, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{}); err != nil {
+		read := s.syncManager.GetTorrentRefs
+		if fresh, ok := s.syncManager.(freshTorrentReader); ok {
+			read = fresh.GetTorrentRefsFresh
+		}
+		if _, err := read(ctx, instanceID, qbittorrent.TorrentRefFilter{}); err != nil {
 			return nil, fmt.Errorf("read the torrents of instance %d: %w", instanceID, err)
 		}
 	}

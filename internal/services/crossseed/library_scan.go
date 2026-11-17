@@ -222,7 +222,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	}
 	gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, settings)
 	if gazelleErr != nil {
-		log.Warn().Err(gazelleErr).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
+		log.Warn().Err(gazelleErr).Str("kind", string(opts.Kind)).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
 	}
 	// Important: settings.RedactedAPIKey/OrpheusAPIKey are redacted placeholders when encrypted values exist.
 	// Only treat Gazelle as configured if we have at least one usable (decryptable) client.
@@ -243,7 +243,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			if !hasGazelle {
 				return nil, fmt.Errorf("failed to load enabled torznab indexers: %w", indexersErr)
 			}
-			log.Warn().Err(indexersErr).Msg("[CROSSSEED-SEARCH] Failed to probe Torznab indexers; continuing in Gazelle-only mode")
+			log.Warn().Err(indexersErr).Str("kind", string(opts.Kind)).Msg("[CROSSSEED-SEARCH] Failed to probe Torznab indexers; continuing in Gazelle-only mode")
 			opts.DisableTorznab = true
 			torznabErr = fmt.Errorf("load torznab indexers: %w", indexersErr)
 		} else if len(indexers) == 0 {
@@ -955,7 +955,7 @@ func (s *Service) duplicateGazelleSites(torrents []*qbt.Torrent, duplicates map[
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
 	// A big instance spends a while here, so the run does not look hung.
 	queueStart := time.Now()
-	log.Info().Int("instanceID", state.opts.InstanceID).Msg("[CROSSSEED-SEARCH] Building search queue")
+	log.Info().Int("instanceID", state.opts.InstanceID).Str("kind", string(state.opts.Kind)).Msg("[CROSSSEED-SEARCH] Building search queue")
 
 	var filterOpts qbittorrent.TorrentRefFilter
 
@@ -977,7 +977,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	// Recover errored torrents by performing recheck (if enabled)
 	if s.recoverErroredTorrentsEnabled {
 		if err := s.recoverErroredTorrents(ctx, state.opts.InstanceID, torrents); err != nil {
-			log.Warn().Err(err).Int("instanceID", state.opts.InstanceID).Msg("Failed to recover some errored torrents")
+			log.Warn().Err(err).Int("instanceID", state.opts.InstanceID).Str("kind", string(state.opts.Kind)).Msg("Failed to recover some errored torrents")
 		}
 	}
 
@@ -1021,6 +1021,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		})
 		log.Info().
 			Int("instanceID", state.opts.InstanceID).
+			Str("kind", string(state.opts.Kind)).
 			Int("excludedEpisodes", len(deduplicated)-len(searchable)).
 			Msg("[CROSSSEED-SEARCH] Skipping individual episode searches for this run")
 	}
@@ -1036,7 +1037,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 			if all, allErr := s.syncManager.GetTorrentRefs(ctx, state.opts.InstanceID, qbittorrent.TorrentRefFilter{}); allErr == nil {
 				packSource = all
 			} else {
-				log.Warn().Err(allErr).Int("instanceID", state.opts.InstanceID).Msg("Failed to list all torrents for ensemble pack suppression; using run-scoped list")
+				log.Warn().Err(allErr).Int("instanceID", state.opts.InstanceID).Str("kind", string(state.opts.Kind)).Msg("Failed to list all torrents for ensemble pack suppression; using run-scoped list")
 			}
 		}
 		// Grouping input is deduplicated, not searchable: episodes excluded
@@ -1051,7 +1052,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		}
 	}
 	if state.opts.Kind == models.CrossSeedSearchRunKindScheduled {
-		state.queue = scheduledSearchQueue(state.queue, state.opts.ScheduleMaxAgeDays, time.Now())
+		state.queue = scheduledSearchQueue(state.queue, newestCopyAddedOn(filtered, duplicates), state.opts.ScheduleMaxAgeDays, time.Now())
 	}
 	state.index = 0
 	state.skipCache = make(map[string]bool, len(state.queue))
@@ -1095,6 +1096,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 
 	log.Info().
 		Int("instanceID", state.opts.InstanceID).
+		Str("kind", string(state.opts.Kind)).
 		Int("queued", len(state.queue)).
 		Int("due", totalEligible).
 		Dur("took", time.Since(queueStart)).
@@ -1105,15 +1107,39 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 
 // scheduledSearchQueue keeps the torrents added in the last maxAgeDays days,
 // newest first. An ensemble season entry carries the added time of its newest
-// episode. queue can alias cached data, so the result is a new slice.
-func scheduledSearchQueue(queue []*qbt.Torrent, maxAgeDays int, now time.Time) []*qbt.Torrent {
+// episode, and groupAddedOn gives the added time of the newest copy of a
+// duplicate group. queue can alias cached data, so the result is a new slice.
+func scheduledSearchQueue(queue []*qbt.Torrent, groupAddedOn map[string]int64, maxAgeDays int, now time.Time) []*qbt.Torrent {
+	addedOn := func(t *qbt.Torrent) int64 { return max(t.AddedOn, groupAddedOn[t.Hash]) }
 	scheduled := slices.Clone(queue)
 	if maxAgeDays > 0 {
 		cutoff := now.Add(-time.Duration(maxAgeDays) * 24 * time.Hour).Unix()
-		scheduled = slices.DeleteFunc(scheduled, func(t *qbt.Torrent) bool { return t.AddedOn < cutoff })
+		scheduled = slices.DeleteFunc(scheduled, func(t *qbt.Torrent) bool { return addedOn(t) < cutoff })
 	}
-	slices.SortStableFunc(scheduled, func(a, b *qbt.Torrent) int { return cmp.Compare(b.AddedOn, a.AddedOn) })
+	slices.SortStableFunc(scheduled, func(a, b *qbt.Torrent) int { return cmp.Compare(addedOn(b), addedOn(a)) })
 	return scheduled
+}
+
+// newestCopyAddedOn returns, for each representative of a duplicate group,
+// the added time of the newest copy in the group. Deduplication keeps the
+// oldest copy, so without it a new copy of old content would leave the window.
+func newestCopyAddedOn(torrents []*qbt.Torrent, duplicates map[string][]string) map[string]int64 {
+	if len(duplicates) == 0 {
+		return nil
+	}
+	added := make(map[string]int64, len(torrents))
+	for _, t := range torrents {
+		added[t.Hash] = t.AddedOn
+	}
+	newest := make(map[string]int64, len(duplicates))
+	for representative, copies := range duplicates {
+		n := added[representative]
+		for _, h := range copies {
+			n = max(n, added[h])
+		}
+		newest[representative] = n
+	}
+	return newest
 }
 
 func (s *Service) nextSearchCandidate(ctx context.Context, state *searchRunState) (*qbt.Torrent, error) {
