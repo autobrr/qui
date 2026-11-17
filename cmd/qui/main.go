@@ -871,6 +871,7 @@ func (app *Application) runServer() {
 		CrossSeeds: crossSeedService,
 		Peers:      peerAddresses,
 		Notifier:   notificationService,
+		Switches:   switches,
 		Config:     transfer.DefaultConfig(),
 	})
 	// Export to Instance stays on its old path while the Export switch is off.

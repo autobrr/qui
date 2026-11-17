@@ -298,8 +298,7 @@ func (s *Server) transferRoutes(r chi.Router) {
 	if !s.switches.TransfersAndShares {
 		return
 	}
-	transfersHandler := handlers.NewTransfersHandler(s.transferService)
-	r.Post("/transfers", transfersHandler.Start)
+	r.Route("/transfers", handlers.NewTransfersHandler(s.transferService, s.transfers, s.automationStore).Routes)
 	r.Route("/shares", handlers.NewSharesHandler(s.shareService).Routes)
 }
 
