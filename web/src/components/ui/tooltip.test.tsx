@@ -120,6 +120,7 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
+  // regression: #4263
   it("opens on a pen tap of a trigger marked openOnTap only, and keeps the tap from the row", () => {
     const openRow = vi.fn()
     renderTooltip(

@@ -96,8 +96,9 @@ type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitiv
   /**
    * What a tap on a touch device does. Without it, a tap opens the tooltip unless the tap also acts: it reaches an
    * enabled link, button, form field, label of an enabled field, option, or menu item at the trigger or around it. A
-   * bare trigger (no asChild) opens on every tap. true opens it, also when the tap reaches a control around the trigger.
-   * "only" opens it and keeps the tap from that control, for a row whose action would cover the tooltip.
+   * bare trigger (no asChild) opens on every tap. true opens it, also when the tap reaches a control around the trigger;
+   * false keeps it closed.
+   * "only" opens it and stops the click from bubbling to the row around the trigger, whose action would cover it.
    */
   openOnTap?: boolean | "only"
 }
@@ -151,7 +152,7 @@ const TooltipTrigger = React.forwardRef<
         onPointerEnter={handlePointerEnter}
         onKeyDown={handleKeyDown}
         onClick={(e) => {
-          // A click from a mouse (for example an iPad trackpad) or a key toggles as before. Only a tap follows openOnTap.
+          // A click from a mouse (for example an iPad trackpad) or a key always toggles.
           // A bare trigger renders its own button, which does nothing but show the tooltip.
           const tap = pressPointerTypeRef.current === "touch" || pressPointerTypeRef.current === "pen"
           if (!tap || (openOnTap ?? (!props.asChild || !tapActs(e.target)))) {
