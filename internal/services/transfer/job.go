@@ -200,6 +200,9 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := j.readParts(ctx, pathsOf(j.target, j.dstFiles, j.rec.Members[0].Placement.SavePath)); err != nil {
 		return err
 	}
+	if err := j.recordNames(ctx); err != nil {
+		return err
+	}
 	if !j.blind {
 		if err := j.openRoot(ctx, resumed); err != nil {
 			return err
@@ -248,7 +251,11 @@ func (j *job) openRoot(ctx context.Context, resumed bool) error {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
 	}
 	var err error
-	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
+	j.root, err = opener.OpenRoot(ctx, j.rootDir)
+	switch {
+	case errors.Is(err, fsops.ErrConnectionLost):
+		return temporary("qui cannot open the save path %s on %s: %w", j.rootDir, j.target.Name, err)
+	case err != nil:
 		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
 	}
 	find := j.findOnTarget
@@ -481,6 +488,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 			return permanent("The Cross-seed instance %s changed its address, its SSH server, or its file access since the Transfer started, "+
 				"so the Transfer stopped. qui cleans up nothing on %s.", j.crossSeed.Name, j.crossSeed.Name)
 		}
+	}
+	if j.useRecordedNames(parts) {
+		return sourceGone("a file was renamed")
 	}
 	if j.files, j.byRel, err = groupFiles(parts); err != nil {
 		return permanent("The torrents of the group do not agree on their files: %v", err)

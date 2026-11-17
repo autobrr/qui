@@ -28,6 +28,9 @@ const (
 	// stepOwnCopy holds the path below the root of a hardlink that the
 	// target could not link. qui copies its bytes into its temporary file.
 	stepOwnCopy = "copy a hardlink"
+	// stepNames holds the names of the files of each member at the first
+	// run, as JSON.
+	stepNames = "names"
 	// stepPlace holds the paths below the root of the files that were on
 	// the target before the Transfer, as JSON.
 	stepPlace = "place"
@@ -128,7 +131,9 @@ func (j *job) findOnTargetAgain(ctx context.Context) error {
 			if made {
 				j.made[f] = size
 			}
-		case made || err != nil || !info.Mode.IsRegular() || info.Size != f.size:
+		case err != nil:
+			return cannotLook(j.target.Name, err)
+		case made || !info.Mode.IsRegular() || info.Size != f.size:
 			return j.inTheWay(f.rel)
 		default:
 			f.onTarget = true
@@ -189,27 +194,61 @@ func headStartDetail(files []*groupFile) string {
 	return string(detail)
 }
 
+func (j *job) recordNames(ctx context.Context) error {
+	if j.reached(stepNames) {
+		return nil
+	}
+	recorded := make([][]string, len(j.parts))
+	for i, p := range j.parts {
+		recorded[i] = names(p.plan)
+	}
+	detail, _ := json.Marshal(recorded)
+	return j.stepWith(ctx, StateCopying, stepNames, string(detail))
+}
+
+// useRecordedNames gives the files of the parts the names that the first
+// run recorded, and reports whether the source renamed a file since then.
+func (j *job) useRecordedNames(parts []*part) (renamed bool) {
+	i := slices.IndexFunc(j.rec.Steps, func(s Step) bool { return s.Name == stepNames })
+	var recorded [][]string
+	if i < 0 || json.Unmarshal([]byte(j.rec.Steps[i].Detail), &recorded) != nil {
+		return false
+	}
+	for _, p := range parts {
+		old := recorded[p.position]
+		for k := range p.plan {
+			if !p.plan[k].pad && len(old) > 0 {
+				renamed = renamed || p.plan[k].name != old[0]
+				p.plan[k].name, old = old[0], old[1:]
+			}
+		}
+	}
+	return renamed
+}
+
 // ownTemp finds the temporary file of f, also under the .!qB name that a
 // check gave it, and returns its size.
 func (j *job) ownTemp(ctx context.Context, f *groupFile) (int64, bool, error) {
 	temp := j.tempName(f.rel)
 	info, err := j.root.Lstat(ctx, temp)
 	marked, markedErr := j.root.Lstat(ctx, temp+incompleteExt)
+	for _, e := range []error{err, markedErr} {
+		if e != nil && !errors.Is(e, fs.ErrNotExist) {
+			return 0, false, cannotLook(j.target.Name, e)
+		}
+	}
 	switch {
 	case err == nil && !errors.Is(markedErr, fs.ErrNotExist):
 		return 0, false, j.inTheWay(temp + incompleteExt)
 	case errors.Is(err, fs.ErrNotExist) && errors.Is(markedErr, fs.ErrNotExist):
 		return 0, false, nil
 	case errors.Is(err, fs.ErrNotExist):
-		if markedErr != nil {
-			return 0, false, j.inTheWay(temp + incompleteExt)
-		}
 		if err := j.root.RenameNoReplace(ctx, temp+incompleteExt, temp); err != nil {
 			return 0, false, temporary("qui cannot rename %s on %s: %v", temp+incompleteExt, j.target.Name, err)
 		}
-		info, err = marked, nil
+		info = marked
 	}
-	if err != nil || !info.Mode.IsRegular() || info.Size > f.size {
+	if !info.Mode.IsRegular() || info.Size > f.size {
 		return 0, false, j.inTheWay(temp)
 	}
 	return info.Size, true, nil
@@ -446,6 +485,7 @@ func (j *job) readGroup(ctx context.Context) bool {
 	if j.parts == nil {
 		return false
 	}
+	j.useRecordedNames(j.parts)
 	if j.files, j.byRel, err = groupFiles(j.parts); err != nil {
 		j.parts = nil
 		return false

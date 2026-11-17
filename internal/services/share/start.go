@@ -66,6 +66,14 @@ func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
 		s.fail(ctx, &sh.Share, "qui could not record the Share torrent.")
 		return nil, err
 	}
+	if err := s.refresh(ctx); err != nil {
+		reason := "qui's tracker cannot start: " + err.Error()
+		if errors.Is(err, sharetracker.ErrPortBusy) {
+			reason = "Another program uses the port of qui's tracker. Pick another port in Settings → Shares."
+		}
+		s.fail(ctx, &sh.Share, reason)
+		return nil, refuse("%s", reason)
+	}
 	res := s.adder.Add(ctx, torrentadd.Request{
 		InstanceID: sh.InstanceID,
 		Torrent:    sh.ownerTorrent,
@@ -85,14 +93,6 @@ func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
 	})
 	if res.Outcome != torrentadd.Verified {
 		reason := fmt.Sprintf("qBittorrent on %s did not seed the Share torrent: %s", sh.instanceName, describe(res))
-		s.fail(ctx, &sh.Share, reason)
-		return nil, refuse("%s", reason)
-	}
-	if err := s.refresh(ctx); err != nil {
-		reason := "qui's tracker cannot start: " + err.Error()
-		if errors.Is(err, sharetracker.ErrPortBusy) {
-			reason = "Another program uses the port of qui's tracker. Pick another port in Settings → Shares."
-		}
 		s.fail(ctx, &sh.Share, reason)
 		return nil, refuse("%s", reason)
 	}

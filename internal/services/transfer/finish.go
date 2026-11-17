@@ -266,8 +266,14 @@ func (j *job) placeFile(ctx context.Context, name string, again bool) error {
 		_, err = j.root.Lstat(ctx, temp)
 	}
 	if errors.Is(err, fs.ErrNotExist) {
-		if _, err := j.root.Lstat(ctx, name); again && err == nil {
-			return nil
+		if again {
+			_, err := j.root.Lstat(ctx, name)
+			switch {
+			case err == nil:
+				return nil
+			case !errors.Is(err, fs.ErrNotExist):
+				return temporary("qui cannot look for the copy of %s on %s: %w", name, j.target.Name, err)
+			}
 		}
 		return permanent("The copy of %s is missing on %s.", name, j.target.Name)
 	}
@@ -275,8 +281,15 @@ func (j *job) placeFile(ctx context.Context, name string, again bool) error {
 	switch {
 	case err == nil:
 		return nil
-	case errors.Is(err, fs.ErrExist) && again && j.sameFile(ctx, temp, name):
-		// A stop came between the link and the remove of the rename.
+	case errors.Is(err, fs.ErrExist) && again:
+		// A stop can come between the link and the remove of the rename.
+		same, err := j.sameFile(ctx, temp, name)
+		switch {
+		case err != nil:
+			return cannotLook(j.target.Name, err)
+		case !same:
+			return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, name)
+		}
 		if err := j.root.Remove(ctx, temp); err != nil {
 			return temporary("qui cannot remove %s on %s: %v", temp, j.target.Name, err)
 		}
@@ -287,13 +300,16 @@ func (j *job) placeFile(ctx context.Context, name string, again bool) error {
 	return temporary("qui cannot put %s in place on %s: %v", name, j.target.Name, err)
 }
 
-func (j *job) sameFile(ctx context.Context, a, b string) bool {
+func (j *job) sameFile(ctx context.Context, a, b string) (bool, error) {
 	ai, err := j.root.Lstat(ctx, a)
-	if err != nil || ai.FileIDErr != nil || ai.FileID.IsZero() {
-		return false
+	if err != nil {
+		return false, err
 	}
 	bi, err := j.root.Lstat(ctx, b)
-	return err == nil && bi.FileIDErr == nil && ai.FileID == bi.FileID
+	if err != nil {
+		return false, err
+	}
+	return ai.FileIDErr == nil && !ai.FileID.IsZero() && bi.FileIDErr == nil && ai.FileID == bi.FileID, nil
 }
 
 // add adds the member on the target, stopped and in seed mode. qui records
@@ -346,6 +362,14 @@ func (j *job) add(ctx context.Context, p *part) error {
 func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	if representative == nil {
 		return permanent("%s has no torrent on %s to link %s to.", j.crossSeed.Name, j.target.Name, p.Name)
+	}
+	// The routed add reads the route when it runs, so it goes where the route points now.
+	route, err := j.svc.deps.Routes.Get(ctx, j.target.ID)
+	if err != nil {
+		return temporary("qui cannot read the cross-seed route of %s: %v", j.target.Name, err)
+	}
+	if route == nil || route.CrossSeedInstanceID != p.TargetInstanceID {
+		return permanent("%s no longer sends its cross-seeds to %s, so the Transfer stopped.", j.target.Name, j.crossSeed.Name)
 	}
 	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
 		return err
@@ -460,8 +484,10 @@ func (j *job) rename(ctx context.Context, p *part) error {
 			if f.Name == want[i] {
 				continue
 			}
-			if old := path.Join(p.dir, f.Name); !j.blind && !j.absent(ctx, old) && !j.oneFile(ctx, old, path.Join(p.dir, want[i])) {
-				return j.inTheWay(old)
+			if !j.blind {
+				if err := j.noFileAtOldName(ctx, path.Join(p.dir, f.Name), path.Join(p.dir, want[i])); err != nil {
+					return err
+				}
 			}
 			if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
 				return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
@@ -475,13 +501,33 @@ func (j *job) rename(ctx context.Context, p *part) error {
 	return temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
 }
 
+// noFileAtOldName fails when a file is at the old name of a rename on the
+// target. The copy itself under another case of its name is no conflict.
+func (j *job) noFileAtOldName(ctx context.Context, old, name string) error {
+	_, err := j.root.Lstat(ctx, old)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return cannotLook(j.target.Name, err)
+	}
+	one, err := j.oneFile(ctx, old, name)
+	switch {
+	case err != nil:
+		return cannotLook(j.target.Name, err)
+	case one:
+		return nil
+	}
+	return j.inTheWay(old)
+}
+
 // oneFile reports whether two names that differ only in case lead to one
 // file on the target, as in a folder that ignores case: no folder on the way
 // holds both names. It reads the folders, because a target over SFTP has no
 // file identities.
-func (j *job) oneFile(ctx context.Context, a, b string) bool {
+func (j *job) oneFile(ctx context.Context, a, b string) (bool, error) {
 	if !strings.EqualFold(a, b) {
-		return false
+		return false, nil
 	}
 	as, bs := strings.Split(a, "/"), strings.Split(b, "/")
 	for k := range as {
@@ -489,14 +535,17 @@ func (j *job) oneFile(ctx context.Context, a, b string) bool {
 			continue
 		}
 		entries, err := j.dstFiles.ReadDir(ctx, j.targetPath(path.Join(bs[:k]...)))
+		if err != nil {
+			return false, err
+		}
 		has := func(name string) bool {
 			return slices.ContainsFunc(entries, func(e fsops.DirEntry) bool { return e.Name == name })
 		}
-		if err != nil || has(as[k]) && has(bs[k]) {
-			return false
+		if has(as[k]) && has(bs[k]) {
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 // after stops the source, starts the target, and then removes or keeps the

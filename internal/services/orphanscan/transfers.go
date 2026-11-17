@@ -14,7 +14,8 @@ import (
 // transfers names what orphan scan leaves alone for Transfers and Shares: the
 // helper torrents, and the folders of running Transfers. ADR 0005.
 type transfers interface {
-	IsHelper(instanceID int, hash string) bool
+	// HelperCheck returns nil when the instance has no helper torrent.
+	HelperCheck(instanceID int) func(hash string) bool
 	RunningFolders(ctx context.Context, instanceID int) ([]string, error)
 }
 
@@ -29,11 +30,15 @@ func (s *Service) leaveOutHelpers(instanceID int, torrents []*qbt.Torrent) []*qb
 	if s.transfers == nil {
 		return torrents
 	}
-	isHelper := func(t *qbt.Torrent) bool { return s.transfers.IsHelper(instanceID, t.Hash) }
-	if !slices.ContainsFunc(torrents, isHelper) {
+	isHelper := s.transfers.HelperCheck(instanceID)
+	if isHelper == nil {
 		return torrents
 	}
-	return slices.DeleteFunc(slices.Clone(torrents), isHelper)
+	out := func(t *qbt.Torrent) bool { return isHelper(t.Hash) }
+	if !slices.ContainsFunc(torrents, out) {
+		return torrents
+	}
+	return slices.DeleteFunc(slices.Clone(torrents), out)
 }
 
 // runningTransferFolders returns the folders that the running Transfers of the

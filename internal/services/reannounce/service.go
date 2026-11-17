@@ -59,6 +59,7 @@ type Service struct {
 // for a Transfer or a Share. A tag proves nothing.
 type helperTorrents interface {
 	IsHelper(instanceID int, hash string) bool
+	qbittorrent.HelperTorrents
 }
 
 type reannounceJob struct {
@@ -655,7 +656,7 @@ func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.To
 	if snapshot == nil {
 		return nil, nil
 	}
-	return snapshot.Matching(func(t *qbt.Torrent) bool { return !s.isHelper(instanceID, t.Hash) }), nil
+	return qbittorrent.WithoutHelpers(snapshot, s.helpers, instanceID), nil
 }
 
 func (s *Service) getSettings(ctx context.Context, instanceID int) *models.InstanceReannounceSettings {
