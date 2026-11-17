@@ -17,12 +17,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 func (r *diskRoot) Link(ctx context.Context, oldName, newName string) error {
+	if r.d.lostAt != nil && r.d.lostAt("link", newName) {
+		return &os.LinkError{Op: "link", Old: oldName, New: newName, Err: fsops.ErrConnectionLost}
+	}
 	if r.d.noLinks {
 		// A root makes the missing folders of newName before the link
 		// fails, so they stay.

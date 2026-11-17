@@ -86,10 +86,11 @@ type disk struct {
 	failRemove func(name string) bool
 	// failOpenRoots is how many of the next OpenRoot calls fail.
 	failOpenRoots int
-	// lostAt fails the Lstat of each name that it reports, below a root or
-	// on an SFTP instance, and the read of each folder on this disk that it
-	// reports, as the remote backend fails them on a dropped connection.
-	lostAt func(name string) bool
+	// lostAt fails each call that it reports, as the remote backend fails it
+	// on a dropped connection: op "lstat" below a root or on an SFTP
+	// instance, "link" below a root, and "readdir" and "openroot" on this
+	// disk.
+	lostAt func(op, name string) bool
 
 	mu      sync.Mutex
 	writes  []diskWrite
@@ -129,13 +130,16 @@ func (d *disk) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) 
 }
 
 func (d *disk) ReadDir(ctx context.Context, dir string) ([]fsops.DirEntry, error) {
-	if d.lostAt != nil && d.lostAt(dir) {
+	if d.lostAt != nil && d.lostAt("readdir", dir) {
 		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: fsops.ErrConnectionLost}
 	}
 	return d.Backend.ReadDir(ctx, dir)
 }
 
 func (d *disk) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
+	if d.lostAt != nil && d.lostAt("openroot", dir) {
+		return nil, &fs.PathError{Op: "openroot", Path: dir, Err: fsops.ErrConnectionLost}
+	}
 	if d.failOpenRoots > 0 {
 		d.failOpenRoots--
 		return nil, &fs.PathError{Op: "openat", Path: dir, Err: fs.ErrPermission}
@@ -168,7 +172,7 @@ func (f *sftpFiles) OpenRoot(ctx context.Context, dir string) (fsops.Root, error
 }
 
 func (f *sftpFiles) Lstat(ctx context.Context, p string) (*fsops.LstatInfo, error) {
-	if f.d.lostAt != nil && f.d.lostAt(p) {
+	if f.d.lostAt != nil && f.d.lostAt("lstat", p) {
 		return nil, &fs.PathError{Op: "lstat", Path: p, Err: fsops.ErrConnectionLost}
 	}
 	return f.Backend.Lstat(ctx, p)
@@ -207,7 +211,7 @@ func (r *diskRoot) Create(ctx context.Context, name string) (fsops.FileWriter, e
 }
 
 func (r *diskRoot) Lstat(ctx context.Context, name string) (*fsops.LstatInfo, error) {
-	if r.d.lostAt != nil && r.d.lostAt(name) {
+	if r.d.lostAt != nil && r.d.lostAt("lstat", name) {
 		return nil, &fs.PathError{Op: "lstat", Path: name, Err: fsops.ErrConnectionLost}
 	}
 	return r.Root.Lstat(ctx, name)
@@ -909,16 +913,18 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 	}
 }
 
-// A lookup for a file in the way that fails, as on a dropped SFTP
-// connection, finds no file. The Transfer fails for a retry and keeps what
-// it copied, on the source, on the target, and when it resumes.
+// A look at the files that gets no answer, as on a dropped SFTP connection,
+// finds nothing: no file in the way, no missing copy, and no file that
+// cannot be linked. The Transfer fails for a retry and keeps what it
+// copied, on the source, on the target, and when it resumes.
 // regression: #4231
-func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
+func TestTransferRetriesALookupThatGetsNoAnswer(t *testing.T) {
 	const episode, temp = "Show.S01E01.mkv", "Show.S01E01.mkv.qui-transfer-1"
 	for _, tc := range []struct {
 		name string
-		// at is the base name whose lookup fails.
-		at       string
+		// op is the call that fails, any lookup when empty, and at the base
+		// name that it fails at, any name when empty.
+		op, at   string
 		onSource bool
 		rename   []string
 		// theirs puts a file of the size of the episode at its name on a
@@ -928,10 +934,12 @@ func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
 		// crashAt.
 		resumed bool
 		crashAt string
-		// placed links the temporary file of the episode to its name after
-		// the end, as a stop between the link and the remove of the rename
-		// leaves it.
-		placed bool
+		// placed moves the temporary file of the episode to its name after
+		// the end: a link is what a stop between the link and the remove of
+		// the rename leaves, and a rename is a rename that ended.
+		placed func(oldname, newname string) error
+		// headStart puts the episode on the target first.
+		headStart bool
 	}{
 		{name: "a name of the Transfer torrent on the source", at: temp, onSource: true},
 		{name: "a temporary name", at: temp},
@@ -940,7 +948,10 @@ func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
 		{name: "the folder of a file renamed in case", at: showName, rename: []string{episode, "Show.S01e01.mkv"}, theirs: true},
 		{name: "a file of the torrent on a resume", at: episode, resumed: true},
 		{name: "a temporary file on a resume", at: temp, resumed: true},
-		{name: "a file in place on a resume", at: temp, resumed: true, crashAt: "after:place", placed: true},
+		{name: "a file in place on a resume", at: temp, resumed: true, crashAt: "after:place", placed: os.Link},
+		{name: "a file renamed into place on a resume", at: episode, resumed: true, crashAt: "after:place", placed: os.Rename},
+		{name: "the save path", op: "openroot"},
+		{name: "the link of a head start", op: "link", at: episode + ".qui-link-1", headStart: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t)
@@ -957,22 +968,27 @@ func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
 				write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode: theirs})
 				want[showName+"/"+episode] = string(theirs)
 			}
+			if tc.headStart {
+				write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode: s.files[episode]})
+			}
 			req := r.request(s)
 			if tc.onSource {
 				r.connect()
 				req.Options.ForcedWay = transfer.WayBitTorrent
 			}
-			lost := func(name string) bool {
-				return strings.HasPrefix(name, pathOn(overSFTP, r.srcDir)) == tc.onSource && path.Base(filepath.ToSlash(name)) == tc.at
+			lost := func(op, name string) bool {
+				return (tc.op == "" && op != "openroot" && op != "link" || op == tc.op) &&
+					strings.HasPrefix(name, pathOn(overSFTP, r.srcDir)) == tc.onSource &&
+					(tc.at == "" || path.Base(filepath.ToSlash(name)) == tc.at)
 			}
 
 			var record *transfer.Record
 			var copied map[string]string
 			if tc.resumed {
 				runCrashChild(t, crash{DB: r.dbPath, Request: req, At: cmp.Or(tc.crashAt, "write:3")}, make(chan *os.Process, 1), false)
-				if tc.placed {
+				if tc.placed != nil {
 					dir := filepath.Join(r.dstDir, showName)
-					require.NoError(t, os.Link(filepath.Join(dir, temp), filepath.Join(dir, episode)))
+					require.NoError(t, tc.placed(filepath.Join(dir, temp), filepath.Join(dir, episode)))
 				}
 				copied = tree(t, r.dstDir)
 				require.NotEmpty(t, copied)
@@ -1001,6 +1017,8 @@ func TestTransferRetriesALookupForAFileInTheWay(t *testing.T) {
 			case tc.onSource:
 				require.Zero(t, r.src.Writes("torrents/renameFile"))
 				r.requireNoHelpers(record)
+			case tc.headStart:
+				require.Equal(t, map[string]string{showName + "/" + episode: string(s.files[episode])}, tree(t, r.dstDir))
 			}
 		})
 	}

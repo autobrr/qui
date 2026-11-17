@@ -265,8 +265,14 @@ func (j *job) placeFile(ctx context.Context, name string, again bool) error {
 		_, err = j.root.Lstat(ctx, temp)
 	}
 	if errors.Is(err, fs.ErrNotExist) {
-		if _, err := j.root.Lstat(ctx, name); again && err == nil {
-			return nil
+		if again {
+			_, err := j.root.Lstat(ctx, name)
+			switch {
+			case err == nil:
+				return nil
+			case !errors.Is(err, fs.ErrNotExist):
+				return temporary("qui cannot look for the copy of %s on %s: %w", name, j.target.Name, err)
+			}
 		}
 		return permanent("The copy of %s is missing on %s.", name, j.target.Name)
 	}

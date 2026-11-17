@@ -245,7 +245,11 @@ func (j *job) openRoot(ctx context.Context, resumed bool) error {
 		return permanent("qui cannot write new files on %s.", j.target.Name)
 	}
 	var err error
-	if j.root, err = opener.OpenRoot(ctx, j.rootDir); err != nil {
+	j.root, err = opener.OpenRoot(ctx, j.rootDir)
+	switch {
+	case errors.Is(err, fsops.ErrConnectionLost):
+		return temporary("qui cannot open the save path %s on %s: %w", j.rootDir, j.target.Name, err)
+	case err != nil:
 		return permanent("qui cannot open the save path %s on %s: %v", j.rootDir, j.target.Name, err)
 	}
 	find := j.findOnTarget

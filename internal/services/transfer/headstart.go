@@ -206,13 +206,18 @@ func readAt(ctx context.Context, files fsops.Backend, name string, offset int64,
 
 // link makes the hardlink of each file of the member that was on the
 // target. A file that qui cannot link is a conflict, whatever the error: it
-// differs between filesystems and SFTP servers.
+// differs between filesystems and SFTP servers. A dropped connection is no
+// such answer, so the Transfer tries again.
 func (j *job) link(ctx context.Context, p *part) error {
 	for _, f := range p.plan {
 		if !f.onTarget {
 			continue
 		}
-		if err := j.root.Link(ctx, p.rel(f), j.linkName(p.rel(f))); err != nil {
+		err := j.root.Link(ctx, p.rel(f), j.linkName(p.rel(f)))
+		if errors.Is(err, fsops.ErrConnectionLost) {
+			return temporary("qui cannot link %s on %s: %w", p.rel(f), j.target.Name, targetError{err})
+		}
+		if err != nil {
 			return permanent("Conflict: qui cannot check the file at %s on %s, because it cannot make a hardlink there: %v",
 				j.targetPath(p.rel(f)), j.target.Name, err)
 		}
