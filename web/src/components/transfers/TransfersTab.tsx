@@ -122,6 +122,7 @@ export function TransfersTab() {
                   key={row.id}
                   row={row}
                   onDetails={() => setDetailsId(row.id)}
+                  retrying={retry.isPending && retry.variables === row.id}
                   onRetry={() => retry.mutate(row.id)}
                   onCancel={() => setCancelRow(row)}
                   onRemove={() => remove.mutate(row.id)}
@@ -153,13 +154,15 @@ export function TransfersTab() {
 
 interface TransferTableRowProps {
   row: TransferRow
+  /** A Retry of the row waits for its answer. */
+  retrying: boolean
   onDetails: () => void
   onRetry: () => void
   onCancel: () => void
   onRemove: () => void
 }
 
-function TransferTableRow({ row, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
+function TransferTableRow({ row, retrying, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
   const [speedUnit] = useSpeedUnits()
@@ -214,7 +217,7 @@ function TransferTableRow({ row, onDetails, onRetry, onCancel, onRemove }: Trans
       <TableCell pinEnd className="text-right">
         <div className="flex justify-end gap-1">
           <Button size="sm" variant="ghost" onClick={onDetails}>{t("actions.details")}</Button>
-          {canRetry(row) && <Button size="sm" variant="ghost" onClick={onRetry}>{t("actions.retry")}</Button>}
+          {canRetry(row) && <Button size="sm" variant="ghost" disabled={retrying} onClick={onRetry}>{t("actions.retry")}</Button>}
           {canCancel(row) && <Button size="sm" variant="ghost" onClick={onCancel}>{t("actions.cancel")}</Button>}
           {canRemove(row) && <Button size="sm" variant="ghost" onClick={onRemove}>{t("actions.remove")}</Button>}
         </div>

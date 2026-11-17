@@ -161,6 +161,26 @@ describe("the Transfers tab", () => {
     expect(toast.success).toHaveBeenCalledWith("The Transfer runs again.")
   })
 
+  // regression: #4242
+  it("sends one Retry while the answer to the first one waits", async () => {
+    let answer: () => void = () => {}
+    const answered = new Promise<void>(resolve => { answer = resolve })
+    server.use(http.post("*/api/transfers/:id/retry", async ({ params }) => {
+      requests.push(`POST /api/transfers/${params.id}/retry`)
+      await answered
+      return HttpResponse.json({ id: 10 }, { status: 202 })
+    }))
+    renderTab()
+    const button = within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("button", { name: "Retry" })
+    fireEvent.click(button)
+    await waitFor(() => expect(button.disabled).toBe(true))
+    fireEvent.click(button)
+    answer()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The Transfer runs again."))
+    expect(requests.filter(r => r.endsWith("/retry"))).toEqual(["POST /api/transfers/2/retry"])
+  })
+
   it("cancels a Transfer only after the user confirms", async () => {
     renderTab()
     fireEvent.click(within(await rowOf("Show.S01.1080p-GRP")).getByRole("button", { name: "Cancel" }))
