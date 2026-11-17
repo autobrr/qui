@@ -46,6 +46,8 @@ type crash struct {
 	// InTheWay is the path of a file that lands on the target at the first
 	// write of the copy.
 	InTheWay string
+	// FailSave fails the save that records this step.
+	FailSave string
 }
 
 // qui ends at each step that it records, and at the adds that it cannot
@@ -227,26 +229,38 @@ func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 // A file that lands at a path of the copy during the copy stops the
 // Transfer at the rename into place, and the cleanup keeps it. A crash after
 // the cleanup, before qui recorded the end, keeps it too: the cleanup that
-// runs again after the restart does not take it for a file that qui placed.
+// runs again after the restart does not take it for a file that qui placed,
+// also when qui could not record the files that it placed.
 // regression: #4231
 func TestTransferCleanupKeepsAFileInTheWayAfterACrash(t *testing.T) {
-	r := newRig(t)
-	s := newShow(t, showName)
-	r.seed(s)
-	theirs := filepath.Join(r.dstDir, showName, episode2)
-	runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: "before:failed", InTheWay: theirs}, make(chan *os.Process, 1), false)
+	for _, tc := range []struct {
+		name     string
+		failSave string
+	}{
+		{name: "a crash before the end"},
+		{name: "a crash after a failed record of the placed files", failSave: "remove the placed files"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			s := newShow(t, showName)
+			r.seed(s)
+			theirs := filepath.Join(r.dstDir, showName, episode2)
+			plan := crash{DB: r.dbPath, Request: r.request(s), At: "before:failed", InTheWay: theirs, FailSave: tc.failSave}
+			runCrashChild(t, plan, make(chan *os.Process, 1), false)
 
-	r.restart()
-	r.svc.Wait()
+			r.restart()
+			r.svc.Wait()
 
-	var id int64
-	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
-	record := r.get(id)
-	require.Equal(t, transfer.StateFailed, record.State)
-	require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab")
-	require.Equal(t, map[string]string{showName + "/" + episode2: "theirs"}, tree(t, r.dstDir),
-		"the file in the way stays, and the files of qui go")
-	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+			var id int64
+			require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+			record := r.get(id)
+			require.Equal(t, transfer.StateFailed, record.State)
+			require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab")
+			require.Equal(t, map[string]string{showName + "/" + episode2: "theirs"}, tree(t, r.dstDir),
+				"the file in the way stays, and the files of qui go")
+			require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+		})
+	}
 }
 
 // runCrashChild runs qui in a child process on the database of the rig, and
@@ -289,7 +303,7 @@ func TestTransferCrashChild(t *testing.T) {
 	db := openDB(t, plan.DB)
 	d := &disk{Backend: local.NewBackend(), unconfirmed: plan.Unconfirmed, damage: plan.Damage}
 	deps, _, _ := wire(t, db, d, func() time.Time { return clock })
-	at := crashAt{Querier: db}
+	at := crashAt{Querier: db, fail: plan.FailSave}
 	switch kind, value, _ := strings.Cut(plan.At, ":"); kind {
 	case "before":
 		at.before = value
@@ -326,16 +340,19 @@ func TestTransferCrashChild(t *testing.T) {
 }
 
 // crashAt ends the process at the save that records a step: before the save
-// or right after it.
+// or right after it. It fails the save that records the step fail.
 type crashAt struct {
 	dbinterface.Querier
-	before, after string
+	before, after, fail string
 }
 
 func (c crashAt) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	last := lastStep(query, args)
 	if last != "" && last == c.before {
 		os.Exit(crashed)
+	}
+	if last != "" && last == c.fail {
+		return nil, errors.New("the database is locked")
 	}
 	res, err := c.Querier.ExecContext(ctx, query, args...)
 	if last != "" && last == c.after {

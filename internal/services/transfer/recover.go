@@ -324,7 +324,11 @@ func (j *job) cleanTarget(ctx context.Context) {
 	if !j.cleanupRoot(ctx) {
 		return
 	}
-	placed := j.placedFiles(ctx)
+	placed, err := j.placedFiles(ctx)
+	if err != nil {
+		j.logf("qui cannot tell which files it placed on %s, so it keeps the files that it wrote there: %v", j.target.Name, err)
+		return
+	}
 	folders := map[string]struct{}{}
 	for _, f := range j.files {
 		j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
@@ -348,17 +352,17 @@ func (j *job) cleanTarget(ctx context.Context) {
 // placedFiles returns the files that qui moved into place, and records them
 // before the cleanup removes a temporary file. A file whose temporary file
 // is there, or may be, never moved into place. A cleanup that runs again
-// after a stop reads the record: the temporary files are gone by then.
-func (j *job) placedFiles(ctx context.Context) []string {
+// after a stop reads the record: the temporary files are gone by then. It
+// fails when the record is not saved or cannot be read, and the cleanup must
+// then remove no temporary file.
+func (j *job) placedFiles(ctx context.Context) ([]string, error) {
 	if !j.reached(stepPlace) {
-		return nil
+		return nil, nil
 	}
 	if i := slices.IndexFunc(j.rec.Steps, func(s Step) bool { return s.Name == stepRemovePlaced }); i >= 0 {
 		var placed []string
-		if err := json.Unmarshal([]byte(j.rec.Steps[i].Detail), &placed); err != nil {
-			return nil
-		}
-		return placed
+		err := json.Unmarshal([]byte(j.rec.Steps[i].Detail), &placed)
+		return placed, err
 	}
 	// The record names the head start. A resume that failed before it read
 	// the target again did not mark it on the files.
@@ -372,10 +376,9 @@ func (j *job) placedFiles(ctx context.Context) []string {
 	detail, _ := json.Marshal(placed)
 	j.rec.Steps = append(j.rec.Steps, Step{Name: stepRemovePlaced, At: j.svc.deps.Now(), Detail: string(detail)})
 	if err := j.svc.deps.Store.Save(ctx, j.rec); err != nil {
-		j.logf("qui cannot record the files that it placed on %s, so it keeps them: %v", j.target.Name, err)
-		return nil
+		return nil, err
 	}
-	return placed
+	return placed, nil
 }
 
 // absent reports whether none of the names is on the target.
