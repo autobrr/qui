@@ -37,7 +37,7 @@ Notes:
 | `orphan_scan_failed` | An orphan scan run fails. |
 | `cross_seed_automation_succeeded` | RSS cross-seed automation completes (summary counts and samples). |
 | `cross_seed_automation_failed` | RSS cross-seed automation fails or completes with errors (summary). |
-| `cross_seed_search_succeeded` | A Library Scan run completes (summary counts and samples). A scheduled run sends it only when it adds a cross-seed or a torrent fails. |
+| `cross_seed_search_succeeded` | A Library Scan run completes (summary counts and samples). A scheduled run sends it only when it adds a cross-seed, when a torrent fails, or when the run records an error, for example when qui could not load the Torznab indexers. |
 | `cross_seed_search_failed` | A Library Scan run fails or cancels (summary). qui also sends it one time when the Library Scan schedule cannot start a run for a cause that clears without you, for example when qBittorrent is offline. qui tries again every hour and does not send it again for each try. |
 | `cross_seed_completion_succeeded` | Completion search run completes (summary counts and samples). |
 | `cross_seed_completion_failed` | Completion search run fails. |

@@ -740,3 +740,19 @@ func TestScheduledSearchRun_UnsearchedSeasonGroupGoesFirst(t *testing.T) {
 	}
 	require.Equal(t, []string{"season:brass lantern:s01", "season:azure compass:s01"}, hashes)
 }
+
+// regression: #4246
+// A scheduled run that ends with an error, such as Torznab indexers that did
+// not load while RED/OPS searched, notifies also when it added and failed nothing.
+func TestNotifySearchRun_ScheduledRunWithError(t *testing.T) {
+	t.Parallel()
+	notifier := &recordingNotifier{}
+	service := &Service{notifier: notifier}
+	errorMessage := "torznab failed, only RED/OPS searched: load torznab indexers: database is locked"
+	service.notifySearchRun(t.Context(), &searchRunState{run: &models.CrossSeedSearchRun{
+		Kind:         models.CrossSeedSearchRunKindScheduled,
+		Status:       models.CrossSeedSearchRunStatusSuccess,
+		ErrorMessage: &errorMessage,
+	}}, false)
+	require.Len(t, notifier.Events(), 1)
+}

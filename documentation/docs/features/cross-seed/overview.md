@@ -98,7 +98,7 @@ A completion search also records which indexers answered. The next scheduled run
 
 #### When a scheduled run cannot start
 
-If a scheduled run cannot start, qui tries again every hour. It sends one failure notification for each outage, not one for each try. A scheduled run notifies only when it added a cross-seed or a torrent failed. A manual run notifies after each run.
+If a scheduled run cannot start, qui tries again every hour. It sends one failure notification for each outage, not one for each try. A scheduled run notifies only when it added a cross-seed, when a torrent failed, or when the run recorded an error, for example when qui could not load the Torznab indexers. A manual run notifies after each run.
 
 If the saved settings make a run impossible, qui also opens the System notice "Library Scan schedule cannot run". These settings cause the notice:
 
