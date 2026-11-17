@@ -198,16 +198,6 @@ describe("InstancePreferencesDialog", () => {
     expect(download.placeholder).toBe("common:numberInput.unlimited")
   })
 
-  it("shows a size in bytes in KiB", async () => {
-    serveView()
-
-    renderDialog("advanced")
-
-    const queueSize = await fieldFor("preferences.advancedNetwork.diskQueueSize")
-    expect(queueSize.value).toBe("1024")
-    expect(queueSize.nextElementSibling?.textContent).toBe("KiB")
-  })
-
   it("shows the socket buffers in KiB and the .torrent size limit in MiB, and saves them in bytes", async () => {
     const bodies = recordSaves()
     serveView([

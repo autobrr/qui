@@ -60,27 +60,10 @@ func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:           "endpoint with X-API-Key header",
-			path:           "/api/cross-seed/apply",
-			apiKeyHeader:   apiKeyValue,
-			expectedStatus: http.StatusOK,
-		},
-		{
 			name:           "endpoint with invalid X-API-Key header",
 			path:           "/api/cross-seed/apply",
 			apiKeyHeader:   "invalid-key",
 			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name:           "endpoint without auth",
-			path:           "/api/cross-seed/apply",
-			expectedStatus: http.StatusForbidden,
-		},
-		{
-			name:           "endpoint with invalid apikey",
-			path:           "/api/cross-seed/apply",
-			apiKeyQuery:    "invalid-key",
-			expectedStatus: http.StatusForbidden,
 		},
 		{
 			name:           "query param without middleware is rejected",

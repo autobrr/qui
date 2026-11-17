@@ -13,30 +13,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestHub_Write(t *testing.T) {
-	hub := NewHub(10)
-
-	// Write some lines
-	for i := range 5 {
-		hub.Write("line " + string(rune('0'+i)))
-	}
-
-	if hub.Count() != 5 {
-		t.Errorf("expected count 5, got %d", hub.Count())
-	}
-}
-
 func TestHub_RingBuffer(t *testing.T) {
 	hub := NewHub(5)
 
 	// Write more lines than buffer size
 	for i := range 10 {
 		hub.Write("line " + string(rune('0'+i)))
-	}
-
-	// Should only have last 5 lines
-	if hub.Count() != 5 {
-		t.Errorf("expected count 5, got %d", hub.Count())
 	}
 
 	history := hub.History(10) // Request more than available
@@ -102,15 +84,7 @@ func TestHub_Unsubscribe(t *testing.T) {
 
 	sub := hub.Subscribe(ctx)
 
-	if hub.SubscriberCount() != 1 {
-		t.Errorf("expected 1 subscriber, got %d", hub.SubscriberCount())
-	}
-
 	hub.Unsubscribe(sub)
-
-	if hub.SubscriberCount() != 0 {
-		t.Errorf("expected 0 subscribers, got %d", hub.SubscriberCount())
-	}
 
 	// Channel should be closed
 	_, ok := <-sub.Channel()
@@ -125,10 +99,6 @@ func TestHub_ContextCancel(t *testing.T) {
 
 	sub := hub.Subscribe(ctx)
 
-	if hub.SubscriberCount() != 1 {
-		t.Errorf("expected 1 subscriber, got %d", hub.SubscriberCount())
-	}
-
 	cancel()
 
 	// The auto-unsubscribe closes the channel. No line was written.
@@ -139,10 +109,6 @@ func TestHub_ContextCancel(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for the auto-unsubscribe")
-	}
-
-	if hub.SubscriberCount() != 0 {
-		t.Errorf("expected 0 subscribers after context cancel, got %d", hub.SubscriberCount())
 	}
 
 	// Verify Done channel is closed
@@ -204,9 +170,8 @@ func TestHub_ConcurrentWrite(t *testing.T) {
 
 	wg.Wait()
 
-	// Verify count
-	if hub.Count() != 1000 {
-		t.Errorf("expected count 1000, got %d", hub.Count())
+	if got := len(hub.History(0)); got != 1000 {
+		t.Errorf("expected 1000 lines, got %d", got)
 	}
 }
 
@@ -227,8 +192,8 @@ func TestHub_DefaultSize(t *testing.T) {
 		hub.Write("line")
 	}
 
-	if hub.Count() != DefaultBufferSize {
-		t.Errorf("expected count %d, got %d", DefaultBufferSize, hub.Count())
+	if got := len(hub.History(0)); got != DefaultBufferSize {
+		t.Errorf("expected %d lines, got %d", DefaultBufferSize, got)
 	}
 }
 

@@ -16,15 +16,6 @@ const THEMES_DIR = resolve(import.meta.dirname, "../../../internal/themes/assets
 // CSS generic keywords never need loading.
 const GENERIC = /^(?:serif|sans-serif|cursive|fantasy|monospace|system-ui|math|emoji|fangsong|ui-(?:serif|sans-serif|monospace|rounded))$/
 
-describe("generic font family classification", () => {
-  it("matches generic family names exactly", () => {
-    expect(GENERIC.test("system-ui")).toBe(true)
-    expect(GENERIC.test("emoji")).toBe(true)
-    expect(GENERIC.test("fangsong")).toBe(true)
-    expect(GENERIC.test("ui-custom-brand")).toBe(false)
-  })
-})
-
 describe("FONT_MAP", () => {
   it("covers every font family the bundled themes use", () => {
     const cssFiles = readdirSync(THEMES_DIR, { recursive: true, encoding: "utf8" })

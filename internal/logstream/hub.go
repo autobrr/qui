@@ -199,17 +199,3 @@ func (s *Subscriber) Channel() <-chan string {
 func (s *Subscriber) Done() <-chan struct{} {
 	return s.ctx.Done()
 }
-
-// SubscriberCount returns the current number of subscribers.
-func (h *Hub) SubscriberCount() int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.subscribers)
-}
-
-// Count returns the number of lines currently in the buffer.
-func (h *Hub) Count() int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.count
-}

@@ -87,7 +87,7 @@ describe("resolveTorrentHashes", () => {
   })
 
   it("falls back through the canonical priority chain", () => {
-    // v2 wins over a legacy `hash` when no v1 is available
+    // A legacy `hash` that differs from the v2 digest still counts as v1 and wins
     expect(resolveTorrentHashes({ hash: "legacy", infohash_v2: "v2" })).toEqual({
       infohashV1: "legacy",
       infohashV2: "v2",

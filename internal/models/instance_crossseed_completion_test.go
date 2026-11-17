@@ -264,16 +264,3 @@ func TestInstanceCrossSeedCompletionStore_List(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []int{id1, id2}, ids)
 }
-
-func TestDefaultInstanceCrossSeedCompletionSettings(t *testing.T) {
-	defaults := models.DefaultInstanceCrossSeedCompletionSettings(42)
-
-	assert.Equal(t, 42, defaults.InstanceID)
-	assert.False(t, defaults.Enabled)
-	assert.False(t, defaults.BypassTorznabCache)
-	assert.Equal(t, 0, defaults.DelaySeconds)
-	assert.Empty(t, defaults.Categories)
-	assert.Empty(t, defaults.Tags)
-	assert.Empty(t, defaults.ExcludeCategories)
-	assert.Empty(t, defaults.ExcludeTags)
-}

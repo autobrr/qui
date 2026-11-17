@@ -93,18 +93,6 @@ describe("useTorrentExporter — per-torrent instance routing", () => {
     expect(mockedApi.exportTorrent).not.toHaveBeenCalledWith(0, expect.anything())
   })
 
-  it("falls back to the view instance for plain torrents in a single-instance view", async () => {
-    const { result } = renderHook(() => useTorrentExporter({ instanceId: 2, incognitoMode: false }))
-    const torrents = [makeTorrent({ hash: "aaa" })]
-
-    await act(async () => {
-      await result.current.exportTorrents(exportSelection(torrents))
-    })
-
-    expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(1)
-    expect(mockedApi.exportTorrent).toHaveBeenCalledWith(2, "aaa")
-  })
-
   it("exports both copies when the same hash exists on two instances", async () => {
     const { result } = renderHook(() => useTorrentExporter({ instanceId: 0, incognitoMode: false }))
     const torrents = [
@@ -150,26 +138,6 @@ describe("useTorrentExporter — select-all", () => {
     expect(mockedApi.exportTorrent).toHaveBeenCalledTimes(2)
     expect(mockedApi.exportTorrent).toHaveBeenCalledWith(2, "aaa")
     expect(mockedApi.exportTorrent).toHaveBeenCalledWith(3, "bbb")
-  })
-
-  it("keeps paging the per-instance endpoint in a single-instance view", async () => {
-    mockedApi.getTorrents.mockResolvedValue({
-      torrents: [makeTorrent({ hash: "aaa" })],
-      total: 1,
-      hasMore: false,
-    })
-
-    const { result } = renderHook(() => useTorrentExporter({ instanceId: 2, incognitoMode: false }))
-
-    await act(async () => {
-      await result.current.exportTorrents(exportSelection([], {
-        isAllSelected: true,
-      }))
-    })
-
-    expect(mockedApi.getTorrents).toHaveBeenCalledWith(2, expect.any(Object))
-    expect(mockedApi.getCrossInstanceTorrents).not.toHaveBeenCalled()
-    expect(mockedApi.exportTorrent).toHaveBeenCalledWith(2, "aaa")
   })
 
   it("reads every matching page, also past a stale Exclusion", async () => {

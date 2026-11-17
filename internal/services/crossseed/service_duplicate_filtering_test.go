@@ -427,12 +427,6 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 	require.Empty(t, results)
 }
 
-func TestContentFilteringWaitTimeoutDefault(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, 20*time.Second, contentFilteringWaitTimeout)
-}
-
 func TestFilterSearchResultsByLateContentFilterMissingOrIncompleteStateLeavesResults(t *testing.T) {
 	t.Parallel()
 

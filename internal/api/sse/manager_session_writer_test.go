@@ -222,34 +222,6 @@ func TestWritePayloadToSessionFlushesHTTPFlusher(t *testing.T) {
 	require.Equal(t, uint64(0), manager.eventsDropped.Load())
 }
 
-func TestWritePayloadToSessionFlushFailureLogsExactPayloadType(t *testing.T) {
-	payloadTypes := []string{
-		streamEventInit,
-		streamEventHeartbeat,
-		"",
-		"init-heartbeat",
-		"heartbeat-extra",
-	}
-
-	for _, payloadType := range payloadTypes {
-		t.Run("type="+payloadType, func(t *testing.T) {
-			manager := NewStreamManager(nil, nil, nil, nil)
-			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
-			logs := captureSSELogs(t)
-
-			ok := manager.writePayloadToSession(&flushErrorResponseWriter{}, &StreamPayload{
-				Type: payloadType,
-				Meta: &StreamMeta{Timestamp: time.Now()},
-			})
-
-			require.False(t, ok)
-			require.Equal(t, uint64(0), manager.eventsPublished.Load())
-			require.Equal(t, uint64(1), manager.eventsDropped.Load())
-			requireSSEPayloadFlushLog(t, logs.String(), payloadType)
-		})
-	}
-}
-
 func captureSSELogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 

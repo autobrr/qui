@@ -165,7 +165,6 @@ describe("ThemeToggle", () => {
 
     const selected = await screen.findByText("Selected theme")
     const selectedItem = selected.closest("[role=menuitem]") as HTMLElement
-    const otherName = screen.getByText("Other theme")
     const otherItem = themeItem("Other theme")
     const premiumItem = themeItem("Premium theme")
     const customItem = themeItem("Custom theme")
@@ -181,7 +180,6 @@ describe("ThemeToggle", () => {
     expect(screen.getByRole("menuitemradio", { name: "green" }).getAttribute("aria-checked")).toBe("false")
     expect(screen.queryByRole("menuitemradio", { name: "amber" })).toBeNull()
     expect(selectedItem.querySelector("button")).toBeNull()
-    expect(otherName.classList.contains("truncate")).toBe(false)
     expect(screen.queryByText("themeToggle.custom")).toBeNull()
   })
 

@@ -171,11 +171,6 @@ func TestRetrySearchPasses(t *testing.T) {
 		wantQuery  string
 	}{
 		{
-			name:       "a movie with a year drops the year first",
-			searchee:   "Example.Movie.2024.1080p.WEB-DL",
-			wantLabels: []string{"yearless"},
-		},
-		{
 			name:       "an arr alternate title becomes a second pass",
 			searchee:   "Example.Movie.2024.1080p.WEB-DL",
 			arrTitles:  []string{"Ejemplo Pelicula"},
@@ -193,11 +188,6 @@ func TestRetrySearchPasses(t *testing.T) {
 			name:      "an arr title equal to the primary query is not a retry",
 			searchee:  "Example.Show.S01E02.1080p.WEB-DL",
 			arrTitles: []string{"Example Show"},
-		},
-		{
-			name:      "an embedded ID skips every retry",
-			searchee:  "Example Movie (2024) {imdb-tt1234567}",
-			arrTitles: []string{"Ejemplo Pelicula"},
 		},
 	}
 

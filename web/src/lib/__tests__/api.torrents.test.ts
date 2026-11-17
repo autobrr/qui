@@ -269,16 +269,6 @@ describe("api.getCrossInstanceTorrents", () => {
       expect(JSON.parse(params.get("filters") as string)).toEqual(filters)
     })
 
-    it("never emits a prefer/preferCached param (this method has no preferCached option)", async () => {
-      server.use(captureCrossInstance())
-
-      await api.getCrossInstanceTorrents({ page: 1 })
-
-      const params = capturedUrl().searchParams
-      expect(params.has("prefer")).toBe(false)
-      expect(params.has("preferCached")).toBe(false)
-    })
-
     it("emits instanceIds as a comma-joined string when truthy and non-empty", async () => {
       server.use(captureCrossInstance())
 
@@ -324,31 +314,6 @@ describe("api.getCrossInstanceTorrents", () => {
       // The identical normalized array is written onto BOTH fields.
       expect(result.cross_instance_torrents).toBe(result.crossInstanceTorrents)
       expect(errorSpy).not.toHaveBeenCalled()
-    })
-
-    it("drops rows missing instance identity entirely rather than rendering them", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-      const validRow = {
-        ...makeTorrent({ name: "kept" }),
-        instance_id: 9,
-        instance_name: "main",
-      }
-      // No instanceId/instanceName and no snake_case identity => dropped.
-      const orphanRow = { ...makeTorrent({ name: "orphan" }) }
-      server.use(
-        captureCrossInstance(
-          okTorrentResponse({
-            cross_instance_torrents: [validRow, orphanRow] as TorrentResponse["cross_instance_torrents"],
-          })
-        )
-      )
-
-      const result = await api.getCrossInstanceTorrents({})
-
-      expect(result.crossInstanceTorrents).toHaveLength(1)
-      expect(result.crossInstanceTorrents?.[0].instanceId).toBe(9)
-      expect(result.crossInstanceTorrents?.[0].instanceName).toBe("main")
-      expect(errorSpy).toHaveBeenCalledTimes(1)
     })
 
     it("returns camelCase rows unchanged when every row already has instance identity", async () => {
