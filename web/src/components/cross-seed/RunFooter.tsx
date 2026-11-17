@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { CardFooter } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { RunState } from "@/lib/run-state"
+import { cn } from "@/lib/utils"
 import { Loader2, XCircle } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
@@ -39,6 +40,7 @@ export function RunFooter({ state, runLabel, runIcon, onRun, onCancel, cancelDia
   const { t } = useTranslation("crossseed")
   const [confirmOpen, setConfirmOpen] = useState(false)
   const busy = state.kind === "running" || state.kind === "cancelling"
+  const blocked = state.kind === "blocked"
 
   return (
     <CardFooter className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -54,19 +56,22 @@ export function RunFooter({ state, runLabel, runIcon, onRun, onCancel, cancelDia
             {t(state.kind === "cancelling" ? "automation.stopping" : "automation.cancel")}
           </Button>
         ) : (
+          // A disabled button gets no tap or hover, so the wrapper takes them and shows why the run is blocked.
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                className="min-h-11 md:min-h-9 disabled:cursor-not-allowed disabled:pointer-events-auto"
-                onClick={onRun}
-                disabled={state.kind === "blocked"}
-              >
-                {runIcon}
-                {runLabel}
-              </Button>
+              <span className={cn("inline-flex", blocked && "cursor-not-allowed")} tabIndex={blocked ? 0 : undefined}>
+                <Button
+                  variant="outline"
+                  className="min-h-11 md:min-h-9"
+                  onClick={onRun}
+                  disabled={blocked}
+                >
+                  {runIcon}
+                  {runLabel}
+                </Button>
+              </span>
             </TooltipTrigger>
-            {state.kind === "blocked" && (
+            {blocked && (
               <TooltipContent align="start" className="max-w-xs text-xs">
                 {state.reason}
               </TooltipContent>

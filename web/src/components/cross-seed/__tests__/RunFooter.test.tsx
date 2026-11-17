@@ -15,6 +15,7 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => stubs.translation,
 }))
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { RunState } from "@/lib/run-state"
 import { RunFooter } from "../RunFooter"
 
@@ -50,5 +51,29 @@ describe("RunFooter", () => {
 
     rerender(footer({ kind: "cancelling" }, onCancel))
     expect(screen.getByRole("button", { name: "automation.stopping" }).hasAttribute("disabled")).toBe(true)
+  })
+
+  // regression: #4263
+  it("shows why the run is blocked on a tap of the disabled run button", () => {
+    const touchWindow = window as Window & { ontouchstart?: unknown }
+    touchWindow.ontouchstart = null
+    // The open tooltip measures its arrow through ResizeObserver, which jsdom lacks.
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    try {
+      render(<TooltipProvider>{footer({ kind: "blocked", reason: "Add an indexer first" }, () => {})}</TooltipProvider>)
+
+      const run = screen.getByRole("button", { name: "Run now" })
+      fireEvent.pointerDown(run, { pointerType: "touch" })
+      fireEvent.click(run)
+
+      expect(screen.getByRole("tooltip").textContent).toContain("Add an indexer first")
+    } finally {
+      vi.unstubAllGlobals()
+      delete touchWindow.ontouchstart
+    }
   })
 })
