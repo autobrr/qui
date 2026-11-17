@@ -352,7 +352,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		}
 
 		// Log webhook filter settings once per instance
-		log.Debug().
+		log.Trace().
 			Str("source", "cross-seed.webhook").
 			Int("instanceID", instance.ID).
 			Strs("includeCategories", settings.WebhookSourceCategories).
@@ -365,7 +365,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		// Track filtering stats if we're logging them
 		var counts sourceFilterCounts
 
-		log.Debug().
+		log.Trace().
 			Str("source", "cross-seed.webhook").
 			Int("instanceId", instance.ID).
 			Str("instanceName", instance.Name).
