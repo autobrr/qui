@@ -14,6 +14,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 )
@@ -239,6 +240,9 @@ func (s *Service) scheduledStartFailed(ctx context.Context, err error) {
 	notified := s.scheduleFailureNotified
 	s.scheduleFailureNotified = true
 	s.scheduleMu.Unlock()
+	if s.activityPublisher != nil {
+		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedSearch})
+	}
 
 	if reason != "" && s.systemNotices != nil {
 		// The notice sends its own notification when it opens.

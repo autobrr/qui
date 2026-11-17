@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/systemnotice"
@@ -298,6 +299,27 @@ func (m *scheduleSyncManager) GetTorrentRefsFresh(ctx context.Context, instanceI
 	return m.GetTorrentRefs(ctx, instanceID, opts)
 }
 
+// activityLog records the events that tell the page to read again.
+type activityLog struct {
+	mu     sync.Mutex
+	events []activity.Event
+}
+
+func (l *activityLog) Publish(ev activity.Event) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, ev)
+}
+
+// take returns the events since the last call.
+func (l *activityLog) take() []activity.Event {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	events := l.events
+	l.events = nil
+	return events
+}
+
 type scheduleFixture struct {
 	db         *database.DB
 	svc        *Service
@@ -305,6 +327,7 @@ type scheduleFixture struct {
 	qbt        *scheduleSyncManager
 	notifier   *recordingNotifier
 	notices    *systemnotice.Module
+	activity   *activityLog
 	instanceID int
 }
 
@@ -326,6 +349,7 @@ func newScheduleFixture(t *testing.T, dbName, indexerURL string, torrents ...qbt
 		qbt:        &scheduleSyncManager{},
 		notifier:   &recordingNotifier{},
 		notices:    systemnotice.New(nil),
+		activity:   &activityLog{},
 		instanceID: instance.ID,
 	}
 	files := make(map[string]qbt.TorrentFiles, len(torrents))
@@ -347,11 +371,12 @@ func newScheduleFixture(t *testing.T, dbName, indexerURL string, torrents ...qbt
 			Capabilities: []string{"search", "movie-search"},
 			Categories:   []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 2000, CategoryName: "Movies"}},
 		}}),
-		releaseCache:     NewReleaseCache(),
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		notifier:         f.notifier,
-		systemNotices:    f.notices,
-		scheduleWake:     make(chan struct{}, 1),
+		releaseCache:      NewReleaseCache(),
+		stringNormalizer:  stringutils.NewDefaultNormalizer(),
+		notifier:          f.notifier,
+		systemNotices:     f.notices,
+		activityPublisher: f.activity,
+		scheduleWake:      make(chan struct{}, 1),
 	}
 	return f
 }
@@ -457,9 +482,11 @@ func TestLibrarySchedule(t *testing.T) {
 	require.Len(t, f.runs(t), 2)
 	require.Zero(t, f.events(notifications.EventCrossSeedSearchFailed))
 
-	// qBittorrent offline: no run row, a retry in an hour, and one
-	// notification for the outage.
+	// qBittorrent offline: no run row, a retry in an hour that the page
+	// reads again, and one notification for the outage.
+	f.activity.take()
 	require.Equal(t, libraryScheduleRetryDelay, f.svc.libraryScheduleTick(ctx))
+	require.Equal(t, []activity.Event{{Kind: activity.KindCrossSeedSearch}}, f.activity.take(), "the page shows the time of the retry")
 	wait = f.svc.libraryScheduleTick(ctx)
 	require.Greater(t, wait, libraryScheduleRetryDelay-time.Minute, "the next try waits for the hourly retry")
 	require.LessOrEqual(t, wait, libraryScheduleRetryDelay, "no second try before the hour ends")
