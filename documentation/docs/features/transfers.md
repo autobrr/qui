@@ -93,7 +93,7 @@ If qui cannot see the files on the target, the summary warns that a file with ot
 
 ## Resume after a stop
 
-A Transfer continues after a restart of qui or after a lost connection. The Transfer keeps its proven pieces, and qui copies only the pieces that are not proven. The progress on the Transfers page continues from its last value.
+A Transfer continues after a restart of qui or after a lost connection. The Transfer keeps its proven pieces, and qui copies only the pieces that are not proven. The progress on the Transfers page continues from the proven pieces, so it can show a lower value than before the stop. qui copies again each piece that the target did not confirm before the stop.
 
 If the target cannot confirm writes, qui first checks the partial files on the target, and then copies the pieces that failed. qui never starts a file again from its beginning.
 
