@@ -64,6 +64,8 @@ var keyValues = map[string][]string{
 	"ShareLimitsAction.shareLimitAction":   automations.ShareLimitActions,
 	"ShareLimitsAction.shareLimitsMode":    automations.ShareLimitsModes,
 	"ExportToInstanceAction.contentLayout": automations.ContentLayouts,
+	"TransferToInstanceAction.after":       automations.TransferAfters,
+	"TransferToInstanceAction.way":         automations.TransferWays,
 	"SortingConfig.field":                  conditionFieldNames(automations.FieldSpec.Sortable),
 	"FieldMultiplierScoreRule.field":       conditionFieldNames(automations.FieldSpec.Scorable),
 	"FreeSpaceSource.type":                 {string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath), string(models.FreeSpaceSourceQbitPath)},
