@@ -3923,7 +3923,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5">
                           <Label htmlFor="free-space-allowance" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowanceLabel")}</Label>
-                          <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { unit: unitLabel("TiB") })}</FieldHelp>
+                          <TooltipProvider delayDuration={150}><FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { unit: unitLabel("TiB") })}</FieldHelp></TooltipProvider>
                         </div>
                         <div className="flex gap-2">
                           <Input
@@ -3960,7 +3960,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         {formState.exprFreeSpaceSourceType === "allowance" && (
                           <div className="flex items-center gap-1.5">
                             <Label htmlFor="free-space-source-path" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowancePathLabel")}</Label>
-                            <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowancePathHelp")}</FieldHelp>
+                            <TooltipProvider delayDuration={150}><FieldHelp>{t("preferences.workflowDialog.freeSpace.allowancePathHelp")}</FieldHelp></TooltipProvider>
                           </div>
                         )}
                         <div className="relative">
