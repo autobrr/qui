@@ -23,6 +23,7 @@
 
 import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimized"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { useBulkActions } from "@/components/torrents/bulk-actions/bulk-actions-context"
@@ -266,12 +267,14 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <TorrentSelectionProvider>
-          <BulkActionProvider>
-            <PublishedTargetProbe />
-            {children}
-          </BulkActionProvider>
-        </TorrentSelectionProvider>
+        <MobileScrollProvider>
+          <TorrentSelectionProvider>
+            <BulkActionProvider>
+              <PublishedTargetProbe />
+              {children}
+            </BulkActionProvider>
+          </TorrentSelectionProvider>
+        </MobileScrollProvider>
       </TooltipProvider>
     </QueryClientProvider>
   )
