@@ -76,6 +76,9 @@ type disk struct {
 	// damage flips the byte at an offset of the file with this final name.
 	damage  map[string]int64
 	onWrite func(name string)
+	// failRemove fails the removal of each name below the root that it
+	// reports.
+	failRemove func(name string) bool
 
 	mu      sync.Mutex
 	writes  []diskWrite
@@ -166,6 +169,13 @@ func (r *diskRoot) Create(ctx context.Context, name string) (fsops.FileWriter, e
 	r.d.creates[name]++
 	r.d.mu.Unlock()
 	return &diskWriter{FileWriter: w, d: r.d, name: name}, nil
+}
+
+func (r *diskRoot) Remove(ctx context.Context, name string) error {
+	if r.d.failRemove != nil && r.d.failRemove(name) {
+		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrPermission}
+	}
+	return r.Root.Remove(ctx, name)
 }
 
 func (r *diskRoot) OpenWrite(ctx context.Context, name string, offset int64) (fsops.FileWriter, error) {
@@ -699,6 +709,33 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 	require.Equal(t, map[string]string{showName + "/Show.S01E02.mkv": "theirs"}, tree(t, r.dstDir))
 	require.True(t, r.src.Has(s.hash))
 	require.False(t, r.src.Stopped(s.hash))
+}
+
+// A file that lands at a path of the copy during the copy stops the
+// Transfer at the rename into place. When qui cannot remove its temporary
+// file there, the cleanup still keeps the file in the way.
+// regression: #4231
+func TestTransferKeepsAFileInTheWayWhenItCannotRemoveItsCopy(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	theirs := filepath.Join(r.dstDir, showName, "Show.S01E02.mkv")
+	var writeErr error
+	put := sync.OnceFunc(func() { writeErr = os.WriteFile(theirs, []byte("theirs"), 0o600) })
+	r.disk.onWrite = func(string) { put() }
+	r.disk.failRemove = func(name string) bool {
+		return strings.HasPrefix(name, showName+"/Show.S01E02.mkv.qui-transfer-")
+	}
+
+	record := r.run(r.request(s))
+
+	require.NoError(t, writeErr)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab")
+	data, err := os.ReadFile(theirs)
+	require.NoError(t, err, "the cleanup keeps the file in the way")
+	require.Equal(t, "theirs", string(data))
+	require.True(t, r.src.Has(s.hash))
 }
 
 // A change of the source torrent during the copy fails the Transfer and

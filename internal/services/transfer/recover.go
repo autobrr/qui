@@ -298,10 +298,11 @@ func (j *job) cleanTarget(ctx context.Context) {
 	}
 	folders := map[string]struct{}{}
 	for _, f := range j.files {
-		temp := j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
+		// A file whose temporary file was still there, or may be, never moved
+		// into place.
+		placed := j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
 		j.remove(ctx, j.linkName(f.rel), j.linkName(f.rel)+incompleteExt)
-		// A file whose temporary file was still there never moved into place.
-		if j.reached(stepPlace) && !f.onTarget && !keepPlaced && !temp {
+		if j.reached(stepPlace) && !f.onTarget && !keepPlaced && placed {
 			j.remove(ctx, f.rel)
 		}
 		// A link or a create that failed leaves the folders that it made,
