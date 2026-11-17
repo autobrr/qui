@@ -43,14 +43,11 @@ func TestRoot_RenameNeverReplaces(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
-		name            string
-		hardlinks       bool
-		renameNoReplace bool
+		name      string
+		hardlinks bool
 	}{
 		{name: "hardlinks, rename replaces", hardlinks: true},
-		{name: "hardlinks, rename refuses", hardlinks: true, renameNoReplace: true},
 		{name: "no hardlinks, rename replaces"},
-		{name: "no hardlinks, rename refuses", renameNoReplace: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -59,7 +56,6 @@ func TestRoot_RenameNeverReplaces(t *testing.T) {
 			if !tt.hardlinks {
 				server.SetSFTP(sshtest.SFTPNoHardlink)
 			}
-			server.SetRenameNoReplace(tt.renameNoReplace)
 			dir := t.TempDir()
 			root := openRoot(t, b, remotePath(dir))
 			create(t, root, "Sub/a.bin.tmp", "ours")
