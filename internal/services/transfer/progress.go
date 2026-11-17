@@ -107,16 +107,19 @@ func (m *meter) progress() Progress {
 // false for any other Transfer.
 func (s *Service) Progress(id int64) (Progress, bool) {
 	s.mu.Lock()
-	r, ok := s.runs[id]
+	var m *meter
+	if r, ok := s.runs[id]; ok {
+		m = r.meter
+	}
 	s.mu.Unlock()
-	if !ok || r.meter == nil {
+	if m == nil {
 		return Progress{}, false
 	}
-	r.meter.mu.Lock()
-	counting := r.meter.total > 0
-	r.meter.mu.Unlock()
+	m.mu.Lock()
+	counting := m.total > 0
+	m.mu.Unlock()
 	if !counting {
 		return Progress{}, false
 	}
-	return r.meter.progress(), true
+	return m.progress(), true
 }
