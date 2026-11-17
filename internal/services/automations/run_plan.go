@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"maps"
@@ -319,6 +320,15 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 	var waitingExports []pendingExportToInstance
 	plan.exports, waitingExports = exportsAfterMoves(plan.exports, plan.move.rules)
 	plan.transfers = transfersAfterMoves(plan.transfers, plan.move.rules)
+	// The module takes the whole Shared-file group at the first Start. The
+	// Transfer of the last rule goes first, as one torrent follows the last
+	// rule that matches it.
+	if len(plan.transfers) > 1 {
+		pos := rulePositions(in.ruleByID)
+		slices.SortFunc(plan.transfers, func(a, b pendingTransfer) int {
+			return cmp.Or(cmp.Compare(pos[b.rule.id], pos[a.rule.id]), strings.Compare(a.hash, b.hash))
+		})
+	}
 	if len(waitingExports) > 0 {
 		log.Debug().Int("instanceID", in.instanceID).Int("count", len(waitingExports)).
 			Msg("automations: exports wait for a later run, their torrents are moving")

@@ -270,6 +270,35 @@ func TestTransferToInstanceDryRunListsWayAndSize(t *testing.T) {
 	}
 }
 
+// regression: #4242
+// Two torrents that share their files match two Transfer rules. The module
+// takes the whole group at the first Start, so the Transfer of the rule that
+// comes last in the rule order starts first, as one torrent follows the last
+// rule that matches it. Each run reads the torrents in a random order.
+func TestTransferToInstanceFollowsTheLastRuleForTorrentsThatShareFiles(t *testing.T) {
+	torrent := func(name string) string {
+		return `{"name":"` + name + `","state":"stalledUP","progress":1,"size":10,"tags":"","category":"","save_path":"/data","content_path":"/data/shared"}`
+	}
+	svc, _, runner, instanceIDs := transferRig(t, `{"`+runningHash+`":`+torrent("seed")+`,"`+stillHash+`":`+torrent("cross-seed")+`}`, transfersOn)
+	keep := transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive", After: "keepSeeding", Condition: nameIs("seed")})
+	remove := transferRule(2, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive", After: "removeWithFiles", Condition: nameIs("cross-seed")})
+
+	for range 10 {
+		for _, rules := range [][]*models.Automation{{keep, remove}, {remove, keep}} {
+			rules[0].SortOrder, rules[1].SortOrder = 1, 2
+			runner.mu.Lock()
+			runner.started = nil
+			runner.mu.Unlock()
+
+			_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, false)
+			require.NoError(t, err)
+			runner.mu.Lock()
+			require.Equal(t, rules[1].ID, *runner.started[0].RuleID, "the Transfer of the last rule starts first")
+			runner.mu.Unlock()
+		}
+	}
+}
+
 // When the Transfer module refuses a Transfer, the rule records the reason
 // and asks again no sooner than an hour later. A torrent that a Transfer
 // holds, or whose last Transfer failed for good and waits for the user, gets
