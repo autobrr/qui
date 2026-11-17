@@ -49,9 +49,12 @@ func (w withoutHelpers) GetTorrentRefs(ctx context.Context, instanceID int, filt
 
 func (w withoutHelpers) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	torrents, err := w.qbittorrentSync.GetCachedInstanceTorrents(ctx, instanceID)
-	if isHelper := w.helpers.HelperCheck(instanceID); isHelper != nil {
+	// The row builder badges each helper torrent from this registry. qui
+	// registers a helper before it adds the torrent, so no view of one lacks
+	// the badge.
+	if w.helpers.HelperCheck(instanceID) != nil {
 		torrents = leaveOut(torrents, func(t qbittorrent.CrossInstanceTorrentView) bool {
-			return t.TorrentView != nil && t.Torrent != nil && isHelper(t.Hash)
+			return t.TorrentView != nil && t.QuiHelper != ""
 		})
 	}
 	return torrents, err

@@ -36,6 +36,7 @@ func TestCrossSeedSkipsHelperTorrents(t *testing.T) {
 	helper := crossMatchTorrent(1, "cccc", name, "/data", "/data/"+name, files)
 	own := crossMatchTorrent(1, "dddd", name, "/data", "/data/"+name, files)
 	helper.view.Tags = "qui-transfer"
+	helper.view.QuiHelper = "transfer"
 	own.view.Tags = "qui-transfer"
 
 	svc, _ := deleteMatchService(selected, helper, own)
@@ -43,6 +44,28 @@ func TestCrossSeedSkipsHelperTorrents(t *testing.T) {
 	matches, err := findDeleteMatches(t, svc, "aaaa")
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"dddd": matchTypeContentPath}, matchedTiers(matches))
+}
+
+// The cross-seed views leave out what the badge of the row builder names. The
+// row builder sets it from the same registry.
+// regression: #4231
+func TestCrossSeedViewsLeaveOutTheBadgedTorrents(t *testing.T) {
+	t.Parallel()
+
+	files := qbt.TorrentFiles{{Name: "Harbor.Watch.S01E01.mkv", Size: 100}}
+	badged := crossMatchTorrent(1, "eeee", "Harbor.Watch.S01E01.mkv", "/data", "/data/Harbor.Watch.S01E01.mkv", files)
+	badged.view.QuiHelper = "share"
+	unbadged := crossMatchTorrent(1, "ffff", "Harbor.Watch.S01E01.mkv", "/data", "/data/Harbor.Watch.S01E01.mkv", files)
+
+	svc, _ := deleteMatchService(badged, unbadged)
+	svc.SetHelperTorrents(fakeHelpers{"ffff": true})
+	views, err := svc.syncManager.GetCachedInstanceTorrents(t.Context(), 1)
+	require.NoError(t, err)
+	hashes := make([]string, 0, len(views))
+	for _, view := range views {
+		hashes = append(hashes, view.Hash)
+	}
+	require.Equal(t, []string{"ffff"}, hashes, "the filter reads the badge, not the registry for each view")
 }
 
 func TestCompletionOfAHelperTorrentStartsNoSearch(t *testing.T) {
