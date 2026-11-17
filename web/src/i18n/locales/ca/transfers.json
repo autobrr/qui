@@ -76,11 +76,15 @@
     "limit": "La llista mostra les 500 files més recents."
   },
   "details": {
-    "title": "Transferència de {{name}}",
-    "exportTitle": "Execució d'exportació de {{name}}",
+    "title": "Detalls de la transferència",
+    "exportTitle": "Detalls de l'execució d'exportació",
+    "overview": "Resum",
+    "sections": "Seccions dels detalls",
+    "finished": "Acabada",
+    "leftStopped": "Es deixa aturat a la destinació",
+    "instance": "Instància",
     "failure": "Per què ha fallat",
     "torrents": "Torrents",
-    "torrentOn": "A {{instance}}, a {{path}}",
     "steps": "Passos",
     "log": "Registre",
     "noLog": "Encara no hi ha línies de registre.",

@@ -8,23 +8,21 @@ import { EmptyTile } from "@/components/kit/EmptyTile"
 import { Section } from "@/components/kit/Section"
 import { usePendingIds } from "@/components/kit/use-pending-ids"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
-import { formatNarrowAge, formatRelativeTime } from "@/lib/dateTimeUtils"
-import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { transfersApi, type TransferFilter, type TransferRow, type TransferState } from "@/lib/transfers-api"
-import { cn } from "@/lib/utils"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { transfersApi, type TransferFilter, type TransferRow } from "@/lib/transfers-api"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Ban, CircleCheck, CircleX, Clock, FileText, Loader2, RotateCcw, Trash2, X, type LucideIcon } from "lucide-react"
+import { FileText, RotateCcw, Trash2, X, type LucideIcon } from "lucide-react"
 import { useId, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { RowActions, type RowAction } from "./RowActions"
-import { canCancel, canRemove, canRetry, percentOf, timeLeftMs, waitsForRetry } from "./transfer-display"
-import { TransferDetailsSheet } from "./TransferDetailsSheet"
+import { canCancel, canRemove, canRetry } from "./transfer-display"
+import { TransferDetailsDialog } from "./TransferDetailsDialog"
 import { TransferHints } from "./TransferHints"
+import { StartedBy, StateDetail, StateLabel } from "./TransferState"
 import { useIncognitoDisplay } from "./use-incognito-display"
 import { useInstanceName } from "./use-instance-name"
 
@@ -37,17 +35,6 @@ const removeKey = ["transfers", "remove"]
 type RowStep = "retry" | "cancel" | "remove"
 /** The list of the backend holds at most this many rows. */
 const listLimit = 500
-
-/** The icon of each state, in the colors of the status icons of Search history. */
-const stateIcons: Record<TransferState, { icon: LucideIcon; className: string }> = {
-  waiting: { icon: Clock, className: "text-muted-foreground" },
-  copying: { icon: Loader2, className: "motion-safe:animate-spin" },
-  checking: { icon: Loader2, className: "motion-safe:animate-spin" },
-  finishing: { icon: Loader2, className: "motion-safe:animate-spin" },
-  done: { icon: CircleCheck, className: "text-emerald-500" },
-  failed: { icon: CircleX, className: "text-destructive" },
-  cancelled: { icon: Ban, className: "text-muted-foreground" },
-}
 
 /** The Transfers section of the Transfers page: the Transfers and the Export runs, newest first. */
 export function TransfersTab() {
@@ -155,7 +142,7 @@ export function TransfersTab() {
         </div>
       </Section>
 
-      <TransferDetailsSheet transferId={detailsId} onClose={() => setDetailsId(null)} />
+      <TransferDetailsDialog transferId={detailsId} onClose={() => setDetailsId(null)} />
 
       {cancelling && (
         <ConfirmDialog
@@ -187,11 +174,6 @@ function TransferTableRow({ row, running, onDetails, onRetry, onCancel, onRemove
   const instanceName = useInstanceName()
   const display = useIncognitoDisplay()
   const nameId = useId()
-  const startedBy = row.startedBy === "user"
-    ? t("row.byUser")
-    : row.ruleName
-      ? t("row.byRule", { name: row.ruleName })
-      : t("row.byDeletedRule")
   const started = formatRelativeTime(row.createdAt)
   const step = (name: RowStep, label: string, icon: LucideIcon, onSelect: () => void, destructive = false): RowAction =>
     ({ label, icon, onSelect, destructive, pending: running === name, disabled: running !== null })
@@ -226,7 +208,7 @@ function TransferTableRow({ row, running, onDetails, onRetry, onCancel, onRemove
           </span>
           <span>{started}</span>
           <span aria-hidden="true">·</span>
-          <span className="[overflow-wrap:anywhere]">{startedBy}</span>
+          <span className="[overflow-wrap:anywhere]"><StartedBy row={row} /></span>
         </div>
         <div className="@lg:hidden">
           <StateDetail row={row} />
@@ -241,7 +223,7 @@ function TransferTableRow({ row, running, onDetails, onRetry, onCancel, onRemove
       <TableCell className="hidden align-top @2xl:table-cell">
         <div>{started}</div>
         {/* The name column takes the free width, so the by-line asks for its own width up to 15rem before it wraps. */}
-        <div className="w-max max-w-60 text-xs whitespace-normal text-muted-foreground [overflow-wrap:anywhere]">{startedBy}</div>
+        <div className="w-max max-w-60 text-xs whitespace-normal text-muted-foreground [overflow-wrap:anywhere]"><StartedBy row={row} /></div>
       </TableCell>
       <TableCell pinEnd className="pr-6 max-sm:pr-4">
         <RowActions actions={actions} describedBy={nameId} />
@@ -253,40 +235,4 @@ function TransferTableRow({ row, running, onDetails, onRetry, onCancel, onRemove
 /** A small mark after the facts of a row, as Statistics marks a deleted torrent or a cross-seed. */
 function Mark({ children }: { children: string }) {
   return <Badge variant="outline" className="py-0 text-[10px] font-normal text-muted-foreground">{children}</Badge>
-}
-
-function StateLabel({ state, className }: { state: TransferState; className?: string }) {
-  const { t } = useTranslation("transfers")
-  const { icon: Icon, className: iconClass } = stateIcons[state] ?? stateIcons.waiting
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 text-foreground", className)}>
-      <Icon aria-hidden="true" className={cn("size-3.5 shrink-0", iconClass)} />
-      {t([`states.${state}`, "states.fallback"])}
-    </span>
-  )
-}
-
-/** The progress of a run while its files pass, and the time of the retry of a failure that waits. */
-function StateDetail({ row }: { row: TransferRow }) {
-  const { t, i18n } = useTranslation("transfers")
-  const [speedUnit] = useSpeedUnits()
-  if (row.progress) {
-    const percent = percentOf(row.progress)
-    const left = timeLeftMs(row.progress)
-    const facts = [
-      new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language, { style: "percent" }).format(percent / 100),
-      ...(row.progress.speed > 0 ? [formatSpeedWithUnit(row.progress.speed, speedUnit)] : []),
-      ...(left === null ? [] : [t("row.timeLeft", { time: formatNarrowAge(left) })]),
-    ]
-    return (
-      <div className="mt-1.5 w-full max-w-48 space-y-1">
-        <Progress value={percent} aria-label={t("columns.progress")} className="h-1.5" />
-        <div className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">{facts.join(" · ")}</div>
-      </div>
-    )
-  }
-  if (waitsForRetry(row)) {
-    return <div className="mt-1 text-xs text-muted-foreground">{t("row.retryAt", { time: formatRelativeTime(row.retryAt) })}</div>
-  }
-  return null
 }

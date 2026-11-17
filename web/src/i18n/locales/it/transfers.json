@@ -76,11 +76,15 @@
     "limit": "L'elenco mostra le 500 righe più recenti."
   },
   "details": {
-    "title": "Trasferimento di {{name}}",
-    "exportTitle": "Esecuzione dell'esportazione di {{name}}",
+    "title": "Dettagli del trasferimento",
+    "exportTitle": "Dettagli dell'esecuzione dell'esportazione",
+    "overview": "Panoramica",
+    "sections": "Sezioni dei dettagli",
+    "finished": "Terminato",
+    "leftStopped": "Lasciato fermo sulla destinazione",
+    "instance": "Istanza",
     "failure": "Motivo dell'errore",
     "torrents": "Torrent",
-    "torrentOn": "Su {{instance}}, in {{path}}",
     "steps": "Passaggi",
     "log": "Log",
     "noLog": "Ancora nessuna riga di log.",

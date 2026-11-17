@@ -75,11 +75,15 @@
     "limit": "목록에는 최신 500개 행만 표시됩니다."
   },
   "details": {
-    "title": "{{name}} 전송",
-    "exportTitle": "{{name}} 내보내기 실행",
+    "title": "전송 세부 정보",
+    "exportTitle": "내보내기 실행 세부 정보",
+    "overview": "개요",
+    "sections": "세부 정보 섹션",
+    "finished": "완료 시간",
+    "leftStopped": "대상에서 정지 상태로 둠",
+    "instance": "인스턴스",
     "failure": "실패 원인",
     "torrents": "토렌트",
-    "torrentOn": "{{instance}}, 경로 {{path}}",
     "steps": "단계",
     "log": "로그",
     "noLog": "아직 로그가 없습니다.",

@@ -76,11 +76,15 @@
     "limit": "La liste affiche les 500 lignes les plus récentes."
   },
   "details": {
-    "title": "Transfert de {{name}}",
-    "exportTitle": "Exécution d'export de {{name}}",
+    "title": "Détails du transfert",
+    "exportTitle": "Détails de l'exécution d'export",
+    "overview": "Aperçu",
+    "sections": "Sections des détails",
+    "finished": "Terminé",
+    "leftStopped": "Laissé à l'arrêt sur la cible",
+    "instance": "Instance",
     "failure": "Cause de l'échec",
     "torrents": "Torrents",
-    "torrentOn": "Sur {{instance}}, dans {{path}}",
     "steps": "Étapes",
     "log": "Journal",
     "noLog": "Aucune ligne de journal pour l'instant.",

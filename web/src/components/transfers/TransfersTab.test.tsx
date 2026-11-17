@@ -20,7 +20,12 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
 
 const screenSize = vi.hoisted(() => ({ phone: false }))
-vi.mock("@/hooks/useMediaQuery", () => ({ useIsPhone: () => screenSize.phone }))
+vi.mock("@/hooks/useMediaQuery", () => ({
+  SIDEWAYS_PHONE_QUERY: "sideways",
+  useIsPhone: () => screenSize.phone,
+  useIsMobile: () => screenSize.phone,
+  useMediaQuery: () => false,
+}))
 
 const incognito = vi.hoisted(() => ({ on: false }))
 vi.mock("@/lib/incognito", async importOriginal => {
@@ -133,6 +138,26 @@ async function rowOf(name: string): Promise<HTMLElement> {
 }
 
 const buttonNames = (tr: HTMLElement) => within(tr).queryAllByRole("button").map(button => button.getAttribute("aria-label"))
+
+async function openDetails(name: string): Promise<HTMLElement> {
+  const tr = await rowOf(name)
+  if (screenSize.phone) {
+    // A phone puts the row actions in a menu.
+    fireEvent.pointerDown(within(tr).getByRole("button", { name: "More actions" }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }))
+  } else {
+    fireEvent.click(within(tr).getByRole("button", { name: "Details" }))
+  }
+  const dialog = await screen.findByRole("dialog")
+  await within(dialog).findByRole("tablist")
+  return dialog
+}
+
+/** Radix selects a tab on the press of the main button. */
+const openTab = (dialog: HTMLElement, name: RegExp) => fireEvent.mouseDown(within(dialog).getByRole("tab", { name }), { button: 0 })
+const selectedTab = (dialog: HTMLElement) => within(dialog).getByRole("tab", { selected: true }).textContent
+const stepLabels = (dialog: HTMLElement) =>
+  within(within(dialog).getByRole("tabpanel")).getAllByRole("listitem").map(item => item.querySelector("div > span")?.textContent)
 
 describe("the Transfers tab", () => {
   it("shows each row with what it allows, and lists the rows of a filter, with the count of each filter", async () => {
@@ -276,30 +301,85 @@ describe("the Transfers tab", () => {
     await waitFor(() => expect(requests).toContain("POST /api/transfers/1/cancel"))
   })
 
-  it("opens the Details panel with the reason, torrents, steps, and log", async () => {
+  it("opens the Details dialog on Overview, with a short title, the name, the state, and the route", async () => {
     renderTab()
-    fireEvent.click(within(await rowOf("Film.2019.2160p-ABC")).getByRole("button", { name: "Details" }))
-    const panel = await screen.findByRole("dialog")
-    await within(panel).findByText("Transfer of Film.2019.2160p-ABC")
-    const text = panel.textContent ?? ""
-    expect(text).toContain("Why it failed")
-    expect(text).toContain("A file on the target does not match.")
-    expect(text).toContain("On homelab, in /srv/movies")
-    expect(text).toContain("Started")
-    expect(text).toContain("Passing by a Transfer torrent")
-    expect(text).toContain("Another step")
-    expect(text).not.toContain("teleport")
-    expect(text).toContain("Passing 70 B by a Transfer torrent from seedbox to homelab.")
+    const dialog = await openDetails("Film.2019.2160p-ABC")
+    expect(within(dialog).getByRole("heading").textContent).toBe("Transfer details")
+    expect(dialog.textContent).toContain("Film.2019.2160p-ABC")
+    expect(dialog.textContent).toContain("seedbox → homelab")
+    expect(selectedTab(dialog)).toBe("Overview")
+    const overview = within(dialog).getByRole("tabpanel").textContent ?? ""
+    expect(overview).toContain("Why it failed")
+    expect(overview).toContain("A file on the target does not match.")
+    expect(overview).toContain("By rule Move old seeds")
+  })
+
+  it("shows the torrents, the steps, and the log each in its own tab", async () => {
+    renderTab()
+    const dialog = await openDetails("Film.2019.2160p-ABC")
+    openTab(dialog, /^Torrents/)
+    const torrents = within(dialog).getByRole("tabpanel").textContent ?? ""
+    expect(torrents).toContain("homelab")
+    expect(torrents).toContain("/srv/movies")
+    openTab(dialog, /^Log/)
+    expect(within(dialog).getByRole("tabpanel").textContent).toContain("Passing 70 B by a Transfer torrent from seedbox to homelab.")
+    openTab(dialog, /^Steps/)
+    expect(within(dialog).getByRole("tabpanel").textContent).toContain("Passing by a Transfer torrent")
   })
 
   // regression: #4242
-  it("keeps the step that records the file names out of the Details panel", async () => {
+  it("keeps the step that records the file names out of the Details dialog", async () => {
     renderTab()
-    fireEvent.click(within(await rowOf("Film.2019.2160p-ABC")).getByRole("button", { name: "Details" }))
-    const panel = await screen.findByRole("dialog")
-    const steps = (await within(panel).findByRole("heading", { name: "Steps" })).nextElementSibling as HTMLElement
-    const labels = within(steps).getAllByRole("listitem").map(item => item.lastElementChild?.textContent)
-    expect(labels).toEqual(["Started", "Passing by a Transfer torrent", "Another step", "Failed"])
+    const dialog = await openDetails("Film.2019.2160p-ABC")
+    openTab(dialog, /^Steps/)
+    expect(stepLabels(dialog)).toEqual(["Started", "Passing by a Transfer torrent", "Another step", "Failed"])
+  })
+
+  // regression: #4242
+  it("names the torrent of a step that adds one, and shows no other step data", async () => {
+    server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({
+      ...detail,
+      steps: [
+        ...detail.steps.slice(0, 3),
+        { name: "place", at: "2026-11-17T10:00:06Z", detail: "[]" },
+        { name: "added", at: "2026-11-17T10:00:07Z", detail: "bbbb" },
+      ],
+    })))
+    renderTab()
+    const dialog = await openDetails("Film.2019.2160p-ABC")
+    openTab(dialog, /^Steps/)
+    const steps = within(dialog).getByRole("tabpanel")
+    const added = within(steps).getAllByRole("listitem").at(-1)!
+    expect(added.textContent).toContain("Added to the target")
+    expect(added.textContent).toContain("Film.2019.2160p-ABC")
+    expect(steps.textContent).not.toContain("[]")
+    expect(steps.textContent).not.toContain("bbbb")
+    expect(steps.textContent).not.toContain("Film.2019.2160p-ABC.mkv")
+  })
+
+  it("puts the tabs beside the content on a wide screen, and above it on a phone", async () => {
+    renderTab()
+    let dialog = await openDetails("Film.2019.2160p-ABC")
+    expect(within(dialog).getByRole("tablist").getAttribute("aria-orientation")).toBe("vertical")
+    fireEvent.keyDown(dialog, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    cleanup()
+
+    screenSize.phone = true
+    renderTab()
+    dialog = await openDetails("Film.2019.2160p-ABC")
+    expect(within(dialog).getByRole("tablist").getAttribute("aria-orientation")).toBe("horizontal")
+  })
+
+  it("opens again on Overview after the user looked at another tab", async () => {
+    renderTab()
+    let dialog = await openDetails("Film.2019.2160p-ABC")
+    openTab(dialog, /^Log/)
+    expect(selectedTab(dialog)).toMatch(/^Log/)
+    fireEvent.keyDown(dialog, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    dialog = await openDetails("Film.2019.2160p-ABC")
+    expect(selectedTab(dialog)).toBe("Overview")
   })
 
   // regression: #4242
@@ -317,25 +397,34 @@ describe("the Transfers tab", () => {
   })
 
   // regression: #4242
-  it("shows made-up names and save paths in the Details panel in incognito mode, and hides the log and the step data", async () => {
+  it("shows made-up names and save paths in the Details dialog in incognito mode, and hides the log and the step data", async () => {
     incognito.on = true
     server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({
       ...detail,
-      steps: [...detail.steps, { name: "place", at: "2026-11-17T10:00:06Z", detail: "[\"Film.2019.2160p-ABC/film.mkv\"]" }],
+      steps: [...detail.steps, { name: "place", at: "2026-11-17T10:00:06Z", detail: "[\"Film.2019.2160p-ABC/film.mkv\"]" }, { name: "added", at: "2026-11-17T10:00:07Z", detail: "bbbb" }],
+      members: [{ ...detail.members[0], category: "movies-private", tags: ["tracker-tag"] }],
     })))
     renderTab()
     await screen.findAllByText(getLinuxIsoName("aaaa"))
     const tr = document.querySelector<HTMLElement>("[data-transfer-id='2']")!
     fireEvent.click(within(tr).getByRole("button", { name: "Details" }))
-    const panel = await screen.findByRole("dialog")
-    await within(panel).findByText(`Transfer of ${getLinuxIsoName("aaaa")}`)
-    const text = panel.textContent ?? ""
-    expect(text).toContain(getLinuxIsoName("bbbb"))
-    expect(text).toContain(`On homelab, in ${getLinuxSavePath("bbbb")}`)
-    expect(text).toContain("Placed the files")
+    const dialog = await screen.findByRole("dialog")
+    await within(dialog).findByText(getLinuxIsoName("aaaa"))
+    let text = within(dialog).getByRole("tabpanel").textContent ?? ""
     expect(text).toContain("Hidden in incognito mode")
-    for (const real of ["Film.2019.2160p-ABC", "/srv/movies", "A file on the target does not match.", "Passing 70 B"]) {
-      expect(text).not.toContain(real)
+    openTab(dialog, /^Torrents/)
+    text = within(dialog).getByRole("tabpanel").textContent ?? ""
+    expect(text).toContain(getLinuxIsoName("bbbb"))
+    expect(text).toContain(getLinuxSavePath("bbbb"))
+    openTab(dialog, /^Steps/)
+    text = within(dialog).getByRole("tabpanel").textContent ?? ""
+    expect(text).toContain("Placed the files")
+    expect(text).toContain(getLinuxIsoName("bbbb"))
+    openTab(dialog, /^Log/)
+    expect(within(dialog).getByRole("tabpanel").textContent).toContain("Hidden in incognito mode")
+    const all = dialog.textContent ?? ""
+    for (const real of ["Film.2019.2160p-ABC", "/srv/movies", "A file on the target does not match.", "Passing 70 B", "movies-private", "tracker-tag"]) {
+      expect(all).not.toContain(real)
     }
   })
 })

@@ -75,11 +75,15 @@
     "limit": "清單僅顯示最新的 500 列。"
   },
   "details": {
-    "title": "{{name}} 的傳輸",
-    "exportTitle": "{{name}} 的匯出執行",
+    "title": "傳輸詳細資訊",
+    "exportTitle": "匯出執行詳細資訊",
+    "overview": "概覽",
+    "sections": "詳細資訊分區",
+    "finished": "完成時間",
+    "leftStopped": "在目標上保持停止",
+    "instance": "實例",
     "failure": "失敗原因",
     "torrents": "種子",
-    "torrentOn": "位於 {{instance}}，路徑 {{path}}",
     "steps": "步驟",
     "log": "日誌",
     "noLog": "尚無日誌。",

@@ -75,11 +75,15 @@
     "limit": "列表仅显示最新的 500 行。"
   },
   "details": {
-    "title": "{{name}} 的传输",
-    "exportTitle": "{{name}} 的导出运行",
+    "title": "传输详情",
+    "exportTitle": "导出运行详情",
+    "overview": "概览",
+    "sections": "详情分区",
+    "finished": "完成时间",
+    "leftStopped": "在目标上保持停止",
+    "instance": "实例",
     "failure": "失败原因",
     "torrents": "种子",
-    "torrentOn": "位于 {{instance}}，路径 {{path}}",
     "steps": "步骤",
     "log": "日志",
     "noLog": "暂无日志。",

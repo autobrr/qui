@@ -77,11 +77,15 @@
     "limit": "Seznam ukazuje 500 nejnovějších řádků."
   },
   "details": {
-    "title": "Přenos {{name}}",
-    "exportTitle": "Běh exportu {{name}}",
+    "title": "Podrobnosti přenosu",
+    "exportTitle": "Podrobnosti běhu exportu",
+    "overview": "Přehled",
+    "sections": "Části podrobností",
+    "finished": "Dokončeno",
+    "leftStopped": "Na cíli zůstane zastavený",
+    "instance": "Instance",
     "failure": "Proč selhal",
     "torrents": "Torrenty",
-    "torrentOn": "Na instanci {{instance}}, ve složce {{path}}",
     "steps": "Kroky",
     "log": "Log",
     "noLog": "Zatím žádné řádky logu.",

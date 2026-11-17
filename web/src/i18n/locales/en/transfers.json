@@ -76,11 +76,15 @@
     "limit": "The list shows the newest 500 rows."
   },
   "details": {
-    "title": "Transfer of {{name}}",
-    "exportTitle": "Export run of {{name}}",
+    "title": "Transfer details",
+    "exportTitle": "Export run details",
+    "overview": "Overview",
+    "sections": "Sections of the details",
+    "finished": "Finished",
+    "leftStopped": "Left stopped on the target",
+    "instance": "Instance",
     "failure": "Why it failed",
     "torrents": "Torrents",
-    "torrentOn": "On {{instance}}, in {{path}}",
     "steps": "Steps",
     "log": "Log",
     "noLog": "No log lines yet.",

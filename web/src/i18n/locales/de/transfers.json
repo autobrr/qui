@@ -76,11 +76,15 @@
     "limit": "Die Liste zeigt die neuesten 500 Zeilen."
   },
   "details": {
-    "title": "Transfer von {{name}}",
-    "exportTitle": "Export-Lauf von {{name}}",
+    "title": "Transfer-Details",
+    "exportTitle": "Details des Export-Laufs",
+    "overview": "Übersicht",
+    "sections": "Bereiche der Details",
+    "finished": "Beendet",
+    "leftStopped": "Bleibt auf dem Ziel gestoppt",
+    "instance": "Instanz",
     "failure": "Grund des Fehlers",
     "torrents": "Torrents",
-    "torrentOn": "Auf {{instance}}, in {{path}}",
     "steps": "Schritte",
     "log": "Log",
     "noLog": "Noch keine Log-Zeilen.",
