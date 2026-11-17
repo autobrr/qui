@@ -584,7 +584,9 @@ func sameFile(t *testing.T, a, b string) bool {
 }
 
 // Each running Transfer to a target holds its bytes of the free space there,
-// so a Transfer from another source cannot count them again.
+// so a Transfer from another source cannot count them again. The disk has
+// the space for it, so it fails for a retry: the shortage ends with the
+// other Transfer.
 func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	r := newRig(t)
 	first := newShow(t, showName)
@@ -631,7 +633,10 @@ func TestTransferReservesFreeSpaceOnTheTarget(t *testing.T) {
 	}
 	require.Equal(t, transfer.StateDone, records[firstID].State, records[firstID].FailureReason)
 	require.Equal(t, transfer.StateFailed, records[secondID].State)
-	require.Contains(t, records[secondID].FailureReason, "the Transfer needs 70 B, and 30 B is free")
+	// regression: #4231
+	require.Equal(t, transfer.FailureTemporary, records[secondID].FailureClass, records[secondID].FailureReason)
+	require.Equal(t, "Not enough free space on homelab for now: the Transfer needs 70 B, and 100 B is free, "+
+		"but other Transfers to homelab that run now set aside 70 B.", records[secondID].FailureReason)
 	require.Equal(t, transfer.StateDone, records[thirdID].State, records[thirdID].FailureReason)
 }
 

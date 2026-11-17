@@ -459,16 +459,19 @@ func (s *Service) Close(ctx context.Context) error {
 	}
 }
 
-// reserve claims bytes of the free space on a target, and fails when free
-// does not hold them next to what the running Transfers to it claimed.
-func (s *Service) reserve(targetID int, bytes, free int64) error {
+// reserve claims bytes of free, the free space on a target, for a Transfer
+// that claimed own of it already. It fails when free does not hold the bytes
+// next to own and others, what the other running Transfers to the target
+// claimed.
+func (s *Service) reserve(targetID int, bytes, free, own int64) (others int64, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if others := s.reserved[targetID]; free-others < bytes {
-		return fmt.Errorf("not enough free space on the target: the Transfer needs %s, and %s is free", formatBytes(bytes), formatBytes(max(free-others, 0)))
+	others = s.reserved[targetID] - own
+	if free-own-others < bytes {
+		return others, false
 	}
 	s.reserved[targetID] += bytes
-	return nil
+	return others, true
 }
 
 func (s *Service) unreserve(targetID int, bytes int64) {

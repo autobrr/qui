@@ -369,9 +369,18 @@ func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
 }
 
 // claim reserves bytes of free, the free space that qui read on the target.
+// A disk without the bytes fails the Transfer. When only what the other
+// running Transfers to the target reserved stands in the way, the Transfer
+// fails for a retry, because the shortage ends with them.
 func (j *job) claim(bytes, free int64) error {
-	if err := j.svc.reserve(j.target.ID, bytes, free); err != nil {
-		return permanent("Not enough free space on %s: %v", j.target.Name, err)
+	left := free - j.reserved
+	if left < bytes {
+		return permanent("Not enough free space on %s: not enough free space on the target: the Transfer needs %s, and %s is free",
+			j.target.Name, formatBytes(bytes), formatBytes(max(left, 0)))
+	}
+	if others, ok := j.svc.reserve(j.target.ID, bytes, free, j.reserved); !ok {
+		return temporary("Not enough free space on %s for now: the Transfer needs %s, and %s is free, but other Transfers to %s that run now set aside %s.",
+			j.target.Name, formatBytes(bytes), formatBytes(left), j.target.Name, formatBytes(others))
 	}
 	j.reserved += bytes
 	return nil
