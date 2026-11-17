@@ -119,7 +119,8 @@ type searchRunState struct {
 	skipCache map[string]bool
 	// staleWork stores, for candidates that are not skipped, which indexers
 	// still need a search and whether the Gazelle lookup is due. Keyed like
-	// skipCache; a missing entry means unrestricted.
+	// skipCache; a missing entry means unrestricted. A season group entry
+	// sets only unsearched.
 	staleWork map[string]candidateStaleWork
 	// duplicateHashes keeps track of deduplicated torrent hash sets keyed by the
 	// representative hash so cooldowns can be propagated to other copies.
@@ -1223,6 +1224,9 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		}
 		cooldown := time.Duration(state.opts.CooldownMinutes) * time.Minute
 		skip := found && cooldown > 0 && time.Since(last) < cooldown
+		if !skip && cacheKey != "" && state.staleWork != nil {
+			state.staleWork[cacheKey] = candidateStaleWork{unsearched: !found}
+		}
 		if cacheKey != "" && state.skipCache != nil {
 			state.skipCache[cacheKey] = skip
 		}

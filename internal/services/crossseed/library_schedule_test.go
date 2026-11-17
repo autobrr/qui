@@ -716,3 +716,27 @@ func TestScheduledSearchRun_SeasonGroupDatedByNewestCopy(t *testing.T) {
 	require.Len(t, state.queue, 1)
 	require.Equal(t, "season:azure compass:s01", state.queue[0].Hash)
 }
+
+// regression: #4246
+// A season group that nothing searched yet goes before a newer group that is
+// due again, as a torrent does.
+func TestScheduledSearchRun_UnsearchedSeasonGroupGoesFirst(t *testing.T) {
+	t.Parallel()
+	episodes := []qbt.Torrent{
+		episodeAddedDaysAgo("a1", "Azure.Compass.S01E01.1080p.WEB.H264-KIRI", 1),
+		episodeAddedDaysAgo("a2", "Azure.Compass.S01E02.1080p.WEB.H264-KIRI", 1),
+		episodeAddedDaysAgo("a3", "Azure.Compass.S01E03.1080p.WEB.H264-KIRI", 1),
+		episodeAddedDaysAgo("b1", "Brass.Lantern.S01E01.1080p.WEB.H264-KIRI", 5),
+		episodeAddedDaysAgo("b2", "Brass.Lantern.S01E02.1080p.WEB.H264-KIRI", 5),
+		episodeAddedDaysAgo("b3", "Brass.Lantern.S01E03.1080p.WEB.H264-KIRI", 5),
+	}
+	service, state, instanceID := scheduledEnsembleState(t, "crossseed-scheduled-season-unsearched-first", episodes)
+	require.NoError(t, service.automationStore.UpsertSearchHistory(t.Context(), instanceID, "season:azure compass:s01", time.Now().UTC().Add(-24*time.Hour)))
+
+	require.NoError(t, service.refreshSearchQueue(t.Context(), state))
+	hashes := make([]string, 0, len(state.queue))
+	for _, torrent := range state.queue {
+		hashes = append(hashes, torrent.Hash)
+	}
+	require.Equal(t, []string{"season:brass lantern:s01", "season:azure compass:s01"}, hashes)
+}
