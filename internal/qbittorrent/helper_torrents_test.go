@@ -17,11 +17,11 @@ import (
 // instance 1.
 type fakeHelpers map[string]string
 
-func (f fakeHelpers) HelperKind(instanceID int, hash string) string {
-	if instanceID != 1 {
-		return ""
+func (f fakeHelpers) HelperKinds(instanceID int) func(hash string) string {
+	if instanceID != 1 || len(f) == 0 {
+		return nil
 	}
-	return f[hash]
+	return func(hash string) string { return f[hash] }
 }
 
 // newHelperRig has a helper torrent (hashA) and a torrent of the user with

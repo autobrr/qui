@@ -358,14 +358,16 @@ type rowValues struct {
 type rowBuilder struct {
 	reannounce, popularity bool // the instance sends them in the torrent list
 	values                 []rowValues
-	// helpers is nil when no helper registry is set.
-	helpers    HelperTorrents
-	instanceID int
+	// helperKind is nil when the instance has no helper torrent.
+	helperKind func(hash string) string
 }
 
 // newRowBuilder returns a builder for n rows of the instance of c.
 func (c *Client) newRowBuilder(n int, helpers HelperTorrents) rowBuilder {
-	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5), helpers: helpers, instanceID: c.instanceID}
+	b := rowBuilder{reannounce: c.Supports(CapLiveReannounce), popularity: c.Supports(CapListFieldsV5)}
+	if helpers != nil {
+		b.helperKind = helpers.HelperKinds(c.instanceID)
+	}
 	if b.reannounce || b.popularity {
 		b.values = make([]rowValues, n)
 	}
@@ -377,8 +379,8 @@ func (c *Client) newRowBuilder(n int, helpers HelperTorrents) rowBuilder {
 // Private.
 func (b *rowBuilder) view(i int, t *qbt.Torrent, health TrackerHealth) TorrentView {
 	tv := TorrentView{Torrent: t, TrackerHealth: health}
-	if b.helpers != nil {
-		tv.QuiHelper = b.helpers.HelperKind(b.instanceID, t.Hash)
+	if b.helperKind != nil {
+		tv.QuiHelper = b.helperKind(t.Hash)
 	}
 	privateKnown := !PrivateUnknown(t)
 	if !b.reannounce && !b.popularity && !privateKnown {

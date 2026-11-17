@@ -20,8 +20,11 @@ type fakeTransfers struct {
 	folders []string
 }
 
-func (f fakeTransfers) IsHelper(instanceID int, hash string) bool {
-	return instanceID == 1 && f.helpers[hash]
+func (f fakeTransfers) HelperCheck(instanceID int) func(hash string) bool {
+	if instanceID != 1 || len(f.helpers) == 0 {
+		return nil
+	}
+	return func(hash string) bool { return f.helpers[hash] }
 }
 
 func (f fakeTransfers) RunningFolders(_ context.Context, instanceID int) ([]string, error) {
@@ -38,7 +41,7 @@ type endingTransfer struct {
 	folder string
 }
 
-func (endingTransfer) IsHelper(int, string) bool { return false }
+func (endingTransfer) HelperCheck(int) func(hash string) bool { return nil }
 
 func (e endingTransfer) RunningFolders(_ context.Context, instanceID int) ([]string, error) {
 	if instanceID != 1 || e.ended.Load() {

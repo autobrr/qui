@@ -10,10 +10,10 @@ import (
 )
 
 // heldTorrents names the torrents that no rule may change: the torrents that
-// a Transfer holds, and the helper torrents. Hold returns the reason, or nil
-// for a torrent that qui does not hold. ADR 0005.
+// a Transfer holds, and the helper torrents. HoldCheck returns nil when qui
+// holds no torrent of the instance. ADR 0005.
 type heldTorrents interface {
-	Hold(instanceID int, hash string) error
+	HoldCheck(instanceID int) func(hash string) bool
 }
 
 // SetHeldTorrents is called one time at start-up, before the first run.
@@ -29,7 +29,11 @@ func (s *Service) leaveOutHeld(instanceID int, torrents []*qbt.Torrent) []*qbt.T
 	if s.held == nil {
 		return torrents
 	}
-	isHeld := func(torrent *qbt.Torrent) bool { return s.held.Hold(instanceID, torrent.Hash) != nil }
+	isHeldHash := s.held.HoldCheck(instanceID)
+	if isHeldHash == nil {
+		return torrents
+	}
+	isHeld := func(torrent *qbt.Torrent) bool { return isHeldHash(torrent.Hash) }
 	if !slices.ContainsFunc(torrents, isHeld) {
 		return torrents
 	}

@@ -492,6 +492,69 @@ func (s *Store) Hold(instanceID int, hash string) error {
 	return nil
 }
 
+// HelperKinds is HelperKind for a pass over the torrents of one instance: it
+// reads the registry one time. It returns nil when the instance has no helper
+// torrent.
+func (s *Store) HelperKinds(instanceID int) func(hash string) string {
+	s.mu.RLock()
+	kinds := hashesOn(s.helpers, instanceID)
+	s.mu.RUnlock()
+	if kinds == nil {
+		return nil
+	}
+	return func(hash string) string { return string(kinds[strings.ToLower(hash)]) }
+}
+
+// HelperCheck is IsHelper for a pass over the torrents of one instance: it
+// reads the registry one time. It returns nil when the instance has no helper
+// torrent.
+func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
+	s.mu.RLock()
+	kinds := hashesOn(s.helpers, instanceID)
+	s.mu.RUnlock()
+	if kinds == nil {
+		return nil
+	}
+	return func(hash string) bool {
+		_, ok := kinds[strings.ToLower(hash)]
+		return ok
+	}
+}
+
+// HoldCheck reports for a pass over the torrents of one instance whether Hold
+// refuses a torrent: it reads the claims and the registry one time. It
+// returns nil when Hold refuses no torrent of the instance.
+func (s *Store) HoldCheck(instanceID int) func(hash string) bool {
+	s.mu.RLock()
+	claims, helpers := hashesOn(s.claims, instanceID), hashesOn(s.helpers, instanceID)
+	s.mu.RUnlock()
+	if claims == nil && helpers == nil {
+		return nil
+	}
+	return func(hash string) bool {
+		hash = strings.ToLower(hash)
+		_, claimed := claims[hash]
+		_, helper := helpers[hash]
+		return claimed || helper
+	}
+}
+
+// hashesOn copies the entries of one instance, by hash. It returns nil when
+// the instance has none.
+func hashesOn[V any](entries map[torrentKey]V, instanceID int) map[string]V {
+	var hashes map[string]V
+	for key, value := range entries {
+		if key.instanceID != instanceID {
+			continue
+		}
+		if hashes == nil {
+			hashes = make(map[string]V)
+		}
+		hashes[key.hash] = value
+	}
+	return hashes
+}
+
 type endpointJSON struct {
 	URL    string `json:"url"`
 	Mode   string `json:"mode"`

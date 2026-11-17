@@ -18,9 +18,10 @@ var ErrHelperTorrentFiles = errors.New("qui added this torrent for a Transfer or
 // for a Transfer or a Share. Only the registry makes a helper torrent; a tag
 // proves nothing.
 type HelperTorrents interface {
-	// HelperKind returns the owner kind of a helper torrent, and "" for a
-	// torrent that is no helper.
-	HelperKind(instanceID int, hash string) string
+	// HelperKinds returns the owner kind of each helper torrent of the
+	// instance, and "" for a torrent that is no helper. It reads the registry
+	// one time, and returns nil when the instance has no helper torrent.
+	HelperKinds(instanceID int) func(hash string) string
 }
 
 func (sm *SyncManager) SetHelperTorrents(helpers HelperTorrents) {
@@ -54,7 +55,11 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 			hashes = append(hashes, torrent.Hash)
 		}
 	}
-	if i := slices.IndexFunc(hashes, func(hash string) bool { return helpers.HelperKind(instanceID, hash) != "" }); i >= 0 {
+	helperKind := helpers.HelperKinds(instanceID)
+	if helperKind == nil {
+		return nil
+	}
+	if i := slices.IndexFunc(hashes, func(hash string) bool { return helperKind(hash) != "" }); i >= 0 {
 		return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, hashes[i])
 	}
 	return nil

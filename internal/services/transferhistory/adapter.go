@@ -63,7 +63,8 @@ func NewAdapter(module *Module, syncManager *qbittorrent.SyncManager) *Adapter {
 // helperTorrents is the helper registry: it names the torrents that qui added
 // for a Transfer or a Share. A tag proves nothing.
 type helperTorrents interface {
-	IsHelper(instanceID int, hash string) bool
+	// HelperCheck returns nil when the instance has no helper torrent.
+	HelperCheck(instanceID int) func(hash string) bool
 }
 
 // SetHelperTorrents leaves the helper torrents out of each reading. Call it
@@ -222,7 +223,9 @@ func (a *Adapter) record(b readingBuild) {
 	instanceID := b.instanceID
 	torrents := b.update.Snapshot.Torrents()
 	if a.helpers != nil {
-		torrents = slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return a.helpers.IsHelper(instanceID, t.Hash) })
+		if isHelper := a.helpers.HelperCheck(instanceID); isHelper != nil {
+			torrents = slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return isHelper(t.Hash) })
+		}
 	}
 	facts := a.sync.TorrentFactsOf(instanceID, torrents, b.update.Trackers)
 	reading := Reading{

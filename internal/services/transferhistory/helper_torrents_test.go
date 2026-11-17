@@ -15,7 +15,12 @@ import (
 // fakeHelpers is the helper registry: the helper torrents of instance 1.
 type fakeHelpers map[string]bool
 
-func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
+func (f fakeHelpers) HelperCheck(instanceID int) func(hash string) bool {
+	if instanceID != 1 || len(f) == 0 {
+		return nil
+	}
+	return func(hash string) bool { return f[hash] }
+}
 
 // A Transfer torrent shows a full-size download and upload, so Statistics
 // counts no helper torrent. A torrent of the user with the helper tag and no

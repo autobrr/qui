@@ -15,7 +15,12 @@ import (
 // fakeHeld is the Transfer store: the reason that qui holds each torrent.
 type fakeHeld map[string]error
 
-func (f fakeHeld) Hold(_ int, hash string) error { return f[hash] }
+func (f fakeHeld) HoldCheck(int) func(hash string) bool {
+	if len(f) == 0 {
+		return nil
+	}
+	return func(hash string) bool { return f[hash] != nil }
+}
 
 // No rule deletes or moves a torrent that a Transfer holds or a helper
 // torrent. A torrent of the user with the helper tag and no registry row is a
