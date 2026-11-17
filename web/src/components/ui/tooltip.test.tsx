@@ -47,7 +47,7 @@ function tap(element: Element) {
 
 const tooltipShown = () => screen.queryByRole("tooltip") !== null
 
-// regression: tapping a toolbar button or a menu trigger opened its tooltip too
+// regression: #4263
 describe("TooltipTrigger on a touch device", () => {
   it("opens on a tap of text or an icon", () => {
     renderTooltip(<TooltipTrigger asChild><span>12 GiB</span></TooltipTrigger>)
