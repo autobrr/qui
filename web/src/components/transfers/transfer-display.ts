@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TransferProgress, TransferRow } from "@/lib/transfers-api"
+import type { TransferProgress, TransferRow, TransferStep } from "@/lib/transfers-api"
 
 /** A finished row holds no torrent: the user can remove it. */
 export function canRemove(row: TransferRow): boolean {
@@ -57,6 +57,14 @@ const stepKeys: Record<string, string> = {
   "remove from source": "removeFromSource",
   "clean up": "cleanUp",
   "remove the placed files": "removePlaced",
+}
+
+/** Steps that qui records only for its own resume, such as the file names of the first run. */
+const internalSteps = new Set(["names"])
+
+/** The steps that the Details panel lists. */
+export function shownSteps(steps: TransferStep[]): TransferStep[] {
+  return steps.filter(step => !internalSteps.has(step.name))
 }
 
 /** The last step of a Transfer names the state that it ended in. */

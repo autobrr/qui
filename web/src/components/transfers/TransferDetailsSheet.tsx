@@ -8,7 +8,7 @@ import { formatISOTimestamp } from "@/lib/dateTimeUtils"
 import { transfersApi } from "@/lib/transfers-api"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { stepKey } from "./transfer-display"
+import { shownSteps, stepKey } from "./transfer-display"
 import { TransferHints } from "./TransferHints"
 import { useInstanceName } from "./use-instance-name"
 
@@ -75,7 +75,7 @@ export function TransferDetailsSheet({ transferId, onClose }: TransferDetailsShe
               <section className="space-y-1">
                 <h3 className="font-medium">{t("details.steps")}</h3>
                 <ol className="space-y-1">
-                  {data.steps.map((step, index) => {
+                  {shownSteps(data.steps).map((step, index) => {
                     const key = stepKey(step.name)
                     return (
                       <li key={index} className="flex gap-3">

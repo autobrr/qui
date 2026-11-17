@@ -59,6 +59,7 @@ const detail: TransferDetail = {
   ...failed,
   steps: [
     { name: "start", at: "2026-11-17T10:00:00Z", detail: "" },
+    { name: "names", at: "2026-11-17T10:00:04Z", detail: '[["Film.2019.2160p-ABC.mkv"]]' },
     { name: "pass by BitTorrent", at: "2026-11-17T10:00:05Z", detail: "" },
     { name: "teleport", at: "2026-11-17T10:00:06Z", detail: "" },
     { name: "failed", at: "2026-11-17T10:00:07Z", detail: "" },
@@ -243,5 +244,15 @@ describe("the Transfers tab", () => {
     expect(text).toContain("Another step")
     expect(text).not.toContain("teleport")
     expect(text).toContain("Passing 70 B by a Transfer torrent from seedbox to homelab.")
+  })
+
+  // regression: #4242
+  it("keeps the step that records the file names out of the Details panel", async () => {
+    renderTab()
+    fireEvent.click(within(await rowOf("Film.2019.2160p-ABC")).getByRole("button", { name: "Details" }))
+    const panel = await screen.findByRole("dialog")
+    const steps = (await within(panel).findByRole("heading", { name: "Steps" })).nextElementSibling as HTMLElement
+    const labels = within(steps).getAllByRole("listitem").map(item => item.lastElementChild?.textContent)
+    expect(labels).toEqual(["Started", "Passing by a Transfer torrent", "Another step", "Failed"])
   })
 })
