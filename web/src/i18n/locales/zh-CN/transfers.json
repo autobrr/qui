@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "传输",
-    "description": "qui 移到其他实例的种子，以及“导出到实例”规则的运行记录。"
+    "description": "查看 qui 在实例之间移动的内容，以及你与他人分享的内容。"
   },
   "tabs": {
     "transfers": "传输",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "显示",
     "all": "全部",
-    "active": "进行中（{{count}}）",
-    "waiting": "等待中（{{count}}）",
-    "finished": "已完成（{{count}}）",
-    "failed": "失败（{{count}}）"
+    "active": "进行中",
+    "waiting": "等待中",
+    "finished": "已完成",
+    "failed": "失败"
   },
   "columns": {
     "torrent": "种子",
-    "route": "来源 → 目标",
-    "way": "方式",
     "progress": "进度",
-    "speed": "速度",
-    "timeLeft": "剩余时间",
     "state": "状态",
     "started": "开始时间",
     "actions": "操作"
@@ -34,8 +30,8 @@
     "byRule": "由规则 {{name}} 启动",
     "byDeletedRule": "由已删除的规则启动",
     "retryAt": "{{time}}重试",
-    "unknownInstance": "实例 {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "剩余 {{time}}",
+    "unknownInstance": "实例 {{id}}"
   },
   "ways": {
     "sftp": "通过 SFTP 复制",
@@ -59,7 +55,6 @@
   },
   "actions": {
     "details": "详情",
-    "menu": "{{name}} 的操作",
     "retry": "重试",
     "cancel": "取消",
     "remove": "移除",
@@ -75,8 +70,7 @@
     "confirm": "取消传输"
   },
   "list": {
-    "loading": "正在加载传输…",
-    "error": "qui 无法加载传输列表：{{message}}",
+    "description": "qui 移到其他实例的种子，以及“导出到实例”规则的运行记录。",
     "empty": "暂无传输。",
     "limit": "列表仅显示最新的 500 行。"
   },

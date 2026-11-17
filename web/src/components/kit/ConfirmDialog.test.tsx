@@ -29,4 +29,16 @@ describe("ConfirmDialog", () => {
     await waitFor(() => expect(confirm.disabled).toBe(false))
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
+
+  it("names the button that closes the dialog with cancelLabel, so that a Cancel step does not get two Cancel buttons", () => {
+    const onOpenChange = vi.fn()
+    const onConfirm = vi.fn()
+    render(<ConfirmDialog open onOpenChange={onOpenChange} title="Cancel this run?" description="It stops." confirmLabel="Cancel the run" cancelLabel="Keep running" onConfirm={onConfirm} />)
+
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Keep running" }))
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
 })

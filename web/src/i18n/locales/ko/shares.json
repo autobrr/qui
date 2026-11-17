@@ -74,7 +74,7 @@
     "endAtFirstDownload": "다운로드가 한 번 완료되어도 만료되니, 다 받을 때까지 클라이언트를 켜 두세요."
   },
   "tab": {
-    "loadFailed": "공유를 불러오지 못했습니다",
+    "description": "qui가 관리하지 않는 클라이언트를 쓰는 사람에게 전달하는 토렌트입니다.",
     "empty": "아직 공유가 없습니다.",
     "endedStay": "종료된 공유는 30일 동안 목록에 남습니다.",
     "unknownInstance": "인스턴스 {{id}}",

@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Transferències",
-    "description": "Els torrents que qui mou a una altra instància, i les execucions de les regles «Exporta a una instància»."
+    "description": "Segueix el que qui mou entre instàncies i el que comparteixes amb altres persones."
   },
   "tabs": {
     "transfers": "Transferències",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "Mostra",
     "all": "Totes",
-    "active": "Actives ({{count}})",
-    "waiting": "En espera ({{count}})",
-    "finished": "Acabades ({{count}})",
-    "failed": "Fallides ({{count}})"
+    "active": "Actives",
+    "waiting": "En espera",
+    "finished": "Acabades",
+    "failed": "Fallides"
   },
   "columns": {
     "torrent": "Torrent",
-    "route": "De → a",
-    "way": "Mètode",
     "progress": "Progrés",
-    "speed": "Velocitat",
-    "timeLeft": "Temps restant",
     "state": "Estat",
     "started": "Iniciada",
     "actions": "Accions"
@@ -35,8 +31,8 @@
     "byRule": "Per la regla {{name}}",
     "byDeletedRule": "Per una regla suprimida",
     "retryAt": "Nou intent {{time}}",
-    "unknownInstance": "Instància {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "Falten {{time}}",
+    "unknownInstance": "Instància {{id}}"
   },
   "ways": {
     "sftp": "Còpia per SFTP",
@@ -60,7 +56,6 @@
   },
   "actions": {
     "details": "Detalls",
-    "menu": "Accions per a {{name}}",
     "retry": "Torna-ho a provar",
     "cancel": "Cancel·la",
     "remove": "Elimina",
@@ -76,8 +71,7 @@
     "confirm": "Cancel·la la transferència"
   },
   "list": {
-    "loading": "S'estan carregant les transferències…",
-    "error": "qui no pot carregar les transferències: {{message}}",
+    "description": "Els torrents que qui mou a una altra instància, i les execucions de les regles «Exporta a una instància».",
     "empty": "Encara no hi ha cap transferència.",
     "limit": "La llista mostra les 500 files més recents."
   },

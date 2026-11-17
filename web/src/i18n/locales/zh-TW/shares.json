@@ -74,7 +74,7 @@
     "endAtFirstDownload": "只要有一次下載完成，它也會失效，所以請讓用戶端保持開啟，直到下載完成。"
   },
   "tab": {
-    "loadFailed": "載入分享失敗",
+    "description": "您交給用戶端不由 qui 管理的人的種子。",
     "empty": "尚無分享。",
     "endedStay": "已結束的分享會在清單中保留 30 天。",
     "unknownInstance": "實例 {{id}}",

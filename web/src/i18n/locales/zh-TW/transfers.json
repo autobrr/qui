@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "傳輸",
-    "description": "qui 移到其他實例的種子，以及「匯出到實例」規則的執行紀錄。"
+    "description": "查看 qui 在實例之間移動的內容，以及您與他人分享的內容。"
   },
   "tabs": {
     "transfers": "傳輸",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "顯示",
     "all": "全部",
-    "active": "進行中（{{count}}）",
-    "waiting": "等待中（{{count}}）",
-    "finished": "已完成（{{count}}）",
-    "failed": "失敗（{{count}}）"
+    "active": "進行中",
+    "waiting": "等待中",
+    "finished": "已完成",
+    "failed": "失敗"
   },
   "columns": {
     "torrent": "種子",
-    "route": "來源 → 目標",
-    "way": "方式",
     "progress": "進度",
-    "speed": "速度",
-    "timeLeft": "剩餘時間",
     "state": "狀態",
     "started": "開始時間",
     "actions": "操作"
@@ -34,8 +30,8 @@
     "byRule": "由規則 {{name}} 啟動",
     "byDeletedRule": "由已刪除的規則啟動",
     "retryAt": "{{time}}重試",
-    "unknownInstance": "實例 {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "剩餘 {{time}}",
+    "unknownInstance": "實例 {{id}}"
   },
   "ways": {
     "sftp": "透過 SFTP 複製",
@@ -59,7 +55,6 @@
   },
   "actions": {
     "details": "詳細資料",
-    "menu": "{{name}} 的操作",
     "retry": "重試",
     "cancel": "取消",
     "remove": "移除",
@@ -75,8 +70,7 @@
     "confirm": "取消傳輸"
   },
   "list": {
-    "loading": "正在載入傳輸…",
-    "error": "qui 無法載入傳輸清單：{{message}}",
+    "description": "qui 移到其他實例的種子，以及「匯出到實例」規則的執行紀錄。",
     "empty": "尚無傳輸。",
     "limit": "清單僅顯示最新的 500 列。"
   },

@@ -76,7 +76,7 @@
     "endAtFirstDownload": "També deixa de funcionar quan s'acaba una baixada, així que mantén el client obert fins que acabi."
   },
   "tab": {
-    "loadFailed": "No s'han pogut carregar les Comparticions",
+    "description": "Els torrents que dones a algú el client del qual qui no gestiona.",
     "empty": "Encara no hi ha cap Compartició.",
     "endedStay": "Les Comparticions acabades es queden a la llista durant 30 dies.",
     "unknownInstance": "Instància {{id}}",

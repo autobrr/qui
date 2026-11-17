@@ -6,12 +6,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SharesTab } from "@/components/shares/SharesTab"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import type { Share } from "@/lib/shares-api"
 import { server } from "@/test/msw/server"
+
+const screenSize = vi.hoisted(() => ({ phone: false }))
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsPhone: () => screenSize.phone }))
 
 const active: Share = {
   id: 41,
@@ -40,7 +44,9 @@ function renderTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <SharesTab />
+      <TooltipProvider>
+        <SharesTab />
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }
@@ -53,12 +59,18 @@ function record(request: Request) {
 
 async function findRow(name: string): Promise<HTMLElement> {
   const title = await screen.findByText(name)
-  const row = title.closest("li")
+  const row = title.closest("tr")
   if (!row) throw new Error(`no row for ${name}`)
   return row
 }
 
 beforeEach(() => {
+  // A tooltip measures its trigger, and jsdom has no ResizeObserver.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
   shares = []
   writes = []
   server.use(
@@ -70,7 +82,11 @@ beforeEach(() => {
   )
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  screenSize.phone = false
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe("SharesTab", () => {
   it("shows an empty list and sends nothing while no Share exists", async () => {
@@ -101,6 +117,24 @@ describe("SharesTab", () => {
     await waitFor(() => expect(stop.disabled).toBe(false))
     fireEvent.click(stop)
     await waitFor(() => expect(writes).toEqual(["POST /api/shares/41/unlock", "POST /api/shares/41/stop"]))
+  })
+
+  it("puts the actions of a Share in one menu on a phone, with Stop last", async () => {
+    screenSize.phone = true
+    shares = [active]
+    renderTab()
+
+    const row = await findRow(active.name)
+    const menu = within(row).getByRole("button", { name: "More actions" })
+    expect(within(row).getAllByRole("button")).toEqual([menu])
+    expect(within(row).queryByRole("link")).toBeNull()
+
+    fireEvent.pointerDown(menu, { button: 0, ctrlKey: false })
+    const items = await screen.findAllByRole("menuitem")
+    expect(items.map((item) => item.textContent)).toEqual([".torrent", "Unlock", "Stop"])
+    expect(items[0].getAttribute("href")).toBe("/api/shares/41/torrent")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Stop" }))
+    await waitFor(() => expect(writes).toEqual(["POST /api/shares/41/stop"]))
   })
 
   it("lists connected peers and offers no Unlock with an outside tracker", async () => {

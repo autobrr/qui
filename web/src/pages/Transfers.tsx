@@ -3,29 +3,39 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Page } from "@/components/layout/Page"
+import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { SharesTab } from "@/components/shares/SharesTab"
+import { DEFAULT_TRANSFERS_TAB, TRANSFERS_NAV_GROUPS, type TransfersTab as TransfersSection } from "@/components/transfers/tabs"
 import { TransfersTab } from "@/components/transfers/TransfersTab"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "react-i18next"
 
-/** The Transfers page: the Transfers and Export runs, and the Shares. */
-export function TransfersPage() {
+interface TransfersPageProps {
+  activeTab: TransfersSection | undefined
+  onTabChange: (tab: TransfersSection | undefined, options: { replace: boolean }) => void
+}
+
+/** The Transfers page: the Transfers and Export runs, and the Shares, each in its own section. */
+export function TransfersPage({ activeTab, onTabChange }: TransfersPageProps) {
   const { t } = useTranslation("transfers")
+  const navGroups: SectionNavGroup<TransfersSection>[] = TRANSFERS_NAV_GROUPS.map(group => ({
+    sections: group.tabs.map(entry => ({ value: entry.tab, label: t(entry.labelKey) })),
+  }))
+
   return (
-    <Page title={t("page.title")} description={t("page.description")}>
-      <Tabs defaultValue="transfers">
-        <TabsList>
-          <TabsTrigger value="transfers">{t("tabs.transfers")}</TabsTrigger>
-          <TabsTrigger value="shares">{t("tabs.shares")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="transfers" className="mt-4">
-          <TransfersTab />
-        </TabsContent>
-        <TabsContent value="shares" className="mt-4">
-          <SharesTab />
-        </TabsContent>
-      </Tabs>
-    </Page>
+    <SectionedPage
+      title={t("page.title")}
+      description={t("page.description")}
+      groups={navGroups}
+      section={activeTab}
+      defaultSection={DEFAULT_TRANSFERS_TAB}
+      onSectionChange={onTabChange}
+    >
+      {(tab) => (
+        <>
+          {tab === "transfers" && <TransfersTab />}
+          {tab === "shares" && <SharesTab />}
+        </>
+      )}
+    </SectionedPage>
   )
 }

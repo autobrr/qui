@@ -76,7 +76,7 @@
     "endAtFirstDownload": "Smette di funzionare anche quando un download è completo, quindi tieni aperto il client finché non ha finito."
   },
   "tab": {
-    "loadFailed": "Impossibile caricare le Condivisioni",
+    "description": "I torrent che dai a qualcuno il cui client non è gestito da qui.",
     "empty": "Ancora nessuna Condivisione.",
     "endedStay": "Le Condivisioni terminate restano nell'elenco per 30 giorni.",
     "unknownInstance": "Istanza {{id}}",

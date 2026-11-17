@@ -3,22 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TransferFilter, TransferProgress, TransferRow, TransferState } from "@/lib/transfers-api"
-
-/** The chip of each state: the backend lists a row behind the same chip. */
-const chipOfState: Record<TransferState, Exclude<TransferFilter, "all">> = {
-  copying: "active",
-  checking: "active",
-  finishing: "active",
-  waiting: "waiting",
-  done: "finished",
-  cancelled: "finished",
-  failed: "failed",
-}
-
-export function chipOf(state: TransferState): Exclude<TransferFilter, "all"> {
-  return chipOfState[state]
-}
+import type { TransferProgress, TransferRow } from "@/lib/transfers-api"
 
 /** A finished row holds no torrent: the user can remove it. */
 export function canRemove(row: TransferRow): boolean {

@@ -76,7 +76,7 @@
     "endAtFirstDownload": "It also stops working when one download completes, so keep your client open until it is done."
   },
   "tab": {
-    "loadFailed": "Failed to load the Shares",
+    "description": "Torrents that you give to someone whose client qui does not manage.",
     "empty": "No Shares yet.",
     "endedStay": "Ended Shares stay in the list for 30 days.",
     "unknownInstance": "Instance {{id}}",

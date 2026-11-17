@@ -76,7 +76,7 @@
     "endAtFirstDownload": "Il cesse aussi de fonctionner dès qu'un téléchargement est terminé, alors garde ton client ouvert jusqu'à la fin."
   },
   "tab": {
-    "loadFailed": "Échec du chargement des Partages",
+    "description": "Les torrents que vous donnez à quelqu'un dont qui ne gère pas le client.",
     "empty": "Aucun Partage pour l'instant.",
     "endedStay": "Les Partages terminés restent dans la liste pendant 30 jours.",
     "unknownInstance": "Instance n° {{id}}",

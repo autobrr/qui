@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Trasferimenti",
-    "description": "I torrent che qui sposta su un'altra istanza e le esecuzioni delle regole «Esporta verso l'istanza»."
+    "description": "Segui ciò che qui sposta tra le istanze e ciò che condividi con altre persone."
   },
   "tabs": {
     "transfers": "Trasferimenti",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "Mostra",
     "all": "Tutti",
-    "active": "Attivi ({{count}})",
-    "waiting": "In attesa ({{count}})",
-    "finished": "Terminati ({{count}})",
-    "failed": "Non riusciti ({{count}})"
+    "active": "Attivi",
+    "waiting": "In attesa",
+    "finished": "Terminati",
+    "failed": "Non riusciti"
   },
   "columns": {
     "torrent": "Torrent",
-    "route": "Da → a",
-    "way": "Metodo",
     "progress": "Avanzamento",
-    "speed": "Velocità",
-    "timeLeft": "Tempo rimanente",
     "state": "Stato",
     "started": "Avviato",
     "actions": "Azioni"
@@ -35,8 +31,8 @@
     "byRule": "Dalla regola {{name}}",
     "byDeletedRule": "Da una regola eliminata",
     "retryAt": "Nuovo tentativo {{time}}",
-    "unknownInstance": "Istanza {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "Mancano {{time}}",
+    "unknownInstance": "Istanza {{id}}"
   },
   "ways": {
     "sftp": "Copia via SFTP",
@@ -60,7 +56,6 @@
   },
   "actions": {
     "details": "Dettagli",
-    "menu": "Azioni per {{name}}",
     "retry": "Riprova",
     "cancel": "Annulla",
     "remove": "Rimuovi",
@@ -76,8 +71,7 @@
     "confirm": "Annulla il trasferimento"
   },
   "list": {
-    "loading": "Caricamento dei trasferimenti…",
-    "error": "qui non riesce a caricare i trasferimenti: {{message}}",
+    "description": "I torrent che qui sposta su un'altra istanza e le esecuzioni delle regole «Esporta verso l'istanza».",
     "empty": "Ancora nessun trasferimento.",
     "limit": "L'elenco mostra le 500 righe più recenti."
   },

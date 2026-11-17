@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Přenosy",
-    "description": "Torrenty, které qui přesouvá do jiné instance, a běhy pravidel s akcí Exportovat do instance."
+    "description": "Sledujte, co qui přesouvá mezi instancemi a co sdílíte s ostatními."
   },
   "tabs": {
     "transfers": "Přenosy",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "Zobrazit",
     "all": "Vše",
-    "active": "Aktivní ({{count}})",
-    "waiting": "Čekající ({{count}})",
-    "finished": "Dokončené ({{count}})",
-    "failed": "Selhané ({{count}})"
+    "active": "Aktivní",
+    "waiting": "Čekající",
+    "finished": "Dokončené",
+    "failed": "Selhané"
   },
   "columns": {
     "torrent": "Torrent",
-    "route": "Odkud → kam",
-    "way": "Způsob",
     "progress": "Postup",
-    "speed": "Rychlost",
-    "timeLeft": "Zbývá",
     "state": "Stav",
     "started": "Spuštěno",
     "actions": "Akce"
@@ -36,8 +32,8 @@
     "byRule": "Pravidlem {{name}}",
     "byDeletedRule": "Pravidlem, které už neexistuje",
     "retryAt": "Další pokus {{time}}",
-    "unknownInstance": "Instance {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "Zbývá {{time}}",
+    "unknownInstance": "Instance {{id}}"
   },
   "ways": {
     "sftp": "Kopie přes SFTP",
@@ -61,7 +57,6 @@
   },
   "actions": {
     "details": "Podrobnosti",
-    "menu": "Akce pro {{name}}",
     "retry": "Zkusit znovu",
     "cancel": "Zrušit",
     "remove": "Odstranit",
@@ -77,8 +72,7 @@
     "confirm": "Zrušit přenos"
   },
   "list": {
-    "loading": "Načítání přenosů…",
-    "error": "qui nemůže načíst přenosy: {{message}}",
+    "description": "Torrenty, které qui přesouvá do jiné instance, a běhy pravidel s akcí Exportovat do instance.",
     "empty": "Zatím tu není žádný přenos.",
     "limit": "Seznam ukazuje 500 nejnovějších řádků."
   },

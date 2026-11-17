@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import type { TransferDetail, TransferList, TransferRow } from "@/lib/transfers-api"
 import { server } from "@/test/msw/server"
@@ -41,7 +42,7 @@ const failed = row({
   failureClass: "permanent", failureReason: "A file on the target does not match.", finishedAt: finished,
   hints: [{ kind: "tcpAndUtp", instanceId: 2 }],
 })
-const exported = row({ id: 3, kind: "export", name: "Album.2020.FLAC-XYZ", state: "done", finishedAt: finished, startedBy: "rule", ruleId: 9 })
+const exported = row({ id: 3, kind: "export", way: "", name: "Album.2020.FLAC-XYZ", state: "done", finishedAt: finished, startedBy: "rule", ruleId: 9 })
 const waitingRetry = row({ id: 4, name: "Doc.2018.720p-QRS", state: "failed", failureClass: "temporary",
   failureReason: "homelab does not answer.", retryAt: "2099-01-01T00:00:00Z" })
 
@@ -67,6 +68,12 @@ const detail: TransferDetail = {
 }
 
 beforeEach(() => {
+  // The filter tabs and a tooltip measure their elements, and jsdom has no ResizeObserver.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
   requests = []
   server.use(
     http.get("*/api/instances", () => HttpResponse.json([{ id: 1, name: "seedbox" }, { id: 2, name: "homelab" }])),
@@ -95,12 +102,15 @@ afterEach(() => {
   screenSize.phone = false
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function renderTab() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <TransfersTab />
+      <TooltipProvider>
+        <TransfersTab />
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }
@@ -112,20 +122,18 @@ async function rowOf(name: string): Promise<HTMLElement> {
   return tr
 }
 
-const buttonNames = (tr: HTMLElement) => within(tr).queryAllByRole("button").map(button => button.textContent)
+const buttonNames = (tr: HTMLElement) => within(tr).queryAllByRole("button").map(button => button.getAttribute("aria-label"))
 
 describe("the Transfers tab", () => {
-  it("shows each row with what it allows, and lists the rows of a chip, with the count of each chip", async () => {
+  it("shows each row with what it allows, and lists the rows of a filter, with the count of each filter", async () => {
     renderTab()
     const tr = await rowOf("Show.S01.1080p-GRP")
     const text = tr.textContent ?? ""
     expect(text).toContain("+2 cross-seeds")
     expect(text).toContain("seedbox → homelab")
     expect(text).toContain("Copy over SFTP")
-    expect(text).toContain("50%")
-    expect(text).toContain("1 MiB/s")
     // 512 MiB left at 1 MiB/s.
-    expect(text).toContain("8m")
+    expect(text).toContain("50% · 1 MiB/s · 8m left")
     expect(text).toContain("Copying")
     expect(text).toContain("By you")
     expect(buttonNames(tr)).toEqual(["Details", "Cancel"])
@@ -139,27 +147,33 @@ describe("the Transfers tab", () => {
     const exportRow = await rowOf("Album.2020.FLAC-XYZ")
     expect(exportRow.textContent).toContain("Export")
     expect(exportRow.textContent).toContain("By a rule that is gone")
+    // An Export copies nothing, so the API sends an empty way and the row names none.
+    expect(exportRow.textContent).not.toContain("Unknown way")
     expect(buttonNames(exportRow)).toEqual(["Details", "Remove"])
 
     const retryRow = await rowOf("Doc.2018.720p-QRS")
     expect(retryRow.textContent).toMatch(/Retry in \d+ years?/)
     expect(buttonNames(retryRow)).toEqual(["Details", "Retry", "Cancel"])
 
-    const chips = within(screen.getByRole("group", { name: "Show" })).getAllByRole("button").map(chip => chip.textContent)
-    expect(chips).toEqual(["All", "Active (1)", "Waiting (0)", "Finished (1)", "Failed (2)"])
+    // Each filter shows its label and its count; All counts every row.
+    const filters = within(screen.getByRole("tablist", { name: "Show" })).getAllByRole("tab")
+      .map(filter => Array.from(filter.childNodes, node => node.textContent))
+    expect(filters).toEqual([["All", "4"], ["Active", "1"], ["Waiting", "0"], ["Finished", "1"], ["Failed", "2"]])
 
-    fireEvent.click(screen.getByRole("button", { name: "Failed (2)" }))
+    const failedFilter = screen.getByRole("tab", { name: /^Failed/ })
+    fireEvent.mouseDown(failedFilter, { button: 0 })
     await waitFor(() => expect(screen.queryByText("Show.S01.1080p-GRP")).toBeNull())
     expect(screen.getByText("Film.2019.2160p-ABC")).toBeTruthy()
     expect(requests).toContain("GET /api/transfers?filter=failed")
-    expect(screen.getByRole("button", { name: "Failed (2)" }).getAttribute("aria-pressed")).toBe("true")
+    expect(failedFilter.getAttribute("aria-selected")).toBe("true")
   })
 
   it("puts the actions of a row in one menu on a phone", async () => {
     screenSize.phone = true
     renderTab()
     const tr = await rowOf("Film.2019.2160p-ABC")
-    const menu = within(tr).getByRole("button", { name: "Actions for Film.2019.2160p-ABC" })
+    const menu = within(tr).getByRole("button", { name: "More actions" })
+    expect(menu.getAttribute("aria-describedby")).toBe(within(tr).getByText("Film.2019.2160p-ABC").parentElement?.id)
     expect(within(tr).getAllByRole("button")).toEqual([menu])
 
     fireEvent.pointerDown(menu, { button: 0, ctrlKey: false })

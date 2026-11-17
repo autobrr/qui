@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Transfers",
-    "description": "Torrents, die qui auf eine andere Instanz verschiebt, und die Läufe der Regeln „In Instanz exportieren“."
+    "description": "Verfolge, was qui zwischen Instanzen verschiebt und was du mit anderen teilst."
   },
   "tabs": {
     "transfers": "Transfers",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "Anzeigen",
     "all": "Alle",
-    "active": "Aktiv ({{count}})",
-    "waiting": "Wartend ({{count}})",
-    "finished": "Beendet ({{count}})",
-    "failed": "Fehlgeschlagen ({{count}})"
+    "active": "Aktiv",
+    "waiting": "Wartend",
+    "finished": "Beendet",
+    "failed": "Fehlgeschlagen"
   },
   "columns": {
     "torrent": "Torrent",
-    "route": "Von → nach",
-    "way": "Methode",
     "progress": "Fortschritt",
-    "speed": "Geschwindigkeit",
-    "timeLeft": "Restzeit",
     "state": "Status",
     "started": "Gestartet",
     "actions": "Aktionen"
@@ -35,8 +31,8 @@
     "byRule": "Durch Regel {{name}}",
     "byDeletedRule": "Durch eine gelöschte Regel",
     "retryAt": "Neuer Versuch {{time}}",
-    "unknownInstance": "Instanz {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "Noch {{time}}",
+    "unknownInstance": "Instanz {{id}}"
   },
   "ways": {
     "sftp": "Kopie über SFTP",
@@ -60,7 +56,6 @@
   },
   "actions": {
     "details": "Details",
-    "menu": "Aktionen für {{name}}",
     "retry": "Erneut versuchen",
     "cancel": "Abbrechen",
     "remove": "Entfernen",
@@ -76,8 +71,7 @@
     "confirm": "Transfer abbrechen"
   },
   "list": {
-    "loading": "Transfers werden geladen…",
-    "error": "qui kann die Transfers nicht laden: {{message}}",
+    "description": "Torrents, die qui auf eine andere Instanz verschiebt, und die Läufe der Regeln „In Instanz exportieren“.",
     "empty": "Hier gibt es noch keinen Transfer.",
     "limit": "Die Liste zeigt die neuesten 500 Zeilen."
   },

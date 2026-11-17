@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Transferências",
-    "description": "Torrents que o qui move para outra instância e as execuções das regras de exportação para outra instância."
+    "description": "Acompanhe o que o qui move entre instâncias e o que você compartilha com outras pessoas."
   },
   "tabs": {
     "transfers": "Transferências",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "Mostrar",
     "all": "Todas",
-    "active": "Ativas ({{count}})",
-    "waiting": "Aguardando ({{count}})",
-    "finished": "Concluídas ({{count}})",
-    "failed": "Com falha ({{count}})"
+    "active": "Ativas",
+    "waiting": "Aguardando",
+    "finished": "Concluídas",
+    "failed": "Com falha"
   },
   "columns": {
     "torrent": "Torrent",
-    "route": "De → para",
-    "way": "Modo",
     "progress": "Progresso",
-    "speed": "Velocidade",
-    "timeLeft": "Tempo restante",
     "state": "Estado",
     "started": "Iniciada",
     "actions": "Ações"
@@ -35,8 +31,8 @@
     "byRule": "Pela regra {{name}}",
     "byDeletedRule": "Por uma regra que não existe mais",
     "retryAt": "Nova tentativa {{time}}",
-    "unknownInstance": "Instância {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "Faltam {{time}}",
+    "unknownInstance": "Instância {{id}}"
   },
   "ways": {
     "sftp": "Cópia via SFTP",
@@ -60,7 +56,6 @@
   },
   "actions": {
     "details": "Detalhes",
-    "menu": "Ações para {{name}}",
     "retry": "Tentar novamente",
     "cancel": "Cancelar",
     "remove": "Remover",
@@ -76,8 +71,7 @@
     "confirm": "Cancelar a transferência"
   },
   "list": {
-    "loading": "Carregando transferências…",
-    "error": "O qui não consegue carregar as transferências: {{message}}",
+    "description": "Torrents que o qui move para outra instância e as execuções das regras de exportação para outra instância.",
     "empty": "Nenhuma transferência aqui ainda.",
     "limit": "A lista mostra as 500 linhas mais recentes."
   },

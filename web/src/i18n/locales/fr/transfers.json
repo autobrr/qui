@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Transferts",
-    "description": "Les torrents que qui déplace vers une autre instance, et les exécutions des règles « Exporter vers l'instance »."
+    "description": "Suivez ce que qui déplace entre les instances et ce que vous partagez avec d'autres personnes."
   },
   "tabs": {
     "transfers": "Transferts",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "Afficher",
     "all": "Tous",
-    "active": "Actifs ({{count}})",
-    "waiting": "En attente ({{count}})",
-    "finished": "Terminés ({{count}})",
-    "failed": "En échec ({{count}})"
+    "active": "Actifs",
+    "waiting": "En attente",
+    "finished": "Terminés",
+    "failed": "En échec"
   },
   "columns": {
     "torrent": "Torrent",
-    "route": "De → vers",
-    "way": "Méthode",
     "progress": "Progression",
-    "speed": "Vitesse",
-    "timeLeft": "Temps restant",
     "state": "État",
     "started": "Démarré",
     "actions": "Actions"
@@ -35,8 +31,8 @@
     "byRule": "Par la règle {{name}}",
     "byDeletedRule": "Par une règle supprimée",
     "retryAt": "Nouvel essai {{time}}",
-    "unknownInstance": "Instance {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "Encore {{time}}",
+    "unknownInstance": "Instance {{id}}"
   },
   "ways": {
     "sftp": "Copie par SFTP",
@@ -60,7 +56,6 @@
   },
   "actions": {
     "details": "Détails",
-    "menu": "Actions pour {{name}}",
     "retry": "Réessayer",
     "cancel": "Annuler",
     "remove": "Retirer",
@@ -76,8 +71,7 @@
     "confirm": "Annuler le transfert"
   },
   "list": {
-    "loading": "Chargement des transferts…",
-    "error": "qui ne peut pas charger les transferts : {{message}}",
+    "description": "Les torrents que qui déplace vers une autre instance, et les exécutions des règles « Exporter vers l'instance ».",
     "empty": "Aucun transfert pour l'instant.",
     "limit": "La liste affiche les 500 lignes les plus récentes."
   },

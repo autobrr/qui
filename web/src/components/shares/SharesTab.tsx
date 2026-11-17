@@ -3,44 +3,67 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { EmptyTile } from "@/components/kit/EmptyTile"
+import { Section } from "@/components/kit/Section"
+import { RowActions, type RowAction } from "@/components/transfers/RowActions"
 import { Progress } from "@/components/ui/progress"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TorrentName } from "@/components/ui/torrent-name"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
-import { listShares, removeShare, sharesQueryKey, shareTorrentUrl, stopShare, unlockShare, type Share } from "@/lib/shares-api"
-import { formatBytes } from "@/lib/utils"
+import { listShares, removeShare, sharesQueryKey, shareTorrentUrl, stopShare, unlockShare, type Share, type ShareState } from "@/lib/shares-api"
+import { cn, formatBytes } from "@/lib/utils"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Download, Loader2 } from "lucide-react"
+import { CircleSlash, CircleStop, Download, Loader2, LockOpen, Radio, Trash2, type LucideIcon } from "lucide-react"
+import { useId } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 // A running Share changes as its recipient announces, every few minutes at most.
 const REFRESH_MS = 15_000
 
-/** The Shares tab of the Transfers page: one row for each Share, the newest first. */
+/** The icon of each state, in the colors of the state icons of the Transfers section. */
+const stateIcons: Record<ShareState, { icon: LucideIcon; className: string }> = {
+  active: { icon: Radio, className: "text-emerald-500" },
+  ending: { icon: Loader2, className: "motion-safe:animate-spin" },
+  ended: { icon: CircleSlash, className: "text-muted-foreground" },
+}
+
+/** The Shares section of the Transfers page: one row for each Share, the newest first. */
 export function SharesTab() {
   const { t } = useTranslation("shares")
   const query = useQuery({ queryKey: sharesQueryKey, queryFn: listShares, refetchInterval: REFRESH_MS })
   const { instances } = useInstances()
   const nameOf = (id: number) => instances?.find((instance) => instance.id === id)?.name ?? t("tab.unknownInstance", { id })
+  const shares = query.data ?? []
 
-  if (query.isPending) {
-    return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-  }
-  if (query.isError) {
-    return <p className="text-sm text-destructive">{t("tab.loadFailed")}</p>
-  }
-  if (query.data.length === 0) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">{t("tab.empty")}</p>
-  }
   return (
-    <div className="space-y-3">
-      <ul className="space-y-3">
-        {query.data.map((share) => <ShareRow key={share.id} share={share} instanceName={nameOf(share.instanceId)} />)}
-      </ul>
-      {query.data.some((share) => share.state === "ended") && <p className="text-sm text-muted-foreground">{t("tab.endedStay")}</p>}
-    </div>
+    <Section
+      title={t("transfers:tabs.shares")}
+      description={t("tab.description")}
+      footer={shares.some((share) => share.state === "ended") ? t("tab.endedStay") : undefined}
+      queries={[query]}
+    >
+      {shares.length === 0 ? (
+        <EmptyTile title={t("tab.empty")} />
+      ) : (
+        // The table reaches the edges of the card, as the tables of Statistics do, and fits its columns to the card.
+        <div className="@container -mx-6 border-t max-sm:-mx-4">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-full pl-6 max-sm:pl-4">{t("transfers:columns.torrent")}</TableHead>
+                <TableHead className="hidden @lg:table-cell">{t("transfers:columns.state")}</TableHead>
+                <TableHead pinEnd className="pr-6 max-sm:pr-4"><span className="sr-only">{t("transfers:columns.actions")}</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shares.map((share) => <ShareRow key={share.id} share={share} instanceName={nameOf(share.instanceId)} />)}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </Section>
   )
 }
 
@@ -48,6 +71,7 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
   const { t, i18n } = useTranslation("shares")
   const { formatDate } = useDateTimeFormatters()
   const queryClient = useQueryClient()
+  const nameId = useId()
   const action = useMutation({
     mutationFn: (run: (id: number) => Promise<void>) => run(share.id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: sharesQueryKey }),
@@ -55,71 +79,87 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
   })
   const percent = new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language, { style: "percent", maximumFractionDigits: 0 })
   const outside = share.tracker === "outside"
+  const active = share.state === "active"
   const end = share.endedAt
     ? t("tab.endedAt", { date: formatDate(new Date(share.endedAt)) })
     : t("tab.endsAt", { date: formatDate(new Date(share.expiresAt)) })
 
+  // A step of the row runs: every button waits, and the one that runs shows a spinner.
+  const step = (label: string, icon: LucideIcon, run: (id: number) => Promise<void>, destructive = false): RowAction => ({
+    label,
+    icon,
+    onSelect: () => action.mutate(run),
+    destructive,
+    pending: action.isPending && action.variables === run,
+    disabled: action.isPending,
+  })
+  const actions: RowAction[] = [
+    { label: t("dialog.result.torrent"), icon: Download, href: shareTorrentUrl(share.id) },
+    ...(active && share.firstDownloaderOnly && !outside ? [step(t("tab.unlock"), LockOpen, unlockShare)] : []),
+    ...(active ? [step(t("tab.stop"), CircleStop, stopShare, true)] : []),
+    ...(share.state === "ended" ? [step(t("tab.remove"), Trash2, removeShare, true)] : []),
+  ]
+  const progress = (
+    <div className="mt-1.5 w-full max-w-48 space-y-1">
+      <Progress value={share.progress * 100} aria-label={t("tab.progressLabel")} className="h-1.5" />
+      <div className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+        {t("tab.progress", { percent: percent.format(share.progress) })}
+        <span aria-hidden="true"> · </span>
+        {t("tab.sent", { size: formatBytes(share.uploaded) })}
+      </div>
+    </div>
+  )
+
   return (
-    <li className="space-y-3 rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 space-y-0.5">
-          <p className="font-medium break-all">{share.name}</p>
-          <p className="text-sm text-muted-foreground">{instanceName} · {end}</p>
+    <TableRow data-share-id={share.id}>
+      <TableCell className="w-full max-w-0 pl-6 align-top whitespace-normal max-sm:pl-4">
+        {/* The name wraps in full on touch, where no pointer shows its title. */}
+        <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={share.name} /></div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          <span>{instanceName}</span>
+          <span aria-hidden="true">·</span>
+          <span>{end}</span>
         </div>
-        <Badge variant={share.state === "active" ? "default" : "secondary"}>
-          {t([`tab.state.${share.state}`, "tab.state.unknown"])}
-        </Badge>
-      </div>
-
-      {share.state !== "active" && share.endReason && <p className="text-sm text-muted-foreground">{share.endReason}</p>}
-
-      <div className="space-y-1">
-        <div className="flex justify-between gap-2 text-sm">
-          <span>{t("tab.progress", { percent: percent.format(share.progress) })}</span>
-          <span className="tabular-nums">{t("tab.sent", { size: formatBytes(share.uploaded) })}</span>
+        {/* A narrow table has no State column, so the row names the state and the progress here. */}
+        <div className="mt-1 text-xs @lg:hidden">
+          <StateLabel state={share.state} />
+          {progress}
         </div>
-        <Progress value={share.progress * 100} aria-label={t("tab.progressLabel")} />
-      </div>
+        {!active && share.endReason && <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{share.endReason}</p>}
+        <div className="mt-2 text-xs">
+          <div className="text-muted-foreground">{outside ? t("tab.connectedPeers") : t("tab.announced")}</div>
+          {share.peers.length === 0 ? (
+            <div className="text-muted-foreground">{t("tab.noPeers")}</div>
+          ) : (
+            <ul className="mt-0.5 space-y-0.5">
+              {share.peers.map((peer) => (
+                <li key={peer.address} className="flex gap-3 font-mono">
+                  <span className="[overflow-wrap:anywhere]">{peer.address}</span>
+                  <span className="text-muted-foreground tabular-nums">{percent.format(peer.progress)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="hidden align-top @lg:table-cell">
+        <StateLabel state={share.state} className="text-sm" />
+        {progress}
+      </TableCell>
+      <TableCell pinEnd className="pr-6 max-sm:pr-4">
+        <RowActions actions={actions} describedBy={nameId} />
+      </TableCell>
+    </TableRow>
+  )
+}
 
-      <div className="space-y-1 text-sm">
-        <p className="font-medium">{outside ? t("tab.connectedPeers") : t("tab.announced")}</p>
-        {share.peers.length === 0 ? (
-          <p className="text-muted-foreground">{t("tab.noPeers")}</p>
-        ) : (
-          <ul className="space-y-0.5">
-            {share.peers.map((peer) => (
-              <li key={peer.address} className="flex justify-between gap-2 font-mono text-xs">
-                <span className="break-all">{peer.address}</span>
-                <span className="tabular-nums">{percent.format(peer.progress)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button asChild variant="outline" size="sm">
-          <a href={shareTorrentUrl(share.id)} download>
-            <Download className="mr-1.5 h-4 w-4" />
-            {t("dialog.result.torrent")}
-          </a>
-        </Button>
-        {share.state === "active" && share.firstDownloaderOnly && !outside && (
-          <Button variant="outline" size="sm" disabled={action.isPending} onClick={() => action.mutate(unlockShare)}>
-            {t("tab.unlock")}
-          </Button>
-        )}
-        {share.state === "active" && (
-          <Button variant="outline" size="sm" disabled={action.isPending} onClick={() => action.mutate(stopShare)}>
-            {t("tab.stop")}
-          </Button>
-        )}
-        {share.state === "ended" && (
-          <Button variant="outline" size="sm" disabled={action.isPending} onClick={() => action.mutate(removeShare)}>
-            {t("tab.remove")}
-          </Button>
-        )}
-      </div>
-    </li>
+function StateLabel({ state, className }: { state: ShareState; className?: string }) {
+  const { t } = useTranslation("shares")
+  const { icon: Icon, className: iconClass } = stateIcons[state] ?? stateIcons.ended
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-foreground", className)}>
+      <Icon aria-hidden="true" className={cn("size-3.5 shrink-0", iconClass)} />
+      {t([`tab.state.${state}`, "tab.state.unknown"])}
+    </span>
   )
 }

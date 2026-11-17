@@ -76,7 +76,7 @@
     "endAtFirstDownload": "Ele também para de funcionar quando um download for concluído, então deixe seu cliente aberto até terminar."
   },
   "tab": {
-    "loadFailed": "Falha ao carregar os Compartilhamentos",
+    "description": "Torrents que você entrega a alguém cujo cliente o qui não gerencia.",
     "empty": "Nenhum Compartilhamento ainda.",
     "endedStay": "Compartilhamentos encerrados ficam na lista por 30 dias.",
     "unknownInstance": "Instância {{id}}",

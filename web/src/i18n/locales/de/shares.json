@@ -76,7 +76,7 @@
     "endAtFirstDownload": "Sie funktioniert auch nicht mehr, sobald ein Download abgeschlossen ist. Lass deinen Client also offen, bis dein Download fertig ist."
   },
   "tab": {
-    "loadFailed": "Die Freigaben konnten nicht geladen werden",
+    "description": "Torrents, die du an jemanden gibst, dessen Client qui nicht verwaltet.",
     "empty": "Noch keine Freigaben.",
     "endedStay": "Beendete Freigaben bleiben 30 Tage in der Liste.",
     "unknownInstance": "Instanz {{id}}",

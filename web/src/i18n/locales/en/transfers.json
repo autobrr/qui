@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Transfers",
-    "description": "Torrents that qui moves to another instance, and the runs of Export to Instance rules."
+    "description": "Follow what qui moves between instances and what you share with other people."
   },
   "tabs": {
     "transfers": "Transfers",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "Show",
     "all": "All",
-    "active": "Active ({{count}})",
-    "waiting": "Waiting ({{count}})",
-    "finished": "Finished ({{count}})",
-    "failed": "Failed ({{count}})"
+    "active": "Active",
+    "waiting": "Waiting",
+    "finished": "Finished",
+    "failed": "Failed"
   },
   "columns": {
     "torrent": "Torrent",
-    "route": "From → to",
-    "way": "Way",
     "progress": "Progress",
-    "speed": "Speed",
-    "timeLeft": "Time left",
     "state": "State",
     "started": "Started",
     "actions": "Actions"
@@ -35,8 +31,8 @@
     "byRule": "By rule {{name}}",
     "byDeletedRule": "By a rule that is gone",
     "retryAt": "Retry {{time}}",
-    "unknownInstance": "Instance {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "{{time}} left",
+    "unknownInstance": "Instance {{id}}"
   },
   "ways": {
     "sftp": "Copy over SFTP",
@@ -60,7 +56,6 @@
   },
   "actions": {
     "details": "Details",
-    "menu": "Actions for {{name}}",
     "retry": "Retry",
     "cancel": "Cancel",
     "remove": "Remove",
@@ -76,8 +71,7 @@
     "confirm": "Cancel the Transfer"
   },
   "list": {
-    "loading": "Loading Transfers…",
-    "error": "qui cannot load the Transfers: {{message}}",
+    "description": "Torrents that qui moves to another instance, and the runs of Export to Instance rules.",
     "empty": "No Transfer here yet.",
     "limit": "The list shows the newest 500 rows."
   },

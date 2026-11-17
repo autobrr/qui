@@ -74,7 +74,7 @@
     "endAtFirstDownload": "只要有一次下载完成，它也会失效，所以请保持客户端开启，直到下载完成。"
   },
   "tab": {
-    "loadFailed": "加载分享失败",
+    "description": "你交给客户端不由 qui 管理的人的种子。",
     "empty": "暂无分享。",
     "endedStay": "已结束的分享会在列表中保留 30 天。",
     "unknownInstance": "实例 {{id}}",

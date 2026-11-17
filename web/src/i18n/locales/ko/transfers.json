@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "전송",
-    "description": "qui가 다른 인스턴스로 옮기는 토렌트와 인스턴스로 내보내기 규칙의 실행 기록입니다."
+    "description": "qui가 인스턴스 사이에서 옮기는 항목과 다른 사람과 공유하는 항목을 확인합니다."
   },
   "tabs": {
     "transfers": "전송",
@@ -10,18 +10,14 @@
   "chips": {
     "label": "표시",
     "all": "전체",
-    "active": "진행 중 ({{count}})",
-    "waiting": "대기 중 ({{count}})",
-    "finished": "완료 ({{count}})",
-    "failed": "실패 ({{count}})"
+    "active": "진행 중",
+    "waiting": "대기 중",
+    "finished": "완료",
+    "failed": "실패"
   },
   "columns": {
     "torrent": "토렌트",
-    "route": "원본 → 대상",
-    "way": "방식",
     "progress": "진행률",
-    "speed": "속도",
-    "timeLeft": "남은 시간",
     "state": "상태",
     "started": "시작",
     "actions": "작업"
@@ -34,8 +30,8 @@
     "byRule": "규칙 {{name}}(으)로 시작",
     "byDeletedRule": "삭제된 규칙으로 시작",
     "retryAt": "{{time}} 다시 시도",
-    "unknownInstance": "인스턴스 {{id}}",
-    "noSpeed": "—"
+    "timeLeft": "{{time}} 남음",
+    "unknownInstance": "인스턴스 {{id}}"
   },
   "ways": {
     "sftp": "SFTP로 복사",
@@ -59,7 +55,6 @@
   },
   "actions": {
     "details": "세부 정보",
-    "menu": "{{name}} 작업",
     "retry": "다시 시도",
     "cancel": "취소",
     "remove": "제거",
@@ -75,8 +70,7 @@
     "confirm": "전송 취소"
   },
   "list": {
-    "loading": "전송 불러오는 중…",
-    "error": "qui가 전송 목록을 불러올 수 없습니다: {{message}}",
+    "description": "qui가 다른 인스턴스로 옮기는 토렌트와 인스턴스로 내보내기 규칙의 실행 기록입니다.",
     "empty": "아직 전송이 없습니다.",
     "limit": "목록에는 최신 500개 행만 표시됩니다."
   },

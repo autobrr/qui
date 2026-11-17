@@ -80,7 +80,7 @@
     "endAtFirstDownload": "Přestane fungovat i po dokončení jednoho stažení, tak nech klienta zapnutého, dokud stahování neskončí."
   },
   "tab": {
-    "loadFailed": "Sdílení se nepodařilo načíst",
+    "description": "Torrenty, které předáváte někomu, jehož klienta qui nespravuje.",
     "empty": "Zatím žádná Sdílení.",
     "endedStay": "Ukončená Sdílení zůstávají v seznamu 30 dní.",
     "unknownInstance": "Instance č. {{id}}",
