@@ -46,7 +46,7 @@ The decisions in `docs/agents/triage.md` that belong to a human stay with the ma
 | Already implemented | Close with the reason. |
 | Matches a concept in `.out-of-scope/` | Close with the reason. |
 | A bug in another program | Close with the reason. |
-| The code path changed since the qui version of the report, and no merged pull request fixed it | Close with the reason: ask the reporter to update and send again. |
+| The code path changed in a release after the qui version of the report, and no merged pull request fixed it | Close with the reason: ask the reporter to update and send again. |
 | A fact is missing, and the fact decides the outcome | Close with the reason: name the fact and how to send it. If the Sender signed in, first ask the maintainer whether they want to contact the reporter. |
 | An `enhancement`, a deliberate behavior, an intent conflict, or a design question | Leave it to the maintainer, as "Maintainer's OK" describes. |
 | The report holds a secret that the key removal missed | Close with the reason. Draft a `bug` issue for the miss: describe the format of the secret, never its value. Do not delete the report: a delete removes the Report status before qui can show the reason. |
