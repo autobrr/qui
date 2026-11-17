@@ -162,7 +162,7 @@ describe("the Transfers tab", () => {
   })
 
   // regression: #4242
-  it("sends one Retry while the answer to the first one waits", async () => {
+  it("sends one Retry for each row while the answers wait", async () => {
     let answer: () => void = () => {}
     const answered = new Promise<void>(resolve => { answer = resolve })
     server.use(http.post("*/api/transfers/:id/retry", async ({ params }) => {
@@ -171,14 +171,17 @@ describe("the Transfers tab", () => {
       return HttpResponse.json({ id: 10 }, { status: 202 })
     }))
     renderTab()
-    const button = within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("button", { name: "Retry" })
-    fireEvent.click(button)
-    await waitFor(() => expect(button.disabled).toBe(true))
-    fireEvent.click(button)
+    const first = within(await rowOf("Film.2019.2160p-ABC")).getByRole<HTMLButtonElement>("button", { name: "Retry" })
+    const second = within(await rowOf("Doc.2018.720p-QRS")).getByRole<HTMLButtonElement>("button", { name: "Retry" })
+    fireEvent.click(first)
+    await waitFor(() => expect(first.disabled).toBe(true))
+    fireEvent.click(second)
+    await waitFor(() => expect(second.disabled).toBe(true))
+    fireEvent.click(first)
     answer()
 
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The Transfer runs again."))
-    expect(requests.filter(r => r.endsWith("/retry"))).toEqual(["POST /api/transfers/2/retry"])
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(2))
+    expect(requests.filter(r => r.endsWith("/retry"))).toEqual(["POST /api/transfers/2/retry", "POST /api/transfers/4/retry"])
   })
 
   it("cancels a Transfer only after the user confirms", async () => {

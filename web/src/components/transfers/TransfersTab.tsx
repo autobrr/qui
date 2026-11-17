@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { usePendingIds } from "@/components/kit/use-pending-ids"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +31,7 @@ import { TransferHints } from "./TransferHints"
 import { useInstanceName } from "./use-instance-name"
 
 const chips: readonly TransferFilter[] = ["all", "active", "waiting", "finished", "failed"]
+const retryKey = ["transfers", "retry"]
 /** The list of the backend holds at most this many rows. */
 const listLimit = 500
 
@@ -60,6 +62,7 @@ export function TransfersTab() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["transfers"] })
   const onError = (error: Error) => toast.error(t("actions.failed", { message: error.message }))
   const retry = useMutation({
+    mutationKey: retryKey,
     mutationFn: transfersApi.retry,
     onSuccess: () => { toast.success(t("actions.retried")); void refresh() },
     onError,
@@ -75,6 +78,7 @@ export function TransfersTab() {
     onError,
   })
 
+  const retrying = usePendingIds(retryKey)
   const counts = list.data?.counts
   const rows = list.data?.rows ?? []
 
@@ -122,7 +126,7 @@ export function TransfersTab() {
                   key={row.id}
                   row={row}
                   onDetails={() => setDetailsId(row.id)}
-                  retrying={retry.isPending && retry.variables === row.id}
+                  retrying={retrying.has(row.id)}
                   onRetry={() => retry.mutate(row.id)}
                   onCancel={() => setCancelRow(row)}
                   onRemove={() => remove.mutate(row.id)}
