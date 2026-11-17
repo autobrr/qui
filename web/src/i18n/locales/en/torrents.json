@@ -67,6 +67,8 @@
     "externalPrograms": "External Programs",
     "exportTorrent": "Export Torrent",
     "exportTorrents": "Export Torrents ({{count}})",
+    "transferToInstance": "Transfer to instance…",
+    "shareWithSomeone": "Share with someone…",
     "copy": "Copy...",
     "copyName": "Copy Name",
     "copyHash": "Copy Hash",

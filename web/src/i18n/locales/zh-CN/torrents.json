@@ -66,6 +66,8 @@
     "externalPrograms": "外部程序",
     "exportTorrent": "导出种子",
     "exportTorrents": "导出种子（{{count}}）",
+    "transferToInstance": "传输到实例…",
+    "shareWithSomeone": "与他人分享…",
     "copy": "复制...",
     "copyName": "复制名称",
     "copyHash": "复制哈希值",

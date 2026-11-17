@@ -68,6 +68,8 @@
     "externalPrograms": "Externí programy",
     "exportTorrent": "Exportovat torrent",
     "exportTorrents": "Exportovat torrenty ({{count}})",
+    "transferToInstance": "Přenést do instance…",
+    "shareWithSomeone": "Sdílet s někým…",
     "copy": "Kopírovat...",
     "copyName": "Kopírovat název",
     "copyHash": "Kopírovat hash",

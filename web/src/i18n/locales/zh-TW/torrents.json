@@ -66,6 +66,8 @@
     "externalPrograms": "外部程式",
     "exportTorrent": "匯出種子",
     "exportTorrents": "匯出種子（{{count}}）",
+    "transferToInstance": "傳輸到實例…",
+    "shareWithSomeone": "與他人分享…",
     "copy": "複製...",
     "copyName": "複製名稱",
     "copyHash": "複製雜湊值",
