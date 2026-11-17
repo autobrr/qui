@@ -5707,6 +5707,16 @@ paths:
                   items:
                     type: string
                   description: Filter torrents by tags
+                excludeCategories:
+                  type: array
+                  items:
+                    type: string
+                  description: Torrents in these categories are never searched
+                excludeTags:
+                  type: array
+                  items:
+                    type: string
+                  description: Torrents with these tags are never searched
                 intervalSeconds:
                   type: integer
                   description: Interval between processing torrents in seconds
@@ -5739,6 +5749,26 @@ paths:
           description: Invalid request body
         '500':
           description: Failed to start search run
+
+  /api/cross-seed/search/schedule/run:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Run the Library Scan schedule now
+      description: Starts a scheduled Library Scan run with the saved Library settings. The schedule counts its next run from this start.
+      responses:
+        '202':
+          description: Scheduled run started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedSearchRun'
+        '400':
+          description: The saved Library settings cannot start a run
+        '409':
+          description: A Library Scan run is already active
+        '500':
+          description: Failed to start the scheduled run
 
   /api/cross-seed/search/run/cancel:
     post:
@@ -11009,14 +11039,49 @@ components:
           type: array
           items:
             type: string
+        excludeCategories:
+          type: array
+          items:
+            type: string
+          description: Torrents in these categories are never searched.
+        excludeTags:
+          type: array
+          items:
+            type: string
+          description: Torrents with these tags are never searched.
         indexerIds:
           type: array
           items:
             type: integer
         intervalSeconds:
           type: integer
+          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
         cooldownMinutes:
           type: integer
+        maxAddedAgeDays:
+          type: integer
+          minimum: 0
+          description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
+        skipIndividualEpisodes:
+          type: boolean
+        torznabEnabled:
+          type: boolean
+          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
+        scheduleEnabled:
+          type: boolean
+          description: Turns the Library Scan schedule on. Off by default.
+        scheduleIntervalHours:
+          type: integer
+          minimum: 1
+          description: Hours between the starts of two scheduled runs.
+        scheduleMaxSearches:
+          type: integer
+          minimum: 1
+          description: A scheduled run stops after this many torrents sent a search.
+        scheduleMaxAgeDays:
+          type: integer
+          minimum: 1
+          description: A scheduled run searches only torrents added in the last this many days.
 
     CrossSeedSearchSettings:
       type: object
@@ -11032,14 +11097,49 @@ components:
           type: array
           items:
             type: string
+        excludeCategories:
+          type: array
+          items:
+            type: string
+          description: Torrents in these categories are never searched.
+        excludeTags:
+          type: array
+          items:
+            type: string
+          description: Torrents with these tags are never searched.
         indexerIds:
           type: array
           items:
             type: integer
         intervalSeconds:
           type: integer
+          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
         cooldownMinutes:
           type: integer
+        maxAddedAgeDays:
+          type: integer
+          minimum: 0
+          description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
+        skipIndividualEpisodes:
+          type: boolean
+        torznabEnabled:
+          type: boolean
+          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
+        scheduleEnabled:
+          type: boolean
+          description: Turns the Library Scan schedule on. Off by default.
+        scheduleIntervalHours:
+          type: integer
+          minimum: 1
+          description: Hours between the starts of two scheduled runs.
+        scheduleMaxSearches:
+          type: integer
+          minimum: 1
+          description: A scheduled run stops after this many torrents sent a search.
+        scheduleMaxAgeDays:
+          type: integer
+          minimum: 1
+          description: A scheduled run searches only torrents added in the last this many days.
         createdAt:
           type: string
           format: date-time
@@ -11070,6 +11170,14 @@ components:
           items:
             type: string
         tags:
+          type: array
+          items:
+            type: string
+        excludeCategories:
+          type: array
+          items:
+            type: string
+        excludeTags:
           type: array
           items:
             type: string
@@ -11106,6 +11214,12 @@ components:
           type: integer
         instanceId:
           type: integer
+        kind:
+          type: string
+          enum:
+            - manual
+            - scheduled
+          description: A scheduled run was started by the Library Scan schedule or by "Run schedule now".
         status:
           $ref: '#/components/schemas/CrossSeedSearchRunStatus'
         startedAt:
@@ -11155,6 +11269,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedGazelleSiteSummary'
+        searchLimit:
+          type: integer
+          description: The cap of a scheduled run. Not set for a manual run.
+        waitingTorrents:
+          type: integer
+          description: Torrents that were still due when a scheduled run stopped at its cap. Not set when the run did not stop at the cap.
         createdAt:
           type: string
           format: date-time
@@ -11194,6 +11314,11 @@ components:
           nullable: true
         effectiveIntervalSeconds:
           type: integer
+        nextScheduledRunAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the Library Scan schedule starts its next run. Set only while the schedule is on. A time in the past means that the run is due and waits for the active run to end, or for the hourly retry.
 
     CrossSeedRunRequest:
       type: object

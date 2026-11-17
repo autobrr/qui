@@ -71,8 +71,8 @@ func (s *Service) StartAutomation(ctx context.Context) {
 	s.automationMu.Lock()
 	defer s.automationMu.Unlock()
 
-	if s.automationStore == nil || s.jackettService == nil {
-		log.Warn().Msg("Cross-seed automation disabled: missing store or Jackett service")
+	if s.automationStore == nil {
+		log.Warn().Msg("Cross-seed automation disabled: missing store")
 		return
 	}
 
@@ -83,6 +83,13 @@ func (s *Service) StartAutomation(ctx context.Context) {
 	loopCtx, cancel := context.WithCancel(ctx)
 	s.automationCancel = cancel
 
+	// The Library Scan schedule can run on RED/OPS alone.
+	go s.libraryScheduleLoop(loopCtx)
+
+	if s.jackettService == nil {
+		log.Warn().Msg("Cross-seed RSS automation disabled: missing Jackett service")
+		return
+	}
 	go s.automationLoop(loopCtx)
 }
 
