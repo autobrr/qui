@@ -17,13 +17,12 @@ const threshold = 300
 
 interface ScrollToTopButtonProps {
   scrollContainerRef: React.RefObject<HTMLElement | null>
-  /** Height in rem of the caller's own fixed bars above the bottom navigation. Applies to the card list only. */
+  /** Height in rem of the card list's own fixed bars at the bottom, above or in place of the bottom navigation. */
   extraBottomBarsRem?: number
 }
 
-// Shows past the scroll threshold at every width. Where useIsMobile picks the
-// card list, it is fixed above the bottom navigation and the caller's bars;
-// elsewhere it sits in the corner of its list.
+// Shows past the scroll threshold at every width, and never covers the bottom
+// navigation or the caller's bars.
 export function ScrollToTopButton({
   scrollContainerRef,
   extraBottomBarsRem = 0,

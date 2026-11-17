@@ -109,7 +109,7 @@ describe("ScrollToTopButton", () => {
     expect(bottomOf(button())).toBe("calc(5rem + env(safe-area-inset-bottom))")
   })
 
-  it("leaves the screen offset to the card list, and sits in the table's corner", () => {
+  it("sets no screen offset outside the card list", () => {
     state.isMobile = false
     renderButton()
     expect(bottomOf(button())).toBe("")
