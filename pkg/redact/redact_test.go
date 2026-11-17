@@ -272,6 +272,18 @@ func TestString(t *testing.T) {
 			wantContain: []string{"authkey=REDACTED", "torrent_pass=REDACTED"},
 			wantNotHave: []string{"SECRETAUTH", "SECRETPASS"},
 		},
+		{
+			name:        "udp announce url with passkey in path",
+			input:       "tracker error: udp://tracker.example.test:1337/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/announce timed out",
+			wantContain: []string{"udp://tracker.example.test:1337/REDACTED/announce", "timed out"},
+			wantNotHave: []string{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"},
+		},
+		{
+			name:        "http announce url with passkey in path",
+			input:       "announce failed: http://tracker.example.test/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/announce",
+			wantContain: []string{"http://tracker.example.test/REDACTED/announce"},
+			wantNotHave: []string{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -365,4 +377,73 @@ func TestBasicAuthUser(t *testing.T) {
 			assert.Equal(t, tt.want, BasicAuthUser(tt.input))
 		})
 	}
+}
+
+func TestText(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "json fields whose name holds a secret word",
+			input: `{"apiKey":"abc123def","password": "hunter22","user":"bob","retries":3}`,
+			want:  `{"apiKey":"REDACTED","password": "REDACTED","user":"bob","retries":3}`,
+		},
+		{
+			name:  "json field with escaped quote and non-string value",
+			input: `{"client_secret":"a\"b c","authToken":12345678,"level":"warn"}`,
+			want:  `{"client_secret":"REDACTED","authToken":REDACTED,"level":"warn"}`,
+		},
+		{
+			name:  "json field escaped inside a json log line",
+			input: `{"level":"error","message":"body {\"apiKey\":\"abc123def\",\"name\":\"x\"}"}`,
+			want:  `{"level":"error","message":"body {\"apiKey\":\"REDACTED\",\"name\":\"x\"}"}`,
+		},
+		{
+			name:  "escaped json field with a backslash or a number in its value",
+			input: `{"message":"body {\"apiKey\":\"ab\\\\cd\",\"authToken\":12345678}"}`,
+			want:  `{"message":"body {\"apiKey\":\"REDACTED\",\"authToken\":REDACTED}"}`,
+		},
+		{
+			name:  "host name in a url is not a key value pair",
+			input: "dial https://auth.example.test:8443/login failed",
+			want:  "dial https://auth.example.test:8443/login failed",
+		},
+		{
+			name:  "key value pairs",
+			input: "password: hunter22\nSessionSecret: s3cr3t-v4lue, user: bob\nX-Api-Key: abcdef123",
+			want:  "password: REDACTED\nSessionSecret: REDACTED, user: bob\nX-Api-Key: REDACTED",
+		},
+		{
+			name:  "authorization header bearer",
+			input: "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig\nHost: example.test",
+			want:  "Authorization: REDACTED\nHost: example.test",
+		},
+		{
+			name:  "authorization header basic",
+			input: "authorization: Basic dXNlcjpwYXNzd29yZA==",
+			want:  "authorization: REDACTED",
+		},
+		{
+			name:  "plain text stays",
+			input: "cross-seed search found 3 results for Some.Show.S01E01",
+			want:  "cross-seed search found 3 results for Some.Show.S01E01",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, Text(tt.input))
+		})
+	}
+}
+
+func TestSecrets(t *testing.T) {
+	secrets := []string{"s3ss10n-s3cr3t", "s3ss10n", "abc", "", "hunter22"}
+	input := "cfg dump: <<s3ss10n-s3cr3t>>|pw=hunter22|s3ss10n;abc stays;hunter2 stays"
+
+	got := Secrets(input, secrets)
+
+	assert.Equal(t, "cfg dump: <<REDACTED>>|pw=REDACTED|REDACTED;abc stays;hunter2 stays", got)
 }
