@@ -1273,9 +1273,12 @@ func (s *Service) staleSearchWork(ctx context.Context, state *searchRunState, to
 		return cooldown <= 0 || time.Since(last) >= cooldown
 	}
 
+	// A completion search stamps only the copy that completed, so the newest
+	// stamp of any copy in the duplicate group counts.
+	hashes := append([]string{torrent.Hash}, state.duplicateHashes[torrent.Hash]...)
 	requested := state.resolvedTorznabIndexerIDs
 	if !state.opts.DisableTorznab && len(requested) > 0 {
-		history, err := s.automationStore.GetIndexerSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
+		history, err := s.newestIndexerSearchHistory(ctx, state.opts.InstanceID, hashes)
 		if err != nil {
 			return candidateStaleWork{}, err
 		}
@@ -1288,13 +1291,44 @@ func (s *Service) staleSearchWork(ctx context.Context, state *searchRunState, to
 	}
 
 	if len(state.gazelleClients.hosts()) > 0 {
-		last, found, err := s.automationStore.GetSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
+		last, found, err := s.newestSearchHistory(ctx, state.opts.InstanceID, hashes)
 		if err != nil {
 			return candidateStaleWork{}, err
 		}
 		work.gazelle = due(last, found)
 	}
 	return work, nil
+}
+
+func (s *Service) newestIndexerSearchHistory(ctx context.Context, instanceID int, hashes []string) (map[int]time.Time, error) {
+	history := map[int]time.Time{}
+	for _, hash := range hashes {
+		copyHistory, err := s.automationStore.GetIndexerSearchHistory(ctx, instanceID, hash)
+		if err != nil {
+			return nil, err
+		}
+		for id, last := range copyHistory {
+			if last.After(history[id]) {
+				history[id] = last
+			}
+		}
+	}
+	return history, nil
+}
+
+func (s *Service) newestSearchHistory(ctx context.Context, instanceID int, hashes []string) (time.Time, bool, error) {
+	var newest time.Time
+	var found bool
+	for _, hash := range hashes {
+		last, ok, err := s.automationStore.GetSearchHistory(ctx, instanceID, hash)
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		if ok && last.After(newest) {
+			newest, found = last, true
+		}
+	}
+	return newest, found, nil
 }
 
 func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunState, torrent *qbt.Torrent) (bool, error) {

@@ -265,23 +265,42 @@ func TestScheduledSearchQueue_SeasonGroupDatedByNewestEpisode(t *testing.T) {
 // A completion search marks the Torznab indexers that answered, so the next
 // scheduled run asks only the indexer that failed.
 func TestExecuteCompletionSearch_NextScheduledRunAsksOnlyFailedIndexer(t *testing.T) {
-	answering, failing := newTorznabLog(t), newTorznabLog(t)
-	failing.failing.Store(true)
-	source := movieAddedDaysAgo(1, "Azure.Compass.2024.1080p.WEB-DL.H.264-KIRI", 0)
-	source.TotalSize = source.Size
-	f := newScheduledRunFixture(t, "crossseed-completion-then-schedule", []qbt.Torrent{source}, nil, answering, failing)
-	f.svc.searchResultCache = ttlcache.New[string, cachedTorrentSearchResults]()
+	tests := []struct {
+		name        string
+		olderCopies int
+	}{
+		{name: "one copy"},
+		// regression: #4246
+		{name: "newer copy of content already seeded", olderCopies: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			answering, failing := newTorznabLog(t), newTorznabLog(t)
+			failing.failing.Store(true)
+			var torrents []qbt.Torrent
+			for i := range tt.olderCopies {
+				older := movieAddedDaysAgo(i+2, "Azure.Compass.2024.1080p.WEB-DL.H.264-KIRI", 30)
+				older.TotalSize = older.Size
+				torrents = append(torrents, older)
+			}
+			source := movieAddedDaysAgo(1, "Azure.Compass.2024.1080p.WEB-DL.H.264-KIRI", 0)
+			source.TotalSize = source.Size
+			torrents = append(torrents, source)
+			f := newScheduledRunFixture(t, "crossseed-completion-then-schedule", torrents, nil, answering, failing)
+			f.svc.searchResultCache = ttlcache.New[string, cachedTorrentSearchResults]()
 
-	_ = f.svc.executeCompletionSearch(t.Context(), f.env.instanceID, &source, models.DefaultCrossSeedAutomationSettings(), &models.InstanceCrossSeedCompletionSettings{
-		InstanceID: f.env.instanceID, Enabled: true, IndexerIDs: f.env.indexerIDs,
-	})
-	require.Equal(t, []string{"Azure"}, answering.searched())
-	require.Equal(t, []string{"Azure"}, failing.searched())
+			_ = f.svc.executeCompletionSearch(t.Context(), f.env.instanceID, &source, models.DefaultCrossSeedAutomationSettings(), &models.InstanceCrossSeedCompletionSettings{
+				InstanceID: f.env.instanceID, Enabled: true, IndexerIDs: f.env.indexerIDs,
+			})
+			require.Equal(t, []string{"Azure"}, answering.searched())
+			require.Equal(t, []string{"Azure"}, failing.searched())
 
-	failing.failing.Store(false)
-	f.run(10, minSearchCooldownMinutes)
-	require.Empty(t, answering.searched(), "the indexer that answered the completion search waits for its Cooldown")
-	require.Equal(t, []string{"Azure"}, failing.searched())
+			failing.failing.Store(false)
+			f.run(10, minSearchCooldownMinutes)
+			require.Empty(t, answering.searched(), "the indexer that answered the completion search waits for its Cooldown")
+			require.Equal(t, []string{"Azure"}, failing.searched())
+		})
+	}
 }
 
 // scheduleSyncManager is a qBittorrent that can go offline. As in qui, the
