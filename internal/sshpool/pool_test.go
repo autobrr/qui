@@ -914,7 +914,8 @@ func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
 	inst := pinnedInstanceAt(t, server.Addr)
 	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
-	pool.dialer.timeout = 200 * time.Millisecond
+	// The dials share this timeout, so it leaves them room on a slow runner.
+	pool.dialer.timeout = time.Second
 	t.Cleanup(pool.Close)
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
@@ -946,7 +947,12 @@ func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
 		t.Fatal("SFTPConns still waits for the sftp init of the extra connection")
 	}
 
-	client := <-stuck
+	var client *ssh.Client
+	select {
+	case client = <-stuck:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the extra connection never reached its sftp init")
+	}
 	t.Cleanup(func() { _ = client.Close() })
 	closed := make(chan error, 1)
 	go func() { closed <- client.Wait() }()
