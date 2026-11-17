@@ -77,6 +77,34 @@
     "previous": "上一頁",
     "next": "下一頁"
   },
+  "bulk": {
+    "label": "已選列",
+    "pickPage": "選取此頁的列",
+    "picked_other": "已選取 {{count}} 項",
+    "wholeChip_other": "已選取全部 {{count}} 項",
+    "pickAll_other": "全選 {{count}} 項",
+    "clear": "清除選取",
+    "done": {
+      "retry_other": "{{count}} 列將重新執行。",
+      "cancel_other": "qui 將取消 {{count}} 列。",
+      "remove_other": "已移除 {{count}} 列。"
+    },
+    "skipped_other": "{{count}} 列不適用此操作，保持不變。",
+    "failed_other": "{{count}} 列失敗。qui 日誌中有原因。",
+    "nothing": "沒有已選列適用此操作。",
+    "cancelDialog": {
+      "title": "取消已選列？",
+      "description_other": "已選取 {{count}} 列。qui 將取消每個尚未結束的列並復原已完成的操作：移除它在目標上新增的檔案和種子，並在來源上重新啟動該種子。",
+      "confirm": "取消這些列",
+      "keep": "繼續執行"
+    },
+    "removeDialog": {
+      "title": "移除已選列？",
+      "description_other": "已選取 {{count}} 列。qui 將從清單中移除每個已結束的列。種子及其檔案保持原位。",
+      "confirm": "移除這些列",
+      "keep": "保留這些列"
+    }
+  },
   "details": {
     "title": "傳輸詳細資訊",
     "exportTitle": "匯出執行詳細資訊",

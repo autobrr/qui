@@ -128,6 +128,10 @@ type Service struct {
 	// purged is when qui last removed the rows that finished more than
 	// keepFinished ago.
 	purged time.Time
+	// rollingBack lets one rollback of a cancel run at a time, so that a
+	// cancel of many Transfers does not send all their cleanups to the
+	// instances at once.
+	rollingBack sync.Mutex
 }
 
 // run is a Transfer that the Service holds.
@@ -447,6 +451,8 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 
 // rollBack takes back what a cancelled Transfer did that does not run.
 func (s *Service) rollBack(ctx context.Context, id int64) {
+	s.rollingBack.Lock()
+	defer s.rollingBack.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.runs, id)

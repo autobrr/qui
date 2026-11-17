@@ -9,11 +9,13 @@ import { Section } from "@/components/kit/Section"
 import { usePendingIds } from "@/components/kit/use-pending-ids"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TorrentName } from "@/components/ui/torrent-name"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import { transferListQuery, transferPageSize, transfersApi, type TransferFilter, type TransferRow } from "@/lib/transfers-api"
+import { transferListQuery, transferPageSize, transfersApi, type TransferBulkAction, type TransferBulkRequest, type TransferBulkResult, type TransferFilter, type TransferRow } from "@/lib/transfers-api"
+import { cn } from "@/lib/utils"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, ChevronRight, FileText, RotateCcw, Trash2, X, type LucideIcon } from "lucide-react"
 import { useId, useMemo, useRef, useState } from "react"
@@ -21,8 +23,10 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { RowActions, type RowAction } from "./RowActions"
 import { canCancel, canRemove, canRetry } from "./transfer-display"
+import { fittingIds, noSelection, offeredActions, tickRow, type Selection } from "./transfer-selection"
 import { TransferDetailsDialog } from "./TransferDetailsDialog"
 import { TransferHints } from "./TransferHints"
+import { TransferSelectionBar } from "./TransferSelectionBar"
 import { StartedBy, StateDetail, StateLabel } from "./TransferState"
 import { useIncognitoDisplay } from "./use-incognito-display"
 import { useInstanceName } from "./use-instance-name"
@@ -31,6 +35,9 @@ const chips: readonly TransferFilter[] = ["all", "active", "waiting", "finished"
 const retryKey = ["transfers", "retry"]
 const cancelKey = ["transfers", "cancel"]
 const removeKey = ["transfers", "remove"]
+const bulkKey = ["transfers", "bulk"]
+// A tick box reaches the size of a finger on a touch screen.
+const CHECKBOX_TAP = "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-3"
 
 /** A step of a row that waits for its answer. */
 type RowStep = "retry" | "cancel" | "remove"
@@ -46,6 +53,11 @@ export function TransfersTab() {
   const [detailsId, setDetailsId] = useState<number | null>(null)
   // The row stays while the dialog fades out.
   const [cancelling, setCancelling] = useState<{ row: TransferRow; open: boolean } | null>(null)
+  const [selection, setSelection] = useState<Selection>(noSelection)
+  // The index on the page of the row that the user ticked last, for a range with Shift.
+  const lastTicked = useRef<number | null>(null)
+  // The step for the picked rows that waits for the question. The step stays while the dialog fades out.
+  const [asking, setAsking] = useState<{ action: "cancel" | "remove"; open: boolean } | null>(null)
 
   const list = useQuery({
     ...transferListQuery(filter, page),
@@ -76,6 +88,25 @@ export function TransfersTab() {
     onSuccess: () => { toast.success(t("actions.removed")); void refresh() },
     onError,
   })
+  const bulk = useMutation({
+    mutationKey: bulkKey,
+    mutationFn: transfersApi.bulk,
+    onSuccess: (result: TransferBulkResult, request: TransferBulkRequest) => {
+      reportBulk(request.action, result)
+      clearSelection()
+      void refresh()
+    },
+    onError,
+  })
+  const reportBulk = (action: TransferBulkAction, { done, skipped, failed }: TransferBulkResult) => {
+    const more = [
+      skipped > 0 && t("bulk.skipped", { count: skipped }),
+      failed > 0 && t("bulk.failed", { count: failed }),
+    ].filter(Boolean).join(" ")
+    if (done === 0 && failed === 0) toast.info(t("bulk.nothing"))
+    else if (failed > 0) toast.error(t(`bulk.done.${action}`, { count: done }), { description: more })
+    else toast.success(t(`bulk.done.${action}`, { count: done }), more ? { description: more } : undefined)
+  }
 
   const retrying = usePendingIds(retryKey)
   const cancelRuns = usePendingIds(cancelKey)
@@ -90,10 +121,35 @@ export function TransfersTab() {
   const pageCount = Math.max(1, Math.ceil(total / transferPageSize))
   // When rows end or go away, the page can lie past the last page. The list then shows the last page.
   if (counts && page >= pageCount) setPage(pageCount - 1)
+  const clearSelection = () => {
+    setSelection(noSelection)
+    lastTicked.current = null
+  }
   const turnTo = (next: number) => {
     setPage(next)
+    clearSelection()
     // The buttons sit below the rows, so the top of the list comes into view.
     top.current?.scrollIntoView({ block: "nearest" })
+  }
+
+  // A row that left the page, for example a waiting row that started, leaves the selection too.
+  const picked = selection.kind === "filter" ? rows : rows.filter(row => selection.ids.has(row.id))
+  const pickedCount = selection.kind === "filter" ? total : picked.length
+  const pageTick = pickedCount === 0 ? false : picked.length === rows.length ? true : "indeterminate"
+  const isPicked = (row: TransferRow) => selection.kind === "filter" || selection.ids.has(row.id)
+  const tick = (index: number, range: boolean) => {
+    setSelection(tickRow(selection, rows, index, range ? lastTicked.current : null))
+    lastTicked.current = index
+  }
+  const tickPage = () => {
+    if (pageTick === true) clearSelection()
+    else setSelection({ kind: "rows", ids: new Set(rows.map(row => row.id)) })
+  }
+  const runBulk = (action: TransferBulkAction) =>
+    bulk.mutateAsync(selection.kind === "filter" ? { action, filter } : { action, ids: fittingIds(action, picked) })
+  const pickAction = (action: TransferBulkAction) => {
+    if (action === "retry") runBulk(action).catch(() => {})
+    else setAsking({ action, open: true })
   }
 
   return (
@@ -106,7 +162,7 @@ export function TransfersTab() {
         <div className="space-y-4">
           {/* A phone scrolls the filters sideways when their labels do not fit. */}
           <div ref={top} className="overflow-x-auto">
-            <Tabs value={filter} onValueChange={value => { setFilter(value as TransferFilter); setPage(0) }}>
+            <Tabs value={filter} onValueChange={value => { setFilter(value as TransferFilter); setPage(0); clearSelection() }}>
               <TabsList aria-label={t("chips.label")} className="max-sm:w-max max-sm:min-w-full">
                 {chips.map(chip => (
                   <TabsTrigger key={chip} value={chip} className="gap-1.5 px-3 max-sm:gap-1 max-sm:px-1.5 max-sm:text-xs">
@@ -126,17 +182,22 @@ export function TransfersTab() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-full pl-6 max-sm:pl-4">{t("columns.torrent")}</TableHead>
+                    <TableHead className="w-px pr-0 pl-6 max-sm:pl-4">
+                      <Checkbox checked={pageTick} onCheckedChange={tickPage} aria-label={t("bulk.pickPage")} className={cn("align-middle", CHECKBOX_TAP)} />
+                    </TableHead>
+                    <TableHead className="w-full">{t("columns.torrent")}</TableHead>
                     <TableHead className="hidden @lg:table-cell">{t("columns.state")}</TableHead>
                     <TableHead className="hidden @2xl:table-cell">{t("columns.started")}</TableHead>
                     <TableHead pinEnd className="pr-6 max-sm:pr-4"><span className="sr-only">{t("columns.actions")}</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map(row => (
+                  {rows.map((row, index) => (
                     <TransferTableRow
                       key={row.id}
                       row={row}
+                      picked={isPicked(row)}
+                      onTick={range => tick(index, range)}
                       onDetails={() => setDetailsId(row.id)}
                       running={runningStep(row.id)}
                       onRetry={() => retry.mutate(row.id)}
@@ -147,6 +208,19 @@ export function TransfersTab() {
                 </TableBody>
               </Table>
             </div>
+          )}
+
+          {pickedCount > 0 && (
+            <TransferSelectionBar
+              count={pickedCount}
+              wholeChip={selection.kind === "filter"}
+              more={selection.kind === "rows" && pageTick === true && total > rows.length ? total : null}
+              actions={offeredActions(selection, filter, picked)}
+              running={bulk.isPending ? bulk.variables.action : null}
+              onPickAll={() => setSelection({ kind: "filter" })}
+              onClear={clearSelection}
+              onAction={pickAction}
+            />
           )}
 
           {pageCount > 1 && (
@@ -187,12 +261,28 @@ export function TransfersTab() {
           onConfirm={() => cancel.mutateAsync(cancelling.row.id)}
         />
       )}
+
+      {asking && (
+        <ConfirmDialog
+          open={asking.open}
+          onOpenChange={open => setAsking(prev => prev && { ...prev, open })}
+          title={t(`bulk.${asking.action}Dialog.title`)}
+          description={t(`bulk.${asking.action}Dialog.description`, { count: pickedCount })}
+          confirmLabel={t(`bulk.${asking.action}Dialog.confirm`)}
+          cancelLabel={t(`bulk.${asking.action}Dialog.keep`)}
+          onConfirm={() => runBulk(asking.action)}
+        />
+      )}
     </>
   )
 }
 
 interface TransferTableRowProps {
   row: TransferRow
+  /** The row is in the selection of the selection bar. */
+  picked: boolean
+  /** A tick on the box of the row. With range, Shift was down. */
+  onTick: (range: boolean) => void
   /** The step of the row that waits for its answer: the row takes no other step until then. */
   running: RowStep | null
   onDetails: () => void
@@ -201,7 +291,7 @@ interface TransferTableRowProps {
   onRemove: () => void
 }
 
-function TransferTableRow({ row, running, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
+function TransferTableRow({ row, picked, onTick, running, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
   const display = useIncognitoDisplay()
@@ -217,8 +307,17 @@ function TransferTableRow({ row, running, onDetails, onRetry, onCancel, onRemove
   ]
 
   return (
-    <TableRow data-transfer-id={row.id}>
-      <TableCell className="w-full max-w-0 pl-6 align-top whitespace-normal max-sm:pl-4">
+    <TableRow data-transfer-id={row.id} data-state={picked ? "selected" : undefined}>
+      <TableCell className="pr-0 pl-6 align-top max-sm:pl-4">
+        {/* The box lines up with the first line of the name. The click carries Shift, which a change of the box does not. */}
+        <Checkbox
+          checked={picked}
+          onClick={event => onTick(event.shiftKey)}
+          aria-labelledby={nameId}
+          className={cn("mt-0.5", CHECKBOX_TAP)}
+        />
+      </TableCell>
+      <TableCell className="w-full max-w-0 align-top whitespace-normal">
         {/* The name wraps in full on touch, where no pointer shows its title. */}
         <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={display.name(row)} /></div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">

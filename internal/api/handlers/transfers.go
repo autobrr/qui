@@ -41,6 +41,7 @@ func (h *TransfersHandler) Routes(r chi.Router) {
 	r.Post("/", h.Start)
 	r.Get("/", h.List)
 	r.Post("/summary", h.Summary)
+	r.Post("/bulk", h.Bulk)
 	r.Get("/{transferID}", h.Get)
 	r.Post("/{transferID}/retry", h.Retry)
 	r.Post("/{transferID}/cancel", h.Cancel)
@@ -367,17 +368,23 @@ func (h *TransfersHandler) Summary(w http.ResponseWriter, r *http.Request) {
 
 // respondActionError answers an error of an action on one Transfer.
 func (h *TransfersHandler) respondActionError(w http.ResponseWriter, err error, action string) {
-	_, refused := errors.AsType[*transfer.RefusalError](err)
 	switch {
 	case errors.Is(err, transfer.ErrNotFound):
 		RespondError(w, http.StatusNotFound, "Transfer not found")
-	case refused, errors.Is(err, transfer.ErrClaimed), errors.Is(err, transfer.ErrNotRetryable),
-		errors.Is(err, transfer.ErrFinished), errors.Is(err, transfer.ErrCancelTooLate), errors.Is(err, transfer.ErrNotFinished):
+	case actionDoesNotFit(err):
 		RespondError(w, http.StatusConflict, err.Error())
 	default:
 		log.Error().Err(err).Str("action", action).Msg("transfer: failed to act on the Transfer")
 		RespondError(w, http.StatusInternalServerError, "Failed to "+action+" the Transfer")
 	}
+}
+
+// actionDoesNotFit reports whether err says that the action does not fit the
+// Transfer as it is now, for example a cancel of a finished Transfer.
+func actionDoesNotFit(err error) bool {
+	_, refused := errors.AsType[*transfer.RefusalError](err)
+	return refused || errors.Is(err, transfer.ErrClaimed) || errors.Is(err, transfer.ErrNotRetryable) ||
+		errors.Is(err, transfer.ErrFinished) || errors.Is(err, transfer.ErrCancelTooLate) || errors.Is(err, transfer.ErrNotFinished)
 }
 
 // Retry runs a failed or cancelled Transfer or Export run again, and returns
@@ -423,4 +430,75 @@ func (h *TransfersHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type bulkTransfersRequest struct {
+	Action string  `json:"action"`
+	IDs    []int64 `json:"ids"`
+	// Filter, when set, picks every row behind the chip in place of IDs.
+	Filter *string `json:"filter"`
+}
+
+type bulkTransfersResponse struct {
+	// Done counts the rows that took the action.
+	Done int `json:"done"`
+	// Skipped counts the rows that the action does not fit, for example a
+	// cancel of a finished Transfer.
+	Skipped int `json:"skipped"`
+	// Failed counts the rows where the action failed for another reason.
+	Failed int `json:"failed"`
+}
+
+// Bulk retries, cancels, or removes many Transfers and Export runs: the rows
+// of ids, or every row behind a filter chip. It acts on one row after the
+// other, and skips a row that the action does not fit.
+// POST /api/transfers/bulk
+func (h *TransfersHandler) Bulk(w http.ResponseWriter, r *http.Request) {
+	var req bulkTransfersRequest
+	if err := json.UnmarshalRead(r.Body, &req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	act, ok := map[string]func(context.Context, int64) error{
+		"retry": func(ctx context.Context, id int64) error {
+			_, err := h.service.Retry(ctx, id)
+			return err
+		},
+		"cancel": h.service.Cancel,
+		"remove": h.service.Remove,
+	}[req.Action]
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "action must be retry, cancel, or remove")
+		return
+	}
+	ids := req.IDs
+	if req.Filter != nil {
+		filter, ok := transfer.Filters[*req.Filter]
+		if !ok {
+			RespondError(w, http.StatusBadRequest, "filter must be all, active, waiting, finished, or failed")
+			return
+		}
+		var err error
+		if ids, err = h.store.IDs(r.Context(), filter); err != nil {
+			log.Error().Err(err).Msg("transfer: failed to list the Transfers of a bulk action")
+			RespondError(w, http.StatusInternalServerError, "Failed to list the Transfers")
+			return
+		}
+	}
+
+	var res bulkTransfersResponse
+	for _, id := range ids {
+		err := act(r.Context(), id)
+		switch {
+		case err == nil:
+			res.Done++
+		// A row that ended or went away since the page loaded is skipped too.
+		case errors.Is(err, transfer.ErrNotFound), actionDoesNotFit(err):
+			res.Skipped++
+		default:
+			res.Failed++
+			log.Error().Err(err).Int64("transfer", id).Str("action", req.Action).Msg("transfer: failed to act on a Transfer of a bulk action")
+		}
+	}
+	RespondJSON(w, http.StatusOK, res)
 }

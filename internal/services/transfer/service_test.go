@@ -864,6 +864,48 @@ func TestTransferQueuesBySource(t *testing.T) {
 	}
 }
 
+// A cancel of a Transfer that waits for its turn ends it at once. It never
+// ran, so it changed nothing, and its end runs no cleanup on the instances.
+// The Transfer that runs goes on.
+func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
+	r := newRig(t)
+	first, second := newShow(t, showName), newShow(t, "Other.Show.S02.720p-GRP")
+	r.seed(first)
+	write(t, filepath.Join(r.srcDir, "Other.Show.S02.720p-GRP"), second.files)
+	r.src.Seed(second.data, r.srcPath())
+	copying, held := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(held) })
+	t.Cleanup(release)
+	var once sync.Once
+	r.disk.onWrite = func(string) {
+		once.Do(func() {
+			close(copying)
+			<-held
+		})
+	}
+
+	firstID, err := r.svc.Start(t.Context(), r.request(first))
+	require.NoError(t, err)
+	<-copying
+	secondID, err := r.svc.Start(t.Context(), r.request(second))
+	require.NoError(t, err)
+	require.NoError(t, r.svc.Cancel(t.Context(), secondID))
+	release()
+	r.svc.Wait()
+
+	cancelled := r.get(secondID)
+	require.Equal(t, transfer.StateCancelled, cancelled.State)
+	require.False(t, cancelled.FinishedAt.IsZero())
+	steps := make([]string, 0, len(cancelled.Steps))
+	for _, step := range cancelled.Steps {
+		steps = append(steps, step.Name)
+	}
+	require.Equal(t, []string{"start", "cancelled"}, steps, "no cleanup step")
+	require.False(t, r.store.IsClaimed(r.source.ID, second.hash), "the cancel frees the torrent")
+	require.False(t, r.src.Stopped(second.hash))
+	require.Equal(t, transfer.StateDone, r.get(firstID).State)
+}
+
 // A file at a path that the copy writes stops the Transfer, and qui leaves
 // the file as it is. So does a file at the original name of a file that the
 // source renamed: the rename after the add would move it over the copy.

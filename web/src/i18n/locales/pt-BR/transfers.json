@@ -78,6 +78,44 @@
     "previous": "Anterior",
     "next": "Próxima"
   },
+  "bulk": {
+    "label": "Linhas selecionadas",
+    "pickPage": "Selecionar as linhas desta página",
+    "picked_one": "{{count}} selecionada",
+    "picked_other": "{{count}} selecionadas",
+    "wholeChip_one": "{{count}} selecionada em todas as páginas",
+    "wholeChip_other": "{{count}} selecionadas em todas as páginas",
+    "pickAll_one": "Selecionar todas ({{count}})",
+    "pickAll_other": "Selecionar todas ({{count}})",
+    "clear": "Limpar seleção",
+    "done": {
+      "retry_one": "{{count}} linha roda de novo.",
+      "retry_other": "{{count}} linhas rodam de novo.",
+      "cancel_one": "O qui cancela {{count}} linha.",
+      "cancel_other": "O qui cancela {{count}} linhas.",
+      "remove_one": "{{count}} linha foi removida.",
+      "remove_other": "{{count}} linhas foram removidas."
+    },
+    "skipped_one": "{{count}} linha não se aplica a esta ação e fica como estava.",
+    "skipped_other": "{{count}} linhas não se aplicam a esta ação e ficam como estavam.",
+    "failed_one": "{{count}} linha falhou. O log do qui mostra o motivo.",
+    "failed_other": "{{count}} linhas falharam. O log do qui mostra o motivo.",
+    "nothing": "Nenhuma linha selecionada se aplica a esta ação.",
+    "cancelDialog": {
+      "title": "Cancelar as linhas selecionadas?",
+      "description_one": "{{count}} linha está selecionada. Se ela não terminou, o qui a cancela e desfaz o que fez: remove os arquivos e os torrents que adicionou no destino e inicia de novo o torrent na origem.",
+      "description_other": "{{count}} linhas estão selecionadas. O qui cancela cada linha que não terminou e desfaz o que fez: remove os arquivos e os torrents que adicionou no destino e inicia de novo o torrent na origem.",
+      "confirm": "Cancelar as linhas",
+      "keep": "Continuar"
+    },
+    "removeDialog": {
+      "title": "Remover as linhas selecionadas?",
+      "description_one": "{{count}} linha está selecionada. Se ela terminou, o qui a remove da lista. Os torrents e seus arquivos ficam onde estão.",
+      "description_other": "{{count}} linhas estão selecionadas. O qui remove da lista cada linha que terminou. Os torrents e seus arquivos ficam onde estão.",
+      "confirm": "Remover as linhas",
+      "keep": "Manter as linhas"
+    }
+  },
   "details": {
     "title": "Detalhes da transferência",
     "exportTitle": "Detalhes da exportação",

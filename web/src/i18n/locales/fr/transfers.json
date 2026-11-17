@@ -78,6 +78,44 @@
     "previous": "Précédent",
     "next": "Suivant"
   },
+  "bulk": {
+    "label": "Lignes sélectionnées",
+    "pickPage": "Sélectionner les lignes de cette page",
+    "picked_one": "{{count}} sélectionnée",
+    "picked_other": "{{count}} sélectionnées",
+    "wholeChip_one": "{{count}} sélectionnée sur toutes les pages",
+    "wholeChip_other": "{{count}} sélectionnées sur toutes les pages",
+    "pickAll_one": "Tout sélectionner ({{count}})",
+    "pickAll_other": "Tout sélectionner ({{count}})",
+    "clear": "Désélectionner",
+    "done": {
+      "retry_one": "{{count}} ligne reprend.",
+      "retry_other": "{{count}} lignes reprennent.",
+      "cancel_one": "qui annule {{count}} ligne.",
+      "cancel_other": "qui annule {{count}} lignes.",
+      "remove_one": "{{count}} ligne est retirée.",
+      "remove_other": "{{count}} lignes sont retirées."
+    },
+    "skipped_one": "{{count}} ligne ne convient pas à cette action et reste inchangée.",
+    "skipped_other": "{{count}} lignes ne conviennent pas à cette action et restent inchangées.",
+    "failed_one": "{{count}} ligne a échoué. Le journal de qui en donne la raison.",
+    "failed_other": "{{count}} lignes ont échoué. Le journal de qui en donne la raison.",
+    "nothing": "Aucune ligne sélectionnée ne convient à cette action.",
+    "cancelDialog": {
+      "title": "Annuler les lignes sélectionnées ?",
+      "description_one": "{{count}} ligne est sélectionnée. Si elle n'est pas terminée, qui l'annule et défait ce qu'il a fait : il supprime les fichiers et les torrents qu'il a ajoutés sur la cible, puis redémarre le torrent sur la source.",
+      "description_other": "{{count}} lignes sont sélectionnées. qui annule chaque ligne non terminée et défait ce qu'il a fait : il supprime les fichiers et les torrents qu'il a ajoutés sur la cible, puis redémarre le torrent sur la source.",
+      "confirm": "Annuler les lignes",
+      "keep": "Continuer"
+    },
+    "removeDialog": {
+      "title": "Retirer les lignes sélectionnées ?",
+      "description_one": "{{count}} ligne est sélectionnée. Si elle est terminée, qui la retire de la liste. Les torrents et leurs fichiers restent où ils sont.",
+      "description_other": "{{count}} lignes sont sélectionnées. qui retire de la liste chaque ligne terminée. Les torrents et leurs fichiers restent où ils sont.",
+      "confirm": "Retirer les lignes",
+      "keep": "Garder les lignes"
+    }
+  },
   "details": {
     "title": "Détails du transfert",
     "exportTitle": "Détails de l'exécution d'export",

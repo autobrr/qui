@@ -79,6 +79,54 @@
     "previous": "Předchozí",
     "next": "Další"
   },
+  "bulk": {
+    "label": "Vybrané řádky",
+    "pickPage": "Vybrat řádky této stránky",
+    "picked_one": "{{count}} vybrán",
+    "picked_few": "{{count}} vybrány",
+    "picked_other": "{{count}} vybráno",
+    "wholeChip_one": "Vybráno vše: {{count}}",
+    "wholeChip_few": "Vybráno vše: {{count}}",
+    "wholeChip_other": "Vybráno vše: {{count}}",
+    "pickAll_one": "Vybrat vše ({{count}})",
+    "pickAll_few": "Vybrat vše ({{count}})",
+    "pickAll_other": "Vybrat vše ({{count}})",
+    "clear": "Zrušit výběr",
+    "done": {
+      "retry_one": "{{count}} řádek běží znovu.",
+      "retry_few": "{{count}} řádky běží znovu.",
+      "retry_other": "{{count}} řádků běží znovu.",
+      "cancel_one": "qui ruší {{count}} řádek.",
+      "cancel_few": "qui ruší {{count}} řádky.",
+      "cancel_other": "qui ruší {{count}} řádků.",
+      "remove_one": "{{count}} řádek je odstraněn.",
+      "remove_few": "{{count}} řádky jsou odstraněny.",
+      "remove_other": "{{count}} řádků je odstraněno."
+    },
+    "skipped_one": "{{count}} řádek se k tomuto kroku nehodí a zůstává beze změny.",
+    "skipped_few": "{{count}} řádky se k tomuto kroku nehodí a zůstávají beze změny.",
+    "skipped_other": "{{count}} řádků se k tomuto kroku nehodí a zůstává beze změny.",
+    "failed_one": "{{count}} řádek selhal. Důvod je v logu qui.",
+    "failed_few": "{{count}} řádky selhaly. Důvod je v logu qui.",
+    "failed_other": "{{count}} řádků selhalo. Důvod je v logu qui.",
+    "nothing": "K tomuto kroku se nehodí žádný vybraný řádek.",
+    "cancelDialog": {
+      "title": "Zrušit vybrané řádky?",
+      "description_one": "Je vybrán {{count}} řádek. Pokud neskončil, qui ho zruší a vrátí zpět, co udělal: odstraní soubory a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
+      "description_few": "Jsou vybrány {{count}} řádky. qui zruší každý, který neskončil, a vrátí zpět, co udělal: odstraní soubory a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
+      "description_other": "Je vybráno {{count}} řádků. qui zruší každý, který neskončil, a vrátí zpět, co udělal: odstraní soubory a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
+      "confirm": "Zrušit řádky",
+      "keep": "Nechat běžet"
+    },
+    "removeDialog": {
+      "title": "Odstranit vybrané řádky?",
+      "description_one": "Je vybrán {{count}} řádek. Pokud skončil, qui ho odstraní ze seznamu. Torrenty a jejich soubory zůstanou, kde jsou.",
+      "description_few": "Jsou vybrány {{count}} řádky. qui odstraní ze seznamu každý, který skončil. Torrenty a jejich soubory zůstanou, kde jsou.",
+      "description_other": "Je vybráno {{count}} řádků. qui odstraní ze seznamu každý, který skončil. Torrenty a jejich soubory zůstanou, kde jsou.",
+      "confirm": "Odstranit řádky",
+      "keep": "Ponechat řádky"
+    }
+  },
   "details": {
     "title": "Podrobnosti přenosu",
     "exportTitle": "Podrobnosti běhu exportu",

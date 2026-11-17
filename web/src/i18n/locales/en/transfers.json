@@ -78,6 +78,44 @@
     "previous": "Previous",
     "next": "Next"
   },
+  "bulk": {
+    "label": "Selected rows",
+    "pickPage": "Select the rows of this page",
+    "picked_one": "{{count}} selected",
+    "picked_other": "{{count}} selected",
+    "wholeChip_one": "All {{count}} selected",
+    "wholeChip_other": "All {{count}} selected",
+    "pickAll_one": "Select all {{count}}",
+    "pickAll_other": "Select all {{count}}",
+    "clear": "Clear",
+    "done": {
+      "retry_one": "{{count}} row runs again.",
+      "retry_other": "{{count}} rows run again.",
+      "cancel_one": "qui cancels {{count}} row.",
+      "cancel_other": "qui cancels {{count}} rows.",
+      "remove_one": "{{count}} row is removed.",
+      "remove_other": "{{count}} rows are removed."
+    },
+    "skipped_one": "{{count}} row does not fit the step and stays as it was.",
+    "skipped_other": "{{count}} rows do not fit the step and stay as they were.",
+    "failed_one": "{{count}} row failed. The log of qui gives the reason.",
+    "failed_other": "{{count}} rows failed. The log of qui gives the reason.",
+    "nothing": "No selected row fits this step.",
+    "cancelDialog": {
+      "title": "Cancel the selected rows?",
+      "description_one": "{{count}} row is selected. If it has not ended, qui cancels it and takes back what it did: it removes the files and torrents that it added on the target, and starts the torrent on the source again.",
+      "description_other": "{{count}} rows are selected. qui cancels each one that has not ended and takes back what it did: it removes the files and torrents that it added on the target, and starts the torrent on the source again.",
+      "confirm": "Cancel the rows",
+      "keep": "Keep running"
+    },
+    "removeDialog": {
+      "title": "Remove the selected rows?",
+      "description_one": "{{count}} row is selected. If it ended, qui removes it from the list. The torrents and their files stay where they are.",
+      "description_other": "{{count}} rows are selected. qui removes each one that ended from the list. The torrents and their files stay where they are.",
+      "confirm": "Remove the rows",
+      "keep": "Keep the rows"
+    }
+  },
   "details": {
     "title": "Transfer details",
     "exportTitle": "Export run details",

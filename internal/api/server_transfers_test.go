@@ -171,6 +171,43 @@ func TestTransferActionRoutes(t *testing.T) {
 	require.ErrorIs(t, err, transfer.ErrNotFound, "the finished row is gone")
 }
 
+// The bulk route acts on the rows of ids, or on every row behind a chip. It
+// counts the rows that the action does not fit as skipped.
+func TestTransferBulkRoute(t *testing.T) {
+	rig := newPermissionRig(t)
+	cookie := rig.sessionCookie(t)
+	addInstances(t, rig)
+	first := addTransfer(t, rig, "aaaa", transfer.StateDone, true, nil)
+	second := addTransfer(t, rig, "bbbb", transfer.StateCancelled, true, nil)
+	running := addTransfer(t, rig, "cccc", transfer.StateCopying, false, nil)
+	bulk := func(body string) (int, map[string]int) {
+		t.Helper()
+		status, answer := rig.sendBody(t, http.MethodPost, "/api/transfers/bulk", "", cookie, body)
+		var counts map[string]int
+		if status == http.StatusOK {
+			require.NoError(t, json.Unmarshal([]byte(answer), &counts))
+		}
+		return status, counts
+	}
+
+	status, counts := bulk(`{"action":"remove","ids":[` + strconv.FormatInt(first, 10) + `,` + strconv.FormatInt(running, 10) + `,999]}`)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, map[string]int{"done": 1, "skipped": 2, "failed": 0}, counts, "a running row and an unknown row are skipped")
+
+	status, counts = bulk(`{"action":"remove","filter":"finished"}`)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, map[string]int{"done": 1, "skipped": 0, "failed": 0}, counts, "the filter picks the finished row that is left")
+	_, err := rig.deps.Transfers.Get(t.Context(), second)
+	require.ErrorIs(t, err, transfer.ErrNotFound)
+	_, err = rig.deps.Transfers.Get(t.Context(), running)
+	require.NoError(t, err, "the filter leaves the running row")
+
+	for _, body := range []string{`{"action":"pause","ids":[1]}`, `{"action":"remove","filter":"sideways"}`, `{`} {
+		status, _ := bulk(body)
+		require.Equal(t, http.StatusBadRequest, status, body)
+	}
+}
+
 func TestTransferSummaryRoute(t *testing.T) {
 	rig := newPermissionRig(t)
 	cookie := rig.sessionCookie(t)

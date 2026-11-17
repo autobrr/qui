@@ -16,7 +16,7 @@ import { server } from "@/test/msw/server"
 
 import { TransfersTab } from "./TransfersTab"
 
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
 
 const screenSize = vi.hoisted(() => ({ phone: false }))
@@ -156,6 +156,17 @@ async function openDetails(name: string): Promise<HTMLElement> {
 /** Radix selects a tab on the press of the main button. */
 const openTab = (dialog: HTMLElement, name: RegExp) => fireEvent.mouseDown(within(dialog).getByRole("tab", { name }), { button: 0 })
 const selectedTab = (dialog: HTMLElement) => within(dialog).getByRole("tab", { selected: true }).textContent
+const selectionBar = () => screen.queryByRole("region", { name: "Selected rows" })
+const tick = async (name: string, shiftKey = false) => fireEvent.click(within(await rowOf(name)).getByRole("checkbox"), { shiftKey })
+
+/** Answers each bulk step with result, and records its body. */
+function answerBulk(result: { done: number; skipped: number; failed: number }) {
+  server.use(http.post("*/api/transfers/bulk", async ({ request }) => {
+    requests.push(`POST /api/transfers/bulk ${JSON.stringify(await request.json())}`)
+    return HttpResponse.json(result)
+  }))
+}
+
 const stepLabels = (dialog: HTMLElement) =>
   within(within(dialog).getByRole("tabpanel")).getAllByRole("listitem").map(item => item.querySelector("div > span")?.textContent)
 
@@ -347,6 +358,113 @@ describe("the Transfers tab", () => {
     fireEvent.click(within(await rowOf("Show.S01.1080p-GRP")).getByRole("button", { name: "Cancel" }))
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel the Transfer" }))
     await waitFor(() => expect(requests).toContain("POST /api/transfers/1/cancel"))
+  })
+
+  it("cancels and removes the picked rows that each step fits, after a question", async () => {
+    answerBulk({ done: 1, skipped: 0, failed: 0 })
+    renderTab()
+    await tick("Show.S01.1080p-GRP")
+    await tick("Film.2019.2160p-ABC")
+    const bar = selectionBar()!
+    expect(within(bar).getByText("2 selected")).toBeTruthy()
+    // The copying row can be cancelled, and the failed row can run again or go.
+    expect(within(bar).getAllByRole("button").map(button => button.textContent)).toEqual(["Retry", "Cancel", "Remove", "Clear"])
+    expect((await rowOf("Show.S01.1080p-GRP")).getAttribute("data-state")).toBe("selected")
+
+    fireEvent.click(within(bar).getByRole("button", { name: "Cancel" }))
+    const ask = await screen.findByRole("alertdialog")
+    expect(within(ask).getByText(/^2 rows are selected\. qui cancels each one that has not ended/)).toBeTruthy()
+    fireEvent.click(within(ask).getByRole("button", { name: "Cancel the rows" }))
+    await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"cancel\",\"ids\":[1]}"))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("qui cancels 1 row.", undefined))
+    await waitFor(() => expect(selectionBar()).toBeNull())
+
+    // The export run ended, so it can only go.
+    await tick("Album.2020.FLAC-XYZ")
+    expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Remove", "Clear"])
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Remove" }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep the rows" }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+    expect(requests.filter(r => r.includes("remove"))).toEqual([])
+
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Remove" }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove the rows" }))
+    await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"remove\",\"ids\":[3]}"))
+  })
+
+  it("retries the picked rows without a question, and ticks a range of rows with Shift", async () => {
+    answerBulk({ done: 2, skipped: 0, failed: 0 })
+    renderTab()
+    await tick("Film.2019.2160p-ABC")
+    await tick("Doc.2018.720p-QRS", true)
+    expect(within(selectionBar()!).getByText("3 selected")).toBeTruthy()
+    expect((await rowOf("Album.2020.FLAC-XYZ")).getAttribute("data-state")).toBe("selected")
+
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"retry\",\"ids\":[2,4]}"))
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 rows run again.", undefined))
+
+    await tick("Film.2019.2160p-ABC")
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Clear" }))
+    expect(selectionBar()).toBeNull()
+  })
+
+  it("picks every row behind the chip, on every page, and sends the chip in place of the ids", async () => {
+    const long = { active: 0, waiting: 120, finished: 0, failed: 0 }
+    server.use(http.get("*/api/transfers", ({ request }) => {
+      const offset = Number(new URL(request.url).searchParams.get("offset"))
+      const rows = Array.from({ length: Math.min(50, long.waiting - offset) }, (_, i) =>
+        row({ id: 1000 - offset - i, hash: `h${offset + i}`, name: `Built.Show.E${offset + i + 1}.1080p-GRP` }))
+      return HttpResponse.json({ rows, counts: long })
+    }))
+    answerBulk({ done: 118, skipped: 1, failed: 1 })
+    // jsdom has no layout, so it has no scrollIntoView.
+    Element.prototype.scrollIntoView = vi.fn()
+    try {
+      renderTab()
+      await tick("Built.Show.E2.1080p-GRP")
+      // A new page starts with no pick.
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Pages of the list" })).getByRole("button", { name: "Next" }))
+      await screen.findByText("Built.Show.E51.1080p-GRP")
+      expect(selectionBar()).toBeNull()
+
+      const pageBox = screen.getByRole("checkbox", { name: "Select the rows of this page" })
+      fireEvent.click(pageBox)
+      expect(within(selectionBar()!).getByText("50 selected")).toBeTruthy()
+      fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 120" }))
+      expect(within(selectionBar()!).getByText("All 120 selected")).toBeTruthy()
+      expect(pageBox.getAttribute("data-state")).toBe("checked")
+
+      // A tick off one row keeps the other rows of this page.
+      await tick("Built.Show.E60.1080p-GRP")
+      expect(within(selectionBar()!).getByText("49 selected")).toBeTruthy()
+      expect(pageBox.getAttribute("data-state")).toBe("indeterminate")
+      fireEvent.click(pageBox)
+      fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 120" }))
+
+      // The All chip offers each step, because the page does not know the rows of the other pages. The server skips
+      // each row that a step does not fit.
+      expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Retry", "Cancel", "Remove", "Clear"])
+      fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Cancel" }))
+      const ask = await screen.findByRole("alertdialog")
+      expect(within(ask).getByText(/^120 rows are selected\./)).toBeTruthy()
+      fireEvent.click(within(ask).getByRole("button", { name: "Cancel the rows" }))
+      await waitFor(() => expect(requests).toContain("POST /api/transfers/bulk {\"action\":\"cancel\",\"filter\":\"all\"}"))
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("qui cancels 118 rows.", {
+        description: "1 row does not fit the step and stays as it was. 1 row failed. The log of qui gives the reason.",
+      }))
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView
+    }
+  })
+
+  it("says so when no picked row fits the step", async () => {
+    answerBulk({ done: 0, skipped: 3, failed: 0 })
+    renderTab()
+    await tick("Film.2019.2160p-ABC")
+    fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith("No selected row fits this step."))
   })
 
   it("opens the Details dialog on Overview, with a short title, the name, the state, and the route", async () => {

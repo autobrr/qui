@@ -78,6 +78,44 @@
     "previous": "Zurück",
     "next": "Weiter"
   },
+  "bulk": {
+    "label": "Ausgewählte Zeilen",
+    "pickPage": "Die Zeilen dieser Seite auswählen",
+    "picked_one": "{{count}} ausgewählt",
+    "picked_other": "{{count}} ausgewählt",
+    "wholeChip_one": "Alle {{count}} ausgewählt",
+    "wholeChip_other": "Alle {{count}} ausgewählt",
+    "pickAll_one": "Alle {{count}} auswählen",
+    "pickAll_other": "Alle {{count}} auswählen",
+    "clear": "Auswahl aufheben",
+    "done": {
+      "retry_one": "{{count}} Zeile läuft erneut.",
+      "retry_other": "{{count}} Zeilen laufen erneut.",
+      "cancel_one": "qui bricht {{count}} Zeile ab.",
+      "cancel_other": "qui bricht {{count}} Zeilen ab.",
+      "remove_one": "{{count}} Zeile wurde entfernt.",
+      "remove_other": "{{count}} Zeilen wurden entfernt."
+    },
+    "skipped_one": "{{count}} Zeile passt nicht zu diesem Schritt und bleibt unverändert.",
+    "skipped_other": "{{count}} Zeilen passen nicht zu diesem Schritt und bleiben unverändert.",
+    "failed_one": "{{count}} Zeile ist fehlgeschlagen. Das Log von qui nennt den Grund.",
+    "failed_other": "{{count}} Zeilen sind fehlgeschlagen. Das Log von qui nennt den Grund.",
+    "nothing": "Keine ausgewählte Zeile passt zu diesem Schritt.",
+    "cancelDialog": {
+      "title": "Ausgewählte Zeilen abbrechen?",
+      "description_one": "{{count}} Zeile ist ausgewählt. Wenn sie nicht beendet ist, bricht qui sie ab und macht rückgängig, was es getan hat: Es entfernt die Dateien und Torrents, die es auf dem Ziel hinzugefügt hat, und startet den Torrent auf der Quelle wieder.",
+      "description_other": "{{count}} Zeilen sind ausgewählt. qui bricht jede ab, die nicht beendet ist, und macht rückgängig, was es getan hat: Es entfernt die Dateien und Torrents, die es auf dem Ziel hinzugefügt hat, und startet den Torrent auf der Quelle wieder.",
+      "confirm": "Zeilen abbrechen",
+      "keep": "Weiterlaufen lassen"
+    },
+    "removeDialog": {
+      "title": "Ausgewählte Zeilen entfernen?",
+      "description_one": "{{count}} Zeile ist ausgewählt. Wenn sie beendet ist, entfernt qui sie aus der Liste. Die Torrents und ihre Dateien bleiben, wo sie sind.",
+      "description_other": "{{count}} Zeilen sind ausgewählt. qui entfernt jede beendete Zeile aus der Liste. Die Torrents und ihre Dateien bleiben, wo sie sind.",
+      "confirm": "Zeilen entfernen",
+      "keep": "Zeilen behalten"
+    }
+  },
   "details": {
     "title": "Transfer-Details",
     "exportTitle": "Details des Export-Laufs",

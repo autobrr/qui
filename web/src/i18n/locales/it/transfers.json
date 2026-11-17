@@ -78,6 +78,44 @@
     "previous": "Precedente",
     "next": "Successiva"
   },
+  "bulk": {
+    "label": "Righe selezionate",
+    "pickPage": "Seleziona le righe di questa pagina",
+    "picked_one": "{{count}} selezionata",
+    "picked_other": "{{count}} selezionate",
+    "wholeChip_one": "{{count}} selezionata su tutte le pagine",
+    "wholeChip_other": "{{count}} selezionate su tutte le pagine",
+    "pickAll_one": "Seleziona tutte ({{count}})",
+    "pickAll_other": "Seleziona tutte ({{count}})",
+    "clear": "Deseleziona",
+    "done": {
+      "retry_one": "{{count}} riga riparte.",
+      "retry_other": "{{count}} righe ripartono.",
+      "cancel_one": "qui annulla {{count}} riga.",
+      "cancel_other": "qui annulla {{count}} righe.",
+      "remove_one": "{{count}} riga è stata rimossa.",
+      "remove_other": "{{count}} righe sono state rimosse."
+    },
+    "skipped_one": "{{count}} riga non è adatta a questo passo e resta com'era.",
+    "skipped_other": "{{count}} righe non sono adatte a questo passo e restano com'erano.",
+    "failed_one": "{{count}} riga non è riuscita. Il log di qui ne indica il motivo.",
+    "failed_other": "{{count}} righe non sono riuscite. Il log di qui ne indica il motivo.",
+    "nothing": "Nessuna riga selezionata è adatta a questo passo.",
+    "cancelDialog": {
+      "title": "Annullare le righe selezionate?",
+      "description_one": "È selezionata {{count}} riga. Se non è terminata, qui la annulla e ripristina ciò che ha fatto: rimuove i file e i torrent che ha aggiunto sulla destinazione, e riavvia il torrent sulla sorgente.",
+      "description_other": "Sono selezionate {{count}} righe. qui annulla ogni riga non terminata e ripristina ciò che ha fatto: rimuove i file e i torrent che ha aggiunto sulla destinazione, e riavvia il torrent sulla sorgente.",
+      "confirm": "Annulla le righe",
+      "keep": "Continua"
+    },
+    "removeDialog": {
+      "title": "Rimuovere le righe selezionate?",
+      "description_one": "È selezionata {{count}} riga. Se è terminata, qui la rimuove dall'elenco. I torrent e i loro file restano dove sono.",
+      "description_other": "Sono selezionate {{count}} righe. qui rimuove dall'elenco ogni riga terminata. I torrent e i loro file restano dove sono.",
+      "confirm": "Rimuovi le righe",
+      "keep": "Mantieni le righe"
+    }
+  },
   "details": {
     "title": "Dettagli del trasferimento",
     "exportTitle": "Dettagli dell'esecuzione dell'esportazione",

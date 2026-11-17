@@ -78,6 +78,44 @@
     "previous": "Anterior",
     "next": "Següent"
   },
+  "bulk": {
+    "label": "Files seleccionades",
+    "pickPage": "Selecciona les files d'aquesta pàgina",
+    "picked_one": "{{count}} seleccionada",
+    "picked_other": "{{count}} seleccionades",
+    "wholeChip_one": "{{count}} seleccionada a totes les pàgines",
+    "wholeChip_other": "{{count}} seleccionades a totes les pàgines",
+    "pickAll_one": "Selecciona-les totes ({{count}})",
+    "pickAll_other": "Selecciona-les totes ({{count}})",
+    "clear": "Desselecciona",
+    "done": {
+      "retry_one": "{{count}} fila torna a començar.",
+      "retry_other": "{{count}} files tornen a començar.",
+      "cancel_one": "qui cancel·la {{count}} fila.",
+      "cancel_other": "qui cancel·la {{count}} files.",
+      "remove_one": "S'ha eliminat {{count}} fila.",
+      "remove_other": "S'han eliminat {{count}} files."
+    },
+    "skipped_one": "{{count}} fila no encaixa amb aquest pas i es queda com estava.",
+    "skipped_other": "{{count}} files no encaixen amb aquest pas i es queden com estaven.",
+    "failed_one": "{{count}} fila ha fallat. El registre de qui en dona el motiu.",
+    "failed_other": "{{count}} files han fallat. El registre de qui en dona el motiu.",
+    "nothing": "Cap fila seleccionada no encaixa amb aquest pas.",
+    "cancelDialog": {
+      "title": "Vols cancel·lar les files seleccionades?",
+      "description_one": "Hi ha {{count}} fila seleccionada. Si no ha acabat, qui la cancel·la i desfà el que ha fet: elimina els fitxers i els torrents que ha afegit a la destinació, i torna a iniciar el torrent a l'origen.",
+      "description_other": "Hi ha {{count}} files seleccionades. qui cancel·la cada fila que no ha acabat i desfà el que ha fet: elimina els fitxers i els torrents que ha afegit a la destinació, i torna a iniciar el torrent a l'origen.",
+      "confirm": "Cancel·la les files",
+      "keep": "Continua"
+    },
+    "removeDialog": {
+      "title": "Vols eliminar les files seleccionades?",
+      "description_one": "Hi ha {{count}} fila seleccionada. Si ha acabat, qui l'elimina de la llista. Els torrents i els seus fitxers es queden on són.",
+      "description_other": "Hi ha {{count}} files seleccionades. qui elimina de la llista cada fila que ha acabat. Els torrents i els seus fitxers es queden on són.",
+      "confirm": "Elimina les files",
+      "keep": "Conserva les files"
+    }
+  },
   "details": {
     "title": "Detalls de la transferència",
     "exportTitle": "Detalls de l'execució d'exportació",

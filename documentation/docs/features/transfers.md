@@ -154,7 +154,11 @@ Each row has these actions:
 
 On a phone, the actions of a row are in one menu.
 
-Finished rows stay for 30 days. The list shows the newest 500 rows.
+To act on many rows at once, select the box at the start of each row. To select a range of rows, hold Shift when you select the box of the last row. The box in the header selects all the rows of the page. After you select all the rows of the page, **Select all** selects each row of the chip, also the rows on the other pages.
+
+A bar at the bottom of the list shows **Retry**, **Cancel**, and **Remove** for the selected rows. An action changes only the rows where it is possible, and qui skips the other rows. For example, **Cancel** skips a Transfer that ended. qui asks before it cancels or removes rows. The message after the action tells you how many rows changed and how many qui skipped.
+
+Finished rows stay for 30 days.
 
 The notification events **Transfer failed** and **Transfer finished** tell you about the result. See [Notifications](./notifications.md).
 

@@ -77,6 +77,34 @@
     "previous": "이전",
     "next": "다음"
   },
+  "bulk": {
+    "label": "선택한 행",
+    "pickPage": "이 페이지의 행 선택",
+    "picked_other": "{{count}}개 선택됨",
+    "wholeChip_other": "모든 페이지에서 {{count}}개 선택됨",
+    "pickAll_other": "모두 선택 ({{count}})",
+    "clear": "선택 해제",
+    "done": {
+      "retry_other": "{{count}}개 행을 다시 실행합니다.",
+      "cancel_other": "qui가 {{count}}개 행을 취소합니다.",
+      "remove_other": "{{count}}개 행을 제거했습니다."
+    },
+    "skipped_other": "{{count}}개 행은 이 작업에 맞지 않아 그대로 둡니다.",
+    "failed_other": "{{count}}개 행이 실패했습니다. qui 로그에서 이유를 확인할 수 있습니다.",
+    "nothing": "선택한 행 중 이 작업에 맞는 행이 없습니다.",
+    "cancelDialog": {
+      "title": "선택한 행을 취소할까요?",
+      "description_other": "{{count}}개 행을 선택했습니다. qui가 끝나지 않은 각 행을 취소하고 수행한 작업을 되돌립니다. 대상에 추가한 파일과 토렌트를 제거하고, 원본의 토렌트를 다시 시작합니다.",
+      "confirm": "행 취소",
+      "keep": "계속 실행"
+    },
+    "removeDialog": {
+      "title": "선택한 행을 제거할까요?",
+      "description_other": "{{count}}개 행을 선택했습니다. qui가 끝난 각 행을 목록에서 제거합니다. 토렌트와 파일은 그대로 남습니다.",
+      "confirm": "행 제거",
+      "keep": "행 유지"
+    }
+  },
   "details": {
     "title": "전송 세부 정보",
     "exportTitle": "내보내기 실행 세부 정보",

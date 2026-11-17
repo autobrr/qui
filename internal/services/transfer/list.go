@@ -86,14 +86,8 @@ func (s *Store) List(ctx context.Context, filter Filter, limit, offset int) (*Li
 			t.options_json, t.log_json, t.retry_at, t.failure_class, t.failure_reason, t.created_at, t.finished_at
 		FROM torrent_transfers t
 		JOIN torrent_transfer_members m ON m.transfer_id = t.id AND m.position = 0`
-	args := []any{}
-	if states := filterStates[filter]; len(states) > 0 {
-		query += ` WHERE t.state IN (?` + strings.Repeat(", ?", len(states)-1) + `)`
-		for _, state := range states {
-			args = append(args, string(state))
-		}
-	}
-	query += ` ORDER BY t.id DESC LIMIT ? OFFSET ?`
+	clause, args := whereState(filter, "t.state")
+	query += clause + ` ORDER BY t.id DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -116,6 +110,39 @@ func (s *Store) List(ctx context.Context, filter Filter, limit, offset int) (*Li
 		return nil, err
 	}
 	return list, nil
+}
+
+// whereState is the WHERE clause that keeps the rows behind filter, by the
+// state column, with its arguments. FilterAll keeps every row.
+func whereState(filter Filter, column string) (string, []any) {
+	states := filterStates[filter]
+	if len(states) == 0 {
+		return "", nil
+	}
+	args := make([]any, 0, len(states))
+	for _, state := range states {
+		args = append(args, string(state))
+	}
+	return ` WHERE ` + column + ` IN (?` + strings.Repeat(", ?", len(states)-1) + `)`, args
+}
+
+// IDs returns the id of each row behind filter, the newest first.
+func (s *Store) IDs(ctx context.Context, filter Filter) ([]int64, error) {
+	clause, args := whereState(filter, "state")
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM torrent_transfers`+clause+` ORDER BY id DESC`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list transfer ids: %w", err)
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("list transfer ids: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func scanRow(rows *sql.Rows) (Row, error) {

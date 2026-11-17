@@ -13,6 +13,8 @@ export type TransferAfter = "removeWithFiles" | "keepFiles" | "keepSeeding"
 export type TransferWayChoice = "auto" | "copy" | "bittorrent"
 /** A filter chip of the Transfers page. "all" shows every row. */
 export type TransferFilter = "all" | "active" | "waiting" | "finished" | "failed"
+/** A step that the Transfers page takes on many rows at once. */
+export type TransferBulkAction = "retry" | "cancel" | "remove"
 
 export interface TransferHint {
   kind: "tcpAndUtp"
@@ -107,6 +109,18 @@ export interface TransferRequest {
   way: TransferWayChoice
 }
 
+/** A bulk step names the rows by id, or picks every row behind a filter chip, on every page. */
+export type TransferBulkRequest = { action: TransferBulkAction } & ({ ids: number[] } | { filter: TransferFilter })
+
+export interface TransferBulkResult {
+  /** The rows that took the step. */
+  done: number
+  /** The rows that the step does not fit, for example a cancel of a row that ended. */
+  skipped: number
+  /** The rows where the step failed for another reason. */
+  failed: number
+}
+
 export interface TransferSummary {
   way: TransferWay
   bytes: number
@@ -141,4 +155,5 @@ export const transfersApi = {
   retry: (id: number) => apiRequest<{ id: number }>(`/transfers/${id}/retry`, { method: "POST" }),
   cancel: (id: number) => apiRequest<void>(`/transfers/${id}/cancel`, { method: "POST" }),
   remove: (id: number) => apiRequest<void>(`/transfers/${id}`, { method: "DELETE" }),
+  bulk: (req: TransferBulkRequest) => apiRequest<TransferBulkResult>("/transfers/bulk", json(req)),
 }

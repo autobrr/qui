@@ -77,6 +77,34 @@
     "previous": "上一页",
     "next": "下一页"
   },
+  "bulk": {
+    "label": "已选行",
+    "pickPage": "选择此页的行",
+    "picked_other": "已选 {{count}} 项",
+    "wholeChip_other": "已选全部 {{count}} 项",
+    "pickAll_other": "全选 {{count}} 项",
+    "clear": "清除选择",
+    "done": {
+      "retry_other": "{{count}} 行将重新运行。",
+      "cancel_other": "qui 将取消 {{count}} 行。",
+      "remove_other": "已移除 {{count}} 行。"
+    },
+    "skipped_other": "{{count}} 行不适用此操作，保持不变。",
+    "failed_other": "{{count}} 行失败。qui 日志中有原因。",
+    "nothing": "没有已选行适用此操作。",
+    "cancelDialog": {
+      "title": "取消已选行？",
+      "description_other": "已选 {{count}} 行。qui 将取消每个尚未结束的行并撤销已完成的操作：移除它在目标上添加的文件和种子，并在来源上重新启动该种子。",
+      "confirm": "取消这些行",
+      "keep": "继续运行"
+    },
+    "removeDialog": {
+      "title": "移除已选行？",
+      "description_other": "已选 {{count}} 行。qui 将从列表中移除每个已结束的行。种子及其文件保持原位。",
+      "confirm": "移除这些行",
+      "keep": "保留这些行"
+    }
+  },
   "details": {
     "title": "传输详情",
     "exportTitle": "导出运行详情",

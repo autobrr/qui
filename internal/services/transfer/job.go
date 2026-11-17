@@ -556,6 +556,14 @@ func (j *job) rollBack(ctx context.Context) {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	defer j.release()
+	// A Transfer records the prepare step before it changes anything. One
+	// that never got there has nothing to take back, so its end asks the
+	// instances nothing.
+	if j.rec.Kind == KindTransfer && !j.reached(stepPrepare) {
+		j.logf("Cancelled.")
+		_ = j.finish(ctx, StateCancelled)
+		return
+	}
 	// The check marks the instances that the cleanup must not touch.
 	_ = j.checkInstances(ctx)
 	j.logf("Cancelled.")
