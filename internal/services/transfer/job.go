@@ -546,7 +546,11 @@ func (j *job) notify(ctx context.Context, eventType notifications.EventType) {
 	if len(j.rec.Members) > 1 {
 		lines = append(lines, fmt.Sprintf("Torrents: %d", len(j.rec.Members)))
 	}
-	lines = append(lines, "Target: "+j.target.Name)
+	target := fmt.Sprintf("Instance %d", j.rec.TargetInstanceID)
+	if j.target != nil {
+		target = j.target.Name
+	}
+	lines = append(lines, "Target: "+target)
 	switch {
 	case eventType != notifications.EventTransferFailed:
 	case j.rec.FailureClass == FailureTemporary:
@@ -554,14 +558,17 @@ func (j *job) notify(ctx context.Context, eventType notifications.EventType) {
 	default:
 		lines = append(lines, "Error: "+j.rec.FailureReason)
 	}
-	j.svc.deps.Notifier.Notify(ctx, notifications.Event{
-		Type:         eventType,
-		InstanceID:   j.source.ID,
-		InstanceName: j.source.Name,
-		TorrentName:  first.Name,
-		TorrentHash:  first.Hash,
-		Message:      strings.Join(lines, "\n"),
-	})
+	event := notifications.Event{
+		Type:        eventType,
+		InstanceID:  j.rec.SourceInstanceID,
+		TorrentName: first.Name,
+		TorrentHash: first.Hash,
+		Message:     strings.Join(lines, "\n"),
+	}
+	if j.source != nil {
+		event.InstanceName = j.source.Name
+	}
+	j.svc.deps.Notifier.Notify(ctx, event)
 }
 
 func (j *job) save(ctx context.Context) {

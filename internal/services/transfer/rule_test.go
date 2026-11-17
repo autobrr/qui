@@ -6,6 +6,7 @@ package transfer_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -18,20 +19,21 @@ import (
 
 // A Preview runs the checks of Start and tells the way and the size of the
 // Transfer: each file of the group once. It records, claims, and writes
-// nothing.
+// nothing, and refuses a torrent that a Transfer holds, as Start does.
 func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
 	r.seed(s)
 	crossSeed, _ := crossSeedOf(t, s)
 	r.src.Seed(crossSeed, r.srcDir)
+	r.seedEpisode(s)
 
 	preview, err := r.svc.Preview(t.Context(), r.request(s))
 
 	require.NoError(t, err)
 	require.Equal(t, transfer.WaySFTP, preview.Way)
-	require.Equal(t, int64(70), preview.Bytes, "the cross-seed reads the same 70 bytes")
-	require.Len(t, preview.Members, 2)
+	require.Equal(t, int64(70), preview.Bytes, "the cross-seed and the episode read the same 70 bytes")
+	require.Len(t, preview.Members, 3)
 	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 	unfinished, err := r.store.Unfinished(t.Context())
 	require.NoError(t, err)
@@ -48,6 +50,10 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	_, err = r.svc.Preview(t.Context(), transfer.Request{SourceInstanceID: r.source.ID, Hash: strings.Repeat("ab", 20), TargetInstanceID: r.target.ID})
 	_, refused := errors.AsType[*transfer.RefusalError](err)
 	require.True(t, refused, "want a refusal, got %v", err)
+
+	var whileHeld error
+	r.startOnWrite(s, func(int64) { _, whileHeld = r.svc.Preview(t.Context(), r.request(s)) })
+	require.ErrorIs(t, whileHeld, transfer.ErrClaimed)
 }
 
 // After a Transfer fails for good, a rule starts no new Transfer of the
@@ -65,6 +71,11 @@ func TestARuleWaitsForTheUserAfterAPermanentFailure(t *testing.T) {
 	require.ErrorIs(t, err, transfer.ErrWaitsForUser)
 	_, err = r.svc.Preview(t.Context(), byRule)
 	require.ErrorIs(t, err, transfer.ErrWaitsForUser)
+	crossSeed, crossSeedHash := crossSeedOf(t, s)
+	r.src.Seed(crossSeed, r.srcDir)
+	byRule.Hash = crossSeedHash
+	_, err = r.svc.Start(t.Context(), byRule)
+	require.ErrorIs(t, err, transfer.ErrWaitsForUser, "a new cross-seed would take the torrent along")
 
 	r.disk.free = 0
 	require.Equal(t, transfer.StateDone, r.run(r.request(s)).State)
@@ -95,6 +106,35 @@ func TestTransferSendsItsEndAsAnEvent(t *testing.T) {
 	}
 	require.Equal(t, "Torrent: "+showName+"\nTarget: homelab", finished.Message)
 	require.True(t, strings.HasPrefix(failed.Message, "Torrent: "+showName+"\nTarget: homelab\nError: Not enough free space on homelab"), failed.Message)
+}
+
+// regression: #4242
+// A Transfer that resumes after one of its instances was deleted fails for
+// good, and its event shows a deleted target by its ID.
+func TestATransferSendsItsEndAfterAnInstanceIsDeleted(t *testing.T) {
+	for _, side := range []string{"source", "target"} {
+		r := newRig(t)
+		sent := &events{}
+		r.deps.Notifier = sent
+		r.restart()
+		s := newShow(t, showName)
+		r.seed(s)
+		id := r.startOnWrite(s, func(int64) { r.cancel() })
+		gone, target := r.source, "homelab"
+		if side == "target" {
+			gone, target = r.target, fmt.Sprintf("Instance %d", r.target.ID)
+		}
+		require.NoError(t, r.instances.Delete(t.Context(), gone.ID))
+
+		r.restart()
+		r.svc.Wait()
+
+		require.Equal(t, transfer.FailurePermanent, r.get(id).FailureClass, side)
+		require.Len(t, sent.events, 1, side)
+		require.Equal(t, r.source.ID, sent.events[0].InstanceID, side)
+		prefix := "Torrent: " + showName + "\nTarget: " + target + "\nError: "
+		require.True(t, strings.HasPrefix(sent.events[0].Message, prefix), "%s: %s", side, sent.events[0].Message)
+	}
 }
 
 type events struct {

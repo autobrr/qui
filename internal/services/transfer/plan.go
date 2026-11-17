@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/helpertorrent"
 )
 
@@ -151,13 +152,12 @@ func names(plan []file) []string {
 
 // groupBytes is the size of the files of the group, a file that two members
 // read at one path once.
-func groupBytes(group []*source) int64 {
-	type place struct{ savePath, name string }
-	seen := map[place]bool{}
+func groupBytes(d fsops.PathDialect, group []*source) int64 {
+	seen := map[string]bool{}
 	var total int64
 	for _, src := range group {
 		for _, f := range src.files {
-			at := place{src.torrent.SavePath, f.Name}
+			at := d.Join(src.torrent.SavePath, d.FromSlash(f.Name))
 			if !seen[at] {
 				seen[at] = true
 				total += f.Size

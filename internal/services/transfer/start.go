@@ -57,10 +57,8 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 		return nil, nil, refuse("The Transfer source and the Transfer target are the same instance.")
 	}
 	if req.StartedBy == StartedByRule {
-		if waits, err := s.deps.Store.WaitsForUser(ctx, req.SourceInstanceID, hash); err != nil {
+		if err := s.waitsForUser(ctx, req.SourceInstanceID, hash); err != nil {
 			return nil, nil, err
-		} else if waits {
-			return nil, nil, ErrWaitsForUser
 		}
 	}
 	source, err := s.instance(ctx, req.SourceInstanceID)
@@ -102,6 +100,13 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 	group, err := s.groupOf(ctx, source.ID, src)
 	if err != nil {
 		return nil, nil, err
+	}
+	if req.StartedBy == StartedByRule {
+		for _, member := range group[1:] {
+			if err := s.waitsForUser(ctx, source.ID, member.torrent.Hash); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 
 	placement := req.Placement
@@ -155,6 +160,19 @@ func (s *Service) check(ctx context.Context, req Request) (*Record, []*source, e
 		Steps:            []Step{{Name: "start", At: s.deps.Now()}},
 		Members:          members,
 	}, group, nil
+}
+
+// waitsForUser returns ErrWaitsForUser when the last Transfer of the torrent
+// failed for good.
+func (s *Service) waitsForUser(ctx context.Context, instanceID int, hash string) error {
+	waits, err := s.deps.Store.WaitsForUser(ctx, instanceID, hash)
+	if err != nil {
+		return err
+	}
+	if waits {
+		return ErrWaitsForUser
+	}
+	return nil
 }
 
 func (s *Service) instance(ctx context.Context, id int) (*models.Instance, error) {

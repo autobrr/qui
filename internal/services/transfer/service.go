@@ -264,7 +264,16 @@ func (s *Service) Preview(ctx context.Context, req Request) (*Preview, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Preview{Way: record.Way, Bytes: groupBytes(group), Members: record.Members}, nil
+	for _, m := range record.Members {
+		if s.deps.Store.IsClaimed(record.SourceInstanceID, m.Hash) {
+			return nil, fmt.Errorf("%w: %s on instance %d", ErrClaimed, m.Hash, record.SourceInstanceID)
+		}
+	}
+	files, err := s.deps.Files.GetBackend(ctx, record.SourceInstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("read the files of instance %d: %w", record.SourceInstanceID, err)
+	}
+	return &Preview{Way: record.Way, Bytes: groupBytes(files.Paths(), group), Members: record.Members}, nil
 }
 
 func (s *Service) enqueue(r *Record) {
