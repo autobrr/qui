@@ -582,21 +582,13 @@ func (j *job) startSource(ctx context.Context) {
 	j.stoppedSource = false
 }
 
-// remove removes the files that exist and reports whether none of them was
-// there. A file that qui could not remove may be there.
-func (j *job) remove(ctx context.Context, names ...string) (absent bool) {
-	absent = true
+// remove removes the files that exist.
+func (j *job) remove(ctx context.Context, names ...string) {
 	for _, name := range names {
-		err := j.root.Remove(ctx, name)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		absent = false
-		if err != nil {
+		if err := j.root.Remove(ctx, name); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			j.logf("qui could not remove %s on %s: %v", j.targetPath(name), j.target.Name, err)
 		}
 	}
-	return absent
 }
 
 // targetPath is the path on the target of a slash name below the root.

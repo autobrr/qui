@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,6 +43,9 @@ type crash struct {
 	At          string
 	Unconfirmed bool
 	Damage      map[string]int64
+	// InTheWay is the path of a file that lands on the target at the first
+	// write of the copy.
+	InTheWay string
 }
 
 // qui ends at each step that it records, and at the adds that it cannot
@@ -220,6 +224,31 @@ func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 }
 
+// A file that lands at a path of the copy during the copy stops the
+// Transfer at the rename into place, and the cleanup keeps it. A crash after
+// the cleanup, before qui recorded the end, keeps it too: the cleanup that
+// runs again after the restart does not take it for a file that qui placed.
+// regression: #4231
+func TestTransferCleanupKeepsAFileInTheWayAfterACrash(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	theirs := filepath.Join(r.dstDir, showName, episode2)
+	runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: "before:failed", InTheWay: theirs}, make(chan *os.Process, 1), false)
+
+	r.restart()
+	r.svc.Wait()
+
+	var id int64
+	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+	record := r.get(id)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Contains(t, record.FailureReason, "Conflict: a file is in the way on homelab")
+	require.Equal(t, map[string]string{showName + "/" + episode2: "theirs"}, tree(t, r.dstDir),
+		"the file in the way stays, and the files of qui go")
+	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+}
+
 // runCrashChild runs qui in a child process on the database of the rig, and
 // waits until it ends at its crash point, or until the parent kills it. The
 // parent takes the process from child to kill it.
@@ -275,6 +304,10 @@ func TestTransferCrashChild(t *testing.T) {
 				os.Exit(crashed)
 			}
 		}
+	}
+	if plan.InTheWay != "" {
+		put := sync.OnceFunc(func() { require.NoError(t, os.WriteFile(plan.InTheWay, []byte("theirs"), 0o600)) })
+		d.onWrite = func(string) { put() }
 	}
 	store, err := transfer.NewStore(t.Context(), at)
 	require.NoError(t, err)
