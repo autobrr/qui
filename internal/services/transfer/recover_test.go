@@ -252,8 +252,13 @@ func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 }
 
+// sent counts the requests that a stub answered, without the reads of
+// torrents/info: the tracker health loop of qui sends one at a random time
+// after qui connects to a client, and no Transfer reads it.
+func sent(s *qbtstub.Server) int { return s.Requests() - s.Calls("torrents/info") }
+
 // requests counts the requests that both stubs answered.
-func (r *rig) requests() int { return r.src.Requests() + r.dst.Requests() }
+func (r *rig) requests() int { return sent(r.src) + sent(r.dst) }
 
 // A temporary failure keeps the partial data and the claim, and runs again
 // no sooner than an hour later.
@@ -389,7 +394,7 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		var before int
 		id := r.startOnWrite(s, func(int64) {
 			require.NoError(t, r.instances.Delete(t.Context(), r.source.ID))
-			before = r.src.Requests()
+			before = sent(r.src)
 		})
 
 		record := r.get(id)
@@ -397,7 +402,7 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		require.Equal(t, transfer.FailurePermanent, record.FailureClass)
 		require.Contains(t, record.FailureReason, "was deleted")
 		require.Empty(t, tree(t, r.dstDir), "qui removes what it wrote on the target")
-		require.Equal(t, before, r.src.Requests())
+		require.Equal(t, before, sent(r.src))
 		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
 	})
 	t.Run("the target", func(t *testing.T) {
@@ -407,14 +412,14 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		var before int
 		id := r.startOnWrite(s, func(int64) {
 			require.NoError(t, r.instances.Delete(t.Context(), r.target.ID))
-			before = r.dst.Requests()
+			before = sent(r.dst)
 		})
 
 		record := r.get(id)
 		require.Equal(t, transfer.StateFailed, record.State)
 		require.Equal(t, transfer.FailurePermanent, record.FailureClass)
 		require.Contains(t, record.FailureReason, "was deleted")
-		require.Equal(t, before, r.dst.Requests())
+		require.Equal(t, before, sent(r.dst))
 		require.True(t, r.src.Has(s.hash))
 		require.False(t, r.src.Stopped(s.hash))
 	})

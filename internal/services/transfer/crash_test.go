@@ -192,11 +192,11 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 				require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 			}
 
-			src, dst := r.src.Requests(), r.dst.Requests()
+			src, dst := sent(r.src), sent(r.dst)
 			r.restart()
 			r.svc.Wait()
-			require.Equal(t, src, r.src.Requests())
-			require.Equal(t, dst, r.dst.Requests())
+			require.Equal(t, src, sent(r.src))
+			require.Equal(t, dst, sent(r.dst))
 		})
 	}
 }

@@ -335,11 +335,11 @@ func TestExportResumesAfterACrash(t *testing.T) {
 			}
 			require.True(t, r.seeding(r.source.ID, s.hash), "the source seeds on")
 
-			src, dst := r.src.Requests(), r.dst.Requests()
+			src, dst := sent(r.src), sent(r.dst)
 			r.restart()
 			r.svc.Wait()
-			require.Equal(t, src, r.src.Requests())
-			require.Equal(t, dst, r.dst.Requests())
+			require.Equal(t, src, sent(r.src))
+			require.Equal(t, dst, sent(r.dst))
 		})
 	}
 }
