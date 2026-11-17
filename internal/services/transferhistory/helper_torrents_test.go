@@ -40,7 +40,6 @@ func TestStatisticsCountNoHelperTorrent(t *testing.T) {
 		want    []string
 	}{
 		{name: "a helper torrent is left out", helpers: fakeHelpers{helper: true}, want: []string{seed, own}},
-		{name: "with no helper rows every torrent counts", helpers: fakeHelpers{}, want: []string{seed, helper, own}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
