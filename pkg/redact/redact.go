@@ -169,6 +169,7 @@ const sensitiveFieldName = `[A-Za-z0-9_.-]*(?i:key|pass|token|secret|auth)[A-Za-
 const escapedQuotedValue = `\\"(?:[^"\\]|\\[^"\\]|\\\\(?:\\\\|\\"|[^"\\]))*\\"`
 
 var (
+	jsonSecretFlatRegex    = regexp.MustCompile(`((\\?)"` + sensitiveFieldName + `\\?"\s*:\s*)(?:\[[^\[\]{}]*\]|\{[^{}\[\]]*\})`)
 	jsonSecretStringRegex  = regexp.MustCompile(`("` + sensitiveFieldName + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
 	jsonSecretScalarRegex  = regexp.MustCompile(`(\\?"` + sensitiveFieldName + `\\?"\s*:\s*)[^\s,}\]"{\[\\]+`)
 	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveFieldName + `\\"\s*:\s*)` + escapedQuotedValue)
@@ -187,7 +188,8 @@ func Text(s string) string {
 	}
 	// The field passes run before String, because a query parameter pattern
 	// in String would also take the quote that ends a field value.
-	result := jsonSecretStringRegex.ReplaceAllString(s, `${1}"REDACTED"`)
+	result := jsonSecretFlatRegex.ReplaceAllString(s, `${1}${2}"REDACTED${2}"`)
+	result = jsonSecretStringRegex.ReplaceAllString(result, `${1}"REDACTED"`)
 	result = jsonSecretScalarRegex.ReplaceAllString(result, `${1}REDACTED`)
 	result = escapedJSONSecretRegex.ReplaceAllString(result, `${1}\"REDACTED\"`)
 	result = authorizationRegex.ReplaceAllString(result, `${1}REDACTED`)
