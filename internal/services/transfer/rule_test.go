@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
+// regression: #4242
 // A Preview runs the checks of Start and tells the way and the size of the
 // Transfer: each file of the group once. It records, claims, and writes
 // nothing, and refuses a torrent that a Transfer holds, as Start does.
@@ -56,6 +57,7 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	require.ErrorIs(t, whileHeld, transfer.ErrClaimed)
 }
 
+// regression: #4242
 // After a Transfer fails for good, a rule starts no new Transfer of the
 // torrent: the failure waits for the user. The user can still start one.
 func TestARuleWaitsForTheUserAfterAPermanentFailure(t *testing.T) {

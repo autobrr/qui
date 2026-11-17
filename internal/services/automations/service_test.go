@@ -234,6 +234,7 @@ func TestNeedsForTrackerNames(t *testing.T) {
 			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}/{{ .IsolationFolderName }}"}}),
 			want: true,
 		},
+		// regression: #4242
 		{
 			name: "transfer save path uses Tracker",
 			rule: rule(&models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}"}}),

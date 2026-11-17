@@ -302,6 +302,7 @@ func TestTransferToInstanceAsksAgainAnHourAfterARefusal(t *testing.T) {
 	require.Len(t, storedTransferActivities(t, db, instanceIDs[0]), 2)
 }
 
+// regression: #4242
 // When the run ends during a Start, the Transfers that did not start get no
 // hold, and the next run starts them.
 func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T) {
