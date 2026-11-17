@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-
-	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 // Filter is a filter chip of the Transfers page. FilterAll lists every row.
@@ -177,8 +175,8 @@ func (s *Store) counts(ctx context.Context) (Counts, error) {
 	return c, rows.Err()
 }
 
-// Remove deletes a finished Transfer with the registry rows of its helper
-// torrents. It returns ErrNotFinished for a Transfer that holds its torrents.
+// Remove deletes a finished Transfer. It returns ErrNotFinished for a
+// Transfer that holds its torrents.
 func (s *Store) Remove(ctx context.Context, id int64) error {
 	record, err := s.Get(ctx, id)
 	if err != nil {
@@ -190,8 +188,8 @@ func (s *Store) Remove(ctx context.Context, id int64) error {
 	return s.remove(ctx, []int64{id})
 }
 
-// RemoveFinishedBefore deletes each Transfer that finished before t, with the
-// registry rows of its helper torrents, and returns how many it deleted.
+// RemoveFinishedBefore deletes each Transfer that finished before t, and
+// returns how many it deleted.
 func (s *Store) RemoveFinishedBefore(ctx context.Context, t time.Time) (int, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, finished_at FROM torrent_transfers WHERE finished_at IS NOT NULL`)
 	if err != nil {
@@ -221,20 +219,16 @@ func (s *Store) RemoveFinishedBefore(ctx context.Context, t time.Time) (int, err
 	return len(ids), s.remove(ctx, ids)
 }
 
+// remove deletes the rows of the Transfers and keeps the registry rows of
+// their helper torrents: a cleanup that could not reach a client only logged
+// that the helper stays there, and the registry is what protects it.
 func (s *Store) remove(ctx context.Context, ids []int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin remove of transfers: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	removed := map[torrentKey]bool{}
 	for _, id := range ids {
-		if err := helpersOf(ctx, tx, id, removed); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM helper_torrents WHERE owner_kind = ? AND owner_id = ?`, string(OwnerTransfer), id); err != nil {
-			return fmt.Errorf("remove helper torrents of transfer %d: %w", id, err)
-		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM torrent_transfer_members WHERE transfer_id = ?`, id); err != nil {
 			return fmt.Errorf("remove members of transfer %d: %w", id, err)
 		}
@@ -244,31 +238,6 @@ func (s *Store) remove(ctx context.Context, ids []int64) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit remove of transfers: %w", err)
-	}
-	s.mu.Lock()
-	for key := range removed {
-		delete(s.helpers, key)
-	}
-	s.mu.Unlock()
-	return nil
-}
-
-// helpersOf adds the helper torrents of Transfer id to keys.
-func helpersOf(ctx context.Context, tx dbinterface.TxQuerier, id int64, keys map[torrentKey]bool) error {
-	rows, err := tx.QueryContext(ctx, `SELECT instance_id, hash FROM helper_torrents WHERE owner_kind = ? AND owner_id = ?`, string(OwnerTransfer), id)
-	if err != nil {
-		return fmt.Errorf("read helper torrents of transfer %d: %w", id, err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var key torrentKey
-		if err := rows.Scan(&key.instanceID, &key.hash); err != nil {
-			return fmt.Errorf("read helper torrents of transfer %d: %w", id, err)
-		}
-		keys[key] = true
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read helper torrents of transfer %d: %w", id, err)
 	}
 	return nil
 }
@@ -291,9 +260,9 @@ func (s *Service) purge() {
 	}
 }
 
-// Remove deletes the row of a finished Transfer or Export run, with the
-// registry rows of its helper torrents. It returns ErrNotFound for an
-// unknown id, and ErrNotFinished for a Transfer that has not ended.
+// Remove deletes the row of a finished Transfer or Export run. It returns
+// ErrNotFound for an unknown id, and ErrNotFinished for a Transfer that has
+// not ended.
 func (s *Service) Remove(ctx context.Context, id int64) error {
 	return s.deps.Store.Remove(ctx, id)
 }

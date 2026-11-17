@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
@@ -42,8 +43,8 @@ func (r *rig) exists(id int64) bool {
 	return err == nil
 }
 
-// qui removes the rows of Transfers that finished more than 30 days ago, with
-// the registry rows of their helper torrents, and keeps every other row.
+// qui removes the rows of Transfers that finished more than 30 days ago, and
+// keeps every other row.
 func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	r := newRig(t)
 	old := r.ended("aaaa", transfer.StateDone)
@@ -56,8 +57,43 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	r.setClock(time.Now().Add(31 * 24 * time.Hour))
 	r.restart()
 	require.False(t, r.exists(old))
-	require.False(t, r.store.IsHelper(r.target.ID, "helperaaaa"), "the registry row of its helper torrent goes with it")
 	require.True(t, r.exists(running.ID), "a Transfer that runs stays")
+}
+
+// regression: #4242
+// A helper torrent stays a helper after its Transfer row goes, by the user or
+// after 30 days, also after a restart: the cleanup of the Transfer may not
+// have taken it off the client.
+func TestAHelperStaysProtectedAfterTheRowOfItsTransferGoes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		remove func(r *rig, id int64)
+	}{
+		{name: "the user removes the row", remove: func(r *rig, id int64) {
+			require.NoError(r.t, r.svc.Remove(r.t.Context(), id))
+		}},
+		{name: "the row is 30 days old", remove: func(r *rig, _ int64) {
+			r.setClock(time.Now().Add(31 * 24 * time.Hour))
+			r.restart()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			id := r.ended("aaaa", transfer.StateCancelled)
+			tc.remove(r, id)
+			require.False(t, r.exists(id))
+			protected := func() {
+				t.Helper()
+				r.sync.SetHelperTorrents(r.store)
+				require.True(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
+				err := r.sync.RefuseHelperFiles(t.Context(), r.target.ID, []string{"helperaaaa"})
+				require.ErrorIs(t, err, qbittorrent.ErrHelperTorrentFiles)
+			}
+			protected()
+			r.restart()
+			protected()
+		})
+	}
 }
 
 // regression: #4242
