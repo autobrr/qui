@@ -446,6 +446,21 @@ func TestText(t *testing.T) {
 			want:  `{"message":"request Authorization: REDACTED","level":"warn"}`,
 		},
 		{
+			name:  "key value pair with an escaped quote in its quoted value",
+			input: "password: \"abc\\\"def123456\"\nauthToken: 'abc\\'def123456'",
+			want:  "password: REDACTED\nauthToken: REDACTED",
+		},
+		{
+			name:  "quoted key value pair inside a json log line",
+			input: `{"message":"config password: \"abc \\\"def\" loaded","level":"warn"}`,
+			want:  `{"message":"config password: REDACTED loaded","level":"warn"}`,
+		},
+		{
+			name:  "json field whose value holds a query parameter",
+			input: `{"password":"s3cr3t&token=public","user":"bob"}`,
+			want:  `{"password":"REDACTED","user":"bob"}`,
+		},
+		{
 			name:  "plain text stays",
 			input: "cross-seed search found 3 results for Some.Show.S01E01",
 			want:  "cross-seed search found 3 results for Some.Show.S01E01",

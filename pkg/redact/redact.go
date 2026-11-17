@@ -164,12 +164,16 @@ func String(s string) string {
 // auth (apiKey, password, client_secret, X-Api-Key, authToken).
 const sensitiveFieldName = `[A-Za-z0-9_.-]*(?i:key|pass|token|secret|auth)[A-Za-z0-9_.-]*`
 
+// escapedQuotedValue matches a quoted value inside a JSON string, \"...\",
+// up to the first escaped quote that is not itself escaped.
+const escapedQuotedValue = `\\"(?:[^"\\]|\\[^"\\]|\\\\(?:\\\\|\\"|[^"\\]))*\\"`
+
 var (
 	jsonSecretStringRegex  = regexp.MustCompile(`("` + sensitiveFieldName + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
 	jsonSecretScalarRegex  = regexp.MustCompile(`(\\?"` + sensitiveFieldName + `\\?"\s*:\s*)[^\s,}\]"{\[\\]+`)
-	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveFieldName + `\\"\s*:\s*)\\"(?:[^"\\]|\\[^"\\]|\\\\(?:\\\\|\\"|[^"\\]))*\\"`)
+	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveFieldName + `\\"\s*:\s*)` + escapedQuotedValue)
 	authorizationRegex     = regexp.MustCompile(`(?i)(authorization:[ \t]*)(?:[^\s"\\]|\\.)(?:="[^"\r\n]*"|[^\r\n"\\]|\\.)*`)
-	keyValueSecretRegex    = regexp.MustCompile(`(^|[^A-Za-z0-9_.\-/@])(` + sensitiveFieldName + `:[ \t]*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&}\]]+)`)
+	keyValueSecretRegex    = regexp.MustCompile(`(^|[^A-Za-z0-9_.\-/@])(` + sensitiveFieldName + `:[ \t]*)(?:"(?:[^"\\\r\n]|\\.)*"|'(?:[^'\\\r\n]|\\.)*'|` + escapedQuotedValue + `|[^\s,;"'&}\]]+)`)
 )
 
 // Text redacts what String does, plus the value of each JSON field and
@@ -181,12 +185,14 @@ func Text(s string) string {
 	if s == "" {
 		return s
 	}
-	result := String(s)
-	result = jsonSecretStringRegex.ReplaceAllString(result, `${1}"REDACTED"`)
+	// The field passes run before String, because a query parameter pattern
+	// in String would also take the quote that ends a field value.
+	result := jsonSecretStringRegex.ReplaceAllString(s, `${1}"REDACTED"`)
 	result = jsonSecretScalarRegex.ReplaceAllString(result, `${1}REDACTED`)
 	result = escapedJSONSecretRegex.ReplaceAllString(result, `${1}\"REDACTED\"`)
 	result = authorizationRegex.ReplaceAllString(result, `${1}REDACTED`)
-	return keyValueSecretRegex.ReplaceAllString(result, `${1}${2}REDACTED`)
+	result = keyValueSecretRegex.ReplaceAllString(result, `${1}${2}REDACTED`)
+	return String(result)
 }
 
 // minSecretLength is the shortest value that Secrets removes. A shorter value
