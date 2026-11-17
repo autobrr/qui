@@ -42,7 +42,7 @@ func (sm *SyncManager) helpers() HelperTorrents {
 // helper added since the last sync.
 func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, hashes []string) error {
 	helpers := sm.helpers()
-	if helpers == nil {
+	if helpers == nil || helpers.HelperKinds(instanceID) == nil {
 		return nil
 	}
 	if len(hashes) == 1 && hashes[0] == "all" {
@@ -55,6 +55,7 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 			hashes = append(hashes, torrent.Hash)
 		}
 	}
+	// The fresh read can hold a helper registered since the check above.
 	helperKind := helpers.HelperKinds(instanceID)
 	if helperKind == nil {
 		return nil
