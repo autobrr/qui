@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 )
@@ -133,6 +134,9 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		return e.end(ctx, e.rec.FailureReason, true), true
 	}
 	m := e.member()
+	if target, err := e.svc.deps.Instances.Get(ctx, m.TargetInstanceID); err == nil && e.targetMoved(target) {
+		return e.end(ctx, target.Name+" changed its address, so qui adds nothing there and removes nothing from it.", false), true
+	}
 	if e.reached(stepAdd) {
 		torrent, err := e.svc.torrent(ctx, m.TargetInstanceID, m.Hash)
 		switch {
@@ -281,9 +285,7 @@ func (e *exportJob) removeFromTarget(ctx context.Context) {
 	case err != nil:
 		e.logf("qui could not remove the torrent from the target: %v", err)
 		return
-	case fsops.EndpointOf(target).URL != e.rec.TargetEndpoint.URL:
-		// The torrent there is not the one that qui added. The delete goes
-		// through qBittorrent, so only its address counts.
+	case e.targetMoved(target):
 		e.logf("The target has a new address, so qui leaves the torrent there.")
 		return
 	}
@@ -293,6 +295,13 @@ func (e *exportJob) removeFromTarget(ctx context.Context) {
 		return
 	}
 	e.logf("Removed the torrent from the target, and kept its files.")
+}
+
+// targetMoved reports whether the target got a new address since the rule
+// started the run. The torrent there is not the one that qui added. The add
+// and the delete go through qBittorrent, so only its address counts.
+func (e *exportJob) targetMoved(target *models.Instance) bool {
+	return fsops.EndpointOf(target).URL != e.rec.TargetEndpoint.URL
 }
 
 // exportSettings are the settings of the add on the target.

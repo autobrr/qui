@@ -485,13 +485,19 @@ func (r *rig) moveCrossSeed(cs *crossSeeds, s show) *qbtstub.Server {
 	moved.Seed(s.data, other)
 	_, err := r.instances.Update(r.t.Context(), cs.inst.ID, cs.inst.Name, moved.URL, "", "", nil, nil, nil)
 	require.NoError(r.t, err)
-	// The API drops the client of an instance that it updates. A new pool
-	// does the same here.
+	r.restartWithNewClients()
+	return moved
+}
+
+// restartWithNewClients starts qui again with a new pool of clients. The API
+// drops the client of an instance that it updates, and a new pool does the
+// same here.
+func (r *rig) restartWithNewClients() {
+	r.t.Helper()
 	deps, _, sync := wire(r.t, r.db, r.disk, r.now)
 	deps.Routes, deps.CrossSeeds, deps.Config = r.deps.Routes, r.deps.CrossSeeds, r.deps.Config
 	r.deps, r.sync = deps, sync
 	r.restart()
-	return moved
 }
 
 // A new address of the Cross-seed instance stops the Transfer, as a new
