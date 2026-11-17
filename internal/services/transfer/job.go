@@ -197,6 +197,9 @@ func (j *job) prepare(ctx context.Context) error {
 	if err := j.readParts(ctx, pathsOf(j.target, j.dstFiles, j.rec.Members[0].Placement.SavePath)); err != nil {
 		return err
 	}
+	if err := j.keepNames(ctx); err != nil {
+		return err
+	}
 	if !j.blind {
 		if err := j.openRoot(ctx, resumed); err != nil {
 			return err

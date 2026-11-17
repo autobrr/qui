@@ -28,6 +28,9 @@ const (
 	// stepOwnCopy holds the path below the root of a hardlink that the
 	// target could not link. qui copies its bytes into its temporary file.
 	stepOwnCopy = "copy a hardlink"
+	// stepNames holds the names of the files of each member at the first
+	// run, as JSON.
+	stepNames = "names"
 	// stepPlace holds the paths below the root of the files that were on
 	// the target before the Transfer, as JSON.
 	stepPlace = "place"
@@ -189,6 +192,35 @@ func headStartDetail(files []*groupFile) string {
 	}
 	detail, _ := json.Marshal(onTarget)
 	return string(detail)
+}
+
+// keepNames fails a run after a stop when the source renamed a file since
+// the first run. The cleanup then looks for the files under the old names.
+func (j *job) keepNames(ctx context.Context) error {
+	now := make([][]string, len(j.parts))
+	for i, p := range j.parts {
+		now[i] = names(p.plan)
+	}
+	i := slices.IndexFunc(j.rec.Steps, func(s Step) bool { return s.Name == stepNames })
+	if i < 0 {
+		detail, _ := json.Marshal(now)
+		return j.stepWith(ctx, StateCopying, stepNames, string(detail))
+	}
+	var kept [][]string
+	_ = json.Unmarshal([]byte(j.rec.Steps[i].Detail), &kept)
+	if slices.EqualFunc(kept, now, slices.Equal) {
+		return nil
+	}
+	for i, old := range kept {
+		plan := j.parts[i].plan
+		for k := range plan {
+			if !plan[k].pad && len(old) > 0 {
+				plan[k].name, old = old[0], old[1:]
+			}
+		}
+	}
+	j.files, j.byRel, _ = groupFiles(j.parts)
+	return sourceGone("a file was renamed")
 }
 
 // ownTemp finds the temporary file of f, also under the .!qB name that a

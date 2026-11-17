@@ -4,6 +4,7 @@
 package transfer_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -23,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
 const (
@@ -224,6 +226,53 @@ func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
 	require.Equal(t, map[string]string{showName + "/" + episode1: string(s.files[episode1])}, tree(t, r.dstDir),
 		"the file that was on the target stays, and the files of qui go")
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+}
+
+// A rename on the source while qui is stopped fails the resume, as a rename
+// during the copy does, and the cleanup finds the files under the old names.
+// regression: #4231
+func TestTransferStopsAtARenameWhileQuiIsStopped(t *testing.T) {
+	const first, second, spare = "Show.S01E05.mkv", "Show.S01E06.mkv", "Show.S01E07.mkv"
+	swap := []string{first, spare, second, first, spare, second}
+	for _, tc := range []struct {
+		name   string
+		at     string
+		rename []string
+	}{
+		{name: "a swap before the files are in place", at: "before:place", rename: swap},
+		{name: "a swap after the files are in place", at: "before:add", rename: swap},
+		{name: "a rename before the files are in place", at: "before:place", rename: []string{first, spare}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			files := map[string][]byte{
+				episode1: bytes.Repeat([]byte("one|"), 10),
+				episode2: bytes.Repeat([]byte("two|"), 10),
+			}
+			data, hash := qbtstub.NewContentTorrent(t, showName, 16,
+				qbtstub.ContentFile{Path: episode1, Data: files[episode1]},
+				qbtstub.ContentFile{Path: episode2, Data: files[episode2]})
+			s := show{data: data, hash: hash, files: files}
+			r.seed(s)
+			r.renameOnSource(s, episode1, first, episode2, second)
+			runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: tc.at}, make(chan *os.Process, 1), false)
+			r.renameOnSource(s, tc.rename...)
+			source := tree(t, r.srcDir)
+
+			r.restart()
+			r.svc.Wait()
+
+			var id int64
+			require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+			record := r.get(id)
+			require.Equal(t, transfer.StateFailed, record.State, record.FailureReason)
+			require.Contains(t, record.FailureReason, "a file was renamed")
+			require.Empty(t, tree(t, r.dstDir), "the cleanup removes the files of qui")
+			require.False(t, r.dst.Has(s.hash))
+			require.True(t, r.src.Has(s.hash))
+			require.Equal(t, source, tree(t, r.srcDir))
+		})
+	}
 }
 
 // A file that lands at a path of the copy during the copy stops the
