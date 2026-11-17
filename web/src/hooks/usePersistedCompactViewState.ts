@@ -30,7 +30,7 @@ function parseDesktopViewMode(raw: string): ViewMode {
   throw new Error("invalid desktop view mode")
 }
 
-const SETTINGS: Record<ViewModeLayout, ViewModeSettings> = {
+export const VIEW_MODE_SETTINGS: Record<ViewModeLayout, ViewModeSettings> = {
   mobile: {
     storageKey: TORRENT_VIEW_MODE_KEYS.mobile,
     defaultMode: "compact",
@@ -46,7 +46,7 @@ const SETTINGS: Record<ViewModeLayout, ViewModeSettings> = {
 }
 
 export function usePersistedCompactViewState(layout: ViewModeLayout) {
-  const { storageKey, defaultMode, modes, parse } = SETTINGS[layout]
+  const { storageKey, defaultMode, modes, parse } = VIEW_MODE_SETTINGS[layout]
   const [viewMode, setStoredMode] = useClientSetting<ViewMode>(storageKey, {
     defaultValue: defaultMode,
     parse,

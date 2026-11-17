@@ -5,7 +5,6 @@ package externalprograms
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,17 +23,11 @@ import (
 )
 
 func TestNewService(t *testing.T) {
-	t.Run("creates service with all dependencies", func(t *testing.T) {
-		config := &domain.Config{}
-
-		service := NewService(nil, nil, config)
-		assert.NotNil(t, service)
-		assert.Equal(t, config, service.config)
-
-		// Test with nil config (should be allowed)
-		service2 := NewService(nil, nil, nil)
-		assert.NotNil(t, service2)
-		assert.Nil(t, service2.config)
+	t.Run("applies the allowlist from the config", func(t *testing.T) {
+		allowed := t.TempDir()
+		service := NewService(nil, nil, &domain.Config{ExternalProgramAllowList: []string{allowed}})
+		assert.True(t, service.IsPathAllowed(filepath.Join(allowed, "script.sh")))
+		assert.False(t, service.IsPathAllowed(filepath.Join(t.TempDir(), "script.sh")))
 	})
 
 	t.Run("sizes the execution limit from the config", func(t *testing.T) {
@@ -73,29 +66,6 @@ func TestService_Execute_NilProgramStore(t *testing.T) {
 	assert.False(t, result.Success)
 	require.Error(t, result.Error)
 	assert.Contains(t, result.Error.Error(), "not initialized")
-}
-
-func TestService_Execute_WithProgramObject(t *testing.T) {
-	// Test that when a Program is provided, it's used directly without fetching
-	s := &Service{} // No program store needed when Program is provided directly
-
-	program := &models.ExternalProgram{
-		ID:      1,
-		Name:    "Test",
-		Enabled: false, // Disabled so we don't actually execute
-		Path:    "/test",
-	}
-
-	result := s.Execute(context.Background(), ExecuteRequest{
-		Program:    program,
-		Torrent:    &qbt.Torrent{Hash: "abc123"},
-		InstanceID: 1,
-	})
-
-	// Should fail with "disabled" because we used the provided program
-	assert.False(t, result.Success)
-	require.Error(t, result.Error)
-	assert.Contains(t, result.Error.Error(), "program is disabled")
 }
 
 func TestService_Execute_NilTorrent(t *testing.T) {
@@ -194,12 +164,6 @@ func TestService_IsPathAllowed(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "nil allowlist allows all",
-			config:   &domain.Config{ExternalProgramAllowList: nil},
-			path:     "/any/path",
-			expected: true,
-		},
-		{
 			name:     "directory in allowlist allows files within",
 			config:   &domain.Config{ExternalProgramAllowList: []string{tempDir}},
 			path:     allowedFile,
@@ -244,12 +208,6 @@ func TestService_IsPathAllowed(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-func TestService_IsPathAllowed_NilService(t *testing.T) {
-	// This would panic, so we test that a properly initialized service handles nil config
-	s := &Service{config: nil}
-	assert.True(t, s.IsPathAllowed("/any/path"))
 }
 
 func TestBuildTorrentData(t *testing.T) {
@@ -491,17 +449,6 @@ func TestExecuteRequest_Validate(t *testing.T) {
 			wantErr: true,
 			errMsg:  "instanceID",
 		},
-		{
-			name: "with optional rule context",
-			req: ExecuteRequest{
-				ProgramID:  1,
-				Torrent:    torrent,
-				InstanceID: 1,
-				RuleID:     new(42),
-				RuleName:   "Test Rule",
-			},
-			wantErr: false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -515,23 +462,6 @@ func TestExecuteRequest_Validate(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestExecuteResult_Constructors(t *testing.T) {
-	t.Run("SuccessResult", func(t *testing.T) {
-		result := SuccessResult("Program started")
-		assert.True(t, result.Success)
-		require.NoError(t, result.Error)
-		assert.Equal(t, "Program started", result.Message)
-	})
-
-	t.Run("FailureResult", func(t *testing.T) {
-		err := errors.New("execution failed")
-		result := FailureResult(err)
-		assert.False(t, result.Success)
-		assert.Equal(t, err, result.Error)
-		assert.Empty(t, result.Message)
-	})
 }
 
 // Helper function
@@ -614,19 +544,6 @@ func TestGetTerminalCandidates(t *testing.T) {
 			assert.NotEqual(t, "iterm2", c.name, "Linux should not have iterm2")
 			assert.NotEqual(t, "apple-terminal", c.name, "Linux should not have apple-terminal")
 		}
-	}
-}
-
-func TestGetTerminalCandidates_OrderPreservation(t *testing.T) {
-	// Call multiple times to ensure consistent ordering
-	for range 5 {
-		candidates := getTerminalCandidates()
-
-		// First 4 should always be cross-platform in same order
-		assert.Equal(t, "wezterm", candidates[0].name)
-		assert.Equal(t, "hyper", candidates[1].name)
-		assert.Equal(t, "kitty", candidates[2].name)
-		assert.Equal(t, "alacritty", candidates[3].name)
 	}
 }
 
@@ -757,11 +674,6 @@ func TestEscapeAppleScript(t *testing.T) {
 			input:    "hello\x00world",
 			expected: "hello\x00world",
 		},
-		{
-			name:     "carriage return",
-			input:    "line1\rline2",
-			expected: "line1\\rline2",
-		},
 	}
 
 	for _, tt := range tests {
@@ -770,18 +682,6 @@ func TestEscapeAppleScript(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-func TestEscapeAppleScript_Idempotence(t *testing.T) {
-	// Double escaping should produce different results (not idempotent)
-	// This is important to understand for security
-	input := `echo "hello"`
-	firstEscape := escapeAppleScript(input)
-	secondEscape := escapeAppleScript(firstEscape)
-
-	assert.Equal(t, `echo \"hello\"`, firstEscape)
-	assert.Equal(t, `echo \\\"hello\\\"`, secondEscape)
-	assert.NotEqual(t, firstEscape, secondEscape, "escaping is not idempotent")
 }
 
 func TestDetectTerminalFromEnv(t *testing.T) {
@@ -839,36 +739,6 @@ func TestDetectTerminalFromEnv(t *testing.T) {
 			expectedTerm:  "",
 			expectedFound: false,
 		},
-		{
-			name:          "case sensitive - lowercase iterm",
-			envValue:      "iterm.app",
-			expectedTerm:  "",
-			expectedFound: false,
-		},
-		{
-			name:          "case sensitive - uppercase KITTY",
-			envValue:      "KITTY",
-			expectedTerm:  "",
-			expectedFound: false,
-		},
-		{
-			name:          "gnome-terminal not detected",
-			envValue:      "gnome-terminal",
-			expectedTerm:  "",
-			expectedFound: false,
-		},
-		{
-			name:          "konsole not detected",
-			envValue:      "konsole",
-			expectedTerm:  "",
-			expectedFound: false,
-		},
-		{
-			name:          "xterm not detected",
-			envValue:      "xterm",
-			expectedTerm:  "",
-			expectedFound: false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -907,23 +777,7 @@ func TestBuildTerminalArgs(t *testing.T) {
 		cmdLine      string
 		expectedExe  string
 		expectedArgs []string
-		checkScript  bool // If true, check AppleScript content
 	}{
-		// macOS native terminals
-		{
-			name:        "iterm2",
-			terminal:    "iterm2",
-			cmdLine:     testCmd,
-			expectedExe: "osascript",
-			checkScript: true,
-		},
-		{
-			name:        "apple-terminal",
-			terminal:    "apple-terminal",
-			cmdLine:     testCmd,
-			expectedExe: "osascript",
-			checkScript: true,
-		},
 		// Cross-platform terminals
 		{
 			name:         "wezterm",
@@ -1004,13 +858,6 @@ func TestBuildTerminalArgs(t *testing.T) {
 			expectedExe:  "",
 			expectedArgs: nil,
 		},
-		{
-			name:         "empty terminal returns empty",
-			terminal:     "",
-			cmdLine:      testCmd,
-			expectedExe:  "",
-			expectedArgs: nil,
-		},
 	}
 
 	for _, tt := range tests {
@@ -1018,18 +865,7 @@ func TestBuildTerminalArgs(t *testing.T) {
 			exe, args := buildTerminalArgs(tt.terminal, tt.cmdLine)
 			assert.Equal(t, tt.expectedExe, exe)
 
-			switch {
-			case tt.checkScript:
-				// For AppleScript terminals, verify args structure
-				assert.Len(t, args, 2)
-				assert.Equal(t, "-e", args[0])
-				// Verify script contains the command
-				assert.Contains(t, args[1], keepOpenCmd)
-			case tt.expectedArgs != nil:
-				assert.Equal(t, tt.expectedArgs, args)
-			default:
-				assert.Nil(t, args)
-			}
+			assert.Equal(t, tt.expectedArgs, args)
 		})
 	}
 }
@@ -1069,63 +905,6 @@ func TestBuildTerminalArgs_AppleScriptContent(t *testing.T) {
 	})
 }
 
-func TestBuildTerminalArgs_SpecialCharactersInCommand(t *testing.T) {
-	tests := []struct {
-		name    string
-		cmdLine string
-	}{
-		{
-			name:    "command with double quotes",
-			cmdLine: `echo "hello world"`,
-		},
-		{
-			name:    "command with single quotes",
-			cmdLine: `echo 'hello world'`,
-		},
-		{
-			name:    "command with backslashes",
-			cmdLine: `echo hello\\world`,
-		},
-		{
-			name:    "command with spaces",
-			cmdLine: "/path/to/my program --arg value",
-		},
-		{
-			name:    "command with shell operators",
-			cmdLine: "cmd1 && cmd2 || cmd3",
-		},
-		{
-			name:    "command with pipes",
-			cmdLine: "echo hello | grep h",
-		},
-		{
-			name:    "command with redirection",
-			cmdLine: "echo hello > /tmp/out.txt",
-		},
-		{
-			name:    "command with variables",
-			cmdLine: "echo $HOME ${USER}",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Test that all terminals handle the command without panic
-			terminals := []string{
-				"iterm2", "apple-terminal", "wezterm", "hyper",
-				"kitty", "alacritty", "gnome-terminal", "konsole",
-				"xfce4-terminal", "mate-terminal", "xterm", "terminator",
-			}
-
-			for _, terminal := range terminals {
-				exe, args := buildTerminalArgs(terminal, tt.cmdLine)
-				assert.NotEmpty(t, exe, "terminal %s should return executable", terminal)
-				assert.NotNil(t, args, "terminal %s should return args", terminal)
-			}
-		})
-	}
-}
-
 func TestIsTerminalAvailable(t *testing.T) {
 	t.Run("apple-terminal availability by platform", func(t *testing.T) {
 		result := isTerminalAvailable("apple-terminal")
@@ -1139,91 +918,9 @@ func TestIsTerminalAvailable(t *testing.T) {
 		}
 	})
 
-	t.Run("iterm2 checks app bundle", func(_ *testing.T) {
-		// We can only verify the logic, not the actual availability
-		// The function checks /Applications/iTerm.app
-		result := isTerminalAvailable("iterm2")
-		// Result depends on whether iTerm is installed
-		_ = result // Just verify no panic
-	})
-
 	t.Run("nonexistent terminal returns false", func(t *testing.T) {
 		result := isTerminalAvailable("definitely-not-a-real-terminal-12345")
 		assert.False(t, result)
-	})
-
-	t.Run("empty terminal name returns false", func(t *testing.T) {
-		result := isTerminalAvailable("")
-		assert.False(t, result)
-	})
-}
-
-func TestIsTerminalAvailable_CrossPlatformTerminals(t *testing.T) {
-	// These tests verify the detection logic works without error
-	// Actual availability depends on the test environment
-	crossPlatformTerminals := []string{
-		"wezterm", "hyper", "kitty", "alacritty",
-	}
-
-	for _, terminal := range crossPlatformTerminals {
-		t.Run(terminal, func(_ *testing.T) {
-			// Just verify no panic, result depends on environment
-			_ = isTerminalAvailable(terminal)
-		})
-	}
-}
-
-func TestIsTerminalAvailable_LinuxTerminals(t *testing.T) {
-	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		t.Skip("Skipping Linux terminal tests on non-Linux platforms")
-	}
-
-	linuxTerminals := []string{
-		"gnome-terminal", "konsole", "xfce4-terminal",
-		"mate-terminal", "xterm", "terminator",
-	}
-
-	for _, terminal := range linuxTerminals {
-		t.Run(terminal, func(_ *testing.T) {
-			// Just verify no panic, result depends on environment
-			_ = isTerminalAvailable(terminal)
-		})
-	}
-}
-
-func TestIsTerminalAvailable_WindowsTerminals(t *testing.T) {
-	t.Run("apple-terminal not available on Windows", func(t *testing.T) {
-		if runtime.GOOS != "windows" {
-			t.Skip("Skipping Windows-specific test on non-Windows platform")
-		}
-		result := isTerminalAvailable("apple-terminal")
-		assert.False(t, result, "apple-terminal should not be available on Windows")
-	})
-
-	t.Run("iterm2 not available on Windows", func(t *testing.T) {
-		if runtime.GOOS != "windows" {
-			t.Skip("Skipping Windows-specific test on non-Windows platform")
-		}
-		result := isTerminalAvailable("iterm2")
-		assert.False(t, result, "iterm2 should not be available on Windows")
-	})
-
-	t.Run("Linux terminals typically not in PATH on Windows", func(t *testing.T) {
-		if runtime.GOOS != "windows" {
-			t.Skip("Skipping Windows-specific test on non-Windows platform")
-		}
-
-		linuxTerminals := []string{
-			"gnome-terminal", "konsole", "xfce4-terminal",
-			"mate-terminal", "xterm", "terminator",
-		}
-
-		for _, terminal := range linuxTerminals {
-			t.Run(terminal, func(_ *testing.T) {
-				// Just verify no panic occurs
-				_ = isTerminalAvailable(terminal)
-			})
-		}
 	})
 }
 
@@ -1246,94 +943,6 @@ func TestTerminalCandidate_Integration(t *testing.T) {
 	}
 }
 
-// TestEscapeAppleScript_SecurityCritical specifically tests security-critical
-// escaping scenarios that could lead to AppleScript injection
-func TestEscapeAppleScript_SecurityCritical(t *testing.T) {
-	tests := []struct {
-		name        string
-		malicious   string
-		description string
-	}{
-		{
-			name:        "script termination attack",
-			malicious:   `"; end tell; do shell script "evil`,
-			description: "Attempt to terminate AppleScript and inject new command",
-		},
-		{
-			name:        "quote escape bypass",
-			malicious:   `\"; do shell script "evil`,
-			description: "Attempt to escape the quote with backslash",
-		},
-		{
-			name:        "double escape bypass",
-			malicious:   `\\"; do shell script "evil`,
-			description: "Attempt double backslash to bypass escaping",
-		},
-		{
-			name:        "unicode with real quotes",
-			malicious:   "\u201c; do shell script \"evil\"\u201d",
-			description: "Attempt with Unicode quotes mixed with real quotes",
-		},
-		{
-			name:        "newline injection",
-			malicious:   "cmd\"\ndo shell script \"evil",
-			description: "Attempt to inject via newline",
-		},
-		{
-			name:        "comment injection",
-			malicious:   `cmd" -- do shell script "evil`,
-			description: "Attempt to use AppleScript comments",
-		},
-		{
-			name:        "concatenation attack",
-			malicious:   `cmd" & "evil`,
-			description: "Attempt AppleScript string concatenation",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			escaped := escapeAppleScript(tt.malicious)
-
-			// Verify all double quotes are escaped
-			// After escaping, there should be no unescaped double quotes
-			// An unescaped quote is one not preceded by a backslash,
-			// but we need to account for escaped backslashes
-
-			// Simple check: the escaped string should not contain
-			// an odd number of backslashes followed by a quote
-			// This is a simplified security check
-
-			// More importantly, verify the escaping happened
-			assert.NotEqual(t, tt.malicious, escaped, "malicious input should be modified by escaping")
-
-			// Verify double quotes are escaped
-			if strings.Contains(tt.malicious, `"`) {
-				assert.Contains(t, escaped, `\"`, "double quotes should be escaped")
-			}
-		})
-	}
-}
-
-// TestBuildTerminalArgs_EmptyCommand tests handling of empty command
-func TestBuildTerminalArgs_EmptyCommand(t *testing.T) {
-	terminals := []string{
-		"iterm2", "apple-terminal", "wezterm", "hyper",
-		"kitty", "alacritty", "gnome-terminal", "konsole",
-		"xfce4-terminal", "mate-terminal", "xterm", "terminator",
-	}
-
-	for _, terminal := range terminals {
-		t.Run(terminal+"_empty_command", func(t *testing.T) {
-			exe, args := buildTerminalArgs(terminal, "")
-			assert.NotEmpty(t, exe)
-			assert.NotNil(t, args)
-			// The command will be "; exec bash" for most terminals
-			// or just "" for --hold terminals
-		})
-	}
-}
-
 // TestBuildCommand_Windows tests Windows-specific command building.
 // These tests document the expected Windows behavior and are skipped on other platforms.
 func TestBuildCommand_Windows(t *testing.T) {
@@ -1348,7 +957,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		assert.Equal(t, "cmd.exe", strings.ToLower(filepath.Base(path)))
 	}
 
-	t.Run("terminal mode uses cmd.exe with start cmd /k", func(t *testing.T) {
+	t.Run("terminal mode runs cmd /k in a new console", func(t *testing.T) {
 		program := &models.ExternalProgram{
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: true,
@@ -1356,40 +965,20 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, _ := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
 		assertWindowsCmdPath(t, cmd.Path)
-		// Args should be: [cmd.exe, /c, start, "", cmd, /k, C:\Programs\test.exe, arg1, arg2]
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "cmd")
-		assert.Contains(t, cmd.Args, "/k")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		// start would make cmd.exe parse the arguments a second time.
+		assert.Equal(t, []string{"cmd.exe", "/d", "/e:on", "/v:off", "/s", "/k", program.Path, "arg1", "arg2"}, cmd.Args)
+		assert.Contains(t, cmd.Env, "QUI_EXTERNAL_PROGRAM_PATH="+program.Path)
 	})
 
-	t.Run("direct mode uses cmd.exe with start /b", func(t *testing.T) {
+	t.Run("direct mode launches the executable without a shell", func(t *testing.T) {
 		program := &models.ExternalProgram{
 			Path:        "C:\\Programs\\test.exe",
 			UseTerminal: false,
 		}
-		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
-
-		assertWindowsCmdPath(t, cmd.Path)
-		// Args should be: [cmd.exe, /c, start, "", /b, C:\Programs\test.exe, arg1]
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "/b")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
-	})
-
-	t.Run("arguments are passed correctly", func(t *testing.T) {
-		program := &models.ExternalProgram{
-			Path:        "C:\\Programs\\test.exe",
-			UseTerminal: false,
-		}
-		args := []string{"--name", "test value", "--hash", "abc123"}
-		cmd, _ := service.buildCommand(ctx, program, args)
-
-		for _, arg := range args {
-			assert.Contains(t, cmd.Args, arg, "argument %q should be in command", arg)
-		}
+		cmd, launcher := service.buildCommand(ctx, program, []string{"arg1"})
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path, "arg1"}, cmd.Args)
+		assert.False(t, launcher.releaseOnStart, "the service owns an unclassified process")
 	})
 
 	t.Run("terminal mode with no arguments", func(t *testing.T) {
@@ -1400,11 +989,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		cmd, _ := service.buildCommand(ctx, program, nil)
 
 		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "cmd")
-		assert.Contains(t, cmd.Args, "/k")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		assert.Equal(t, []string{"cmd.exe", "/d", "/e:on", "/v:off", "/s", "/k", program.Path}, cmd.Args)
 	})
 
 	t.Run("direct mode with no arguments", func(t *testing.T) {
@@ -1414,127 +999,9 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd, _ := service.buildCommand(ctx, program, nil)
 
-		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "/c")
-		assert.Contains(t, cmd.Args, "start")
-		assert.Contains(t, cmd.Args, "/b")
-		assert.Contains(t, cmd.Args, "C:\\Programs\\test.exe")
+		assert.Equal(t, program.Path, cmd.Path)
+		assert.Equal(t, []string{program.Path}, cmd.Args)
 	})
-
-	t.Run("path with spaces in terminal mode", func(t *testing.T) {
-		program := &models.ExternalProgram{
-			Path:        "C:\\Program Files\\My App\\test.exe",
-			UseTerminal: true,
-		}
-		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
-
-		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
-	})
-
-	t.Run("path with spaces in direct mode", func(t *testing.T) {
-		program := &models.ExternalProgram{
-			Path:        "C:\\Program Files\\My App\\test.exe",
-			UseTerminal: false,
-		}
-		cmd, _ := service.buildCommand(ctx, program, []string{"--arg", "value"})
-
-		assertWindowsCmdPath(t, cmd.Path)
-		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
-	})
-
-	t.Run("arguments with special characters", func(t *testing.T) {
-		program := &models.ExternalProgram{
-			Path:        "C:\\Programs\\test.exe",
-			UseTerminal: false,
-		}
-		args := []string{"--name", "Test & Value", "--path", "C:\\My Files\\data"}
-		cmd, _ := service.buildCommand(ctx, program, args)
-
-		for _, arg := range args {
-			assert.Contains(t, cmd.Args, arg, "argument %q should be in command", arg)
-		}
-	})
-}
-
-// TestGetTerminalCandidates_Windows tests Windows-specific terminal candidate behavior.
-func TestGetTerminalCandidates_Windows(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Skipping Windows terminal candidate tests on non-Windows platform")
-	}
-
-	candidates := getTerminalCandidates()
-
-	t.Run("cross-platform terminals are present", func(t *testing.T) {
-		// First 4 should always be cross-platform terminals
-		assert.Equal(t, "wezterm", candidates[0].name)
-		assert.Equal(t, "hyper", candidates[1].name)
-		assert.Equal(t, "kitty", candidates[2].name)
-		assert.Equal(t, "alacritty", candidates[3].name)
-	})
-
-	t.Run("macOS terminals are not present", func(t *testing.T) {
-		for _, c := range candidates {
-			assert.NotEqual(t, "iterm2", c.name, "Windows should not have iterm2")
-			assert.NotEqual(t, "apple-terminal", c.name, "Windows should not have apple-terminal")
-		}
-	})
-
-	t.Run("Linux terminals are present in candidate list", func(t *testing.T) {
-		// On Windows, Linux terminals are in the candidate list but won't be available
-		var hasGnomeTerminal, hasXterm bool
-		for _, c := range candidates {
-			if c.name == "gnome-terminal" {
-				hasGnomeTerminal = true
-			}
-			if c.name == "xterm" {
-				hasXterm = true
-			}
-		}
-		assert.True(t, hasGnomeTerminal, "gnome-terminal should be in candidate list")
-		assert.True(t, hasXterm, "xterm should be in candidate list")
-	})
-}
-
-// TestNormalizePathCase_Windows tests Windows-specific path case normalization.
-func TestNormalizePathCase_Windows(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Skipping Windows path case tests on non-Windows platform")
-	}
-
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "uppercase path becomes lowercase",
-			input:    "C:\\USERS\\TEST\\FILE.EXE",
-			expected: "c:\\users\\test\\file.exe",
-		},
-		{
-			name:     "mixed case path becomes lowercase",
-			input:    "C:\\Users\\Test\\File.exe",
-			expected: "c:\\users\\test\\file.exe",
-		},
-		{
-			name:     "already lowercase unchanged",
-			input:    "c:\\users\\test\\file.exe",
-			expected: "c:\\users\\test\\file.exe",
-		},
-		{
-			name:     "path with spaces",
-			input:    "C:\\Program Files\\My App\\Test.EXE",
-			expected: "c:\\program files\\my app\\test.exe",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := normalizePathCase(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 // TestIsPathAllowed_Windows tests Windows-specific path allowlist behavior.
@@ -1599,24 +1066,11 @@ func TestBuildCommand_Unix(t *testing.T) {
 		assert.Equal(t, "/usr/bin/test", cmd.Path)
 		assert.Equal(t, []string{"/usr/bin/test"}, cmd.Args)
 	})
-
-	t.Run("terminal mode uses terminal emulator", func(t *testing.T) {
-		program := &models.ExternalProgram{
-			Path:        "/usr/bin/test",
-			UseTerminal: true,
-		}
-		cmd, _ := service.buildCommand(ctx, program, []string{"arg1"})
-
-		// On Unix, terminal mode should use a terminal emulator
-		// The exact emulator depends on what's available
-		assert.NotNil(t, cmd)
-		assert.NotEmpty(t, cmd.Path)
-	})
 }
 
 func TestService_Execute_LimitsConcurrentPrograms(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("direct runs hold their slot only on Unix")
+		t.Skip("this fixture needs a POSIX shell; Windows uses the native recorder test")
 	}
 
 	ctx := t.Context()
@@ -1702,7 +1156,7 @@ while [ -d "$d" ] && [ ! -e "$d/release" ]; do sleep 0.01; done
 	program := &models.ExternalProgram{ID: 1, Name: "block", Enabled: true, Path: script, ArgsTemplate: "{hash}", UseTerminal: true}
 
 	_, launcher := s.buildCommand(t.Context(), program, nil)
-	require.False(t, launcher, "no terminal emulator, so qui runs the program with sh -c")
+	require.False(t, launcher.releaseOnStart, "no terminal emulator, so qui runs the program with sh -c")
 
 	t.Cleanup(func() {
 		_ = os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)

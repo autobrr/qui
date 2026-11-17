@@ -10,12 +10,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { NAV_ITEMS } from "@/components/layout/navigation"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
@@ -30,91 +32,20 @@ import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
+import { themeArea } from "@/lib/theme-areas"
 import {
-  Archive,
   Check,
   Code,
   Copyright,
-  FileText,
-  GitBranch,
   Globe,
   HardDrive,
-  Home,
   Loader2,
   LogOut,
   Rss,
-  Search,
-  SearchCode,
-  Settings,
-  Zap
+  SearchCode
 } from "lucide-react"
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
-
-interface NavItem {
-  id: string
-  titleKey: string
-  href: string
-  icon: React.ComponentType<{ className?: string }>
-  params?: Record<string, string>
-  search?: Record<string, unknown>
-  isActive?: (pathname: string, search: Record<string, unknown> | undefined) => boolean
-}
-
-const navigation: NavItem[] = [
-  {
-    id: "dashboard",
-    titleKey: "nav.dashboard",
-    href: "/dashboard",
-    icon: Home,
-  },
-  {
-    id: "search",
-    titleKey: "nav.search",
-    href: "/search",
-    icon: Search,
-  },
-  {
-    id: "cross-seed",
-    titleKey: "nav.crossSeed",
-    href: "/cross-seed",
-    icon: GitBranch,
-    params: {},
-  },
-  {
-    id: "automations",
-    titleKey: "nav.automations",
-    href: "/automations",
-    icon: Zap,
-  },
-  {
-    id: "backups",
-    titleKey: "nav.backups",
-    href: "/backups",
-    icon: Archive,
-  },
-  {
-    id: "rss",
-    titleKey: "nav.rss",
-    href: "/rss",
-    icon: Rss,
-  },
-  {
-    id: "settings",
-    titleKey: "nav.settings",
-    href: "/settings",
-    icon: Settings,
-    isActive: (pathname, search) => pathname === "/settings" && search?.tab !== "logs",
-  },
-  {
-    id: "logs",
-    titleKey: "nav.logs",
-    href: "/settings",
-    icon: FileText,
-    search: { tab: "logs" },
-    isActive: (pathname, search) => pathname === "/settings" && search?.tab === "logs",
-  },
-]
 
 export function Sidebar() {
   const { t, i18n } = useTranslation("common")
@@ -186,7 +117,7 @@ export function Sidebar() {
   )
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
+    <div {...themeArea("app-sidebar")} className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
       <div className="p-6">
         <h2 className="flex items-center text-lg font-semibold text-sidebar-foreground">
           {isDemo ? (
@@ -197,9 +128,9 @@ export function Sidebar() {
 
       <nav className="flex flex-1 min-h-0 flex-col overflow-y-auto px-3">
         <div className="space-y-1">
-          {!isDemo && navigation.map((item) => {
+          {!isDemo && NAV_ITEMS.map((item) => {
             const Icon = item.icon
-            const isActive = item.isActive? item.isActive(location.pathname, routeSearch): location.pathname === item.href
+            const isActive = item.isActive? item.isActive(location.pathname, location.search): location.pathname === item.href
 
             return (
               <Link
@@ -208,8 +139,8 @@ export function Sidebar() {
                 params={item.params}
                 search={item.search}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -263,8 +194,8 @@ export function Sidebar() {
                 to="/instances/$instanceId"
                 params={{ instanceId: instance.id.toString() }}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
                 )}
               >
                 <HardDrive className="h-4 w-4 flex-shrink-0" />
@@ -325,6 +256,7 @@ export function Sidebar() {
         </div>
 
         <div className="mt-auto space-y-3 pt-3">
+          <SystemNoticeList />
           <UpdateBanner />
 
           {!isDemo && (

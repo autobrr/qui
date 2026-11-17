@@ -22,6 +22,11 @@ vi.mock("@/components/instances/preferences/OrphanScanPreviewDialog", () => ({
   OrphanScanPreviewDialog: () => null,
 }))
 
+// SettingsSummary.test.tsx covers the pair layout, so this file checks only the pairs the card passes in.
+vi.mock("@/components/instances/preferences/SettingsSummary", () => ({
+  SettingsSummary: ({ parts }: { parts: string[] }) => <span data-testid="settings-summary">{JSON.stringify(parts)}</span>,
+}))
+
 // Stable singletons: a fresh object per render would rerun effects forever.
 const { instancesQuery, settingsQuery, runsQuery, mutation } = vi.hoisted(() => {
   const instance = {
@@ -30,7 +35,7 @@ const { instancesQuery, settingsQuery, runsQuery, mutation } = vi.hoisted(() => 
     isActive: true,
     hasLocalFilesystemAccess: true,
     filesystemMode: "local",
-    capabilities: { read: true, identity: true, write: true, content: true },
+    capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true },
   }
   const settings = {
     instanceId: 1,
@@ -74,6 +79,7 @@ vi.mock("@/hooks/useInstances", () => ({
 vi.mock("@/hooks/useOrphanScan", () => ({
   useOrphanScanSettings: () => settingsQuery,
   useOrphanScanRuns: () => runsQuery,
+  useOrphanScanRunPaths: () => ({ data: undefined, isError: false }),
   useTriggerOrphanScan: () => mutation,
   useUpdateOrphanScanSettings: () => mutation,
   useCancelOrphanScanRun: () => mutation,
@@ -104,38 +110,13 @@ function renderExpanded() {
 }
 
 describe("OrphanScanOverview instance card", () => {
-  it("wraps a long instance name instead of cutting it off", () => {
-    const { container } = renderExpanded()
+  it("builds the settings summary from one key per pair", () => {
+    const { getByTestId } = renderExpanded()
 
-    const name = Array.from(container.querySelectorAll("span")).find((el) => el.textContent === "seedbox-europe-west-archive-01")
-    expect(name).toBeDefined()
-    // Two names that share a long prefix look identical once truncated.
-    expect(name!.classList.contains("truncate")).toBe(false)
-    expect(name!.classList.contains("wrap-anywhere")).toBe(true)
-  })
-
-  it("wraps the View Preview label instead of cutting it off", () => {
-    const { container } = renderExpanded()
-
-    const label = Array.from(container.querySelectorAll("button span")).find((el) => el.textContent === "preferences.orphanScanOverview.viewPreview")
-    expect(label).toBeDefined()
-    expect(label!.classList.contains("truncate")).toBe(false)
-    expect(label!.classList.contains("whitespace-normal")).toBe(true)
-    // A fixed height would clip the second line of a wrapped label.
-    expect(label!.closest("button")!.classList.contains("h-auto")).toBe(true)
-  })
-
-  it("builds the settings summary from one key per pair and keeps each pair on one line", () => {
-    const { container } = renderExpanded()
-
-    const spans = Array.from(container.querySelectorAll("p > span.whitespace-nowrap"))
-    const pairs = spans.map((el) => el.textContent)
-    expect(pairs).toEqual([
-      "preferences.orphanScanOverview.summaryGrace(10)\u00a0·",
-      "preferences.orphanScanOverview.summaryInterval(24)\u00a0·",
+    expect(JSON.parse(getByTestId("settings-summary").textContent!)).toEqual([
+      "preferences.orphanScanOverview.summaryGrace(10)",
+      "preferences.orphanScanOverview.summaryInterval(24)",
       "preferences.orphanScanOverview.summaryMax(1000)",
     ])
-    // Only a plain space between pairs, so a wrapped line never starts with "·".
-    expect(spans[0]!.parentElement!.textContent).toBe(pairs.join(" "))
   })
 })

@@ -27,25 +27,70 @@ export interface CrossSeedTorrentInfo {
   filteredIndexers?: number[]
   excludedIndexers?: Record<number, string>
   contentMatches?: string[]
-  // Async filtering status
-  contentFilteringCompleted?: boolean
+  /** What a search asks each RED/OPS site: will_ask, or not_asked with its reason. */
+  gazellePlan?: CrossSeedGazelleLookup[]
 }
 
-export interface AsyncIndexerFilteringState {
-  capabilitiesCompleted: boolean
-  contentCompleted: boolean
-  capabilityIndexers: number[]
-  filteredIndexers: number[]
-  excludedIndexers: Record<number, string>
-  contentMatches: string[]
+export type CrossSeedGazelleLookupStatus = "will_ask" | "match" | "no_match" | "not_asked" | "failed"
+
+export type CrossSeedGazelleLookupReason =
+  | "disabled"
+  | "no_api_key"
+  | "cooldown"
+  | "not_selected"
+  | "source_site"
+  | "already_seeded"
+  | "not_music"
+  | "key_rejected"
+  | "timed_out"
+  | "error"
+
+/** The RED/OPS lookup of one site for one search: the plan before the search, or the outcome after it. */
+export interface CrossSeedGazelleLookup {
+  /** API host of the site. */
+  site: string
+  name: string
+  shortName: string
+  indexerId: number
+  status: CrossSeedGazelleLookupStatus
+  reason?: CrossSeedGazelleLookupReason
+  detail?: string
+  /** Torznab indexers of the site that the search leaves out. */
+  replacedIndexerIds?: number[]
 }
+
+/** One RED/OPS site, as GET /api/cross-seed/gazelle/sites describes it. */
+export interface CrossSeedGazelleSite {
+  site: string
+  name: string
+  shortName: string
+  indexerId: number
+  /** RED/OPS is on and the site has an API key. */
+  active: boolean
+  replacedIndexerIds: number[]
+}
+
+export interface CrossSeedGazelleSiteSummary {
+  site: string
+  name: string
+  asked: number
+  matched: number
+  failed: number
+  notAsked?: Partial<Record<CrossSeedGazelleLookupReason, number>>
+}
+
+export type CrossSeedResultClass = "added" | "exists" | "skipped" | "stranded" | "failed"
 
 export interface CrossSeedInstanceResult {
   instanceId: number
   instanceName: string
   success: boolean
   status: string
+  class: CrossSeedResultClass
   message?: string
+  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
   matchedTorrent?: {
     hash: string
     name: string
@@ -119,6 +164,8 @@ export interface CrossSeedTorrentSearchResponse {
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
   queryDegraded?: CrossSeedQueryDegradedReason
+  gazelleLookups?: CrossSeedGazelleLookup[]
+  torznabFailed?: boolean
   decisionTrace?: CrossSeedSearchDecisionTrace
 }
 
@@ -214,6 +261,9 @@ export interface CrossSeedRunResult {
   message?: string
   matchedTorrentHash?: string
   matchedTorrentName?: string
+  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
 }
 
 export interface CrossSeedRun {
@@ -385,27 +435,33 @@ export interface CrossSeedAutomationStatus {
 export interface CrossSeedSearchFilters {
   categories: string[]
   tags: string[]
+  excludeCategories?: string[]
+  excludeTags?: string[]
 }
 
 export interface CrossSeedSearchSettings {
   instanceId?: number | null
   categories: string[]
   tags: string[]
+  excludeCategories: string[]
+  excludeTags: string[]
   indexerIds: number[]
   intervalSeconds: number
   cooldownMinutes: number
+  /** 0 turns the rule off. */
+  maxAddedAgeDays: number
+  skipIndividualEpisodes: boolean
+  torznabEnabled: boolean
+  scheduleEnabled: boolean
+  scheduleIntervalHours: number
+  scheduleMaxSearches: number
+  /** A scheduled run searches only torrents added in this many last days. */
+  scheduleMaxAgeDays: number
   createdAt?: string
   updatedAt?: string
 }
 
-export interface CrossSeedSearchSettingsPatch {
-  instanceId?: number | null
-  categories?: string[]
-  tags?: string[]
-  indexerIds?: number[]
-  intervalSeconds?: number
-  cooldownMinutes?: number
-}
+export type CrossSeedSearchSettingsPatch = Partial<Omit<CrossSeedSearchSettings, "createdAt" | "updatedAt">>
 
 export type CrossSeedSearchResultStatus = "added" | "skipped" | "failed"
 
@@ -417,11 +473,17 @@ export interface CrossSeedSearchResult {
   status: CrossSeedSearchResultStatus
   message?: string
   processedAt: string
+  /** The Cross-seed instance that a routed add goes to. */
+  crossSeedInstanceId?: number
+  crossSeedInstanceName?: string
 }
+
+export type CrossSeedSearchRunKind = "scheduled" | "manual"
 
 export interface CrossSeedSearchRun {
   id: number
   instanceId: number
+  kind: CrossSeedSearchRunKind
   status: string
   startedAt: string
   completedAt?: string
@@ -438,6 +500,11 @@ export interface CrossSeedSearchRun {
   intervalSeconds: number
   cooldownMinutes: number
   results: CrossSeedSearchResult[]
+  gazelleSummary?: CrossSeedGazelleSiteSummary[]
+  /** The cap of a scheduled run. */
+  searchLimit?: number
+  /** Set when the run stopped at its cap: the torrents left for the next run. */
+  waitingTorrents?: number
   createdAt: string
 }
 
@@ -454,6 +521,8 @@ export interface CrossSeedSearchStatus {
   currentTorrent?: CrossSeedSearchCandidate
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
+  /** Set while the Library Scan schedule is on. A time in the past means the run is due. */
+  nextScheduledRunAt?: string
   effectiveIntervalSeconds?: number
 }
 
@@ -461,13 +530,44 @@ export interface SeasonPackRun {
   id: number
   torrentName: string
   phase: "check" | "apply" | "resume"
-  status: "ready" | "skipped" | "applied" | "failed"
+  status: "ready" | "ready_no_threshold" | "skipped" | "applied" | "failed"
   reason: string
   message: string
   instanceId?: number
+  /** The instance that gets the add: the Cross-seed instance of a routed apply, or instanceId. */
+  addedInstanceId?: number
   matchedEpisodes: number
   totalEpisodes: number
   coverage: number
   linkMode?: string
   createdAt: string
+}
+
+/** One base folder of a Source instance and where its Cross-seed instance sees it. An empty mappedPath means the same path. */
+export interface CrossSeedRouteRow {
+  baseDir: string
+  mappedPath: string
+}
+
+/** A saved route from a Source instance to its Cross-seed instance. */
+export interface CrossSeedRoute {
+  sourceInstanceId: number
+  crossSeedInstanceId: number
+  rows: CrossSeedRouteRow[]
+}
+
+/** The route read of one Source instance: one row for each base folder, with the rule status. */
+export interface CrossSeedRouteStatus extends CrossSeedRoute {
+  /** routedTorrents is null when the Cross-seed instance is unavailable. */
+  rows: (CrossSeedRouteRow & { routedTorrents: number | null })[]
+  /** The route rule that the saved route breaks. Absent when it passes. */
+  brokenRule?: string
+}
+
+export type CrossSeedRouteTestRowResult = "sees" | "seesFolderNotMarker" | "cannotSeeFolder" | "cannotWrite"
+
+/** The Test route result: one entry for each base folder, or crossSeedUnavailable with no rows. */
+export interface CrossSeedRouteTestResult {
+  crossSeedUnavailable?: string
+  rows: { baseDir: string; listedPath: string; result: CrossSeedRouteTestRowResult; error?: string }[]
 }

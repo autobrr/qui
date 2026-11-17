@@ -16,6 +16,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -267,7 +268,7 @@ func partialPoolLocalPath(member *models.CrossSeedPartialPoolMember, file *model
 	if member == nil || file == nil {
 		return "", errors.New("partial pool member and file are required")
 	}
-	plan, err := hardlinktree.BuildSingleFilePlan(member.RootPath, file.RelativePath, member.RootPath)
+	plan, err := hardlinktree.BuildSingleFilePlan(fsops.HostPaths, member.RootPath, file.RelativePath, member.RootPath)
 	if err != nil {
 		return "", err
 	}
@@ -293,24 +294,24 @@ func validatePartialPoolPathInsideRoot(root, target string) error {
 		return err
 	}
 
-	resolvedRoot, err := filepath.EvalSymlinks(rootAbs)
+	resolvedRoot, err := resolvePartialPoolPath(rootAbs)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("resolve partial pool root: %w", err)
-		}
-		resolvedRoot = rootAbs
+		return fmt.Errorf("resolve partial pool root: %w", err)
 	}
-	resolvedTarget, err := filepath.EvalSymlinks(targetAbs)
-	if err == nil {
-		if err := pathInside(resolvedRoot, resolvedTarget); err != nil {
-			return fmt.Errorf("partial pool path escapes through symlink or reparse point: %w", err)
-		}
-		return nil
-	}
-	if !os.IsNotExist(err) {
+	resolvedTarget, err := resolvePartialPoolPath(targetAbs)
+	if err != nil {
 		return fmt.Errorf("resolve partial pool target: %w", err)
 	}
-	existing := filepath.Dir(targetAbs)
+	if err := pathInside(resolvedRoot, resolvedTarget); err != nil {
+		return fmt.Errorf("partial pool path escapes through symlink or reparse point: %w", err)
+	}
+	return nil
+}
+
+// Resolve existing ancestors for both root and target, so a missing root uses
+// the same spelling as its target beneath a symlink or Windows short-path alias.
+func resolvePartialPoolPath(fullPath string) (string, error) {
+	existing := fullPath
 	var suffix []string
 	for {
 		_, statErr := os.Lstat(existing)
@@ -318,27 +319,23 @@ func validatePartialPoolPathInsideRoot(root, target string) error {
 			break
 		}
 		if !os.IsNotExist(statErr) {
-			return statErr
+			return "", statErr
 		}
 		parent := filepath.Dir(existing)
 		if parent == existing {
-			return statErr
+			return "", statErr
 		}
 		suffix = append(suffix, filepath.Base(existing))
 		existing = parent
 	}
-	resolvedExisting, err := filepath.EvalSymlinks(existing)
+	resolvedExisting, err := resolvePartialPoolExistingPath(existing)
 	if err != nil {
-		return fmt.Errorf("resolve partial pool path: %w", err)
+		return "", err
 	}
 	for _, s := range slices.Backward(suffix) {
 		resolvedExisting = filepath.Join(resolvedExisting, s)
 	}
-	resolvedTarget = filepath.Join(resolvedExisting, filepath.Base(targetAbs))
-	if err := pathInside(resolvedRoot, resolvedTarget); err != nil {
-		return fmt.Errorf("partial pool path escapes through symlink or reparse point: %w", err)
-	}
-	return nil
+	return resolvedExisting, nil
 }
 
 func pathInside(root, target string) error {

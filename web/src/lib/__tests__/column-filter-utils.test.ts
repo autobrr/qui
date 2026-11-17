@@ -225,13 +225,13 @@ describe("columnFilterToExpr — state expansion (eq → OR)", () => {
 
   it("expands 'downloading' to all downloading states", () => {
     expect(columnFilterToExpr({ columnId: "state", operation: "eq", value: "downloading" })).toBe(
-      "(string(State) == \"downloading\" || string(State) == \"stalledDL\" || string(State) == \"metaDL\" || string(State) == \"queuedDL\" || string(State) == \"allocating\" || string(State) == \"checkingDL\" || string(State) == \"forcedDL\")"
+      "(string(State) == \"downloading\" || string(State) == \"stalledDL\" || string(State) == \"metaDL\" || string(State) == \"forcedMetaDL\" || string(State) == \"queuedDL\" || string(State) == \"allocating\" || string(State) == \"checkingDL\" || string(State) == \"forcedDL\")"
     )
   })
 
   it("expands 'paused' / 'stopped' / 'errored' state categories", () => {
     expect(columnFilterToExpr({ columnId: "state", operation: "eq", value: "stopped" })).toBe(
-      "(string(State) == \"stoppedDL\" || string(State) == \"stoppedUP\")"
+      "(string(State) == \"pausedDL\" || string(State) == \"pausedUP\" || string(State) == \"stoppedDL\" || string(State) == \"stoppedUP\")"
     )
     expect(columnFilterToExpr({ columnId: "state", operation: "eq", value: "errored" })).toBe(
       "(string(State) == \"error\" || string(State) == \"missingFiles\")"
@@ -254,16 +254,14 @@ describe("columnFilterToExpr — state expansion (ne → AND)", () => {
   })
 })
 
-// Intent: "completed" isn't a qBittorrent state — it's progress == 1.
-// Mapping it as if it were a state would produce a filter that matches
-// nothing. Catches anyone who adds "completed" to STATE_CATEGORY_MAP.
-describe("columnFilterToExpr — completed special case", () => {
-  it("eq 'completed' uses Progress == 1, not state expansion", () => {
-    expect(columnFilterToExpr({ columnId: "state", operation: "eq", value: "completed" })).toBe("Progress == 1")
-  })
+// Intent: the State column follows the status rule of the sidebar, so
+// sidebar Completed with column Completed keeps a torrent that rechecks.
+describe("columnFilterToExpr — state lists of the status rule", () => {
+  const states = (value: string) =>
+    columnFilterToExpr({ columnId: "state", operation: "eq", value })?.match(/"[^"]+"/g)?.map(s => s.slice(1, -1))
 
-  it("ne 'completed' uses Progress != 1", () => {
-    expect(columnFilterToExpr({ columnId: "state", operation: "ne", value: "completed" })).toBe("Progress != 1")
+  it("completed is the upload states, during a recheck too, and not a moving torrent", () => {
+    expect(states("completed")).toEqual(["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP", "pausedUP", "stoppedUP"])
   })
 })
 
@@ -365,9 +363,9 @@ describe("columnFiltersToExpr", () => {
     expect(
       columnFiltersToExpr([
         { columnId: "ratio", operation: "gt", value: "2" },
-        { columnId: "state", operation: "eq", value: "completed" },
+        { columnId: "state", operation: "eq", value: "moving" },
       ])
-    ).toBe("Ratio > 2 and Progress == 1")
+    ).toBe("Ratio > 2 and (string(State) == \"moving\")")
   })
 
   it("supports custom operator", () => {

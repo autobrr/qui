@@ -232,7 +232,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
                   <TableHead>{t("blocklist.tableInfohash")}</TableHead>
                   <TableHead>{t("blocklist.tableNote")}</TableHead>
                   <TableHead>{t("blocklist.tableAdded")}</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
+                  <TableHead pinEnd className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -247,7 +247,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
                       </TableCell>
                       <TableCell>{entry.note || "—"}</TableCell>
                       <TableCell>{formatDateValue(entry.createdAt)}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell pinEnd className="text-right">
                         <Button
                           variant="ghost"
                           size="icon"

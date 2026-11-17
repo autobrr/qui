@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import { passwordManagerAttributes } from "@/lib/password-manager"
 import { navigateWithSearch } from "@/lib/router-search"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useEffect, useState } from "react"
@@ -20,7 +21,7 @@ export function SpreadsheetFormulaBar() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string;[key: string]: unknown }
   const [value, setValue] = useState(routeSearch?.q ?? "")
-  const { totalSelectionCount } = useTorrentSelection()
+  const totalSelectionCount = useTorrentSelectionSummary()?.actionTarget.count ?? 0
 
   useEffect(() => {
     setValue(routeSearch?.q ?? "")
@@ -33,6 +34,7 @@ export function SpreadsheetFormulaBar() {
       <div className="ss-name-box">{nameBox}</div>
       <div className="ss-fx" aria-hidden="true">{FX_MARK}</div>
       <input
+        {...passwordManagerAttributes()}
         className="ss-formula-input"
         type="text"
         value={value}

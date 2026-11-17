@@ -12,6 +12,7 @@ import { useIsAuthed } from "@/hooks/useIsAuthed"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { getThemeById } from "@/config/themes"
+import { isDefaultThemeVisit, storedThemeId, storeThemeId, useDefaultThemeVisit } from "@/lib/theme-storage"
 import { setTheme, type ThemeMode } from "@/utils/theme"
 import type { ThemeSettings, ThemeSlot } from "@/types"
 
@@ -42,6 +43,32 @@ export function useThemeLocalOnly(): boolean {
   return useSyncExternalStore(subscribeLocalOnly, readLocalOnly)
 }
 
+/**
+ * Whether this browser can change a server theme slot. It cannot when it keeps
+ * its theme local, or during a default theme visit.
+ */
+export function useCanWriteThemeSlots(): boolean {
+  const localOnly = useThemeLocalOnly()
+  const visit = useDefaultThemeVisit()
+  return !localOnly && !visit
+}
+
+function canWriteThemeSlots(): boolean {
+  return !readLocalOnly() && !isDefaultThemeVisit()
+}
+
+/** Stores a selection in one theme slot. It does nothing when this browser cannot write slots, and rejects with the API error. */
+export async function writeThemeSlot(selection: ThemeSettings, slot: ThemeSlot): Promise<void> {
+  if (!canWriteThemeSlots()) return
+  await api.updateThemeSettings(selection, slot)
+}
+
+/** Removes the mobile theme slot. It does nothing when this browser cannot write slots, and rejects with the API error. */
+export async function removeMobileThemeSlot(): Promise<void> {
+  if (!canWriteThemeSlots()) return
+  await api.deleteMobileThemeSettings()
+}
+
 export function setThemeLocalOnly(localOnly: boolean): void {
   if (localOnly) localStorage.setItem(LOCAL_ONLY_KEY, "true")
   else localStorage.removeItem(LOCAL_ONLY_KEY)
@@ -53,7 +80,7 @@ export function setThemeLocalOnly(localOnly: boolean): void {
  * fallback default, which must not overwrite the server selection.
  */
 export function storedThemeSelection(mode: ThemeMode, appliedId: string, appliedVariant?: string): ThemeSettings {
-  const themeId = localStorage.getItem("color-theme") ?? appliedId
+  const themeId = storedThemeId() ?? appliedId
   const variation = themeId === appliedId ? appliedVariant : getStoredVariation(themeId)
   return { themeId, mode, ...(variation ? { variation } : {}) }
 }
@@ -107,12 +134,12 @@ export function useThemeSettingsSync(): void {
   // changes, and when the async theme registry lands, since the id may only
   // resolve from then on.
   useEffect(() => {
-    if (!selection?.themeId) return
+    if (!selection?.themeId || isDefaultThemeVisit()) return
     lastSynced.current = JSON.stringify(selection)
     // Mirror the server selection locally even when it resolves to a locked
     // stub or an unknown id, so the push below never sends a differing local
     // id over it.
-    localStorage.setItem("color-theme", selection.themeId)
+    storeThemeId(selection.themeId)
     // Skip unknown ids (e.g. a custom theme not registered yet) so we never
     // downgrade the local selection to the default theme.
     const resolved = getThemeById(selection.themeId)
@@ -132,13 +159,13 @@ export function useThemeSettingsSync(): void {
     const handleThemeChange = (event: Event) => {
       const { theme, mode, isSystemChange, variant } = (event as CustomEvent).detail
       const slot = slotRef.current
-      if (isSystemChange || !slot) return
+      if (isSystemChange || !slot || !canWriteThemeSlots()) return
       // Mode changes during a locked fallback still sync.
       const payload = storedThemeSelection(mode, theme.id, variant)
       const serialized = JSON.stringify(payload)
       if (serialized === lastSynced.current) return
       lastSynced.current = serialized
-      api.updateThemeSettings(payload, slot).catch(() => {
+      writeThemeSlot(payload, slot).catch(() => {
         lastSynced.current = null
       })
     }

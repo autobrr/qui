@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -426,12 +427,6 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 	require.Empty(t, results)
 }
 
-func TestContentFilteringWaitTimeoutDefault(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, 20*time.Second, contentFilteringWaitTimeout)
-}
-
 func TestFilterSearchResultsByLateContentFilterMissingOrIncompleteStateLeavesResults(t *testing.T) {
 	t.Parallel()
 
@@ -595,14 +590,12 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 				stringNormalizer:    stringutils.NewDefaultNormalizer(),
 			}
 
-			response, _, _, err := service.searchTorrentMatches(
+			response, err := service.searchTorrentMatches(
 				context.Background(),
 				instanceID,
 				sourceHash,
-				TorrentSearchOptions{
-					IndexerIDs:  []int{1},
-					SkipGazelle: true,
-				},
+				TorrentSearchOptions{},
+				searchScope{torznabIndexerIDs: []int{1}},
 				nil,
 			)
 			require.NoError(t, err)
@@ -611,7 +604,6 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 			require.Equal(t, lateState.FilteredIndexers, response.SourceTorrent.FilteredIndexers)
 			require.Equal(t, lateState.ExcludedIndexers, response.SourceTorrent.ExcludedIndexers)
 			require.Equal(t, lateState.ContentMatches, response.SourceTorrent.ContentMatches)
-			require.True(t, response.SourceTorrent.ContentFilteringCompleted)
 		})
 	}
 }
@@ -731,6 +723,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
@@ -808,6 +801,7 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
@@ -886,6 +880,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
@@ -951,12 +946,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
@@ -1006,12 +996,7 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 		},
 	}, ttlcache.DefaultTTL)
 
-	state := &searchRunState{
-		opts: SearchRunOptions{
-			InstanceID: instanceID,
-		},
-	}
-	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), instanceID, triggerDefaults{}, &source, TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
@@ -1061,6 +1046,7 @@ func TestApplyTorrentSearchResultsPropagatesCachedDuplicateContextError(t *testi
 	}
 	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
+	withAdder(svc)
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
 			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
@@ -1110,13 +1096,13 @@ func newDuplicateFilteringContentFilterService(sync *duplicateFilteringSyncManag
 	}
 }
 
-func (m *duplicateFilteringSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *duplicateFilteringSyncManager) GetTorrentRefs(_ context.Context, instanceID int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	torrents := m.torrents[instanceID]
 	if torrents == nil {
 		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
 	if len(filter.Hashes) == 0 {
-		return append([]qbt.Torrent(nil), torrents...), nil
+		return testTorrentRefs(append([]qbt.Torrent(nil), torrents...)), nil
 	}
 
 	targets := make(map[string]struct{}, len(filter.Hashes))
@@ -1140,7 +1126,7 @@ func (m *duplicateFilteringSyncManager) GetTorrents(_ context.Context, instanceI
 			filtered = append(filtered, torrent)
 		}
 	}
-	return filtered, nil
+	return testTorrentRefs(filtered), nil
 }
 
 func (m *duplicateFilteringSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -1234,7 +1220,7 @@ func (*duplicateFilteringSyncManager) ExtractDomainFromURL(raw string) string {
 	return strings.ToLower(strings.TrimSpace(parsed.Hostname()))
 }
 
-func (*duplicateFilteringSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
+func (*duplicateFilteringSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -1260,4 +1246,8 @@ func (*duplicateFilteringSyncManager) GetCategories(context.Context, int) (map[s
 
 func (*duplicateFilteringSyncManager) CreateCategory(context.Context, int, string, string) error {
 	return nil
+}
+
+func (*duplicateFilteringSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
 }

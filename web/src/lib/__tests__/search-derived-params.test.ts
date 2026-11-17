@@ -26,9 +26,10 @@ describe("getCategoriesForSearchType", () => {
     ["books", 7000],
     ["apps", 4000],
     ["xxx", 6000],
-  ])("returns a category list starting at the parent ID for %s", (type, parent) => {
+  ])("maps %s to parent ID %i in both directions", (type, parent) => {
     const cats = getCategoriesForSearchType(type)
     expect(cats[0]).toBe(parent)
+    expect(inferSearchTypeFromCategories(cats)).toBe(type)
   })
 
   it("returns a fresh array on each call (callers can mutate safely)", () => {
@@ -48,17 +49,6 @@ describe("inferSearchTypeFromCategories", () => {
   it("returns null for empty / missing categories", () => {
     expect(inferSearchTypeFromCategories(undefined)).toBeNull()
     expect(inferSearchTypeFromCategories([])).toBeNull()
-  })
-
-  it.each([
-    [[2000, 2010, 2020], "movies"],
-    [[5000, 5040], "tv"],
-    [[3000], "music"],
-    [[7020], "books"],
-    [[4000], "apps"],
-    [[6060], "xxx"],
-  ] as const)("infers %s from %j", (cats, expected) => {
-    expect(inferSearchTypeFromCategories([...cats])).toBe(expected)
   })
 
   it("returns null when categories cross family boundaries", () => {

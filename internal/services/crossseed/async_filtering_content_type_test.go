@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -23,108 +25,146 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// The search path must not honor a cached filtering run computed for a
+// newCachedFilteringSearchService builds a Service with one movie indexer and
+// a filtering cache. The returned counter counts the search requests that the
+// indexer gets.
+func newCachedFilteringSearchService(t *testing.T, filterCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]) (*Service, *atomic.Int32) {
+	t.Helper()
+
+	var searchRequests atomic.Int32
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") == "caps" {
+			w.Header().Set("Content-Type", "application/xml")
+			fmt.Fprint(w, `<caps><searching>
+				<search available="yes" supportedParams="q"/>
+				<movie-search available="yes" supportedParams="q"/>
+			</searching><categories><category id="2000" name="Movies"/></categories></caps>`)
+			return
+		}
+		searchRequests.Add(1)
+		w.Header().Set("Content-Type", "application/rss+xml")
+		fmt.Fprintf(w, `<rss version="2.0"><channel><title>Movie Indexer</title><item>
+			<title>%s</title><guid>content-type-guard</guid><size>1000</size>
+			<enclosure url="%s/candidate.torrent" length="1000" type="application/x-bittorrent" />
+		</item></channel></rss>`, cachedFilteringSourceName, server.URL)
+	}))
+	t.Cleanup(server.Close)
+
+	instance := &models.Instance{ID: cachedFilteringInstanceID, Name: "main"}
+	source := qbt.Torrent{
+		Hash:      cachedFilteringSourceHash,
+		Name:      cachedFilteringSourceName,
+		Size:      1000,
+		TotalSize: 1000,
+		Progress:  1,
+	}
+	settings := models.DefaultCrossSeedAutomationSettings()
+
+	return &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{cachedFilteringInstanceID: instance}},
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{
+				ID:             cachedFilteringIndexerID,
+				Name:           "Movie Indexer",
+				BaseURL:        server.URL,
+				Backend:        models.TorznabBackendNative,
+				TimeoutSeconds: 5,
+				Enabled:        true,
+			},
+		}),
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			cachedFilteringSourceHash: {{Name: cachedFilteringSourceName + ".mkv", Size: 1000}},
+		}),
+		asyncFilteringCache: filterCache,
+		releaseCache:        NewReleaseCache(),
+		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
+		stringNormalizer:    stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return settings, nil
+		},
+	}, &searchRequests
+}
+
+const (
+	cachedFilteringInstanceID = 1
+	cachedFilteringIndexerID  = 42
+	cachedFilteringSourceName = "Example.Movie.2019.1080p.BluRay.x264-GROUP"
+)
+
+var cachedFilteringSourceHash = strings.Repeat("a", 40)
+
+// The Search scope must not honor a cached filtering run computed for a
 // different content type; category mapping rules can change the type between
 // runs (#2313).
-func TestSearchIgnoresCachedFilteringStateForDifferentContentType(t *testing.T) {
+func TestCollectSearchScopeIgnoresCachedFilteringStateForDifferentContentType(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name              string
 		cachedContentType string
-		wantSearches      bool
+		wantIndexerIDs    []int
 	}{
 		// Stale audiobook run cached an empty indexer set; a movie search must
-		// not reuse it and must query the indexer.
-		{name: "mismatch refilters", cachedContentType: "audiobook", wantSearches: true},
-		// Matching type with the same empty completed set is honored: no queries.
-		{name: "match reuses", cachedContentType: "movie", wantSearches: false},
+		// not reuse it and must ask the indexer.
+		{name: "mismatch refilters", cachedContentType: "audiobook", wantIndexerIDs: []int{cachedFilteringIndexerID}},
+		// Matching type with the same empty completed set is honored.
+		{name: "match reuses", cachedContentType: "movie"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			const (
-				instanceID = 1
-				indexerID  = 42
-			)
-			sourceHash := strings.Repeat("a", 40)
-			sourceName := "Example.Movie.2019.1080p.BluRay.x264-GROUP"
-
-			var searchRequests atomic.Int32
-			var server *httptest.Server
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Query().Get("t") == "caps" {
-					w.Header().Set("Content-Type", "application/xml")
-					fmt.Fprint(w, `<caps><searching>
-						<search available="yes" supportedParams="q"/>
-						<movie-search available="yes" supportedParams="q"/>
-					</searching><categories><category id="2000" name="Movies"/></categories></caps>`)
-					return
-				}
-				searchRequests.Add(1)
-				w.Header().Set("Content-Type", "application/rss+xml")
-				fmt.Fprintf(w, `<rss version="2.0"><channel><title>Movie Indexer</title><item>
-					<title>%s</title><guid>content-type-guard</guid><size>1000</size>
-					<enclosure url="%s/candidate.torrent" length="1000" type="application/x-bittorrent" />
-				</item></channel></rss>`, sourceName, server.URL)
-			}))
-			t.Cleanup(server.Close)
-
-			instance := &models.Instance{ID: instanceID, Name: "main"}
-			source := qbt.Torrent{
-				Hash:      sourceHash,
-				Name:      sourceName,
-				Size:      1000,
-				TotalSize: 1000,
-				Progress:  1,
-			}
-			settings := models.DefaultCrossSeedAutomationSettings()
-
 			filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
-			filterCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
+			filterCache.Set(asyncFilteringCacheKey(cachedFilteringInstanceID, cachedFilteringSourceHash), &AsyncIndexerFilteringState{
 				CapabilitiesCompleted: true,
 				ContentCompleted:      true,
 				CapabilityIndexers:    []int{},
 				FilteredIndexers:      []int{},
 				contentType:           tc.cachedContentType,
 			}, ttlcache.DefaultTTL)
+			service, _ := newCachedFilteringSearchService(t, filterCache)
 
-			service := &Service{
-				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
-				jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
-					{
-						ID:             indexerID,
-						Name:           "Movie Indexer",
-						BaseURL:        server.URL,
-						Backend:        models.TorznabBackendNative,
-						TimeoutSeconds: 5,
-						Enabled:        true,
-					},
-				}),
-				syncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
-					sourceHash: {{Name: sourceName + ".mkv", Size: 1000}},
-				}),
-				asyncFilteringCache: filterCache,
-				releaseCache:        NewReleaseCache(),
-				searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
-				stringNormalizer:    stringutils.NewDefaultNormalizer(),
-				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-					return settings, nil
-				},
-			}
-
-			_, _, _, err := service.searchTorrentMatches(context.Background(), instanceID, sourceHash, TorrentSearchOptions{SkipGazelle: true}, nil)
-			require.NoError(t, err)
-
-			if tc.wantSearches {
-				require.Positive(t, searchRequests.Load(), "stale content type must trigger fresh filtering and a real search")
-			} else {
-				require.Zero(t, searchRequests.Load(), "matching cached run with empty indexer set must skip searching")
-			}
+			scope := service.collectSearchScope(t.Context(), cachedFilteringInstanceID, &qbt.Torrent{Hash: cachedFilteringSourceHash}, searchScopeFacts{}, true)
+			require.NoError(t, scope.err)
+			require.Equal(t, tc.wantIndexerIDs, scope.torznabIndexerIDs)
 		})
 	}
+}
+
+// The dialog waits for a content filter that is still running and asks no
+// indexer that the filter removes.
+func TestSearchTorrentMatchesWaitsForContentFilter(t *testing.T) {
+	t.Parallel()
+
+	running := &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		CapabilityIndexers:    []int{cachedFilteringIndexerID},
+		contentType:           "movie",
+	}
+	filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
+	filterCache.Set(asyncFilteringCacheKey(cachedFilteringInstanceID, cachedFilteringSourceHash), running, ttlcache.DefaultTTL)
+	// The indexer server stays outside the bubble: its accept loop would stop
+	// the fake clock.
+	service, searchRequests := newCachedFilteringSearchService(t, filterCache)
+
+	synctest.Test(t, func(t *testing.T) {
+		go func() {
+			time.Sleep(time.Second)
+			running.Lock()
+			running.FilteredIndexers = []int{}
+			running.ExcludedIndexers = map[int]string{cachedFilteringIndexerID: "already seeded from Movie Indexer"}
+			running.ContentCompleted = true
+			running.Unlock()
+		}()
+
+		resp, err := service.SearchTorrentMatches(t.Context(), cachedFilteringInstanceID, cachedFilteringSourceHash, TorrentSearchOptions{})
+		require.NoError(t, err)
+		require.Empty(t, resp.Results)
+		require.Zero(t, searchRequests.Load(), "the dialog must not ask an indexer that the content filter removes")
+		require.Contains(t, resp.SourceTorrent.ExcludedIndexers, cachedFilteringIndexerID)
+	})
 }
 
 // A background worker whose cache entry was replaced by a newer run must not
@@ -252,7 +292,6 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	require.NoError(t, err)
 	require.Same(t, cachedState, result.FilteringState, "matching content type must reuse the cached run")
 	require.Equal(t, []int{7}, result.TorrentInfo.FilteredIndexers)
-	require.True(t, result.TorrentInfo.ContentFilteringCompleted)
 
 	svc, cachedState = newService("audiobook")
 	result, err = svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, hash, true)

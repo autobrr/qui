@@ -3,36 +3,28 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { getRowBackgroundClass, getStatusBadgeProps, getStatusBadgeVariant } from "@/lib/torrent-table/row-display"
+import { getRowBackgroundClass, getStatusBadgeProps, getStatusBadgeVariant, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
+import i18n from "@/i18n"
+import enTorrents from "@/i18n/locales/en/torrents.json"
 import { makeTorrent } from "@/test/mockTorrent"
-import type { TFunction } from "i18next"
 import { describe, expect, it } from "vitest"
 
-// Passthrough translator: honors an explicit defaultValue (as getStateLabel
-// uses), otherwise echoes the key so assertions can match on the key string.
-const t = ((key: string, opts?: { defaultValue?: string }) =>
-  opts?.defaultValue ?? key) as unknown as TFunction
+const t = i18n.getFixedT("en", "torrents")
 
 describe("getRowBackgroundClass", () => {
-  it("uses the accent background when the row is selected, regardless of zebra parity", () => {
-    expect(getRowBackgroundClass(true, false, 0)).toBe("bg-accent")
-    expect(getRowBackgroundClass(true, false, 1)).toBe("bg-accent")
-    expect(getRowBackgroundClass(false, true, 0)).toBe("bg-accent")
+  it("highlights a selected row the same way on every stripe", () => {
+    const selected = getRowBackgroundClass(true, false, 0)
+    expect(getRowBackgroundClass(true, false, 1)).toBe(selected)
+    expect(getRowBackgroundClass(false, true, 0)).toBe(selected)
+    expect(selected).not.toBe(getRowBackgroundClass(false, false, 0))
+    expect(selected).not.toBe(getRowBackgroundClass(false, false, 1))
   })
 
-  it("selection takes precedence over the zebra stripe", () => {
-    // Odd index would normally be muted, but selection wins.
-    expect(getRowBackgroundClass(true, false, 1)).toBe("bg-accent")
-  })
-
-  it("applies the zebra stripe to odd rows when unselected", () => {
-    expect(getRowBackgroundClass(false, false, 1)).toBe("bg-muted/40")
-    expect(getRowBackgroundClass(false, false, 3)).toBe("bg-muted/40")
-  })
-
-  it("returns no background for unselected even rows", () => {
+  it("stripes odd unselected rows", () => {
     expect(getRowBackgroundClass(false, false, 0)).toBe("")
     expect(getRowBackgroundClass(false, false, 2)).toBe("")
+    expect(getRowBackgroundClass(false, false, 1)).not.toBe("")
+    expect(getRowBackgroundClass(false, false, 3)).toBe(getRowBackgroundClass(false, false, 1))
   })
 })
 
@@ -47,6 +39,11 @@ describe("getStatusBadgeVariant", () => {
     expect(getStatusBadgeVariant("stalledUP")).toBe("secondary")
     expect(getStatusBadgeVariant("pausedDL")).toBe("secondary")
     expect(getStatusBadgeVariant("pausedUP")).toBe("secondary")
+  })
+
+  it("maps queued states to the secondary variant", () => {
+    expect(getStatusBadgeVariant("queuedDL")).toBe("secondary")
+    expect(getStatusBadgeVariant("queuedUP")).toBe("secondary")
   })
 
   it("maps error states to the destructive variant", () => {
@@ -73,7 +70,7 @@ describe("getStatusBadgeProps", () => {
   it("overrides label/variant/className for tracker_down when tracker health is supported", () => {
     const torrent = makeTorrent({ state: "downloading", tracker_health: "tracker_down" })
     const props = getStatusBadgeProps(torrent, true, t)
-    expect(props.label).toBe("tableColumns.trackerDown")
+    expect(props.label).toBe(enTorrents.tableColumns.trackerDown)
     expect(props.variant).toBe("outline")
     expect(props.className).toContain("text-yellow-500")
   })
@@ -81,15 +78,16 @@ describe("getStatusBadgeProps", () => {
   it("overrides for tracker_error", () => {
     const torrent = makeTorrent({ state: "stalledUP", tracker_health: "tracker_error" })
     const props = getStatusBadgeProps(torrent, true, t)
-    expect(props.label).toBe("tableColumns.trackerError")
+    expect(props.label).toBe(enTorrents.tableColumns.trackerError)
     expect(props.variant).toBe("outline")
-    expect(props.className).toContain("text-orange-500")
+    expect(props.className).toContain("text-purple-500")
+    expect(props.iconClass).toBe("text-purple-500")
   })
 
   it("overrides for unregistered", () => {
     const torrent = makeTorrent({ state: "uploading", tracker_health: "unregistered" })
     const props = getStatusBadgeProps(torrent, true, t)
-    expect(props.label).toBe("tableColumns.unregistered")
+    expect(props.label).toBe(enTorrents.tableColumns.unregistered)
     expect(props.variant).toBe("outline")
     expect(props.className).toContain("text-destructive")
   })
@@ -99,5 +97,13 @@ describe("getStatusBadgeProps", () => {
     const props = getStatusBadgeProps(torrent, true, t)
     expect(props.variant).toBe("default")
     expect(props.className).toBe("")
+    expect(props.iconClass).toBe("text-primary")
+  })
+
+  it("gives each tracker health its own color", () => {
+    const classes = Object.keys(TRACKER_HEALTH_DISPLAY).map(health =>
+      getStatusBadgeProps({ state: "uploading", tracker_health: health as TrackerHealth }, true, t).className
+    )
+    expect(new Set(classes).size).toBe(classes.length)
   })
 })

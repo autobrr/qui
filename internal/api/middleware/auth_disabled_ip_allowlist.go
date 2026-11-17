@@ -19,12 +19,12 @@ import (
 func RequireAuthDisabledIPAllowlist(cfg *domain.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if cfg == nil || !cfg.IsAuthDisabled() {
+			if cfg == nil || !cfg.Live().IsAuthDisabled() {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			prefixes, err := cfg.ParseAuthDisabledAllowedCIDRs()
+			prefixes, err := cfg.Live().ParseAuthDisabledAllowedCIDRs()
 			if err != nil || len(prefixes) == 0 {
 				log.Error().Err(err).Msg("auth-disabled mode is misconfigured: authDisabledAllowedCIDRs is invalid or empty")
 				http.Error(w, "Forbidden", http.StatusForbidden)

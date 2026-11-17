@@ -47,6 +47,9 @@ func (noopBackend) SameFilesystem(ctx context.Context, _, _ string) (bool, error
 func (noopBackend) MkdirAll(ctx context.Context, _ string, _ fs.FileMode) error {
 	return noopErr(ctx)
 }
+func (noopBackend) Mkdir(ctx context.Context, _ string, _ fs.FileMode) error {
+	return noopErr(ctx)
+}
 func (noopBackend) Remove(ctx context.Context, _ string, _ RemoveOptions) error {
 	return noopErr(ctx)
 }

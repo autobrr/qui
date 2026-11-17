@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
+import { matchPeerClient, peerClientTitle } from "@/lib/peer-client-icons"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
@@ -20,6 +21,7 @@ import {
   useTable
 } from "@tanstack/react-table"
 import { sortableDetailsTableFeatures } from "../tanstackTableFeatures"
+import { PeerClientIcon } from "./PeerClientIcon"
 import { SortIcon } from "@/components/ui/sort-icon"
 import { Ban, Copy, Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -87,14 +89,24 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 150,
     }),
-    columnHelper.accessor("client", {
+    // Sort by the shown name, so a peer that sends only a peer ID sorts with its client.
+    columnHelper.accessor((row) => matchPeerClient(row.client, row.peer_id_client).name, {
+      id: "client",
       header: t("peersTable.client"),
-      cell: (info) => (
-        <span className="truncate block max-w-[120px]" title={info.getValue()}>
-          {info.getValue() || "-"}
-        </span>
-      ),
-      size: 120,
+      cell: (info) => {
+        const { client, peer_id_client: peerIdClient } = info.row.original
+        const { name, version } = matchPeerClient(client, peerIdClient)
+        return (
+          <div className="flex max-w-[150px] items-center gap-1.5" title={peerClientTitle(client, peerIdClient)}>
+            <PeerClientIcon client={client} peerIdClient={peerIdClient} />
+            <span className="truncate">
+              <span className="font-medium">{name || "-"}</span>
+              {version && <span className="tabular-nums text-muted-foreground"> {version}</span>}
+            </span>
+          </div>
+        )
+      },
+      size: 150,
     }),
     columnHelper.accessor("progress", {
       header: t("peersTable.progress"),

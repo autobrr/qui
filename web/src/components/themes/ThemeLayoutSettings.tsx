@@ -6,21 +6,25 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { FieldHelp } from "@/components/ui/field-help"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { SwitchRow } from "@/components/kit/SwitchRow"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
-import { useIsMobile } from "@/hooks/useMediaQuery"
-import { setThemeLocalOnly, storedThemeSelection, useThemeLocalOnly } from "@/hooks/useThemeSettingsSync"
+import {
+  removeMobileThemeSlot,
+  setThemeLocalOnly,
+  storedThemeSelection,
+  useCanWriteThemeSlots,
+  useThemeLocalOnly,
+  writeThemeSlot
+} from "@/hooks/useThemeSettingsSync"
 import { api } from "@/lib/api"
 import { getCurrentTheme, getCurrentThemeMode } from "@/utils/theme"
 
-/** The layout switches under the theme picker, with a hint that names what the picker changes. */
+/** The switches that choose where a theme applies: one theme for each layout, and a theme of this browser only. */
 export function ThemeLayoutSettings() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
-  const isMobile = useIsMobile()
   const localOnly = useThemeLocalOnly()
+  const canWriteSlots = useCanWriteThemeSlots()
   const { data } = useQuery({
     queryKey: ["theme-settings"],
     queryFn: () => api.getThemeSettings(),
@@ -35,10 +39,10 @@ export function ThemeLayoutSettings() {
         const appliedId = getCurrentTheme().id
         const current = storedThemeSelection(getCurrentThemeMode(), appliedId, getStoredVariation(appliedId) ?? undefined)
         // Turning the split off later pulls the default slot, so it must exist.
-        if (!data?.default) await api.updateThemeSettings(current, "default")
-        await api.updateThemeSettings(current, "mobile")
+        if (!data?.default) await writeThemeSlot(current, "default")
+        await writeThemeSlot(current, "mobile")
       } else {
-        await api.deleteMobileThemeSettings()
+        await removeMobileThemeSlot()
       }
     } catch {
       toast.error(t("themes.layout.saveError"))
@@ -46,25 +50,24 @@ export function ThemeLayoutSettings() {
     await queryClient.invalidateQueries({ queryKey: ["theme-settings"] })
   }
 
-  let hint: string | null = null
-  if (localOnly) hint = t("themes.layout.changesLocal")
-  else if (split) hint = isMobile ? t("themes.layout.changesMobile") : t("themes.layout.changesDesktop")
+  const splitNotes = [localOnly && t("themes.layout.splitNeedsSync"), split && t("themes.layout.mobileSplitOffWarning")].filter(Boolean).join(" ")
 
   return (
-    <div className="space-y-3">
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      <div className="flex items-center gap-2">
-        {/* Turning the split on writes this browser's theme, which a local-only browser must not send. */}
-        <Switch id="theme-mobile-split" checked={split} disabled={!data || localOnly} onCheckedChange={(on) => void setSplit(on)} />
-        <Label htmlFor="theme-mobile-split" className="cursor-pointer">{t("themes.layout.mobileSplit")}</Label>
-        <FieldHelp>{t("themes.layout.mobileSplitHelp")}</FieldHelp>
-      </div>
-      {split && <p className="text-xs text-muted-foreground">{t("themes.layout.mobileSplitOffWarning")}</p>}
-      <div className="flex items-center gap-2">
-        <Switch id="theme-local-only" checked={localOnly} onCheckedChange={setThemeLocalOnly} />
-        <Label htmlFor="theme-local-only" className="cursor-pointer">{t("themes.layout.localOnly")}</Label>
-        <FieldHelp>{t("themes.layout.localOnlyHelp")}</FieldHelp>
-      </div>
+    <div className="space-y-4">
+      <SwitchRow
+        label={t("themes.layout.mobileSplit")}
+        help={t("themes.layout.mobileSplitHelp")}
+        description={splitNotes}
+        checked={split}
+        disabled={!data || !canWriteSlots}
+        onCheckedChange={(on) => void setSplit(on)}
+      />
+      <SwitchRow
+        label={t("themes.layout.localOnly")}
+        help={t("themes.layout.localOnlyHelp")}
+        checked={localOnly}
+        onCheckedChange={setThemeLocalOnly}
+      />
     </div>
   )
 }

@@ -11,6 +11,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
@@ -19,8 +20,13 @@ const (
 	torrentAddedRefreshTimeout    = 5 * time.Second
 )
 
+type torrentAddedNotifier interface {
+	notifications.Notifier
+	Listens(ctx context.Context, eventType notifications.EventType) bool
+}
+
 type torrentNotificationSync interface {
-	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
+	GetTorrentRefsFresh(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	ExtractDomainFromURL(rawURL string) string
 }
 
@@ -30,13 +36,13 @@ func buildTorrentCompletedEvent(syncManager torrentNotificationSync, instanceID 
 		InstanceID:    instanceID,
 		TorrentName:   torrent.Name,
 		TorrentHash:   torrent.Hash,
-		TrackerDomain: trackerDomainForTorrent(syncManager, torrent),
+		TrackerDomain: trackerDomainForTorrent(syncManager, &torrent),
 		Category:      torrent.Category,
 		Tags:          parseTorrentTags(torrent.Tags),
 	}
 }
 
-func buildTorrentAddedEvent(syncManager torrentNotificationSync, instanceID int, torrent qbt.Torrent) notifications.Event {
+func buildTorrentAddedEvent(syncManager torrentNotificationSync, instanceID int, torrent *qbt.Torrent) notifications.Event {
 	return notifications.Event{
 		Type:                   notifications.EventTorrentAdded,
 		InstanceID:             instanceID,
@@ -60,65 +66,64 @@ func buildTorrentAddedEvent(syncManager torrentNotificationSync, instanceID int,
 	}
 }
 
-func notifyTorrentAddedWithDelay(ctx context.Context, syncManager torrentNotificationSync, notifier notifications.Notifier, instanceID int, torrent qbt.Torrent) {
-	notifyTorrentAddedWithDelayAfter(ctx, syncManager, notifier, instanceID, torrent, torrentAddedNotificationDelay)
-}
-
-func notifyTorrentAddedWithDelayAfter(ctx context.Context, syncManager torrentNotificationSync, notifier notifications.Notifier, instanceID int, torrent qbt.Torrent, delay time.Duration) {
-	if notifier == nil {
+// notifyTorrentsAddedAfter waits for delay, reads the batch again in one sync,
+// and sends one torrent-added event per torrent. It blocks for the delay.
+func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier torrentAddedNotifier, instanceID int, torrents []*qbt.Torrent, delay time.Duration) {
+	if notifier == nil || len(torrents) == 0 {
 		return
 	}
-	if delay < 0 {
-		delay = 0
+	ctx = context.WithoutCancel(ctx)
+	if !notifier.Listens(ctx, notifications.EventTorrentAdded) {
+		return
 	}
 
-	baseCtx := context.Background()
-	if ctx != nil {
-		baseCtx = context.WithoutCancel(ctx)
+	time.Sleep(delay)
+
+	for _, torrent := range refreshTorrentsForNotification(ctx, syncManager, instanceID, torrents) {
+		notifier.Notify(ctx, buildTorrentAddedEvent(syncManager, instanceID, torrent))
 	}
-
-	go func() {
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
-		<-timer.C
-
-		current := torrent
-		if refreshed, ok := refreshTorrentForNotification(baseCtx, syncManager, instanceID, torrent.Hash); ok {
-			current = refreshed
-		}
-
-		notifier.Notify(baseCtx, buildTorrentAddedEvent(syncManager, instanceID, current))
-	}()
 }
 
-func refreshTorrentForNotification(ctx context.Context, syncManager torrentNotificationSync, instanceID int, hash string) (qbt.Torrent, bool) {
-	if syncManager == nil || strings.TrimSpace(hash) == "" {
-		return qbt.Torrent{}, false
+// refreshTorrentsForNotification returns the torrents with fresh stats. A
+// torrent that the read does not return keeps its initial snapshot.
+func refreshTorrentsForNotification(ctx context.Context, syncManager torrentNotificationSync, instanceID int, torrents []*qbt.Torrent) []*qbt.Torrent {
+	if syncManager == nil {
+		return torrents
 	}
 
-	refreshCtx := context.Background()
-	if ctx != nil {
-		refreshCtx = context.WithoutCancel(ctx)
+	hashes := make([]string, 0, len(torrents))
+	for _, torrent := range torrents {
+		hashes = append(hashes, torrent.Hash)
 	}
-	refreshCtx, cancel := context.WithTimeout(refreshCtx, torrentAddedRefreshTimeout)
+
+	refreshCtx, cancel := context.WithTimeout(ctx, torrentAddedRefreshTimeout)
 	defer cancel()
 
-	torrents, err := syncManager.GetTorrents(refreshCtx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}})
+	fresh, err := syncManager.GetTorrentRefsFresh(refreshCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 	if err != nil {
 		log.Debug().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Int("torrents", len(torrents)).
 			Msg("torrent-added notification: refresh failed, using initial snapshot")
-		return qbt.Torrent{}, false
+		return torrents
 	}
-	if len(torrents) == 0 {
-		return qbt.Torrent{}, false
+
+	byHash := make(map[string]*qbt.Torrent, len(fresh))
+	for _, torrent := range fresh {
+		byHash[torrent.Hash] = torrent
 	}
-	return torrents[0], true
+	current := make([]*qbt.Torrent, 0, len(torrents))
+	for _, torrent := range torrents {
+		if refreshed, ok := byHash[torrent.Hash]; ok {
+			torrent = refreshed
+		}
+		current = append(current, torrent)
+	}
+	return current
 }
 
-func trackerDomainForTorrent(syncManager torrentNotificationSync, torrent qbt.Torrent) string {
+func trackerDomainForTorrent(syncManager torrentNotificationSync, torrent *qbt.Torrent) string {
 	if syncManager == nil || strings.TrimSpace(torrent.Tracker) == "" {
 		return ""
 	}

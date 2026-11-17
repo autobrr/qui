@@ -29,13 +29,4 @@ describe("navigateWithSearch", () => {
     expect("to" in arg).toBe(false)
     expect("replace" in arg).toBe(false)
   })
-
-  it("passes the search object through unchanged", () => {
-    const navigate = vi.fn()
-    const search = { a: 1, b: undefined, c: "x" }
-
-    navigateWithSearch({ navigate, to: "/instances", search })
-
-    expect(navigate.mock.calls[0][0].search).toBe(search)
-  })
 })

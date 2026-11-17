@@ -4,9 +4,8 @@ name: Build PR image
 # release.yml only pushes images for in-repo PRs. The workflow file comes from
 # the ref it is dispatched on; only the build context is checked out from the
 # fork, so fork code never changes what runs with the repository token.
-# Premium themes are skipped: make themes-fetch would run the fork's Makefile
-# with THEMES_REPO_TOKEN. Caches are restore-only: fork code runs before a
-# save, and release.yml restores the same keys.
+# Caches are restore-only: fork code runs before a save, and release.yml
+# restores the same keys.
 on:
   workflow_dispatch:
     inputs:
@@ -56,13 +55,13 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6.1.0
+        uses: pnpm/action-setup@v6.1.1
         with:
           package_json_file: web/package.json
 
@@ -87,8 +86,17 @@ jobs:
         working-directory: web
         run: CI= pnpm run build
 
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+
+      - name: Write the notices file
+        run: go run ./scripts/notices
+
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4.6.0
+        uses: docker/login-action@v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
@@ -138,5 +146,4 @@ jobs:
             echo
             echo "- source: \`${{ steps.pr.outputs.repo }}@${{ steps.pr.outputs.sha }}\` (PR ${{ steps.pr.outputs.state }})"
             echo "- platforms: \`${{ inputs.platforms }}\`"
-            echo "- premium themes: not included"
           } >> "$GITHUB_STEP_SUMMARY"

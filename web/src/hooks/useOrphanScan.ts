@@ -116,6 +116,18 @@ export function useOrphanScanRun(
   })
 }
 
+// A scan writes its paths once. The key stays outside the "orphan-scan" prefix, so
+// activity and mutation invalidations do not fetch them again.
+export function useOrphanScanRunPaths(instanceId: number, runId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ["orphan-scan-run-paths", instanceId, runId],
+    queryFn: () => api.getOrphanScanRun(instanceId, runId, { limit: 1 }),
+    enabled,
+    staleTime: Infinity,
+    select: (run) => run.scanPaths ?? [],
+  })
+}
+
 export function useConfirmOrphanScanDeletion(instanceId: number) {
   const queryClient = useQueryClient()
 

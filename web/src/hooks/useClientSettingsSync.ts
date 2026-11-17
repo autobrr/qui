@@ -5,10 +5,20 @@
 
 import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 import { api } from "@/lib/api"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useIsAuthed } from "@/hooks/useIsAuthed"
-import { applyServerSettings, readRaw, seedAndMarkReady } from "@/lib/client-settings"
+import {
+  applyServerSettings,
+  getDisplayProfiles,
+  markClientSettingsUnavailable,
+  onActiveDisplayProfileDeleted,
+  readRaw,
+  seedAndMarkReady
+} from "@/lib/client-settings"
+import { displayProfileName } from "@/lib/display-profiles"
 import { changeLanguage, supportedLanguages, type AppLanguage } from "@/i18n"
 
 /**
@@ -20,14 +30,25 @@ import { changeLanguage, supportedLanguages, type AppLanguage } from "@/i18n"
  */
 export function useClientSettingsSync(): void {
   const isAuthed = useIsAuthed()
+  const { t } = useTranslation("torrents")
 
   useActivityStream(isAuthed)
 
-  const { data } = useQuery({
+  const { data, error } = useQuery({
     queryKey: ["client-settings"],
     queryFn: () => api.getClientSettings(),
     enabled: isAuthed,
   })
+
+  useEffect(() => {
+    if (error) markClientSettingsUnavailable()
+  }, [error])
+
+  // Subscribed before the snapshot effect below runs, so the first snapshot can show the toast too.
+  useEffect(() => onActiveDisplayProfileDeleted((profile) => {
+    const defaultName = displayProfileName(getDisplayProfiles().active, t("displayProfiles.defaultName"))
+    toast.info(t("displayProfiles.deletedToast", { name: profile.name, defaultName }))
+  }), [t])
 
   useEffect(() => {
     if (!data) return

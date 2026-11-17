@@ -170,7 +170,9 @@ func (h *Handler) serveAssets(w http.ResponseWriter, r *http.Request) {
 		modifiedContent := string(content)
 		basePrefix := strings.TrimSuffix(h.baseURL, "/")
 
-		// Modify service worker files to use correct base URL
+		// Modify service worker files to use correct base URL. sw.js needs no
+		// rewrite: Workbox resolves relative precache URLs against the script URL,
+		// so under /qui/sw.js the cache keys are already /qui/...
 		switch path {
 		case "registerSW.js":
 			// Fix service worker registration paths

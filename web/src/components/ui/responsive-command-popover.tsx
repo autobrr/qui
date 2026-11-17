@@ -18,6 +18,7 @@ import {
   PopoverContent,
   PopoverTrigger
 } from "@/components/ui/popover";
+import { passwordManagerAttributes } from "@/lib/password-manager";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
@@ -127,6 +128,7 @@ const ResponsiveCommandInput = React.forwardRef<
       )} />
       <CommandPrimitive.Input
         ref={ref}
+        {...passwordManagerAttributes()}
         className={cn(
           "flex w-full rounded-md bg-transparent outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
           isMobile ? "h-14 py-4 text-base" : "h-11 py-3 text-sm",

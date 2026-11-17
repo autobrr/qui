@@ -49,18 +49,7 @@ export function UpdateBanner() {
               </p>
               {/* The Install dialog links the release notes, so one button is enough. */}
               <div className="mt-2">
-                {selfUpdate.selfUpdateAvailable ? (
-                  <InstallUpdateButton selfUpdate={selfUpdate} release={updateInfo} className={bannerButtonClass} />
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={bannerButtonClass}
-                    onClick={() => window.open(updateInfo.html_url, "_blank", "noopener,noreferrer")}
-                  >
-                    {t("updateBanner.viewRelease")}
-                  </Button>
-                )}
+                <InstallUpdateButton selfUpdate={selfUpdate} release={updateInfo} className={bannerButtonClass} />
               </div>
             </div>
             <Button

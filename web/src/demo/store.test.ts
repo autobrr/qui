@@ -26,6 +26,7 @@ describe("matchesStatus", () => {
     ["inactive", "stalledUP", true],
     ["errored", "missingFiles", true],
     ["error", "error", true],
+    ["error", "missingFiles", false],
     ["checking", "checkingResumeData", true],
     ["stalled_uploading", "stalledUP", true],
     ["stalled_downloading", "stalledUP", false],
@@ -33,6 +34,11 @@ describe("matchesStatus", () => {
   ])("%s matches state %s: %s", (status, state, expected) => {
     const t = makeTorrent({ state, progress: state.endsWith("UP") || state === "uploading" ? 1 : 0.5 })
     expect(matchesStatus(t, status)).toBe(expected)
+  })
+
+  it("completed follows the state, also during a recheck", () => {
+    expect(matchesStatus(makeTorrent({ state: "checkingUP", progress: 0.4 }), "completed")).toBe(true)
+    expect(matchesStatus(makeTorrent({ state: "moving", progress: 1 }), "completed")).toBe(false)
   })
 
   it("tracker health statuses read the health field, not the state", () => {

@@ -7,7 +7,7 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
-import { formatDate, formatDateOnly, formatISOTimestamp, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
+import { formatClockTime, formatDate, formatDateOnly, formatISOTimestamp, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
 
 /**
  * Hook that provides date/time formatting functions that automatically use current user preferences
@@ -54,6 +54,14 @@ export function useDateTimeFormatters() {
       formatDate: (date: Date) => {
         void activeLocale
         return formatDate(date, preferences)
+      },
+
+      /**
+       * Format the clock time of a recent moment, with the weekday when it is not from today
+       */
+      formatClockTime: (date: Date) => {
+        void activeLocale
+        return formatClockTime(date, preferences)
       },
 
       /**

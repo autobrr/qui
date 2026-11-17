@@ -7,7 +7,8 @@ import { useCallback, useState } from "react"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
-import { getTorrentTargetInstanceId, type TorrentActionTarget } from "@/lib/torrent-action-targets"
+import { getTorrentTargetInstanceId } from "@/lib/torrent-action-targets"
+import type { ActionTarget } from "@/lib/torrent-selection"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -17,40 +18,18 @@ interface UseTorrentExporterOptions {
   incognitoMode: boolean
 }
 
-interface ExportSelection {
-  hashes: string[]
-  torrents: Torrent[]
-  isAllSelected: boolean
-  totalSelected: number
-  filters?: TorrentFilters
-  search?: string
-  excludeHashes?: string[]
-  excludeTargets?: TorrentActionTarget[]
-  instanceIds?: number[]
-  sortField?: string
-  sortOrder?: "asc" | "desc"
-}
-
 const TORRENT_ARCHIVE_THRESHOLD = 10
 
 export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExporterOptions) {
   const { t } = useTranslation("torrents")
   const [isExporting, setIsExporting] = useState(false)
 
-  const exportTorrents = useCallback(async (selection: ExportSelection) => {
-    const {
-      hashes,
-      torrents,
-      isAllSelected,
-      totalSelected,
-      filters,
-      search,
-      excludeHashes,
-      excludeTargets,
-      instanceIds,
-      sortField,
-      sortOrder,
-    } = selection
+  // A select-all export follows the sort, so the files come in the order that the user sees.
+  const exportTorrents = useCallback(async (target: ActionTarget, sortField?: string, sortOrder?: "asc" | "desc") => {
+    const isAllSelected = target.kind === "selectAll"
+    const { filters, search, excludeHashes, excludeTargets, instanceIds } = isAllSelected ? target.selectAll : {}
+    const hashes = isAllSelected ? [] : target.targets?.map(t => t.hash) ?? target.hashes
+    const torrents = target.previewTorrents
 
     const sanitizedHashes = Array.from(new Set(hashes)).filter(Boolean)
     const excludeSet = new Set(excludeHashes ?? [])
@@ -66,33 +45,27 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
     try {
       let targets: Torrent[]
       if (isAllSelected) {
-        targets = await fetchAllMatchingTorrents({
+        const matching = await fetchAllMatchingTorrents({
           instanceId,
           instanceIds,
           filters,
           search,
           sortField,
           sortOrder,
-          totalSelected,
           excludeSet,
           excludeTargetSet,
         })
+        if (matching === null) {
+          toast.error(t("contextMenu.toast.exportFailed"))
+          return
+        }
+        targets = matching
       } else {
         targets = dedupeTorrents(torrents, sanitizedHashes, instanceId)
       }
 
       if (targets.length === 0) {
         toast.info(t("contextMenu.toast.noTorrentsFoundToExport"))
-        return
-      }
-
-      targets = targets.filter(torrent => {
-        const targetInstanceId = getTorrentTargetInstanceId(torrent, instanceId)
-        return !excludeSet.has(torrent.hash) && !excludeTargetSet.has(targetKey(targetInstanceId, torrent.hash))
-      })
-
-      if (targets.length === 0) {
-        toast.info(t("contextMenu.toast.noTorrentsExported"))
         return
       }
 
@@ -151,7 +124,6 @@ async function fetchAllMatchingTorrents({
   search,
   sortField,
   sortOrder,
-  totalSelected,
   excludeSet,
   excludeTargetSet,
 }: {
@@ -161,10 +133,9 @@ async function fetchAllMatchingTorrents({
   search?: string
   sortField?: string
   sortOrder?: "asc" | "desc"
-  totalSelected: number
   excludeSet: Set<string>
   excludeTargetSet: Set<string>
-}): Promise<Torrent[]> {
+}): Promise<Torrent[] | null> {
   const results: Torrent[] = []
   const seen = new Set<string>()
   let page = 0
@@ -181,6 +152,10 @@ async function fetchAllMatchingTorrents({
       order: sortOrder,
     }
     const response = allInstances? await api.getCrossInstanceTorrents({ ...params, instanceIds }): await api.getTorrents(instanceId, params)
+    // A partial read would export a subset that looks complete (ADR 0009).
+    if (response.partialResults) {
+      return null
+    }
 
     const pageTorrents = allInstances? response.crossInstanceTorrents ?? response.cross_instance_torrents ?? []: response.torrents ?? []
 
@@ -191,10 +166,6 @@ async function fetchAllMatchingTorrents({
       }
       seen.add(key)
       results.push(torrent)
-
-      if (totalSelected > 0 && results.length >= totalSelected) {
-        return results
-      }
     }
 
     const hasMoreFlag = response.hasMore

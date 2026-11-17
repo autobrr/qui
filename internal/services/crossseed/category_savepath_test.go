@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -134,7 +135,7 @@ func TestBuildCategorySavePath(t *testing.T) {
 				IndexerName: tt.indexerName,
 			}
 
-			result := svc.buildCategorySavePath(context.Background(), instance, tt.baseDir, tt.incomingTrackerDomain, candidate, req)
+			result := svc.buildCategorySavePath(context.Background(), fsops.HostPaths, instance, tt.baseDir, tt.incomingTrackerDomain, candidate, req)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -165,7 +166,7 @@ func TestBuildCategorySavePathDoesNotIncludeIsolationFolder(t *testing.T) {
 		IndexerName: "TorrentLeech",
 	}
 
-	result := svc.buildCategorySavePath(context.Background(), instance, "/data/cross-seed", "tracker.tl.example.com", candidate, req)
+	result := svc.buildCategorySavePath(context.Background(), fsops.HostPaths, instance, "/data/cross-seed", "tracker.tl.example.com", candidate, req)
 
 	// Should NOT contain any hash-like suffix or torrent name
 	assert.NotContains(t, result, "--")

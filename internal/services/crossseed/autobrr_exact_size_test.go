@@ -4,11 +4,14 @@
 package crossseed
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -168,6 +171,73 @@ func TestCheckWebhookUnknownSizePreflight(t *testing.T) {
 			} else {
 				require.Empty(t, response.Matches)
 			}
+		})
+	}
+}
+
+// TestCheckWebhookNearMissLog catches a near-miss log that skips a fansub
+// release, whose tag parses to the site, or that logs a torrent of another group.
+func TestCheckWebhookNearMissLog(t *testing.T) {
+	previousLogger := log.Logger
+	previousLevel := zerolog.GlobalLevel()
+	t.Cleanup(func() {
+		log.Logger = previousLogger
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+
+	instance := &models.Instance{ID: 12, Name: "primary", IsActive: true}
+	tests := []struct {
+		name         string
+		announcement string
+		sourceName   string
+		skipRecheck  bool
+		wantLog      bool
+	}{
+		{
+			name: "same group", announcement: "Silver.Harbor.S01E06.1080p.WEB-DL.H.264-LUMA",
+			sourceName: "Silver.Harbor.S01E05.1080p.WEB-DL.H.264-LUMA", wantLog: true,
+		},
+		{
+			name: "same fansub tag", announcement: "[SubsPlease] Kingdom - 12 (1080p) [ABCD1234].mkv",
+			sourceName: "[SubsPlease] Kingdom - 11 (1080p) [EF012345].mkv", wantLog: true,
+		},
+		{
+			name: "other group", announcement: "Silver.Harbor.S01E06.1080p.WEB-DL.H.264-LUMA",
+			sourceName: "Silver.Harbor.S01E05.1080p.WEB-DL.H.264-NOVA", wantLog: false,
+		},
+		{
+			name: "fansub tag split across group and site", announcement: fansubTaggedPack,
+			sourceName: fansubBracketPack, skipRecheck: true, wantLog: true,
+		},
+		{
+			name: "split bracket pack of another fansub", announcement: otherFansubTagged,
+			sourceName: fansubBracketPack, skipRecheck: true, wantLog: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			log.Logger = zerolog.New(&logs).Level(zerolog.DebugLevel)
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+					Hash: "near-miss", Name: tt.sourceName, Size: 2_000_000, TotalSize: 2_000_000, Progress: 1,
+				}}, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{SkipRecheck: tt.skipRecheck}, nil
+				},
+			}
+
+			response, err := service.CheckWebhook(t.Context(), &WebhookCheckRequest{
+				InstanceIDs: []int{instance.ID}, TorrentName: tt.announcement,
+			})
+			require.NoError(t, err)
+			require.False(t, response.CanCrossSeed)
+			require.Equal(t, tt.wantLog, bytes.Contains(logs.Bytes(), []byte("Webhook check: rejected near miss")))
 		})
 	}
 }

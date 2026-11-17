@@ -15,6 +15,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -81,7 +82,7 @@ func TestGetOverlapCandidateInstances(t *testing.T) {
 		{"remote scan pairs by the scanned row, not the list", remoteInstance(1, "other.example", 22), []int{6}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := svc.getOverlapCandidateInstances(context.Background(), tc.scanned)
+			got, err := svc.getOverlapCandidateInstances(context.Background(), tc.scanned, nil)
 			if err != nil {
 				t.Fatalf("getOverlapCandidateInstances: %v", err)
 			}
@@ -108,7 +109,7 @@ func TestGetOverlapCandidateInstances_EmptyHostIsIgnored(t *testing.T) {
 		}, nil
 	}
 
-	got, err := svc.getOverlapCandidateInstances(context.Background(), remoteInstance(1, "box.example", 22))
+	got, err := svc.getOverlapCandidateInstances(context.Background(), remoteInstance(1, "box.example", 22), nil)
 	if err != nil {
 		t.Fatalf("getOverlapCandidateInstances: %v", err)
 	}
@@ -227,10 +228,10 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(root, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(root, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if !result.fileMap.Has(normalizePath(filepath.Join(root, "two.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(root, "two.mkv")) {
 		t.Fatalf("expected instance 2 file to be protected")
 	}
 
@@ -240,7 +241,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	if !slices.Equal(gotRoots, wantRoots) {
 		t.Fatalf("scanRoots mismatch: got=%v want=%v", gotRoots, wantRoots)
 	}
-	if got := metadataIgnoreRoots(context.Background(), result.scanRoots, result.metadataRoots, newTestBackend()); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
+	if got := metadataIgnoreRoots(context.Background(), result.scanRoots, result.metadataRoots, newTestBackend(), nil); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
 		t.Fatalf("metadataIgnoreRoots mismatch: got=%v want=%v", got, []string{filepath.Clean(metadataRoot)})
 	}
 }
@@ -313,10 +314,10 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv")) {
 		t.Fatalf("expected instance 1 actual content path to be protected")
 	}
-	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv")) {
 		t.Fatalf("expected instance 2 actual content path to be merged when content paths overlap")
 	}
 }
@@ -480,10 +481,10 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(rootA, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(rootA, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
-	if result.fileMap.Has(normalizePath(filepath.Join(rootB, "two.mkv"))) {
+	if newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(rootB, "two.mkv")) {
 		t.Fatalf("did not expect instance 2 file to be merged without overlap")
 	}
 }
@@ -511,7 +512,7 @@ func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback
 		return &models.OrphanScanRun{ScanPaths: []string{"/stale/root"}}, nil
 	}
 
-	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), 2)
+	roots, source, err := svc.instanceScanRootsForOverlap(context.Background(), fsops.HostPaths, 2)
 	if err != nil {
 		t.Fatalf("instanceScanRootsForOverlap: %v", err)
 	}
@@ -578,7 +579,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(stableRoot, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if !slices.Equal(result.scanRoots, []string{filepath.Clean(stableRoot)}) {
@@ -644,7 +645,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		t.Fatalf("buildFileMap: %v", err)
 	}
 
-	if !result.fileMap.Has(normalizePath(filepath.Join(stableRoot, "one.mkv"))) {
+	if !newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(stableRoot, "one.mkv")) {
 		t.Fatalf("expected instance 1 file to be protected")
 	}
 	if len(result.scanRoots) != 0 {
@@ -711,5 +712,61 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	}
 	if !errors.Is(err, offlineErr) {
 		t.Fatalf("expected offline error, got %v", err)
+	}
+}
+
+// Two instances on one seedbox under different names (#3236): a scan on one
+// must keep the files the other seeds. The pinned host key names the server,
+// and it only ever adds a peer, so host and port still pair without one.
+func TestBuildFileMap_SameHostKeyUnderAnotherNameProtects(t *testing.T) {
+	t.Parallel()
+
+	pin, otherPin := []byte("host-key-a"), []byte("host-key-b")
+	for _, tc := range []struct {
+		name       string
+		peer       *models.Instance
+		pins       map[int][]byte
+		wantMerged bool
+	}{
+		{"same pin under an IP and a hostname", remoteInstance(2, "box.example.com", 22), map[int][]byte{1: pin, 2: pin}, true},
+		{"same pin on another port", remoteInstance(2, "10.0.0.5", 2222), map[int][]byte{1: pin, 2: pin}, true},
+		{"same host and port with different pins", remoteInstance(2, "10.0.0.5", 22), map[int][]byte{1: pin, 2: otherPin}, true},
+		{"same host and port without pins", remoteInstance(2, "10.0.0.5", 22), nil, true},
+		{"different pins under another name", remoteInstance(2, "box.example.com", 22), map[int][]byte{1: pin, 2: otherPin}, false},
+		{"peer without a pin under another name", remoteInstance(2, "box.example.com", 22), map[int][]byte{1: pin}, false},
+		{"scanned without a pin under another name", remoteInstance(2, "box.example.com", 22), map[int][]byte{2: pin}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			scanned := remoteInstance(1, "10.0.0.5", 22)
+			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+			stubSync(svc).hostKeyPins = tc.pins
+			stubSync(svc).listInstances = func(_ context.Context) ([]*models.Instance, error) {
+				return []*models.Instance{scanned, tc.peer}, nil
+			}
+			stubSync(svc).getClient = func(_ context.Context, _ int) (healthChecker, error) {
+				return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-10 * time.Second)}, nil
+			}
+			stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+				return []qbt.Torrent{{Hash: fmt.Sprintf("h%d", instanceID), SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			}
+			stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+				return map[string]qbt.TorrentFiles{fmt.Sprintf("h%d", instanceID): {{Name: fmt.Sprintf("seeded-by-%d.mkv", instanceID), Size: 1}}}, nil
+			}
+
+			result, err := svc.buildFileMap(context.Background(), scanned, newTestBackend(), scanScope{})
+			if err != nil {
+				t.Fatalf("buildFileMap: %v", err)
+			}
+			protected := newTestProtected(t, fsops.HostPaths, nil, result.fileMap)
+			if !protected.torrentFile(filepath.Join(root, "seeded-by-1.mkv")) {
+				t.Fatal("the scanned instance's own file must be protected")
+			}
+			if got := protected.torrentFile(filepath.Join(root, "seeded-by-2.mkv")); got != tc.wantMerged {
+				t.Fatalf("peer's file protected = %v, want %v", got, tc.wantMerged)
+			}
+		})
 	}
 }

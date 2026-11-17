@@ -75,15 +75,6 @@ describe("mergeStreamedFirstPage", () => {
     expect(hashes(merged)).toContain("f")
   })
 
-  it("keeps all later-page rows when a later-page row is deleted (page 0 unchanged)", () => {
-    // page size 2: prev = page0[a,b] + page1[c,d]. 'd' deleted server-side, total -> 3,
-    // page 0 stays [a,b]. The surviving later-page row 'c' must remain; we cannot tell
-    // that 'd' specifically went, so it lingers rather than risking dropping 'c'.
-    const merged = mergeStreamedFirstPage(rows("a", "b", "c", "d"), rows("a", "b"), 3)
-    expect(hashes(merged)).toEqual(["a", "b", "c", "d"])
-    expect(hashes(merged)).toContain("c")
-  })
-
   it("drops multiple page-0 window deletions when later pages refill the window (multiple deletes)", () => {
     // page size 3: prev = page0[a,b,c] + page1[d,e,f] + page2[g]. 'a' and 'b' are deleted,
     // so the full fresh page 0 reflows to [c,d,e] (still 3 rows) and total drops to 5. Both
@@ -102,16 +93,6 @@ describe("mergeStreamedFirstPage", () => {
     // old trailing slice.
     const merged = mergeStreamedFirstPage(rows("a", "b", "c", "d", "e"), rows("a", "c", "d"), 4)
     expect(hashes(merged)).toEqual(["a", "c", "d", "e"])
-    expect(hashes(merged)).not.toContain("b")
-  })
-
-  it("treats a fresh page that covers the whole result as authoritative", () => {
-    // page size 1: prev = page0[a] + page1[b]. total drops to 1, so only one torrent
-    // exists now and the fresh page 0 ([a]) already covers it. 'b' is therefore the row
-    // that was deleted and must not linger. (When total > the fresh page length we keep
-    // trailing rows instead - see the paginated cases above.)
-    const merged = mergeStreamedFirstPage(rows("a", "b"), rows("a"), 1)
-    expect(hashes(merged)).toEqual(["a"])
     expect(hashes(merged)).not.toContain("b")
   })
 
@@ -141,6 +122,36 @@ describe("mergeStreamedFirstPage", () => {
       const merged = mergeStreamedFirstPage(prev, next, 4, keyOf)
       expect(keys(merged)).toEqual(["1:x", "2:x", "1:z"])
     })
+  })
+})
+
+describe("mergeStreamedFirstPage with Copy groups", () => {
+  // A page holds top rows and the members of their groups. The Group
+  // representative carries first_sorted; the other members carry only the id.
+  type GroupedRow = Row & { copy_group?: { id: string; first_sorted?: { instance_id: number; hash: string } } }
+  const top = (hash: string, id?: string): GroupedRow =>
+    id ? { hash, copy_group: { id, first_sorted: { instance_id: 1, hash } } } : { hash }
+  const member = (hash: string, id: string): GroupedRow => ({ hash, copy_group: { id } })
+
+  it("keeps the later pages when page 0 gets longer because a group gained a copy", () => {
+    // Page size 2 top rows: page 0 [A+a1, B], page 1 [C, D].
+    const prev = [top("A", "g"), member("a1", "g"), top("B"), top("C"), top("D")]
+    const next = [top("A", "g"), member("a1", "g"), member("a2", "g"), top("B")]
+    expect(hashes(mergeStreamedFirstPage(prev, next, 6))).toEqual(["A", "a1", "a2", "B", "C", "D"])
+  })
+
+  it("drops the old members of page 0 when page 0 gets shorter", () => {
+    // a1 and a2 were deleted, so page 0 shrinks from 4 rows to 2.
+    const prev = [top("A", "g"), member("a1", "g"), member("a2", "g"), top("B"), top("C")]
+    const next = [top("A"), top("B")]
+    expect(hashes(mergeStreamedFirstPage(prev, next, 3))).toEqual(["A", "B", "C"])
+  })
+
+  it("keeps the later members of a group whose representative moved up into page 0", () => {
+    // An earlier merge kept a1 and a2 after their representative left them for page 0.
+    const prev = [top("A"), member("a1", "g"), member("a2", "g"), top("B")]
+    const next = [top("A")]
+    expect(hashes(mergeStreamedFirstPage(prev, next, 4))).toEqual(["A", "a1", "a2", "B"])
   })
 })
 

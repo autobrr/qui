@@ -6,6 +6,140 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+const copyGroupImportPattern = {
+  regex: '(^|/)copy-groups$',
+  importNames: ['summarizeCopyGroups', 'countTickedCopies'],
+  message: 'Both Layouts read a Copy group through one hook. Use useCopyGroupRows from "@/hooks/useCopyGroupRows" instead.',
+}
+
+const torrentListImportPatterns = [{
+  regex: '(^|/)useTorrentsList$',
+  allowTypeImports: true,
+  message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
+}, {
+  // The torrent-table hooks that moved into the controller. The hooks that stay outside it stay allowed.
+  regex: '(^|/)torrent-table/(useBulkActionWrappers|useCrossSeedOrchestration|useFilterLifecycle)$',
+  message: 'The list controller owns this. Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
+}, copyGroupImportPattern]
+
+const radixDialogImportPattern = {
+  regex: '^@radix-ui/react-(alert-)?dialog$',
+  allowTypeImports: true,
+  message: 'Use @/components/ui/dialog or @/components/ui/alert-dialog.',
+}
+
+const bulkActionModuleMessage = 'The bulk action module in @/components/torrents/bulk-actions owns the Bulk actions. Send a pick with useBulkActions from "@/components/torrents/bulk-actions/bulk-actions-context" instead.'
+
+// Rename file, Rename folder, and the edit tracker dialog stay out: the details panel and the filter sidebar use them.
+const bulkActionDialogImportPattern = {
+  regex: '(^|/)(TorrentDialogs|DeleteTorrentDialog)$',
+  importNames: [
+    'DeleteTorrentDialog',
+    'TagEditorDialog',
+    'SetCategoryDialog',
+    'CreateAndAssignCategoryDialog',
+    'SetLocationDialog',
+    'LocationWarningDialog',
+    'ShareLimitDialog',
+    'SpeedLimitsDialog',
+    'SetCommentDialog',
+    'TmmConfirmDialog',
+    'RenameTorrentDialog',
+  ],
+  message: bulkActionModuleMessage,
+}
+
+const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
+
+// "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
+const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
+const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
+const pageShellMessage = 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls. A page with sections renders SectionedPage, which renders Page.'
+const gazelleSiteSelectors = [
+  { selector: 'Literal[regex.pattern=/orpheus|opsfet|flacsfor|redacted/i]', message: gazelleSiteMessage },
+  { selector: `Literal[value=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+  { selector: `TemplateElement[value.raw=${gazelleSiteDomains}]`, message: gazelleSiteMessage },
+]
+
+const settingsKitMessage = 'Settings builds on the kit in @/components/kit: Section for a card, Editor for a form in a dialog or a sheet, ConfirmDialog for a question before a step. Read src/components/kit/AGENTS.md.'
+
+const settingsKitImportPatterns = [{
+  // Also a relative path, such as ../ui/card.
+  regex: '(^|/)ui/(card|dialog|alert-dialog|sheet|drawer)$',
+  allowTypeImports: true,
+  message: settingsKitMessage,
+}, {
+  // The package under the drawer. The Radix dialog has its own pattern.
+  regex: '^vaul$',
+  allowTypeImports: true,
+  message: settingsKitMessage,
+}, {
+  regex: '(^|/)ui/command$',
+  importNames: ['CommandDialog'],
+  message: settingsKitMessage,
+}]
+
+// The tabs of Settings. Each file here builds its cards, forms, and questions from the kit. The instance dialog in
+// instances/preferences/ stays out: the header and the torrent list open it too, and it moves with the Feature pages.
+const settingsFiles = [
+  'src/pages/Settings.tsx',
+  'src/components/settings/**',
+  'src/components/instances/*.{ts,tsx}',
+  'src/components/indexers/**',
+  'src/components/display-profiles/**',
+  'src/components/themes/**',
+]
+
+// Files in the Settings folders that keep their own dialog or sheet, each for its reason.
+const settingsKitAllowlist = [
+  // The API keys tab stays as it is.
+  'src/components/settings/ApiKeysManager.tsx',
+  // The restart flow: the update banner shows InstallUpdateButton too, and the overlay covers the whole app.
+  'src/components/settings/{RestartButton,InstallUpdateButton,RestartOverlay}.tsx',
+  // The torrent list opens these.
+  'src/components/display-profiles/{NewDisplayProfileDialog,DisplayProfileSheet}.tsx',
+  // The theme editor is a sheet without a backdrop, so the page behind it shows the theme while the user edits it.
+  'src/components/themes/CustomThemeEditor.tsx',
+  // The picker of the themes in the theme menus, with its own trigger button.
+  'src/components/themes/ThemeMenuDialog.tsx',
+]
+
+// A raw text field skips the default of Input, which keeps the password managers away. A field passes with a type that
+// takes no text, a sign-in token in autoComplete, or the attributes of passwordManagerAttributes.
+const rawTextFieldSelectors = [{
+  selector: [
+    'JSXOpeningElement[name.name=/^(input|textarea)$/]',
+    ':not(:has(JSXAttribute[name.name="type"] > Literal[value=/^(checkbox|radio|file|hidden|range|color)$/]))',
+    ':not(:has(JSXAttribute[name.name="autoComplete"] > Literal[value=/(^|\\s)(username|current-password|new-password|one-time-code)(\\s|$)/]))',
+    ':not(:has(JSXSpreadAttribute > CallExpression[callee.name="passwordManagerAttributes"]))',
+  ].join(''),
+  message: 'Use Input or Textarea from @/components/ui, which keep the password managers away. For a raw text field, spread passwordManagerAttributes() from @/lib/password-manager.',
+}]
+
+const clientSettingMessage = 'Read and write a UI preference with useClientSetting (or readClientSetting outside React) from "@/lib/client-settings". It maps the key to the active Display profile. A direct localStorage call skips that, so every profile shares the value.'
+
+// Files that may touch localStorage or the raw client settings store, each for its reason.
+const clientSettingAllowlist = [
+  // The module itself.
+  'src/lib/client-settings.ts',
+  // The theme boot cache, which index.html reads before the bundle loads.
+  'src/lib/theme-storage.ts',
+  // The "this browser only" switch of Theme sync stays local by design.
+  'src/hooks/useThemeSettingsSync.ts',
+  // The dismissed protocol banner stays in one browser.
+  'src/lib/protocol-handler.ts',
+  // i18n boots from the cached language before React mounts.
+  'src/i18n/index.ts',
+  // The sync hook moves raw values between the server and the module.
+  'src/hooks/useClientSettingsSync.ts',
+  // Bypass: the date and time format reader reads the raw key.
+  'src/lib/dateTimeUtils.ts',
+  // Bypass: the lock of the delete-files default reads and clears the raw key.
+  'src/hooks/usePersistedDeleteFiles.ts',
+  // Bypass: the theme variation keeps its own localStorage key.
+  'src/hooks/usePersistedThemeVariation.ts',
+]
+
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
   {
@@ -45,6 +179,134 @@ export default tseslint.config([
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     }
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: [
+      'src/hooks/useTorrentListController.ts',
+      'src/hooks/useTorrentListController.test.tsx',
+      'src/hooks/useTorrentsList.test.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns, radixDialogImportPattern, bulkActionDialogImportPattern],
+      }],
+    },
+  },
+  {
+    // The block above skips these files, so they get only the dialog pattern.
+    files: [
+      'src/hooks/useTorrentListController.ts',
+      'src/hooks/useTorrentListController.test.tsx',
+      'src/hooks/useTorrentsList.test.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [bulkActionDialogImportPattern] }],
+    },
+  },
+  {
+    // The bulk action module renders the dialogs, and each dialog test renders its dialog.
+    files: [...bulkActionModuleFiles, 'src/components/torrents/{TorrentDialogs,DeleteTorrentDialog}.test.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns, radixDialogImportPattern],
+      }],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: [
+      ...bulkActionModuleFiles,
+      // The details panel and the filter sidebar act on one torrent or one tracker, not on the selection.
+      'src/components/torrents/TorrentDetailsPanel.tsx',
+      'src/components/torrents/FilterSidebar.tsx',
+      // The API tests cover the request itself.
+      'src/lib/__tests__/api.torrents.test.ts',
+      'src/lib/__tests__/api.mutations.test.ts',
+      // The table smoke test reads the requests that the module sends.
+      'src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx',
+    ],
+    rules: {
+      'no-restricted-properties': ['error', {
+        object: 'api',
+        property: 'bulkAction',
+        message: bulkActionModuleMessage,
+      }],
+    },
+  },
+  {
+    // The shared hook is the one reader of the Copy group summaries, so only that pattern is lifted here.
+    files: ['src/hooks/useCopyGroupRows.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns.filter(pattern => pattern !== copyGroupImportPattern), radixDialogImportPattern, bulkActionDialogImportPattern],
+      }],
+    },
+  },
+  {
+    // The shared dialog components wrap Radix, so only the Radix pattern is lifted here.
+    files: ['src/components/ui/{dialog,alert-dialog,sheet}.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [...torrentListImportPatterns, bulkActionDialogImportPattern] }],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors, ...rawTextFieldSelectors],
+    },
+  },
+  {
+    // The shared field components render the raw fields.
+    files: ['src/components/ui/**'],
+    ignores: ['**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': ['error', ...gazelleSiteSelectors],
+    },
+  },
+  {
+    // The kit owns the cards, forms, and questions of Settings. The patterns of the first block repeat here, because
+    // this block replaces its rule for these files.
+    files: settingsFiles,
+    ignores: settingsKitAllowlist,
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [...torrentListImportPatterns, radixDialogImportPattern, bulkActionDialogImportPattern, ...settingsKitImportPatterns],
+      }],
+    },
+  },
+  {
+    // Page owns the shell of a page: docs/standards/frontend-review.md, "Page layout".
+    files: ['src/pages/*.tsx'],
+    ignores: ['**/*.test.tsx', 'src/pages/{Login,NotFound,Setup,Torrents}.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error',
+        ...gazelleSiteSelectors,
+        ...rawTextFieldSelectors,
+        { selector: 'Program:not(:has(ImportDeclaration[source.value=/^@.components.layout.(Page|SectionedPage)$/]))', message: pageShellMessage },
+        { selector: 'Program:not(:has(JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]))', message: pageShellMessage },
+        { selector: 'JSXElement[openingElement.name.name=/^[a-z]/] JSXOpeningElement[name.name=/^(Page|SectionedPage)$/]', message: 'Render Page as the root of the page, with no HTML element around it.' },
+      ],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...clientSettingAllowlist],
+    rules: {
+      'no-restricted-globals': ['error', {
+        globals: [{ name: 'localStorage', message: clientSettingMessage }],
+        checkGlobalObject: true,
+      }],
+      // The typescript-eslint rule, because one more block of the core rule would replace the five above.
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '(^|/)client-settings$',
+          importNames: ['readRaw', 'writeRaw'],
+          message: clientSettingMessage,
+        }],
+      }],
+    },
   },
   {
     files: ['scripts/**/*.mjs'],

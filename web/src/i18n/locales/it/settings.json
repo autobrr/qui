@@ -12,9 +12,17 @@
     "externalPrograms": "Programmi esterni",
     "notifications": "Notifiche",
     "dateTime": "Ora e lingua",
-    "premiumThemes": "Temi premium",
+    "displayProfiles": "Profili di visualizzazione",
+    "statistics": "Statistiche",
+    "trackers": "Personalizzazione tracker",
+    "premiumThemes": "Temi",
     "security": "Sicurezza",
     "logs": "Log"
+  },
+  "nav": {
+    "general": "Generale",
+    "connections": "Connessioni",
+    "access": "Accesso"
   },
   "language": {
     "cardTitle": "Lingua",
@@ -25,7 +33,6 @@
     "newPassword": "Nuova password",
     "confirmPassword": "Conferma la nuova password",
     "submit": "Cambia password",
-    "submitting": "Modifica in corso...",
     "toasts": {
       "success": "Password modificata con successo",
       "error": "Impossibile cambiare la password. Verifica la tua password attuale."
@@ -36,87 +43,73 @@
       "minLength": "La password deve contenere almeno 8 caratteri",
       "confirmRequired": "Conferma la tua password",
       "mismatch": "Le password non corrispondono"
-    }
+    },
+    "newPasswordHint": "Almeno 8 caratteri."
   },
   "instances": {
     "title": "Istanze",
     "description": "Gestisci le impostazioni di connessione a qBittorrent",
     "addButton": "Aggiungi istanza",
-    "loading": "Caricamento istanze...",
-    "empty": "Nessuna istanza ancora configurata",
-    "addFirst": "Aggiungi la tua prima istanza",
     "titleBarSpeeds": {
-      "label": "Velocità nella barra del titolo",
-      "description": "Mostra le velocità di download/upload nel titolo della scheda del browser"
+      "label": "Mostra le velocità di trasferimento nel titolo della scheda"
     },
-    "addDialog": {
-      "title": "Aggiungi istanza",
-      "description": "Configura una nuova istanza qBittorrent",
-      "cancel": "Annulla",
-      "submit": "Aggiungi istanza",
-      "adding": "Aggiunta in corso..."
-    },
-    "toasts": {
-      "reorderFailed": "Impossibile riordinare le istanze"
+    "browserTab": {
+      "title": "Scheda del browser"
     }
   },
   "integrations": {
-    "title": "Integrazioni ARR",
-    "description": "Configura le istanze Sonarr e Radarr per ricerche cross-seed avanzate tramite ID esterni"
+    "title": "Sonarr e Radarr",
+    "description": "Il cross-seed vi cerca gli ID IMDb, TMDb e TVDb per corrispondenze più precise."
   },
   "clientApiKeys": {
-    "cardTitle": "Chiavi API del proxy client",
-    "cardDescription": "Gestisci le chiavi API per consentire alle applicazioni esterne di connettersi alle istanze qBittorrent tramite qui",
-    "createButton": "Crea chiave API client",
-    "loading": "Caricamento chiavi API client...",
-    "loadFailed": "Impossibile caricare le chiavi API client",
-    "featureUnavailable": "La funzionalità potrebbe non essere disponibile in questa versione",
+    "cardTitle": "Chiavi del proxy client",
+    "cardDescription": "Chiavi che permettono ad app come autobrr di raggiungere qBittorrent tramite qui.",
+    "createButton": "Crea chiave",
     "unknownError": "Si è verificato un errore",
     "instanceDeleted": "Istanza eliminata",
-    "empty": "Nessuna chiave API client ancora creata",
     "idLabel": "ID: {{id}}",
     "labels": {
       "created": "Creata:",
       "lastUsed": "Ultimo utilizzo:",
-      "host": "Host:",
       "showHost": "Mostra host",
       "hideHost": "Nascondi host"
     },
     "createDialog": {
-      "title": "Crea chiave API client",
-      "description": "Crea una chiave API per consentire a un client specifico di connettersi a un'istanza qBittorrent.",
+      "title": "Nuova chiave proxy",
+      "description": "La chiave accede solo all'istanza qBittorrent che scegli.",
       "clientNameLabel": "Nome del client",
       "clientNamePlaceholder": "e.g., autobrr, tqm, sonarr, radarr, cross-seed",
       "instanceLabel": "Istanza qBittorrent",
-      "instancePlaceholder": "Seleziona un'istanza",
-      "creating": "Creazione in corso..."
+      "instancePlaceholder": "Seleziona un'istanza"
     },
     "newKey": {
-      "title": "Chiave API creata",
-      "warning": "Queste informazioni vengono mostrate una sola volta. Salvale nel tuo gestore di password prima di chiudere la finestra.",
+      "title": "Chiave creata per {{name}}",
+      "warning": "Copia ora l'URL del proxy. qui lo mostra una sola volta.",
       "proxyUrl": "URL del proxy",
       "showProxyUrl": "Mostra URL del proxy",
       "hideProxyUrl": "Nascondi URL del proxy",
-      "copyProxyUrl": "Copia URL del proxy",
       "done": "Fatto"
     },
     "deleteDialog": {
-      "title": "Eliminare la chiave API client?",
-      "description": "Questa azione non può essere annullata. Tutte le applicazioni che usano questa chiave perderanno l'accesso all'istanza qBittorrent.",
-      "cancel": "Annulla",
-      "delete": "Elimina",
-      "deleteLabel": "Elimina la chiave API {{name}}"
+      "title": "Eliminare la chiave?",
+      "description": "{{name}} perderà l'accesso a qBittorrent tramite qui. Questa azione non può essere annullata.",
+      "delete": "Elimina"
     },
     "toasts": {
       "created": "Chiave API client creata con successo",
       "createFailed": "Impossibile creare la chiave API client",
       "deleted": "Chiave API client eliminata con successo",
-      "deleteFailed": "Impossibile eliminare la chiave API client: {{error}}",
+      "deleteFailed": "Impossibile eliminare la chiave API client: {{error}}"
+    },
+    "emptyTitle": "Nessuna chiave",
+    "emptyDescription": "Crea una chiave per ogni app che comunica con qBittorrent.",
+    "lastUsed": "Ultimo utilizzo: {{date}}",
+    "neverUsed": "Mai usata",
+    "validation": {
       "clientNameRequired": "Il nome del client è obbligatorio",
-      "selectInstance": "Seleziona un'istanza qBittorrent",
-      "proxyCopied": "URL del proxy copiato negli appunti",
-      "copyFailed": "Impossibile copiare negli appunti"
-    }
+      "selectInstance": "Seleziona un'istanza qBittorrent"
+    },
+    "created": "Creata: {{date}}"
   },
   "apiKeys": {
     "cardTitle": "Chiavi API",
@@ -127,21 +120,77 @@
     "apiDocs": "Documentazione API",
     "description": "Le chiavi API consentono alle applicazioni esterne di accedere alle tue istanze qBittorrent.",
     "createButton": "Crea chiave API",
+    "editButton": "Modifica {{name}}",
+    "deleteButton": "Elimina {{name}}",
     "loading": "Caricamento chiavi API...",
     "empty": "Nessuna chiave API ancora creata",
     "createDialog": {
       "title": "Crea chiave API",
-      "description": "Assegna alla tua chiave API un nome descrittivo per ricordarne lo scopo.",
+      "description": "Dai un nome alla chiave e scegli solo l'accesso di cui ha bisogno.",
       "nameLabel": "Nome",
       "namePlaceholder": "es. Script di automazione",
       "nameRequired": "Il nome è obbligatorio",
       "submit": "Crea chiave API",
       "creating": "Creazione in corso..."
     },
+    "editDialog": {
+      "title": "Modifica chiave API",
+      "description": "Le modifiche valgono dalla prossima richiesta di questa chiave. qui non mostra mai più la chiave stessa.",
+      "submit": "Salva modifiche",
+      "saving": "Salvataggio..."
+    },
+    "permissions": {
+      "title": "Permessi",
+      "help": "La scrittura include lettura ed esecuzione. L'esecuzione non include la lettura, perché le impostazioni contengono credenziali.",
+      "required": "Scegli almeno un permesso.",
+      "access": "Accesso",
+      "allAreas": "Tutte le aree",
+      "allAreasExcept": "Tutte le aree tranne {{areas}}",
+      "refusedByLimit": "Cross-Seed e lo scanner di directory rifiutano una chiave con un limite di istanze, quindi qui non salva questi permessi.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Mostra l'accesso per area di {{name}}",
+      "partialArea": "{{area}} (solo {{levels}})",
+      "legend": {
+        "title": "Un blocco per ogni area di permessi:",
+        "none": "nessun accesso"
+      },
+      "levels": {
+        "read": "lettura",
+        "run": "esecuzione",
+        "write": "scrittura"
+      },
+      "areas": {
+        "instances": "Istanze",
+        "torrents": "Torrent",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Scanner di directory",
+        "automations": "Automazioni",
+        "rss": "RSS",
+        "backups": "Backup",
+        "orphanScan": "Scansione orfani",
+        "externalPrograms": "Programmi esterni",
+        "indexers": "Indexer",
+        "arr": "Arr",
+        "notifications": "Notifiche",
+        "settings": "Impostazioni",
+        "logs": "Log",
+        "system": "Sistema"
+      }
+    },
+    "instanceLimit": {
+      "title": "Limite di istanze",
+      "help": "Scegli le istanze che questa chiave può raggiungere. Senza una scelta, la chiave raggiunge tutte le istanze, anche quelle aggiunte in seguito.",
+      "reaches": "Ambito",
+      "all": "Tutte le istanze",
+      "only": "Solo {{instances}}",
+      "none": "Nessuna istanza. Il limite contiene solo istanze eliminate.",
+      "deleted": "Istanza eliminata {{id}}"
+    },
     "newKey": {
       "label": "La tua nuova chiave API",
       "warning": "Salva questa chiave ora. Non potrai più visualizzarla in seguito.",
-      "done": "Fatto"
+      "done": "Fatto",
+      "apiKey": "Chiave API"
     },
     "deleteDialog": {
       "title": "Eliminare la chiave API?",
@@ -154,26 +203,17 @@
       "createFailed": "Impossibile creare la chiave API",
       "deleted": "Chiave API eliminata con successo",
       "deleteFailed": "Impossibile eliminare la chiave API",
-      "copied": "Chiave API copiata negli appunti",
-      "copyFailed": "Impossibile copiare negli appunti"
+      "updated": "Chiave API aggiornata con successo",
+      "updateFailed": "Impossibile aggiornare la chiave API"
     }
   },
   "externalPrograms": {
     "cardTitle": "Programmi esterni",
     "cardDescription": "Configura programmi esterni o script che possono essere eseguiti dal menu contestuale del torrent",
-    "createButton": "Crea programma esterno",
-    "createTitle": "Crea programma esterno",
+    "createButton": "Aggiungi programma",
+    "createTitle": "Aggiungi programma esterno",
     "createDescription": "Configura un programma esterno o uno script che può essere eseguito dal menu contestuale del torrent.",
-    "loading": "Caricamento programmi esterni...",
-    "loadFailed": "Impossibile caricare i programmi esterni",
     "unknownError": "Errore sconosciuto",
-    "empty": "Nessun programma esterno configurato. Creane uno per iniziare.",
-    "enabled": "Abilitato",
-    "disabled": "Disabilitato",
-    "created": "Creato il {{date}}",
-    "updated": "Aggiornato il {{date}}",
-    "programPath": "Percorso del programma:",
-    "argumentsTemplate": "Modello di argomenti:",
     "editTitle": "Modifica programma esterno",
     "deleteTitle": "Elimina programma esterno",
     "delete": "Elimina",
@@ -181,32 +221,22 @@
     "deleteConflictDescription": "Se continui, l'azione del programma esterno verrà rimossa da queste regole di automazione.",
     "deleteDescription": "Sei sicuro di voler eliminare \"{{name}}\"? Questa azione non può essere annullata.",
     "deleteAnyway": "Elimina comunque",
-    "nameLabel": "Nome *",
+    "nameLabel": "Nome",
     "namePlaceholder": "Il mio programma esterno",
-    "pathLabel": "Percorso del programma *",
+    "pathLabel": "Percorso del programma",
     "pathPlaceholder": "/usr/bin/my-script.sh or C:\\Scripts\\my-script.bat",
-    "pathDescription": "Percorso completo dell'eseguibile",
     "argumentsLabel": "Modello di argomenti",
     "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
-    "argumentsDescription": "Percorso completo dello script con argomenti",
-    "availablePlaceholders": "Segnaposto disponibili:",
+    "availablePlaceholders": "Segnaposto disponibili",
     "pathMappings": "Mappature dei percorsi",
-    "remotePathPlaceholder": "Percorso remoto (es. /mnt/remote-storage)",
-    "localPathPlaceholder": "Percorso locale (es. /home/user/mounts/remote)",
+    "remotePathPlaceholder": "/mnt/remote-storage",
+    "localPathPlaceholder": "/home/user/mounts/remote",
     "removePathMapping": "Rimuovi mappatura del percorso",
     "addPathMapping": "Aggiungi mappatura del percorso",
     "pathMappingsDescription": "Le mappature dei percorsi convertono i percorsi remoti in punti di montaggio locali. Utili quando si eseguono programmi esterni su un server qui locale mentre qBittorrent è remoto. I percorsi vengono confrontati prima per il prefisso più lungo. Usa lo stesso stile di separatore di percorso dell'istanza qBittorrent remota (/ per Linux, \\ per Windows).",
     "launchInTerminal": "Avvia in una finestra del terminale",
     "launchInTerminalDescription": "Se abilitato, il programma si aprirà in una nuova finestra del terminale. Disabilita per le applicazioni grafiche o per i programmi che non necessitano di output sul terminale.",
-    "enableProgram": "Abilita questo programma",
-    "cancel": "Annulla",
-    "saving": "Salvataggio in corso...",
-    "updateButton": "Aggiorna",
-    "createSubmit": "Crea",
-    "ariaLabels": {
-      "edit": "Modifica {{name}}",
-      "delete": "Elimina {{name}}"
-    },
+    "enableProgram": "Abilitato",
     "toasts": {
       "created": "Programma esterno creato con successo",
       "createFailed": "Impossibile creare il programma esterno: {{error}}",
@@ -230,29 +260,26 @@
       "size": "Dimensione in byte",
       "progress": "Avanzamento (0-1)",
       "comment": "Commento del torrent"
-    }
+    },
+    "remotePath": "Percorso remoto",
+    "localPath": "Percorso locale",
+    "save": "Salva",
+    "emptyTitle": "Nessun programma esterno",
+    "emptyDescription": "Aggiungi un programma o uno script per eseguirlo dal menu contestuale del torrent.",
+    "pathMappingsCount_one": "{{count}} mappatura del percorso",
+    "pathMappingsCount_other": "{{count}} mappature dei percorsi"
   },
   "notifications": {
     "cardTitle": "Notifiche",
     "cardDescription": "Invia avvisi e aggiornamenti di stato tramite qualsiasi servizio supportato da Shoutrrr",
-    "addButton": "Aggiungi destinazione notifica",
-    "loading": "Caricamento delle destinazioni di notifica...",
-    "loadFailed": "Impossibile caricare le destinazioni di notifica",
-    "empty": "Nessuna destinazione di notifica configurata. Aggiungine una per iniziare a ricevere avvisi.",
-    "allEvents": "Tutti gli eventi",
-    "showList": "Mostra elenco",
-    "hideList": "Nascondi elenco",
-    "badges": {
-      "enabled": "Abilitato",
-      "disabled": "Disabilitato"
-    },
+    "addButton": "Aggiungi destinazione",
+    "allEvents": "Tutti gli eventi tranne l'avviso di sistema",
     "groups": {
       "torrent": "Torrent",
       "maintenance": "Manutenzione",
       "crossSeed": "Cross-seed",
       "automations": "Automazioni",
-      "other": "Altro",
-      "unknown": "Sconosciuto"
+      "other": "Altro"
     },
     "form": {
       "name": "Nome",
@@ -267,10 +294,8 @@
       },
       "enabled": "Abilitato",
       "events": "Eventi",
-      "selectAll": "Seleziona tutto",
-      "select": "Seleziona",
-      "clear": "Svuota",
-      "loadingEventTypes": "Caricamento dei tipi di evento..."
+      "allEvents": "Tutti gli eventi",
+      "selectGroup": "Tutti gli eventi: {{group}}"
     },
     "dialog": {
       "newTitle": "Nuova destinazione notifica",
@@ -279,8 +304,6 @@
       "editDescription": "Aggiorna le impostazioni di consegna per questa destinazione.",
       "deleteTitle": "Eliminare la destinazione di notifica?",
       "deleteDescription": "Questo rimuoverà {{name}}. Potrai aggiungerlo di nuovo in seguito se necessario.",
-      "cancel": "Annulla",
-      "saving": "Salvataggio...",
       "save": "Salva",
       "delete": "Elimina"
     },
@@ -299,18 +322,17 @@
       "testSent": "Notifica di test inviata con successo",
       "testFailed": "Impossibile inviare la notifica di test"
     },
-    "ariaLabels": {
-      "sendTest": "Invia un test a {{name}}",
-      "edit": "Modifica {{name}}",
-      "delete": "Elimina {{name}}"
+    "emptyTitle": "Nessuna destinazione notifica",
+    "emptyDescription": "Aggiungine una per ricevere avvisi su Discord, Telegram, Notifiarr o un altro servizio Shoutrrr.",
+    "eventSummary": "{{selected}} di {{total}} eventi",
+    "actions": {
+      "sendTest": "Invia test"
     }
   },
   "dateTime": {
-    "cardTitle": "Preferenze di data e ora",
+    "cardTitle": "Data e ora",
     "cardDescription": "Configura il fuso orario, il formato della data e le preferenze di visualizzazione dell'ora",
     "timezone": "Fuso orario",
-    "timezoneDescription": "Seleziona il tuo fuso orario locale per una visualizzazione precisa dell'ora",
-    "selectTimezone": "Seleziona il fuso orario",
     "detected": "rilevato",
     "regions": {
       "UTC": "UTC",
@@ -320,22 +342,61 @@
       "Africa": "Africa",
       "Oceania": "Oceania"
     },
-    "timeFormat": "Formato dell'ora",
     "use12Hour": "Usa il formato 12 ore (AM/PM)",
-    "use12HourDescription": "Alterna tra la visualizzazione dell'ora in formato 12 ore e 24 ore",
     "dateFormat": "Formato della data",
-    "dateFormatDescription": "Scegli come vengono visualizzate le date in tutta l'applicazione",
-    "selectDateFormat": "Seleziona il formato della data",
     "isoFormat": "ISO 8601 (AAAA-MM-GG)",
     "usFormat": "Formato US (MM/GG/AAAA)",
     "euFormat": "Formato europeo (GG/MM/AAAA)",
     "relativeFormat": "Relativo (es. \"2 ore fa\")",
     "preview": "Anteprima",
-    "previewDescription": "Ecco come appariranno le date e gli orari nell'applicazione",
-    "savePreferences": "Salva preferenze",
+    "previewDescription": "Ecco come appariranno le date e gli orari nell'applicazione"
+  },
+  "statistics": {
+    "cardTitle": "Statistiche",
+    "cardDescription": "qui registra l'upload e il download di ogni torrent nel suo database. Queste impostazioni valgono per tutte le istanze.",
+    "recording": {
+      "label": "Registra lo storico dei trasferimenti",
+      "description": "Quando è disattivato, qui non registra nulla e mantiene lo storico salvato. Il tempo in cui è disattivato diventa un'interruzione della registrazione."
+    },
+    "retention": {
+      "label": "Mantieni il dettaglio giornaliero per",
+      "description": "Dopo questo periodo, qui raggruppa i totali orari in giorni e i byte giornalieri di ogni torrent in una riga per anno. I totali restano uguali. Se scegli un periodo più breve, qui raggruppa il dettaglio più vecchio alla lettura successiva e non puoi recuperarlo.",
+      "days90": "90 giorni",
+      "days400": "400 giorni",
+      "forever": "Sempre"
+    },
+    "size": {
+      "label": "Dimensione dello storico"
+    },
+    "deleteHistory": {
+      "label": "Elimina cronologia",
+      "description": "Elimina la cronologia dei trasferimenti di un'istanza o di tutte le istanze. Non potrai recuperarla.",
+      "instance": "Istanza",
+      "allInstances": "Tutte le istanze",
+      "unnamedInstance": "Istanza {{id}}",
+      "everything": "Tutto",
+      "before": "Tutto prima di una data",
+      "date": "Data",
+      "button": "Elimina cronologia",
+      "confirmTitle": "Eliminare la cronologia?",
+      "confirmEverything": "qui elimina tutta la cronologia di {{name}}. La registrazione riparte con una nuova base. Questa azione non può essere annullata.",
+      "confirmBefore": "qui elimina la cronologia di {{name}} prima del {{date}}. Se la registrazione è iniziata prima di quella data, vengono eliminati anche i byte precedenti alla prima registrazione, e \"Registrazione dal\" passa a quella data. Questa azione non può essere annullata.",
+      "sqliteSpace": "Il file del database mantiene la sua dimensione. SQLite riutilizza lo spazio libero per la nuova cronologia.",
+      "postgresSpace": "Eliminare tutto di tutte le istanze restituisce subito lo spazio al disco. Dopo un'altra eliminazione, Postgres riutilizza lo spazio libero per la nuova cronologia.",
+      "confirm": "Elimina",
+      "deleted": "Cronologia eliminata",
+      "failed": "Impossibile eliminare la cronologia",
+      "shrink": {
+        "label": "Riduci anche il file del database",
+        "restart": "qui si riavvia e riduce il file, così recuperi lo spazio su disco. qui non è disponibile per un breve momento.",
+        "nextStart": "qui non può riavviarsi da solo in questa installazione. La riduzione verrà eseguita al prossimo avvio di qui.",
+        "tooLittleSpace": "Il disco ha {{free}} liberi e una riduzione richiede fino a {{need}}. Puoi lasciare questa opzione disattivata senza rischi: SQLite riutilizza lo spazio libero per la nuova cronologia.",
+        "manualDocs": "Riduci il file a mano"
+      }
+    },
     "toasts": {
-      "success": "Preferenze di data e ora salvate",
-      "error": "Impossibile salvare le preferenze di data e ora"
+      "saved": "Impostazioni delle statistiche salvate",
+      "saveFailed": "Impossibile salvare le impostazioni delle statistiche"
     }
   },
   "security": {
@@ -345,7 +406,6 @@
     },
     "browserIntegration": {
       "title": "Integrazione con il browser",
-      "description": "Configura come il tuo browser gestisce i link magnet",
       "registerDescription": "Registra qui come gestore dei link magnet per il tuo browser. Questo ti consente di aprire i link magnet direttamente in qui.",
       "registerButton": "Registra come gestore",
       "toasts": {
@@ -355,11 +415,9 @@
     }
   },
   "logs": {
-    "title": "Log",
     "description": "Visualizza i log in tempo reale e configura le impostazioni dei log",
-    "settingsSrOnly": "Apri le impostazioni dei log",
     "configuration": {
-      "title": "Configurazione",
+      "title": "Impostazioni di log",
       "description": "Regola il livello di log, il percorso di output e le impostazioni di rotazione.",
       "level": "Livello di log",
       "levelPlaceholder": "Seleziona il livello di log",
@@ -367,12 +425,13 @@
       "pathPlaceholder": "Lascia vuoto solo per stdout",
       "maxSize": "Dimensione max (MB)",
       "maxBackups": "Backup max",
-      "saving": "Salvataggio...",
-      "saveSettings": "Salva impostazioni"
+      "saveSettings": "Salva impostazioni",
+      "lockedByEnv": "Impostato da una variabile d'ambiente",
+      "lockedByEmptyEnv": "Impostato da una variabile d'ambiente vuota",
+      "configFile": "File di configurazione"
     },
     "viewer": {
       "connected": "Connesso",
-      "disconnected": "Disconnesso",
       "searchPlaceholder": "Cerca nei log...",
       "allLevels": "Tutti i livelli",
       "all": "Tutti",
@@ -384,21 +443,28 @@
       "mutedMessages": "Messaggi silenziati",
       "clearAll": "Svuota tutto",
       "clear": "Svuota",
-      "autoScroll": "Scorrimento automatico",
       "noEntriesMatch": "Nessuna voce corrisponde al filtro attuale",
       "waiting": "In attesa di nuove voci di log...",
       "showing": "Visualizzazione di {{shown}} su {{total}} voci ({{max}} {{mode}})",
       "maxLive": "max",
       "maxPaused": "max in pausa",
       "oldestEntriesDropped": "• voci più vecchie ignorate",
-      "muteSimilarEntries": "Silenzia voci simili"
+      "muteSimilarEntries": "Silenzia voci simili",
+      "title": "Log in tempo reale",
+      "description": "Le nuove voci compaiono man mano che qui le scrive.",
+      "pause": "Pausa",
+      "follow": "Segui",
+      "connecting": "Connessione…",
+      "reconnecting": "Connessione persa. Riconnessione…",
+      "levels": "Livelli",
+      "unmute": "Riattiva {{message}}"
     },
     "entryDialog": {
       "title": "Voce di log",
       "rawLine": "Riga di log grezza",
       "copyRaw": "Copia grezzo",
       "copyJson": "Copia JSON",
-      "close": "Chiudi"
+      "mute": "Silenzia simili"
     },
     "toasts": {
       "settingsUpdated": "Impostazioni dei log aggiornate",
@@ -409,46 +475,83 @@
     },
     "files": {
       "title": "File di log",
-      "downloadSrOnly": "Scarica {{filename}}",
       "toasts": {
         "downloadFailed": "Download di {{filename}} non riuscito"
-      }
+      },
+      "description": "Il file di log attuale e le sue copie ruotate.",
+      "emptyTitle": "Nessun file di log",
+      "emptyDescription": "Imposta un percorso del file di log per salvare il log su disco.",
+      "download": "Scarica"
+    },
+    "validation": {
+      "maxSize": "Inserisci 1 o più",
+      "maxBackups": "Inserisci 0 o più"
     }
   },
   "themes": {
     "selector": {
-      "title": "Selezione del tema",
+      "title": "Temi",
       "loadingDescription": "Caricamento dei temi disponibili...",
-      "description": "Scegli tra i temi disponibili. I temi premium richiedono una licenza valida.",
-      "verificationUnavailable": "Verifica della licenza non disponibile. Il cambio dei temi premium è temporaneamente disabilitato.",
-      "notLoaded": "Temi premium non caricati",
-      "notLoadedDescription": "Configura",
-      "notLoadedAnd": "ed esegui",
-      "premium": "Premium",
-      "pro": "Pro",
-      "free": "Gratuito",
-      "locked": "Bloccato",
-      "lock": "Blocca"
+      "description": "Fai clic su un tema per usarlo.",
+      "verificationUnavailable": "Verifica della licenza non disponibile. Il passaggio a un tema con licenza è temporaneamente disabilitato.",
+      "notLoaded": "Temi con licenza non caricati",
+      "notLoadedDescription": "Esegui",
+      "defaultThemeVisit": "qui mostra il tema predefinito per questa visita, perché l'indirizzo contiene ?theme=default. Seleziona un tema per terminarla.",
+      "search": "Cerca temi",
+      "filterLabel": "Filtra i temi",
+      "noMatch": "Nessun tema corrisponde a «{{query}}».",
+      "needsLicense": "Richiede una licenza",
+      "lockedCount_one": "{{count}} tema richiede una licenza.",
+      "lockedCount_other": "{{count}} temi richiedono una licenza.",
+      "showAll_one": "Mostra {{count}} tema",
+      "showAll_other": "Mostra tutti i {{count}} temi",
+      "showFewer": "Mostra meno temi",
+      "variationCount_one": "{{count}} variante di colore",
+      "variationCount_other": "{{count}} varianti di colore"
+    },
+    "current": {
+      "label": "In uso",
+      "colors": "Varianti di colore"
+    },
+    "groups": {
+      "all": "Tutti",
+      "free": "Gratuiti",
+      "licensed": "Con licenza",
+      "custom": "Personalizzati"
+    },
+    "menu": {
+      "button": "Scegli i temi del menu",
+      "title": "Scegli i temi del menu",
+      "description": "Scegli i temi che il menu dei temi mostra, nella barra superiore e nel piè di pagina sul telefono. Il tema in uso è sempre nel menu.",
+      "groupCount": "{{shown}} di {{total}}",
+      "groupsLocked": "Cancella la ricerca per usare le caselle dei gruppi.",
+      "inUse": "In uso",
+      "summary": "{{shown}} di {{total}} temi nel menu",
+      "reset": "Ripristina predefiniti",
+      "undo": "Annulla il ripristino",
+      "done": "Fatto"
     },
     "toasts": {
-      "premiumRequired": "Licenza Premium richiesta",
-      "premiumRequiredDescription": "Sblocca i temi premium aggiungendo una licenza premium valida."
+      "premiumRequired": "Licenza richiesta",
+      "premiumRequiredDescription": "Aggiungi una licenza valida per sbloccare tutti i temi."
     },
     "license": {
       "loadingTitle": "Gestione licenza",
       "loadingDescription": "Caricamento delle licenze dei temi...",
       "managementTitle": "Gestione licenza",
-      "managementDescription": "Gestisci la tua licenza dei temi e l'accesso premium",
+      "managementDescription": "Gestisci la tua licenza dei temi",
       "providers": {
-        "dodoPortal": "Portale Dodo"
+        "licensePortal": "portale delle licenze"
       },
       "status": {
-        "unlockTitle": "Sblocca i temi Premium",
+        "unlockTitle": "Sblocca tutti i temi",
         "unlockDescription": "Paga quanto vuoi (min $9.99) • Licenza a vita • Tutti i temi",
-        "activeTitle": "Accesso Premium attivo",
-        "activeDescription": "Hai accesso a tutti i temi premium attuali e futuri",
+        "activeTitle": "Licenza attiva",
+        "activeDescription": "Hai accesso a tutti i temi attuali e futuri",
         "activationRequiredTitle": "Attivazione della licenza richiesta",
-        "activationRequiredDescription": "La tua licenza deve essere attivata su questa macchina"
+        "activationRequiredDescription": "La tua licenza deve essere attivata su questa macchina",
+        "offlineTitle": "Servizio licenze non raggiungibile",
+        "offlineDescription": "qui non è riuscito a raggiungere il servizio licenze per 7 giorni, quindi i temi con licenza sono bloccati. qui controlla all'avvio e una volta al giorno. I temi si sbloccano quando il servizio risponde. Non devi riattivare la licenza."
       },
       "portalHelp": {
         "prefix": "Acquista su DodoPayments, poi inserisci qui la tua chiave di licenza. Se perdi la chiave, recuperala tramite il",
@@ -470,23 +573,42 @@
       },
       "details": {
         "productAdded": "{{productName}} • Aggiunto il {{date}}",
-        "productStatusAndAdded": "{{productName}} • Stato: {{status}} • Aggiunto il {{date}}"
+        "productStatusAndAdded": "{{productName}} • Stato: {{status}} • Aggiunto il {{date}}",
+        "statusLabels": {
+          "invalid": "Non valida",
+          "offline": "Offline",
+          "unknown": "Sconosciuto"
+        }
       },
       "invalid": {
-        "dodo": "Questa licenza non è attiva su questa macchina. Clicca su riattiva per usarla qui. Se raggiungi il limite di attivazioni, disattivala sull'altra macchina dove è attualmente attiva."
+        "dodo": "Questa licenza non è attiva su questa macchina. Clicca su riattiva per usarla qui. Se raggiungi il limite di attivazioni, vai su <portal>licenses.getqui.com</portal>, registrati o accedi con l'email usata per acquistare la licenza e disattiva una macchina che non usi più in Machine Instances."
+      },
+      "errors": {
+        "expired": "La tua chiave di licenza è scaduta.",
+        "notActive": "Questa chiave di licenza non è più attiva.",
+        "invalid": "Questa chiave di licenza non è valida.",
+        "notFound": "La chiave di licenza inserita non è valida.",
+        "databaseCopied": "Questa licenza è stata attivata su un'altra macchina. Sembra che il database sia stato copiato.",
+        "conditionsMismatch": "La chiave di licenza non soddisfa le condizioni richieste.",
+        "activationLimit": "È stato raggiunto il limite di attivazioni della licenza. Vai su <portal>licenses.getqui.com</portal> e registrati o accedi con l'email usata per acquistare la licenza. Apri Machine Instances, disattiva una macchina che non usi più, poi riprova.",
+        "limitReached": "È stato raggiunto il limite di attivazioni della licenza.",
+        "usageLimit": "Limite di utilizzo della licenza superato.",
+        "unreachable": "Impossibile raggiungere il servizio licenze. Riprova tra poco.",
+        "tooManyAttempts": "Troppi tentativi. Attendi un momento e riprova.",
+        "rateLimited": "Attendi prima di riprovare.",
+        "generic": "Impossibile convalidare la chiave di licenza. Riprova.",
+        "deleteFailed": "Impossibile rimuovere la licenza. Riprova."
       },
       "actions": {
         "addLicense": "Aggiungi licenza",
         "remove": "Rimuovi",
-        "removing": "Rimozione...",
-        "getPremium": "Ottieni Premium",
+        "getPremium": "Ottieni una licenza",
         "reactivate": "Riattiva la licenza",
         "activating": "Attivazione...",
         "copyLicenseKey": "Copia la chiave di licenza",
         "activate": "Attiva la licenza",
-        "validating": "Convalida...",
         "openDodoCheckout": "Apri il checkout di DodoPayments",
-        "openDodoPortal": "Apri il portale Dodo"
+        "openLicensePortal": "Apri il portale delle licenze"
       },
       "deleteDialog": {
         "title": "Rimuovere la licenza?",
@@ -495,17 +617,17 @@
         "recoverPrefix": "Se necessario, potrai recuperarla in seguito dal tuo"
       },
       "addDialog": {
-        "title": "Aggiungi licenza Premium",
-        "description": "Inserisci la chiave di licenza del tema premium per sbloccare tutti i temi premium.",
+        "title": "Aggiungi licenza",
+        "description": "Inserisci la tua chiave di licenza per sbloccare tutti i temi.",
         "label": "Chiave di licenza",
-        "placeholder": "Inserisci la chiave di licenza del tema premium",
+        "placeholder": "Inserisci la tua chiave di licenza",
         "recoverKey": "Recuperare la chiave?",
         "validation": {
           "required": "La chiave di licenza è obbligatoria"
         }
       },
       "paymentDialog": {
-        "title": "Ottieni una licenza Premium",
+        "title": "Ottieni una licenza",
         "description": "Paga quanto vuoi (min $9.99) • Licenza a vita • Tutti i temi",
         "steps": {
           "choosePaymentMethod": {
@@ -526,7 +648,7 @@
           },
           "findLicenseKey": {
             "title": "Trova la tua chiave di licenza",
-            "description": "La tua chiave di licenza viene mostrata dopo il checkout. Puoi anche recuperarla in seguito dal portale clienti Dodo."
+            "description": "La tua chiave di licenza viene mostrata dopo il checkout. Puoi anche recuperarla in seguito dal portale delle licenze."
           },
           "activateLicense": {
             "title": "Attiva la tua licenza",
@@ -537,94 +659,118 @@
       "copiedVerify": "Comando di verifica copiato",
       "failedCopyVerify": "Copia del comando di verifica non riuscita",
       "toasts": {
-        "activationSuccessPremium": "Accesso Premium attivato! Grazie!",
-        "paymentCompleted": "Pagamento completato. Aggiungi la tua chiave di licenza premium per terminare la configurazione.",
+        "activationSuccessPremium": "Licenza attivata! Grazie!",
+        "paymentCompleted": "Pagamento completato. Aggiungi la tua chiave di licenza per terminare la configurazione.",
         "paymentNotCompleted": "Il pagamento non è stato completato correttamente.",
-        "returnedFromCheckout": "Tornato dal checkout. Aggiungi la tua chiave di licenza premium quando sei pronto.",
+        "returnedFromCheckout": "Tornato dal checkout. Aggiungi la tua chiave di licenza quando sei pronto.",
         "keyCopied": "Chiave di licenza copiata negli appunti",
         "copyFailed": "Copia della chiave di licenza non riuscita",
         "removedFromMachine": "Licenza rimossa da questa macchina"
       }
     },
     "custom": {
-      "badge": "Personalizzato",
       "title": "Temi personalizzati",
-      "lockedTitle": "I temi personalizzati sono una funzione premium",
-      "lockedDescription": "Sblocca il premium per caricare i tuoi file CSS dei temi da una cartella sul disco.",
-      "unlockCta": "Sblocca premium",
+      "description": "Scrivi o incolla un tema nell'editor dei temi, oppure metti file CSS di temi nella cartella dei temi sul server.",
+      "lockedDescription": "Ottieni una licenza per aggiungere i tuoi temi: scrivi o incolla un tema nell'editor dei temi, oppure inserisci file CSS dei temi nella cartella dei temi sul server.",
+      "unlockCta": "Ottieni una licenza",
       "refresh": "Aggiorna",
-      "detectedCount": "Temi trovati: {{total}}",
-      "parseErrorsTitle": "Impossibile analizzare questi file:",
-      "noneFound": "Nessun tema personalizzato trovato. Inserisci un file .css nella cartella dei temi e fai clic su Aggiorna.",
-      "loadError": "Impossibile caricare i temi personalizzati. Controlla i log del server e i permessi della cartella dei temi."
+      "themeCount_one": "{{count}} tema",
+      "themeCount_other": "{{count}} temi",
+      "folderLabel": "Cartella dei temi",
+      "actionsFor": "Azioni per {{theme}}",
+      "parseErrorsTitle": "Temi non validi:",
+      "parseErrorsHint": "Modifica un file per correggerlo oppure rimuovilo.",
+      "noneFound": "Ancora nessun tema personalizzato. Fai clic su Nuovo tema, oppure inserisci un file .css nella cartella dei temi e fai clic su Aggiorna.",
+      "loadError": "Impossibile caricare i temi personalizzati. Controlla i log del server e i permessi della cartella dei temi.",
+      "newTheme": "Nuovo tema",
+      "copyPrompt": "Copia il prompt per la tua IA",
+      "promptCopied": "Prompt copiato. Incollalo nel tuo assistente IA e descrivi l'aspetto che desideri.",
+      "promptCopyFailed": "Impossibile copiare il prompt",
+      "edit": "Modifica",
+      "remove": "Rimuovi",
+      "removeTitle": "Rimuovere {{theme}}?",
+      "removeDescription": "qui elimina il file di questo tema dalla cartella dei temi. Questa operazione non può essere annullata. Un dispositivo che usa questo tema mostrerà il tema predefinito.",
+      "removeConfirm": "Rimuovi",
+      "removed": "Tema rimosso",
+      "removeFailed": "Impossibile rimuovere il tema: {{message}}",
+      "editLoadFailed": "Impossibile leggere il file del tema: {{message}}",
+      "editor": {
+        "newTitle": "Nuovo tema",
+        "editTitle": "Modifica tema",
+        "description": "Visualizza l'anteprima delle modifiche in questo browser. Salva memorizza il tema sul server.",
+        "name": "Nome",
+        "namePlaceholder": "Nome del tema",
+        "savedAs": "Nome file: {{filename}}",
+        "css": "CSS",
+        "cssHelp": "Incolla o scrivi il CSS di un tema. Serve un blocco :root per la modalità chiara e un blocco .dark per la modalità scura, ognuno con almeno un design token. Copia il prompt per la tua IA fornisce a un assistente IA tutte le regole.",
+        "cssPlaceholder": "/* @name: Il mio tema */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "Inserisci un nome con una lettera o una cifra.",
+        "nameRequired": "Inserisci un nome oppure aggiungi una riga @name al CSS.",
+        "save": "Salva",
+        "saveFailed": "Impossibile salvare il tema.",
+        "saved": "Tema salvato",
+        "savedNotLoaded": "Il tema è salvato, ma qui non è riuscito a caricare l'elenco dei temi. Fai clic su Aggiorna accanto alla cartella dei temi.",
+        "replaceTitle": "Sostituire il tema?",
+        "replaceDescription": "Esiste già un tema personalizzato con il nome file {{filename}}. Sostituirlo con questo tema?",
+        "replace": "Sostituisci",
+        "problems": {
+          "missingRoot": "qui non può usare questo CSS: non contiene un blocco :root con un design token. L'anteprima mostra l'ultimo CSS che qui ha potuto usare.",
+          "missingDark": "qui non può usare questo CSS: non contiene un blocco .dark con un design token. L'anteprima mostra l'ultimo CSS che qui ha potuto usare.",
+          "outsideFile": "La riga {{line}} può caricare un file da un altro sito web. L'anteprima mantiene l'ultimo CSS valido e Salva rifiuta questo CSS.",
+          "unreadable": "qui non può leggere la riga {{line}}: una stringa tra virgolette o un url() non è chiuso. L'anteprima mostra l'ultimo CSS che qui ha potuto usare."
+        },
+        "previewing": "Anteprima in questo browser",
+        "previewWaits": "L'anteprima parte quando modifichi il CSS.",
+        "emptyStatus": "Incolla o scrivi il CSS di un tema per vederne l'anteprima."
+      }
     },
     "layout": {
+      "title": "Sincronizzazione del tema",
       "mobileSplit": "Tema separato per il layout mobile",
       "mobileSplitHelp": "Il layout mobile (una finestra larga meno di 768 px) e il layout desktop mantengono ciascuno il proprio tema, modalità e variante. Questa impostazione vale per tutti i browser.",
       "localOnly": "Mantieni locale il tema di questo browser",
       "localOnlyHelp": "Questo browser non prende il tema dal server e non invia al server le sue modifiche al tema. Questa impostazione vale solo per questo browser.",
       "changesMobile": "Modifica il tema mobile",
       "changesDesktop": "Modifica il tema desktop",
-      "changesLocal": "Modifica solo il tema di questo browser. Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
+      "changesLocal": "Modifica solo il tema di questo browser.",
+      "splitNeedsSync": "Per modificare l'impostazione del layout mobile, disattiva l'impostazione locale.",
       "saveError": "Impossibile salvare l'impostazione del tema",
       "mobileSplitOffWarning": "Disattivandola, il tema mobile viene eliminato."
     }
   },
   "arrInstances": {
-    "addButton": "Aggiungi istanza ARR",
+    "addButton": "Aggiungi istanza",
     "addDialog": {
-      "title": "Aggiungi istanza ARR",
-      "description": "Configura un'istanza Sonarr o Radarr per le ricerche degli ID durante le ricerche cross-seed."
+      "title": "Nuova istanza",
+      "description": "Un server Sonarr o Radarr a cui il cross-seed chiede gli ID."
     },
     "editDialog": {
-      "title": "Modifica istanza ARR"
+      "title": "Modifica istanza"
     },
     "deleteDialog": {
-      "title": "Eliminare l'istanza ARR?",
-      "description": "Sei sicuro di voler eliminare \"{{name}}\"? Questa azione non può essere annullata."
+      "title": "Eliminare l'istanza?",
+      "description": "qui smetterà di usare {{name}} per cercare gli ID. Questa azione non può essere annullata."
     },
-    "badges": {
-      "enabled": "Abilitato",
-      "disabled": "Disabilitato",
-      "connected": "Connessa",
-      "failed": "Fallita"
-    },
-    "loading": "Caricamento delle istanze ARR...",
-    "loadFailed": "Caricamento delle istanze ARR non riuscito",
-    "empty": "Nessuna istanza ARR configurata. Aggiungi un'istanza Sonarr o Radarr per abilitare le ricerche cross-seed basate sugli ID.",
-    "created": "Creata il {{date}}",
-    "sonarrInstances": "Istanze Sonarr",
-    "radarrInstances": "Istanze Radarr",
     "unknownError": "Errore sconosciuto",
     "actions": {
       "testConnection": "Testa la connessione",
-      "testing": "Test in corso...",
-      "cancel": "Annulla",
       "delete": "Elimina",
-      "create": "Crea",
-      "update": "Aggiorna",
-      "saving": "Salvataggio..."
+      "save": "Salva"
     },
     "form": {
-      "type": "Tipo *",
-      "selectType": "Seleziona il tipo",
-      "name": "Nome *",
+      "type": "Tipo",
+      "name": "Nome",
       "namePlaceholder": "Il mio {{type}}",
-      "baseUrl": "URL di base *",
-      "baseUrlDescription": "L'URL di base della tua istanza {{type}}",
-      "apiKey": "Chiave API *",
-      "apiKeyOptional": "Chiave API (lascia vuoto per mantenere l'attuale)",
+      "baseUrl": "URL di base",
+      "apiKey": "Chiave API",
       "apiKeyPlaceholder": "Inserisci la chiave API",
       "apiKeyPlaceholderEdit": "••••••••",
       "apiKeyDescription": "Si trova in Impostazioni > Generali in {{type}}",
       "basicAuth": "Basic Auth",
       "basicAuthDescription": "Usa l'autenticazione HTTP basic per ARR dietro un reverse proxy.",
-      "basicUsername": "Nome utente Basic",
-      "basicUsernamePlaceholder": "Nome utente",
-      "basicPassword": "Password Basic",
-      "basicPasswordPlaceholder": "Password",
-      "basicPasswordPlaceholderEdit": "<redacted>",
-      "basicPasswordKeep": "Lascia come <redacted> per mantenere la password esistente.",
+      "basicUsername": "Nome utente",
+      "basicPassword": "Password",
+      "basicPasswordKeep": "Lascialo così per mantenere la password attuale.",
       "priority": "Priorità",
       "priorityDescription": "Le istanze con priorità più alta vengono interrogate per prime",
       "timeoutSeconds": "Timeout (secondi)",
@@ -634,7 +780,8 @@
         "radarr": "Radarr (Film)",
         "sonarrShort": "Sonarr",
         "radarrShort": "Radarr"
-      }
+      },
+      "apiKeyKeep": "Lascia vuoto per mantenere la chiave attuale."
     },
     "validation": {
       "nameRequired": "Il nome è obbligatorio",
@@ -646,11 +793,6 @@
       "basicPasswordRequiredSubmit": "La password Basic è obbligatoria",
       "basicPasswordKeepOrEnter": "Inserisci una nuova password Basic o mantieni quella esistente"
     },
-    "ariaLabels": {
-      "testConnection": "Testa la connessione per {{name}}",
-      "edit": "Modifica {{name}}",
-      "delete": "Elimina {{name}}"
-    },
     "toasts": {
       "created": "Istanza ARR creata con successo",
       "createFailed": "Creazione dell'istanza ARR non riuscita: {{error}}",
@@ -661,7 +803,14 @@
       "connectionSuccess": "Connessione riuscita",
       "connectionFailed": "Connessione non riuscita: {{error}}",
       "testFailed": "Test della connessione non riuscito: {{error}}"
-    }
+    },
+    "status": {
+      "connected": "Connessa",
+      "failed": "Test non riuscito"
+    },
+    "tested": "Ultimo test: {{date}}",
+    "emptyTitle": "Nessun Sonarr o Radarr",
+    "emptyDescription": "Aggiungine uno perché il cross-seed possa cercare per ID."
   },
   "indexers": {
     "title": "Indexer Torznab",
@@ -670,7 +819,6 @@
     "deleteAllIndexers": "Elimina tutti gli indexer",
     "deleteAllDescription": "Vuoi davvero eliminare tutti i {{count}} indexer? Questa azione non può essere annullata.",
     "toast": {
-      "loadFailed": "Caricamento degli indexer non riuscito",
       "deletedSuccess": "Indexer eliminato",
       "deleteFailed": "Eliminazione dell'indexer non riuscita",
       "deleteAllSuccess": "Eliminati tutti i {{count}} indexer",
@@ -682,14 +830,17 @@
       "testAllPartial": "{{success}} riusciti, {{failed}} non riusciti",
       "failedIndexers": "Indexer non riusciti: {{names}}",
       "capsSynced": "Capacità sincronizzate dal backend",
-      "failedToSyncCaps": "Sincronizzazione delle capacità non riuscita"
+      "failedToSyncCaps": "Sincronizzazione delle capacità non riuscita",
+      "testFailed": "Test della connessione non riuscito"
     },
     "page": {
       "summary": "{{enabled}} abilitati, {{capabilities}} con capacità",
       "description": "Gestisci gli indexer Torznab basati su Jackett, Prowlarr o endpoint nativi dei tracker",
       "deleteAll": "Elimina tutti",
-      "discover": "Rileva",
-      "addSingle": "Aggiungi singolo"
+      "addMenu": {
+        "discover": "Scopri in Jackett o Prowlarr",
+        "manual": "Aggiungine uno tramite URL"
+      }
     },
     "dialog": {
       "addTitle": "Aggiungi indexer",
@@ -731,10 +882,7 @@
         "native": "Torznab nativo"
       },
       "buttons": {
-        "save": "Salva",
-        "add": "Aggiungi",
-        "saving": "Salvataggio...",
-        "cancel": "Annulla"
+        "save": "Salva"
       },
       "toast": {
         "createdSuccess": "Indexer creato con successo",
@@ -746,6 +894,15 @@
         "basicUsernameRequired": "Il nome utente Basic è obbligatorio",
         "basicPasswordRequired": "La password Basic è obbligatoria",
         "basicPasswordRequiredOrKeep": "La password Basic è obbligatoria (oppure mantieni <redacted>)"
+      },
+      "validation": {
+        "nameRequired": "Inserisci un nome.",
+        "baseUrlRequired": "Inserisci l'URL di base.",
+        "baseUrlInvalid": "Inserisci un URL completo, ad esempio {{example}}.",
+        "indexerIdRequired": "Inserisci l'ID dell'indexer di Prowlarr.",
+        "apiKeyRequired": "Inserisci la chiave API.",
+        "priorityInvalid": "Inserisci un numero intero, 0 o superiore.",
+        "timeoutInvalid": "Inserisci un numero intero da 5 a 120."
       }
     },
     "autodiscovery": {
@@ -770,11 +927,8 @@
         "indexerUrl": "Prowlarr usa per impostazione predefinita http://localhost:9696, Jackett http://localhost:9117."
       },
       "buttons": {
-        "cancel": "Annulla",
         "discover": "Rileva",
-        "discovering": "Rilevamento in corso...",
         "back": "Indietro",
-        "importing": "Importazione in corso...",
         "import": "Importa {{count}} indexer",
         "importPlural": "Importa {{count}} indexer",
         "selectAll": "Seleziona tutti",
@@ -784,13 +938,11 @@
       "noIndexersFound": "Nessun indexer trovato",
       "willUpdate": "Verrà aggiornato",
       "typeLabel": "Tipo:",
-      "backendLabel": "Backend:",
-      "notConfigured": "(Non configurato)",
+      "notConfigured": "Non configurato",
       "unknownError": "Errore sconosciuto",
       "toast": {
         "urlRequired": "L'URL dell'indexer è obbligatorio",
         "basicAuthRequired": "La Basic Auth richiede nome utente e password",
-        "urlRequiredBeforeImport": "Fornisci un URL dell'indexer prima di importare",
         "discoveredWithExisting": "Trovati {{total}} indexer ({{existing}} già esistenti)",
         "discovered": "Trovati {{count}} indexer",
         "discoverFailed": "Rilevamento degli indexer non riuscito: {{error}}",
@@ -816,44 +968,32 @@
       "backend": "Backend",
       "priority": "Priorità",
       "status": "Stato",
-      "testStatus": "Stato del test",
       "capabilities": "Capacità",
-      "timeout": "Timeout",
-      "actions": "Azioni",
-      "enabled": "Abilitato",
-      "disabled": "Disabilitato",
       "working": "Funzionante",
       "failed": "Non riuscito",
       "untested": "Non testato",
       "testAll": "Testa tutti",
-      "filters": "Filtri",
       "clearFilters": "Svuota filtri",
       "showingCount": "Visualizzati {{shown}} di {{total}} indexer",
-      "loading": "Caricamento...",
-      "noIndexers": "Nessun indexer configurato. Aggiungine uno per iniziare.",
       "noMatch": "Nessun indexer corrisponde ai filtri attuali",
       "noCapabilities": "Nessuna capacità",
-      "sync": "Sync",
-      "collapse": "Comprimi",
       "filterStatus": "Stato",
       "filterTestStatus": "Stato del test",
       "filterBackend": "Backend",
       "filterAll": "Tutti",
-      "filterEnabledOnly": "Solo abilitati",
-      "filterDisabledOnly": "Solo disabilitati",
-      "filterWorkingOnly": "Solo funzionanti",
-      "filterFailedOnly": "Solo non riusciti",
-      "filterUntestedOnly": "Solo non testati",
       "filterJackett": "Jackett",
       "filterProwlarr": "Prowlarr",
       "filterNative": "Nativo",
       "tooltipTest": "Testa connessione",
       "tooltipSyncCaps": "Sincronizza capacità",
-      "tooltipEdit": "Modifica",
       "tooltipDelete": "Elimina",
-      "tooltipSyncCapsFromBackend": "Sincronizza le capacità dal backend",
-      "capability": "Capacità: {{name}}",
-      "clickToShowAllCapabilities": "Clicca per mostrare tutte le {{count}} capacità"
+      "sortBy": "Ordina per",
+      "sortAscending": "Crescente",
+      "sortDescending": "Decrescente",
+      "sortAndFilter": "Ordina e filtra",
+      "order": "Ordine",
+      "filterEnabled": "Abilitati",
+      "filterDisabled": "Disabilitati"
     },
     "activity": {
       "title": "Attività dello scheduler",
@@ -863,16 +1003,13 @@
       "noActiveTasks": "Nessuna attività attiva o limite di frequenza",
       "andMore": "...e altri {{count}}",
       "workersStatus": "{{used}}/{{total}} worker",
-      "runningCount": "{{count}} in esecuzione",
-      "queuedCount": "{{count}} in coda",
-      "cooldownCount": "{{count}} in attesa",
       "ready": "Pronto",
-      "left": "{{time}} rimanenti"
+      "left": "{{time}} rimanenti",
+      "description": "Ricerche in esecuzione, in coda o in attesa della fine di un limite di frequenza."
     },
     "searchHistory": {
       "title": "Cronologia ricerche",
       "searches": "{{count}} ricerche",
-      "searchesWithErrors": "{{count}} ricerche, {{errors}} errori",
       "noSearchesYet": "Nessuna ricerca",
       "successful": "{{count}} riuscite",
       "failed": "{{count}} non riuscite",
@@ -887,16 +1024,21 @@
         "added": "Aggiunti {{count}}",
         "error": "Errore",
         "searchParameters": "Parametri di ricerca",
-        "mode": "Modalità:",
-        "type": "Tipo:",
+        "mode": "Modalità",
+        "type": "Tipo",
         "job": "Processo {{id}}",
         "statusSuccess": "Successo",
         "statusFailed": "Non riuscita",
         "statusSkipped": "Ignorata",
         "statusRateLimited": "Limite di frequenza raggiunto",
         "season": "Stagione",
-        "episode": "Episodio"
-      }
+        "episode": "Episodio",
+        "query": "Query di ricerca",
+        "finished": "Terminata"
+      },
+      "description": "Le ultime ricerche che qui ha inviato ai tuoi indexer.",
+      "showAll": "Mostra tutte ({{count}})",
+      "showFewer": "Mostra meno"
     },
     "priorityLabels": {
       "interactive": "Interattivo",
@@ -918,6 +1060,14 @@
       "app": "App",
       "game": "Gioco",
       "unknown": "Sconosciuto"
+    },
+    "list": {
+      "testing": "Test in corso",
+      "priority": "Priorità {{priority}}",
+      "emptyTitle": "Nessun indexer per ora",
+      "emptyDescription": "Trovali in Jackett o Prowlarr, oppure aggiungine uno a mano.",
+      "capabilities_one": "{{count}} capacità",
+      "capabilities_other": "{{count}} capacità"
     }
   },
   "gazelle": {
@@ -941,33 +1091,26 @@
     "configTitle": "Configurazione della cache",
     "configDescription": "Regola per quanto tempo i risultati di ricerca vengono memorizzati nella cache.",
     "cacheTTL": "TTL della cache (minuti)",
-    "saving": "Salvataggio...",
     "saveTTL": "Salva",
     "ttlHelper": "Minimo {{min}} minuti. Valori più alti riducono il carico sugli indexer.",
     "entries": "Voci",
     "hitCount": "Numero di accessi",
     "approxSize": "Dimensione approx.",
-    "ttl": "TTL",
     "newestEntry": "Voce più recente",
     "lastUsed": "Ultimo utilizzo",
     "enabled": "Abilitato",
     "disabled": "Disabilitato",
-    "ttlValue": "{{minutes}} minuti",
-    "timestamps": {
-      "justNow": "proprio ora",
-      "ago": "{{duration}} fa",
-      "inFuture": "tra {{duration}}"
-    },
     "toasts": {
       "ttlUpdated": "TTL della cache aggiornato a {{minutes}} minuti",
-      "ttlUpdateFailed": "Aggiornamento del TTL della cache non riuscito",
+      "ttlUpdateFailed": "Aggiornamento del TTL della cache non riuscito"
+    },
+    "validation": {
       "invalidNumber": "Inserisci un numero valido",
       "ttlMinimum": "Il TTL deve essere di almeno {{min}} minuti"
-    }
+    },
+    "status": "Stato"
   },
   "application": {
-    "loading": "Caricamento...",
-    "loadFailed": "Caricamento delle informazioni dell'applicazione non riuscito",
     "build": {
       "title": "Build",
       "description": "Versione e dettagli della build.",
@@ -977,8 +1120,6 @@
       "buildDate": "Data della build",
       "updateStatus": "Stato aggiornamento",
       "statuses": {
-        "unknown": "Sconosciuto",
-        "unknownDetail": "Impossibile determinare lo stato dell'aggiornamento",
         "disabled": "Disabilitato",
         "disabledDetail": "Il controllo degli aggiornamenti è disabilitato",
         "devBuild": "Build di sviluppo",
@@ -1004,6 +1145,35 @@
       }
     },
     "update": {
+      "support": {
+        "checkingTitle": "Verifica del supporto",
+        "checkingDescription": "Verifica della possibilità per qui di installare questo aggiornamento.",
+        "failedTitle": "Impossibile verificare il supporto degli aggiornamenti",
+        "failedDescription": "Impossibile verificare se l’aggiornamento automatico è disponibile.",
+        "retryDescription": "Riprova la verifica prima di installare l’aggiornamento.",
+        "retry": "Riprova"
+      },
+      "unavailable": {
+        "description": "L’installazione automatica non è disponibile per questa configurazione.",
+        "nextStep": "Come aggiornare",
+        "guide": "Guida all’aggiornamento",
+        "container": {
+          "reason": "qui viene eseguito in un container. Gli aggiornamenti provengono dall’immagine del container.",
+          "step": "Scarica la nuova immagine di qui, poi ricrea il container con la configurazione e i volumi di dati esistenti."
+        },
+        "disabled": {
+          "reason": "L’aggiornamento automatico è disabilitato nella configurazione di qui.",
+          "step": "Aggiorna qui con il gestore di pacchetti o il metodo usato per installarlo."
+        },
+        "development": {
+          "reason": "Questa build di qui non è una versione ufficiale. L’installazione automatica richiede una versione ufficiale.",
+          "step": "Arresta qui, sostituisci il binario con una versione ufficiale o una nuova build, poi riavvia qui."
+        },
+        "directory": {
+          "reason": "qui non può accedere alla directory del proprio binario o scrivervi.",
+          "step": "Arresta qui, sostituisci il binario con la nuova versione usando un account con accesso in scrittura, poi riavvia qui."
+        }
+      },
       "button": "Installa aggiornamento",
       "confirmTitle": "Installare l'aggiornamento?",
       "confirmDescription": "qui scarica la nuova versione, ne verifica la firma e conserva il binario attuale come backup. Poi qui si riavvia. La pagina si ricarica quando qui è di nuovo attivo.",
@@ -1028,15 +1198,13 @@
       "title": "Runtime",
       "description": "Informazioni sul runtime del server.",
       "uptime": "Tempo di attività",
-      "runtime": "Runtime"
+      "runtime": "Runtime",
+      "bindAddress": "Indirizzo di binding"
     },
     "auth": {
       "title": "Autenticazione",
       "description": "Configurazione dell'autenticazione.",
       "currentSessionAuth": "Sessione corrente",
-      "unknown": "Sconosciuto",
-      "loading": "Caricamento...",
-      "unavailable": "Non disponibile",
       "yes": "Sì",
       "no": "No",
       "oidcEnabled": "OIDC abilitato",
@@ -1047,14 +1215,82 @@
       "title": "Archiviazione",
       "description": "Percorsi del database e del file system.",
       "database": "Database",
-      "bind": "Indirizzo di binding",
       "configDir": "Directory di configurazione",
       "dataDir": "Directory dei dati"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Personalizzazione tracker",
+    "cardDescription": "Rinomina i tracker e unisci i domini di uno stesso tracker in una sola voce.",
+    "loading": "Caricamento dei tracker…",
+    "mergedFrom": "Unito da: {{domains}}",
+    "original": "Originale: {{domain}}",
+    "mergeTooltip": "Unisci i tracker selezionati in questo gruppo",
+    "mergeIntoGroup": "Unisci nel gruppo",
+    "addToMerge": "Aggiungi all'unione",
+    "rename": "Rinomina",
+    "delete": "Elimina",
+    "customizeDialog": {
+      "editTitle": "Modifica nome tracker",
+      "renameTitle": "Rinomina tracker",
+      "mergeTitle": "Unisci tracker",
+      "editDescription": "Aggiorna il nome visualizzato per questo tracker.",
+      "renameDescription": "Assegna a questo tracker un nome visualizzato personalizzato.",
+      "mergeDescription": "Combina questi tracker in un'unica voce con un nome personalizzato.",
+      "displayName": "Nome visualizzato",
+      "displayNamePlaceholder": "es. TorrentLeech",
+      "domains": "Domini",
+      "selectedTrackers": "Tracker selezionati",
+      "primary": "Principale",
+      "removeDomain": "Rimuovi {{domain}}",
+      "save": "Salva",
+      "renameAction": "Rinomina",
+      "mergeAction": "Unisci"
     },
-    "copyTitle": "Copia {{label}}",
+    "importDialog": {
+      "title": "Importa personalizzazioni tracker",
+      "description": "Incolla il JSON per importare le personalizzazioni dei tracker (rinomine e unioni).",
+      "jsonData": "Dati JSON",
+      "invalidFormat": "Formato non valido: previsto un array trackerCustomizations",
+      "missingDisplayName": "Voce non valida: displayName mancante",
+      "invalidDomains": "Voce non valida: domains deve essere un array non vuoto",
+      "invalidJson": "JSON non valido",
+      "newCount": "{{count}} nuovo/i",
+      "conflictCount_one": "{{count}} conflitto",
+      "conflictCount_other": "{{count}} conflitti",
+      "unchangedCount": "{{count}} invariato/i",
+      "resolveConflicts": "Risolvi i conflitti",
+      "conflictsWith": "In conflitto con: {{name}}",
+      "skip": "Ignora",
+      "overwrite": "Sovrascrivi",
+      "importing": "Importazione...",
+      "import": "Importa"
+    },
     "toasts": {
-      "copied": "{{label}} copiato negli appunti",
-      "copyFailed": "Copia di {{label}} non riuscita"
+      "noCustomizationsToExport": "Nessuna personalizzazione da esportare",
+      "copiedToClipboard": "Copiato negli appunti",
+      "failedToCopy": "Impossibile copiare negli appunti",
+      "createFailed": "Impossibile creare la personalizzazione del tracker",
+      "updateFailed": "Impossibile aggiornare la personalizzazione del tracker",
+      "deleteFailed": "Impossibile eliminare la personalizzazione del tracker",
+      "failedToImport": "Importazione non riuscita: {{names}}",
+      "importedAndSkipped": "Importati {{imported}}, ignorati {{skipped}}",
+      "importedCount_one": "{{count}} personalizzazione importata",
+      "importedCount_other": "{{count}} personalizzazioni importate",
+      "noCustomizationsImported": "Nessuna personalizzazione importata"
+    },
+    "cardHelp": "qui mostra il nome visualizzato ovunque mostri il tracker.",
+    "emptyTitle": "Ancora nessun tracker",
+    "emptyDescription": "I tracker compaiono qui quando un'istanza ha dei torrent.",
+    "importButton": "Importa",
+    "exportButton": "Esporta",
+    "selectionHint": "Seleziona i tracker per rinominarli o unirli.",
+    "selectedCount_one": "{{count}} selezionato",
+    "selectedCount_other": "{{count}} selezionati",
+    "clearSelection": "Deseleziona",
+    "deleteDialog": {
+      "title": "Eliminare la personalizzazione?",
+      "description": "I tracker di {{name}} mostreranno di nuovo i propri domini. Questa azione non può essere annullata."
     }
   }
 }

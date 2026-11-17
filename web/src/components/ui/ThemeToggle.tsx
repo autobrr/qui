@@ -3,18 +3,21 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import {
   getCurrentThemeMode,
   getCurrentTheme,
+  isDarkMode,
   setTheme,
   setThemeMode,
   setThemeVariation,
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, getThemeById } from "@/config/themes";
-import { Sun, Moon, Monitor, Check, Lock, Palette } from "lucide-react";
+import { themes, getThemeById, type Theme } from "@/config/themes";
+import { Sun, Moon, Monitor, Palette, ListChecks } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -30,20 +33,25 @@ import { cn } from "@/lib/utils";
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
+import { useThemeVisibility } from "@/hooks/useThemeVisibility";
+import { themeThumbnailPalette, themeVariationColors } from "@/lib/theme-thumbnail";
+import { QuickThemeRow } from "@/components/themes/QuickThemeRow";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
 
 // Custom hook for theme change detection
-const useThemeChange = () => {
+const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode());
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme());
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
+  // A system switch in auto mode keeps the mode and the theme, so the resolved
+  // light or dark is state of its own, to render again on that switch.
+  const [dark, setDark] = useState(() => isDarkMode(getCurrentThemeMode()));
 
   const checkTheme = useCallback(() => {
     setCurrentMode(getCurrentThemeMode());
     setCurrentTheme(getCurrentTheme());
-    setIsDark(document.documentElement.classList.contains("dark"));
+    setDark(isDarkMode(getCurrentThemeMode()));
   }, []);
 
   useEffect(() => {
@@ -57,45 +65,30 @@ const useThemeChange = () => {
     };
   }, [checkTheme]);
 
-  return { currentMode, currentTheme, isDark };
+  // Custom theme registration sends no themechange. Call this hook after
+  // useCustomThemes, so that a stored custom theme resolves here.
+  useEffect(checkTheme, [checkTheme, customThemes]);
+
+  return { currentMode, currentTheme, dark };
 };
+
+const MODES = [
+  { mode: "light", icon: Sun, labelKey: "themeToggle.light" },
+  { mode: "dark", icon: Moon, labelKey: "themeToggle.dark" },
+  { mode: "auto", icon: Monitor, labelKey: "themeToggle.system" },
+] as const;
 
 export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
-  const { currentMode, currentTheme, isDark } = useThemeChange();
   const { customThemes } = useCustomThemes();
+  const { currentMode, currentTheme, dark } = useThemeChange(customThemes);
   const [open, setOpen] = useState(false);
+  const [visibility] = useThemeVisibility();
 
   // Subscribe so the list re-renders when the async theme registry lands;
   // the registry array mutates in place, so it must not be a memo dep.
   useBuiltinThemes();
-  const sortedThemes = buildThemeCatalog(themes, customThemes);
-
-  // Pure property reads over ~two dozen themes: cheap enough to recompute per
-  // render, and a cache would go stale when the registry swaps an entry
-  // (license activation replacing a locked stub, custom theme refresh).
-  const modeKey = isDark ? "dark" : "light";
-  const getPreviewColors = (theme: (typeof themes)[number]) => {
-    const cssVars = modeKey === "dark" ? theme.cssVars.dark : theme.cssVars.light;
-    const firstVariation = theme.variations?.[0];
-    const resolveColor = (varName: "--primary" | "--secondary" | "--accent") => {
-      const value = cssVars[varName];
-      if (value === "var(--variation-color)" && firstVariation) {
-        return cssVars[`--variation-${firstVariation}`] || "";
-      }
-      return value || "";
-    };
-
-    return {
-      primary: resolveColor("--primary"),
-      secondary: resolveColor("--secondary"),
-      accent: resolveColor("--accent"),
-      variations: theme.variations?.map((id) => ({
-        id,
-        color: cssVars[`--variation-${id}`],
-      })).filter((v) => v.color !== undefined),
-    };
-  };
+  const sortedThemes = buildThemeCatalog(themes, customThemes, { visibility, currentThemeId: currentTheme.id });
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode);
@@ -146,122 +139,92 @@ export const ThemeToggle: React.FC = () => {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-64 max-w-[calc(100vw-1rem)]"
+        className="w-72 max-w-[calc(100vw-1rem)]"
       >
-        <DropdownMenuLabel>{t("themeToggle.appearance")}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        {/* Mode Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.mode")}</div>
-        <DropdownMenuItem
-          onClick={() => handleModeSelect("light")}
-          className="flex items-center gap-2"
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("themeToggle.mode")}</DropdownMenuLabel>
+        <DropdownMenuPrimitive.RadioGroup
+          value={currentMode}
+          onValueChange={(mode) => void handleModeSelect(mode as ThemeMode)}
+          className="grid grid-cols-3 gap-1 px-1 pb-1"
         >
-          <Sun className="h-4 w-4" />
-          <span className="flex-1">{t("themeToggle.light")}</span>
-          {currentMode === "light" && <Check className="h-4 w-4" />}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => handleModeSelect("dark")}
-          className="flex items-center gap-2"
-        >
-          <Moon className="h-4 w-4" />
-          <span className="flex-1">{t("themeToggle.dark")}</span>
-          {currentMode === "dark" && <Check className="h-4 w-4" />}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => handleModeSelect("auto")}
-          className="flex items-center gap-2"
-        >
-          <Monitor className="h-4 w-4" />
-          <span className="flex-1">{t("themeToggle.system")}</span>
-          {currentMode === "auto" && <Check className="h-4 w-4" />}
-        </DropdownMenuItem>
+          {MODES.map(({ mode, icon: Icon, labelKey }) => (
+            <DropdownMenuPrimitive.RadioItem
+              key={mode}
+              value={mode}
+              onSelect={(event) => event.preventDefault()}
+              className="flex cursor-default flex-col items-center gap-1 rounded-md border border-transparent px-1 py-2 text-xs text-muted-foreground outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[state=checked]:border-primary/50 data-[state=checked]:bg-primary/10 data-[state=checked]:font-medium data-[state=checked]:text-foreground"
+            >
+              <Icon className="size-4" />
+              {t(labelKey)}
+            </DropdownMenuPrimitive.RadioItem>
+          ))}
+        </DropdownMenuPrimitive.RadioGroup>
 
         <DropdownMenuSeparator />
 
-        {/* Theme Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.theme")}</div>
-        <div className="max-h-[max(8rem,calc(var(--radix-dropdown-menu-content-available-height)-16rem))] overflow-y-auto overscroll-contain pr-1">
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("themeToggle.theme")}</DropdownMenuLabel>
+        <div className="max-h-[max(8rem,calc(var(--radix-dropdown-menu-content-available-height)-14rem))] overflow-y-auto overscroll-contain pr-1">
           {sortedThemes.map((theme) => {
             const isLocked = !!theme.locked;
-            const colors = getPreviewColors(theme);
             const isCurrentTheme = currentTheme.id === theme.id;
-            const currentVariation = isCurrentTheme ? getThemeVariation(theme.id) : null;
+            const variation = getThemeVariation(theme.id);
+            const variations = themeVariationColors(theme, dark);
 
             return (
-              <DropdownMenuItem
-                key={theme.id}
-                aria-current={isCurrentTheme ? "true" : undefined}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void handleThemeSelect(theme.id);
-                }}
-                className={cn(
-                  "block min-w-0",
-                  isLocked && "opacity-60"
-                )}
-                disabled={isLocked}
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <div
-                    className="size-4 shrink-0 rounded-full ring-1 ring-black/10 transition-all duration-300 ease-out dark:ring-white/10"
-                    style={{
-                      backgroundColor: colors.primary,
-                      backgroundImage: "none",
-                      background: colors.primary + " !important",
-                    }}
+              <Fragment key={theme.id}>
+                <DropdownMenuItem
+                  aria-current={isCurrentTheme ? "true" : undefined}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void handleThemeSelect(theme.id);
+                  }}
+                  className="block min-w-0"
+                  disabled={isLocked}
+                >
+                  <QuickThemeRow
+                    theme={theme}
+                    palette={themeThumbnailPalette(theme, dark, variation)}
+                    variations={variations}
+                    isCurrent={isCurrentTheme}
                   />
-                  <span className="min-w-0 flex-1 whitespace-normal break-words">
-                    {theme.name}
-                  </span>
-
-                  <span className="flex size-4 shrink-0 items-center justify-center">
-                    {isLocked ? (
-                      <Lock className="size-3.5" />
-                    ) : isCurrentTheme ? (
-                      <Check className="size-4" />
-                    ) : null}
-                  </span>
-                </div>
-
-                {colors.variations && colors.variations.length > 0 && (
-                  <div
-                    data-slot="theme-variations"
-                    className="mt-1 flex items-center gap-1 pr-6 pl-6"
+                </DropdownMenuItem>
+                {isCurrentTheme && variations.length > 0 && (
+                  // Menu items of their own, beside the theme row, so the arrow keys reach each color.
+                  <DropdownMenuPrimitive.RadioGroup
+                    aria-label={t("settings:themes.current.colors")}
+                    value={variation ?? undefined}
+                    onValueChange={(variationId) => void handleVariationSelect(theme.id, variationId)}
+                    className="flex flex-wrap items-center gap-1 pb-1 pl-13"
                   >
-                    {colors.variations.map((variation) => {
-                      const isSelected = currentVariation === variation.id;
-                      return (
-                        <button
-                          key={variation.id}
-                          type="button"
-                          title={variation.id}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleVariationSelect(theme.id, variation.id);
-                          }}
-                          className={cn(
-                            "size-4 shrink-0 cursor-pointer rounded-full transition-all",
-                            isSelected
-                              ? "ring-2 ring-black dark:ring-white"
-                              : "ring-1 ring-black/10 dark:ring-white/10"
-                          )}
-                          style={{
-                            backgroundColor: variation.color,
-                            backgroundImage: "none",
-                            background: variation.color + " !important",
-                          }}
+                    {variations.map((v) => (
+                      <DropdownMenuPrimitive.RadioItem
+                        key={v.id}
+                        value={v.id}
+                        aria-label={v.id}
+                        title={v.id}
+                        onSelect={(event) => event.preventDefault()}
+                        className="group grid size-7 cursor-default place-items-center rounded-full outline-hidden focus:bg-accent"
+                      >
+                        <span
+                          className="size-5 rounded-full ring-1 ring-border ring-offset-2 ring-offset-popover group-data-[state=checked]:ring-2 group-data-[state=checked]:ring-foreground"
+                          style={{ backgroundColor: v.color }}
                         />
-                      );
-                    })}
-                  </div>
+                      </DropdownMenuPrimitive.RadioItem>
+                    ))}
+                  </DropdownMenuPrimitive.RadioGroup>
                 )}
-              </DropdownMenuItem>
+              </Fragment>
             );
           })}
         </div>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/settings" search={{ tab: "themes", modal: "theme-menu" }}>
+            <ListChecks className="size-4" />
+            {t("settings:themes.menu.button")}
+          </Link>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -5,41 +5,42 @@
 
 import type { TFunction } from "i18next"
 
-// Human-friendly labels for qBittorrent torrent states
-const TORRENT_STATE_LABELS: Record<string, string> = {
-  // Downloading related
-  downloading: "Downloading",
-  metaDL: "Fetching Metadata",
-  allocating: "Allocating",
-  stalledDL: "Stalled",
-  queuedDL: "Queued",
-  checkingDL: "Checking",
-  forcedDL: "(F) Downloading",
+export function getStateLabel(state: string, t: TFunction): string {
+  // Backend input in a key path: "." or ":" resolves a fragment and an inherited name resolves a function.
+  if (!/^[a-zA-Z]+$/.test(state) || state in Object.prototype) return t("stateLabelFallback")
 
-  // Uploading / Seeding related
-  uploading: "Seeding",
-  stalledUP: "Seeding",
-  queuedUP: "Queued",
-  checkingUP: "Checking",
-  forcedUP: "(F) Seeding",
-
-  // Paused / Stopped
-  pausedDL: "Paused",
-  pausedUP: "Completed",
-  stoppedDL: "Stopped",
-  stoppedUP: "Completed",
-
-  // Other
-  error: "Error",
-  missingFiles: "Missing Files",
-  checkingResumeData: "Checking Resume Data",
-  moving: "Moving",
+  // One t() call: i18next returns the first key it finds, so a miss costs no second pass through the post-processors.
+  // The fallback sits outside stateLabels because "unknown" is itself a qBittorrent state.
+  return t([`stateLabels.${state}`, "stateLabelFallback"])
 }
 
-export function getStateLabel(state: string, t?: TFunction): string {
-  const fallback = TORRENT_STATE_LABELS[state] ?? state
-  if (t) {
-    return t(`stateLabels.${state}`, { defaultValue: fallback })
+// formatReannounceIn gives the time until qBittorrent next announces the
+// torrent. qBittorrent sends 0 for a stopped torrent, so a stopped torrent
+// shows a dash, not "now".
+export function formatReannounceIn(state: string, seconds: number | undefined, t: TFunction): string {
+  if (seconds === undefined || state === "stoppedDL" || state === "stoppedUP") return "—"
+
+  // Negative values mean "never" or "not applicable"
+  if (seconds < 0) return "-"
+
+  // Zero means "now" (just announced or about to announce)
+  if (seconds === 0) return t("tableColumns.now")
+
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+
+  if (minutes < 1) {
+    return "< 1m"
   }
-  return fallback
+
+  if (hours < 1) {
+    return `${minutes}m`
+  }
+
+  const remainingMinutes = minutes % 60
+  if (remainingMinutes === 0) {
+    return `${hours}h`
+  }
+
+  return `${hours}h ${remainingMinutes}m`
 }

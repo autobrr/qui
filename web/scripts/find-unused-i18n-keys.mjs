@@ -4,7 +4,10 @@ import ts from "typescript"
 
 import { walkFiles } from "./find-hardcoded-i18n-literals.mjs"
 
-const webRoot = path.resolve(import.meta.dirname, "..")
+// With --preserve-symlinks-main, import.meta.filename can be a symlink outside the repository, so the root comes from
+// the real path.
+const scriptPath = fs.realpathSync(import.meta.filename)
+const webRoot = path.resolve(path.dirname(scriptPath), "..")
 const srcRoot = path.join(webRoot, "src")
 const englishLocaleRoot = path.join(srcRoot, "i18n", "locales", "en")
 
@@ -15,8 +18,6 @@ const pluralSuffixPattern = /_(?:ordinal_)?(?:zero|one|two|few|many|other)$/
 // Only literals shaped like a key path are worth matching. Keeps CSS values, URLs and
 // prose out of the reference set.
 const keyPathPattern = /^[A-Za-z0-9_$-]+(?::[A-Za-z0-9_$-]+)?(?:\.[A-Za-z0-9_$-]+)*$/
-
-const i18nPrefixKeys = ["loading", "loadFailed", "toast.success", "toast.error"]
 
 function collectLeafKeys(node, prefix, leaves) {
   for (const [segment, value] of Object.entries(node)) {
@@ -66,10 +67,6 @@ export function collectLocaleKeys(namespaceBundles) {
  * variable is a string `const` in scope. Its value stands in for the head; a further
  * interpolation after it is filled from the string literals of the enclosing function,
  * which is where `` `${s}.${outcome ? "executed" : "failed"}` `` and lookup maps keep them.
- *
- * A string passed as `i18nPrefix`, as a property or a JSX attribute, reaches the keys that
- * PreferencesSection and usePreferencesForm build from it (`i18nPrefixKeys`). If they build a
- * new one, this check reports it as dead until it is added there.
  *
  * Literals are collected from anywhere in the file, not just inside `t(...)`: keys
  * travel through `labelKey` fields and `<Trans i18nKey>` attributes as often as they
@@ -128,13 +125,6 @@ export function collectKeyReferencesFromSource(source, fileName) {
   function visit(node) {
     if (ts.isStringLiteralLike(node)) {
       addLiteral(node.text)
-    } else if ((ts.isPropertyAssignment(node) || ts.isJsxAttribute(node)) && node.name.getText() === "i18nPrefix") {
-      const value = node.initializer && ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer
-      if (value && ts.isStringLiteralLike(value)) {
-        for (const key of i18nPrefixKeys) {
-          addLiteral(`${value.text}.${key}`)
-        }
-      }
     } else if (ts.isTemplateExpression(node)) {
       if (node.head.text) {
         addPrefix(node.head.text)
@@ -239,7 +229,9 @@ function loadEnglishBundles() {
   return bundles
 }
 
-if (process.argv[1] === import.meta.filename) {
+// A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
+// names no file.
+if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const localeKeys = collectLocaleKeys(loadEnglishBundles())
   const references = mergeReferences(
     walkFiles(srcRoot).map((file) => collectKeyReferencesFromSource(

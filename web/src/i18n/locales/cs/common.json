@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Domů",
+    "statistics": "Statistiky",
     "search": "Hledat",
     "crossSeed": "Křížové sdílení",
     "automations": "Automatizace",
@@ -46,7 +47,7 @@
     "tasksForInstance": "Úlohy pro instanci",
     "settingsForInstance": "Nastavení pro instanci",
     "clearSearch": "Vymazat hledání",
-    "searchTorrents": "Hledat torrenty... ({{shortcutKey}})",
+    "searchTorrents": "Hledat torrenty...",
     "globPattern": "Vzorové hledání...",
     "smartSearchTitle": "Inteligentní hledání:",
     "smartSearchGlob": "Vzorové hledání:",
@@ -57,6 +58,8 @@
     "smartSearchFields": "Hledá název, kategorii a tagy",
     "smartSearchEnter": "Stiskněte Enter pro okamžité hledání",
     "smartSearchAuto": "Automaticky hledá po 500ms pauze",
+    "smartSearchShortcut": "Stiskněte {{shortcutKey}} pro přechod do hledání",
+    "smartSearchPalette": "Stiskněte {{shortcutKey}} pro otevření palety příkazů",
     "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
     "updateAvailable": "Aktualizace dostupná",
     "updateVersion": "Verze {{version}}",
@@ -75,8 +78,37 @@
     "expandScope": "Rozbalit unifikovaný rozsah",
     "allActive": "Všechny aktivní ({{count}})"
   },
+  "commandPalette": {
+    "title": "Paleta příkazů",
+    "placeholder": "Hledat stránky, nastavení a torrenty...",
+    "placeholderIn": "{{name}}: hledat...",
+    "groups": {
+      "pages": "Stránky",
+      "actions": "Akce"
+    },
+    "current": "Aktuální",
+    "statisticsNote": "Historie odeslaných a stažených dat vašich instancí",
+    "searchTorrentsFor": "Hledat torrenty: \"{{query}}\"",
+    "torrentMatches_one": "Odpovídá {{count}} torrent",
+    "torrentMatches_few": "Odpovídají {{count}} torrenty",
+    "torrentMatches_other": "Odpovídá {{count}} torrentů",
+    "noTorrentMatches": "Neodpovídá žádný torrent",
+    "searching": "Hledání...",
+    "searchFailed": "Hledání torrentů selhalo",
+    "listFiltersApply": "Platí filtry seznamu",
+    "noMatchIn": "{{name}}: žádná shoda",
+    "moreOf": "{{name}}: další možnosti",
+    "hints": {
+      "navigate": "Procházet",
+      "open": "Otevřít",
+      "more": "Další",
+      "searchTorrents": "Hledat torrenty",
+      "back": "Zpět"
+    }
+  },
   "mobileNav": {
     "dashboard": "Domů",
+    "statistics": "Statistiky",
     "clients": "Klienti",
     "settings": "Nastavení",
     "qbittorrentClients": "qBittorrent klienti",
@@ -100,24 +132,31 @@
     "cancel": "Zrušit",
     "close": "Zavřít",
     "create": "Vytvořit",
-    "copyPath": "Kopírovat cestu",
     "scrollToTop": "Posunout na začátek",
     "search": "Hledat",
-    "select": "Vybrat"
+    "select": "Vybrat",
+    "copyValue": "Kopírovat {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Rozumím"
   },
   "placeholders": {
     "search": "Hledat...",
     "selectItems": "Vybrat položky..."
   },
   "feedback": {
-    "noResultsFound": "Žádné výsledky."
+    "noResultsFound": "Žádné výsledky.",
+    "copied": "{{label}} byl zkopírován do schránky",
+    "copyFailed": "Nepodařilo se zkopírovat do schránky"
   },
   "errors": {
     "unknown": "Neznámá chyba",
     "httpStatus": "Chyba HTTP! Stav: {{status}}",
     "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
     "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
-    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}"
+    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}",
+    "altSpeedToggle": "Alternativní rychlostní limity se nepodařilo změnit: {{message}}",
+    "altSpeedToggleHidden": "Alternativní rychlostní limity se nepodařilo změnit. Anonymní režim skrývá příčinu."
   },
   "status": {
     "disabled": "Vypnuto",
@@ -126,6 +165,7 @@
     "updating": "Aktualizace",
     "error": "Chyba",
     "unknown": "Neznámé",
+    "unavailable": "Nedostupné",
     "trackerError": "Chyba trackeru",
     "unreachable": "Nedostupné"
   },
@@ -149,17 +189,110 @@
     "dark": "Tmavý",
     "system": "Systém",
     "theme": "Vzhled",
-    "premium": "Premiové",
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
-    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence."
+    "premiumThemeError": "Tento vzhled vyžaduje licenci. Otevřete Nastavení → Motivy pro aktivaci licence."
   },
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",
     "versionAvailable": "Verze {{version}} je nyní dostupná",
-    "viewRelease": "Zobrazit vydání",
     "dismiss": "Zavřít"
+  },
+  "systemNotice": {
+    "needsAttention": "Vyžaduje pozornost",
+    "since": "Od {{time}}, {{age}}",
+    "causeLabel": "Příčina",
+    "actionFallback": "Přejít k opravě",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Záznam zastaven",
+        "title": "Záznam zastaven",
+        "effect": "qui nemůže zapisovat historii přenosů. Zkusí to znovu při dalším zápisu.",
+        "fix": "Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze.",
+        "menuFix": "Uvolněte místo na disku pro databázi"
+      },
+      "shrink_failed": {
+        "short": "Zmenšení selhalo",
+        "title": "Zmenšení selhalo",
+        "effect": "qui nemohl zmenšit soubor databáze. Databáze se nezměnila a qui běží jako obvykle.",
+        "fix": "Podrobnosti jsou v logu qui.",
+        "menuFix": "Přečíst log qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Na disku je málo volného místa. Zmenšení potřebuje až dvojnásobek velikosti souboru databáze. Uvolněte místo na disku a zkuste to znovu.",
+            "menuFix": "Uvolněte místo a zkuste to znovu"
+          },
+          "locked": {
+            "fix": "Soubor databáze držel jiný program. Ukončete tento program, například nástroj pro zálohy nebo prohlížeč databází, a zkuste to znovu.",
+            "menuFix": "Ukončete jiný program a zkuste to znovu"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Málo místa na disku",
+        "title": "Málo místa na disku",
+        "effect": "Disk s databází qui má málo volného místa. Když je disk plný, každý zápis qui selže.",
+        "fix": "Uvolněte místo na disku, zkraťte „Uchovávat denní podrobnosti po dobu“ nebo smažte starší historii v nastavení Statistik.",
+        "menuFix": "Uvolněte místo na disku pro databázi",
+        "action": "Otevřít nastavení Statistik"
+      },
+      "redacted_key_rejected": {
+        "short": "Klíč pro Redacted odmítnut",
+        "title": "Redacted odmítl klíč API",
+        "effect": "Redacted odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Redacted klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Redacted zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Redacted.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Klíč pro Orpheus odmítnut",
+        "title": "Orpheus odmítl klíč API",
+        "effect": "Orpheus odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Orpheus klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Orpheus zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Orpheus.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Plán hledání ve sdílených je blokovaný",
+        "title": "Plán hledání ve sdílených nemůže běžet",
+        "effect": "qui nemůže spustit plánované hledání ve sdílených. Zkusí to znovu každou hodinu.",
+        "fix": "Zkontrolujte nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+        "menuFix": "Zkontrolovat nastavení hledání ve sdílených",
+        "action": "Otevřít nastavení hledání ve sdílených",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab je v nastavení hledání ve sdílených vypnutý a není nastaven žádný klíč API pro RED ani OPS. Zapněte Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout Torznab, nebo přidat klíč pro RED nebo OPS"
+          },
+          "no_indexer": {
+            "fix": "Není zapnutý žádný indexer. Zapněte indexer Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout indexer"
+          },
+          "instance_missing": {
+            "fix": "Instance v uloženém nastavení hledání ve sdílených neexistuje. Vyberte instanci v nastavení hledání ve sdílených a uložte. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Vybrat instanci a uložit"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Zkusit znovu",
+      "dismiss": "Zavřít",
+      "openLog": "Otevřít log"
+    },
+    "unknown": {
+      "short": "Systémové upozornění",
+      "title": "Systémové upozornění",
+      "effect": "qui našel chybu, která od vás vyžaduje zásah.",
+      "fix": "Podrobnosti najdete v logu qui.",
+      "menuFix": "Přečtěte si log qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Soubor databáze zmenšen z {{before}} na {{after}}",
+    "nextStart": "Zmenšení proběhne při příštím spuštění qui",
+    "failed": "Zmenšení se nepodařilo vyžádat"
   },
   "pwaUpdate": {
     "reload": "Znovu načíst",
@@ -192,8 +325,7 @@
     "trigger": "Více informací"
   },
   "numberInput": {
-    "unlimited": "Neomezené",
-    "useUnlimited": " (použij -1 pro neomezené)"
+    "unlimited": "Neomezené"
   },
   "dateTime": {
     "na": "N/A",
@@ -226,6 +358,25 @@
       "year_other": "{{count}} let"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "Podpořit qui",
     "description": "Už máte motivy a chcete pomoci ještě víc? Vše v qui už je vaše. Předplatné neodemyká funkce, financuje čas věnovaný jejich vývoji.",
@@ -233,6 +384,16 @@
     "perkSuffix": "na Discordu a naši věčnou vděčnost.",
     "yearly": "{{price}} / rok",
     "monthly": "{{price}} / měsíc",
-    "notLicense": "Prémiové motivy jsou samostatný jednorázový nákup."
+    "notLicense": "Licence k motivům je samostatný jednorázový nákup."
+  },
+  "labels": {
+    "path": "Cesta"
+  },
+  "kit": {
+    "loadFailed": "Tuto sekci se nepodařilo načíst.",
+    "retry": "Zkusit znovu",
+    "edit": "Upravit",
+    "moreActions": "Další akce",
+    "enabled": "Povoleno"
   }
 }

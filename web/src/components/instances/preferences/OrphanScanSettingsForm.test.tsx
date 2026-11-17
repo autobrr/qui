@@ -40,7 +40,6 @@ vi.mock("@/hooks/useOrphanScan", () => ({
 import { OrphanScanSettingsForm } from "@/components/instances/preferences/OrphanScanSettingsForm"
 
 beforeEach(() => {
-  settingsQuery.data.autoCleanupEnabled = false
   // Radix switch and tooltip measure through ResizeObserver, which jsdom lacks.
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
@@ -54,35 +53,26 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function renderForm(isRemote: boolean) {
+function renderForm(isRemote: boolean, hasIdentity = false) {
   return render(
     <TooltipProvider>
-      <OrphanScanSettingsForm instanceId={1} isRemote={isRemote} />
+      <OrphanScanSettingsForm instanceId={1} isRemote={isRemote} hasIdentity={hasIdentity} />
     </TooltipProvider>
   )
 }
 
-it("notes beside auto-cleanup that it does not run on a remote instance", () => {
-  const { container } = renderForm(true)
+it.each([
+  { hasIdentity: false, shown: true },
+  { hasIdentity: true, shown: false },
+])("says a second path can be listed only when the remote instance has no identity ($hasIdentity)", ({ hasIdentity, shown }) => {
+  const { container } = renderForm(true, hasIdentity)
 
+  expect(container.textContent?.includes("preferences.orphanScanOverview.remoteNoIdentity")).toBe(shown)
   expect(container.textContent).toContain("preferences.orphanScanOverview.remoteLimits")
-  expect(container.querySelector("#auto-cleanup-enabled")).not.toBeNull()
 })
 
 it("shows no remote note for a local instance", () => {
   const { container } = renderForm(false)
 
   expect(container.textContent).not.toContain("preferences.orphanScanOverview.remoteLimits")
-})
-
-it("keeps the remote note out from between the auto-cleanup toggle and its threshold", () => {
-  settingsQuery.data.autoCleanupEnabled = true
-  const { container } = renderForm(true)
-
-  const note = [...container.querySelectorAll("p")].find((p) => p.textContent === "preferences.orphanScanOverview.remoteLimits")
-  const toggle = container.querySelector("#auto-cleanup-enabled")
-  const threshold = container.querySelector("#auto-cleanup-max-files")
-  if (!note || !toggle || !threshold) throw new Error("note, toggle or threshold missing")
-  const follows = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-  expect(follows(toggle, note) && follows(note, threshold)).toBe(false)
 })

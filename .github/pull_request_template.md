@@ -4,9 +4,13 @@
 
 Fixes # (issue)
 
+## Breaking change
+
+<!--- Write "No breaking change." unless existing users must act after they update, or something they rely on stops working. Examples: an API field or a setting is removed, saved data can't go back to an older version. Otherwise say what they must do. A maintainer then adds the BREAKING CHANGE label and puts ! in the title, for example feat(api)!: ... The PR title check fails until the PR has both. --->
+
 ## Behaviour change
 
-<!--- Name each change existing users get without doing anything: a saved rule, setting, or API value that now matches or means something else. Say what they must do. Delete this section if there is none. --->
+<!--- Changes that existing users notice after they update but need no action for, for example a new sort order or label. Write "No behaviour change." if there is none. --->
 
 ## How has this been tested?
 
@@ -22,8 +26,11 @@ Fixes # (issue)
 ## Screenshots (for UI changes)
 
 <!--- Delete this section if your change has no visible UI.
-      Do not show private tracker names, tracker URLs, torrent names, or save paths.
-      Use synthetic torrents, or blur these columns. --->
+      Screenshots and recordings on GitHub are public. Do not show private tracker names,
+      tracker URLs, torrent names, or save paths in them.
+      Turn on incognito mode before you capture, or blur these columns.
+      Mask passkeys, announce URLs, and API keys in every capture.
+      To keep real torrent data private, link a Paste from https://bin.getqui.com. --->
 
 ## Checklist
 

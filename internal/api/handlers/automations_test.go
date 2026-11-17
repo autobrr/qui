@@ -20,22 +20,13 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func TestAutomationValidatePayload_Category(t *testing.T) {
+func TestAutomationDecodePayload_Category(t *testing.T) {
 	for _, category := range []string{"", "archive"} {
 		t.Run("target="+category, func(t *testing.T) {
-			handler := NewAutomationHandler(nil, nil, nil, nil, nil)
-			payload := &AutomationPayload{
-				Name:           "Category rule",
-				TrackerPattern: "*",
-				Conditions: &models.ActionConditions{
-					Category: &models.CategoryAction{Enabled: true, Category: category},
-				},
-			}
+			body := `{"name":"Category rule","trackerPattern":"*","conditions":{"category":{"enabled":true,"category":"` + category + `"}}}`
 
-			status, message, err := handler.validatePayload(t.Context(), 1, payload)
+			payload, err := decodeAutomationPayload(strings.NewReader(body), 1, nil, nil, true)
 			require.NoError(t, err)
-			require.Zero(t, status)
-			require.Empty(t, message)
 			require.Equal(t, category, payload.Conditions.Category.Category)
 		})
 	}
@@ -86,22 +77,53 @@ func TestAutomationDryRunNow(t *testing.T) {
 	})
 }
 
-func TestAutomationValidatePayload_UnknownInstance(t *testing.T) {
-	db := testdb.NewMigratedSQLite(t, "automation-unknown-instance")
+func TestAutomationApplyRuleNow(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "automation-apply-rule-now")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	handler := NewAutomationHandler(nil, nil, instances, nil, nil)
-	payload := &AutomationPayload{
-		Name:           "Pause rule",
+	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewAutomationStore(db)
+	rule, err := store.Create(t.Context(), &models.Automation{
+		InstanceID:     instance.ID,
+		Name:           "rule",
 		TrackerPattern: "*",
-		Conditions:     &models.ActionConditions{Pause: &models.PauseAction{Enabled: true}},
+		Conditions:     &models.ActionConditions{SchemaVersion: "1", Pause: &models.PauseAction{Enabled: true}},
+	})
+	require.NoError(t, err)
+
+	serve := func(handler *AutomationHandler, ruleID string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("instanceID", strconv.Itoa(instance.ID))
+		rctx.URLParams.Add("ruleID", ruleID)
+		rec := httptest.NewRecorder()
+		handler.ApplyRuleNow(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
+		return rec
 	}
+	handler := NewAutomationHandler(store, nil, nil, nil, &automations.Service{})
 
-	status, message, err := handler.validatePayload(t.Context(), 999, payload)
+	t.Run("returns 503 when service is unavailable", func(t *testing.T) {
+		rec := serve(NewAutomationHandler(store, nil, nil, nil, nil), strconv.Itoa(rule.ID))
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	})
 
-	require.Error(t, err)
-	require.Equal(t, http.StatusNotFound, status)
-	require.Equal(t, "Instance not found", message)
+	t.Run("returns 400 on invalid rule ID", func(t *testing.T) {
+		require.Equal(t, http.StatusBadRequest, serve(handler, "abc").Code)
+	})
+
+	t.Run("returns 404 for a rule on another instance or unknown", func(t *testing.T) {
+		require.Equal(t, http.StatusNotFound, serve(handler, strconv.Itoa(rule.ID+100)).Code)
+	})
+
+	t.Run("finds the saved rule and returns accepted status", func(t *testing.T) {
+		rec := serve(handler, strconv.Itoa(rule.ID))
+
+		require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+		var response AutomationDryRunResult
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		require.Equal(t, "applied", response.Status)
+	})
 }
 
 func TestAutomationTrackerPattern(t *testing.T) {

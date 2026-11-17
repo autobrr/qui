@@ -18,7 +18,7 @@ A hardlink shares its bytes with the source torrent's file. When a linked file f
 
 ## Consequences
 
-- On the recheck resume worker, the check runs only for hardlink entries with bytes left, after the threshold or budget rule already said resume. It adds one file list fetch and one piece state fetch per evaluation, the same shape as the existing forgiveness pass. Bounded concurrency on that worker is a separate change if the queue ever needs it.
-- A change that widens the straddle excuse, adds a toggle to skip the check, or resumes on a failed evidence read reverses this decision. It needs a new ADR and has to delete a row of `TestProcessPendingRecheckResumeHardlinkLinkedFileCheck`.
+- The check runs in the settle module (`crossseed.Settler`) for every path that adds a torrent: cross-seed reuse and link modes, season pack, and Dir Scan. It runs only for hardlink adds with bytes left, after the gate of the add already said resume. It adds one file list fetch and one piece state fetch per evaluation, the same shape as the existing forgiveness pass. Bounded concurrency on the settle worker is a separate change if the queue ever needs it.
+- A change that widens the straddle excuse, adds a toggle to skip the check, or resumes on a failed evidence read reverses this decision. It needs a new ADR and has to delete a linked-file row of `TestSettle`.
 - The verdict reaches the user through the log and a `resume` row in the season pack history. Cross-seed adds have no persisted per-torrent result after the recheck, so those rely on the log.
-- Dir Scan runs the same check, `crossseed.MismatchedLinkedFile`, before each resume attempt of a partial hardlink add. Dir Scan has no threshold or budget rule. A failed read makes the poller try again on its next poll. A blocked resume leaves the torrent paused, and only the log reports it.
+- A Dir Scan partial hardlink add gets the same check through the settle module. Dir Scan has no threshold or budget rule: its gate resumes after the recheck. A failed read retries on the next poll. A blocked resume leaves the torrent paused, and only the log reports it.

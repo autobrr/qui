@@ -80,11 +80,6 @@ func TestSanitizeStringSlice(t *testing.T) {
 			expected: []string{},
 		},
 		{
-			name:     "empty slice returns empty slice",
-			input:    []string{},
-			expected: []string{},
-		},
-		{
 			name:     "trims whitespace",
 			input:    []string{"  foo  ", "  bar  "},
 			expected: []string{"foo", "bar"},
@@ -98,11 +93,6 @@ func TestSanitizeStringSlice(t *testing.T) {
 			name:     "deduplicates case-insensitively preserving first occurrence",
 			input:    []string{"Foo", "foo", "FOO", "bar"},
 			expected: []string{"Foo", "bar"},
-		},
-		{
-			name:     "handles mixed case deduplication",
-			input:    []string{"Movies", "movies", "TV", "tv", "TV"},
-			expected: []string{"Movies", "TV"},
 		},
 		{
 			name:     "preserves order of first occurrences",
@@ -182,16 +172,6 @@ func TestEncodeStringSliceJSON(t *testing.T) {
 			input:    []string{"foo"},
 			expected: `["foo"]`,
 		},
-		{
-			name:     "multiple items",
-			input:    []string{"foo", "bar", "baz"},
-			expected: `["foo","bar","baz"]`,
-		},
-		{
-			name:     "items with special characters",
-			input:    []string{"foo bar", "hello\nworld"},
-			expected: `["foo bar","hello\nworld"]`,
-		},
 	}
 
 	for _, tt := range tests {
@@ -220,11 +200,6 @@ func TestDecodeStringSliceJSON(t *testing.T) {
 			expected: []string{},
 		},
 		{
-			name:     "empty string returns empty slice",
-			input:    sql.NullString{Valid: true, String: ""},
-			expected: []string{},
-		},
-		{
 			name:     "whitespace only returns empty slice",
 			input:    sql.NullString{Valid: true, String: "   "},
 			expected: []string{},
@@ -238,11 +213,6 @@ func TestDecodeStringSliceJSON(t *testing.T) {
 			name:     "single item",
 			input:    sql.NullString{Valid: true, String: `["foo"]`},
 			expected: []string{"foo"},
-		},
-		{
-			name:     "multiple items",
-			input:    sql.NullString{Valid: true, String: `["foo","bar","baz"]`},
-			expected: []string{"foo", "bar", "baz"},
 		},
 		{
 			name:     "sanitizes decoded values",

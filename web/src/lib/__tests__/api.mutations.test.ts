@@ -6,7 +6,7 @@
 import { HttpResponse, http } from "msw"
 import { describe, expect, it } from "vitest"
 
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { makeFilters } from "@/test/mockFilters"
 import { server } from "@/test/msw/server"
 
@@ -19,7 +19,6 @@ import { server } from "@/test/msw/server"
 // relying on the default handler's response shape.
 interface Captured {
   method: string
-  rawUrl: string
   url: URL
   body: unknown
   contentType: string | null
@@ -31,7 +30,6 @@ function captureRequest(request: Request): Promise<Captured> {
     const text = await clone.text()
     return {
       method: clone.method,
-      rawUrl: clone.url,
       url: new URL(clone.url),
       body: text.length > 0 ? JSON.parse(text) : undefined,
       contentType: clone.headers.get("content-type"),
@@ -83,44 +81,11 @@ describe("api mutations group (MSW contract)", () => {
       expect(body.category).toBe("movies")
       expect(body.search).toBe("ubuntu")
     })
-
-    it("throws APIError with status, message, and full data on a 409 conflict", async () => {
-      const conflictPayload = {
-        message: "conflict",
-        detail: { automations: ["a1", "a2"], conflicting: true },
-      }
-
-      server.use(
-        http.post("*/api/instances/:instanceId/torrents/bulk-action", () =>
-          HttpResponse.json(conflictPayload, { status: 409 })
-        )
-      )
-
-      let thrown: unknown
-      try {
-        await api.bulkAction(1, { hashes: ["abc"], action: "delete" })
-      } catch (err) {
-        thrown = err
-      }
-
-      expect(thrown).toBeInstanceOf(APIError)
-      const apiErr = thrown as APIError
-      // message precedence: errorData.error ?? errorData.message -> "conflict".
-      expect(apiErr.message).toBe("conflict")
-      expect(apiErr.status).toBe(409)
-      // .data is the full parsed JSON conflict payload.
-      expect(apiErr.data).toEqual(conflictPayload)
-    })
   })
 
   describe("renameTorrent", () => {
-    it("PUTs { name } to /rename with instanceId and unencoded hash in the path", async () => {
+    it("PUTs { name } to /rename and resolves undefined", async () => {
       let captured: Captured | undefined
-      // Hash with a "+" to prove the path is NOT URL-encoded by the client: the
-      // WHATWG URL parser leaves "+" verbatim in a path, whereas if the client
-      // called encodeURIComponent(hash) it would become "%2B". (A literal space
-      // is always %20-encoded by fetch itself, so it cannot discriminate here.)
-      const hash = "abc+def"
 
       server.use(
         http.put("*/api/instances/:instanceId/torrents/:hash/rename", async ({ request }) => {
@@ -129,15 +94,12 @@ describe("api mutations group (MSW contract)", () => {
         })
       )
 
-      const result = await api.renameTorrent(3, hash, "new name")
+      const result = await api.renameTorrent(3, "deadbeef", "new name")
 
       expect(result).toBeUndefined()
       expect(captured).toBeDefined()
       expect(captured!.method).toBe("PUT")
-      // The template literal interpolates hash without encodeURIComponent, so the
-      // raw "+" survives verbatim in the request URL rather than as "%2B".
-      expect(captured!.rawUrl).toContain(`/instances/3/torrents/${hash}/rename`)
-      expect(captured!.rawUrl).not.toContain("%2B")
+      expect(captured!.url.pathname).toBe("/api/instances/3/torrents/deadbeef/rename")
       expect(captured!.body).toEqual({ name: "new name" })
     })
   })

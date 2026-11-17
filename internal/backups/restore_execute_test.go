@@ -5,6 +5,7 @@ package backups
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -22,6 +23,15 @@ type captureTorrentWriter struct {
 	stubBackupSyncManager
 	addOptions []map[string]string
 	postAdd    []string
+	deletes    []restoreDelete
+	// failBatch makes a delete of more than one torrent fail.
+	failBatch bool
+}
+
+type restoreDelete struct {
+	hashes      []string
+	deleteFiles bool
+	actor       qbittorrent.DeleteActor
 }
 
 func (w *captureTorrentWriter) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -42,7 +52,13 @@ func (w *captureTorrentWriter) SetTags(_ context.Context, _ int, hashes []string
 }
 func (w *captureTorrentWriter) ResumeWhenComplete(int, []string, qbittorrent.ResumeWhenCompleteOptions) {
 }
-func (w *captureTorrentWriter) BulkAction(context.Context, int, []string, string) error { return nil }
+func (w *captureTorrentWriter) DeleteTorrents(_ context.Context, _ int, hashes []string, deleteFiles bool, actor qbittorrent.DeleteActor) error {
+	w.deletes = append(w.deletes, restoreDelete{hashes: hashes, deleteFiles: deleteFiles, actor: actor})
+	if w.failBatch && len(hashes) > 1 {
+		return errors.New("batch delete refused")
+	}
+	return nil
+}
 
 func runRestoreAdd(t *testing.T, manifest ManifestItem) (map[string]string, []string) {
 	t.Helper()
@@ -114,4 +130,49 @@ func TestApplyTorrentPlanUsesCategoryPlacementWhenNoSavePath(t *testing.T) {
 	_, hasSavePath := options["savepath"]
 	require.False(t, hasSavePath, "category-managed torrents must not pin a redundant save path")
 	require.Empty(t, warnings, "category-managed torrents must not produce a pinning warning")
+}
+
+func TestApplyTorrentPlanDeletesAsBackupRestore(t *testing.T) {
+	t.Parallel()
+
+	restore := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorBackupRestore}
+	tests := []struct {
+		name      string
+		failBatch bool
+		want      []restoreDelete
+	}{
+		{
+			name: "one delete for the plan",
+			want: []restoreDelete{{hashes: []string{"aaaa", "bbbb"}, actor: restore}},
+		},
+		{
+			name:      "one delete for each torrent after the batch fails",
+			failBatch: true,
+			want: []restoreDelete{
+				{hashes: []string{"aaaa", "bbbb"}, actor: restore},
+				{hashes: []string{"aaaa"}, actor: restore},
+				{hashes: []string{"bbbb"}, actor: restore},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			writer := &captureTorrentWriter{failBatch: tt.failBatch}
+			svc := NewService(nil, writer, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+			plan := &RestorePlan{
+				Mode:       RestoreModeComplete,
+				InstanceID: 1,
+				Torrents:   TorrentPlan{Delete: []string{"aaaa", "bbbb"}},
+			}
+
+			applied := RestoreApplied{}
+			var errs []RestoreError
+			_, err := svc.applyTorrentPlan(t.Context(), plan, &applied, &errs, nil, RestoreOptions{})
+			require.NoError(t, err)
+			require.Empty(t, errs)
+			require.Equal(t, []string{"aaaa", "bbbb"}, applied.Torrents.Deleted)
+			require.Equal(t, tt.want, writer.deletes)
+		})
+	}
 }

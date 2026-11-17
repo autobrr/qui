@@ -10,7 +10,6 @@
   background: #05070a;
   border: 1px solid #1b2028;
   border-radius: 0.75rem;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24);
   display: inline-flex;
   overflow: hidden;
 }
@@ -88,18 +87,21 @@
   cursor: pointer;
   display: flex;
   gap: 0.65rem;
+  line-height: normal;
   padding: 0.52rem;
   text-align: left;
   width: 100%;
 }
 
-.menuItem:hover {
-  background: rgba(255, 255, 255, 0.06);
+/* Beats the site's `.markdown a` underline for the link items. */
+.menu .menuItem {
+  text-decoration: none;
 }
 
-.menuItem:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+/* The hover colors repeat the base colors so the link items do not take the site's link hover color. */
+.menuItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2f5f7;
 }
 
 .menuIcon {
@@ -199,6 +201,10 @@
 [data-theme="light"] .menu {
   background: #ffffff;
   border-color: #d4dae3;
+}
+
+/* Only the menu keeps a shadow; the split button has none. */
+[data-theme="light"] .menu {
   box-shadow: 0 8px 20px rgba(16, 24, 40, 0.14);
 }
 
@@ -212,6 +218,7 @@
 [data-theme="light"] .chevronButton:hover,
 [data-theme="light"] .menuItem:hover {
   background: #f4f7fb;
+  color: #111827;
 }
 
 [data-theme="light"] .chevronButton {

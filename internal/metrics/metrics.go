@@ -15,11 +15,10 @@ import (
 )
 
 type MetricsManager struct {
-	registry         *prometheus.Registry
-	torrentCollector *collector.TorrentCollector
+	registry *prometheus.Registry
 }
 
-func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool, trackerCustomizationStore *models.TrackerCustomizationStore) *MetricsManager {
+func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool, trackerCustomizationStore *models.TrackerCustomizationStore, extra ...prometheus.Collector) *MetricsManager {
 	registry := prometheus.NewRegistry()
 
 	// Register standard Go collectors like autobrr does
@@ -30,12 +29,12 @@ func NewMetricsManager(syncManager *qbittorrent.SyncManager, clientPool *qbittor
 	torrentCollector := collector.NewTorrentCollector(syncManager, clientPool, trackerCustomizationStore)
 	registry.MustRegister(torrentCollector)
 	registry.MustRegister(database.NewMetricsCollector())
+	registry.MustRegister(extra...)
 
 	log.Info().Msg("Metrics manager initialized with collectors")
 
 	return &MetricsManager{
-		registry:         registry,
-		torrentCollector: torrentCollector,
+		registry: registry,
 	}
 }
 

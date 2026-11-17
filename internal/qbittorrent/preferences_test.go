@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"encoding/json/v2"
 	"testing"
 	"time"
 
@@ -43,4 +44,19 @@ func TestGetAppPreferencesReturnsErrorWhenNoCacheAndRefreshFails(t *testing.T) {
 	prefs, err := c.GetAppPreferences(ctx)
 	require.Error(t, err)
 	require.Nil(t, prefs)
+}
+
+func TestCloneAppPreferencesKeepsSentKeysOfOriginal(t *testing.T) {
+	t.Parallel()
+
+	var original qbt.AppPreferences
+	require.NoError(t, json.Unmarshal([]byte(`{"add_stopped_enabled":true}`), &original))
+
+	clone := cloneAppPreferences(&original)
+	require.NoError(t, json.Unmarshal([]byte(`{"listen_port":6881}`), clone))
+
+	require.True(t, clone.Has("add_stopped_enabled"))
+	require.True(t, clone.Has("listen_port"))
+	require.True(t, original.Has("add_stopped_enabled"))
+	require.False(t, original.Has("listen_port"), "a decode into the clone must not change the sent keys of the original")
 }

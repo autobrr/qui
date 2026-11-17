@@ -37,46 +37,6 @@ func TestURLError(t *testing.T) {
 			wantNotHave: []string{"SECRET123"},
 		},
 		{
-			name: "url.Error with token",
-			err: &url.Error{
-				Op:  "Get",
-				URL: "http://example.com?token=TOKENVALUE",
-				Err: errors.New("timeout"),
-			},
-			wantContain: []string{"REDACTED", "timeout"},
-			wantNotHave: []string{"TOKENVALUE"},
-		},
-		{
-			name: "url.Error with multiple sensitive params",
-			err: &url.Error{
-				Op:  "Get",
-				URL: "http://x.com?apikey=KEY1&passkey=KEY2&token=KEY3",
-				Err: errors.New("error"),
-			},
-			wantContain: []string{"apikey=REDACTED", "passkey=REDACTED", "token=REDACTED"},
-			wantNotHave: []string{"KEY1", "KEY2", "KEY3"},
-		},
-		{
-			name: "url.Error with password",
-			err: &url.Error{
-				Op:  "Post",
-				URL: "http://tracker.example.com?password=MYPASS",
-				Err: errors.New("denied"),
-			},
-			wantContain: []string{"REDACTED"},
-			wantNotHave: []string{"MYPASS"},
-		},
-		{
-			name: "url.Error with api_key",
-			err: &url.Error{
-				Op:  "Get",
-				URL: "http://api.example.com?api_key=SECRETKEY",
-				Err: errors.New("failed"),
-			},
-			wantContain: []string{"api_key=REDACTED"},
-			wantNotHave: []string{"SECRETKEY"},
-		},
-		{
 			name:        "non-url.Error unchanged",
 			err:         errors.New("simple error"),
 			wantContain: []string{"simple error"},

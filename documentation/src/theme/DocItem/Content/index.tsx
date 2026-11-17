@@ -6,6 +6,7 @@ import MDXContent from "@theme/MDXContent";
 import type { ReactNode } from "react";
 import type { Props } from "@theme/DocItem/Content";
 import OpenInAI from "@site/src/components/OpenInAI";
+import DiscordEmbed from "@site/src/components/DiscordEmbed";
 import styles from "./styles.module.css";
 
 function useSyntheticTitle(): string | null {
@@ -21,9 +22,17 @@ function useSyntheticTitle(): string | null {
 
 export default function DocItemContent({ children }: Props): ReactNode {
   const syntheticTitle = useSyntheticTitle();
+  const { metadata } = useDoc();
 
   return (
     <div className={clsx(ThemeClassNames.docs.docMarkdown, "markdown")}>
+      <DiscordEmbed
+        source="qui docs"
+        title={metadata.title}
+        body={metadata.description}
+        permalink={metadata.permalink}
+        buttonLabel="Open docs"
+      />
       <div className={styles.actionsRow}>
         <OpenInAI />
       </div>

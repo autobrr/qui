@@ -11,10 +11,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -210,6 +212,8 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "name_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
+		{Name: "permissions", Type: "TEXT"},
+		{Name: "instance_ids", Type: "TEXT"},
 	},
 	"instances": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -234,6 +238,8 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "ssh_username", Type: "TEXT"},
 		{Name: "ssh_key_encrypted", Type: "TEXT"},
 		{Name: "ssh_host_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_tier", Type: "TEXT"},
+		{Name: "ssh_hardlink", Type: "BOOLEAN"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -290,6 +296,8 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "last_synced_at", Type: "TIMESTAMP"},
 		{Name: "torrent_progress", Type: "REAL"},
 		{Name: "file_count", Type: "INTEGER"},
+		{Name: "maindata_print", Type: "BIGINT"},
+		{Name: "print_synced_at", Type: "TIMESTAMP"},
 	},
 	"automations": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -886,6 +894,7 @@ func TestTransactionSerialization(t *testing.T) {
 
 	// Channel to coordinate the test
 	started := make(chan bool, 1)
+	release := make(chan struct{})
 	committed := make(chan bool, 1)
 
 	// Start first transaction in a goroutine
@@ -897,11 +906,9 @@ func TestTransactionSerialization(t *testing.T) {
 		}
 		defer func() { _ = tx.Rollback() }()
 
-		// Signal that we started
+		// Signal that we started, then hold the transaction open
 		started <- true
-
-		// Hold the transaction for a bit
-		time.Sleep(200 * time.Millisecond)
+		<-release
 
 		// Insert something
 		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
@@ -928,16 +935,21 @@ func TestTransactionSerialization(t *testing.T) {
 		t.Fatal("First transaction didn't start")
 	}
 
-	// Now try to start a second transaction - it should block until the first commits
-	start := time.Now()
-	tx2, err := db.BeginTx(ctx, nil)
-	elapsed := time.Since(start)
+	// A second transaction cannot begin while the first is open
+	waitCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	_, err := db.BeginTx(waitCtx, nil)
+	cancel()
+	require.ErrorIs(t, err, context.DeadlineExceeded, "Second transaction should wait while the first is open")
+	close(release)
 
+	// It begins after the first commits
+	tx2, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tx2)
 
-	// Should have taken at least 100ms (the sleep time in the first transaction)
-	require.GreaterOrEqual(t, elapsed, 100*time.Millisecond, "Second transaction should have been blocked by first")
+	var count int
+	require.NoError(t, tx2.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ?", "serialization_test").Scan(&count))
+	require.Equal(t, 1, count, "Second transaction should have been blocked until the first committed")
 
 	// Clean up
 	require.NoError(t, tx2.Rollback())
@@ -985,6 +997,108 @@ func TestReadOnlyTransactionConcurrency(t *testing.T) {
 	require.NoError(t, txWrite.Commit())
 }
 
+// regression: #3738
+func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
+	for _, tc := range []struct{ procs, want int }{{2, 8}, {12, 12}, {32, 16}} {
+		prev := runtime.GOMAXPROCS(tc.procs)
+		got := sqliteReaderPoolSize()
+		runtime.GOMAXPROCS(prev)
+		require.Equal(t, tc.want, got, "GOMAXPROCS=%d", tc.procs)
+	}
+}
+
+// A burst of reads larger than the read pool waits for a free connection
+// instead of opening one connection per read.
+// regression: #3738
+func TestReaderPoolCapsOpenConnections(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	db := openTestDatabase(t)
+	ctx := t.Context()
+	limit := sqliteReaderPoolSize()
+	readers := limit * 2
+
+	release := make(chan struct{})
+	releaseReaders := sync.OnceFunc(func() { close(release) })
+	var acquired atomic.Int32
+	errs := make([]error, readers)
+	var wg sync.WaitGroup
+	t.Cleanup(func() {
+		releaseReaders()
+		wg.Wait()
+	})
+	for i := range readers {
+		wg.Go(func() {
+			rows, err := db.QueryContext(ctx, "SELECT 1")
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			defer rows.Close()
+			acquired.Add(1)
+			<-release
+			for rows.Next() {
+			}
+			errs[i] = rows.Err()
+		})
+	}
+
+	require.Eventually(t, func() bool {
+		return int(acquired.Load()) == limit && db.readerPool.Stats().WaitCount >= int64(readers-limit)
+	}, 5*time.Second, 5*time.Millisecond, "the reads past the limit must wait for a connection")
+	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
+
+	releaseReaders()
+	wg.Wait()
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, int32(readers), acquired.Load())
+	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
+}
+
+// A read-only transaction runs a query that has no prepared statement yet on its
+// own connection. It must not wait for a second read connection: with every
+// connection held by such a transaction, that wait would last until the deadline.
+// regression: #3738
+func TestReadOnlyTransactionsFillingPoolRunUnpreparedQueries(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	db := openTestDatabase(t)
+	limit := sqliteReaderPoolSize()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	var begun sync.WaitGroup
+	begun.Add(limit)
+	errs := make([]error, limit)
+	var wg sync.WaitGroup
+	for i := range limit {
+		wg.Go(func() {
+			tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			begun.Done()
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			begun.Wait()
+
+			var n int
+			if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT %d", i)).Scan(&n); err != nil {
+				_ = tx.Rollback()
+				errs[i] = err
+				return
+			}
+			errs[i] = tx.Commit()
+		})
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoErrorf(t, err, "transaction %d", i)
+		_, found := db.readerStmts.Get(db.bindQuery(fmt.Sprintf("SELECT %d", i)))
+		require.Truef(t, found, "commit must cache the statement of transaction %d", i)
+	}
+}
+
 // Concurrent misses on one query must converge on a single cached statement;
 // the losers close theirs instead of leaking a driver-side prepared statement.
 func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
@@ -1010,4 +1124,71 @@ func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
 		var n int
 		require.NoError(t, s.QueryRowContext(ctx).Scan(&n))
 	}
+}
+
+// A writer queued behind the write lock returns when its context ends instead of
+// waiting for the lock holder (#2817).
+func TestWriterLockWaitHonorsContext(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	other, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.Close()) })
+	holder, err := other.Conn(t.Context())
+	require.NoError(t, err)
+	_, err = holder.ExecContext(t.Context(), "BEGIN EXCLUSIVE")
+	require.NoError(t, err)
+
+	// This writer takes the write lock and then waits in busy_timeout on the exclusive lock.
+	blockerDone := make(chan error, 1)
+	go func() {
+		_, err := db.ExecContext(t.Context(), "INSERT INTO string_pool (value) VALUES (?)", "blocker")
+		blockerDone <- err
+	}()
+	require.Eventually(t, func() bool { return len(db.writerSem) == 1 }, time.Second, 5*time.Millisecond)
+
+	const insert = "INSERT INTO string_pool (value) VALUES (?)"
+	for name, write := range map[string]func(context.Context) error{
+		"ExecContext": func(ctx context.Context) error {
+			_, err := db.ExecContext(ctx, insert, "exec")
+			return err
+		},
+		"QueryContext": func(ctx context.Context) error {
+			rows, err := db.QueryContext(ctx, insert+" RETURNING id", "query")
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			return rows.Err()
+		},
+		"QueryRowContext": func(ctx context.Context) error {
+			var id int64
+			return db.QueryRowContext(ctx, insert+" RETURNING id", "row").Scan(&id)
+		},
+		"BeginTx": func(ctx context.Context) error {
+			tx, err := db.BeginTx(ctx, nil)
+			if err == nil {
+				_ = tx.Rollback()
+			}
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			err := write(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Less(t, time.Since(start), time.Second, "waited for the lock holder instead of the context")
+		})
+	}
+
+	_, err = holder.ExecContext(t.Context(), "ROLLBACK")
+	require.NoError(t, err)
+	require.NoError(t, holder.Close())
+	require.NoError(t, <-blockerDone)
 }

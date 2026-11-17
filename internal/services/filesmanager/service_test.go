@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -55,7 +56,7 @@ func TestCacheFilesAndGetCachedFiles(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, svc.CacheFiles(ctx, 1, "hash", files))
+	require.NoError(t, svc.CacheFiles(ctx, 1, "hash", qbittorrent.CachedFilesWrite{Files: files}))
 
 	cached, err := svc.GetCachedFiles(ctx, 1, "hash")
 	require.NoError(t, err)
@@ -93,7 +94,7 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 			}
 		}
 
-		require.NoError(t, svc.CacheFilesBatch(ctx, 1, files))
+		require.NoError(t, svc.CacheFilesBatch(ctx, 1, unprinted(files)))
 
 		for _, hash := range hashes {
 			cached, err := svc.GetCachedFiles(ctx, 1, hash)
@@ -115,7 +116,7 @@ func testCacheFilesBatchAcrossQueryBatches(t *testing.T, open testDBOpener) {
 			hashes[i] = fmt.Sprintf("batch-hash-%d", i)
 			files[hashes[i]] = qbt.TorrentFiles{{Name: fmt.Sprintf("example-%d.mkv", i), Size: int64(i + 1)}}
 		}
-		require.NoError(t, svc.CacheFilesBatch(ctx, 1, files))
+		require.NoError(t, svc.CacheFilesBatch(ctx, 1, unprinted(files)))
 
 		for _, empty := range [][]string{nil, {}, {"", " "}} {
 			cached, err := svc.repo.GetFilesBatch(ctx, 1, empty)
@@ -137,7 +138,7 @@ func testCacheFilesBatchAcrossQueryBatches(t *testing.T, open testDBOpener) {
 			require.Equal(t, files[hash][0].Size, cached[hash][0].Size)
 		}
 
-		require.NoError(t, svc.CacheFiles(ctx, 1, "keep", qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}))
+		require.NoError(t, svc.CacheFiles(ctx, 1, "keep", qbittorrent.CachedFilesWrite{Files: qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}}))
 		require.NoError(t, svc.repo.DeleteTorrentCache(ctx, 1, hashes))
 		cachedFiles, err := svc.repo.GetFilesBatch(ctx, 1, hashes)
 		require.NoError(t, err)
@@ -159,7 +160,7 @@ func TestGetCachedFilesBatch_MaxAgeServesAgedRows(t *testing.T) {
 	svc := NewService(db)
 
 	files := qbt.TorrentFiles{{Name: "aged.mkv", Size: 1, Priority: 1}}
-	require.NoError(t, svc.CacheFiles(ctx, 1, "aged", files))
+	require.NoError(t, svc.CacheFiles(ctx, 1, "aged", qbittorrent.CachedFilesWrite{Files: files}))
 
 	_, err := db.ExecContext(ctx, "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
 	require.NoError(t, err)
@@ -174,4 +175,13 @@ func TestGetCachedFilesBatch_MaxAgeServesAgedRows(t *testing.T) {
 	require.Len(t, cached, 1)
 	require.Equal(t, "aged.mkv", cached["aged"][0].Name)
 	require.Equal(t, []string{"absent"}, missing)
+}
+
+// unprinted wraps file lists as writes with no print.
+func unprinted(files map[string]qbt.TorrentFiles) map[string]qbittorrent.CachedFilesWrite {
+	writes := make(map[string]qbittorrent.CachedFilesWrite, len(files))
+	for hash, list := range files {
+		writes[hash] = qbittorrent.CachedFilesWrite{Files: list}
+	}
+	return writes
 }

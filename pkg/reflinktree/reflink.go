@@ -47,7 +47,7 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 	rollbackOnError := func(err error) error {
 		rollbackErr := created.Rollback()
 		if rollbackErr != nil {
-			return errors.Join(err, fmt.Errorf("rollback also failed: %w", rollbackErr))
+			return errors.Join(err, fmt.Errorf("%w: %w", hardlinktree.ErrRollbackFailed, rollbackErr))
 		}
 		return err
 	}

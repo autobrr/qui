@@ -5,6 +5,7 @@
 
 import type { Automation } from "@/types"
 import { getTrackerTokens } from "@/lib/workflow-utils"
+import { BYTE_LADDER, formatValueWithUnit, scaleToUnit } from "@/lib/unit-format"
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -13,11 +14,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B"
-  const k = 1024
-  const sizes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+  if (bytes === 0) return formatValueWithUnit(0, "B")
+  const scaled = scaleToUnit(bytes, BYTE_LADDER, 1024)
+  return formatValueWithUnit(scaled.value, scaled.unit)
 }
 
 export function formatBytesOrFallback(bytes: number, fallback: string): string {
@@ -47,6 +46,7 @@ export function getRatioColor(ratio: number): string {
   }
 }
 
+/** @deprecated Prints English units (d, h, m, s). For text that the user reads, use the formatters in `@/lib/dateTimeUtils`. */
 export function formatDuration(seconds: number): string {
   if (seconds === 0) return "0s"
   const days = Math.floor(seconds / 86400)
@@ -63,6 +63,7 @@ export function formatDuration(seconds: number): string {
   return parts.join(" ")
 }
 
+/** @deprecated Prints English units (s, m, h, d). For text that the user reads, use `formatNarrowAge` in `@/lib/dateTimeUtils`, which takes milliseconds and shows an age under one minute as one minute. */
 export function formatDurationCompact(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
@@ -206,4 +207,15 @@ export function joinPath(basePath: string, relativePath: string): string {
   const cleanBase = basePath.replace(/[\\/]$/, "")
   const normalizedRelative = separator === "\\" ? relativePath.replace(/\//g, "\\") : relativePath
   return `${cleanBase}${separator}${normalizedRelative}`
+}
+
+/** Breaks a release name after dots, dashes, and underscores, not inside a word. */
+export function breakableName(name: string): string {
+  return name.replace(/([._-])/g, "$1\u200B")
+}
+
+/** Merges lists one item from each list at a time, so that one long list cannot fill the start. */
+export function takeTurns<T>(lists: T[][]): T[] {
+  const length = Math.max(0, ...lists.map(list => list.length))
+  return Array.from({ length }, (_, i) => lists.flatMap(list => (i < list.length ? [list[i]] : []))).flat()
 }

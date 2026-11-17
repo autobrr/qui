@@ -20,8 +20,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/logstream"
+	"github.com/autobrr/qui/internal/models"
 )
 
 // LogsHandler handles log settings and streaming endpoints.
@@ -40,10 +42,11 @@ func NewLogsHandler(appConfig *config.AppConfig, shutdown <-chan struct{}) *Logs
 
 // Routes registers log settings and file routes; the server groups log streaming with the other SSE routes.
 func (h *LogsHandler) Routes(r chi.Router) {
-	r.Get("/log-settings", h.GetLogSettings)
-	r.Put("/log-settings", h.UpdateLogSettings)
-	r.Get("/logs/files", h.ListLogFiles)
-	r.Get("/logs/files/{filename}", h.DownloadLogFile)
+	logs := middleware.Permissions(models.AreaLogs)
+	r.With(logs.Read).Get("/log-settings", h.GetLogSettings)
+	r.With(logs.Write).Put("/log-settings", h.UpdateLogSettings)
+	r.With(logs.Read).Get("/logs/files", h.ListLogFiles)
+	r.With(logs.Read).Get("/logs/files/{filename}", h.DownloadLogFile)
 }
 
 // LogFileEntry describes a log file available for download.

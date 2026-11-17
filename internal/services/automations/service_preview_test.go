@@ -3,6 +3,7 @@ package automations
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -53,7 +54,6 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			display_name TEXT NOT NULL,
 			domains TEXT NOT NULL DEFAULT '',
-			included_in_stats TEXT NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)
@@ -62,9 +62,9 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 
 	now := time.Now().UTC()
 	_, err = q.ExecContext(ctx, `
-		INSERT INTO tracker_customizations (display_name, domains, included_in_stats, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, "BHD", "bhd.example", "", now, now)
+		INSERT INTO tracker_customizations (display_name, domains, created_at, updated_at)
+		VALUES (?, ?, ?, ?)
+	`, "BHD", "bhd.example", now, now)
 	require.NoError(t, err)
 
 	store := models.NewTrackerCustomizationStore(q)
@@ -81,7 +81,8 @@ func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {
 				Value:    "BHD",
 			}
 
-			evalCtx, _ := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+			evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}), nil)
+			require.NoError(t, err)
 
 			require.NotNil(t, evalCtx.TrackerDisplayNameByDomain)
 			assert.Equal(t, "BHD", evalCtx.TrackerDisplayNameByDomain["bhd.example"])
@@ -102,7 +103,30 @@ func TestPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {
 		Value:    "tier1",
 	}
 
-	evalCtx, _ := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}))
+	evalCtx, _, err := s.buildEvalContext(ctx, 1, nil, nil, previewNeeds(&models.Automation{Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond}}}), nil)
+	require.NoError(t, err)
 
 	assert.Nil(t, evalCtx.TrackerDisplayNameByDomain)
+}
+
+type unavailableCrossMatcher struct{ err error }
+
+func (m unavailableCrossMatcher) OpenCrossMatchSession(context.Context, int, CrossMatchNeeds) (CrossMatchSession, error) {
+	return nil, m.err
+}
+
+func TestBuildEvalContext_StopsOnCrossSeedSnapshotFailure(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("torrent snapshot unavailable")
+	svc := &Service{crossMatcher: unavailableCrossMatcher{err: wantErr}}
+	for _, action := range []*models.ActionConditions{
+		{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesPreserveCrossSeeds}},
+		{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds}},
+		{Move: &models.MoveAction{Enabled: true}},
+		{Category: &models.CategoryAction{Enabled: true, IncludeCrossSeeds: true}},
+	} {
+		needs := previewNeeds(&models.Automation{Conditions: action})
+		_, _, err := svc.buildEvalContext(t.Context(), 1, nil, nil, needs, nil)
+		require.ErrorIs(t, err, wantErr)
+	}
 }

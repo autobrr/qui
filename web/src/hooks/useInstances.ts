@@ -3,12 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { crossSeedRoutesKey } from "@/hooks/useCrossSeedRoutes"
 import { api } from "@/lib/api"
 import type { InstanceFormData, InstanceResponse } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+/** The key of the status save, so that a list can read the ids of the instances that it still runs for. */
+export const instanceStatusKey = ["instances", "status"] as const
 
 export function useInstances() {
   const queryClient = useQueryClient()
+  const { t } = useTranslation("instances")
 
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ["instances"],
@@ -78,6 +85,7 @@ export function useInstances() {
   })
 
   const statusMutation = useMutation<InstanceResponse, Error, { id: number; isActive: boolean }, { previousInstances?: InstanceResponse[] }>({
+    mutationKey: instanceStatusKey,
     mutationFn: ({ id, isActive }) => api.updateInstanceStatus(id, isActive),
     onMutate: async ({ id, isActive }) => {
       await queryClient.cancelQueries({ queryKey: ["instances"] })
@@ -113,9 +121,30 @@ export function useInstances() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
-    onSuccess: () => {
+    // The history delete needs Settings: write, so it is a second request. When
+    // it fails, the instance is gone and a part of its history can stay.
+    mutationFn: async ({ id, deleteHistory }: { id: number; name: string; deleteHistory?: boolean }) => {
+      await api.deleteInstance(id)
+      if (deleteHistory) {
+        try {
+          await api.deleteTransferHistory({ instanceId: id })
+        } catch (historyError) {
+          return { historyError }
+        }
+      }
+      return { historyError: undefined }
+    },
+    onSuccess: ({ historyError }) => {
       queryClient.invalidateQueries({ queryKey: ["instances"] })
+      // The delete removes each route to or from the instance.
+      queryClient.invalidateQueries({ queryKey: crossSeedRoutesKey })
+      queryClient.invalidateQueries({ queryKey: ["transfer-history"] })
+      // This callback runs also when the dialog that removed the instance is gone.
+      if (historyError) {
+        toast.error(t("deleteHistory.failed"), {
+          description: historyError instanceof Error ? historyError.message : undefined,
+        })
+      }
     },
   })
 

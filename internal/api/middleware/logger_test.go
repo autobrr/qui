@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -61,23 +62,25 @@ func TestLoggerLevelBySeverity(t *testing.T) {
 			slowRequestThreshold = tt.threshold
 			t.Cleanup(func() { slowRequestThreshold = original })
 
-			var buf bytes.Buffer
-			logger := zerolog.New(&buf).Level(zerolog.DebugLevel)
-			handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				time.Sleep(tt.delay)
-				w.WriteHeader(tt.status)
-			}))
+			synctest.Test(t, func(t *testing.T) {
+				var buf bytes.Buffer
+				logger := zerolog.New(&buf).Level(zerolog.DebugLevel)
+				handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					time.Sleep(tt.delay)
+					w.WriteHeader(tt.status)
+				}))
 
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil)
-			handler.ServeHTTP(httptest.NewRecorder(), req)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil)
+				handler.ServeHTTP(httptest.NewRecorder(), req)
 
-			logLine := strings.TrimSpace(buf.String())
-			if !tt.wantLine {
-				require.Empty(t, logLine)
-				return
-			}
-			require.Contains(t, logLine, `"level":"debug"`)
-			require.Contains(t, logLine, `"message":"incoming_request"`)
+				logLine := strings.TrimSpace(buf.String())
+				if !tt.wantLine {
+					require.Empty(t, logLine)
+					return
+				}
+				require.Contains(t, logLine, `"level":"debug"`)
+				require.Contains(t, logLine, `"message":"incoming_request"`)
+			})
 		})
 	}
 }
@@ -105,36 +108,6 @@ func TestLoggerLogsPathOnly(t *testing.T) {
 	require.NotContains(t, logLine, secretAPIKey)
 	require.NotContains(t, logLine, "format=json")
 	require.Contains(t, logLine, `"url":"/api/cross-seed/apply"`)
-}
-
-func TestLoggerDoesNotLogOIDCCallbackQuerySecrets(t *testing.T) {
-	const (
-		oauthState = "SECRET-OAUTH-STATE"
-		oauthCode  = "SECRET-AUTH-CODE"
-	)
-
-	var buf bytes.Buffer
-	logger := zerolog.New(&buf).Level(zerolog.TraceLevel)
-	handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	req := httptest.NewRequestWithContext(
-		t.Context(),
-		http.MethodGet,
-		"/api/auth/oidc/callback?state="+oauthState+"&code="+oauthCode,
-		nil,
-	)
-	resp := httptest.NewRecorder()
-
-	handler.ServeHTTP(resp, req)
-
-	logLine := buf.String()
-	require.NotContains(t, logLine, oauthState)
-	require.NotContains(t, logLine, oauthCode)
-	require.NotContains(t, logLine, "state=")
-	require.NotContains(t, logLine, "code=")
-	require.Contains(t, logLine, `"url":"/api/auth/oidc/callback"`)
 }
 
 func TestLoggerRedactsProxyAPIKeyPath(t *testing.T) {

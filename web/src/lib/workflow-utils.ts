@@ -3,9 +3,92 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, SortingConfig } from "@/types"
+import { api } from "@/lib/api"
+import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, RuleCondition, SortingConfig } from "@/types"
+import type { QueryClient } from "@tanstack/react-query"
+
+// i18n-namespace: instances
 
 export type TrackerMatchMode = "include" | "exclude" | "mixed"
+
+export type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
+
+export const ACTION_LABEL_KEYS: Record<ActionType, string> = {
+  speedLimits: "preferences.workflowDialog.actions.speedLimits",
+  shareLimits: "preferences.workflowDialog.actions.shareLimits",
+  pause: "preferences.workflowDialog.actions.pause",
+  resume: "preferences.workflowDialog.actions.resume",
+  recheck: "preferences.workflowDialog.actions.recheck",
+  reannounce: "preferences.workflowDialog.actions.reannounce",
+  autoManagement: "preferences.workflowDialog.actions.autoManagement",
+  delete: "preferences.workflowDialog.actions.delete",
+  tag: "preferences.workflowDialog.actions.tag",
+  category: "preferences.workflowDialog.actions.category",
+  move: "preferences.workflowDialog.actions.move",
+  externalProgram: "preferences.workflowDialog.actions.externalProgram",
+  exportToInstance: "preferences.workflowDialog.actions.exportToInstance",
+}
+
+// The backend reads the same way: the tags list wins over the legacy single tag.
+export function getRuleTagActions(rule: Automation) {
+  if (rule.conditions?.tags && rule.conditions.tags.length > 0) {
+    return rule.conditions.tags
+  }
+  if (rule.conditions?.tag) {
+    return [rule.conditions.tag]
+  }
+  return []
+}
+
+/** Returns the actions that a saved workflow has turned on, in the order of the action picker. */
+export function getRuleActions(rule: Automation): ActionType[] {
+  return (Object.keys(ACTION_LABEL_KEYS) as ActionType[]).filter(action => {
+    if (action === "tag") {
+      return getRuleTagActions(rule).some(tag => tag.enabled)
+    }
+    if (action === "autoManagement") {
+      // enabled is the value that the action sets, so a saved action with enabled false still runs.
+      return rule.conditions?.autoManagement != null
+    }
+    return Boolean(rule.conditions?.[action]?.enabled)
+  })
+}
+
+/** The actions of a saved workflow that are switched off, each as stored. tags holds only the entries that are switched off. */
+export type SwitchedOffActions = Omit<ActionConditions, "schemaVersion" | "grouping" | "tag" | "autoManagement">
+
+/** Returns the actions that a saved workflow has switched off, as stored. autoManagement never counts: getRuleActions always runs it. */
+export function getSwitchedOffActions(rule: Automation): SwitchedOffActions {
+  const running = getRuleActions(rule)
+  const actions = (Object.keys(ACTION_LABEL_KEYS) as ActionType[])
+    .filter(action => action !== "tag" && !running.includes(action) && rule.conditions?.[action] != null)
+    .map(action => [action, rule.conditions[action]])
+  const switchedOff: SwitchedOffActions = Object.fromEntries(actions)
+  const tags = getRuleTagActions(rule).filter(tag => !tag.enabled)
+  if (tags.length > 0) {
+    switchedOff.tags = tags
+  }
+  return switchedOff
+}
+
+/** Returns the condition of each action that a saved workflow has turned on, null for an action without one. */
+function runningActionConditions(rule: Automation): (RuleCondition | null)[] {
+  return getRuleActions(rule).flatMap(action => {
+    const entries = action === "tag" ? getRuleTagActions(rule).filter(tag => tag.enabled) : [rule.conditions[action]]
+    return entries.map(entry => entry?.condition ?? null)
+  })
+}
+
+/** Returns the condition that the rule editor shows: the first condition of an action that the workflow has turned on. */
+export function firstActionCondition(rule: Automation): RuleCondition | null {
+  return runningActionConditions(rule).find(condition => condition != null) ?? null
+}
+
+/** Reports whether a save from the rule editor changes the condition of an action that the rule turns on. A save writes the shown condition onto every action. */
+export function hasMixedActionConditions(rule: Automation): boolean {
+  const shown = JSON.stringify(firstActionCondition(rule))
+  return runningActionConditions(rule).some(condition => JSON.stringify(condition) !== shown)
+}
 
 /**
  * Export format for workflows. This is the clipboard JSON format.
@@ -23,8 +106,25 @@ export interface WorkflowExport {
   notify?: boolean
 }
 
-/** Parsed import JSON. Hand-written JSON can still carry trackerDomains; the backend reads it when trackerPattern is empty. */
-export type WorkflowImport = WorkflowExport & { trackerDomains?: string[] }
+/** Parsed import JSON, with every key as written. The backend checks the keys and lists each problem. */
+export type WorkflowImport = WorkflowExport & Record<string, unknown>
+
+// The order one automation run applies actions in; a test holds it equal to the backend's actionRunOrder.
+export const ACTION_RUN_ORDER = [
+  "speedLimits",
+  "shareLimits",
+  "pause",
+  "resume",
+  "recheck",
+  "reannounce",
+  "autoManagement",
+  "tag",
+  "category",
+  "move",
+  "externalProgram",
+  "exportToInstance",
+  "delete",
+] as const satisfies readonly ActionType[]
 
 const DEFAULT_INTERVAL_SECONDS = 900
 
@@ -83,67 +183,60 @@ export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
   return hasExclude ? "exclude" : "include"
 }
 
+/** Returns the rule names of an instance. Reads the server when the rule list is not loaded, and rejects when that read fails. */
+export async function loadWorkflowNames(queryClient: QueryClient, instanceId: number): Promise<string[]> {
+  const rules = await queryClient.ensureQueryData({
+    queryKey: ["automations", instanceId],
+    queryFn: () => api.listAutomations(instanceId),
+  })
+  return (rules ?? []).map(rule => rule.name)
+}
+
 /**
- * Parses and normalizes import data to AutomationInput.
+ * Create payload for import: the JSON as written, except that
  * - enabled is forced to false
- * - sortOrder is omitted (will be appended)
- * - name gets "(copy)" suffix via generateUniqueName
+ * - sortOrder is omitted, so the backend appends the rule
+ * - a name that the instance already has gets a copy suffix via generateUniqueName
  */
 export function fromImportFormat(
   data: WorkflowImport,
   existingNames: string[]
 ): AutomationInput {
+  const nameTaken = existingNames.some(name => name.toLowerCase() === data.name.toLowerCase())
   return {
-    name: generateUniqueName(data.name, existingNames),
+    ...data,
+    name: nameTaken ? generateUniqueName(data.name, existingNames) : data.name,
     enabled: false, // Always start disabled
-    ...importedFields(data),
+    sortOrder: undefined,
   }
 }
 
-/** Update payload for "Edit as JSON": the JSON supplies every exported field, the rule keeps enabled and sortOrder. */
+/** Update payload for "Edit as JSON": the JSON as written, except that the rule keeps enabled and sortOrder. */
 export function toEditInput(rule: Automation, data: WorkflowImport): AutomationInput {
   return {
-    name: data.name,
+    ...data,
     enabled: rule.enabled,
     sortOrder: rule.sortOrder,
-    ...importedFields(data),
   }
 }
 
-type ImportedFields = Omit<AutomationInput, "name" | "enabled" | "sortOrder"> & { trackerDomains?: string[] }
-
-function importedFields(data: WorkflowImport): ImportedFields {
-  const fields: ImportedFields = {
-    trackerPattern: data.trackerPattern,
-    conditions: data.conditions,
-    freeSpaceSource: data.freeSpaceSource,
-    sortingConfig: data.sortingConfig,
-    dryRun: data.dryRun ?? false,
-    notify: data.notify ?? true,
-  }
-
-  if (data.trackerDomains) {
-    fields.trackerDomains = data.trackerDomains
-  }
-
-  // Include intervalSeconds if specified and differs from default
-  if (data.intervalSeconds && data.intervalSeconds !== DEFAULT_INTERVAL_SECONDS) {
-    fields.intervalSeconds = data.intervalSeconds
-  }
-
-  return fields
-}
-
-/**
- * Creates an AutomationInput for duplicating a workflow.
- * Similar to fromImportFormat but takes an existing Automation.
- */
+/** Create payload for "Duplicate" on the same instance: an import of the exported rule that always gets a copy suffix. */
 export function toDuplicateInput(
   workflow: Automation,
   existingNames: string[]
 ): AutomationInput {
-  const exportData = toExportFormat(workflow)
-  return fromImportFormat(exportData, existingNames)
+  return {
+    ...fromImportFormat({ ...toExportFormat(workflow) }, existingNames),
+    name: generateUniqueName(workflow.name, existingNames),
+  }
+}
+
+/** Create payload for "Copy to instance": an import of the exported rule on the target instance. */
+export function toCopyInput(
+  workflow: Automation,
+  targetNames: string[]
+): AutomationInput {
+  return fromImportFormat({ ...toExportFormat(workflow) }, targetNames)
 }
 
 /**
@@ -205,33 +298,7 @@ export function parseImportJSON(jsonString: string): { data: WorkflowImport; err
   }
 
   // The backend rejects a rule with no tracker, so a missing tracker is not checked here.
-  const data: WorkflowImport = {
-    name: obj.name as string,
-    trackerPattern: typeof obj.trackerPattern === "string" ? obj.trackerPattern : "",
-    conditions: obj.conditions as ActionConditions,
-    freeSpaceSource: obj.freeSpaceSource as FreeSpaceSource | undefined,
-    sortingConfig: obj.sortingConfig as SortingConfig | undefined,
-  }
-
-  // One non-string element makes the backend reject the whole request, so drop the array instead.
-  if (Array.isArray(obj.trackerDomains) && obj.trackerDomains.every((el: unknown) => typeof el === "string")) {
-    data.trackerDomains = obj.trackerDomains
-  }
-
-  // Optional intervalSeconds
-  if (typeof obj.intervalSeconds === "number" && obj.intervalSeconds >= 60) {
-    data.intervalSeconds = obj.intervalSeconds
-  }
-
-  if (typeof obj.dryRun === "boolean") {
-    data.dryRun = obj.dryRun
-  }
-
-  if (typeof obj.notify === "boolean") {
-    data.notify = obj.notify
-  }
-
-  return { data, error: null }
+  return { data: obj as WorkflowImport, error: null }
 }
 
 /**

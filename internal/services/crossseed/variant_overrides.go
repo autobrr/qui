@@ -47,7 +47,7 @@ var (
 		nil,
 		[]string{
 			"REPACK",   // Re-release to fix issues with original
-			"REPACK2",  // Second re-release
+			"REREPACK", // Second re-release: rls gives this value for REPACK2
 			"REPACK3",  // Third re-release
 			"REPACK4",  // Fourth re-release
 			"REPACK5",  // Fifth re-release
@@ -57,6 +57,7 @@ var (
 			"REPACK9",  // Ninth re-release
 			"REPACK10", // Tenth re-release
 			"PROPER",   // Correction to a flawed release
+			"RERIP",    // New rip of the same source
 		},
 		nil,
 		nil,

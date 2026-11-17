@@ -23,7 +23,7 @@ func TestLocalLinkedMatchType_UnsupportedPlatformSkipsCandidateFetchWithoutHardl
 		normalizeHash(hlSourceHash): sourceFiles,
 	})
 	matchCtx := hardlinkTestMatchCtx(service, sourceDir)
-	_, _, err := matchCtx.getSourceFiles()
+	err := matchCtx.getSourceFiles()
 	require.NoError(t, err)
 
 	service.syncManager = &localMatchSyncManager{errorOnFetch: errors.New("unexpected candidate fetch")}

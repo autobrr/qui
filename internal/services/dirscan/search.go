@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -150,26 +149,6 @@ func (s *Searcher) applyExternalIDs(req *jackett.TorznabSearchRequest, meta *Sea
 // Shared with cross-seed so the two search paths cannot drift apart.
 func buildSearchQuery(meta *SearcheeMetadata) string {
 	return crossseed.BuildTorznabQuery(meta.CleanedName, meta.Release, meta.IsMusic).Query
-}
-
-// cleanForSearch removes characters that might interfere with search.
-func cleanForSearch(s string) string {
-	// Remove common problematic characters
-	replacer := strings.NewReplacer(
-		".", " ",
-		"_", " ",
-		"-", " ",
-		"[", "",
-		"]", "",
-		"(", "",
-		")", "",
-		"{", "",
-		"}", "",
-	)
-	s = replacer.Replace(s)
-
-	// Clean up extra spaces
-	return cleanExtraSpaces(s)
 }
 
 // SearchResult wraps a jackett search result with additional matching context.

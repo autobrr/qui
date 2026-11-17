@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { HARDLINK_SCOPE_VALUES, TORRENT_STATES } from "@/components/query-builder/constants"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,29 +13,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { getRuleSkipReason } from "@/components/query-builder/constants"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { PathCell } from "@/components/ui/path-cell"
+import { Switch } from "@/components/ui/switch"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
 import { Download, Loader2 } from "lucide-react"
-import { useMemo } from "react"
+import { useId, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 
 // Tabs component for needed/eligible toggle
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
-// Helper to get human-readable label from value/label arrays
-function getLabelFromValues(values: Array<{ value: string; label: string }>, value: string): string {
-  const found = values.find(v => v.value === value)
-  if (found) return found.label
-  // Fallback: capitalize and humanize
-  return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
-}
 
 interface WorkflowPreviewDialogProps {
   open: boolean
@@ -73,6 +68,19 @@ interface WorkflowPreviewDialogProps {
   showScore?: boolean
   /** Error message when the preview request failed; the dialog still allows saving */
   previewError?: string | null
+  dryRun?: boolean
+  onDryRunChange?: (dryRun: boolean) => void
+}
+
+export function DryRunToggle({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+  const { t } = useTranslation("instances")
+  const id = useId()
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Label htmlFor={id} className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.dryRun")}</Label>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  )
 }
 
 // Extract all field names from a condition tree
@@ -277,8 +285,11 @@ export function WorkflowPreviewDialog({
   isInitialLoading = false,
   showScore = false,
   previewError = null,
+  dryRun = false,
+  onDryRunChange,
 }: WorkflowPreviewDialogProps) {
   const { t, i18n } = useTranslation(["instances", "automations"])
+  const { t: tTorrents } = useTranslation("torrents")
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
@@ -286,16 +297,10 @@ export function WorkflowPreviewDialog({
   const dynamicColumns = useMemo(
     () => createDynamicColumns(
       t,
-      (value: string) => i18n.t(`queryBuilder.torrentStates.${value}`, {
-        ns: "automations",
-        defaultValue: getLabelFromValues(TORRENT_STATES, value),
-      }),
-      (value: string) => i18n.t(`queryBuilder.hardlinkScopes.${value}`, {
-        ns: "automations",
-        defaultValue: getLabelFromValues(HARDLINK_SCOPE_VALUES, value),
-      })
+      (value: string) => getStateLabel(value, tTorrents),
+      (value: string) => i18n.t([`queryBuilder.hardlinkScopes.${value}`, "common:status.unknown"], { ns: "automations" })
     ),
-    [i18n, t]
+    [i18n, t, tTorrents]
   )
 
   // Determine which dynamic columns to show based on condition fields
@@ -308,6 +313,8 @@ export function WorkflowPreviewDialog({
 
   const confirmClassName = destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
 
+  const dryRunToggle = onDryRunChange && <DryRunToggle checked={dryRun} onCheckedChange={onDryRunChange} />
+
   // Show loading state when initial preview is being fetched.
   // Save stays reachable so a slow preview never blocks enabling the rule.
   if (isInitialLoading) {
@@ -319,6 +326,7 @@ export function WorkflowPreviewDialog({
             <p className="text-sm text-muted-foreground">{t("preferences.workflowPreview.loadingPreview")}</p>
             <p className="text-xs text-muted-foreground text-center">{t("preferences.workflowPreview.skipPreviewHint")}</p>
           </div>
+          {dryRunToggle}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
@@ -368,6 +376,12 @@ export function WorkflowPreviewDialog({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        {preview?.skipped && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-500">
+            {getRuleSkipReason(preview.skipped, t)}
+          </p>
+        )}
 
         {preview && preview.examples.length > 0 && (
           <div className="flex-1 min-h-0 overflow-hidden border rounded-lg relative">
@@ -485,6 +499,8 @@ export function WorkflowPreviewDialog({
             )}
           </div>
         )}
+
+        {dryRunToggle}
 
         <AlertDialogFooter className="mt-4 sm:justify-between">
           <div>

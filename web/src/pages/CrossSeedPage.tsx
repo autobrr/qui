@@ -12,21 +12,20 @@ import { LibraryTab } from "@/components/cross-seed/LibraryTab"
 import { MatchingTab } from "@/components/cross-seed/MatchingTab"
 import { RssTab } from "@/components/cross-seed/RssTab"
 import { SeasonPacksTab } from "@/components/cross-seed/SeasonPacksTab"
-import { CROSS_SEED_NAV_GROUPS, type CrossSeedTab } from "@/components/cross-seed/tabs"
+import { CROSS_SEED_NAV_GROUPS, DEFAULT_CROSS_SEED_TAB, type CrossSeedTab } from "@/components/cross-seed/tabs"
 import { WebhookTab } from "@/components/cross-seed/WebhookTab"
+import { SectionedPage, type SectionNavGroup } from "@/components/layout/SectionedPage"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useActiveInstances, useCrossSeedSettings, useEnabledIndexers } from "@/hooks/useCrossSeedSettings"
-import { cn } from "@/lib/utils"
 import { Link } from "@tanstack/react-router"
 import { AlertTriangle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 interface CrossSeedPageProps {
-  activeTab: CrossSeedTab
-  onTabChange: (tab: CrossSeedTab) => void
+  activeTab: CrossSeedTab | undefined
+  onTabChange: (tab: CrossSeedTab | undefined, options: { replace: boolean }) => void
 }
 
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
@@ -39,24 +38,21 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { instances } = useActiveInstances()
   const hasEnabledIndexers = useEnabledIndexers().length > 0
   const automationEnabled = settings?.enabled ?? false
+  const navGroups: SectionNavGroup<CrossSeedTab>[] = CROSS_SEED_NAV_GROUPS.map(group => ({
+    label: "labelKey" in group ? t(group.labelKey) : undefined,
+    sections: group.tabs.map(tab => ({ value: tab, label: t(`tabs.${tab}`) })),
+  }))
 
   return (
-    <div className="space-y-6 p-4 lg:p-6 pb-16">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t("pageTitle")}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t("pageDescription")}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge variant={automationEnabled ? "default" : "secondary"}>
-            {t(automationEnabled ? "automationOnBadge" : "automationOffBadge")}
-          </Badge>
-        </div>
-      </div>
-
-      {!hasEnabledIndexers && (
+    <SectionedPage
+      title={t("pageTitle")}
+      description={t("pageDescription")}
+      badge={(
+        <Badge variant={automationEnabled ? "default" : "secondary"}>
+          {t(automationEnabled ? "automationOnBadge" : "automationOffBadge")}
+        </Badge>
+      )}
+      notice={!hasEnabledIndexers && (
         <Alert className="border-border rounded-xl bg-card">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           <AlertTitle>{t("indexersMissing.title")}</AlertTitle>
@@ -71,67 +67,29 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           </AlertDescription>
         </Alert>
       )}
-
-      <div className="md:hidden">
-        <Select value={activeTab} onValueChange={(value) => onTabChange(value as CrossSeedTab)}>
-          <SelectTrigger className="w-full min-h-11" aria-label={t("pageTitle")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CROSS_SEED_NAV_GROUPS.map(group => (
-              <SelectGroup key={group.tabs[0]}>
-                {"labelKey" in group && <SelectLabel>{t(group.labelKey)}</SelectLabel>}
-                {group.tabs.map(tab => (
-                  <SelectItem key={tab} value={tab}>{t(`tabs.${tab}`)}</SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex flex-col gap-6 md:flex-row">
-        <nav className="hidden w-56 shrink-0 space-y-5 md:block" aria-label={t("pageTitle")}>
-          {CROSS_SEED_NAV_GROUPS.map(group => (
-            <div key={group.tabs[0]} className="space-y-1">
-              {"labelKey" in group && (
-                <p className="px-3 pb-1 text-sm font-semibold text-foreground">{t(group.labelKey)}</p>
-              )}
-              {group.tabs.map(tab => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => onTabChange(tab)}
-                  aria-current={activeTab === tab ? "page" : undefined}
-                  className={cn(
-                    "w-full rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors",
-                    activeTab === tab ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-                  )}
-                >
-                  {t(`tabs.${tab}`)}
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
-
-        <div className="min-w-0 flex-1 space-y-6">
+      groups={navGroups}
+      section={activeTab}
+      defaultSection={DEFAULT_CROSS_SEED_TAB}
+      onSectionChange={onTabChange}
+    >
+      {(tab) => (
+        <>
           {settings && (
             <>
-              {activeTab === "rss" && <RssTab settings={settings} />}
-              {activeTab === "webhook" && <WebhookTab settings={settings} />}
-              {activeTab === "completion" && <CompletionTab settings={settings} />}
-              {activeTab === "library" && <LibraryTab settings={settings} />}
-              {activeTab === "season-packs" && <SeasonPacksTab settings={settings} />}
-              {activeTab === "matching" && <MatchingTab settings={settings} />}
-              {activeTab === "categories" && <CategoriesTab settings={settings} />}
-              {activeTab === "after-injection" && <AfterInjectionTab settings={settings} />}
+              {tab === "rss" && <RssTab settings={settings} />}
+              {tab === "webhook" && <WebhookTab settings={settings} />}
+              {tab === "completion" && <CompletionTab settings={settings} />}
+              {tab === "library" && <LibraryTab settings={settings} />}
+              {tab === "season-packs" && <SeasonPacksTab settings={settings} />}
+              {tab === "matching" && <MatchingTab settings={settings} />}
+              {tab === "categories" && <CategoriesTab settings={settings} />}
+              {tab === "after-injection" && <AfterInjectionTab settings={settings} />}
             </>
           )}
-          {activeTab === "directories" && <DirScanTab instances={instances ?? []} />}
-          {activeTab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
-        </div>
-      </div>
-    </div>
+          {tab === "directories" && <DirScanTab instances={instances ?? []} />}
+          {tab === "blocklist" && <BlocklistTab instances={instances ?? []} />}
+        </>
+      )}
+    </SectionedPage>
   )
 }

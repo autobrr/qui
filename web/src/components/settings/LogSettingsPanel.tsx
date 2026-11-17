@@ -3,64 +3,99 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from "@/components/ui/popover"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
-import { ALL_LEVELS_SET, ALL_LOG_LEVELS, usePersistedLogLevels, type LogLevel } from "@/hooks/usePersistedLogLevels"
-import { api } from "@/lib/api"
-import { copyTextToClipboard, formatBytes } from "@/lib/utils"
-import type { LogSettingsUpdate } from "@/types"
-import { useForm } from "@tanstack/react-form"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, ChevronDown, Copy, Download, FileText, Filter, Loader2, Lock, Search, Settings, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query"
+import { ArrowDownToLine, ChevronDown, Copy, Download, EyeOff, Eraser, FileText, Filter, Lock, Pause, Search, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-const LOG_LEVELS = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"] as const
+import { Editor } from "@/components/kit/Editor"
+import { Facts } from "@/components/kit/Facts"
+import { Field } from "@/components/kit/Field"
+import { ResourceList } from "@/components/kit/ResourceList"
+import { Section } from "@/components/kit/Section"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useIsPhone } from "@/hooks/useMediaQuery"
+import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
+import { ALL_LEVELS_SET, ALL_LOG_LEVELS, usePersistedLogLevels, type LogLevel } from "@/hooks/usePersistedLogLevels"
+import { api } from "@/lib/api"
+import { useClientSettingsSettled } from "@/lib/client-settings"
+import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import type { LogSettings, LogSettingsUpdate } from "@/types"
 
-function normalizeLogLevel(level: string | undefined): (typeof LOG_LEVELS)[number] {
+const LOG_SETTINGS_KEY = ["log-settings"]
+
+/** The Logs tab: the live log of the server, its log settings, and its log files. */
+export function LogSettingsPanel() {
+  return (
+    <>
+      <LiveLogSection />
+      <LogSettingsSection />
+      <LogFilesSection />
+    </>
+  )
+}
+
+const LOG_LEVELS = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"] as const
+type ServerLogLevel = (typeof LOG_LEVELS)[number]
+
+function normalizeLogLevel(level: string | undefined): ServerLogLevel {
   const normalized = level?.trim().toUpperCase()
   if (normalized && (LOG_LEVELS as readonly string[]).includes(normalized)) {
-    return normalized as (typeof LOG_LEVELS)[number]
+    return normalized as ServerLogLevel
   }
   return "INFO"
 }
 
-function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<ReturnType<typeof api.getLogSettings>>> }) {
+function LogSettingsSection() {
+  const { t } = useTranslation("settings")
+  const query = useQuery({ queryKey: LOG_SETTINGS_KEY, queryFn: () => api.getLogSettings() })
+  const settings = query.data
+
+  if (!settings) {
+    return <Section title={t("logs.configuration.title")} description={t("logs.configuration.description")} queries={[query]} />
+  }
+  // A new key gives the form fresh values when the settings change on the server, for example after a save.
+  const key = [settings.level, settings.path, settings.maxSize, settings.maxBackups].join("\n")
+  return <LogSettingsForm key={key} settings={settings} query={query} />
+}
+
+interface LogSettingsDraft {
+  level: ServerLogLevel
+  path: string
+  maxSize: string
+  maxBackups: string
+}
+
+type NumberField = "maxSize" | "maxBackups"
+
+/** The number in the text, without its decimals, when it is at least min. */
+function parseCount(text: string, min: number): number | undefined {
+  const value = text.trim() === "" ? Number.NaN : Math.trunc(Number(text))
+  return Number.isSafeInteger(value) && value >= min ? value : undefined
+}
+
+function LogSettingsForm({ settings, query }: { settings: LogSettings; query: UseQueryResult<LogSettings> }) {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
+  const [draft, setDraft] = useState<LogSettingsDraft>(() => ({
+    level: normalizeLogLevel(settings.level),
+    path: settings.path ?? "",
+    maxSize: String(settings.maxSize ?? 50),
+    maxBackups: String(settings.maxBackups ?? 3),
+  }))
+  const [errors, setErrors] = useState<Partial<Record<NumberField, string>>>({})
+  const inputs = useRef<Partial<Record<NumberField, HTMLInputElement | null>>>({})
 
-  const updateMutation = useMutation({
+  const mutation = useMutation({
     mutationFn: (update: LogSettingsUpdate) => api.updateLogSettings(update),
     onSuccess: (data) => {
-      queryClient.setQueryData(["log-settings"], data)
+      queryClient.setQueryData(LOG_SETTINGS_KEY, data)
       toast.success(t("logs.toasts.settingsUpdated"))
     },
     onError: (error) => {
@@ -68,187 +103,107 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
     },
   })
 
-  // Initialize with actual settings values
-  const initialLevel = normalizeLogLevel(settings.level)
-  const form = useForm({
-    defaultValues: {
-      level: initialLevel,
-      path: settings.path,
-      maxSize: settings.maxSize,
-      maxBackups: settings.maxBackups,
-    },
-    onSubmit: async ({ value }) => {
-      const update: LogSettingsUpdate = {}
-      if (value.level !== normalizeLogLevel(settings.level)) update.level = value.level
-      if (value.path !== (settings.path ?? "")) update.path = value.path
-      if (value.maxSize !== (settings.maxSize ?? 50)) update.maxSize = value.maxSize
-      if (value.maxBackups !== (settings.maxBackups ?? 3)) update.maxBackups = value.maxBackups
+  const submit = () => {
+    // A locked field cannot change, and the environment can lock a value that the form rejects, such as a max size of 0.
+    const isLocked = (name: NumberField) => settings.locked?.[name] !== undefined
+    const maxSize = parseCount(draft.maxSize, 1)
+    const maxBackups = parseCount(draft.maxBackups, 0)
+    const next = {
+      maxSize: maxSize === undefined && !isLocked("maxSize") ? t("logs.validation.maxSize") : undefined,
+      maxBackups: maxBackups === undefined && !isLocked("maxBackups") ? t("logs.validation.maxBackups") : undefined,
+    }
+    setErrors(next)
+    if (next.maxSize || next.maxBackups) {
+      inputs.current[next.maxSize ? "maxSize" : "maxBackups"]?.focus()
+      return
+    }
 
-      if (Object.keys(update).length > 0) {
-        await updateMutation.mutateAsync(update)
-      }
-    },
-  })
+    const update: LogSettingsUpdate = {}
+    if (draft.level !== normalizeLogLevel(settings.level)) update.level = draft.level
+    if (draft.path !== (settings.path ?? "")) update.path = draft.path
+    if (maxSize !== undefined && maxSize !== (settings.maxSize ?? 50)) update.maxSize = maxSize
+    if (maxBackups !== undefined && maxBackups !== (settings.maxBackups ?? 3)) update.maxBackups = maxBackups
+    if (Object.keys(update).length > 0) mutation.mutate(update)
+  }
 
-  // Reset form when settings change externally (e.g., config file edited, query refetch)
-  useEffect(() => {
-    form.reset({
-      level: normalizeLogLevel(settings.level),
-      path: settings.path,
-      maxSize: settings.maxSize,
-      maxBackups: settings.maxBackups,
-    })
-  }, [form, settings.level, settings.path, settings.maxSize, settings.maxBackups])
-
-  const isLocked = (field: string) => settings.locked?.[field] !== undefined
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault()
-        form.handleSubmit()
-      }}
-      className="space-y-3"
-    >
-      <form.Field name="level">
-        {(field) => (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="level" className="text-sm">{t("logs.configuration.level")}</Label>
-              {isLocked("level") && (
-                <Badge variant="outline" className="gap-1 text-xs">
-                  <Lock className="h-3 w-3" />
-                  {settings?.locked?.level}
-                </Badge>
-              )}
-            </div>
-            <Select
-              value={field.state.value}
-              onValueChange={(value) => field.handleChange(normalizeLogLevel(value))}
-              disabled={isLocked("level")}
-            >
-              <SelectTrigger id="level" className="h-9">
-                <SelectValue placeholder={t("logs.configuration.levelPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {LOG_LEVELS.map((level) => (
-                  <SelectItem key={level} value={level}>
-                    {level}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-      </form.Field>
-
-      <form.Field name="path">
-        {(field) => (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="path" className="text-sm">{t("logs.configuration.path")}</Label>
-              {isLocked("path") && (
-                <Badge variant="outline" className="gap-1 text-xs">
-                  <Lock className="h-3 w-3" />
-                  {settings?.locked?.path}
-                </Badge>
-              )}
-            </div>
-            <Input
-              id="path"
-              className="h-9"
-              placeholder={t("logs.configuration.pathPlaceholder")}
-              value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
-              disabled={isLocked("path")}
-            />
-          </div>
-        )}
-      </form.Field>
-
-      <div className="grid grid-cols-2 gap-3">
-        <form.Field name="maxSize">
-          {(field) => (
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="maxSize" className="text-sm">{t("logs.configuration.maxSize")}</Label>
-                {isLocked("maxSize") && (
-                  <Badge variant="outline" className="gap-1 text-xs">
-                    <Lock className="h-3 w-3" />
-                  </Badge>
-                )}
-              </div>
-              <Input
-                id="maxSize"
-                className="h-9"
-                type="number"
-                min={1}
-                value={field.state.value}
-                onChange={(e) => field.handleChange(parseInt(e.target.value) || 50)}
-                disabled={isLocked("maxSize")}
-              />
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field name="maxBackups">
-          {(field) => (
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="maxBackups" className="text-sm">{t("logs.configuration.maxBackups")}</Label>
-                {isLocked("maxBackups") && (
-                  <Badge variant="outline" className="gap-1 text-xs">
-                    <Lock className="h-3 w-3" />
-                  </Badge>
-                )}
-              </div>
-              <Input
-                id="maxBackups"
-                className="h-9"
-                type="number"
-                min={0}
-                value={field.state.value}
-                onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
-                disabled={isLocked("maxBackups")}
-              />
-            </div>
-          )}
-        </form.Field>
-      </div>
-
-      <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
-        {([canSubmit, isSubmitting]) => (
-          <Button type="submit" size="sm" className="w-full" disabled={!canSubmit || isSubmitting || updateMutation.isPending}>
-            {isSubmitting || updateMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t("logs.configuration.saving")}
-              </>
-            ) : (
-              t("logs.configuration.saveSettings")
-            )}
-          </Button>
-        )}
-      </form.Subscribe>
-    </form>
-  )
-}
-
-function LogSettingsForm() {
-  const { data: settings, isLoading } = useQuery({
-    queryKey: ["log-settings"],
-    queryFn: () => api.getLogSettings(),
-  })
-
-  if (isLoading || !settings) {
+  const lockNote = (field: keyof LogSettingsUpdate): ReactNode => {
+    const source = settings.locked?.[field]
+    if (source === undefined) return undefined
     return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <span className="inline-flex items-center gap-1">
+        <Lock aria-hidden="true" className="size-3 shrink-0" />
+        {/* The server names the source: "environment", or "environment (empty)" for a variable without a value. */}
+        {t(source === "environment (empty)" ? "logs.configuration.lockedByEmptyEnv" : "logs.configuration.lockedByEnv")}
+      </span>
     )
   }
 
-  return <LogSettingsFormInner settings={settings} />
+  const numberInput = (name: NumberField, min: number) => ({
+    ref: (input: HTMLInputElement | null) => {
+      inputs.current[name] = input
+    },
+    type: "number",
+    inputMode: "numeric" as const,
+    min,
+    className: "max-sm:h-10",
+    value: draft[name],
+    disabled: settings.locked?.[name] !== undefined,
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      setDraft((prev) => ({ ...prev, [name]: event.target.value }))
+      setErrors((prev) => ({ ...prev, [name]: undefined }))
+    },
+  })
+
+  return (
+    <Section
+      title={t("logs.configuration.title")}
+      description={t("logs.configuration.description")}
+      queries={[query]}
+      submit={{ label: t("logs.configuration.saveSettings"), onSubmit: submit, pending: mutation.isPending }}
+    >
+      <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:gap-x-6">
+        <div className="col-span-2 sm:col-span-1">
+          <Field label={t("logs.configuration.level")} description={lockNote("level")}>
+            {(control) => (
+              <Select
+                value={draft.level}
+                onValueChange={(value) => setDraft((prev) => ({ ...prev, level: normalizeLogLevel(value) }))}
+                disabled={settings.locked?.level !== undefined}
+              >
+                <SelectTrigger {...control} className="w-full max-sm:data-[size=default]:h-10">
+                  <SelectValue placeholder={t("logs.configuration.levelPlaceholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOG_LEVELS.map((level) => <SelectItem key={level} value={level}>{level}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          </Field>
+        </div>
+        <div className="col-span-2 sm:col-span-1">
+          <Field label={t("logs.configuration.path")} description={lockNote("path")}>
+            {/* Read-only, not disabled, so that a long locked path can still be scrolled and copied. */}
+            <Input
+              className={cn("max-sm:h-10", settings.locked?.path !== undefined && "text-muted-foreground")}
+              placeholder={t("logs.configuration.pathPlaceholder")}
+              value={draft.path}
+              onChange={(event) => setDraft((prev) => ({ ...prev, path: event.target.value }))}
+              readOnly={settings.locked?.path !== undefined}
+            />
+          </Field>
+        </div>
+        <Field label={t("logs.configuration.maxSize")} description={lockNote("maxSize")} error={errors.maxSize}>
+          <Input {...numberInput("maxSize", 1)} />
+        </Field>
+        <Field label={t("logs.configuration.maxBackups")} description={lockNote("maxBackups")} error={errors.maxBackups}>
+          <Input {...numberInput("maxBackups", 0)} />
+        </Field>
+      </div>
+      {settings.configPath && (
+        <Facts items={[{ label: t("logs.configuration.configFile"), value: settings.configPath, mono: true, copy: settings.configPath }]} />
+      )}
+    </Section>
+  )
 }
 
 interface RawLogLine {
@@ -311,6 +266,10 @@ function parseLogLine(entry: RawLogLine): ParsedLogEntry {
   }
 }
 
+/**
+ * One line of the log. A wide screen keeps it on one line, and the box scrolls sideways. A phone wraps it, and cuts an
+ * entry with details after four lines: a tap opens the entry in full.
+ */
 function LogEntry({
   entry,
   formatTimeOnly,
@@ -319,70 +278,85 @@ function LogEntry({
 }: {
   entry: ParsedLogEntry
   formatTimeOnly: (timestamp: number, includeSeconds?: boolean) => string
-  onSelect?: () => void
+  onSelect: () => void
+  /** Mutes the message from the level badge. A phone has no hover to show this, so it mutes from the entry instead. */
   onMute?: () => void
 }) {
   const { t } = useTranslation("settings")
   const extraKeys = Object.keys(entry.extra)
-  const isClickable = onSelect && entry.isJson
+  const isClickable = entry.isJson
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (isClickable && (e.key === "Enter" || e.key === " ")) {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (isClickable && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault()
-      onSelect?.()
+      onSelect()
     }
   }
 
-  const handleMute = (e: React.MouseEvent) => {
+  const handleMute = (e: MouseEvent) => {
     e.stopPropagation()
     onMute?.()
   }
 
+  const badgeClass = cn(
+    "mr-2 inline-flex h-4 w-12 shrink-0 items-center justify-center rounded align-[1px] text-[10px] font-medium uppercase sm:mr-0",
+    LEVEL_BADGE_COLORS[entry.level]
+  )
+
   return (
     <div
-      className={`group flex gap-2 py-0.5 whitespace-nowrap hover:bg-muted/50 ${isClickable ? "cursor-pointer focus:outline-none focus:bg-muted/50" : ""}`}
+      className={cn(
+        "group py-1 hover:bg-muted/50 max-sm:border-b max-sm:border-border/40 max-sm:last:border-b-0 sm:py-0.5",
+        isClickable && "cursor-pointer focus:bg-muted/50 focus:outline-none"
+      )}
       onClick={isClickable ? onSelect : undefined}
       onKeyDown={handleKeyDown}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
     >
-      <span className="shrink-0 text-muted-foreground/60">{entry.time ? formatTimeOnly(Date.parse(entry.time) / 1000, true) : ""}</span>
-      <button
-        type="button"
-        onClick={onMute ? handleMute : undefined}
-        disabled={!onMute}
-        title={onMute ? t("logs.viewer.muteSimilarEntries") : undefined}
-        className={`group/mute shrink-0 w-12 h-4 inline-flex items-center justify-center text-[10px] font-medium uppercase rounded ${LEVEL_BADGE_COLORS[entry.level]} ${onMute ? "cursor-pointer" : ""}`}
-      >
-        <span className={onMute ? "group-hover/mute:hidden" : ""}>{entry.level}</span>
-        {onMute && <X className="hidden group-hover/mute:block size-2.5" />}
-      </button>
-      <span className={LEVEL_COLORS[entry.level]}>{entry.message}</span>
-      {extraKeys.length > 0 && (
-        <span className="text-muted-foreground/50">
-          {extraKeys.map((key) => (
-            <span key={key} className="ml-2">
-              <span className="text-muted-foreground/70">{key}</span>
-              <span className="text-muted-foreground/40">=</span>
-              <span className="text-muted-foreground/60">
-                {typeof entry.extra[key] === "string"? entry.extra[key] as string: JSON.stringify(entry.extra[key])}
+      {/* The clamp sits inside the padding of the row, so no part of a fifth line shows. */}
+      <div className={cn("max-sm:[overflow-wrap:anywhere] sm:flex sm:gap-2 sm:whitespace-nowrap", isClickable && "max-sm:line-clamp-4")}>
+        <span className="mr-2 text-muted-foreground/60 sm:mr-0 sm:shrink-0">{entry.time ? formatTimeOnly(Date.parse(entry.time) / 1000, true) : ""}</span>
+        {onMute ? (
+          <button
+            type="button"
+            onClick={handleMute}
+            title={t("logs.viewer.muteSimilarEntries")}
+            className={cn("group/mute cursor-pointer", badgeClass)}
+          >
+            <span className="group-hover/mute:hidden">{entry.level}</span>
+            <X className="hidden size-2.5 group-hover/mute:block" />
+          </button>
+        ) : (
+          <span className={badgeClass}>{entry.level}</span>
+        )}
+        <span className={LEVEL_COLORS[entry.level]}>{entry.message}</span>
+        {extraKeys.length > 0 && (
+          <span className="text-muted-foreground/50">
+            {extraKeys.map((key) => (
+              <span key={key} className="ml-2">
+                <span className="text-muted-foreground/70">{key}</span>
+                <span className="text-muted-foreground/40">=</span>
+                <span className="text-muted-foreground/60">
+                  {typeof entry.extra[key] === "string" ? entry.extra[key] as string : JSON.stringify(entry.extra[key])}
+                </span>
               </span>
-            </span>
-          ))}
-        </span>
-      )}
+            ))}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
 
 // Syntax highlight JSON string - returns React elements
-function highlightJson(json: string): React.ReactNode[] {
+function highlightJson(json: string): ReactNode[] {
   if (!json) return []
 
   // Token pattern: keys, strings, numbers, booleans, null, punctuation
   const tokenRegex = /("(?:\\.|[^"\\])*")\s*:|("(?:\\.|[^"\\])*")|(-?\d+\.?\d*(?:[eE][+-]?\d+)?)|(\btrue\b|\bfalse\b)|(\bnull\b)|([{}[\],:])/g
 
-  const result: React.ReactNode[] = []
+  const result: ReactNode[] = []
   let lastIndex = 0
   let key = 0
 
@@ -433,84 +407,65 @@ function highlightJson(json: string): React.ReactNode[] {
   return result
 }
 
-function LogEntryDialog({
+function LogEntryDetail({
   entry,
   open,
   onOpenChange,
+  onMute,
 }: {
-  entry: ParsedLogEntry | null
+  entry: ParsedLogEntry
   open: boolean
   onOpenChange: (open: boolean) => void
+  onMute: () => void
 }) {
   const { t } = useTranslation("settings")
   const { formatISOTimestamp } = useDateTimeFormatters()
   // Memoize JSON stringification and highlighting to avoid re-tokenizing on unrelated renders
   const { prettyJson, highlightedJson } = useMemo(() => {
-    if (!entry) return { prettyJson: "", highlightedJson: [] as React.ReactNode[] }
-    const jsonObj = {
-      level: entry.level,
-      time: entry.time,
-      message: entry.message,
-      ...entry.extra,
-    }
-    const pretty = JSON.stringify(jsonObj, null, 2)
+    const pretty = JSON.stringify({ level: entry.level, time: entry.time, message: entry.message, ...entry.extra }, null, 2)
     return { prettyJson: pretty, highlightedJson: highlightJson(pretty) }
   }, [entry])
 
-  const handleCopyJson = useCallback(async () => {
-    if (!prettyJson) return
+  const copy = async (text: string, successKey: "logs.toasts.jsonCopied" | "logs.toasts.rawCopied") => {
     try {
-      await copyTextToClipboard(prettyJson)
-      toast.success(t("logs.toasts.jsonCopied"))
+      await copyTextToClipboard(text)
+      toast.success(t(successKey))
     } catch {
       toast.error(t("logs.toasts.copyFailed"))
     }
-  }, [prettyJson, t])
-
-  const handleCopyRaw = useCallback(async () => {
-    if (!entry) return
-    try {
-      await copyTextToClipboard(entry.raw)
-      toast.success(t("logs.toasts.rawCopied"))
-    } catch {
-      toast.error(t("logs.toasts.copyFailed"))
-    }
-  }, [entry, t])
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {t("logs.entryDialog.title")}
-            {entry && (
-              <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded ${LEVEL_BADGE_COLORS[entry.level]}`}>
-                {entry.level}
-              </span>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            {entry?.time ? formatISOTimestamp(entry.time) : t("logs.entryDialog.rawLine")}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="max-h-[400px] overflow-auto rounded-md border bg-muted/30 p-4">
-          <pre className="font-mono text-sm whitespace-pre-wrap break-all">{highlightedJson}</pre>
-        </div>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" size="sm" onClick={handleCopyRaw}>
-            <Copy className="mr-2 h-4 w-4" />
-            {t("logs.entryDialog.copyRaw")}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleCopyJson}>
-            <Copy className="mr-2 h-4 w-4" />
+    <Editor
+      open={open}
+      onOpenChange={onOpenChange}
+      size="wide"
+      title={
+        <span className="flex items-center gap-2">
+          {t("logs.entryDialog.title")}
+          <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium uppercase", LEVEL_BADGE_COLORS[entry.level])}>{entry.level}</span>
+        </span>
+      }
+      description={entry.time ? formatISOTimestamp(entry.time) : t("logs.entryDialog.rawLine")}
+      secondaryActions={
+        <>
+          <Button type="button" variant="outline" onClick={() => void copy(prettyJson, "logs.toasts.jsonCopied")}>
+            <Copy />
             {t("logs.entryDialog.copyJson")}
           </Button>
-          <Button size="sm" onClick={() => onOpenChange(false)}>
-            {t("logs.entryDialog.close")}
+          <Button type="button" variant="outline" onClick={() => void copy(entry.raw, "logs.toasts.rawCopied")}>
+            <Copy />
+            {t("logs.entryDialog.copyRaw")}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <Button type="button" variant="outline" onClick={onMute}>
+            <EyeOff />
+            {t("logs.entryDialog.mute")}
+          </Button>
+        </>
+      }
+    >
+      <pre className="rounded-md border bg-muted/30 p-4 font-mono text-sm whitespace-pre-wrap [overflow-wrap:anywhere] max-sm:p-3 max-sm:text-xs">{highlightedJson}</pre>
+    </Editor>
   )
 }
 
@@ -518,17 +473,32 @@ function LogEntryDialog({
 const LOG_SOFT_CAP = 1000
 const LOG_HARD_CAP = 10000
 
-function LiveLogViewer({ configPath }: { configPath?: string }) {
+type Connection = "connecting" | "open" | "lost"
+
+const CONNECTION_DOT: Record<Connection, string> = {
+  connecting: "bg-muted-foreground/50",
+  open: "bg-emerald-500",
+  lost: "bg-amber-500",
+}
+
+const CONNECTION_LABEL = {
+  connecting: "logs.viewer.connecting",
+  open: "logs.viewer.connected",
+  lost: "logs.viewer.reconnecting",
+} as const satisfies Record<Connection, string>
+
+function LiveLogSection() {
   const { t } = useTranslation("settings")
   const { formatTimeOnly } = useDateTimeFormatters()
+  const phone = useIsPhone()
   const [lines, setLines] = useState<RawLogLine[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
-  const [isConnected, setIsConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [connection, setConnection] = useState<Connection>("connecting")
   const [selectedLevels, setSelectedLevels] = usePersistedLogLevels()
   const [searchQuery, setSearchQuery] = useState("")
   const [droppedWhilePaused, setDroppedWhilePaused] = useState(false)
-  const [selectedEntry, setSelectedEntry] = useState<ParsedLogEntry | null>(null)
+  // The entry stays while its detail fades out.
+  const [detail, setDetail] = useState<{ entry: ParsedLogEntry; open: boolean } | null>(null)
   const [logExclusions, setLogExclusions] = usePersistedLogExclusions()
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -536,14 +506,12 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
   const nextIdRef = useRef(0)
   const autoScrollRef = useRef(autoScroll)
 
-  // Keep ref in sync for use in event handler
-  useEffect(() => {
-    autoScrollRef.current = autoScroll
-    // Clear dropped warning when auto-scroll is enabled (trimming resumes)
-    if (autoScroll) {
-      setDroppedWhilePaused(false)
-    }
-  }, [autoScroll])
+  const setFollowing = (follow: boolean) => {
+    autoScrollRef.current = follow
+    setAutoScroll(follow)
+    // Following trims the buffer again, so the warning about dropped entries goes away.
+    if (follow) setDroppedWhilePaused(false)
+  }
 
   const connect = useCallback(() => {
     if (eventSourceRef.current) {
@@ -554,14 +522,12 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
       reconnectTimeoutRef.current = null
     }
 
-    setError(null)
     const url = api.getLogStreamUrl(1000)
     const es = new EventSource(url, { withCredentials: true })
     eventSourceRef.current = es
 
     es.onopen = () => {
-      setIsConnected(true)
-      setError(null)
+      setConnection("open")
     }
 
     es.onmessage = (event) => {
@@ -582,8 +548,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
     }
 
     es.onerror = () => {
-      setIsConnected(false)
-      setError("Connection lost. Reconnecting...")
+      setConnection("lost")
       es.close()
       reconnectTimeoutRef.current = window.setTimeout(connect, 3000)
     }
@@ -630,8 +595,162 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
     })
   }, [parsedEntries, selectedLevels, searchQuery, logExclusions])
 
+  // Auto-scroll to bottom when enabled
+  useEffect(() => {
+    if (autoScroll && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [filteredEntries, autoScroll])
+
+  const handleMuteMessage = (message: string) => {
+    if (!logExclusions.includes(message)) {
+      setLogExclusions([...logExclusions, message])
+    }
+  }
+
+  return (
+    <Section
+      title={t("logs.viewer.title")}
+      description={t("logs.viewer.description")}
+      actions={
+        <>
+          <Button variant="outline" size="sm" onClick={() => setFollowing(!autoScroll)}>
+            {autoScroll ? <Pause /> : <ArrowDownToLine />}
+            {autoScroll ? t("logs.viewer.pause") : t("logs.viewer.follow")}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setLines([])}>
+            <Eraser />
+            {t("logs.viewer.clear")}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <LogSearch value={searchQuery} onChange={setSearchQuery} />
+          <LogFilter
+            selectedLevels={selectedLevels}
+            onSelectedLevelsChange={setSelectedLevels}
+            exclusions={logExclusions}
+            onExclusionsChange={setLogExclusions}
+          />
+        </div>
+
+        <LogScrollBody ref={scrollRef} label={t("logs.viewer.title")}>
+          {filteredEntries.length > 0 ? (
+            filteredEntries.map((entry) => (
+              <LogEntry
+                key={entry.id}
+                entry={entry}
+                formatTimeOnly={formatTimeOnly}
+                onSelect={() => setDetail({ entry, open: true })}
+                onMute={phone ? undefined : () => handleMuteMessage(entry.message)}
+              />
+            ))
+          ) : (
+            <span className="text-muted-foreground">
+              {lines.length > 0 ? t("logs.viewer.noEntriesMatch") : t("logs.viewer.waiting")}
+            </span>
+          )}
+        </LogScrollBody>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span role="status" className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", CONNECTION_DOT[connection])} />
+            <span className={connection === "lost" ? "text-amber-500" : undefined}>{t(CONNECTION_LABEL[connection])}</span>
+          </span>
+          <span>
+            {t("logs.viewer.showing", {
+              shown: filteredEntries.length,
+              total: lines.length,
+              max: autoScroll ? LOG_SOFT_CAP.toLocaleString() : LOG_HARD_CAP.toLocaleString(),
+              mode: autoScroll ? t("logs.viewer.maxLive") : t("logs.viewer.maxPaused"),
+            })}
+          </span>
+          {droppedWhilePaused && <span className="text-amber-500">{t("logs.viewer.oldestEntriesDropped")}</span>}
+        </div>
+      </div>
+
+      {detail && (
+        <LogEntryDetail
+          entry={detail.entry}
+          open={detail.open}
+          onOpenChange={(open) => setDetail((prev) => prev && { ...prev, open })}
+          onMute={() => {
+            handleMuteMessage(detail.entry.message)
+            setDetail((prev) => prev && { ...prev, open: false })
+          }}
+        />
+      )}
+    </Section>
+  )
+}
+
+/**
+ * The log lines, in a box that fills most of the screen height. On a phone it reaches the edges of the card, so -mx-4
+ * repeats the phone padding of Section, and its lines wrap, so it never scrolls sideways.
+ */
+function LogScrollBody({ ref, label, children }: { ref: Ref<HTMLDivElement>; label: string; children: ReactNode }) {
+  return (
+    <div
+      ref={ref}
+      role="region"
+      aria-label={label}
+      tabIndex={0}
+      className="h-[clamp(20rem,calc(100dvh-24rem),60rem)] overflow-auto rounded-md border bg-muted/30 p-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:-mx-4 max-sm:h-[max(20rem,calc(100dvh-13rem))] max-sm:overflow-x-hidden max-sm:rounded-none max-sm:border-x-0 max-sm:px-4"
+      style={{ overflowAnchor: "none" }}
+    >
+      <div className="font-mono text-xs leading-relaxed sm:w-fit sm:min-w-full">{children}</div>
+    </div>
+  )
+}
+
+function LogSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { t } = useTranslation("settings")
+
+  return (
+    <div className="relative min-w-0 flex-1 sm:max-w-sm">
+      <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        type="text"
+        aria-label={t("logs.viewer.searchPlaceholder")}
+        placeholder={t("logs.viewer.searchPlaceholder")}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="pr-9 pl-8 max-sm:h-10"
+      />
+      {value && (
+        <button
+          type="button"
+          aria-label={t("common:header.clearSearch")}
+          onClick={() => onChange("")}
+          className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded-sm text-muted-foreground hover:text-foreground pointer-coarse:size-9"
+        >
+          <X className="size-4" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+interface LogFilterProps {
+  selectedLevels: ReadonlySet<LogLevel>
+  onSelectedLevelsChange: (update: (prev: Set<LogLevel>) => Set<LogLevel>) => void
+  exclusions: readonly string[]
+  onExclusionsChange: (patterns: string[]) => void
+}
+
+/** The level filter and the muted messages of the viewer, behind one button. */
+function LogFilter({ selectedLevels, onSelectedLevelsChange, exclusions, onExclusionsChange }: LogFilterProps) {
+  const { t } = useTranslation("settings")
+  // Until the server answers, the levels show the default, and a pick would be lost.
+  const settled = useClientSettingsSettled()
+  const summary = selectedLevels.size === ALL_LOG_LEVELS.length
+    ? t("logs.viewer.allLevels")
+    : selectedLevels.size === 0 ? t("logs.viewer.none") : t("logs.viewer.levelCount", { count: selectedLevels.size })
+
   const toggleLevel = (level: LogLevel) => {
-    setSelectedLevels((prev) => {
+    onSelectedLevelsChange((prev) => {
       const next = new Set(prev)
       if (next.has(level)) {
         next.delete(level)
@@ -642,234 +761,76 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
     })
   }
 
-  const selectAll = () => setSelectedLevels(new Set(ALL_LOG_LEVELS))
-  const selectNone = () => setSelectedLevels(new Set())
-
-  // Auto-scroll to bottom when enabled
-  useEffect(() => {
-    if (autoScroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [filteredEntries, autoScroll])
-
-  const handleClear = () => {
-    setLines([])
-  }
-
-  const handleMuteMessage = (message: string) => {
-    if (!logExclusions.includes(message)) {
-      setLogExclusions([...logExclusions, message])
-    }
-  }
-
-  const handleUnmuteMessage = (message: string) => {
-    setLogExclusions(logExclusions.filter((m) => m !== message))
-  }
+  const smallButton = "h-7 px-2 text-xs pointer-coarse:h-9"
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div
-            className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
-          />
-          <span className="text-sm text-muted-foreground">
-            {isConnected ? t("logs.viewer.connected") : t("logs.viewer.disconnected")}
-          </span>
-          {error && (
-            <span className="flex items-center gap-1 text-sm text-yellow-500">
-              <AlertCircle className="h-3 w-3" />
-              {error}
-            </span>
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="min-w-0 shrink-0 max-sm:h-10">
+          <Filter />
+          <span>{summary}</span>
+          {exclusions.length > 0 && (
+            <span className="text-muted-foreground">· {t("logs.viewer.mutedCount", { count: exclusions.length })}</span>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder={t("logs.viewer.searchPlaceholder")}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 w-40 pl-7 pr-7 text-xs"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1">
-                <Filter className="h-3.5 w-3.5" />
-                <span className="text-xs">
-                  {selectedLevels.size === ALL_LOG_LEVELS.length ? t("logs.viewer.allLevels") : selectedLevels.size === 0 ? t("logs.viewer.none") : t("logs.viewer.levelCount", { count: selectedLevels.size })}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+          <ChevronDown className="opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-0">
+        <div className="p-2">
+          <div className="mb-1 flex items-center justify-between gap-2 pl-2">
+            <span className="text-xs font-medium">{t("logs.viewer.levels")}</span>
+            <span className="flex">
+              <Button variant="ghost" size="sm" className={smallButton} disabled={!settled} onClick={() => onSelectedLevelsChange(() => new Set(ALL_LOG_LEVELS))}>
+                {t("logs.viewer.all")}
               </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-44 p-2" align="start">
-              <div className="flex justify-between mb-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={selectAll}
-                >
-                  {t("logs.viewer.all")}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={selectNone}
-                >
-                  {t("logs.viewer.none")}
-                </Button>
-              </div>
-              <div className="space-y-1">
-                {ALL_LOG_LEVELS.map((level) => (
-                  <label
-                    key={level}
-                    className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={selectedLevels.has(level)}
-                      onCheckedChange={() => toggleLevel(level)}
-                    />
-                    <span
-                      className={`text-xs font-medium uppercase ${LEVEL_BADGE_COLORS[level]} px-1.5 py-0.5 rounded`}
-                    >
-                      {level}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-          {logExclusions.length > 0 && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 gap-1">
-                  <span className="text-xs">{t("logs.viewer.mutedCount", { count: logExclusions.length })}</span>
-                  <ChevronDown className="h-3.5 w-3.5 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-2" align="start">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-medium">{t("logs.viewer.mutedMessages")}</span>
+              <Button variant="ghost" size="sm" className={smallButton} disabled={!settled} onClick={() => onSelectedLevelsChange(() => new Set())}>
+                {t("logs.viewer.none")}
+              </Button>
+            </span>
+          </div>
+          {ALL_LOG_LEVELS.map((level) => (
+            <label key={level} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted pointer-coarse:py-2.5">
+              <Checkbox checked={selectedLevels.has(level)} disabled={!settled} onCheckedChange={() => toggleLevel(level)} />
+              <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium uppercase", LEVEL_BADGE_COLORS[level])}>{level}</span>
+            </label>
+          ))}
+        </div>
+        {exclusions.length > 0 && (
+          <div className="border-t p-2">
+            <div className="mb-1 flex items-center justify-between gap-2 pl-2">
+              <span className="text-xs font-medium">{t("logs.viewer.mutedMessages")}</span>
+              <Button variant="ghost" size="sm" className={smallButton} onClick={() => onExclusionsChange([])}>
+                {t("logs.viewer.clearAll")}
+              </Button>
+            </div>
+            <ul className="max-h-48 overflow-y-auto">
+              {exclusions.map((message) => (
+                <li key={message} className="flex items-center gap-2 rounded py-0.5 pl-2 hover:bg-muted">
+                  <span className="min-w-0 flex-1 text-xs [overflow-wrap:anywhere]">{message}</span>
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setLogExclusions([])}
+                    size="icon"
+                    aria-label={t("logs.viewer.unmute", { message })}
+                    onClick={() => onExclusionsChange(exclusions.filter((m) => m !== message))}
+                    className="size-7 shrink-0 text-muted-foreground hover:text-foreground pointer-coarse:size-10"
                   >
-                    {t("logs.viewer.clearAll")}
+                    <X className="size-3.5" />
                   </Button>
-                </div>
-                <div className="space-y-1 max-h-48 overflow-auto">
-                  {logExclusions.map((message) => (
-                    <div
-                      key={message}
-                      className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-muted group"
-                    >
-                      <span className="text-xs truncate" title={message}>
-                        {message}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleUnmuteMessage(message)}
-                        className="shrink-0 text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
-          <Button variant="outline" size="sm" onClick={handleClear}>
-            {t("logs.viewer.clear")}
-          </Button>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="autoscroll"
-              checked={autoScroll}
-              onCheckedChange={setAutoScroll}
-            />
-            <Label htmlFor="autoscroll" className="text-sm">
-              {t("logs.viewer.autoScroll")}
-            </Label>
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
-      </div>
-
-      <div
-        ref={scrollRef}
-        className="h-[clamp(300px,calc(100dvh-24rem),600px)] overflow-auto rounded-md border bg-muted/30 p-3"
-        style={{ overflowAnchor: "none" }}
-      >
-        <div className="font-mono text-xs leading-relaxed w-fit min-w-full">
-          {filteredEntries.length > 0 ? (
-            filteredEntries.map((entry) => (
-              <LogEntry
-                key={entry.id}
-                entry={entry}
-                formatTimeOnly={formatTimeOnly}
-                onSelect={() => setSelectedEntry(entry)}
-                onMute={() => handleMuteMessage(entry.message)}
-              />
-            ))
-          ) : (
-            <span className="text-muted-foreground">
-              {lines.length > 0 ? t("logs.viewer.noEntriesMatch") : t("logs.viewer.waiting")}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <span>
-            {t("logs.viewer.showing", {
-              shown: filteredEntries.length,
-              total: lines.length,
-              max: autoScroll ? LOG_SOFT_CAP.toLocaleString() : LOG_HARD_CAP.toLocaleString(),
-              mode: autoScroll ? t("logs.viewer.maxLive") : t("logs.viewer.maxPaused"),
-            })}
-          </span>
-          {droppedWhilePaused && (
-            <span className="text-yellow-500">{t("logs.viewer.oldestEntriesDropped")}</span>
-          )}
-        </span>
-        {configPath && (
-          <span className="flex items-center gap-1.5 font-mono text-muted-foreground/70">
-            <FileText className="h-3 w-3" />
-            {configPath}
-          </span>
         )}
-      </div>
-
-      <LogEntryDialog
-        entry={selectedEntry}
-        open={selectedEntry !== null}
-        onOpenChange={(open) => !open && setSelectedEntry(null)}
-      />
-    </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
-function LogFilesList() {
+function LogFilesSection() {
   const { t } = useTranslation("settings")
   const { formatDate } = useDateTimeFormatters()
-  const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set())
-  const { data: files } = useQuery({
+  const [downloadingFiles, setDownloadingFiles] = useState<ReadonlySet<string>>(new Set())
+  const query = useQuery({
     queryKey: ["log-files"],
     queryFn: () => api.getLogFiles(),
     staleTime: 30 * 1000,
@@ -890,85 +851,25 @@ function LogFilesList() {
     }
   }
 
-  if (!files || files.length === 0) {
-    return null
-  }
-
   return (
-    <div className="space-y-2">
-      <h4 className="text-sm font-medium">{t("logs.files.title")}</h4>
-      <div className="divide-y rounded-md border">
-        {files.map((file) => (
-          <div key={file.name} className="flex items-center justify-between gap-4 px-3 py-2">
-            <div className="min-w-0">
-              <p className="truncate font-mono text-sm" title={file.name}>{file.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatBytes(file.sizeBytes)} • {formatDate(new Date(file.modTime))}
-              </p>
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="shrink-0"
-              disabled={downloadingFiles.has(file.name)}
-              onClick={() => handleDownload(file.name)}
-            >
-              {downloadingFiles.has(file.name) ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              <span className="sr-only">{t("logs.files.downloadSrOnly", { filename: file.name })}</span>
-            </Button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-export function LogSettingsPanel() {
-  const { t } = useTranslation("settings")
-  const { data: settings } = useQuery({
-    queryKey: ["log-settings"],
-    queryFn: () => api.getLogSettings(),
-  })
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <CardTitle>{t("logs.title")}</CardTitle>
-            <CardDescription>
-              {t("logs.description")}
-            </CardDescription>
-          </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
-                <Settings className="h-4 w-4" />
-                <span className="sr-only">{t("logs.settingsSrOnly")}</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80" align="end">
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <h4 className="font-medium text-sm">{t("logs.configuration.title")}</h4>
-                  <p className="text-xs text-muted-foreground">
-                    {t("logs.configuration.description")}
-                  </p>
-                </div>
-                <LogSettingsForm />
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <LiveLogViewer configPath={settings?.configPath} />
-        <LogFilesList />
-      </CardContent>
-    </Card>
+    <Section title={t("logs.files.title")} description={t("logs.files.description")} queries={[query]}>
+      <ResourceList
+        label={t("logs.files.title")}
+        items={query.data ?? []}
+        itemKey={(file) => file.name}
+        row={(file) => ({
+          title: file.name,
+          icon: FileText,
+          meta: [formatBytes(file.sizeBytes), formatDate(new Date(file.modTime))],
+          actions: [{
+            label: t("logs.files.download"),
+            icon: Download,
+            pending: downloadingFiles.has(file.name),
+            onSelect: () => void handleDownload(file.name),
+          }],
+        })}
+        empty={{ title: t("logs.files.emptyTitle"), description: t("logs.files.emptyDescription") }}
+      />
+    </Section>
   )
 }

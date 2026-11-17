@@ -16,6 +16,8 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
+import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { themeArea } from "@/lib/theme-areas"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,6 +36,7 @@ import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { SupportDialog } from "@/components/support/SupportDialog"
+import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
   Tooltip,
@@ -41,16 +44,18 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
-import { useSyncStream } from "@/contexts/SyncStreamContext"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
+import { useOpenSystemNotice, useSystemNotices } from "@/hooks/useSystemNotices"
 import { useDebounce } from "@/hooks/useDebounce"
+import { instanceCapabilitiesQuery } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
-import { useVersionInfo } from "@/hooks/useSelfUpdate"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import {
@@ -58,9 +63,12 @@ import {
   isAllInstancesScope,
   normalizeUnifiedInstanceIds
 } from "@/lib/instances"
+import { modShortcut } from "@/lib/keyboard"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
+import { hasSelection } from "@/lib/torrent-selection"
+import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
-import type { InstanceCapabilities, TorrentStreamPayload } from "@/types"
+import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -138,18 +146,10 @@ export function Header({
   const { state: layoutRouteState } = useLayoutRoute()
   const spreadsheetDisguise = useSpreadsheetDisguise()
 
-  // Get selection state from context
-  const {
-    selectedHashes,
-    selectedTorrents,
-    isAllSelected,
-    totalSelectionCount,
-    selectedTotalSize,
-    excludeHashes,
-    excludeTargets,
-    filters,
-    clearSelection,
-  } = useTorrentSelection()
+  const { selection } = useTorrentSelectionContext()
+  const selectionSummary = useTorrentSelectionSummary()
+  // CSS hides the header on the phone layout, so the management bar does not mount there.
+  const isMobile = useIsMobile()
 
   const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
@@ -185,9 +185,7 @@ export function Header({
   )
   const unifiedCapabilitiesResults = useQueries({
     queries: unifiedManageableInstances.map((instance) => ({
-      queryKey: ["instance-capabilities", instance.id],
-      queryFn: () => api.getInstanceCapabilities(instance.id),
-      staleTime: 60_000,
+      ...instanceCapabilitiesQuery(instance.id),
       enabled: isAllInstancesRoute,
     })),
   })
@@ -239,7 +237,8 @@ export function Header({
     setSearchValue(prev => (prev.trim() === routeQuery ? prev : routeQuery))
   }, [selectedInstanceId, routeSearch?.q])
 
-  // Update URL search param after debounce
+  // Update URL search param after debounce. Only new text writes the URL: on a
+  // change of page, the debounced text is older than the q of the new URL.
   useEffect(() => {
     if (!shouldShowInstanceControls) return
     const trimmedSearch = debouncedSearch.trim()
@@ -248,9 +247,9 @@ export function Header({
     else delete next.q
     navigateWithSearch({ navigate, search: next, replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, shouldShowInstanceControls])
+  }, [debouncedSearch])
 
-  const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
+  const isGlobSearch = !!searchValue && /[*?]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [showSupport, setShowSupport] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -266,87 +265,22 @@ export function Header({
     setFilterSidebarCollapsed((prev) => !prev)
   }, [setFilterSidebarCollapsed])
 
-  // Detect platform for appropriate key display
-  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
-  const shortcutKey = isMac ? "⌘K" : "Ctrl+K"
-
-  // Global keyboard shortcut to focus search
+  // Many layouts type "/" with Shift, for example Shift+7 on a Nordic or a German keyboard.
   useHotkeys(
-    "meta+k, ctrl+k",
-    (event) => {
-      event.preventDefault()
-      searchInputRef.current?.focus()
-    },
+    ["/", "shift+/"],
+    () => searchInputRef.current?.focus(),
     {
+      useKey: true,
       preventDefault: true,
-      enableOnFormTags: ["input", "textarea", "select"],
       enabled: shouldShowInstanceControls,
+      // A narrow window hides the search field, and the key then stays with the browser.
+      ignoreEventWhen: event => !searchInputRef.current?.offsetParent || (event.target instanceof Element && event.target.closest("[role=\"dialog\"]") !== null),
     },
     [shouldShowInstanceControls]
   )
   const { theme } = useTheme()
   const { viewMode } = usePersistedCompactViewState("desktop")
-  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
-
-  useEffect(() => {
-    setStreamActiveTaskCount(null)
-  }, [selectedInstanceId])
-
-  const activeTaskStreamParams = useMemo(() => {
-    // The torrent stream is keyed to a single concrete instance; the all-instances
-    // scope (selectedInstanceId <= 0) must not open a stream or the backend rejects
-    // the whole multiplexed batch and the shared EventSource reconnects forever.
-    if (!shouldShowInstanceControls || selectedInstanceId === null || selectedInstanceId <= 0) {
-      return null
-    }
-
-    return {
-      instanceId: selectedInstanceId,
-      page: 0,
-      limit: 1,
-      sort: "added_on",
-      order: "desc" as const,
-    }
-  }, [selectedInstanceId, shouldShowInstanceControls])
-
-  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
-    const value = payload.data?.activeTaskCount
-    if (typeof value === "number") {
-      setStreamActiveTaskCount(value)
-    }
-  }, [])
-
-  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
-    enabled: Boolean(activeTaskStreamParams),
-    onMessage: handleActiveTaskStreamMessage,
-  })
-
-  // Drop the streamed value when the stream is not live so the count reflects the
-  // fresh REST fallback instead of a stale snapshot from before the disconnect.
-  useEffect(() => {
-    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
-      setStreamActiveTaskCount(null)
-    }
-  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
-
-  const shouldUseActiveTaskFallback =
-    canManageSelectedInstance &&
-    selectedInstanceId !== null &&
-    (
-      !activeTaskStreamState.connected ||
-      !!activeTaskStreamState.error ||
-      streamActiveTaskCount === null
-    )
-
-  // Active task count is streamed via SSE; REST polling only runs as fallback.
-  const { data: polledActiveTaskCount = 0 } = useQuery({
-    queryKey: ["active-task-count", selectedInstanceId],
-    queryFn: () => canManageSelectedInstance && selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: shouldUseActiveTaskFallback,
-    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false, // Poll every 30 seconds (lightweight check) when stream is unavailable
-    refetchIntervalInBackground: true,
-  })
-  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
+  const activeTaskCount = useActiveTaskCount(selectedInstanceId, canManageSelectedInstance && shouldShowInstanceControls)
 
   // Query for available updates
   const { data: updateInfo } = useQuery({
@@ -356,7 +290,8 @@ export function Header({
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
-  const selfUpdateAvailable = useVersionInfo().data?.selfUpdate === true
+  const systemNotices = useSystemNotices()
+  const openSystemNotice = useOpenSystemNotice(systemNotices)
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
   const updateItemLabel = updateInfo && (
     <>
@@ -409,7 +344,7 @@ export function Header({
   // Assigned, not returned inline: the spreadsheet ribbon strip mounts as a
   // sibling above the header without reindenting the whole header tree.
   const headerElement = (
-    <header className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0", headerHeight)}>
+    <header {...themeArea("app-header")} className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0", headerHeight, !isInstanceRoute && "sideways:hidden")}>
       <div className={cn("hidden md:flex items-center gap-2 mr-2 order-1 lg:order-none", innerHeight)}>
         {children}
         {instanceName && (hasMultipleActiveInstances || isAllInstancesRoute) ? (
@@ -651,21 +586,11 @@ export function Header({
             )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
-          {(selectedHashes.length > 0 || isAllSelected) && (
+          {!isMobile && selectionSummary && hasSelection(selection) && (
             <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
                 instanceId={selectedInstanceId ?? undefined}
-                instanceIds={isAllInstancesRoute && normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : undefined}
-                selectedHashes={selectedHashes}
-                selectedTorrents={selectedTorrents}
-                isAllSelected={isAllSelected}
-                totalSelectionCount={totalSelectionCount}
-                totalSelectionSize={selectedTotalSize}
-                filters={filters}
-                search={routeSearch?.q}
-                excludeHashes={excludeHashes}
-                excludeTargets={excludeTargets}
-                onComplete={clearSelection}
+                actionTarget={selectionSummary.actionTarget}
               />
             </div>
           )}
@@ -682,7 +607,7 @@ export function Header({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300" />
               <Input
                 ref={searchInputRef}
-                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents", { shortcutKey })}
+                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents")}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -705,7 +630,7 @@ export function Header({
                     }, 100)
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
+                className={`w-full pl-9 ${searchValue ? "pr-16" : "pr-9"} transition-[box-shadow,border-color] duration-200 text-xs ${searchValue ? "ring-1 ring-primary/50" : ""
                 } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -731,7 +656,7 @@ export function Header({
                 )}
                 {/* Info tooltip */}
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger asChild openOnTap>
                     <button
                       type="button"
                       className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
@@ -750,6 +675,8 @@ export function Header({
                         <li>• {t("header.smartSearchFields")}</li>
                         <li>• {t("header.smartSearchEnter")}</li>
                         <li>• {t("header.smartSearchAuto")}</li>
+                        <li>• {t("header.smartSearchShortcut", { shortcutKey: "/" })}</li>
+                        <li>• {t("header.smartSearchPalette", { shortcutKey: modShortcut("K") })}</li>
                       </ul>
                     </div>
                   </TooltipContent>
@@ -786,21 +713,21 @@ export function Header({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors relative">
                 <Menu className="h-4 w-4" />
+                {systemNotices.length > 0 && (
+                  <span className={cn("absolute top-1 left-1 h-2 w-2 rounded-full", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
+                )}
                 {updateInfo && (
                   <span className="absolute top-1 right-1 h-2 w-2 bg-green-500 rounded-full" />
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent align="end" className={cn(systemNotices.length > 0 ? "w-72" : "w-52")}>
+              <SystemNoticeMenuItems notices={systemNotices} onOpen={openSystemNotice.open} />
               {updateInfo && (
                 <>
                   <DropdownMenuItem asChild>
                     {/* Settings holds the Install update button. */}
-                    {selfUpdateAvailable ? (
-                      <Link to="/settings" search={{ tab: "application" }} className={updateItemClass}>{updateItemLabel}</Link>
-                    ) : (
-                      <a href={updateInfo.html_url} target="_blank" rel="noopener noreferrer" className={updateItemClass}>{updateItemLabel}</a>
-                    )}
+                    <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
@@ -1061,6 +988,7 @@ export function Header({
       })()}
 
       <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
+      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </header>
   )
 

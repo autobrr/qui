@@ -66,7 +66,7 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 		libraryTorrents   []qbt.Torrent
 		libraryFiles      map[string]qbt.TorrentFiles
 		decisionClass     searchCandidateClass
-		mismatchReason    string
+		relaxed           matchDifferences
 		applied           bool
 		wantDiverted      bool
 		wantSuccess       bool
@@ -115,7 +115,7 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 			libraryTorrents:   episodeTorrents,
 			libraryFiles:      episodeFiles,
 			decisionClass:     searchCandidateClassExactSizeFallback,
-			mismatchReason:    groupMismatchReason,
+			relaxed:           differencesOf(differenceGroup),
 			applied:           true,
 			wantDiverted:      false,
 			wantSuccess:       false,
@@ -164,14 +164,15 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 				},
 			}
 
+			withLinkAdder(svc)
 			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 				TorrentData:            packB64,
 				TargetInstanceIDs:      []int{instance.ID},
 				FindIndividualEpisodes: true,
 				IndexerName:            "tracker",
 				SearchDecision: searchDecisionProvenance{
-					Class:                tt.decisionClass,
-					StrictMismatchReason: tt.mismatchReason,
+					Class:   tt.decisionClass,
+					Relaxed: tt.relaxed,
 				},
 			})
 			require.NoError(t, err)
@@ -231,6 +232,41 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 	require.Equal(t, 1, response.Results[1].InstanceID)
 	require.Equal(t, "main", response.Results[1].InstanceName)
 	require.Equal(t, "added", response.Results[1].Status)
+	require.NotNil(t, response.Results[1].MatchedTorrent)
+	require.Equal(t, "Show.Title.S01.1080p.WEB.H264-GRP", response.Results[1].MatchedTorrent.Name)
+}
+
+// TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance covers a routed pack: the
+// result keeps the Source instance and names the Cross-seed instance that got the add.
+func TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance(t *testing.T) {
+	t.Parallel()
+
+	settings := models.DefaultCrossSeedAutomationSettings()
+	settings.SeasonPackAutomationEnabled = true
+
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{
+			1: {ID: 1, Name: "main"},
+			2: {ID: 2, Name: "seedbox"},
+		}},
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return settings, nil
+		},
+		seasonPackApplier: func(context.Context, *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
+			return &SeasonPackApplyResponse{Applied: true, InstanceID: 1, AddedInstanceID: 2, MatchedEpisodes: 3, TotalEpisodes: 3}, nil
+		},
+	}
+
+	response := &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: 1, InstanceName: "main", Status: "no_match"}}}
+	svc.maybeDivertSeasonPack(context.Background(), &CrossSeedRequest{}, "Show.Title.S01.1080p.WEB.H264-GRP", response)
+
+	require.Len(t, response.Results, 1)
+	result := response.Results[0]
+	require.Equal(t, "added", result.Status)
+	require.Equal(t, 1, result.InstanceID)
+	require.Equal(t, "main", result.InstanceName)
+	require.Equal(t, 2, result.CrossSeedInstanceID)
+	require.Equal(t, "seedbox", result.CrossSeedInstanceName)
 }
 
 // TestProcessAutomationCandidate_DownloadsPackForDiversion covers the RSS flow:

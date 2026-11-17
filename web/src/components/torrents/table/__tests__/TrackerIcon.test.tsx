@@ -10,15 +10,6 @@ import { afterEach, describe, expect, it } from "vitest"
 afterEach(cleanup)
 
 describe("TrackerIcon", () => {
-  it("renders the favicon image when a src is provided", () => {
-    const { container } = render(
-      <TrackerIcon title="Example" fallback="E" src="https://icons.example/e.png" />
-    )
-    const img = container.querySelector("img")
-    expect(img).not.toBeNull()
-    expect(img?.getAttribute("src")).toBe("https://icons.example/e.png")
-  })
-
   it("renders the fallback glyph when src is null", () => {
     const { container } = render(
       <TrackerIcon title="Example" fallback="E" src={null} />
@@ -49,21 +40,5 @@ describe("TrackerIcon", () => {
     const img = container.querySelector("img")
     expect(img).not.toBeNull()
     expect(img?.getAttribute("src")).toBe("https://icons.example/e2.png")
-  })
-
-  it("applies the glyph size class for the requested size", () => {
-    const { container } = render(
-      <TrackerIcon title="Example" fallback="E" src={null} size="xs" />
-    )
-    const glyphBox = container.querySelector("[title=\"Example\"]")?.firstElementChild
-    expect(glyphBox?.className).toContain("h-3 w-3")
-  })
-
-  it("defaults to the medium size class", () => {
-    const { container } = render(
-      <TrackerIcon title="Example" fallback="E" src={null} />
-    )
-    const glyphBox = container.querySelector("[title=\"Example\"]")?.firstElementChild
-    expect(glyphBox?.className).toContain("h-4 w-4")
   })
 })

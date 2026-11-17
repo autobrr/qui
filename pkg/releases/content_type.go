@@ -27,8 +27,8 @@ const (
 )
 
 // ContentTypes lists every value DetermineContentType can return, in display order.
-// The automation rule editor mirrors it as CONTENT_TYPE_VALUES in
-// web/src/components/query-builder/constants.ts.
+// The automation rule editor reads it from the generated
+// web/src/components/query-builder/fields.generated.ts.
 var ContentTypes = []ContentType{
 	ContentTypeMovie,
 	ContentTypeTV,

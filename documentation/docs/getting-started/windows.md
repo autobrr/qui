@@ -23,7 +23,7 @@ There are two ways to install qui. The MSI is the easier one. Use the zip when y
 
 The MSI installs qui for your Windows account only. It needs no administrator rights and shows no setup wizard. It does these things:
 
-- It puts `qui.exe` and `qui-tray.exe` in `%LOCALAPPDATA%\Programs\qui`.
+- It puts `qui.exe`, `qui-tray.exe`, and `THIRD_PARTY_NOTICES` in `%LOCALAPPDATA%\Programs\qui`.
 - It adds a **qui** entry to the Start Menu. The entry starts the Tray.
 - It adds the install folder to your `PATH`, so `qui.exe` works in a new terminal.
 - It adds qui to **Settings → Apps → Installed apps**, where you can uninstall it.
@@ -124,7 +124,7 @@ To restart the service, click **End** and then **Run** in the right sidebar of T
 
 ## Restart from qui
 
-qui can restart itself through the API (`POST /api/system/restart`). On Windows, `qui serve` starts two `qui.exe` processes. The first process only supervises. The second process serves qui. When qui restarts, only the second process stops and starts again.
+qui can restart itself through the API (`POST /api/system/restart`). This route needs a signed-in browser, or authentication turned off, and returns `403` to an API key. On Windows, `qui serve` starts two `qui.exe` processes. The first process only supervises. The second process serves qui. When qui restarts, only the second process stops and starts again.
 
 - The task shows **Running** during and after the restart.
 - **End** stops both processes.
@@ -134,9 +134,13 @@ A task that you created with the steps above needs no change.
 
 ## Updating
 
+:::note
+An update replaces `qui-tray.exe` only when the file is already in the folder with `qui.exe`. An update from 1.30.0 or older does not add the file, because those versions have no Tray. After that update, copy `qui-tray.exe` from the Windows zip on [GitHub Releases](https://github.com/autobrr/qui/releases/latest) into the folder with `qui.exe`. Later updates replace both files.
+:::
+
 ### Update from the web UI
 
-Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task or quit the Tray. qui replaces `qui.exe` and `qui-tray.exe` and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
+Click **Install update** in the update banner or in **Settings → Application**. You do not have to stop the task or quit the Tray. qui replaces `qui.exe` and `qui-tray.exe` (see the note above) and restarts on the new version, and the task stays **Running**. For the conditions and the rollback, see [Update from the web UI](./installation.md#update-from-the-web-ui).
 
 ### Update an MSI install
 
@@ -146,7 +150,7 @@ You can also install a newer MSI. Quit the Tray, or end the scheduled task, befo
 
 ### Update from the shell
 
-qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe`. Stop the scheduled task or quit the Tray first. A running qui keeps the old version until you restart it.
+qui has a built-in update command. It replaces `qui.exe` and `qui-tray.exe` (see the note above). Stop the scheduled task or quit the Tray first. A running qui keeps the old version until you restart it.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
 2. Run the updater:
@@ -170,6 +174,8 @@ The update keeps the previous version as `qui-v<old version>.bak.exe` next to `q
 3. Right-click the **qui** task and click **Run**.
 
 If you use the Tray, click **Quit** in the Tray menu before step 2, and start `qui-tray.exe` again after it.
+
+If the backup is from 1.30.0 or older, skip the second `move` command and do not start `qui-tray.exe`, because it is still the new version. Start `qui.exe` as you did before the update.
 
 :::warning
 If you want a full rollback, back up `%APPDATA%\qui\` before you update. A new version can migrate the database, which changes its structure. The old version cannot always read a migrated database, and a move of the backup binary does not undo a migration.

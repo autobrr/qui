@@ -2,7 +2,10 @@ import fs from "node:fs"
 import path from "node:path"
 import ts from "typescript"
 
-const webRoot = path.resolve(import.meta.dirname, "..")
+// With --preserve-symlinks-main, import.meta.filename can be a symlink outside the repository, so the root comes from
+// the real path.
+const scriptPath = fs.realpathSync(import.meta.filename)
+const webRoot = path.resolve(path.dirname(scriptPath), "..")
 const srcRoot = path.join(webRoot, "src")
 
 const interestingAttributeNames = new Set([
@@ -11,6 +14,7 @@ const interestingAttributeNames = new Set([
   "label",
   "description",
   "alt",
+  "unit",
   "aria-label",
   "aria-description",
 ])
@@ -96,8 +100,6 @@ function shouldTrackText(text, relaxed = false) {
   if (/^https?:\/\//.test(text)) return false
   // Duration abbreviation compounds: "<1s", "5m 30s", "2h 15m", "m s", "h m", "< 1m"
   if (/^[<>]?\s*\d*\s*[dhms](?:\s+\d*\s*[dhms])?$/.test(text)) return false
-  // Size format fallbacks: "0 B", "10 KB", etc.
-  if (/^\d+\s+[KMGT]?i?B$/.test(text)) return false
   // JSON / code example patterns in placeholders
   if (/^\{[\s\S]*:[\s\S]*\}$/.test(text)) return false
   if (!/[A-Za-z]/.test(text)) return false
@@ -106,11 +108,12 @@ function shouldTrackText(text, relaxed = false) {
   // CSS/UI variant names and common non-UI return values (before the relaxed
   // lowercase check so these are always filtered regardless of context)
   if (/^(?:default|secondary|destructive|outline|ghost|link|muted|accent|primary)$/.test(text)) return false
-  // Units, product names, technical terms, and other non-translatable tokens.
+  // Product names and technical terms. Byte and speed units are deliberately absent: they are
+  // localized, so a hardcoded "KiB" is a defect to report.
   // Must be checked before the ALL_CAPS / lowercase-word gates below, because
   // those gates return true in relaxed mode for short caps or longer lowercase
   // words, which would incorrectly flag entries like "RSS" or "autobrr".
-  if (/^(?:[KMGT]?i?B(?:\/s)?|B\/s|Mbps|[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|qui-patron|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
+  if (/^(?:[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|qui-patron|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
   // ALL_CAPS constants -- but in relaxed mode, flag short UI words like "ALL"
   if (/^[A-Z0-9_]+$/.test(text)) {
     return relaxed && text.length >= 3
@@ -456,7 +459,9 @@ function printMatches(matches) {
   console.log(`\nFound ${matches.length} hardcoded string matches across ${grouped.size} files.`)
 }
 
-if (process.argv[1] === import.meta.filename) {
+// A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
+// names no file.
+if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const files = walkFiles(srcRoot)
   const matches = findHardcodedStringsInFiles(files)
 

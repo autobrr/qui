@@ -74,16 +74,16 @@ func TestReleasesMatch_StrictVariantsMustMatch(t *testing.T) {
 		Resolution: base.Resolution,
 	}
 
-	require.False(t, s.releasesMatch(&base, &nonVariant, false), "IMAX should not match vanilla release")
+	require.False(t, s.strictCompare(&base, &nonVariant, false).matched(), "IMAX should not match vanilla release")
 
 	imaxCandidate := nonVariant
 	imaxCandidate.Collection = "IMAX"
-	require.True(t, s.releasesMatch(&base, &imaxCandidate, false), "matching IMAX releases should be compatible")
+	require.True(t, s.strictCompare(&base, &imaxCandidate, false).matched(), "matching IMAX releases should be compatible")
 
 	hybridCandidate := nonVariant
 	hybridCandidate.Other = []string{"HYBRiD"}
-	require.False(t, s.releasesMatch(&nonVariant, &hybridCandidate, false), "HYBRID variant should not match vanilla release")
-	require.False(t, s.releasesMatch(&hybridCandidate, &nonVariant, false), "HYBRID mismatch must be symmetric")
+	require.False(t, s.strictCompare(&nonVariant, &hybridCandidate, false).matched(), "HYBRID variant should not match vanilla release")
+	require.False(t, s.strictCompare(&hybridCandidate, &nonVariant, false).matched(), "HYBRID mismatch must be symmetric")
 }
 
 func TestReleasesMatch_IMAXVsHybridMismatch(t *testing.T) {
@@ -104,8 +104,8 @@ func TestReleasesMatch_IMAXVsHybridMismatch(t *testing.T) {
 		Other:      []string{"HYBRiD"},
 	}
 
-	require.False(t, s.releasesMatch(&imaxRelease, &hybridRelease, false), "IMAX should not match HYBRID")
-	require.False(t, s.releasesMatch(&hybridRelease, &imaxRelease, false), "HYBRID vs IMAX mismatch must be symmetric")
+	require.False(t, s.strictCompare(&imaxRelease, &hybridRelease, false).matched(), "IMAX should not match HYBRID")
+	require.False(t, s.strictCompare(&hybridRelease, &imaxRelease, false).matched(), "HYBRID vs IMAX mismatch must be symmetric")
 }
 
 func TestReleasesMatch_REPACKAllowedForSeasonPacks(t *testing.T) {
@@ -133,9 +133,9 @@ func TestReleasesMatch_REPACKAllowedForSeasonPacks(t *testing.T) {
 	}
 
 	// Season packs should be allowed to cross-seed even with REPACK mismatch
-	require.True(t, s.releasesMatch(&seasonPack, &seasonPackRepack, false),
+	require.True(t, s.strictCompare(&seasonPack, &seasonPackRepack, false).matched(),
 		"season pack should match REPACK season pack")
-	require.True(t, s.releasesMatch(&seasonPackRepack, &seasonPack, false),
+	require.True(t, s.strictCompare(&seasonPackRepack, &seasonPack, false).matched(),
 		"REPACK season pack should match vanilla season pack")
 }
 
@@ -164,13 +164,13 @@ func TestReleasesMatch_REPACKBlockedForEpisodes(t *testing.T) {
 	}
 
 	// Episodes must match REPACK status exactly
-	require.False(t, s.releasesMatch(&episode, &episodeRepack, false),
+	require.False(t, s.strictCompare(&episode, &episodeRepack, false).matched(),
 		"vanilla episode should NOT match REPACK episode")
-	require.False(t, s.releasesMatch(&episodeRepack, &episode, false),
+	require.False(t, s.strictCompare(&episodeRepack, &episode, false).matched(),
 		"REPACK episode should NOT match vanilla episode")
 
 	// Same REPACK status should match
-	require.True(t, s.releasesMatch(&episodeRepack, &episodeRepack, false),
+	require.True(t, s.strictCompare(&episodeRepack, &episodeRepack, false).matched(),
 		"REPACK episodes should match each other")
 }
 
@@ -195,9 +195,9 @@ func TestReleasesMatch_PROPERBlockedForMovies(t *testing.T) {
 	}
 
 	// Movies must match PROPER status exactly
-	require.False(t, s.releasesMatch(&movie, &movieProper, false),
+	require.False(t, s.strictCompare(&movie, &movieProper, false).matched(),
 		"vanilla movie should NOT match PROPER movie")
-	require.False(t, s.releasesMatch(&movieProper, &movie, false),
+	require.False(t, s.strictCompare(&movieProper, &movie, false).matched(),
 		"PROPER movie should NOT match vanilla movie")
 }
 
@@ -235,8 +235,8 @@ func TestReleasesMatch_IMAXBlockedEvenForSeasonPacks(t *testing.T) {
 	}
 
 	// IMAX must ALWAYS match, even for season packs (different video master)
-	require.False(t, s.releasesMatch(&seasonPack, &seasonPackIMAX, false),
+	require.False(t, s.strictCompare(&seasonPack, &seasonPackIMAX, false).matched(),
 		"vanilla season pack should NOT match IMAX season pack")
-	require.False(t, s.releasesMatch(&seasonPackIMAX, &seasonPack, false),
+	require.False(t, s.strictCompare(&seasonPackIMAX, &seasonPack, false).matched(),
 		"IMAX season pack should NOT match vanilla season pack")
 }

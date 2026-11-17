@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistiken",
     "search": "Suche",
     "crossSeed": "Cross-Seed",
     "automations": "Automatisierungen",
@@ -46,7 +47,7 @@
     "tasksForInstance": "Aufgaben für Instanz",
     "settingsForInstance": "Einstellungen für Instanz",
     "clearSearch": "Suche zurücksetzen",
-    "searchTorrents": "Torrents suchen... ({{shortcutKey}})",
+    "searchTorrents": "Torrents suchen...",
     "globPattern": "Glob-Muster...",
     "smartSearchTitle": "Funktionen der intelligenten Suche:",
     "smartSearchGlob": "Glob-Muster:",
@@ -57,6 +58,8 @@
     "smartSearchFields": "Durchsucht Name, Kategorie und Tags",
     "smartSearchEnter": "Enter für sofortige Suche drücken",
     "smartSearchAuto": "Sucht automatisch nach 500 ms Pause",
+    "smartSearchShortcut": "{{shortcutKey}} drücken, um zur Suche zu springen",
+    "smartSearchPalette": "{{shortcutKey}} drücken, um die Befehlspalette zu öffnen",
     "torrentCreationTasksTitle": "Torrent-Erstellungsaufgaben",
     "updateAvailable": "Update verfügbar",
     "updateVersion": "Version {{version}}",
@@ -75,8 +78,36 @@
     "expandScope": "Vereinheitlichten Bereich ausklappen",
     "allActive": "Alle aktiv ({{count}})"
   },
+  "commandPalette": {
+    "title": "Befehlspalette",
+    "placeholder": "Seiten, Einstellungen und Torrents suchen...",
+    "placeholderIn": "In {{name}} suchen...",
+    "groups": {
+      "pages": "Seiten",
+      "actions": "Aktionen"
+    },
+    "current": "Aktuell",
+    "statisticsNote": "Upload- und Download-Verlauf deiner Instanzen",
+    "searchTorrentsFor": "Torrents nach \"{{query}}\" durchsuchen",
+    "torrentMatches_one": "{{count}} Torrent passt",
+    "torrentMatches_other": "{{count}} Torrents passen",
+    "noTorrentMatches": "Kein Torrent passt",
+    "searching": "Suche läuft...",
+    "searchFailed": "Die Torrent-Suche ist fehlgeschlagen",
+    "listFiltersApply": "Filter der Liste aktiv",
+    "noMatchIn": "Kein Treffer in {{name}}",
+    "moreOf": "Mehr zu {{name}}",
+    "hints": {
+      "navigate": "Navigieren",
+      "open": "Öffnen",
+      "more": "Mehr",
+      "searchTorrents": "Torrents suchen",
+      "back": "Zurück"
+    }
+  },
   "mobileNav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistiken",
     "clients": "Clients",
     "settings": "Einstellungen",
     "qbittorrentClients": "qBittorrent-Clients",
@@ -100,24 +131,31 @@
     "cancel": "Abbrechen",
     "close": "Schließen",
     "create": "Erstellen",
-    "copyPath": "Pfad kopieren",
     "scrollToTop": "Nach oben scrollen",
     "search": "Suchen",
-    "select": "Auswählen"
+    "select": "Auswählen",
+    "copyValue": "{{label}} kopieren"
+  },
+  "featureNotice": {
+    "gotIt": "Verstanden"
   },
   "placeholders": {
     "search": "Suchen...",
     "selectItems": "Elemente auswählen..."
   },
   "feedback": {
-    "noResultsFound": "Keine Ergebnisse gefunden."
+    "noResultsFound": "Keine Ergebnisse gefunden.",
+    "copied": "{{label}} in die Zwischenablage kopiert",
+    "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
   },
   "errors": {
     "unknown": "Unbekannter Fehler",
     "httpStatus": "HTTP-Fehler! Status: {{status}}",
     "httpStatusHtml": "HTTP-Fehler! Status: {{status}} (Server hat eine HTML-Fehlerseite zurückgegeben)",
     "ssoHtmlResponse": "Die API hat HTML statt JSON zurückgegeben. Wenn du hinter einem SSO-Proxy (Cloudflare Access, Pangolin usw.) bist, lade die Seite neu oder öffne die URL in einem neuen Tab.",
-    "torrentFileDownloadFailed": "Torrent-Datei konnte nicht heruntergeladen werden: {{status}}"
+    "torrentFileDownloadFailed": "Torrent-Datei konnte nicht heruntergeladen werden: {{status}}",
+    "altSpeedToggle": "Alternative Geschwindigkeitsbegrenzungen konnten nicht geändert werden: {{message}}",
+    "altSpeedToggleHidden": "Alternative Geschwindigkeitsbegrenzungen konnten nicht geändert werden. Der Incognito-Modus verbirgt die Ursache."
   },
   "status": {
     "disabled": "Deaktiviert",
@@ -126,6 +164,7 @@
     "updating": "Wird aktualisiert",
     "error": "Fehler",
     "unknown": "Unbekannt",
+    "unavailable": "Nicht verfügbar",
     "trackerError": "Tracker-Fehler",
     "unreachable": "Nicht erreichbar"
   },
@@ -149,17 +188,110 @@
     "dark": "Dunkel",
     "system": "System",
     "theme": "Design",
-    "premium": "Premium",
     "switchedToMode": "Zu Modus {{mode}} gewechselt",
     "switchedToTheme": "Zu Design {{theme}} gewechselt",
     "switchedToThemeVariation": "Zu Design {{theme}} ({{variation}}) gewechselt",
-    "premiumThemeError": "Dies ist ein Premium-Design. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren."
+    "premiumThemeError": "Dieses Design erfordert eine Lizenz. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren."
   },
   "updateBanner": {
     "updateAvailable": "Update verfügbar",
     "versionAvailable": "Version {{version}} ist jetzt verfügbar",
-    "viewRelease": "Release ansehen",
     "dismiss": "Verwerfen"
+  },
+  "systemNotice": {
+    "needsAttention": "Erfordert Aufmerksamkeit",
+    "since": "Seit {{time}}, {{age}}",
+    "causeLabel": "Ursache",
+    "actionFallback": "Zur Behebung",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Aufzeichnung gestoppt",
+        "title": "Aufzeichnung gestoppt",
+        "effect": "qui kann den Übertragungsverlauf nicht schreiben. Es versucht es beim nächsten Schreiben erneut.",
+        "fix": "Stelle sicher, dass der Datenträger freien Speicher hat und qui die Datenbankdatei schreiben kann.",
+        "menuFix": "Speicher für die Datenbank freigeben"
+      },
+      "shrink_failed": {
+        "short": "Verkleinern fehlgeschlagen",
+        "title": "Verkleinern fehlgeschlagen",
+        "effect": "qui konnte die Datenbankdatei nicht verkleinern. Die Datenbank ist unverändert, und qui läuft normal weiter.",
+        "fix": "Details stehen im qui-Log.",
+        "menuFix": "qui-Log lesen",
+        "reasons": {
+          "disk_full": {
+            "fix": "Auf dem Datenträger ist zu wenig Platz frei. Das Verkleinern braucht bis zum Doppelten der Größe der Datenbankdatei. Gib Platz frei und versuche es erneut.",
+            "menuFix": "Platz freigeben, dann erneut versuchen"
+          },
+          "locked": {
+            "fix": "Ein anderes Programm hielt die Datenbankdatei. Beende dieses Programm, zum Beispiel ein Backup-Tool oder einen Datenbank-Viewer, und versuche es erneut.",
+            "menuFix": "Anderes Programm beenden, dann erneut versuchen"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Wenig Speicherplatz",
+        "title": "Wenig Speicherplatz",
+        "effect": "Der Datenträger der qui-Datenbank hat wenig freien Platz. Ist der Datenträger voll, schlägt jeder Schreibvorgang von qui fehl.",
+        "fix": "Gib Platz auf dem Datenträger frei, verkürze „Tägliche Details behalten für“ oder lösche älteren Verlauf in den Statistik-Einstellungen.",
+        "menuFix": "Speicher für die Datenbank freigeben",
+        "action": "Statistik-Einstellungen öffnen"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted-Schlüssel abgelehnt",
+        "title": "Redacted hat den API-Schlüssel abgelehnt",
+        "effect": "Redacted hat die letzte Suche abgelehnt. qui fragt bei der nächsten Suche erneut an.",
+        "fix": "Wenn der Schlüssel falsch ist, erstelle in deinen Redacted-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein. Wenn Redacted die IP von qui gesperrt hat, hilft ein neuer Schlüssel nicht: wende dich an das Team von Redacted.",
+        "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus-Schlüssel abgelehnt",
+        "title": "Orpheus hat den API-Schlüssel abgelehnt",
+        "effect": "Orpheus hat die letzte Suche abgelehnt. qui fragt bei der nächsten Suche erneut an.",
+        "fix": "Wenn der Schlüssel falsch ist, erstelle in deinen Orpheus-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein. Wenn Orpheus die IP von qui gesperrt hat, hilft ein neuer Schlüssel nicht: wende dich an das Team von Orpheus.",
+        "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Zeitplan des Bibliotheks-Scans blockiert",
+        "title": "Zeitplan des Bibliotheks-Scans kann nicht laufen",
+        "effect": "qui kann den geplanten Bibliotheks-Scan nicht starten. qui versucht es jede Stunde erneut.",
+        "fix": "Prüfe die Einstellungen des Bibliotheks-Scans. qui versucht es jede Stunde erneut.",
+        "menuFix": "Einstellungen des Bibliotheks-Scans prüfen",
+        "action": "Einstellungen des Bibliotheks-Scans öffnen",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab ist in den Einstellungen des Bibliotheks-Scans aus, und kein RED- oder OPS-API-Schlüssel ist gesetzt. Schalte Torznab ein, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Torznab einschalten oder RED- oder OPS-Schlüssel hinzufügen"
+          },
+          "no_indexer": {
+            "fix": "Kein Indexer ist aktiviert. Aktiviere einen Torznab-Indexer, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Einen Indexer aktivieren"
+          },
+          "instance_missing": {
+            "fix": "Die Instanz in den gespeicherten Einstellungen des Bibliotheks-Scans existiert nicht. Wähle eine Instanz in den Einstellungen des Bibliotheks-Scans und speichere. qui versucht es jede Stunde erneut.",
+            "menuFix": "Instanz wählen, dann speichern"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Erneut versuchen",
+      "dismiss": "Ausblenden",
+      "openLog": "Log öffnen"
+    },
+    "unknown": {
+      "short": "Systemhinweis",
+      "title": "Systemhinweis",
+      "effect": "qui hat einen Fehler gefunden, der eine Aktion von dir benötigt.",
+      "fix": "Details stehen im qui-Log.",
+      "menuFix": "qui-Log lesen"
+    }
+  },
+  "databaseShrink": {
+    "done": "Datenbankdatei von {{before}} auf {{after}} verkleinert",
+    "nextStart": "Das Verkleinern läuft beim nächsten Start von qui",
+    "failed": "Verkleinern konnte nicht angefordert werden"
   },
   "pwaUpdate": {
     "reload": "Neu laden",
@@ -192,8 +324,7 @@
     "trigger": "Weitere Informationen"
   },
   "numberInput": {
-    "unlimited": "Unbegrenzt",
-    "useUnlimited": " (-1 für unbegrenzt verwenden)"
+    "unlimited": "Unbegrenzt"
   },
   "dateTime": {
     "na": "N/V",
@@ -219,6 +350,25 @@
       "year_other": "{{count}} Jahre"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "qui unterstützen",
     "description": "Hast du schon Designs und möchtest weiter helfen? Alles in qui gehört dir bereits. Ein Abo schaltet keine Funktionen frei, es finanziert die Zeit, die in ihre Entwicklung fließt.",
@@ -226,6 +376,16 @@
     "perkSuffix": "in Discord und unsere ewige Dankbarkeit.",
     "yearly": "{{price}} / Jahr",
     "monthly": "{{price}} / Monat",
-    "notLicense": "Premium-Designs sind ein separater einmaliger Kauf."
+    "notLicense": "Die Design-Lizenz ist ein separater einmaliger Kauf."
+  },
+  "labels": {
+    "path": "Pfad"
+  },
+  "kit": {
+    "loadFailed": "Dieser Abschnitt konnte nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "edit": "Bearbeiten",
+    "moreActions": "Weitere Aktionen",
+    "enabled": "Aktiviert"
   }
 }

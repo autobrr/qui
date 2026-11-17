@@ -103,7 +103,15 @@
     "totalSize": "Taille totale : {{size}}",
     "blockCrossSeeds": "Bloquer les infohash de cross-seeds (empêcher la rajout)",
     "cancel": "Annuler",
-    "delete": "Supprimer"
+    "delete": "Supprimer",
+    "titleSelectAll_one": "Supprimer le {{count}} torrent qui correspond au filtre ?",
+    "titleSelectAll_other": "Supprimer les {{count}} torrents qui correspondent au filtre ?",
+    "selectAllNotice": "Tout sélectionner est activé. Cette action supprime les torrents sélectionnés qui correspondent au filtre actuel.",
+    "notLoaded_one": "{{count}} d'entre eux n'est pas chargé dans le tableau.",
+    "notLoaded_other": "{{count}} d'entre eux ne sont pas chargés dans le tableau.",
+    "andMore": "et {{more}} de plus",
+    "deleteCount_one": "Supprimer {{count}} torrent",
+    "deleteCount_other": "Supprimer {{count}} torrents"
   },
   "deleteFilesPreference": {
     "label": "Supprimer également les fichiers du disque",
@@ -123,10 +131,11 @@
       "check": "Vérifier"
     },
     "searching": "Vérification des cross-seeds",
-    "searchingProgress": "Vérification des cross-seeds ({{checked}}/{{total}})",
     "error": "Échec de la vérification des cross-seeds",
     "retry": "Réessayer",
     "noCrossSeeds": "Aucun cross-seed trouvé",
+    "uncheckedOffline": "Impossible de vérifier {{instance}} : qui ne peut pas la joindre.",
+    "uncheckedDisabled": "{{instance}} n'a pas été vérifiée : elle est désactivée dans qui.",
     "deleteCrossSeeds": "Ces cross-seeds seront également supprimés",
     "deletingFilesBreaks": "La suppression des fichiers corrompra ces cross-seeds",
     "dataPreserved": "Cross-seeds détectés : les données seront préservées",
@@ -170,14 +179,6 @@
     "renameTorrentSuccess": "Torrent renommé en \"{{name}}\"",
     "renameTorrentFailed": "Échec du renommage du torrent : {{error}}",
     "renameTorrentEmpty": "Le nom du torrent ne peut pas être vide",
-    "renameFileSuccess": "Fichier renommé en \"{{name}}\"",
-    "renameFileFailed": "Échec du renommage du fichier : {{error}}",
-    "renameFilePathsRequired": "L'ancien et le nouveau nom de fichier sont requis",
-    "renameFileUnchanged": "Nom du fichier inchangé",
-    "renameFolderSuccess": "Dossier renommé en \"{{name}}\"",
-    "renameFolderFailed": "Échec du renommage du dossier : {{error}}",
-    "renameFolderPathsRequired": "L'ancien et le nouveau nom de dossier sont requis",
-    "renameFolderUnchanged": "Nom du dossier inchangé",
     "partialTags": {
       "title_one": "Mise à jour partielle des tags pour {{count}} torrent",
       "title_other": "Mise à jour partielle des tags pour {{count}} torrents",
@@ -429,6 +430,9 @@
       "description": "Définir les limites de vitesse d'envoi et de réception en Ko/s. Désactiver pour utiliser les limites globales.",
       "uploadLimit": "Définir la limite d'envoi (Ko/s)",
       "downloadLimit": "Définir la limite de réception (Ko/s)",
+      "selectValue": "Sélectionner une valeur",
+      "wasMixed": "(était mixte)",
+      "unresolvedMixed": "Sélectionnez des valeurs pour tous les champs mixtes avant d'appliquer",
       "cancel": "Annuler",
       "setting": "Définition...",
       "confirm": "Appliquer les limites"
@@ -608,10 +612,7 @@
     "bottomPriorityBatch": "Priorité minimale ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "Renommer",
-    "renameTorrent": "Renommer le torrent",
-    "renameFile": "Renommer le fichier",
-    "renameFolder": "Renommer le dossier"
+    "renameTorrent": "Renommer le torrent"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -719,19 +720,16 @@
     "partialResults": "Résultats partiels - certains indexeurs n'ont pas répondu",
     "arrLookupFailed": "Échec de la recherche d'ID de métadonnées - recherche par titre uniquement, les résultats peuvent être incomplets",
     "arrNoIds": "Aucun ID de métadonnées trouvé pour cette release - recherche par titre uniquement",
+    "torznabFailed": "La recherche Torznab a échoué - résultats RED/OPS uniquement",
     "searchScope": "Portée de la recherche",
     "noIndexers": "Aucun indexeur Torznab disponible",
     "noIndexersHelp": "Ajoutez ou activez des indexeurs Torznab dans les paramètres pour chercher des cross-seeds.",
     "capabilityNote": "Note sur les capacités",
     "capabilityDescription": "Ces indexeurs n'ont pas les capacités/catégories requises pour ce torrent et seront ignorés par le serveur :",
-    "contentFilteringInProgress": "Filtrage du contenu en cours",
-    "analyzingContent": "Analyse du contenu existant...",
     "smartFilteringActive": "Filtrage intelligent actif",
     "indexersFiltered_one": "{{count}} indexeur filtré",
     "indexersFiltered_other": "{{count}} indexeurs filtrés",
-    "contentFilteringDescription": "Vérification de vos torrents existants pour trouver des doublons et exclure les trackers redondants. Cela permet d'éviter de télécharger le même contenu plusieurs fois.",
     "excludedDescription": "Vous seedez déjà cette release depuis ces trackers, ils sont donc exclus de la recherche.",
-    "noContentDuplicates": "Le filtrage du contenu est terminé. Aucun contenu en double n'a été trouvé sur vos trackers activés.",
     "searchingIndexers": "Recherche sur les indexeurs...",
     "noMatchesFound": "Aucune correspondance trouvée.",
     "selectReleasesToAdd": "Sélectionnez les releases à ajouter",
@@ -780,7 +778,6 @@
       "selectAllIndexers": "Tout sélectionner",
       "clearSelection": "Effacer la sélection",
       "search": "Chercher",
-      "filtering": "Filtrage...",
       "searching": "Recherche en cours",
       "noneSelected": "Aucun sélectionné",
       "enabledIndexers": "{{count}} activé(s) {{suffix}}",
@@ -813,6 +810,30 @@
       "fewerIndexers": "Essayez de rechercher avec moins d'indexeurs",
       "useRss": "Utilisez l'automatisation RSS pour les cross-seeds réguliers",
       "checkIndexers": "Vérifiez la page des indexeurs pour voir lesquels sont limités"
+    },
+    "routedTo": "Les cross-seeds vont à l'instance de cross-seed {{instance}}.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "sera interrogé",
+      "willAskRejected": "sera interrogé : le site a refusé la clé API la dernière fois",
+      "match": "correspondance",
+      "noMatch": "aucune correspondance",
+      "openSettings": "Ouvrir les paramètres",
+      "notAsked": {
+        "disabled": "non interrogé : désactivé",
+        "noApiKey": "non interrogé : aucune clé API",
+        "cooldown": "non interrogé : recherché récemment",
+        "notSelected": "non interrogé : non sélectionné",
+        "sourceSite": "non interrogé : le torrent provient de {{site}}",
+        "alreadySeeded": "non interrogé : vous le partagez déjà là-bas",
+        "notMusic": "non interrogé : pas de la musique",
+        "other": "non interrogé"
+      },
+      "failed": {
+        "keyRejected": "échec : le site a refusé la clé API",
+        "timedOut": "échec : délai dépassé",
+        "other": "échec : {{detail}}"
+      }
     }
   },
   "columnFilter": {
@@ -879,6 +900,11 @@
       "checking": "En vérification",
       "moving": "En déplacement"
     }
+  },
+  "emptyState": {
+    "noTorrents": "Aucun torrent trouvé",
+    "noFilterMatches": "Aucun torrent ne correspond aux filtres actuels",
+    "noSearchMatches": "Aucun torrent ne correspond à la recherche actuelle"
   },
   "filterSidebar": {
     "views": {
@@ -1001,8 +1027,7 @@
     "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} sur {{total}} torrents chargés",
     "scrollForMore": "(défiler pour plus)",
-    "loading": "Chargement...",
-    "freeSpace": "Espace libre",
+    "freeSpace": "Espace libre (chemin par défaut)",
     "switchToBits": "Basculer en bits par seconde (bps)",
     "switchToBytes": "Basculer en octets par seconde (o/s)",
     "altSpeedOn": "Vitesses alternatives : Activées",
@@ -1067,7 +1092,6 @@
     "closePanel": "Fermer le panneau de détails",
     "unknownError": "Erreur inconnue",
     "toast": {
-      "copied": "{{type}} copié dans le presse-papiers",
       "copyFailed": "Échec de la copie",
       "peersAdded": "Pairs ajoutés avec succès",
       "peersFailed": "Échec de l'ajout des pairs : {{error}}",
@@ -1119,20 +1143,14 @@
       "loadedSummary_other": "{{count}} torrents correspondants trouvés sur toutes les instances",
       "deleteMatches": "Supprimer les correspondances ({{count}})",
       "deleteThisTorrent": "Supprimer ce torrent",
-      "checkingMoreInstances": "Vérification d'autres instances...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "Torrent exactement identique (même info hash)",
-      "savePathMatch": "Chemin de sauvegarde",
-      "savePathDescription": "Même répertoire de sauvegarde et nom de fichier",
-      "selectTorrent": "Sélectionner {{name}}"
+      "selectTorrent": "Sélectionner {{name}}",
+      "openTorrent": "Ouvrir {{name}}"
     },
     "sections": {
       "generalInformation": "Informations Générales",
       "transferStatistics": "Statistiques de Transfert",
-      "speed": "Vitesse",
       "queueManagement": "Gestion de File",
       "timeInformation": "Informations de Temps",
-      "timestamps": "Horodatages",
       "activeTrackers": "Trackers Actifs",
       "connectedPeers": "Pairs Connectés",
       "fileContents": "Contenu des Fichiers"
@@ -1159,18 +1177,13 @@
       "added": "Ajouté",
       "completed": "Terminé",
       "created": "Créé",
-      "leechers": "Leechers",
-      "peerProgress": "Progression Pair",
-      "connection": "Connexion :",
-      "flags": "Drapeaux :"
+      "leechers": "Leechers"
     },
     "counts": {
       "trackers_one": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "connectedPeers_one": "{{count}} pair connecté",
       "connectedPeers_other": "{{count}} pairs connectés",
-      "httpSources_one": "{{count}} source",
-      "httpSources_other": "{{count}} sources",
       "selectedFiles": "{{selected}} sur {{total}} sélectionné(s)",
       "files_one": "{{count}} fichier",
       "files_other": "{{count}} fichiers"
@@ -1178,7 +1191,6 @@
     "values": {
       "normal": "Normal",
       "queued": "En attente {{state}}",
-      "seeder": "Seeder",
       "unknownClient": "Client inconnu"
     },
     "actions": {
@@ -1187,14 +1199,12 @@
       "selectAll": "Tout",
       "selectNone": "Aucun"
     },
-    "peer": {
-      "flagLabel": "Drapeau {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "Aucun fichier trouvé"
     },
     "selectAll": "Tout sélectionner",
-    "deselectAll": "Tout désélectionner"
+    "deselectAll": "Tout désélectionner",
+    "trackerMessageHidden": "Message du tracker masqué en mode incognito"
   },
   "generalTab": {
     "name": "Nom :",
@@ -1239,6 +1249,7 @@
     "status": "Statut",
     "tracker": "Tracker",
     "seeds": "Seeds",
+    "peers": "Pairs",
     "leeches": "Leeches",
     "downloaded": "Téléchargés",
     "message": "Message",
@@ -1331,11 +1342,6 @@
     "matchCount_other": "{{count}} correspondances",
     "deleteSelected": "Supprimer ({{count}})",
     "deleteThis": "Supprimer Ceci",
-    "statusLabels": {
-      "trackerDown": "Tracker Injoignable",
-      "unregistered": "Non enregistré",
-      "trackerError": "Erreur Tracker"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "Contenu",
@@ -1359,10 +1365,7 @@
       }
     },
     "noMatches": "Aucun torrent correspondant trouvé sur d'autres instances",
-    "toast": {
-      "savePathCopied": "Chemin de sauvegarde copié",
-      "copyFailed": "Échec de la copie"
-    }
+    "loadFailed": "Impossible de vérifier les correspondances cross-seed. Rechargez pour réessayer."
   },
   "addTorrentDialog": {
     "title": "Ajouter un nouveau Torrent",
@@ -1370,10 +1373,6 @@
     "description": "Ajoutez un fichier torrent ou un lien magnet pour commencer le téléchargement",
     "file": "Fichier",
     "url": "URL",
-    "tabs": {
-      "basic": "Basique",
-      "advanced": "Avancé"
-    },
     "validation": {
       "selectTorrentFile": "Veuillez sélectionner au moins un fichier torrent",
       "enterUrl": "Veuillez entrer au moins une URL ou un lien magnet"
@@ -1385,7 +1384,10 @@
       "existingTorrents": "Torrents existants : {{names}}",
       "highlightedBelow": "Les doublons sont mis en évidence ci-dessous.",
       "remove": "Supprimer les doublons",
-      "matchesExisting": "Correspond aux existants : {{names}}"
+      "matchesExisting": "Correspond aux existants : {{names}}",
+      "existingTorrent": "Torrent existant",
+      "more_one": "(+{{count}} autre)",
+      "more_other": "(+{{count}} autres)"
     },
     "fileInput": {
       "label": "Fichiers Torrent",
@@ -1396,10 +1398,9 @@
       "selectedFiles_other": "{{count}} fichiers sélectionnés",
       "duplicateFiles_one": "{{count}} fichier en double",
       "duplicateFiles_other": "{{count}} fichiers en double",
-      "showFiles": "Afficher les fichiers",
-      "hideFiles": "Masquer les fichiers",
-      "moreFiles": "... et {{count}} de plus",
-      "removeFile": "Supprimer le fichier"
+      "removeFile": "Supprimer le fichier",
+      "addMore": "Ajouter d’autres fichiers",
+      "choose": "Choisir des fichiers torrent"
     },
     "urlInput": {
       "label": "URLs / Liens Magnet",
@@ -1410,31 +1411,22 @@
       "skipHashCheck": "Ignorer la vérification de hachage",
       "category": "Catégorie",
       "searchCategories": "Chercher des catégories...",
-      "availableCategories": "Catégories disponibles (cliquez pour sélectionner)",
-      "availableCategoriesFiltered": "Catégories (filtrage : \"{{query}}\")",
       "noCategoriesMatch": "Aucune catégorie ne correspond à \"{{query}}\"",
       "tags": "Tags",
       "tagsPlaceholder": "Créez un nouveau tag ou cherchez des tags disponibles...",
-      "clearAll": "Tout effacer",
-      "availableTags": "Tags disponibles (cliquez pour sélectionner/désélectionner)",
-      "availableTagsFiltered": "Tags (filtrage : \"{{query}}\")",
       "newTag": "(nouveau)",
-      "noTagsMatch": "Aucun tag ne correspond à \"{{query}}\"",
       "autoTmm": "Gestion automatique des torrents",
       "savePath": "Chemin de sauvegarde",
+      "freeSpaceAtDestination": "Espace libre à destination : {{value}}",
       "savePathPlaceholder": "Laissez vide pour le chemin par défaut",
-      "manualSavePath": "Chemin de sauvegarde manuel (TMM désactivé)",
       "useTemporaryPath": "Utiliser un chemin temporaire",
       "useTemporaryPathDescription": "Télécharger vers un chemin temporaire avant de déplacer",
       "tempPath": "Chemin de téléchargement temporaire",
       "tempPathPlaceholder": "Laissez vide pour le chemin par défaut",
-      "tempPathDescription": "Les torrents seront téléchargés ici avant d'être déplacés",
-      "autoTmmSavePathDescription": "La gestion automatique est activée. Le chemin sera déterminé par la catégorie.",
-      "advancedOptions": "Options avancées",
       "sequentialDownload": "Téléchargement séquentiel",
-      "sequentialDownloadDescription": "(utile pour les fichiers médias)",
+      "sequentialDownloadDescription": "Utile pour les fichiers médias",
       "firstLastPiecePriority": "Priorité à la première/dernière pièce",
-      "firstLastPiecePriorityDescription": "(démarrer la lecture plus rapidement)",
+      "firstLastPiecePriorityDescription": "Démarrer la lecture plus rapidement",
       "downloadLimit": "Limite de réception (Ko/s)",
       "uploadLimit": "Limite d'envoi (Ko/s)",
       "unlimitedPlaceholder": "0 = illimité",
@@ -1450,12 +1442,35 @@
       "renamePlaceholder": "Laissez vide pour utiliser le nom original",
       "autoAppliedTitle": "Appliqué automatiquement :",
       "autoAddTrackers": "• Ajout automatique de trackers",
-      "fileExclusions": "• Exclusions de fichiers : {{value}}"
+      "fileExclusions": "• Exclusions de fichiers : {{value}}",
+      "noCategory": "Aucune catégorie",
+      "removeTag": "Retirer le tag {{tag}}",
+      "addTags": "Ajouter des tags",
+      "createTag": "Créer le tag « {{tag}} »",
+      "noTagsYet": "Aucun tag pour l’instant. Saisissez un nom pour en créer un.",
+      "done": "Terminé",
+      "moreOptions": "Plus d’options",
+      "moreOptionsHint": "Chemin, disposition, ordre de téléchargement, limites",
+      "saveLocation": "Emplacement",
+      "downloadBehavior": "Ordre de téléchargement",
+      "limits": "Limites",
+      "changedCount_one": "{{count}} modifiée",
+      "changedCount_other": "{{count}} modifiées",
+      "clearAll": "Tout effacer",
+      "tagsWithCount": "Tags ({{n}})",
+      "categorySavePath": "Enregistré dans {{path}}",
+      "autoTmmStatus": "Le chemin vient de la catégorie",
+      "addTypedTags": "Ajouter les tags : {{tags}}",
+      "selectedState": "Sélectionné",
+      "moreTags_one": "+{{count}} autre",
+      "moreTags_other": "+{{count}} autres"
     },
     "footer": {
       "adding": "Ajout en cours...",
       "add": "Ajouter le torrent",
-      "cancel": "Annuler"
+      "cancel": "Annuler",
+      "addCount_one": "Ajouter {{count}} torrent",
+      "addCount_other": "Ajouter {{count}} torrents"
     },
     "toast": {
       "verifyInput": "Veuillez vérifier le fichier torrent ou l'URL et réessayer.",
@@ -1496,40 +1511,14 @@
     "incognito": "Incognito",
     "add": "Ajouter",
     "tasks": "Tâches",
-    "done": "Terminé",
     "actionsForCount": "Actions pour {{count}} torrent(s)",
     "actionsForAll": "Actions pour tous les {{count}} torrent(s)",
     "selection": {
       "selectedCount": "{{count}} sélectionné(s)",
       "allSelectedCount": "Tous les {{count}} sélectionnés"
     },
-    "searchModal": {
-      "title": "Rechercher des torrents",
-      "description": "Recherche par nom, catégorie, ou tags. Supporte les modèles globaux comme *.mkv ou *1080p*.",
-      "placeholder": "Chercher des torrents...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "Recherche automatique pendant la frappe"
-    },
-    "shareLimit": {
-      "title": "Définir les limites de partage pour {{count}} torrent(s)",
-      "description": "Configurez les limites de seed. Utilisez -1 ou désactivez pour supprimer les limites.",
-      "setRatioLimit": "Définir la limite de ratio",
-      "setSeedingTimeLimit": "Définir la limite de temps de seed (minutes)",
-      "setInactiveSeedingLimit": "Définir la limite de seed inactif (minutes)",
-      "cancel": "Annuler",
-      "setting": "Définition...",
-      "applyLimits": "Appliquer les limites"
-    },
-    "speedLimit": {
-      "title": "Définir les limites de vitesse pour {{count}} torrent(s)",
-      "description": "Définir les limites en Ko/s. Utilisez -1 ou désactivez pour supprimer les limites.",
-      "setUploadLimit": "Définir la limite d'envoi (Ko/s)",
-      "setDownloadLimit": "Définir la limite de réception (Ko/s)",
-      "cancel": "Annuler",
-      "setting": "Définition...",
-      "applyLimits": "Appliquer les limites"
-    },
-    "ratio": "Ratio :"
+    "ratio": "Ratio :",
+    "added": "Ajouté {{time}}"
   },
   "tableView": {
     "ascending": "croissant",
@@ -1614,6 +1603,7 @@
   "stateLabels": {
     "downloading": "Téléchargement",
     "metaDL": "Récupération des métadonnées",
+    "forcedMetaDL": "(F) Récupération des métadonnées",
     "allocating": "Allocation",
     "stalledDL": "En attente",
     "queuedDL": "File d'attente",
@@ -1631,8 +1621,10 @@
     "error": "Erreur",
     "missingFiles": "Fichiers manquants",
     "checkingResumeData": "Vérification des données de reprise",
-    "moving": "Déplacement"
+    "moving": "Déplacement",
+    "unknown": "Inconnu"
   },
+  "stateLabelFallback": "Non reconnu",
   "details": {
     "failedToUpdatePriorities": "Échec de la mise à jour des priorités des fichiers",
     "failedToRenameFile": "Échec du renommage du fichier",
@@ -1659,6 +1651,7 @@
     "tags": "Tags",
     "newTagPlaceholder": "Ajoutez un tag et appuyez sur Entrée",
     "savePath": "Chemin de sauvegarde (destination effective)",
+    "routedTo": "Le cross-seed va à l'instance de cross-seed {{instance}}.",
     "cancel": "Annuler",
     "apply": "Ajouter le cross-seed",
     "applying": "Ajout...",
@@ -1680,12 +1673,14 @@
       "dropped": "Pack ajouté. Cibles écartées : {{names}}",
       "rejected": "{{name}} : {{reason}}",
       "reasons": {
-        "no_filesystem_access": "Cette instance nécessite un accès au système de fichiers local pour assembler un pack.",
+        "no_filesystem_access": "Cette instance nécessite un accès en écriture au système de fichiers pour assembler un pack. Activez « Accès au système de fichiers local » ou configurez l'accès SSH dans les paramètres de l'instance.",
         "no_link_mode": "Activez les liens physiques ou les reflinks sur cette instance pour sélectionner plusieurs cibles.",
         "no_base_directory": "Configurez un répertoire de base pour les liens sur cette instance.",
         "no_episode_files": "Aucun fichier vidéo d’épisode trouvé dans ce pack.",
         "target_not_found": "Cible introuvable dans cette instance.",
         "incomplete": "Le téléchargement de la cible est incomplet.",
+        "not_settled": "Ce torrent est encore en cours de déplacement ou de vérification. Réessayez une fois l'opération terminée.",
+        "errored": "Ce torrent comporte une erreur ou des fichiers manquants. Corrigez le problème, puis réessayez.",
         "no_episode_identity": "Le numéro d’épisode est illisible.",
         "file_list_unavailable": "La liste des fichiers de la cible est indisponible.",
         "episode_file_invalid": "La cible doit contenir un seul fichier vidéo correspondant à cet épisode.",
@@ -1699,6 +1694,165 @@
         "link_failed": "Impossible de créer les liens.",
         "add_failed": "Impossible d’ajouter le torrent."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_one": "{{count}} autre copie de {{name}}",
+    "copies_other": "{{count}} autres copies de {{name}}",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "Il manque des fichiers à une copie masquée",
+      "error": "Une copie masquée a une erreur",
+      "unregistered": "Une copie masquée n'est pas enregistrée",
+      "trackerError": "Une copie masquée a une erreur de tracker",
+      "trackerDown": "Le tracker d'une copie masquée est injoignable"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_one": "+{{hidden}} · {{count}} sélectionnée",
+    "badgeTicked_other": "+{{hidden}} · {{count}} sélectionnées",
+    "hiddenTicked_one": "{{count}} copie masquée est sélectionnée",
+    "hiddenTicked_other": "{{count}} copies masquées sont sélectionnées",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "Grouper les copies",
+    "ungroupCopies": "Dégrouper les copies",
+    "grouping": "Regroupement…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Groupez vos Cross-Seeds",
+      "description": "Affiche les copies d'un torrent sur une seule ligne.",
+      "action": "Essayer"
+    },
+    "displayProfiles": {
+      "title": "Profils d’affichage",
+      "description": "Donnez à chaque écran ses propres colonnes, sa densité de lignes et ses barres latérales. Choisissez ici le profil de ce navigateur.",
+      "action": "Créer un profil"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "Profil d’affichage : {{name}}",
+    "menuLabel": "Profil d’affichage",
+    "defaultName": "Par défaut",
+    "manage": "Gérer les profils…",
+    "sheetDescription": "Chaque navigateur choisit son propre profil.",
+    "settings": {
+      "title": "Profils d’affichage",
+      "holds": "Contient : colonnes · densité des lignes · barres latérales · sections de filtres · arborescences de catégories · filtres vides",
+      "holdsHelp": "Un profil contient l’apparence de la liste des torrents : les colonnes affichées, leur ordre et leur largeur, l’étirement de la colonne Nom, la densité des lignes, les barres latérales et les sections de filtres ouvertes, les arborescences de catégories repliées et l’affichage des filtres vides. Chaque navigateur utilise un profil, et seul ce navigateur retient le choix. Un navigateur qui n’en a jamais choisi, et une fenêtre privée, utilisent Default. Tous les profils partagent les autres réglages.",
+      "thisBrowser": "Ce navigateur",
+      "use": "Utiliser dans ce navigateur",
+      "makeProfile": "Créer un profil pour un ordinateur portable ou un téléphone",
+      "themesSync": "Les thèmes se synchronisent à part : <sync>Synchronisation du thème</sync>",
+      "renameAriaLabel": "Renommer {{name}}",
+      "saveName": "Enregistrer le nom",
+      "cancelRename": "Annuler le renommage",
+      "editAriaLabel": "Modifier {{name}}",
+      "editTitle": "Modifier le profil",
+      "delete": "Supprimer…",
+      "deleteTitle": "Supprimer {{name}} ?",
+      "deleteDescription": "Les autres navigateurs qui l’utilisent passent à {{defaultName}}.",
+      "deleteConfirm": "Supprimer",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "Lignes en tableau",
+        "dense": "Lignes denses",
+        "stacked": "Cartes empilées"
+      },
+      "filterSidebarOpen": "barre de filtres ouverte",
+      "filterSidebarClosed": "barre de filtres fermée"
+    },
+    "nameErrors": {
+      "empty": "Saisissez un nom.",
+      "tooLong": "Utilisez {{max}} caractères au maximum.",
+      "duplicate": "Un autre profil porte ce nom."
+    },
+    "ownSortAndFilters": {
+      "label": "Tri et filtres propres",
+      "help": "<lead>Quand cette option est activée, ce profil garde ses propres :</lead><list><item>ordre de tri de la liste des torrents</item><item>filtres de colonne et filtres de la barre latérale</item><item>instances affichées par la vue unifiée</item><item>Grouper les copies, activé ou non</item><item>dernier onglet ouvert du panneau de détails</item><item>instance affichée par les pages Sauvegardes et RSS</item></list><note>Une modification de ces réglages dans ce profil n’atteint pas les autres profils. Quand cette option est désactivée, ce profil les partage avec tous les autres profils qui n’ont pas les leurs. La désactivation supprime les valeurs propres de ce profil.</note>",
+      "offWarning": "La désactivation supprime le tri et les filtres propres de {{name}}.",
+      "defaultShares": "Partage toujours le tri et les filtres",
+      "defaultSharesHelp": "Default partage toujours le tri, les filtres et les autres choix d’affichage avec tous les profils qui n’ont pas les leurs. Pour garder les vôtres, créez un autre profil et activez Tri et filtres propres."
+    },
+    "deletedToast": "Le profil {{name}} a été supprimé. Ce navigateur utilise maintenant {{defaultName}}.",
+    "newProfile": "Nouveau profil à partir de cette configuration…",
+    "newDialog": {
+      "title": "Nouveau profil",
+      "copies": "Copie <profile>{{name}}</profile> : colonnes, densité, barres latérales et filtres. Ce navigateur l’utilise ensuite.",
+      "name": "Nom",
+      "namePlaceholder": "Par exemple, Portable",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "Annuler",
+      "create": "Créer"
+    },
+    "iconPicker": {
+      "trigger": "Icône : {{icon}}. Changer l’icône et la couleur",
+      "letter": "Première lettre du nom",
+      "color": "Couleur"
+    },
+    "iconGroups": {
+      "devices": "Appareils",
+      "places": "Lieux",
+      "use": "Usage",
+      "mood": "Humeur"
+    },
+    "icons": {
+      "appWindow": "Fenêtre d’application",
+      "monitor": "Écran",
+      "laptop": "Ordinateur portable",
+      "tablet": "Tablette",
+      "smartphone": "Smartphone",
+      "tv": "TV",
+      "server": "Serveur",
+      "gamepad": "Manette",
+      "house": "Maison",
+      "briefcase": "Mallette",
+      "building": "Immeuble",
+      "sofa": "Canapé",
+      "bed": "Lit",
+      "coffee": "Café",
+      "plane": "Avion",
+      "train": "Train",
+      "rows": "Lignes",
+      "table": "Tableau",
+      "list": "Liste",
+      "eye": "Œil",
+      "gauge": "Jauge",
+      "zap": "Éclair",
+      "download": "Téléchargement",
+      "upload": "Envoi",
+      "sprout": "Pousse",
+      "bookmark": "Signet",
+      "moon": "Lune",
+      "sun": "Soleil",
+      "star": "Étoile",
+      "heart": "Cœur",
+      "flame": "Flamme",
+      "rocket": "Fusée"
+    },
+    "colors": {
+      "none": "Aucune (couleur du texte)",
+      "sky": "Ciel",
+      "emerald": "Émeraude",
+      "amber": "Ambre",
+      "rose": "Rose",
+      "violet": "Violet",
+      "orange": "Orange",
+      "teal": "Sarcelle",
+      "pink": "Rose vif"
+    },
+    "columns": {
+      "headingEveryInstance": "Colonnes de {{profile}} · chaque instance",
+      "headingOneInstance": "Colonnes de {{profile}} · {{instance}} uniquement",
+      "unifiedView": "Vue unifiée",
+      "thisInstance": "cette instance"
+    },
+    "sameColumns": {
+      "label": "Mêmes colonnes sur chaque instance",
+      "menuHelp": "Le tri et les filtres de colonnes restent propres à chaque instance.",
+      "helpOn": "Une seule configuration de colonnes pour {{instances}}.",
+      "helpOff": "Chaque instance garde la sienne. L’activer donne à chaque instance les colonnes de {{instance}}.",
+      "helpOffNoInstance": "Chaque instance garde la sienne.",
+      "unifiedViewInList": "la vue unifiée"
     }
   }
 }

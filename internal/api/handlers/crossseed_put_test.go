@@ -199,17 +199,6 @@ func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 				require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
 			},
 		},
-		{
-			name:       "put rejects omitted season pack threshold",
-			method:     http.MethodPut,
-			body:       `{}`,
-			wantStatus: http.StatusBadRequest,
-			assert: func(t *testing.T, _ *CrossSeedHandler, _ *models.CrossSeedStore, resp *httptest.ResponseRecorder) {
-				t.Helper()
-
-				require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -429,12 +418,9 @@ func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
 
 	requireOldGazelleKeys := func() {
 		t.Helper()
-		for host, want := range map[string]string{"redacted.sh": "red", "orpheus.network": "ops"} {
-			key, ok, err := oldStore.GetDecryptedGazelleAPIKey(ctx, host)
-			require.NoError(t, err)
-			require.True(t, ok)
-			require.Equal(t, want, key)
-		}
+		keys, err := oldStore.GetDecryptedGazelleAPIKeys(ctx)
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{models.GazelleKeyRedacted: "red", models.GazelleKeyOrpheus: "ops"}, keys.Keys)
 	}
 
 	// An unrelated save under the new key keeps every secret, so restoring the old key brings them back.
@@ -455,4 +441,121 @@ func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
 	settings, err := oldStore.GetSettings(ctx)
 	require.NoError(t, err)
 	require.Equal(t, domain.RedactedStr, settings.SeasonPackTVDBPIN)
+}
+
+// putFieldsSettings holds the settings that PUT could not carry before #3691,
+// with the lists set away from their defaults and every boolean false.
+func putFieldsSettings() *models.CrossSeedAutomationSettings {
+	s := models.DefaultCrossSeedAutomationSettings()
+	s.RSSSourceCategories = []string{"movies"}
+	s.RSSSourceTags = []string{"rss-in"}
+	s.RSSSourceExcludeCategories = []string{"music"}
+	s.RSSSourceExcludeTags = []string{"rss-out"}
+	s.WebhookSourceCategories = []string{"tv"}
+	s.WebhookSourceTags = []string{"hook-in"}
+	s.WebhookSourceExcludeCategories = []string{"books"}
+	s.WebhookSourceExcludeTags = []string{"hook-out"}
+	s.RSSAutomationTags = []string{"rss"}
+	s.SeededSearchTags = []string{"seeded"}
+	s.CompletionSearchTags = []string{"completion"}
+	s.WebhookTags = []string{"webhook"}
+	s.SkipPieceBoundarySafetyCheck = false
+	return s
+}
+
+func putAutomationSettings(t *testing.T, handler *CrossSeedHandler, body string) {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	handler.UpdateAutomationSettings(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+}
+
+func getAutomationSettingsBody(t *testing.T, handler *CrossSeedHandler) string {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/cross-seed/settings", nil)
+	resp := httptest.NewRecorder()
+	handler.GetAutomationSettings(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+	return resp.Body.String()
+}
+
+func settingsBodyWithoutTimestamps(t *testing.T, body string) map[string]any {
+	t.Helper()
+
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal([]byte(body), &fields))
+	delete(fields, "createdAt")
+	delete(fields, "updatedAt")
+	return fields
+}
+
+// regression: #3691
+func TestAutomationSettingsPutRoundTripKeepsEveryField(t *testing.T) {
+	// One boolean true per row, so a dropped or swapped boolean changes the body.
+	rows := map[string]func(*models.CrossSeedAutomationSettings){
+		"inheritSourceTags":            func(s *models.CrossSeedAutomationSettings) { s.InheritSourceTags = true },
+		"skipAutoResumeRss":            func(s *models.CrossSeedAutomationSettings) { s.SkipAutoResumeRSS = true },
+		"skipAutoResumeSeededSearch":   func(s *models.CrossSeedAutomationSettings) { s.SkipAutoResumeSeededSearch = true },
+		"skipAutoResumeCompletion":     func(s *models.CrossSeedAutomationSettings) { s.SkipAutoResumeCompletion = true },
+		"skipAutoResumeWebhook":        func(s *models.CrossSeedAutomationSettings) { s.SkipAutoResumeWebhook = true },
+		"skipPieceBoundarySafetyCheck": func(s *models.CrossSeedAutomationSettings) { s.SkipPieceBoundarySafetyCheck = true },
+	}
+
+	for name, set := range rows {
+		t.Run(name, func(t *testing.T) {
+			handler, store := newTestCrossSeedHandler(t)
+			settings := putFieldsSettings()
+			set(settings)
+			_, err := store.UpsertSettings(t.Context(), settings)
+			require.NoError(t, err)
+
+			before := getAutomationSettingsBody(t, handler)
+			putAutomationSettings(t, handler, before)
+			after := getAutomationSettingsBody(t, handler)
+
+			require.Equal(t, settingsBodyWithoutTimestamps(t, before), settingsBodyWithoutTimestamps(t, after))
+		})
+	}
+}
+
+// regression: #3691
+func TestAutomationSettingsPutWithoutFieldsKeepsDefaults(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantTags []string
+		wantSkip bool
+	}{
+		{
+			name:     "omitted",
+			body:     `{"seasonPackCoverageThreshold": 0.75}`,
+			wantTags: []string{"cross-seed"},
+			wantSkip: true,
+		},
+		{
+			name:     "explicit empty and false",
+			body:     `{"seasonPackCoverageThreshold": 0.75, "rssAutomationTags": [], "seededSearchTags": [], "completionSearchTags": [], "webhookTags": [], "skipPieceBoundarySafetyCheck": false}`,
+			wantTags: []string{},
+			wantSkip: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, store := newTestCrossSeedHandler(t)
+			putAutomationSettings(t, handler, tt.body)
+
+			stored, err := store.GetSettings(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, tt.wantTags, stored.RSSAutomationTags)
+			require.Equal(t, tt.wantTags, stored.SeededSearchTags)
+			require.Equal(t, tt.wantTags, stored.CompletionSearchTags)
+			require.Equal(t, tt.wantTags, stored.WebhookTags)
+			require.Equal(t, tt.wantSkip, stored.SkipPieceBoundarySafetyCheck)
+		})
+	}
 }

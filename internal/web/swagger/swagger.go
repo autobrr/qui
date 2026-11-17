@@ -105,5 +105,5 @@ func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		spec["servers"] = servers
 	}
 
-	_ = json.NewEncoder(w).Encode(spec)
+	_ = json.NewEncoder(w).Encode(spec) //nolint:errchkjson // spec comes from the embedded YAML with string keys; only a client write error can occur, and the handler cannot recover from it
 }

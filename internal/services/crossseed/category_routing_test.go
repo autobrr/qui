@@ -60,6 +60,12 @@ func TestSourceClass(t *testing.T) {
 			want:    "BLURAY",
 		},
 		{
+			// regression: #3286
+			name:    "UHD WEB-DL routes as WEB",
+			release: &rls.Release{Source: "UHD.WEB-DL", Resolution: "2160p"},
+			want:    "WEB",
+		},
+		{
 			name:    "remux other lowercase still matches",
 			release: &rls.Release{Source: "BluRay", Resolution: "1080p", Other: []string{"remux"}},
 			want:    "REMUX",

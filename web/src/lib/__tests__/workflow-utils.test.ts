@@ -3,12 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
 import {
+  ACTION_RUN_ORDER,
   fromImportFormat,
   generateUniqueName,
   getTrackerMatchMode,
   getTrackerTokens,
+  firstActionCondition,
+  hasMixedActionConditions,
+  loadWorkflowNames,
   parseImportJSON,
+  toCopyInput,
   toDuplicateInput,
   toEditInput,
   toExportFormat,
@@ -16,8 +24,13 @@ import {
   type WorkflowExport,
   type WorkflowImport
 } from "@/lib/workflow-utils"
-import type { ActionConditions, Automation } from "@/types"
-import { describe, expect, it } from "vitest"
+import type { ActionConditions, Automation, RuleCondition } from "@/types"
+import { QueryClient } from "@tanstack/react-query"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+const listAutomations = vi.hoisted(() => vi.fn())
+
+vi.mock("@/lib/api", () => ({ api: { listAutomations } }))
 
 const conditions: ActionConditions = { schemaVersion: "1" }
 
@@ -88,8 +101,8 @@ describe("toExportFormat", () => {
 
 // Intent: turn clipboard JSON back into an AutomationInput. Two safety
 // invariants matter: imported automations always START disabled (so a paste
-// can't immediately fire side-effects) and the imported name is uniquified
-// so it can't clobber an existing automation by accident.
+// can't immediately fire side-effects) and an imported name that the
+// instance already has is uniquified, so two rules never share a name.
 describe("fromImportFormat", () => {
   const baseExport = (overrides: Partial<WorkflowImport> = {}): WorkflowImport => ({
     name: "Imported",
@@ -100,10 +113,23 @@ describe("fromImportFormat", () => {
 
   it("forces enabled=false on every import", () => {
     expect(fromImportFormat(baseExport(), []).enabled).toBe(false)
+    expect(fromImportFormat(baseExport({ enabled: true }), []).enabled).toBe(false)
+  })
+
+  // A rule pasted from an API response carries its old position; the import must still go to the end.
+  it("drops sortOrder so the backend appends the rule", () => {
+    const result = fromImportFormat(baseExport({ sortOrder: 3 }), [])
+    expect(JSON.parse(JSON.stringify(result))).not.toHaveProperty("sortOrder")
   })
 
   it("uniquifies the name against existing names", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["My workflow"]).name).toBe("My workflow (copy)")
+    expect(fromImportFormat(baseExport({ name: "My workflow" }), ["MY WORKFLOW", "My workflow (copy)"]).name).toBe("My workflow (copy 2)")
+  })
+
+  // regression: #4062
+  it("keeps the name when the instance has no rule with that name", () => {
+    expect(fromImportFormat(baseExport({ name: "My workflow" }), ["Other"]).name).toBe("My workflow")
   })
 
   // The backend resolves the two fields: a non-empty trackerPattern wins.
@@ -119,10 +145,17 @@ describe("fromImportFormat", () => {
     expect(result).not.toHaveProperty("trackerDomains")
   })
 
-  it("defaults dryRun to false and notify to true when omitted", () => {
+  // The backend checks every key and lists each problem, so unknown keys must reach it.
+  it("passes unknown top-level keys through to the backend", () => {
+    const result = fromImportFormat(baseExport({ enabeld: true, extra: { a: 1 } }), [])
+    expect(result).toHaveProperty("enabeld", true)
+    expect(result).toHaveProperty("extra", { a: 1 })
+  })
+
+  it("leaves omitted dryRun and notify to the backend defaults", () => {
     const result = fromImportFormat(baseExport(), [])
-    expect(result.dryRun).toBe(false)
-    expect(result.notify).toBe(true)
+    expect(result).not.toHaveProperty("dryRun")
+    expect(result).not.toHaveProperty("notify")
   })
 
   it("preserves explicit dryRun and notify from the import", () => {
@@ -131,9 +164,9 @@ describe("fromImportFormat", () => {
     expect(result.notify).toBe(false)
   })
 
-  it("includes intervalSeconds only when present and not equal to default", () => {
-    expect(fromImportFormat(baseExport({ intervalSeconds: 900 }), [])).not.toHaveProperty("intervalSeconds")
-    expect(fromImportFormat(baseExport({ intervalSeconds: 60 }), []).intervalSeconds).toBe(60)
+  it("passes intervalSeconds as written", () => {
+    expect(fromImportFormat(baseExport({ intervalSeconds: 900 }), []).intervalSeconds).toBe(900)
+    expect(fromImportFormat(baseExport({ intervalSeconds: 30 }), []).intervalSeconds).toBe(30)
   })
 })
 
@@ -150,8 +183,9 @@ describe("getTrackerTokens", () => {
 })
 
 // Intent: duplicate within the same instance — equivalent to export+import
-// round-tripping. Guarantees the duplicate gets a fresh name and ships
-// disabled, same as a clipboard import.
+// round-tripping, except that the duplicate always gets a copy suffix, also
+// when the list of existing names is not loaded. It ships disabled, same as
+// a clipboard import.
 describe("toDuplicateInput", () => {
   it("round-trips through export -> import and produces a unique disabled copy", () => {
     const original = makeAutomation({ name: "Source", enabled: true, dryRun: true })
@@ -160,15 +194,71 @@ describe("toDuplicateInput", () => {
     expect(result.enabled).toBe(false)
     expect(result.dryRun).toBe(true)
   })
+
+  // regression: #4062
+  it("adds a copy suffix when no existing name is known", () => {
+    expect(toDuplicateInput(makeAutomation({ name: "Source" }), []).name).toBe("Source (copy)")
+  })
 })
 
-// Intent: "Edit as JSON" replaces the exported fields and keeps the state the
+// Intent: "Copy to instance" names the copy for the target instance. The
+// name stays when the target has no rule with it, and a name that is taken
+// there gets the same suffix as a duplicate.
+// regression: #4062
+describe("toCopyInput", () => {
+  it("keeps the name when the target instance has no rule with that name", () => {
+    const result = toCopyInput(makeAutomation({ name: "Source", enabled: true }), ["Other"])
+    expect(result.name).toBe("Source")
+    expect(result.enabled).toBe(false)
+    expect(result.sortOrder).toBeUndefined()
+  })
+
+  it("adds a copy suffix when the target instance has the name in another case", () => {
+    expect(toCopyInput(makeAutomation({ name: "Source" }), ["source"]).name).toBe("Source (copy)")
+    expect(toCopyInput(makeAutomation({ name: "Source" }), ["SOURCE", "Source (copy)"]).name).toBe("Source (copy 2)")
+  })
+})
+
+// Intent: copy, duplicate, and import name the new rule against the rule
+// names of the instance. An instance whose rule list is not loaded must not
+// read as an instance with no rules, or the new rule takes a name in use.
+// regression: #4062
+describe("loadWorkflowNames", () => {
+  afterEach(() => {
+    listAutomations.mockReset()
+  })
+
+  it("reads the rule list from the server when it is not loaded", async () => {
+    listAutomations.mockResolvedValueOnce([makeAutomation({ name: "Source" })])
+    expect(await loadWorkflowNames(new QueryClient(), 2)).toEqual(["Source"])
+    expect(listAutomations).toHaveBeenCalledWith(2)
+  })
+
+  it("uses the loaded rule list", async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(["automations", 2], [makeAutomation({ name: "Loaded" })])
+    expect(await loadWorkflowNames(queryClient, 2)).toEqual(["Loaded"])
+    expect(listAutomations).not.toHaveBeenCalled()
+  })
+
+  it("returns no names when the server sends null for an instance with no rules", async () => {
+    listAutomations.mockResolvedValueOnce(null)
+    expect(await loadWorkflowNames(new QueryClient(), 2)).toEqual([])
+  })
+
+  it("rejects when the rule list cannot be read", async () => {
+    listAutomations.mockRejectedValueOnce(new Error("list failed"))
+    await expect(loadWorkflowNames(new QueryClient(), 2)).rejects.toThrow("list failed")
+  })
+})
+
+// Intent: "Edit as JSON" sends the JSON as written and keeps the state the
 // JSON never carries: enabled and sortOrder. An omitted optional key resets to
-// its default, the same as an import would.
+// its backend default, the same as an import would.
 describe("toEditInput", () => {
-  it("keeps enabled and sortOrder from the rule and takes every other field from the JSON", () => {
+  it("keeps enabled and sortOrder from the rule and takes every other key from the JSON", () => {
     const rule = makeAutomation({ id: 5, enabled: true, sortOrder: 3, dryRun: true, intervalSeconds: 60, name: "Old" })
-    const result = toEditInput(rule, { name: "New", trackerPattern: "", trackerDomains: ["a.com"], conditions })
+    const result = toEditInput(rule, { name: "New", trackerPattern: "", trackerDomains: ["a.com"], conditions, enabled: false, sortOrder: 9 })
     expect(result).toEqual({
       name: "New",
       enabled: true,
@@ -176,12 +266,13 @@ describe("toEditInput", () => {
       trackerPattern: "",
       trackerDomains: ["a.com"],
       conditions,
-      freeSpaceSource: undefined,
-      sortingConfig: undefined,
-      dryRun: false,
-      notify: true,
     })
     expect(result).not.toHaveProperty("id")
+  })
+
+  it("passes unknown top-level keys through to the backend", () => {
+    const result = toEditInput(makeAutomation(), { name: "x", trackerPattern: "*", conditions, notfy: false })
+    expect(result).toHaveProperty("notfy", false)
   })
 })
 
@@ -209,9 +300,6 @@ describe("generateUniqueName", () => {
     expect(generateUniqueName("Foo   (copy)", [])).toBe("Foo (copy)")
   })
 
-  it("returns the first attempt when no collision exists", () => {
-    expect(generateUniqueName("Foo", ["Bar", "Baz"])).toBe("Foo (copy)")
-  })
 })
 
 // Intent: validate clipboard JSON before letting it through. Returns
@@ -261,57 +349,23 @@ describe("parseImportJSON", () => {
     )
   })
 
-  it("drops a trackerDomains array with a non-string element", () => {
-    const result = parseImportJSON(JSON.stringify({
+  it("keeps every key as written, unknown keys too", () => {
+    const input = {
       name: "x",
       conditions: { schemaVersion: "1" },
-      trackerPattern: "a.com",
       trackerDomains: ["b.com", 1],
-    }))
-    expect(result.data?.trackerPattern).toBe("a.com")
-    expect(result.data).not.toHaveProperty("trackerDomains")
+      intervalSeconds: 30,
+      enabeld: true,
+    }
+    expect(parseImportJSON(JSON.stringify(input)).data).toEqual(input)
   })
 
   it("leaves a missing tracker to the backend", () => {
     const result = parseImportJSON(JSON.stringify({ name: "x", conditions: { schemaVersion: "1" } }))
     expect(result.error).toBeNull()
-    expect(result.data?.trackerPattern).toBe("")
-    expect(result.data).not.toHaveProperty("trackerDomains")
+    expect(result.data).not.toHaveProperty("trackerPattern")
   })
 
-  it("includes intervalSeconds only when it's a number >= 60", () => {
-    const withInterval = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      intervalSeconds: 120,
-    }))
-    expect(withInterval.data?.intervalSeconds).toBe(120)
-
-    const tooSmall = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      intervalSeconds: 30,
-    }))
-    expect(tooSmall.data?.intervalSeconds).toBeUndefined()
-  })
-
-  it("keeps dryRun: true from the export shape", () => {
-    const result = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      dryRun: true,
-    }))
-    expect(result.data?.dryRun).toBe(true)
-  })
-
-  it("includes notify only when it's an explicit boolean", () => {
-    const withNotify = parseImportJSON(JSON.stringify({
-      name: "x",
-      conditions: { schemaVersion: "1" },
-      notify: false,
-    }))
-    expect(withNotify.data?.notify).toBe(false)
-  })
 })
 
 // Intent: thin pretty-print wrapper. Pinning the indent so future readers
@@ -323,7 +377,57 @@ describe("toExportJSON", () => {
       trackerPattern: "*",
       conditions,
     }
-    expect(toExportJSON(data)).toBe(JSON.stringify(data, null, 2))
-    expect(toExportJSON(data)).toContain("\n  \"name\": \"x\"")
+    expect(toExportJSON(data)).toBe("{\n  \"name\": \"x\",\n  \"trackerPattern\": \"*\",\n  \"conditions\": {\n    \"schemaVersion\": \"1\"\n  }\n}")
+  })
+})
+
+// ACTION_RUN_ORDER copies the backend's actionRunOrder, so fail when the two drift.
+describe("ACTION_RUN_ORDER", () => {
+  it("matches the backend's actionRunOrder", () => {
+    const source = readFileSync(resolve(import.meta.dirname, "../../../../internal/services/automations/service.go"), "utf8")
+
+    const slice = source.match(/^var actionRunOrder = \[\]string\{\n([^}]*)\}/m)
+    expect(slice).not.toBeNull()
+    const goKeys = [...slice![1].matchAll(/^\t"(\w+)",$/gm)].map(m => m[1])
+
+    expect(goKeys.length).toBeGreaterThan(0)
+    expect([...ACTION_RUN_ORDER]).toEqual(goKeys)
+  })
+})
+
+// regression: #3012
+describe("hasMixedActionConditions", () => {
+  const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
+  const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
+  const tag = (tags: string[], condition?: RuleCondition, enabled = true) => ({ enabled, tags, mode: "full" as const, condition })
+
+  it.each([
+    { name: "two tag actions with different conditions", mixed: true, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] } },
+    { name: "a condition on category and none on pause", mixed: true, conditions: { schemaVersion: "1", category: { enabled: true, category: "sorted", condition: packed }, pause: { enabled: true } } },
+    { name: "the same condition on every action", mixed: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed)], pause: { enabled: true, condition: packed } } },
+    { name: "a different condition on a disabled action", mixed: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked, false)] } },
+    { name: "another condition on a disabled action that comes first", mixed: false, conditions: { schemaVersion: "1", speedLimits: { enabled: false, condition: unpacked }, pause: { enabled: true, condition: packed } } },
+    { name: "auto management set to off with no condition", mixed: true, conditions: { schemaVersion: "1", pause: { enabled: true, condition: packed }, autoManagement: { enabled: false } } },
+  ])("returns $mixed for $name", ({ mixed, conditions }) => {
+    expect(hasMixedActionConditions(makeAutomation({ conditions }))).toBe(mixed)
+  })
+})
+
+// regression: #4186
+describe("firstActionCondition", () => {
+  const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
+  const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
+
+  it.each([
+    { name: "skips a switched-off action", conditions: { schemaVersion: "1", speedLimits: { enabled: false, condition: unpacked }, pause: { enabled: true, condition: packed } } },
+    { name: "skips a switched-off tag action", conditions: { schemaVersion: "1", tags: [{ enabled: false, tags: ["a"], mode: "full" as const, condition: unpacked }, { enabled: true, tags: ["b"], mode: "full" as const, condition: packed }] } },
+    { name: "skips a running action without a condition", conditions: { schemaVersion: "1", pause: { enabled: true }, category: { enabled: true, category: "sorted", condition: packed } } },
+  ])("$name", ({ conditions }) => {
+    expect(firstActionCondition(makeAutomation({ conditions }))).toEqual(packed)
+  })
+
+  it("returns null when no running action has a condition", () => {
+    const conditions = { schemaVersion: "1", speedLimits: { enabled: false, condition: unpacked }, pause: { enabled: true } }
+    expect(firstActionCondition(makeAutomation({ conditions }))).toBeNull()
   })
 })

@@ -102,7 +102,12 @@
     "totalSize": "전체 크기: {{size}}",
     "blockCrossSeeds": "cross-seed infohash 차단(재추가 방지)",
     "cancel": "취소",
-    "delete": "삭제"
+    "delete": "삭제",
+    "titleSelectAll_other": "필터와 일치하는 토렌트 {{count}}개를 삭제하시겠습니까?",
+    "selectAllNotice": "전체 선택이 켜져 있습니다. 현재 필터와 일치하는 선택된 토렌트를 삭제합니다.",
+    "notLoaded_other": "그중 {{count}}개는 표에 로드되지 않았습니다.",
+    "andMore": "외 {{more}}개",
+    "deleteCount_other": "토렌트 {{count}}개 삭제"
   },
   "deleteFilesPreference": {
     "label": "디스크에서 파일도 삭제",
@@ -122,10 +127,11 @@
       "check": "확인"
     },
     "searching": "cross-seed 확인 중",
-    "searchingProgress": "cross-seed 확인 중 ({{checked}}/{{total}})",
     "error": "cross-seed를 확인하지 못했습니다",
     "retry": "다시 시도",
     "noCrossSeeds": "cross-seed를 찾을 수 없습니다",
+    "uncheckedOffline": "{{instance}}을(를) 확인할 수 없습니다: qui가 연결할 수 없습니다.",
+    "uncheckedDisabled": "{{instance}}을(를) 확인하지 않았습니다: qui에서 꺼져 있습니다.",
     "deleteCrossSeeds": "이 cross-seed도 함께 삭제됩니다",
     "deletingFilesBreaks": "파일을 삭제하면 이 cross-seed가 손상됩니다",
     "dataPreserved": "cross-seed 감지됨: 데이터가 보존됩니다",
@@ -167,14 +173,6 @@
     "renameTorrentSuccess": "토렌트 이름을 \"{{name}}\"(으)로 변경했습니다",
     "renameTorrentFailed": "토렌트 이름을 변경하지 못했습니다: {{error}}",
     "renameTorrentEmpty": "토렌트 이름은 비워 둘 수 없습니다",
-    "renameFileSuccess": "파일 이름을 \"{{name}}\"(으)로 변경했습니다",
-    "renameFileFailed": "파일 이름을 변경하지 못했습니다: {{error}}",
-    "renameFilePathsRequired": "원본 및 새 파일 경로가 모두 필요합니다",
-    "renameFileUnchanged": "파일 이름이 변경되지 않았습니다",
-    "renameFolderSuccess": "폴더 이름을 \"{{name}}\"(으)로 변경했습니다",
-    "renameFolderFailed": "폴더 이름을 변경하지 못했습니다: {{error}}",
-    "renameFolderPathsRequired": "원본 및 새 폴더 경로가 모두 필요합니다",
-    "renameFolderUnchanged": "폴더 이름이 변경되지 않았습니다",
     "partialTags": {
       "title_other": "토렌트 {{count}}개의 태그를 일부 업데이트했습니다",
       "succeeded": "{{actions}} 성공",
@@ -380,6 +378,9 @@
       "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 전역 제한을 사용하려면 비활성화하세요.",
       "uploadLimit": "업로드 제한 설정(KB/s)",
       "downloadLimit": "다운로드 제한 설정(KB/s)",
+      "selectValue": "값 선택",
+      "wasMixed": "(혼합이었음)",
+      "unresolvedMixed": "적용하기 전에 모든 혼합 필드의 값을 선택하세요",
       "cancel": "취소",
       "setting": "설정 중...",
       "confirm": "제한 적용"
@@ -559,10 +560,7 @@
     "bottomPriorityBatch": "최하위 우선순위 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "이름 바꾸기",
-    "renameTorrent": "토렌트 이름 바꾸기",
-    "renameFile": "파일 이름 바꾸기",
-    "renameFolder": "폴더 이름 바꾸기"
+    "renameTorrent": "토렌트 이름 바꾸기"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -664,18 +662,15 @@
     "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
     "arrLookupFailed": "메타데이터 ID 조회 실패 - 제목으로만 검색하여 결과가 불완전할 수 있습니다",
     "arrNoIds": "이 릴리스의 메타데이터 ID를 찾을 수 없음 - 제목으로만 검색했습니다",
+    "torznabFailed": "Torznab 검색 실패 - RED/OPS 결과만 표시합니다",
     "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
     "capabilityNote": "기능 참고",
     "capabilityDescription": "이 인덱서에는 이 토렌트에 필요한 기능/카테고리가 없어 서버에서 건너뜁니다:",
-    "contentFilteringInProgress": "콘텐츠 필터링 진행 중",
-    "analyzingContent": "기존 콘텐츠 분석 중...",
     "smartFilteringActive": "스마트 필터링 활성",
     "indexersFiltered_other": "인덱서 {{count}}개 필터링됨",
-    "contentFilteringDescription": "기존 토렌트를 확인하여 중복을 찾고 불필요한 트래커를 제외합니다. 이를 통해 동일한 콘텐츠를 여러 번 다운로드하는 것을 방지합니다.",
     "excludedDescription": "이 트래커에서 이미 이 릴리스를 시드 중이므로 검색에서 제외됩니다.",
-    "noContentDuplicates": "콘텐츠 필터링이 완료되었습니다. 활성화된 트래커에서 중복 콘텐츠를 찾지 못했습니다.",
     "searchingIndexers": "인덱서 검색 중…",
     "noMatchesFound": "검색에서 일치 항목을 찾을 수 없습니다.",
     "selectReleasesToAdd": "추가할 릴리스를 선택하세요",
@@ -724,7 +719,6 @@
       "selectAllIndexers": "모두 선택",
       "clearSelection": "선택 해제",
       "search": "검색",
-      "filtering": "필터링 중…",
       "searching": "검색 중",
       "noneSelected": "선택 안 됨",
       "enabledIndexers": "{{count}}개 활성화 {{suffix}}",
@@ -757,6 +751,30 @@
       "fewerIndexers": "더 적은 인덱서를 선택하여 검색해 보세요",
       "useRss": "지속적인 cross-seeding에는 RSS 자동화 기능을 사용하세요",
       "checkIndexers": "인덱서 페이지에서 속도 제한된 항목을 확인하세요"
+    },
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다.",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "조회 예정",
+      "willAskRejected": "조회 예정: 지난번에 사이트에서 API 키를 거부함",
+      "match": "일치",
+      "noMatch": "일치 없음",
+      "openSettings": "설정 열기",
+      "notAsked": {
+        "disabled": "조회 안 함: 꺼짐",
+        "noApiKey": "조회 안 함: API 키 없음",
+        "cooldown": "조회 안 함: 최근에 검색함",
+        "notSelected": "조회 안 함: 선택되지 않음",
+        "sourceSite": "조회 안 함: 토렌트 출처가 {{site}}",
+        "alreadySeeded": "조회 안 함: 이미 그곳에서 시드 중",
+        "notMusic": "조회 안 함: 음악이 아님",
+        "other": "조회 안 함"
+      },
+      "failed": {
+        "keyRejected": "실패: 사이트에서 API 키를 거부함",
+        "timedOut": "실패: 시간 초과",
+        "other": "실패: {{detail}}"
+      }
     }
   },
   "columnFilter": {
@@ -823,6 +841,11 @@
       "checking": "확인 중",
       "moving": "이동 중"
     }
+  },
+  "emptyState": {
+    "noTorrents": "토렌트를 찾을 수 없습니다",
+    "noFilterMatches": "현재 필터와 일치하는 토렌트가 없습니다",
+    "noSearchMatches": "현재 검색과 일치하는 토렌트가 없습니다"
   },
   "filterSidebar": {
     "views": {
@@ -942,8 +965,7 @@
     "torrentCount_other": "토렌트 {{count}}개",
     "torrentsLoaded": "토렌트 {{total}}개 중 {{loaded}}개 로드됨",
     "scrollForMore": "(더 보려면 스크롤)",
-    "loading": "불러오는 중...",
-    "freeSpace": "여유 공간",
+    "freeSpace": "여유 공간 (기본 경로)",
     "switchToBits": "초당 비트(bps)로 전환",
     "switchToBytes": "초당 바이트(B/s)로 전환",
     "altSpeedOn": "대체 속도 제한: 켜짐",
@@ -1008,7 +1030,6 @@
     "closePanel": "세부 정보 패널 닫기",
     "unknownError": "알 수 없는 오류",
     "toast": {
-      "copied": "{{type}}이(가) 클립보드에 복사되었습니다",
       "copyFailed": "클립보드에 복사하지 못했습니다",
       "peersAdded": "피어가 추가되었습니다",
       "peersFailed": "피어를 추가하지 못했습니다: {{error}}",
@@ -1055,20 +1076,14 @@
       "loadedSummary_other": "모든 인스턴스에서 일치하는 토렌트 {{count}}개 발견됨",
       "deleteMatches": "일치 항목 삭제 ({{count}})",
       "deleteThisTorrent": "이 토렌트 삭제",
-      "checkingMoreInstances": "더 많은 인스턴스 확인 중...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "정확히 동일한 토렌트(동일한 info hash)",
-      "savePathMatch": "저장 경로",
-      "savePathDescription": "동일한 저장 디렉터리 및 파일 이름",
-      "selectTorrent": "{{name}} 선택"
+      "selectTorrent": "{{name}} 선택",
+      "openTorrent": "{{name}} 열기"
     },
     "sections": {
       "generalInformation": "일반 정보",
       "transferStatistics": "전송 통계",
-      "speed": "속도",
       "queueManagement": "대기열 관리",
       "timeInformation": "시간 정보",
-      "timestamps": "타임스탬프",
       "activeTrackers": "활성 트래커",
       "connectedPeers": "연결된 피어",
       "fileContents": "파일 콘텐츠"
@@ -1095,22 +1110,17 @@
       "added": "추가됨",
       "completed": "완료됨",
       "created": "생성됨",
-      "leechers": "리처",
-      "peerProgress": "피어 진행률",
-      "connection": "연결:",
-      "flags": "플래그:"
+      "leechers": "리처"
     },
     "counts": {
       "trackers_other": "트래커 {{count}}개",
       "connectedPeers_other": "피어 {{count}}개 연결됨",
-      "httpSources_other": "소스 {{count}}개",
       "selectedFiles": "{{total}}개 중 {{selected}}개 선택됨",
       "files_other": "파일 {{count}}개"
     },
     "values": {
       "normal": "보통",
       "queued": "대기 중 {{state}}",
-      "seeder": "시더",
       "unknownClient": "알 수 없는 클라이언트"
     },
     "actions": {
@@ -1119,14 +1129,12 @@
       "selectAll": "전체",
       "selectNone": "없음"
     },
-    "peer": {
-      "flagLabel": "플래그 {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "파일을 찾을 수 없습니다"
     },
     "selectAll": "모두 선택",
-    "deselectAll": "모두 선택 해제"
+    "deselectAll": "모두 선택 해제",
+    "trackerMessageHidden": "시크릿 모드에서는 트래커 메시지가 숨겨집니다"
   },
   "generalTab": {
     "name": "이름:",
@@ -1171,6 +1179,7 @@
     "status": "상태",
     "tracker": "트래커",
     "seeds": "시드",
+    "peers": "피어",
     "leeches": "리처",
     "downloaded": "DL",
     "message": "메시지",
@@ -1260,11 +1269,6 @@
     "matchCount_other": "일치 {{count}}개",
     "deleteSelected": "삭제 ({{count}})",
     "deleteThis": "이 항목 삭제",
-    "statusLabels": {
-      "trackerDown": "트래커 다운",
-      "unregistered": "등록되지 않음",
-      "trackerError": "트래커 오류"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "콘텐츠",
@@ -1288,10 +1292,7 @@
       }
     },
     "noMatches": "다른 인스턴스에서 일치하는 토렌트를 찾을 수 없습니다",
-    "toast": {
-      "savePathCopied": "저장 경로가 복사되었습니다",
-      "copyFailed": "복사하지 못했습니다"
-    }
+    "loadFailed": "크로스시드 일치 항목을 확인할 수 없습니다. 다시 시도하려면 새로고침하세요."
   },
   "addTorrentDialog": {
     "title": "새 토렌트 추가",
@@ -1299,10 +1300,6 @@
     "description": "다운로드를 시작하려면 토렌트 파일 또는 마그넷 링크를 추가하세요",
     "file": "파일",
     "url": "URL",
-    "tabs": {
-      "basic": "기본",
-      "advanced": "고급"
-    },
     "validation": {
       "selectTorrentFile": "토렌트 파일을 하나 이상 선택해 주세요",
       "enterUrl": "URL 또는 마그넷 링크를 하나 이상 입력해 주세요"
@@ -1313,7 +1310,9 @@
       "existingTorrents": "기존 토렌트: {{names}}",
       "highlightedBelow": "중복 선택 항목이 아래에 강조 표시됩니다.",
       "remove": "중복 제거",
-      "matchesExisting": "기존 항목과 일치: {{names}}"
+      "matchesExisting": "기존 항목과 일치: {{names}}",
+      "existingTorrent": "기존 토렌트",
+      "more_other": "(+{{count}}개 더)"
     },
     "fileInput": {
       "label": "토렌트 파일",
@@ -1322,10 +1321,9 @@
       "browse": "또는 클릭하여 찾아보기",
       "selectedFiles_other": "파일 {{count}}개 선택됨",
       "duplicateFiles_other": "중복 파일 {{count}}개",
-      "showFiles": "파일 표시",
-      "hideFiles": "파일 숨기기",
-      "moreFiles": "... 그리고 {{count}}개 더",
-      "removeFile": "파일 제거"
+      "removeFile": "파일 제거",
+      "addMore": "파일 더 추가",
+      "choose": "토렌트 파일 선택"
     },
     "urlInput": {
       "label": "URL / 마그넷 링크",
@@ -1336,31 +1334,22 @@
       "skipHashCheck": "해시 확인 건너뛰기",
       "category": "카테고리",
       "searchCategories": "카테고리 검색...",
-      "availableCategories": "사용 가능한 카테고리(클릭하여 선택)",
-      "availableCategoriesFiltered": "사용 가능한 카테고리(클릭하여 선택) - 필터링: \"{{query}}\"",
       "noCategoriesMatch": "\"{{query}}\"와 일치하는 카테고리 없음",
       "tags": "태그",
       "tagsPlaceholder": "새 태그를 만들거나 사용 가능한 태그를 검색...",
-      "clearAll": "모두 지우기",
-      "availableTags": "사용 가능한 태그(클릭하여 선택/선택 해제)",
-      "availableTagsFiltered": "사용 가능한 태그(클릭하여 선택/선택 해제) - 필터링: \"{{query}}\"",
       "newTag": "(신규)",
-      "noTagsMatch": "\"{{query}}\"와 일치하는 태그 없음",
       "autoTmm": "자동 토렌트 관리",
       "savePath": "저장 경로",
+      "freeSpaceAtDestination": "대상 경로 여유 공간: {{value}}",
       "savePathPlaceholder": "기본값을 사용하려면 비워 두기",
-      "manualSavePath": "수동 저장 경로(TMM 비활성화)",
       "useTemporaryPath": "임시 경로 사용",
       "useTemporaryPathDescription": "저장 경로로 이동하기 전에 임시 경로로 다운로드",
       "tempPath": "임시 다운로드 경로",
       "tempPathPlaceholder": "기본값을 사용하려면 비워 두기",
-      "tempPathDescription": "토렌트는 저장 경로로 이동하기 전에 여기에 다운로드됩니다",
-      "autoTmmSavePathDescription": "자동 토렌트 관리가 활성화되어 있습니다. 저장 경로는 카테고리 설정에 따라 결정됩니다.",
-      "advancedOptions": "고급 옵션",
       "sequentialDownload": "순차 다운로드",
-      "sequentialDownloadDescription": "(미디어 파일에 유용)",
+      "sequentialDownloadDescription": "미디어 파일에 유용",
       "firstLastPiecePriority": "첫/마지막 조각 우선순위",
-      "firstLastPiecePriorityDescription": "(재생을 더 빨리 시작)",
+      "firstLastPiecePriorityDescription": "재생을 더 빨리 시작",
       "downloadLimit": "다운로드 제한(KB/s)",
       "uploadLimit": "업로드 제한(KB/s)",
       "unlimitedPlaceholder": "0 = 무제한",
@@ -1376,12 +1365,32 @@
       "renamePlaceholder": "원본 이름을 사용하려면 비워 두기",
       "autoAppliedTitle": "자동 적용:",
       "autoAddTrackers": "• 트래커 자동 추가",
-      "fileExclusions": "• 파일 제외: {{value}}"
+      "fileExclusions": "• 파일 제외: {{value}}",
+      "noCategory": "카테고리 없음",
+      "removeTag": "태그 {{tag}} 제거",
+      "addTags": "태그 추가",
+      "createTag": "\"{{tag}}\" 태그 만들기",
+      "noTagsYet": "아직 태그가 없습니다. 이름을 입력해 새로 만드세요.",
+      "done": "완료",
+      "moreOptions": "추가 옵션",
+      "moreOptionsHint": "저장 경로, 레이아웃, 다운로드 순서, 제한",
+      "saveLocation": "저장 위치",
+      "downloadBehavior": "다운로드 순서",
+      "limits": "제한",
+      "changedCount_other": "{{count}}개 변경됨",
+      "clearAll": "모두 지우기",
+      "tagsWithCount": "태그 ({{n}})",
+      "categorySavePath": "저장 위치: {{path}}",
+      "autoTmmStatus": "저장 경로는 카테고리를 따릅니다",
+      "addTypedTags": "태그 추가: {{tags}}",
+      "selectedState": "선택됨",
+      "moreTags_other": "+{{count}}개 더"
     },
     "footer": {
       "adding": "추가 중...",
       "add": "토렌트 추가",
-      "cancel": "취소"
+      "cancel": "취소",
+      "addCount_other": "토렌트 {{count}}개 추가"
     },
     "toast": {
       "verifyInput": "토렌트 파일 또는 URL을 확인하고 다시 시도해 주세요.",
@@ -1422,40 +1431,14 @@
     "incognito": "시크릿",
     "add": "추가",
     "tasks": "작업",
-    "done": "완료",
     "actionsForCount": "토렌트 {{count}}개에 대한 작업",
     "actionsForAll": "전체 토렌트 {{count}}개에 대한 작업",
     "selection": {
       "selectedCount": "{{count}}개 선택됨",
       "allSelectedCount": "전체 {{count}}개 선택됨"
     },
-    "searchModal": {
-      "title": "토렌트 검색",
-      "description": "이름, 카테고리 또는 태그로 검색합니다. *.mkv 또는 *1080p* 같은 glob 패턴을 지원합니다.",
-      "placeholder": "토렌트 검색...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "입력 후 자동 검색"
-    },
-    "shareLimit": {
-      "title": "토렌트 {{count}}개의 공유 제한 설정",
-      "description": "시딩 제한을 구성합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setRatioLimit": "비율 제한 설정",
-      "setSeedingTimeLimit": "시딩 시간 제한 설정(분)",
-      "setInactiveSeedingLimit": "비활성 시딩 제한 설정(분)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
-    },
-    "speedLimit": {
-      "title": "토렌트 {{count}}개의 속도 제한 설정",
-      "description": "업로드 및 다운로드 속도 제한을 KB/s 단위로 설정합니다. 제한을 제거하려면 -1을 사용하거나 비활성화하세요.",
-      "setUploadLimit": "업로드 제한 설정(KB/s)",
-      "setDownloadLimit": "다운로드 제한 설정(KB/s)",
-      "cancel": "취소",
-      "setting": "설정 중...",
-      "applyLimits": "제한 적용"
-    },
-    "ratio": "비율:"
+    "ratio": "비율:",
+    "added": "{{time}} 추가됨"
   },
   "tableView": {
     "ascending": "오름차순",
@@ -1540,6 +1523,7 @@
   "stateLabels": {
     "downloading": "다운로드 중",
     "metaDL": "메타데이터 가져오는 중",
+    "forcedMetaDL": "(강제) 메타데이터 가져오는 중",
     "allocating": "할당 중",
     "stalledDL": "정체됨",
     "queuedDL": "대기 중",
@@ -1557,8 +1541,10 @@
     "error": "오류",
     "missingFiles": "파일 누락",
     "checkingResumeData": "재개 데이터 확인 중",
-    "moving": "이동 중"
+    "moving": "이동 중",
+    "unknown": "알 수 없음"
   },
+  "stateLabelFallback": "인식할 수 없음",
   "details": {
     "failedToUpdatePriorities": "파일 우선순위를 업데이트하지 못했습니다",
     "failedToRenameFile": "파일 이름을 변경하지 못했습니다",
@@ -1584,6 +1570,7 @@
     "tags": "태그",
     "newTagPlaceholder": "태그를 입력하고 Enter를 누르세요",
     "savePath": "저장 경로(실제 대상 위치)",
+    "routedTo": "cross-seed는 Cross-seed 인스턴스 {{instance}}(으)로 갑니다.",
     "cancel": "취소",
     "apply": "크로스시드 추가",
     "applying": "추가 중...",
@@ -1605,12 +1592,14 @@
       "dropped": "팩을 추가했습니다. 제외된 대상: {{names}}",
       "rejected": "{{name}}: {{reason}}",
       "reasons": {
-        "no_filesystem_access": "팩을 조립하려면 이 인스턴스에 로컬 파일 시스템 접근 권한이 필요합니다.",
+        "no_filesystem_access": "이 인스턴스가 팩을 조립하려면 파일시스템 쓰기 접근이 필요합니다. 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하거나 SSH 접근을 설정하세요.",
         "no_link_mode": "여러 대상을 선택하려면 이 인스턴스에서 하드링크 또는 reflink 모드를 활성화하세요.",
         "no_base_directory": "이 인스턴스의 링크 기본 디렉터리를 설정하세요.",
         "no_episode_files": "이 팩에서 재생 가능한 에피소드 파일을 찾지 못했습니다.",
         "target_not_found": "이 인스턴스에서 대상을 찾지 못했습니다.",
         "incomplete": "대상 다운로드가 완료되지 않았습니다.",
+        "not_settled": "이 토렌트는 아직 이동 중이거나 확인 중입니다. 완료된 후 다시 시도하세요.",
+        "errored": "이 토렌트에 오류가 있거나 파일이 누락되었습니다. 문제를 해결한 후 다시 시도하세요.",
         "no_episode_identity": "에피소드 번호를 해석할 수 없습니다.",
         "file_list_unavailable": "대상 파일 목록을 사용할 수 없습니다.",
         "episode_file_invalid": "대상에는 선택한 에피소드 식별자와 일치하는 재생 가능한 파일이 하나 있어야 합니다.",
@@ -1624,6 +1613,162 @@
         "link_failed": "링크를 만들지 못했습니다.",
         "add_failed": "토렌트를 추가하지 못했습니다."
       }
+    }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}}의 추가 사본 {{count}}개",
+    "labelWithProblem": "{{label}}. {{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "숨겨진 사본에 누락된 파일이 있습니다",
+      "error": "숨겨진 사본에 오류가 있습니다",
+      "unregistered": "숨겨진 사본이 등록되지 않았습니다",
+      "trackerError": "숨겨진 사본에 트래커 오류가 있습니다",
+      "trackerDown": "숨겨진 사본의 트래커가 다운되었습니다"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · {{count}}개 선택됨",
+    "hiddenTicked_other": "숨겨진 사본 {{count}}개가 선택됨",
+    "labelWithTicks": "{{label}}. {{ticks}}",
+    "groupCopies": "사본 묶기",
+    "ungroupCopies": "사본 묶음 풀기",
+    "grouping": "묶는 중…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "Cross-Seed 묶기",
+      "description": "한 토렌트의 사본을 한 행으로 표시합니다.",
+      "action": "사용해 보기"
+    },
+    "displayProfiles": {
+      "title": "표시 프로필",
+      "description": "화면마다 열, 행 밀도, 사이드바를 따로 유지하세요. 이 브라우저의 프로필은 여기에서 고릅니다.",
+      "action": "프로필 만들기"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "표시 프로필: {{name}}",
+    "menuLabel": "표시 프로필",
+    "defaultName": "기본",
+    "manage": "프로필 관리…",
+    "sheetDescription": "각 브라우저가 자신의 프로필을 고릅니다.",
+    "settings": {
+      "title": "표시 프로필",
+      "holds": "포함: 열 · 행 밀도 · 사이드바 · 필터 섹션 · 카테고리 트리 · 빈 필터",
+      "holdsHelp": "프로필에는 토렌트 목록의 모양이 담깁니다. 표시할 열, 열의 순서와 너비, 이름 열 늘이기, 행 밀도, 열린 사이드바와 필터 섹션, 접힌 카테고리 트리, 빈 필터 표시 여부입니다. 각 브라우저는 하나의 프로필을 사용하며, 선택은 그 브라우저만 기억합니다. 프로필을 고른 적이 없는 브라우저와 비공개 창은 Default를 사용합니다. 다른 설정은 모든 프로필이 공유합니다.",
+      "thisBrowser": "이 브라우저",
+      "use": "이 브라우저에서 사용",
+      "makeProfile": "노트북이나 휴대폰용 프로필 만들기",
+      "themesSync": "테마는 따로 동기화됩니다: <sync>테마 동기화</sync>",
+      "renameAriaLabel": "{{name}} 이름 바꾸기",
+      "saveName": "이름 저장",
+      "cancelRename": "이름 바꾸기 취소",
+      "editAriaLabel": "{{name}} 편집",
+      "editTitle": "프로필 편집",
+      "delete": "삭제…",
+      "deleteTitle": "{{name}}을(를) 삭제할까요?",
+      "deleteDescription": "이 프로필을 사용하는 다른 브라우저는 {{defaultName}}(으)로 전환됩니다.",
+      "deleteConfirm": "삭제",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "테이블 행",
+        "dense": "조밀한 행",
+        "stacked": "스택 카드"
+      },
+      "filterSidebarOpen": "필터 사이드바 열림",
+      "filterSidebarClosed": "필터 사이드바 닫힘"
+    },
+    "nameErrors": {
+      "empty": "이름을 입력하세요.",
+      "tooLong": "{{max}}자 이하로 입력하세요.",
+      "duplicate": "다른 프로필이 이 이름을 사용합니다."
+    },
+    "ownSortAndFilters": {
+      "label": "자체 정렬 및 필터",
+      "help": "<lead>이 설정을 켜면 이 프로필은 다음 항목을 따로 유지합니다:</lead><list><item>토렌트 목록의 정렬 순서</item><item>열 필터와 사이드바 필터</item><item>통합 보기에 표시되는 인스턴스</item><item>사본 묶기 켜기 또는 끄기</item><item>세부 정보 패널에서 마지막으로 연 탭</item><item>백업 및 RSS 페이지에 표시되는 인스턴스</item></list><note>이 프로필에서 이 항목을 바꿔도 다른 프로필에는 적용되지 않습니다. 이 설정을 끄면 이 프로필은 자체 값을 유지하지 않는 다른 모든 프로필과 이 항목을 공유합니다. 끄면 이 프로필의 자체 값이 삭제됩니다.</note>",
+      "offWarning": "이 설정을 끄면 {{name}}의 자체 정렬 및 필터가 삭제됩니다.",
+      "defaultShares": "항상 정렬 및 필터 공유",
+      "defaultSharesHelp": "Default는 정렬, 필터 및 기타 보기 선택을 자체 값을 유지하지 않는 모든 프로필과 항상 공유합니다. 자체 값을 유지하려면 다른 프로필을 만들고 자체 정렬 및 필터를 켜세요."
+    },
+    "deletedToast": "{{name}} 프로필이 삭제되었습니다. 이 브라우저는 이제 {{defaultName}}을(를) 사용합니다.",
+    "newProfile": "이 설정으로 새 프로필…",
+    "newDialog": {
+      "title": "새 프로필",
+      "copies": "<profile>{{name}}</profile>의 열, 밀도, 사이드바, 필터를 복사합니다. 그 후 이 브라우저가 새 프로필을 사용합니다.",
+      "name": "이름",
+      "namePlaceholder": "예: 노트북",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "취소",
+      "create": "만들기"
+    },
+    "iconPicker": {
+      "trigger": "아이콘: {{icon}}. 아이콘과 색 변경",
+      "letter": "이름의 첫 글자",
+      "color": "색"
+    },
+    "iconGroups": {
+      "devices": "기기",
+      "places": "장소",
+      "use": "용도",
+      "mood": "분위기"
+    },
+    "icons": {
+      "appWindow": "앱 창",
+      "monitor": "모니터",
+      "laptop": "노트북",
+      "tablet": "태블릿",
+      "smartphone": "스마트폰",
+      "tv": "TV",
+      "server": "서버",
+      "gamepad": "게임패드",
+      "house": "집",
+      "briefcase": "서류 가방",
+      "building": "건물",
+      "sofa": "소파",
+      "bed": "침대",
+      "coffee": "커피",
+      "plane": "비행기",
+      "train": "기차",
+      "rows": "행",
+      "table": "표",
+      "list": "목록",
+      "eye": "눈",
+      "gauge": "게이지",
+      "zap": "번개",
+      "download": "다운로드",
+      "upload": "업로드",
+      "sprout": "새싹",
+      "bookmark": "북마크",
+      "moon": "달",
+      "sun": "해",
+      "star": "별",
+      "heart": "하트",
+      "flame": "불꽃",
+      "rocket": "로켓"
+    },
+    "colors": {
+      "none": "없음(텍스트 색)",
+      "sky": "하늘색",
+      "emerald": "에메랄드",
+      "amber": "호박색",
+      "rose": "로즈",
+      "violet": "보라",
+      "orange": "주황",
+      "teal": "청록",
+      "pink": "분홍"
+    },
+    "columns": {
+      "headingEveryInstance": "{{profile}}의 열 · 모든 인스턴스",
+      "headingOneInstance": "{{profile}}의 열 · {{instance}}만",
+      "unifiedView": "통합 보기",
+      "thisInstance": "이 인스턴스"
+    },
+    "sameColumns": {
+      "label": "모든 인스턴스에서 같은 열 사용",
+      "menuHelp": "정렬과 열 필터는 인스턴스별로 유지됩니다.",
+      "helpOn": "{{instances}}에 하나의 열 설정을 사용합니다.",
+      "helpOff": "각 인스턴스가 자체 설정을 유지합니다. 켜면 모든 인스턴스가 {{instance}}의 열을 사용합니다.",
+      "helpOffNoInstance": "각 인스턴스가 자체 설정을 유지합니다.",
+      "unifiedViewInList": "통합 보기"
     }
   }
 }

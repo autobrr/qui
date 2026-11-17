@@ -19,6 +19,8 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -48,9 +50,11 @@ func (r *switchableRow) set(row *models.Instance) {
 	r.mu.Unlock()
 }
 
+// remoteRow is on the exec tier, so it has Identity. The reads need
+// TrustedIdentity, which a remote host never has.
 var (
 	localRow  = &models.Instance{HasLocalFilesystemAccess: true, IsActive: true}
-	remoteRow = &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", IsActive: true}
+	remoteRow = &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec, IsActive: true}
 )
 
 // remoteSpy stands in for the SSH host and counts the reads that reached it.
@@ -96,7 +100,7 @@ func TestHardlinkIndexBuildRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 	createFile(t, filepath.Join(dir, "movie.mkv"))
 	service, spy := newLocalGateService(t, instanceID, &switchableRow{row: remoteRow}, fakeFilesReader{files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
 
-	index := service.GetHardlinkIndex(t.Context(), instanceID, []qbt.Torrent{{Hash: "hash", SavePath: dir}})
+	index := service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs([]qbt.Torrent{{Hash: "hash", SavePath: dir}}))
 
 	require.NotNil(t, index)
 	require.Empty(t, index.ScopeByHash, "every scope stays unknown")
@@ -121,13 +125,13 @@ func TestHardlinkIndexUpdateRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 		{Hash: "h7", SavePath: dir}, {Hash: "h8", SavePath: dir}, {Hash: "h9", SavePath: dir},
 		{Hash: "h10", SavePath: dir}, {Hash: "h11", SavePath: dir}, {Hash: "h12", SavePath: dir},
 	}
-	require.NotEmpty(t, service.GetHardlinkIndex(t.Context(), instanceID, torrents).ScopeByHash)
+	require.NotEmpty(t, service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents)).ScopeByHash)
 
 	rows.set(remoteRow)
 	// One new torrent keeps the change inside the incremental budget, so the
 	// update reads only that torrent rather than falling back to a full build.
 	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "h13", SavePath: dir})
-	service.GetHardlinkIndex(t.Context(), instanceID, grown)
+	service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(grown))
 
 	require.Zero(t, spy.lstats.Load(), "the update must not read the SSH host")
 }
@@ -142,7 +146,7 @@ func TestVerifyDeleteCandidatesHoldsAnInstanceThatLeftLocalMode(t *testing.T) {
 	index := &HardlinkIndex{ScopeByHash: map[string]string{"hash": HardlinkScopeNone}}
 
 	blocked := service.verifyDeleteCandidates(t.Context(), instanceID, index,
-		map[string]qbt.Torrent{"hash": {Hash: "hash", SavePath: dir}}, []string{"hash"})
+		torrentRefMap(map[string]qbt.Torrent{"hash": {Hash: "hash", SavePath: dir}}), map[string]hardlinkUse{"hash": {single: true}})
 
 	require.Equal(t, map[string]string{"hash": "filesystem backend unavailable"}, blocked)
 	require.Zero(t, spy.lstats.Load(), "the re-read must not reach the SSH host")
@@ -177,7 +181,7 @@ func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	fid := createFile(t, filepath.Join(dir, "movie.mkv"))
 	service, spy := newLocalGateService(t, instanceID, &switchableRow{row: remoteRow},
 		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
-	deficits := map[hardlink.FileID]*fileIDTracker{fid: {nlink: 2, uniquePathCount: 1}}
+	deficits := map[fsops.FileKey]*fileIDTracker{testFileKey(fid, nil): {nlink: 2, uniquePathCount: 1}}
 	state := &hardlinkBuildState{seenPaths: map[string]struct{}{}}
 
 	stats := service.scanOtherInstancesForDeficits(t.Context(), instanceID, []int{instanceID + 1}, deficits, state)
@@ -185,4 +189,64 @@ func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {
 	require.Equal(t, 1, stats.skipped)
 	require.Zero(t, spy.lstats.Load(), "the cross-instance scan must not read the SSH host")
 	require.Len(t, deficits, 1, "the deficit stays unresolved, which keeps the link outside")
+}
+
+func TestCrossScopeKeysRemoteIDsByTheirInstance(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 955
+	dir := t.TempDir()
+	createFile(t, filepath.Join(dir, "movie.mkv"))
+	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "cross-remote"), make([]byte, 32))
+	require.NoError(t, err)
+	_, err = store.Create(t.Context(), "peer", "http://127.0.0.1:1", "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	service, _ := newLocalGateService(t, instanceID, &switchableRow{row: localRow},
+		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
+	service.instanceStore = store
+
+	// The peer scan cannot resolve a remote deficit, so it stays outside.
+	box := &models.Instance{ID: instanceID, SSHHost: "box.example.invalid", SSHPort: 22}
+	id := hardlink.RemoteFileID([]byte{1, 2, 3})
+	index := &HardlinkIndex{buildState: &hardlinkBuildState{
+		instance:        box,
+		globalFileIDMap: map[fsops.FileKey]*fileIDTracker{testFileKey(id, box): {nlink: 2, uniquePathCount: 1}},
+		seenPaths:       map[string]struct{}{},
+		torrentInfoByHash: map[string]*torrentFileInfo{
+			"hash": {fileIDs: []hardlink.FileID{id}, allAccessible: true, hasHardlinks: true},
+		},
+	}}
+
+	service.augmentCrossInstanceScope(t.Context(), instanceID, index)
+
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.CrossScopeByHash["hash"])
+}
+
+// The cross-instance scope reads only instances with trusted identity. A
+// remote identity never matches a local file key, so reading an exec-tier
+// remote costs one remote stat per file and resolves nothing.
+func TestCrossScopeInstancesAreTrustedOnly(t *testing.T) {
+	t.Parallel()
+
+	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "cross-trusted"), sshtest.EncryptionKey())
+	require.NoError(t, err)
+	rule, err := store.Create(t.Context(), "rule", "http://127.0.0.1:1", "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	local, err := store.Create(t.Context(), "local", "http://127.0.0.1:2", "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	remote, err := store.Create(t.Context(), "remote", "http://127.0.0.1:3", "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+	require.NoError(t, store.SetSSHCredentials(t.Context(), remote.ID, "box.example.invalid", 22, "qui", sshtest.PrivateKey("")))
+	require.NoError(t, store.SetHostKeyPin(t.Context(), remote.ID, "box.example.invalid", 22, sshtest.HostKey()))
+	row, err := store.Get(t.Context(), remote.ID)
+	require.NoError(t, err)
+	require.NoError(t, store.SetSSHProbe(t.Context(), row, models.SSHTierExec, true))
+	row, err = store.Get(t.Context(), remote.ID)
+	require.NoError(t, err)
+	require.True(t, models.FilesystemCapabilitiesOf(row).Identity, "the fixture must be an exec-tier remote")
+
+	service := &Service{instanceStore: store}
+	ids, err := service.listCrossScopeInstances(t.Context(), rule.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int{local.ID}, ids)
 }

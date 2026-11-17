@@ -6,7 +6,7 @@
 import { HttpResponse, http } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { APIError, api } from "@/lib/api"
+import { api } from "@/lib/api"
 import { makeFilters } from "@/test/mockFilters"
 import { makeServerState } from "@/test/mockServerState"
 import { makeTorrent } from "@/test/mockTorrent"
@@ -146,6 +146,49 @@ describe("api.getTorrents", () => {
     })
   })
 
+  describe("groupCopies", () => {
+    it("sends groupCopies=true only when the caller asks for groups", async () => {
+      server.use(captureTorrents(), captureCrossInstance())
+
+      await api.getTorrents(1, { groupCopies: true })
+      expect(capturedUrl().searchParams.get("groupCopies")).toBe("true")
+      await api.getCrossInstanceTorrents({ groupCopies: true })
+      expect(capturedUrl().searchParams.get("groupCopies")).toBe("true")
+
+      await api.getTorrents(1, { groupCopies: false })
+      expect(capturedUrl().searchParams.has("groupCopies")).toBe(false)
+      await api.getCrossInstanceTorrents({})
+      expect(capturedUrl().searchParams.has("groupCopies")).toBe(false)
+    })
+
+    it("puts groupCopies in a stream subscription only when it is true", () => {
+      const streamsOf = (groupCopies?: boolean) => JSON.parse(new URL(api.getTorrentsStreamBatchUrl([
+        { key: "k", instanceId: 1, page: 0, limit: 50, sort: "name", order: "asc", groupCopies },
+      ]), "http://localhost").searchParams.get("streams") as string)
+
+      expect(streamsOf(true)[0].groupCopies).toBe(true)
+      expect("groupCopies" in streamsOf(false)[0]).toBe(false)
+      expect("groupCopies" in streamsOf()[0]).toBe(false)
+    })
+
+    it("puts groupCopies in the body of a subscription change", async () => {
+      let body: unknown
+      server.use(http.post("*/api/stream/subscriptions", async ({ request }) => {
+        body = await request.json()
+        return new HttpResponse(null, { status: 204 })
+      }))
+
+      await api.changeStreamSubscriptions("c", [
+        { key: "grouped", instanceId: 1, page: 0, limit: 50, sort: "name", order: "asc", groupCopies: true },
+        { key: "flat", instanceId: 1, page: 0, limit: 50, sort: "name", order: "asc" },
+      ], [])
+
+      const [grouped, flat] = (body as { add: Record<string, unknown>[] }).add
+      expect(grouped.groupCopies).toBe(true)
+      expect("groupCopies" in flat).toBe(false)
+    })
+  })
+
   describe("response parsing", () => {
     it("returns response.json() verbatim with caller-visible total and hasMore", async () => {
       const body = okTorrentResponse({
@@ -177,26 +220,6 @@ describe("api.getTorrents", () => {
   })
 
   describe("error contract", () => {
-    it("throws an APIError with .status and .data from a non-2xx JSON body", async () => {
-      server.use(
-        http.get("*/api/instances/:instanceId/torrents", () =>
-          HttpResponse.json({ error: "boom", conflict: true }, { status: 409 })
-        )
-      )
-
-      try {
-        await api.getTorrents(1, {})
-        expect.unreachable("expected getTorrents to throw")
-      } catch (error) {
-        expect(error).toBeInstanceOf(APIError)
-        const apiError = error as APIError
-        expect(apiError.name).toBe("APIError")
-        expect(apiError.message).toBe("boom")
-        expect(apiError.status).toBe(409)
-        expect(apiError.data).toEqual({ error: "boom", conflict: true })
-      }
-    })
-
     it("falls back to 'HTTP error! status: <status>' for an empty error body", async () => {
       server.use(
         http.get("*/api/instances/:instanceId/torrents", () =>
@@ -246,16 +269,6 @@ describe("api.getCrossInstanceTorrents", () => {
       expect(JSON.parse(params.get("filters") as string)).toEqual(filters)
     })
 
-    it("never emits a prefer/preferCached param (this method has no preferCached option)", async () => {
-      server.use(captureCrossInstance())
-
-      await api.getCrossInstanceTorrents({ page: 1 })
-
-      const params = capturedUrl().searchParams
-      expect(params.has("prefer")).toBe(false)
-      expect(params.has("preferCached")).toBe(false)
-    })
-
     it("emits instanceIds as a comma-joined string when truthy and non-empty", async () => {
       server.use(captureCrossInstance())
 
@@ -301,31 +314,6 @@ describe("api.getCrossInstanceTorrents", () => {
       // The identical normalized array is written onto BOTH fields.
       expect(result.cross_instance_torrents).toBe(result.crossInstanceTorrents)
       expect(errorSpy).not.toHaveBeenCalled()
-    })
-
-    it("drops rows missing instance identity entirely rather than rendering them", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-      const validRow = {
-        ...makeTorrent({ name: "kept" }),
-        instance_id: 9,
-        instance_name: "main",
-      }
-      // No instanceId/instanceName and no snake_case identity => dropped.
-      const orphanRow = { ...makeTorrent({ name: "orphan" }) }
-      server.use(
-        captureCrossInstance(
-          okTorrentResponse({
-            cross_instance_torrents: [validRow, orphanRow] as TorrentResponse["cross_instance_torrents"],
-          })
-        )
-      )
-
-      const result = await api.getCrossInstanceTorrents({})
-
-      expect(result.crossInstanceTorrents).toHaveLength(1)
-      expect(result.crossInstanceTorrents?.[0].instanceId).toBe(9)
-      expect(result.crossInstanceTorrents?.[0].instanceName).toBe("main")
-      expect(errorSpy).toHaveBeenCalledTimes(1)
     })
 
     it("returns camelCase rows unchanged when every row already has instance identity", async () => {

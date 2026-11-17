@@ -3,7 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { openCommandPalette } from "@/components/command-palette/open"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
+import { SystemNoticeMenuItems } from "@/components/layout/SystemNoticeMenuItems"
+import { SystemNoticeDialog } from "@/components/ui/SystemNotice"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -23,15 +26,15 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { getThemeById, isThemePremium, themes } from "@/config/themes"
+import { getThemeById, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
-import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useTorrentSelectionContext } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useIsMobile } from "@/hooks/useMediaQuery"
-import { useVersionInfo } from "@/hooks/useSelfUpdate"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import type { Theme } from "@/config/themes"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -39,32 +42,40 @@ import { demoLinks, isDemo } from "@/lib/demo"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
+import { themeThumbnailPalette, themeVariationColors } from "@/lib/theme-thumbnail"
+import { QuickThemeRow, QuickThemeVariations } from "@/components/themes/QuickThemeRow"
+import { useThemeVisibility } from "@/hooks/useThemeVisibility"
+import { hasSelection } from "@/lib/torrent-selection"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
+import { systemNoticeDotColor, topSystemNoticeSeverity } from "@/lib/system-notice"
 import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
   getCurrentThemeMode,
-  getThemeColors,
   getThemeVariation,
+  isDarkMode,
   setTheme,
   setThemeMode,
   setThemeVariation,
   type ThemeMode
 } from "@/utils/theme"
+import { useOpenSystemNotice, useSystemNotices } from "@/hooks/useSystemNotices"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
+import { themeArea } from "@/lib/theme-areas"
 import {
   Archive,
+  ChartColumn,
   Check,
   Code,
   Copyright,
-  CornerDownRight,
   Download,
   FileText,
   GitBranch,
   HardDrive,
   Home,
+  ListChecks,
   Loader2,
   Globe,
   LogOut,
@@ -83,13 +94,17 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 // Custom hook for theme change detection
-const useThemeChange = () => {
+const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme())
+  // A system switch in auto mode keeps the mode and the theme, so the resolved
+  // light or dark is state of its own, to render again on that switch.
+  const [dark, setDark] = useState(() => isDarkMode(getCurrentThemeMode()))
 
   const checkTheme = useCallback(() => {
     setCurrentMode(getCurrentThemeMode())
     setCurrentTheme(getCurrentTheme())
+    setDark(isDarkMode(getCurrentThemeMode()))
   }, [])
 
   useEffect(() => {
@@ -103,7 +118,11 @@ const useThemeChange = () => {
     }
   }, [checkTheme])
 
-  return { currentMode, currentTheme }
+  // Custom theme registration sends no themechange. Call this hook after
+  // useCustomThemes, so that a stored custom theme resolves here.
+  useEffect(checkTheme, [checkTheme, customThemes])
+
+  return { currentMode, currentTheme, dark }
 }
 
 export function MobileFooterNav() {
@@ -113,15 +132,16 @@ export function MobileFooterNav() {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
-  const { isSelectionMode } = useTorrentSelection()
+  const isSelectionMode = hasSelection(useTorrentSelectionContext().selection)
   const { isFooterVisible } = useMobileScroll()
   const isMobile = useIsMobile()
   const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
-  const { currentMode, currentTheme } = useThemeChange()
   const { customThemes } = useCustomThemes()
+  const { currentMode, currentTheme, dark } = useThemeChange(customThemes)
+  const [themeVisibility] = useThemeVisibility()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
-  const themeCatalog = buildThemeCatalog(themes, customThemes)
+  const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
@@ -137,7 +157,8 @@ export function MobileFooterNav() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
-  const selfUpdateAvailable = useVersionInfo().data?.selfUpdate === true
+  const systemNotices = useSystemNotices()
+  const openSystemNotice = useOpenSystemNotice(systemNotices)
   const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
   const updateItemLabel = updateInfo && (
     <>
@@ -239,6 +260,7 @@ export function MobileFooterNav() {
 
   return (
     <nav
+      {...themeArea("mobile-nav")}
       className={cn(
         "fixed bottom-0 left-0 right-0 z-40 lg:hidden",
         "bg-background/80 backdrop-blur-md border-t border-border/50",
@@ -252,7 +274,7 @@ export function MobileFooterNav() {
         {!isDemo && <Link
           to="/dashboard"
           className={cn(
-            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
             location.pathname === "/dashboard" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -260,8 +282,29 @@ export function MobileFooterNav() {
             "h-5 w-5",
             location.pathname === "/dashboard" && "text-primary"
           )} />
-          <span className="truncate">{t("mobileNav.dashboard")}</span>
+          <span className="max-w-full truncate">{t("mobileNav.dashboard")}</span>
         </Link>}
+
+        {!isDemo && <Link
+          to="/statistics"
+          className={cn(
+            "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            location.pathname === "/statistics" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <ChartColumn className="h-5 w-5" />
+          <span className="max-w-full truncate">{t("mobileNav.statistics")}</span>
+        </Link>}
+
+        {/* Command palette. A phone shows no search field for the torrent list, so the palette opens with the search of the list. */}
+        <button
+          type="button"
+          onClick={() => openCommandPalette(isOnInstancePage ? String(routeSearch?.q ?? "") : "")}
+          className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground hover:cursor-pointer"
+        >
+          <SearchIcon className="h-5 w-5" />
+          <span className="max-w-full truncate">{t("actions.search")}</span>
+        </button>
 
         {/* Clients access */}
         {hasClientScopeEntry ? (
@@ -270,7 +313,7 @@ export function MobileFooterNav() {
               <button
                 type="button"
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                  "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
                   isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -287,7 +330,7 @@ export function MobileFooterNav() {
                   </Badge>
                 </div>
                 <span
-                  className="block max-w-[7.5rem] truncate text-center"
+                  className="block max-w-full truncate text-center"
                   title={currentInstanceLabel ?? t("mobileNav.clients")}
                 >
                   {currentInstanceLabel ?? t("mobileNav.clients")}
@@ -381,21 +424,21 @@ export function MobileFooterNav() {
           </DropdownMenu>
         ) : isLoadingInstances ? (
           <button
-            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
             type="button"
             disabled
           >
             <HardDrive className="h-5 w-5 animate-pulse" />
-            <span className="block max-w-[7.5rem] truncate text-center text-xs">{t("mobileNav.loading")}</span>
+            <span className="block max-w-full truncate text-center text-xs">{t("mobileNav.loading")}</span>
           </button>
         ) : (
           <button
-            className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
+            className="flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
             type="button"
             disabled
           >
             <HardDrive className="h-5 w-5" />
-            <span className="block max-w-[7.5rem] truncate text-center">{t("mobileNav.noActiveClients")}</span>
+            <span className="block max-w-full truncate text-center">{t("mobileNav.noActiveClients")}</span>
           </button>
         )}
 
@@ -404,7 +447,7 @@ export function MobileFooterNav() {
           <DropdownMenuTrigger asChild>
             <button
               className={cn(
-                "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
+                "flex flex-col items-center justify-center gap-1 px-0.5 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
                 location.pathname === "/settings" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -413,6 +456,9 @@ export function MobileFooterNav() {
                   "h-5 w-5",
                   location.pathname === "/settings" && "text-primary"
                 )} />
+                {systemNotices.length > 0 && (
+                  <span className={cn("absolute -top-1 -left-2 h-2.5 w-2.5 rounded-full", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
+                )}
                 {updateInfo && (
                   <Badge
                     className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center bg-green-500 hover:bg-green-500 text-white"
@@ -422,19 +468,16 @@ export function MobileFooterNav() {
                   </Badge>
                 )}
               </div>
-              <span className="truncate">{t("mobileNav.settings")}</span>
+              <span className="max-w-full truncate">{t("mobileNav.settings")}</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
+          <DropdownMenuContent align="end" side="top" className={cn("mb-2", systemNotices.length > 0 ? "w-72" : "w-56")}>
+            <SystemNoticeMenuItems notices={systemNotices} onOpen={openSystemNotice.open} />
             {updateInfo && (
               <>
                 <DropdownMenuItem asChild>
                   {/* Settings holds the Install update button. */}
-                  {selfUpdateAvailable ? (
-                    <Link to="/settings" search={{ tab: "application" }} className={updateItemClass}>{updateItemLabel}</Link>
-                  ) : (
-                    <a href={updateInfo.html_url} target="_blank" rel="noopener noreferrer" className={updateItemClass}>{updateItemLabel}</a>
-                  )}
+                  <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>
@@ -591,58 +634,40 @@ export function MobileFooterNav() {
 
       {/* Theme selection dialog */}
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
+        {/* Only the theme list scrolls: the mode rows above it and the link below it stay in view.
+            A screen under 35rem tall has no room for that, so there the whole dialog scrolls. */}
+        <DialogContent className="flex max-h-[85dvh] max-w-md flex-col gap-4 overflow-hidden [@media(max-height:35rem)]:overflow-y-auto">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{t("themeToggle.appearance")}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="shrink-0 space-y-4">
             {/* Mode Selection */}
             <div>
               <div className="text-sm font-medium mb-2">{t("themeToggle.mode")}</div>
-              <div className="space-y-1">
-                <button
-                  onClick={() => {
-                    handleModeSelect("light")
-                    setShowThemeDialog(false)
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                    currentMode === "light" ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                >
-                  <Sun className="h-4 w-4" />
-                  <span className="flex-1 text-left">{t("themeToggle.light")}</span>
-                  {currentMode === "light" && <Check className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => {
-                    handleModeSelect("dark")
-                    setShowThemeDialog(false)
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                    currentMode === "dark" ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                >
-                  <Moon className="h-4 w-4" />
-                  <span className="flex-1 text-left">{t("themeToggle.dark")}</span>
-                  {currentMode === "dark" && <Check className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => {
-                    handleModeSelect("auto")
-                    setShowThemeDialog(false)
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                    currentMode === "auto" ? "bg-accent" : "hover:bg-accent/50"
-                  )}
-                >
-                  <Monitor className="h-4 w-4" />
-                  <span className="flex-1 text-left">{t("themeToggle.system")}</span>
-                  {currentMode === "auto" && <Check className="h-4 w-4" />}
-                </button>
+              <div role="group" aria-label={t("themeToggle.mode")} className="grid grid-cols-3 gap-1">
+                {([
+                  { mode: "light", icon: Sun, label: t("themeToggle.light") },
+                  { mode: "dark", icon: Moon, label: t("themeToggle.dark") },
+                  { mode: "auto", icon: Monitor, label: t("themeToggle.system") },
+                ] as const).map(({ mode, icon: Icon, label }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={currentMode === mode}
+                    onClick={() => {
+                      handleModeSelect(mode)
+                      setShowThemeDialog(false)
+                    }}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-sm transition-colors",
+                      currentMode === mode ? "border-primary/50 bg-primary/10 font-medium" : "border-transparent text-muted-foreground hover:bg-accent/50"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -653,10 +678,11 @@ export function MobileFooterNav() {
                 {viewModes.map((mode) => (
                   <button
                     key={mode}
+                    aria-pressed={viewMode === mode}
                     onClick={() => setViewMode(mode)}
                     className={cn(
-                      "px-3 py-2 rounded-md text-sm transition-colors",
-                      viewMode === mode ? "bg-accent" : "hover:bg-accent/50"
+                      "px-3 py-2 rounded-md border text-sm transition-colors",
+                      viewMode === mode ? "border-primary/50 bg-primary/10 font-medium" : "border-transparent text-muted-foreground hover:bg-accent/50"
                     )}
                   >
                     {isMobile
@@ -667,94 +693,71 @@ export function MobileFooterNav() {
               </div>
             </div>
 
-            {/* Theme Selection */}
-            <div>
-              <div className="text-sm font-medium mb-2">{t("themeToggle.theme")}</div>
-              <div className="space-y-1">
-                {themeCatalog.map((theme) => {
-                  const isPremium = isThemePremium(theme.id)
-                  const isLocked = !!theme.locked
-                  const colors = getThemeColors(theme)
-                  const currentVariation = getThemeVariation(theme.id)
+            <div className="text-sm font-medium">{t("themeToggle.theme")}</div>
+          </div>
 
-                  return (
+          {/* Theme Selection */}
+          <div className="-mx-6 -mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 [@media(max-height:35rem)]:flex-none [@media(max-height:35rem)]:overflow-visible">
+            <div className="space-y-1">
+              {themeCatalog.map((theme) => {
+                const isLocked = !!theme.locked
+                const isCurrent = currentTheme.id === theme.id
+                const variation = getThemeVariation(theme.id)
+                const variations = themeVariationColors(theme, dark)
+
+                return (
+                  <div key={theme.id} className={cn("rounded-md", isCurrent && "bg-accent")}>
                     <button
-                      key={theme.id}
+                      type="button"
+                      aria-current={isCurrent ? "true" : undefined}
                       onClick={() => {
-                        if (!isLocked) {
-                          handleThemeSelect(theme.id)
-                          setShowThemeDialog(false)
-                        }
+                        handleThemeSelect(theme.id)
+                        setShowThemeDialog(false)
                       }}
                       disabled={isLocked}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors",
-                        currentTheme.id === theme.id ? "bg-accent" : "hover:bg-accent/50",
-                        isLocked && "opacity-60 cursor-not-allowed"
+                        "w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
+                        !isCurrent && "hover:bg-accent/50",
+                        isLocked && "cursor-not-allowed opacity-60"
                       )}
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 flex-shrink-0"
-                            style={{
-                              backgroundColor: colors.primary,
-                              backgroundImage: "none",
-                              background: colors.primary + " !important",
-                            }}
-                          />
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="truncate">{theme.name}</span>
-                            {isPremium && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                                {t("themeToggle.premium")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Variation pills */}
-                        {colors.variations && colors.variations.length > 0 && (
-                          <div className="flex items-center gap-2 pl-1.5 mt-2">
-                            <CornerDownRight className="h-4 w-4 text-muted-foreground" />
-                            <div className="flex gap-2">
-                              {colors.variations.map((variation) => {
-                                const isSelected = currentVariation === variation.id
-                                return (
-                                  <div
-                                    key={variation.id}
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      const success = await handleVariationSelect(theme.id, variation.id)
-                                      if (success) {
-                                        setShowThemeDialog(false)
-                                      }
-                                    }}
-                                    className={cn(
-                                      "w-8 h-8 rounded-full transition-all cursor-pointer",
-                                      isSelected? "ring-2 ring-black dark:ring-white": "ring-1 ring-black/10 dark:ring-white/10"
-                                    )}
-                                    style={{
-                                      backgroundColor: variation.color,
-                                      backgroundImage: "none",
-                                      background: variation.color + " !important",
-                                    }}
-                                  />
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      {currentTheme.id === theme.id && <Check className="h-4 w-4 flex-shrink-0 self-center" />}
+                      <QuickThemeRow
+                        theme={theme}
+                        palette={themeThumbnailPalette(theme, dark, variation)}
+                        variations={variations}
+                        isCurrent={isCurrent}
+                      />
                     </button>
-                  )
-                })}
-              </div>
+                    {isCurrent && variations.length > 0 && (
+                      <QuickThemeVariations
+                        variations={variations}
+                        selected={variation}
+                        onSelect={async (variationId) => {
+                          if (await handleVariationSelect(theme.id, variationId)) setShowThemeDialog(false)
+                        }}
+                        className="gap-0 px-3 pb-2 [&_button]:size-11 [&_button>span]:size-7"
+                      />
+                    )}
+                  </div>
+                )
+              })}
             </div>
+          </div>
+
+          <div className="-mx-6 -mb-4 shrink-0 border-t px-6 pt-2">
+            <Link
+              to="/settings"
+              search={{ tab: "themes", modal: "theme-menu" }}
+              onClick={() => setShowThemeDialog(false)}
+              className="flex min-h-11 items-center gap-2 rounded-md px-3 text-sm hover:bg-accent/50"
+            >
+              <ListChecks className="h-4 w-4" />
+              {t("settings:themes.menu.button")}
+            </Link>
           </div>
         </DialogContent>
       </Dialog>
+      <SystemNoticeDialog notice={openSystemNotice.notice} returnFocusTo={openSystemNotice.menuButton} onClose={openSystemNotice.close} />
     </nav>
   )
 }

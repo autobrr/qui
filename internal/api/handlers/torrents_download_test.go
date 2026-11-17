@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -26,7 +27,7 @@ type mockContentResolver struct {
 	filesErr      error
 	properties    *qbt.TorrentProperties
 	propertiesErr error
-	torrents      []qbt.Torrent
+	torrents      []*qbt.Torrent
 	torrentsErr   error
 	filesCalls    int
 	propsCalls    int
@@ -43,7 +44,7 @@ func (m *mockContentResolver) GetTorrentProperties(_ context.Context, _ int, _ s
 	return m.properties, m.propertiesErr
 }
 
-func (m *mockContentResolver) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+func (m *mockContentResolver) GetTorrentRefs(_ context.Context, _ int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	m.torrentsCalls++
 	return m.torrents, m.torrentsErr
 }
@@ -282,7 +283,7 @@ func TestDownloadTorrentContentFile_SkipsDirectoryCandidateAndStreamsFile(t *tes
 	resolver := &mockContentResolver{
 		files:      &files,
 		properties: &qbt.TorrentProperties{SavePath: savePath},
-		torrents:   []qbt.Torrent{{ContentPath: contentPath}},
+		torrents:   []*qbt.Torrent{{ContentPath: contentPath}},
 	}
 	handler := &TorrentsHandler{
 		instanceStore:   instanceStore,

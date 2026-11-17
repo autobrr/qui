@@ -3,12 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { describe, expect, it } from "vitest"
+import i18n from "@/i18n"
+import type { Torrent } from "@/types"
+import { cleanup, render } from "@testing-library/react"
+import type { ReactElement } from "react"
+import { afterEach, describe, expect, it } from "vitest"
 
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
 
 function iconColumnSizes(viewMode: TableViewMode) {
-  return createColumns(false, undefined, "bytes", undefined, undefined, undefined, true, false, viewMode)
+  return createColumns({ incognitoMode: false, viewMode }, i18n.getFixedT(null, "torrents"))
     .filter(col => col.id === "status_icon" || col.id === "tracker_icon")
     .map(({ size, minSize, maxSize }) => ({ size, minSize, maxSize }))
 }
@@ -24,5 +28,62 @@ describe("icon columns", () => {
       { size: width, minSize: width, maxSize: width },
       { size: width, minSize: width, maxSize: width },
     ])
+  })
+})
+
+describe("reannounce column", () => {
+  afterEach(cleanup)
+
+  function reannounceCell(state: string, reannounce: number | undefined): string {
+    const column = createColumns({ incognitoMode: false }, i18n.getFixedT(null, "torrents"))
+      .find(col => "accessorKey" in col && col.accessorKey === "reannounce")!
+    const cell = column.cell as (ctx: { row: { original: Torrent } }) => ReactElement
+    return render(cell({ row: { original: { state, reannounce } as Torrent } })).container.textContent ?? ""
+  }
+
+  it("shows a dash when the row does not carry reannounce", () => {
+    expect(reannounceCell("uploading", undefined)).toBe("—")
+  })
+
+  it("shows a dash for a stopped torrent", () => {
+    expect(reannounceCell("stoppedUP", 0)).toBe("—")
+  })
+
+  it("shows now for 0 on an active torrent", () => {
+    expect(reannounceCell("uploading", 0)).toBe("now")
+  })
+
+  it("shows minutes for an active torrent", () => {
+    expect(reannounceCell("stalledUP", 840)).toBe("14m")
+  })
+})
+
+// regression: #3761
+describe("popularity and private columns", () => {
+  afterEach(cleanup)
+
+  function cellText(accessorKey: "popularity" | "private", original: Partial<Torrent>): string {
+    const column = createColumns({ incognitoMode: false }, i18n.getFixedT(null, "torrents"))
+      .find(col => "accessorKey" in col && col.accessorKey === accessorKey)!
+    const cell = column.cell as (ctx: { row: { original: Torrent } }) => ReactElement
+    return render(cell({ row: { original: original as Torrent } })).container.textContent ?? ""
+  }
+
+  it("shows a dash when the row does not carry popularity", () => {
+    expect(cellText("popularity", {})).toBe("—")
+  })
+
+  it("shows a popularity of 0 as a value", () => {
+    expect(cellText("popularity", { popularity: 0 })).toBe("0.00")
+  })
+
+  it("shows a dash when the row does not carry private", () => {
+    expect(cellText("private", {})).toBe("—")
+  })
+
+  it("shows the private value", () => {
+    expect(cellText("private", { private: true })).toBe("Yes")
+    cleanup()
+    expect(cellText("private", { private: false })).toBe("No")
   })
 })

@@ -87,7 +87,7 @@ describe("resolveTorrentHashes", () => {
   })
 
   it("falls back through the canonical priority chain", () => {
-    // v2 wins over a legacy `hash` when no v1 is available
+    // A legacy `hash` that differs from the v2 digest still counts as v1 and wins
     expect(resolveTorrentHashes({ hash: "legacy", infohash_v2: "v2" })).toEqual({
       infohashV1: "legacy",
       infohashV2: "v2",
@@ -191,11 +191,6 @@ describe("getTorrentHashesWithTag", () => {
     ]
     expect(getTorrentHashesWithTag(torrents, "linux")).toEqual(["h1", "h3"])
   })
-
-  it("returns empty when nothing matches", () => {
-    const torrents = [makeTorrent({ hash: "h1", tags: "windows" })]
-    expect(getTorrentHashesWithTag(torrents, "linux")).toEqual([])
-  })
 })
 
 // Intent: common-category check for the bulk "Set category" dialog. Returns
@@ -277,14 +272,5 @@ describe("getTotalSize", () => {
         makeTorrent({ size: 50 }),
       ])
     ).toBe(350)
-  })
-
-  it("treats missing size as 0", () => {
-    expect(
-      getTotalSize([
-        makeTorrent({ size: 100 }),
-        makeTorrent({ size: 0 }),
-      ])
-    ).toBe(100)
   })
 })

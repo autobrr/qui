@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/discscan"
 )
 
@@ -105,7 +106,7 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contentPath := ""
-	if torrents, err := h.resolver.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{Hashes: []string{hash}}); err == nil && len(torrents) > 0 {
+	if torrents, err := h.resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}}); err == nil && len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
 	}
 

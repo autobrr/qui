@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
 	"github.com/autobrr/qui/internal/update"
@@ -44,11 +43,12 @@ type LatestVersionResponse struct {
 // newer release has been detected. Intended for monitoring tools (e.g. Argus)
 // that track the deployed version of a service.
 type VersionResponse struct {
-	Version         string `json:"version"`
-	LatestVersion   string `json:"latestVersion,omitempty"`
-	UpdateAvailable bool   `json:"updateAvailable"`
-	SelfUpdate      bool   `json:"selfUpdate"`
-	Restart         bool   `json:"restart"`
+	Version                     string `json:"version"`
+	LatestVersion               string `json:"latestVersion,omitempty"`
+	UpdateAvailable             bool   `json:"updateAvailable"`
+	SelfUpdate                  bool   `json:"selfUpdate"`
+	SelfUpdateUnavailableReason string `json:"selfUpdateUnavailableReason"`
+	Restart                     bool   `json:"restart"`
 }
 
 // GetVersion returns the version qui is currently running. When the update
@@ -57,9 +57,10 @@ type VersionResponse struct {
 // LatestVersion is omitted.
 func (h *VersionHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	response := VersionResponse{
-		Version:    h.currentVersion,
-		SelfUpdate: h.availability.SelfUpdate,
-		Restart:    h.availability.Restart,
+		Version:                     h.currentVersion,
+		SelfUpdate:                  h.availability.SelfUpdate,
+		SelfUpdateUnavailableReason: h.availability.SelfUpdateUnavailableReason,
+		Restart:                     h.availability.Restart,
 	}
 
 	if release := h.updateService.GetLatestRelease(r.Context()); release != nil {
@@ -89,7 +90,5 @@ func (h *VersionHandler) GetLatestVersion(w http.ResponseWriter, r *http.Request
 		response.Name = *release.Name
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	RespondJSON(w, http.StatusOK, response)
 }

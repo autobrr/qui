@@ -48,7 +48,7 @@ import type { TorrentCreationParams, TorrentFormat } from "@/types"
 
 import { useTranslation } from "react-i18next"
 
-import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
+import { getPieceSizeOptions, TorrentPieceSize } from "./piece-size"
 
 /** Parse newline-separated input into array of non-empty trimmed strings */
 function parseLines(input: string): string[] {
@@ -486,7 +486,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                           <SelectItem value={TorrentPieceSize.Auto}>
                             {t("creatorDialog.pieceSizePlaceholder")}
                           </SelectItem>
-                          {pieceSizeOptions.map((option) => (
+                          {getPieceSizeOptions().map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>

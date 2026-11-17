@@ -239,6 +239,16 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 	}
 }
 
+// Keep coarse-clock admissions distinct at PostgreSQL's microsecond precision.
+// Bound the advance to one second: CreatedAt also controls wall-clock admission
+// deadlines, so a substantial clock rollback must reset it to the current time.
+func nextPartialPoolAdmissionTime(now, previous time.Time) time.Time {
+	if !now.After(previous) && previous.Sub(now) < time.Second {
+		return previous.Add(time.Microsecond).Truncate(time.Microsecond)
+	}
+	return now
+}
+
 func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registration CrossSeedPartialPoolRegistration, member CrossSeedPartialPoolMember, files []CrossSeedPartialPoolMemberFile) (*CrossSeedPartialPool, *CrossSeedPartialPoolMember, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -320,7 +330,14 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 	if locked != 1 {
 		return nil, nil, errPartialPoolRegistrationChanged
 	}
-	admittedAt := time.Now().UTC()
+	admittedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if reAdmission {
+		var previous time.Time
+		if err := tx.QueryRowContext(ctx, `SELECT created_at FROM cross_seed_partial_pool_members WHERE id = ?`, memberID).Scan(&previous); err != nil {
+			return nil, nil, fmt.Errorf("load previous partial pool admission: %w", err)
+		}
+		admittedAt = nextPartialPoolAdmissionTime(admittedAt, previous)
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = ? WHERE id = ?`, CrossSeedPartialPoolStatusActive, admittedAt, poolID); err != nil {
 		return nil, nil, fmt.Errorf("activate partial pool registration: %w", err)
 	}

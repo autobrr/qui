@@ -62,7 +62,9 @@ func (c *Client) SearchDirectCtx(ctx context.Context, query string, opts map[str
 		opts = make(map[string]string)
 	}
 
-	opts["t"] = "search"
+	if opts["t"] == "" {
+		opts["t"] = "search"
+	}
 	if query != "" {
 		opts["q"] = query
 	}

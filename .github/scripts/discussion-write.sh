@@ -15,12 +15,22 @@
 # Usage (the discussion number is bound to the triggering event, not passed in):
 #   ./.github/scripts/discussion-write.sh add-label    <name> [<name>...]
 #   ./.github/scripts/discussion-write.sh remove-label <name> [<name>...]
-#   ./.github/scripts/discussion-write.sh comment       <body>
+#   ./.github/scripts/discussion-write.sh comment       <<'EOF'
+#   <body>
+#   EOF
 #   ./.github/scripts/discussion-write.sh close         <RESOLVED|OUTDATED|DUPLICATE>
-#   ./.github/scripts/discussion-write.sh create-issue  <title> <body>
+#   ./.github/scripts/discussion-write.sh create-issue  <ready-for-agent|ready-for-human> <title> [<label>...] <<'EOF'
+#   <body>
+#   EOF
 #
-# `create-issue` opens a repository issue labelled `ready-for-agent` and appends
-# a `From discussion #N` line to the body, where N is the bound discussion.
+# A comment or issue body comes only on stdin. Claude Code refuses a quoted
+# argument in which a line starts with `#` and any `$'...'` argument, so a
+# Markdown body passed as an argument was refused, and triage runs retried in
+# other forms. It accepts a heredoc with a quoted delimiter.
+#
+# `create-issue` opens a repository issue labelled with the given state and any
+# extra labels, and appends a `From discussion #N` line to the body, where N is
+# the bound discussion.
 #
 # The calling workflow restricts which of those operations are permitted via
 # DISCUSSION_WRITE_ALLOWED_OPS (comma-separated). It defaults to label
@@ -30,6 +40,11 @@
 set -euo pipefail
 
 die() { echo "Error: $*" >&2; exit 1; }
+
+read_body() {
+  body=$(cat)
+  [[ -n "$body" ]] || die "$1 body is empty: pass it on stdin with <<'EOF'"
+}
 
 ALLOWED_OPS="${DISCUSSION_WRITE_ALLOWED_OPS:-add-label,remove-label}"
 op_allowed() {
@@ -112,14 +127,14 @@ case "$cmd" in
     ;;
   comment)
     op_allowed comment || die "comment is not permitted here (allowed: $ALLOWED_OPS)"
-    [[ $# -eq 1 ]] || die "comment requires exactly one body argument"
-    [[ -n "$1" ]] || die "comment body is empty"
+    [[ $# -eq 0 ]] || die "comment takes no arguments: pass the body on stdin with <<'EOF'"
+    read_body comment
     node_id=$(discussion_id)
     [[ -n "$node_id" ]] || die "could not resolve discussion #$NUMBER"
     # shellcheck disable=SC2016 # $id/$body are GraphQL variables, not shell vars
     gh api graphql \
       -f query='mutation($id:ID!,$body:String!){addDiscussionComment(input:{discussionId:$id,body:$body}){comment{url}}}' \
-      -f id="$node_id" -f body="$1" --jq '.data.addDiscussionComment.comment.url'
+      -f id="$node_id" -f body="$body" --jq '.data.addDiscussionComment.comment.url'
     ;;
   close)
     op_allowed close || die "close is not permitted here (allowed: $ALLOWED_OPS)"
@@ -137,19 +152,27 @@ case "$cmd" in
     ;;
   create-issue)
     op_allowed create-issue || die "create-issue is not permitted here (allowed: $ALLOWED_OPS)"
-    [[ $# -eq 2 ]] || die "create-issue requires a title and a body argument"
-    [[ -n "$1" && -n "$2" ]] || die "create-issue title and body must not be empty"
+    [[ $# -ge 2 ]] || die "create-issue requires a state and a title, and the body on stdin"
+    state=$1 title=$2; shift 2
+    [[ "$state" == ready-for-agent || "$state" == ready-for-human ]] || die "create-issue state must be ready-for-agent or ready-for-human"
+    [[ -n "$title" ]] || die "create-issue title must not be empty"
+    read_body create-issue
+    labels=$(IFS=,; echo "$state${*:+,$*}")
     # A re-run on an already promoted discussion reuses its issue.
     # ponytail: issue search is eventually consistent, so this is a backstop; the
     # playbook's closed/label check is the real guard.
     existing=$(gh issue list --state all --search "\"From discussion #$NUMBER\" in:body author:app/github-actions" --json url --jq '.[0].url // empty')
     if [[ -n "$existing" ]]; then
+      # A retry can choose the other state, so the issue takes the state of this run.
+      other=ready-for-human
+      [[ "$state" == ready-for-human ]] && other=ready-for-agent
+      gh issue edit "$existing" --add-label "$labels" --remove-label "$other" >&2
       echo "Issue already exists for discussion #$NUMBER: $existing" >&2
       echo "$existing"
       exit 0
     fi
-    gh issue create --title "$1" --label ready-for-agent \
-      --body "$2"$'\n\n'"From discussion #$NUMBER"
+    gh issue create --title "$title" --label "$labels" \
+      --body "$body"$'\n\n'"From discussion #$NUMBER"
     ;;
   *)
     die "unknown command '$cmd' (use: add-label | remove-label | comment | close | create-issue)"

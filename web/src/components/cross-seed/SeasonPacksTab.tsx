@@ -72,7 +72,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
     refetch: refetchSeasonPackRuns,
   } = useQuery({
     queryKey: ["cross-seed", "season-pack", "runs"],
-    queryFn: () => api.listSeasonPackRuns({ limit: 50 }),
+    queryFn: () => api.listSeasonPackRuns({ limit: 400 }),
   })
 
   const fallbackCategorySelectOptions = useMemo(
@@ -194,7 +194,6 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
               id="season-pack-tvdb-api-key"
               type="password"
               value={form.seasonPackTvdbApiKey}
-              data-1p-ignore="true"
               onChange={event => setForm(prev => ({ ...prev, seasonPackTvdbApiKey: event.target.value }))}
               placeholder={inactive ? t("rules.seasonPack.enableToConfigure") : t("rules.seasonPack.pasteTvdbApiKey")}
               disabled={inactive}
@@ -208,7 +207,6 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
               id="season-pack-tvdb-pin"
               type="password"
               value={form.seasonPackTvdbPin}
-              data-1p-ignore="true"
               onChange={event => setForm(prev => ({ ...prev, seasonPackTvdbPin: event.target.value }))}
               placeholder={inactive ? t("rules.seasonPack.enableToConfigure") : t("rules.seasonPack.pasteTvdbPin")}
               disabled={inactive}

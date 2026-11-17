@@ -1,6 +1,7 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistics",
     "search": "Search",
     "crossSeed": "Cross-Seed",
     "automations": "Automations",
@@ -46,7 +47,7 @@
     "tasksForInstance": "Tasks for instance",
     "settingsForInstance": "Settings for instance",
     "clearSearch": "Clear search",
-    "searchTorrents": "Search torrents... ({{shortcutKey}})",
+    "searchTorrents": "Search torrents...",
     "globPattern": "Glob pattern...",
     "smartSearchTitle": "Smart Search Features:",
     "smartSearchGlob": "Glob patterns:",
@@ -57,6 +58,8 @@
     "smartSearchFields": "Searches name, category, and tags",
     "smartSearchEnter": "Press Enter for instant search",
     "smartSearchAuto": "Auto-searches after 500ms pause",
+    "smartSearchShortcut": "Press {{shortcutKey}} to focus search",
+    "smartSearchPalette": "Press {{shortcutKey}} to open the command palette",
     "torrentCreationTasksTitle": "Torrent Creation Tasks",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
@@ -75,8 +78,36 @@
     "expandScope": "Expand unified scope",
     "allActive": "All active ({{count}})"
   },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Search pages, settings and torrents...",
+    "placeholderIn": "Search {{name}}...",
+    "groups": {
+      "pages": "Pages",
+      "actions": "Actions"
+    },
+    "current": "Current",
+    "statisticsNote": "Upload and download history of your instances",
+    "searchTorrentsFor": "Search torrents for \"{{query}}\"",
+    "torrentMatches_one": "{{count}} torrent matches",
+    "torrentMatches_other": "{{count}} torrents match",
+    "noTorrentMatches": "No torrent matches",
+    "searching": "Searching...",
+    "searchFailed": "The torrent search failed",
+    "listFiltersApply": "List filters apply",
+    "noMatchIn": "Nothing in {{name}} matches",
+    "moreOf": "More for {{name}}",
+    "hints": {
+      "navigate": "Navigate",
+      "open": "Open",
+      "more": "More",
+      "searchTorrents": "Search torrents",
+      "back": "Back"
+    }
+  },
   "mobileNav": {
     "dashboard": "Dashboard",
+    "statistics": "Statistics",
     "clients": "Clients",
     "settings": "Settings",
     "qbittorrentClients": "qBittorrent Clients",
@@ -100,24 +131,31 @@
     "cancel": "Cancel",
     "close": "Close",
     "create": "Create",
-    "copyPath": "Copy path",
     "scrollToTop": "Scroll to top",
     "search": "Search",
-    "select": "Select"
+    "select": "Select",
+    "copyValue": "Copy {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Got it"
   },
   "placeholders": {
     "search": "Search...",
     "selectItems": "Select items..."
   },
   "feedback": {
-    "noResultsFound": "No results found."
+    "noResultsFound": "No results found.",
+    "copied": "{{label}} copied to clipboard",
+    "copyFailed": "Failed to copy to clipboard"
   },
   "errors": {
     "unknown": "Unknown error",
     "httpStatus": "HTTP error! status: {{status}}",
     "httpStatusHtml": "HTTP error! status: {{status}} (server returned HTML error page)",
     "ssoHtmlResponse": "Received an HTML response instead of JSON from the API. If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), try refreshing the page or re-opening the URL in a new tab.",
-    "torrentFileDownloadFailed": "Failed to download torrent file: {{status}}"
+    "torrentFileDownloadFailed": "Failed to download torrent file: {{status}}",
+    "altSpeedToggle": "Could not change the alternative speed limits: {{message}}",
+    "altSpeedToggleHidden": "Could not change the alternative speed limits. Incognito mode hides the cause."
   },
   "status": {
     "disabled": "Disabled",
@@ -126,6 +164,7 @@
     "updating": "Updating",
     "error": "Error",
     "unknown": "Unknown",
+    "unavailable": "Unavailable",
     "trackerError": "Tracker error",
     "unreachable": "Unreachable"
   },
@@ -149,17 +188,110 @@
     "dark": "Dark",
     "system": "System",
     "theme": "Theme",
-    "premium": "Premium",
     "switchedToMode": "Switched to {{mode}} mode",
     "switchedToTheme": "Switched to {{theme}} theme",
     "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",
-    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license."
+    "premiumThemeError": "This theme needs a license. Open Settings → Themes to activate one."
   },
   "updateBanner": {
     "updateAvailable": "Update Available",
     "versionAvailable": "Version {{version}} is now available",
-    "viewRelease": "View Release",
     "dismiss": "Dismiss"
+  },
+  "systemNotice": {
+    "needsAttention": "Needs attention",
+    "since": "Since {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Go to the fix",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Recording stopped",
+        "title": "Recording stopped",
+        "effect": "qui cannot write the transfer history. It tries again at the next write.",
+        "fix": "Make sure that the disk has free space and that qui can write its database file.",
+        "menuFix": "Free disk space for the database"
+      },
+      "shrink_failed": {
+        "short": "Shrink failed",
+        "title": "Shrink failed",
+        "effect": "qui could not make the database file smaller. The database did not change, and qui runs as usual.",
+        "fix": "The qui log has the details.",
+        "menuFix": "Read the qui log",
+        "reasons": {
+          "disk_full": {
+            "fix": "The disk has too little free space. A shrink needs up to two times the size of the database file. Free space on the disk, then try again.",
+            "menuFix": "Free disk space, then try again"
+          },
+          "locked": {
+            "fix": "Another program held the database file. Stop that program, for example a backup tool or a database viewer, then try again.",
+            "menuFix": "Stop the other program, then try again"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Low disk",
+        "title": "Low disk",
+        "effect": "The disk of the qui database has little free space. When the disk is full, each write of qui fails.",
+        "fix": "Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.",
+        "menuFix": "Free disk space for the database",
+        "action": "Open the Statistics settings"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted key rejected",
+        "title": "Redacted rejected the API key",
+        "effect": "Redacted rejected the last search. qui asks it again at the next search.",
+        "fix": "If the key is wrong, make an API key with the Torrents permission in your Redacted profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Redacted banned the IP of qui, a new key does not help: contact the staff of Redacted.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open Gazelle (OPS/RED) settings"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus key rejected",
+        "title": "Orpheus rejected the API key",
+        "effect": "Orpheus rejected the last search. qui asks it again at the next search.",
+        "fix": "If the key is wrong, make an API key with the Torrents permission in your Orpheus profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Orpheus banned the IP of qui, a new key does not help: contact the staff of Orpheus.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open Gazelle (OPS/RED) settings"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Library Scan schedule blocked",
+        "title": "Library Scan schedule cannot run",
+        "effect": "qui cannot start the scheduled Library Scan run. It tries again every hour.",
+        "fix": "Check the Library Scan settings. qui tries again every hour.",
+        "menuFix": "Check the Library Scan settings",
+        "action": "Open the Library Scan settings",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab is off in the Library Scan settings, and no RED or OPS API key is set. Turn Torznab on, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Turn Torznab on, or add a RED or OPS key"
+          },
+          "no_indexer": {
+            "fix": "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Enable an indexer"
+          },
+          "instance_missing": {
+            "fix": "The instance in the saved Library Scan settings does not exist. Pick an instance in the Library Scan settings, then save. qui tries again every hour.",
+            "menuFix": "Pick an instance, then save"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Try again",
+      "dismiss": "Dismiss",
+      "openLog": "Open the log"
+    },
+    "unknown": {
+      "short": "System notice",
+      "title": "System notice",
+      "effect": "qui found a fault that needs an action from you.",
+      "fix": "The qui log has the details.",
+      "menuFix": "Read the qui log"
+    }
+  },
+  "databaseShrink": {
+    "done": "Database file shrunk from {{before}} to {{after}}",
+    "nextStart": "The shrink runs at the next start of qui",
+    "failed": "Failed to request the shrink"
   },
   "pwaUpdate": {
     "reload": "Reload",
@@ -192,8 +324,7 @@
     "trigger": "More information"
   },
   "numberInput": {
-    "unlimited": "Unlimited",
-    "useUnlimited": " (use -1 for unlimited)"
+    "unlimited": "Unlimited"
   },
   "dateTime": {
     "na": "N/A",
@@ -219,6 +350,25 @@
       "year_other": "{{count}} years"
     }
   },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
   "support": {
     "title": "Support qui",
     "description": "Already got themes and want to help further? Everything in qui is already yours. A subscription doesn't unlock features, it funds the time that goes into building them.",
@@ -226,6 +376,16 @@
     "perkSuffix": "role in Discord and our eternal gratitude.",
     "yearly": "{{price}} / year",
     "monthly": "{{price}} / month",
-    "notLicense": "Premium themes are a separate one-time purchase."
+    "notLicense": "The theme license is a separate one-time purchase."
+  },
+  "labels": {
+    "path": "Path"
+  },
+  "kit": {
+    "loadFailed": "This section did not load.",
+    "retry": "Try again",
+    "edit": "Edit",
+    "moreActions": "More actions",
+    "enabled": "Enabled"
   }
 }

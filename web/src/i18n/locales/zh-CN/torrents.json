@@ -102,7 +102,12 @@
     "totalSize": "总大小：{{size}}",
     "blockCrossSeeds": "屏蔽辅种哈希值（防止重新添加）",
     "cancel": "取消",
-    "delete": "删除"
+    "delete": "删除",
+    "titleSelectAll_other": "删除符合筛选条件的 {{count}} 个种子？",
+    "selectAllNotice": "已开启全选。此操作会删除符合当前筛选条件的已选种子。",
+    "notLoaded_other": "其中 {{count}} 个未在表格中加载。",
+    "andMore": "以及另外 {{more}} 个",
+    "deleteCount_other": "删除 {{count}} 个种子"
   },
   "deleteFilesPreference": {
     "label": "同时从磁盘删除文件",
@@ -122,10 +127,11 @@
       "check": "检查"
     },
     "searching": "正在检查辅种",
-    "searchingProgress": "正在检查辅种（{{checked}}/{{total}}）",
     "error": "检查辅种失败",
     "retry": "重试",
     "noCrossSeeds": "未找到辅种",
+    "uncheckedOffline": "无法检查 {{instance}}：qui 无法连接到它。",
+    "uncheckedDisabled": "未检查 {{instance}}：它已在 qui 中停用。",
     "deleteCrossSeeds": "这些辅种也将被删除",
     "deletingFilesBreaks": "删除文件将破坏这些辅种",
     "dataPreserved": "检测到辅种——数据将被保留",
@@ -167,14 +173,6 @@
     "renameTorrentSuccess": "已将种子重命名为「{{name}}」",
     "renameTorrentFailed": "重命名种子失败：{{error}}",
     "renameTorrentEmpty": "种子名称不能为空",
-    "renameFileSuccess": "已将文件重命名为「{{name}}」",
-    "renameFileFailed": "重命名文件失败：{{error}}",
-    "renameFilePathsRequired": "需要提供原始和新文件路径",
-    "renameFileUnchanged": "文件名未更改",
-    "renameFolderSuccess": "已将文件夹重命名为「{{name}}」",
-    "renameFolderFailed": "重命名文件夹失败：{{error}}",
-    "renameFolderPathsRequired": "需要提供原始和新文件夹路径",
-    "renameFolderUnchanged": "文件夹名未更改",
     "partialTags": {
       "title_other": "部分更新了 {{count}} 个种子的标签",
       "succeeded": "{{actions}} 成功",
@@ -380,6 +378,9 @@
       "description": "以 KB/s 为单位设置上传和下载速度限制。禁用则使用全局限制。",
       "uploadLimit": "设置上传限制（KB/s）",
       "downloadLimit": "设置下载限制（KB/s）",
+      "selectValue": "选择一个值",
+      "wasMixed": "（原为混合）",
+      "unresolvedMixed": "请在应用之前为所有混合字段选择值",
       "cancel": "取消",
       "setting": "正在设置...",
       "confirm": "应用限制"
@@ -559,10 +560,7 @@
     "bottomPriorityBatch": "最低优先级 ({{count}})"
   },
   "renameSubmenu": {
-    "rename": "重命名",
-    "renameTorrent": "重命名种子",
-    "renameFile": "重命名文件",
-    "renameFolder": "重命名文件夹"
+    "renameTorrent": "重命名种子"
   },
   "tagCategoryManagement": {
     "createTag": {
@@ -664,18 +662,15 @@
     "partialResults": "部分结果：部分索引器未响应",
     "arrLookupFailed": "元数据 ID 查询失败：仅按标题搜索，结果可能不完整",
     "arrNoIds": "未找到该资源的元数据 ID：仅按标题搜索",
+    "torznabFailed": "Torznab 搜索失败：仅显示 RED/OPS 结果",
     "searchScope": "搜索范围",
     "noIndexers": "没有可用的 Torznab 索引器",
     "noIndexersHelp": "在设置中添加或启用 Torznab 索引器以搜索辅种。",
     "capabilityNote": "功能说明",
     "capabilityDescription": "这些索引器缺少此种子所需的功能/分类，服务器将跳过它们：",
-    "contentFilteringInProgress": "内容筛选进行中",
-    "analyzingContent": "正在分析现有内容...",
     "smartFilteringActive": "智能筛选已启用",
     "indexersFiltered_other": "{{count}} 个索引器已筛选",
-    "contentFilteringDescription": "正在检查您现有的种子以查找重复项并排除冗余的 Tracker。这有助于避免多次下载相同内容。",
     "excludedDescription": "您已从这些 Tracker 做种此版本，因此它们已被排除在搜索之外。",
-    "noContentDuplicates": "内容筛选完成。在您启用的 Tracker 上未发现重复内容。",
     "searchingIndexers": "正在搜索索引器...",
     "noMatchesFound": "搜索中未找到匹配项。",
     "selectReleasesToAdd": "选择要添加的发布",
@@ -724,7 +719,6 @@
       "selectAllIndexers": "全选",
       "clearSelection": "清除选择",
       "search": "搜索",
-      "filtering": "正在筛选...",
       "searching": "正在搜索",
       "noneSelected": "未选择",
       "enabledIndexers": "{{count}} 个已启用{{suffix}}",
@@ -757,6 +751,30 @@
       "fewerIndexers": "尝试选择更少的索引器进行搜索",
       "useRss": "使用 RSS 自动化功能进行持续辅种",
       "checkIndexers": "检查索引器页面以查看哪些被限流"
+    },
+    "routedTo": "辅种将添加到辅种实例 {{instance}}。",
+    "gazelle": {
+      "heading": "RED/OPS",
+      "willAsk": "将查询",
+      "willAskRejected": "将查询：站点上次拒绝了 API 密钥",
+      "match": "匹配",
+      "noMatch": "无匹配",
+      "openSettings": "打开设置",
+      "notAsked": {
+        "disabled": "未查询：已关闭",
+        "noApiKey": "未查询：无 API 密钥",
+        "cooldown": "未查询：最近已搜索",
+        "notSelected": "未查询：未选择",
+        "sourceSite": "未查询：种子来自 {{site}}",
+        "alreadySeeded": "未查询：您已在那里做种",
+        "notMusic": "未查询：不是音乐",
+        "other": "未查询"
+      },
+      "failed": {
+        "keyRejected": "失败：站点拒绝了 API 密钥",
+        "timedOut": "失败：超时",
+        "other": "失败：{{detail}}"
+      }
     }
   },
   "columnFilter": {
@@ -823,6 +841,11 @@
       "checking": "校验中",
       "moving": "移动中"
     }
+  },
+  "emptyState": {
+    "noTorrents": "未找到种子",
+    "noFilterMatches": "没有符合当前筛选器的种子",
+    "noSearchMatches": "没有符合当前搜索的种子"
   },
   "filterSidebar": {
     "views": {
@@ -942,8 +965,7 @@
     "torrentCount_other": "{{count}} 个种子",
     "torrentsLoaded": "已加载 {{loaded}}/{{total}} 个种子",
     "scrollForMore": "（滚动加载更多）",
-    "loading": "加载中...",
-    "freeSpace": "可用空间",
+    "freeSpace": "可用空间（默认路径）",
     "switchToBits": "切换到每秒比特（bps）",
     "switchToBytes": "切换到每秒字节（B/s）",
     "altSpeedOn": "备用速度限制：已开启",
@@ -1008,7 +1030,6 @@
     "closePanel": "关闭详情面板",
     "unknownError": "未知错误",
     "toast": {
-      "copied": "{{type}} 已复制到剪贴板",
       "copyFailed": "复制到剪贴板失败",
       "peersAdded": "节点添加成功",
       "peersFailed": "添加节点失败：{{error}}",
@@ -1055,20 +1076,14 @@
       "loadedSummary_other": "在所有实例中找到 {{count}} 个匹配种子",
       "deleteMatches": "删除匹配项（{{count}}）",
       "deleteThisTorrent": "删除此种子",
-      "checkingMoreInstances": "正在检查更多实例...",
-      "infoHashMatch": "Info Hash",
-      "infoHashDescription": "完全相同的种子（相同 info hash）",
-      "savePathMatch": "保存路径",
-      "savePathDescription": "相同的保存目录和文件名",
-      "selectTorrent": "选择 {{name}}"
+      "selectTorrent": "选择 {{name}}",
+      "openTorrent": "打开 {{name}}"
     },
     "sections": {
       "generalInformation": "常规信息",
       "transferStatistics": "传输统计",
-      "speed": "速度",
       "queueManagement": "队列管理",
       "timeInformation": "时间信息",
-      "timestamps": "时间戳",
       "activeTrackers": "活跃 Tracker",
       "connectedPeers": "已连接节点",
       "fileContents": "文件内容"
@@ -1095,22 +1110,17 @@
       "added": "添加时间",
       "completed": "完成时间",
       "created": "创建时间",
-      "leechers": "下载者",
-      "peerProgress": "节点进度",
-      "connection": "连接：",
-      "flags": "标志："
+      "leechers": "下载者"
     },
     "counts": {
       "trackers_other": "{{count}} 个 Tracker",
       "connectedPeers_other": "已连接 {{count}} 个节点",
-      "httpSources_other": "{{count}} 个来源",
       "selectedFiles": "已选 {{selected}}/{{total}}",
       "files_other": "{{count}} 个文件"
     },
     "values": {
       "normal": "正常",
       "queued": "排队中（{{state}}）",
-      "seeder": "做种者",
       "unknownClient": "未知客户端"
     },
     "actions": {
@@ -1119,14 +1129,12 @@
       "selectAll": "全部",
       "selectNone": "无"
     },
-    "peer": {
-      "flagLabel": "标志 {{flag}}"
-    },
     "emptyStates": {
       "noFilesFound": "未找到文件"
     },
     "selectAll": "全选",
-    "deselectAll": "取消全选"
+    "deselectAll": "取消全选",
+    "trackerMessageHidden": "隐身模式下已隐藏 Tracker 消息"
   },
   "generalTab": {
     "name": "名称：",
@@ -1171,6 +1179,7 @@
     "status": "状态",
     "tracker": "Tracker",
     "seeds": "做种",
+    "peers": "节点",
     "leeches": "下载",
     "downloaded": "已完成",
     "message": "消息",
@@ -1260,11 +1269,6 @@
     "matchCount_other": "{{count}} 个匹配",
     "deleteSelected": "删除（{{count}}）",
     "deleteThis": "删除此项",
-    "statusLabels": {
-      "trackerDown": "Tracker 离线",
-      "unregistered": "未注册",
-      "trackerError": "Tracker 错误"
-    },
     "matchTypes": {
       "contentPath": {
         "label": "内容",
@@ -1288,10 +1292,7 @@
       }
     },
     "noMatches": "未在其他实例上找到匹配的种子",
-    "toast": {
-      "savePathCopied": "保存路径已复制",
-      "copyFailed": "复制失败"
-    }
+    "loadFailed": "无法检查交叉做种匹配。请重新加载后重试。"
   },
   "addTorrentDialog": {
     "title": "添加新种子",
@@ -1299,10 +1300,6 @@
     "description": "添加种子文件或磁力链接以开始下载",
     "file": "文件",
     "url": "URL",
-    "tabs": {
-      "basic": "基本",
-      "advanced": "高级"
-    },
     "validation": {
       "selectTorrentFile": "请至少选择一个种子文件",
       "enterUrl": "请至少输入一个 URL 或磁力链接"
@@ -1313,7 +1310,9 @@
       "existingTorrents": "已存在的种子：{{names}}",
       "highlightedBelow": "重复选择已在下方高亮显示。",
       "remove": "移除重复项",
-      "matchesExisting": "与已存在的种子匹配：{{names}}"
+      "matchesExisting": "与已存在的种子匹配：{{names}}",
+      "existingTorrent": "已有种子",
+      "more_other": "（另有 {{count}} 个）"
     },
     "fileInput": {
       "label": "种子文件",
@@ -1322,10 +1321,9 @@
       "browse": "或点击浏览",
       "selectedFiles_other": "已选择 {{count}} 个文件",
       "duplicateFiles_other": "{{count}} 个重复文件",
-      "showFiles": "显示文件",
-      "hideFiles": "隐藏文件",
-      "moreFiles": "... 还有 {{count}} 个",
-      "removeFile": "移除文件"
+      "removeFile": "移除文件",
+      "addMore": "添加更多文件",
+      "choose": "选择种子文件"
     },
     "urlInput": {
       "label": "URL / 磁力链接",
@@ -1336,31 +1334,22 @@
       "skipHashCheck": "跳过哈希校验",
       "category": "分类",
       "searchCategories": "搜索分类...",
-      "availableCategories": "可用分类（点击选择）",
-      "availableCategoriesFiltered": "可用分类（点击选择）- 筛选：「{{query}}」",
       "noCategoriesMatch": "没有匹配「{{query}}」的分类",
       "tags": "标签",
       "tagsPlaceholder": "创建新标签或搜索可用标签...",
-      "clearAll": "全部清除",
-      "availableTags": "可用标签（点击选择/取消选择）",
-      "availableTagsFiltered": "可用标签（点击选择/取消选择）- 筛选：「{{query}}」",
       "newTag": "（新）",
-      "noTagsMatch": "没有匹配「{{query}}」的标签",
       "autoTmm": "自动种子管理",
       "savePath": "保存路径",
+      "freeSpaceAtDestination": "目标位置可用空间：{{value}}",
       "savePathPlaceholder": "留空使用默认值",
-      "manualSavePath": "手动保存路径（TMM 已禁用）",
       "useTemporaryPath": "使用临时路径",
       "useTemporaryPathDescription": "先下载到临时路径，然后移动到保存路径",
       "tempPath": "临时下载路径",
       "tempPathPlaceholder": "留空使用默认值",
-      "tempPathDescription": "种子将先下载到此处，然后再移动到保存路径",
-      "autoTmmSavePathDescription": "自动种子管理已启用。保存路径将由分类设置决定。",
-      "advancedOptions": "高级选项",
       "sequentialDownload": "按顺序下载",
-      "sequentialDownloadDescription": "（适用于媒体文件）",
+      "sequentialDownloadDescription": "适用于媒体文件",
       "firstLastPiecePriority": "首尾分块优先",
-      "firstLastPiecePriorityDescription": "（更快开始播放）",
+      "firstLastPiecePriorityDescription": "更快开始播放",
       "downloadLimit": "下载限制（KB/s）",
       "uploadLimit": "上传限制（KB/s）",
       "unlimitedPlaceholder": "0 = 无限制",
@@ -1376,12 +1365,32 @@
       "renamePlaceholder": "留空使用原始名称",
       "autoAppliedTitle": "自动应用：",
       "autoAddTrackers": "• 自动添加 Tracker",
-      "fileExclusions": "• 文件排除：{{value}}"
+      "fileExclusions": "• 文件排除：{{value}}",
+      "noCategory": "无分类",
+      "removeTag": "移除标签 {{tag}}",
+      "addTags": "添加标签",
+      "createTag": "创建标签“{{tag}}”",
+      "noTagsYet": "还没有标签。输入名称即可创建。",
+      "done": "完成",
+      "moreOptions": "更多选项",
+      "moreOptionsHint": "保存路径、布局、下载顺序、限制",
+      "saveLocation": "保存位置",
+      "downloadBehavior": "下载顺序",
+      "limits": "限制",
+      "changedCount_other": "已更改 {{count}} 项",
+      "clearAll": "全部清除",
+      "tagsWithCount": "标签（{{n}}）",
+      "categorySavePath": "保存到 {{path}}",
+      "autoTmmStatus": "保存路径由分类决定",
+      "addTypedTags": "添加标签：{{tags}}",
+      "selectedState": "已选择",
+      "moreTags_other": "另有 {{count}} 个"
     },
     "footer": {
       "adding": "正在添加...",
       "add": "添加种子",
-      "cancel": "取消"
+      "cancel": "取消",
+      "addCount_other": "添加 {{count}} 个种子"
     },
     "toast": {
       "verifyInput": "请检查种子文件或 URL，然后重试。",
@@ -1422,40 +1431,14 @@
     "incognito": "隐身模式",
     "add": "添加",
     "tasks": "任务",
-    "done": "完成",
     "actionsForCount": "{{count}} 个种子的操作",
     "actionsForAll": "全部 {{count}} 个种子的操作",
     "selection": {
       "selectedCount": "已选 {{count}} 个",
       "allSelectedCount": "全部 {{count}} 个已选"
     },
-    "searchModal": {
-      "title": "搜索种子",
-      "description": "按名称、分类或标签搜索。支持 glob 模式，如 *.mkv 或 *1080p*。",
-      "placeholder": "搜索种子...",
-      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
-      "autoSearches": "输入后自动搜索"
-    },
-    "shareLimit": {
-      "title": "为 {{count}} 个种子设置分享限制",
-      "description": "配置做种限制。使用 -1 或禁用以移除限制。",
-      "setRatioLimit": "设置分享率限制",
-      "setSeedingTimeLimit": "设置做种时间限制（分钟）",
-      "setInactiveSeedingLimit": "设置不活跃做种限制（分钟）",
-      "cancel": "取消",
-      "setting": "正在设置...",
-      "applyLimits": "应用限制"
-    },
-    "speedLimit": {
-      "title": "为 {{count}} 个种子设置速度限制",
-      "description": "以 KB/s 为单位设置上传和下载速度限制。使用 -1 或禁用以移除限制。",
-      "setUploadLimit": "设置上传限制（KB/s）",
-      "setDownloadLimit": "设置下载限制（KB/s）",
-      "cancel": "取消",
-      "setting": "正在设置...",
-      "applyLimits": "应用限制"
-    },
-    "ratio": "分享率："
+    "ratio": "分享率：",
+    "added": "添加于{{time}}"
   },
   "tableView": {
     "ascending": "升序",
@@ -1526,6 +1509,7 @@
   "stateLabels": {
     "downloading": "下载中",
     "metaDL": "获取元数据中",
+    "forcedMetaDL": "(强制) 获取元数据中",
     "allocating": "分配空间中",
     "stalledDL": "停滞",
     "queuedDL": "排队中",
@@ -1543,8 +1527,10 @@
     "error": "错误",
     "missingFiles": "文件丢失",
     "checkingResumeData": "校验恢复数据中",
-    "moving": "移动中"
+    "moving": "移动中",
+    "unknown": "未知"
   },
+  "stateLabelFallback": "无法识别",
   "sort": {
     "label": "排序",
     "ascending": "升序",
@@ -1584,6 +1570,7 @@
     "tags": "标签",
     "newTagPlaceholder": "输入标签后按 Enter",
     "savePath": "保存路径（实际目标位置）",
+    "routedTo": "辅种将添加到辅种实例 {{instance}}。",
     "cancel": "取消",
     "apply": "添加辅种",
     "applying": "正在添加...",
@@ -1605,12 +1592,14 @@
       "dropped": "整季包已添加。已排除的目标：{{names}}",
       "rejected": "{{name}}：{{reason}}",
       "reasons": {
-        "no_filesystem_access": "此实例需要本地文件系统访问权限才能组装整季包。",
+        "no_filesystem_access": "此实例需要文件系统写入权限才能组装整季包。请在实例设置中启用“本地文件系统访问”或设置 SSH 访问。",
         "no_link_mode": "请在此实例上启用硬链接或 reflink 模式，以选择多个目标。",
         "no_base_directory": "请为此实例配置链接基础目录。",
         "no_episode_files": "此整季包中未找到可播放的单集文件。",
         "target_not_found": "此实例中未找到目标种子。",
         "incomplete": "目标种子尚未下载完成。",
+        "not_settled": "此种子仍在移动或校验中。请在完成后重试。",
+        "errored": "此种子有错误或缺少文件。请修复后重试。",
         "no_episode_identity": "无法解析集数。",
         "file_list_unavailable": "无法获取目标种子的文件列表。",
         "episode_file_invalid": "目标种子必须仅包含一个与所选单集标识相符的可播放文件。",
@@ -1624,6 +1613,162 @@
         "link_failed": "创建链接失败。",
         "add_failed": "添加种子失败。"
       }
+    }
+  },
+  "copyGroups": {
+    "copies_other": "{{name}} 的另外 {{count}} 个副本",
+    "labelWithProblem": "{{label}}。{{problem}}",
+    "hiddenProblem": {
+      "missingFiles": "某个隐藏的副本文件丢失",
+      "error": "某个隐藏的副本出错",
+      "unregistered": "某个隐藏的副本未注册",
+      "trackerError": "某个隐藏的副本有 Tracker 错误",
+      "trackerDown": "某个隐藏的副本的 Tracker 离线"
+    },
+    "badge": "+{{hidden}}",
+    "badgeTicked_other": "+{{hidden}} · 已选 {{count}} 个",
+    "hiddenTicked_other": "已选中 {{count}} 个隐藏的副本",
+    "labelWithTicks": "{{label}}。{{ticks}}",
+    "groupCopies": "合并副本",
+    "ungroupCopies": "取消合并副本",
+    "grouping": "正在分组…"
+  },
+  "featureNotice": {
+    "groupCopies": {
+      "title": "合并你的辅种",
+      "description": "将同一种子的多个副本显示为一行。",
+      "action": "试试看"
+    },
+    "displayProfiles": {
+      "title": "显示配置",
+      "description": "为每块屏幕保留各自的列、行密度和侧边栏。在这里选择此浏览器的配置。",
+      "action": "创建配置"
+    }
+  },
+  "displayProfiles": {
+    "chipAriaLabel": "显示配置：{{name}}",
+    "menuLabel": "显示配置",
+    "defaultName": "默认",
+    "manage": "管理配置…",
+    "sheetDescription": "每个浏览器各自选择配置文件。",
+    "settings": {
+      "title": "显示配置",
+      "holds": "包含：列 · 行密度 · 侧边栏 · 筛选分区 · 分类树 · 空筛选",
+      "holdsHelp": "配置文件保存种子列表的外观：显示哪些列、列的顺序和宽度、名称列拉伸、行密度、展开的侧边栏和筛选分区、折叠的分类树，以及是否显示空筛选。每个浏览器使用一个配置文件，只有该浏览器记住这个选择。从未选择过配置文件的浏览器和隐私窗口使用 Default。其他设置由所有配置文件共享。",
+      "thisBrowser": "此浏览器",
+      "use": "在此浏览器中使用",
+      "makeProfile": "为笔记本电脑或手机创建配置文件",
+      "themesSync": "主题单独同步：<sync>主题同步</sync>",
+      "renameAriaLabel": "重命名 {{name}}",
+      "saveName": "保存名称",
+      "cancelRename": "取消重命名",
+      "editAriaLabel": "编辑 {{name}}",
+      "editTitle": "编辑配置文件",
+      "delete": "删除…",
+      "deleteTitle": "删除 {{name}}？",
+      "deleteDescription": "使用它的其他浏览器将切换到 {{defaultName}}。",
+      "deleteConfirm": "删除",
+      "look": "{{density}} · {{filterSidebar}}",
+      "densities": {
+        "table": "表格行",
+        "dense": "紧凑行",
+        "stacked": "堆叠卡片"
+      },
+      "filterSidebarOpen": "筛选侧边栏展开",
+      "filterSidebarClosed": "筛选侧边栏收起"
+    },
+    "nameErrors": {
+      "empty": "请输入名称。",
+      "tooLong": "最多 {{max}} 个字符。",
+      "duplicate": "已有其他配置使用此名称。"
+    },
+    "ownSortAndFilters": {
+      "label": "独立的排序和筛选",
+      "help": "<lead>开启后，此配置会单独保存：</lead><list><item>种子列表的排序方式</item><item>列筛选和侧边栏筛选</item><item>统一视图显示的实例</item><item>合并副本的开关</item><item>详情面板上次打开的标签页</item><item>备份和 RSS 页面显示的实例</item></list><note>在此配置中对这些内容的更改不会影响其他配置。关闭后，此配置与其他所有未单独保存的配置共享这些内容。关闭会删除此配置单独保存的值。</note>",
+      "offWarning": "关闭此设置会删除 {{name}} 单独保存的排序和筛选。",
+      "defaultShares": "始终共享排序和筛选",
+      "defaultSharesHelp": "Default 始终与所有未单独保存的配置共享排序、筛选和其他视图选项。如需单独保存，请创建另一个配置并开启“独立的排序和筛选”。"
+    },
+    "deletedToast": "{{name}} 配置已删除。此浏览器现在使用 {{defaultName}}。",
+    "newProfile": "用当前设置新建配置文件…",
+    "newDialog": {
+      "title": "新建配置文件",
+      "copies": "复制<profile>{{name}}</profile>的列、密度、侧边栏和筛选器。之后此浏览器使用它。",
+      "name": "名称",
+      "namePlaceholder": "例如：笔记本",
+      "nameCount": "{{length}}/{{max}}",
+      "cancel": "取消",
+      "create": "创建"
+    },
+    "iconPicker": {
+      "trigger": "图标：{{icon}}。更改图标和颜色",
+      "letter": "名称的首字母",
+      "color": "颜色"
+    },
+    "iconGroups": {
+      "devices": "设备",
+      "places": "地点",
+      "use": "用途",
+      "mood": "心情"
+    },
+    "icons": {
+      "appWindow": "应用窗口",
+      "monitor": "显示器",
+      "laptop": "笔记本",
+      "tablet": "平板",
+      "smartphone": "手机",
+      "tv": "电视",
+      "server": "服务器",
+      "gamepad": "游戏手柄",
+      "house": "房子",
+      "briefcase": "公文包",
+      "building": "大楼",
+      "sofa": "沙发",
+      "bed": "床",
+      "coffee": "咖啡",
+      "plane": "飞机",
+      "train": "火车",
+      "rows": "行",
+      "table": "表格",
+      "list": "列表",
+      "eye": "眼睛",
+      "gauge": "仪表",
+      "zap": "闪电",
+      "download": "下载",
+      "upload": "上传",
+      "sprout": "嫩芽",
+      "bookmark": "书签",
+      "moon": "月亮",
+      "sun": "太阳",
+      "star": "星星",
+      "heart": "爱心",
+      "flame": "火焰",
+      "rocket": "火箭"
+    },
+    "colors": {
+      "none": "无（文字颜色）",
+      "sky": "天蓝",
+      "emerald": "翠绿",
+      "amber": "琥珀",
+      "rose": "玫红",
+      "violet": "紫罗兰",
+      "orange": "橙色",
+      "teal": "青绿",
+      "pink": "粉红"
+    },
+    "columns": {
+      "headingEveryInstance": "{{profile}} 中的列 · 所有实例",
+      "headingOneInstance": "{{profile}} 中的列 · 仅 {{instance}}",
+      "unifiedView": "统一视图",
+      "thisInstance": "此实例"
+    },
+    "sameColumns": {
+      "label": "所有实例使用相同的列",
+      "menuHelp": "排序和列筛选仍按实例分别保存。",
+      "helpOn": "{{instances}}共用一套列设置。",
+      "helpOff": "每个实例保留自己的列设置。开启后，所有实例都会使用 {{instance}} 的列。",
+      "helpOffNoInstance": "每个实例保留自己的列设置。",
+      "unifiedViewInList": "统一视图"
     }
   }
 }

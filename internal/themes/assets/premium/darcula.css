@@ -1,0 +1,100 @@
+/* @name: Darcula
+ * @description: Port of JetBrains Darcula (IntelliJ, Apache-2.0) with IntelliJ Light companion palette
+ */
+
+:root {
+  --background: oklch(0.9612 0.0000 0.0000);
+  --foreground: oklch(0.1450 0.0000 0.0000);
+  --card: oklch(1.0000 0.0000 0.0000);
+  --card-foreground: oklch(0.1450 0.0000 0.0000);
+  --popover: oklch(1.0000 0.0000 0.0000);
+  --popover-foreground: oklch(0.1450 0.0000 0.0000);
+  --primary: oklch(0.6566 0.0741 242.2199);
+  --primary-foreground: oklch(0.1450 0.0000 0.0000);
+  --secondary: oklch(0.8699 0.0000 0.0000);
+  --secondary-foreground: oklch(0.1450 0.0000 0.0000);
+  --muted: oklch(0.8699 0.0000 0.0000);
+  --muted-foreground: oklch(0.4475 0.0000 0.0000);
+  --accent: oklch(0.8400 0.0750 57.0000);
+  --accent-foreground: oklch(0.1450 0.0000 0.0000);
+  --destructive: oklch(0.7111 0.1815 23.9935);
+  --destructive-foreground: oklch(1.0000 0.0000 0.0000);
+  --border: oklch(0.8699 0.0000 0.0000);
+  --input: oklch(0.8699 0.0000 0.0000);
+  --ring: oklch(0.6566 0.0741 242.2199);
+  --chart-1: oklch(0.5226 0.0856 313.6030);
+  --chart-2: oklch(0.5116 0.0741 242.2199);
+  --chart-3: oklch(0.5087 0.0751 134.4206);
+  --chart-4: oklch(0.5123 0.1097 106.9219);
+  --chart-5: oklch(0.5361 0.1815 23.9935);
+  --sidebar: oklch(0.9612 0.0000 0.0000);
+  --sidebar-foreground: oklch(0.1450 0.0000 0.0000);
+  --sidebar-primary: oklch(0.6566 0.0741 242.2199);
+  --sidebar-primary-foreground: oklch(0.1450 0.0000 0.0000);
+  --sidebar-accent: oklch(0.8699 0.0000 0.0000);
+  --sidebar-accent-foreground: oklch(0.1450 0.0000 0.0000);
+  --sidebar-border: oklch(0.8699 0.0000 0.0000);
+  --sidebar-ring: oklch(0.6566 0.0741 242.2199);
+  --font-sans: Inter, sans-serif;
+  --font-serif: serif;
+  --font-mono: JetBrains Mono, monospace;
+  --radius: 0.25rem;
+  --shadow-2xs: 0px 2px 4px 0px hsl(0 0% 0% / 0.03);
+  --shadow-xs: 0px 2px 4px 0px hsl(0 0% 0% / 0.03);
+  --shadow-sm: 0px 2px 4px 0px hsl(0 0% 0% / 0.05), 0px 1px 2px -1px hsl(0 0% 0% / 0.05);
+  --shadow: 0px 2px 4px 0px hsl(0 0% 0% / 0.05), 0px 1px 2px -1px hsl(0 0% 0% / 0.05);
+  --shadow-md: 0px 2px 4px 0px hsl(0 0% 0% / 0.05), 0px 2px 4px -1px hsl(0 0% 0% / 0.05);
+  --shadow-lg: 0px 2px 4px 0px hsl(0 0% 0% / 0.05), 0px 4px 6px -1px hsl(0 0% 0% / 0.05);
+  --shadow-xl: 0px 2px 4px 0px hsl(0 0% 0% / 0.05), 0px 8px 10px -1px hsl(0 0% 0% / 0.05);
+  --shadow-2xl: 0px 2px 4px 0px hsl(0 0% 0% / 0.13);
+  --tracking-normal: 0rem;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: oklch(0.2891 0.0000 0.0000);
+  --foreground: oklch(0.8733 0.0265 250.0164);
+  --card: oklch(0.3199 0.0045 247.9685);
+  --card-foreground: oklch(0.7733 0.0265 250.0164);
+  --popover: oklch(0.3199 0.0045 247.9685);
+  --popover-foreground: oklch(0.7733 0.0265 250.0164);
+  --primary: oklch(0.6566 0.0741 242.2199);
+  --primary-foreground: oklch(0.2891 0.0000 0.0000);
+  --secondary: oklch(0.4128 0.0000 0.0000);
+  --secondary-foreground: oklch(0.7733 0.0265 250.0164);
+  --muted: oklch(0.4128 0.0000 0.0000);
+  --muted-foreground: oklch(0.7100 0.0220 250.0000);
+  --accent: oklch(0.4825 0.0650 57.0000);
+  --accent-foreground: oklch(0.7733 0.0265 250.0164);
+  --destructive: oklch(0.7111 0.1815 23.9935);
+  --destructive-foreground: oklch(0.7733 0.0265 250.0164);
+  --border: oklch(0.4128 0.0000 0.0000);
+  --input: oklch(0.3199 0.0045 247.9685);
+  --ring: oklch(0.6566 0.0741 242.2199);
+  --chart-1: oklch(0.7151 0.0856 313.6030);
+  --chart-2: oklch(0.7041 0.0741 242.2199);
+  --chart-3: oklch(0.7012 0.0751 134.4206);
+  --chart-4: oklch(0.7548 0.1504 106.9219);
+  --chart-5: oklch(0.7261 0.1692 23.9935);
+  --sidebar: oklch(0.3656 0.0053 236.6460);
+  --sidebar-foreground: oklch(0.7733 0.0265 250.0164);
+  --sidebar-primary: oklch(0.6566 0.0741 242.2199);
+  --sidebar-primary-foreground: oklch(0.7733 0.0265 250.0164);
+  --sidebar-accent: oklch(0.4128 0.0000 0.0000);
+  --sidebar-accent-foreground: oklch(0.7733 0.0265 250.0164);
+  --sidebar-border: oklch(0.4128 0.0000 0.0000);
+  --sidebar-ring: oklch(0.6566 0.0741 242.2199);
+  --font-sans: Inter, sans-serif;
+  --font-serif: serif;
+  --font-mono: JetBrains Mono, monospace;
+  --radius: 0.25rem;
+  --shadow-2xs: 0px 2px 4px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0px 2px 4px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm: 0px 2px 4px 0px hsl(0 0% 0% / 0.10), 0px 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow: 0px 2px 4px 0px hsl(0 0% 0% / 0.10), 0px 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0px 2px 4px 0px hsl(0 0% 0% / 0.10), 0px 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0px 2px 4px 0px hsl(0 0% 0% / 0.10), 0px 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --shadow-xl: 0px 2px 4px 0px hsl(0 0% 0% / 0.10), 0px 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-2xl: 0px 2px 4px 0px hsl(0 0% 0% / 0.25);
+}
+

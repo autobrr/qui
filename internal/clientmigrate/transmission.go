@@ -25,23 +25,8 @@ func NewTransmissionImporter(opts Options) *TransmissionImport {
 func (i *TransmissionImport) Migrate() error {
 	torrentsDir := filepath.Join(i.opts.SourceDir, "torrents")
 
-	sourceDirInfo, err := os.Stat(torrentsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return errors.Errorf("source directory does not exist: %s", torrentsDir)
-		}
-
-		return errors.Wrapf(err, "source directory error: %s", torrentsDir)
-	}
-
-	if !sourceDirInfo.IsDir() {
-		return errors.Errorf("source is a file, not a directory: %s", torrentsDir)
-	}
-
-	if !i.opts.DryRun {
-		if err := os.MkdirAll(i.opts.QbitDir, os.ModePerm); err != nil {
-			return errors.Wrapf(err, "qbit directory error: %s", i.opts.QbitDir)
-		}
+	if err := i.prepareDirs(torrentsDir); err != nil {
+		return err
 	}
 
 	matches, err := filepath.Glob(filepath.Join(torrentsDir, "*.torrent"))
@@ -123,10 +108,13 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
+		resumeFile.Destination = replacePath(resumeFile.Destination, i.opts.PathReplaces)
+
 		// a corrupt entry with an unusable download dir would import a torrent
-		// qBittorrent resolves against its own default download dir
+		// qBittorrent resolves against its own default download dir; a
+		// download dir from another OS needs --replace-path
 		if !filepath.IsAbs(filepath.Clean(resumeFile.Destination)) {
-			log.Warn().Msgf("(%d/%d) %s has an unusable download dir %q, skipping", positionNum, totalJobs, metaInfo.Name, resumeFile.Destination)
+			log.Warn().Msgf("(%d/%d) %s has an unusable download dir %q, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, resumeFile.Destination)
 			skipped++
 			continue
 		}
@@ -137,88 +125,7 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
-		// completed-torrent timestamps: done-date is legitimately 0 for
-		// torrents Transmission adopted from existing data, fall back to
-		// added-date like Transmission 4.x itself does
-		completedTime := resumeFile.DoneDate
-		if completedTime == 0 {
-			completedTime = resumeFile.AddedDate
-		}
-
-		// auto-managed keeps qBittorrent's queueing and share limits in
-		// charge; a paused torrent must stay out of auto-management or
-		// qBittorrent would resume it
-		paused := boolToInt(resumeFile.Paused)
-
-		newFastResume := Fastresume{
-			ActiveTime:                resumeFile.DownloadingTimeSeconds + resumeFile.SeedingTimeSeconds,
-			AddedTime:                 resumeFile.AddedDate,
-			Allocation:                "sparse",
-			ApplyIPFilter:             1,
-			AutoManaged:               1 - paused,
-			CompletedTime:             completedTime,
-			DisableDHT:                0,
-			DisableLSD:                0,
-			DisablePEX:                0,
-			DownloadRateLimit:         transmissionSpeedLimit(resumeFile.SpeedLimitDown),
-			FileFormat:                "libtorrent resume file",
-			FileVersion:               1,
-			FilePriority:              []int{},
-			FinishedTime:              resumeFile.SeedingTimeSeconds,
-			LastDownload:              resumeFile.ActivityDate,
-			LastSeenComplete:          completedTime,
-			LastUpload:                resumeFile.ActivityDate,
-			LibTorrentVersion:         "1.2.11.0",
-			MaxConnections:            16777215,
-			MaxUploads:                -1,
-			NumComplete:               16777215,
-			NumDownloaded:             16777215,
-			NumIncomplete:             0,
-			Paused:                    paused,
-			Peers:                     "",
-			Peers6:                    "",
-			QbtCategory:               "",
-			QbtContentLayout:          "Original",
-			QbtFirstLastPiecePriority: 0,
-			QbtName:                   "",
-			QbtRatioLimit:             transmissionRatioLimit(resumeFile.RatioLimit),
-			QbtSavePath:               resumeFile.Destination,
-			QbtSeedStatus:             1,
-			QbtSeedingTimeLimit:       -2,
-			QbtTags:                   append(resumeFile.Labels, "migrated"),
-			SavePath:                  resumeFile.Destination,
-			SeedMode:                  0,
-			SeedingTime:               resumeFile.SeedingTimeSeconds,
-			SequentialDownload:        0,
-			ShareMode:                 0,
-			StopWhenReady:             0,
-			SuperSeeding:              0,
-			TotalDownloaded:           resumeFile.Downloaded,
-			TotalUploaded:             resumeFile.Uploaded,
-			UploadMode:                0,
-			UploadRateLimit:           transmissionSpeedLimit(resumeFile.SpeedLimitUp),
-			URLList:                   file.UrlList,
-		}
-
-		// destination is the parent directory in every Transmission version:
-		// file subpaths already start with the torrent name
-		if metaInfo.IsDir() {
-			// legacy and should be removed sometime with 4.3.X
-			newFastResume.QbtHasRootFolder = 1
-		} else {
-			newFastResume.QbtHasRootFolder = 0
-		}
-
-		// handle trackers
-		newFastResume.Trackers = file.UpvertedAnnounceList()
-
-		newFastResume.FilePriority = transmissionFilePriorities(resumeFile, len(metaInfo.UpvertedFiles()))
-
-		// pieces overlapping only deselected files stay unset
-		newFastResume.Pieces = pieces
-
-		// Set 20 byte SHA1 hash
-		newFastResume.InfoHash = file.HashInfoBytes().Bytes()
+		newFastResume := transmissionFastresume(resumeFile, file, &metaInfo, pieces)
 
 		// copy torrent file
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
@@ -242,6 +149,124 @@ func (i *TransmissionImport) Migrate() error {
 	logImportSummary(i.opts.DryRun, imported, failed, skipped, totalJobs)
 
 	return nil
+}
+
+// prepareDirs checks that the transmission torrents dir is a directory and
+// creates the qBittorrent dir unless this is a dry run
+func (i *TransmissionImport) prepareDirs(torrentsDir string) error {
+	sourceDirInfo, err := os.Stat(torrentsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return errors.Errorf("source directory does not exist: %s", torrentsDir)
+		}
+
+		return errors.Wrapf(err, "source directory error: %s", torrentsDir)
+	}
+
+	if !sourceDirInfo.IsDir() {
+		return errors.Errorf("source is a file, not a directory: %s", torrentsDir)
+	}
+
+	if !i.opts.DryRun {
+		if err := os.MkdirAll(i.opts.QbitDir, os.ModePerm); err != nil {
+			return errors.Wrapf(err, "qbit directory error: %s", i.opts.QbitDir)
+		}
+	}
+
+	return nil
+}
+
+// transmissionFastresume builds the qBittorrent fastresume for a complete
+// transmission torrent
+func transmissionFastresume(resumeFile *TransmissionResumeFile, file *metainfo.MetaInfo, metaInfo *metainfo.Info, pieces string) Fastresume {
+	// completed-torrent timestamps: done-date is legitimately 0 for
+	// torrents Transmission adopted from existing data, fall back to
+	// added-date like Transmission 4.x itself does
+	completedTime := resumeFile.DoneDate
+	if completedTime == 0 {
+		completedTime = resumeFile.AddedDate
+	}
+
+	// auto-managed keeps qBittorrent's queueing and share limits in
+	// charge; a paused torrent must stay out of auto-management or
+	// qBittorrent would resume it
+	paused := boolToInt(resumeFile.Paused)
+
+	newFastResume := Fastresume{
+		ActiveTime:                resumeFile.DownloadingTimeSeconds + resumeFile.SeedingTimeSeconds,
+		AddedTime:                 resumeFile.AddedDate,
+		Allocation:                "sparse",
+		ApplyIPFilter:             1,
+		AutoManaged:               1 - paused,
+		CompletedTime:             completedTime,
+		DisableDHT:                0,
+		DisableLSD:                0,
+		DisablePEX:                0,
+		DownloadRateLimit:         transmissionSpeedLimit(resumeFile.SpeedLimitDown),
+		FileFormat:                "libtorrent resume file",
+		FileVersion:               1,
+		FilePriority:              []int{},
+		FinishedTime:              resumeFile.SeedingTimeSeconds,
+		LastDownload:              resumeFile.ActivityDate,
+		LastSeenComplete:          completedTime,
+		LastUpload:                resumeFile.ActivityDate,
+		LibTorrentVersion:         "1.2.11.0",
+		MaxConnections:            16777215,
+		MaxUploads:                -1,
+		NumComplete:               16777215,
+		NumDownloaded:             16777215,
+		NumIncomplete:             0,
+		Paused:                    paused,
+		Peers:                     "",
+		Peers6:                    "",
+		QbtCategory:               "",
+		QbtContentLayout:          "Original",
+		QbtFirstLastPiecePriority: 0,
+		QbtName:                   transmissionName(resumeFile, metaInfo),
+		QbtRatioLimit:             transmissionRatioLimit(resumeFile.RatioLimit),
+		QbtSavePath:               resumeFile.Destination,
+		QbtSeedStatus:             1,
+		QbtSeedingTimeLimit:       -2,
+		QbtTags:                   append(resumeFile.Labels, "migrated"),
+		SavePath:                  resumeFile.Destination,
+		SeedMode:                  0,
+		SeedingTime:               resumeFile.SeedingTimeSeconds,
+		SequentialDownload:        0,
+		ShareMode:                 0,
+		StopWhenReady:             0,
+		SuperSeeding:              0,
+		TotalDownloaded:           resumeFile.Downloaded,
+		TotalUploaded:             resumeFile.Uploaded,
+		UploadMode:                0,
+		UploadRateLimit:           transmissionSpeedLimit(resumeFile.SpeedLimitUp),
+		URLList:                   file.UrlList,
+	}
+
+	// destination is the parent directory in every Transmission version:
+	// file subpaths already start with the torrent name
+	if metaInfo.IsDir() {
+		// legacy and should be removed sometime with 4.3.X
+		newFastResume.QbtHasRootFolder = 1
+	} else {
+		newFastResume.QbtHasRootFolder = 0
+	}
+
+	// handle trackers
+	newFastResume.Trackers = file.UpvertedAnnounceList()
+
+	// renames live only in the resume file; the .torrent keeps the
+	// original names, so the data on disk needs mapped_files
+	newFastResume.MappedFiles = transmissionMappedFiles(resumeFile, metaInfo)
+
+	newFastResume.FilePriority = transmissionFilePriorities(resumeFile, len(metaInfo.UpvertedFiles()))
+
+	// pieces overlapping only deselected files stay unset
+	newFastResume.Pieces = pieces
+
+	// Set 20 byte SHA1 hash
+	newFastResume.InfoHash = file.HashInfoBytes().Bytes()
+
+	return newFastResume
 }
 
 // transmissionPieces expands the resume file's block bitfield into a qBittorrent
@@ -351,6 +376,46 @@ func transmissionFilePriorities(resume *TransmissionResumeFile, fileCount int) [
 	return prios
 }
 
+// transmissionName returns the renamed torrent name, or "" when the torrent
+// keeps its metainfo name
+func transmissionName(resume *TransmissionResumeFile, info *metainfo.Info) string {
+	if resume.Name == info.BestName() {
+		return ""
+	}
+	return resume.Name
+}
+
+// transmissionMappedFiles maps the resume file's per-file paths to libtorrent
+// mapped_files, or nil when no file differs from the metainfo path.
+// Transmission <=3.x writes "" for files it did not rename, 4.x writes every
+// path; both are relative to the download dir and start with the torrent name
+// for multi-file torrents
+func transmissionMappedFiles(resume *TransmissionResumeFile, info *metainfo.Info) []string {
+	files := info.UpvertedFiles()
+	if len(resume.Files) != len(files) {
+		return nil
+	}
+
+	name := info.BestName()
+	mapped := make([]string, len(files))
+	renamed := false
+	for i, f := range files {
+		original := name
+		if info.IsDir() {
+			original = strings.Join(append([]string{name}, f.BestPath()...), "/")
+		}
+		if p := resume.Files[i]; p != "" && p != original {
+			mapped[i] = p
+			renamed = true
+		}
+	}
+
+	if !renamed {
+		return nil
+	}
+	return mapped
+}
+
 func boolToInt(b bool) int64 {
 	if b {
 		return 1
@@ -416,7 +481,6 @@ type TransmissionResumeFile struct {
 	Labels                 []string                         `bencode:"labels"`
 	MaxPeers               int64                            `bencode:"max-peers"`
 	Paused                 bool                             `bencode:"paused"`
-	Peers                  string                           `bencode:"peers2"`
 	ActivityDate           int64                            `bencode:"activity-date"`
 	AddedDate              int64                            `bencode:"added-date"`
 	Dnd                    []int                            `bencode:"dnd"`

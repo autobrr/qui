@@ -17,14 +17,24 @@ const (
 	PerIndexerSearchTimeout = 1 * time.Second
 )
 
-// AdaptiveSearchTimeout scales the timeout linearly per indexer (starting from DefaultSearchTimeout)
+var defaultSearchTimeout = DefaultSearchTimeout
+
+// SetDefaultSearchTimeoutForTest sets the default search timeout and returns
+// a func that restores it. Product code does not call it.
+func SetDefaultSearchTimeoutForTest(timeout time.Duration) (restore func()) {
+	previous := defaultSearchTimeout
+	defaultSearchTimeout = timeout
+	return func() { defaultSearchTimeout = previous }
+}
+
+// AdaptiveSearchTimeout scales the timeout linearly per indexer (starting from defaultSearchTimeout)
 // and caps the total budget at MaxSearchTimeout.
 func AdaptiveSearchTimeout(indexerCount int) time.Duration {
 	if indexerCount <= 1 {
-		return DefaultSearchTimeout
+		return defaultSearchTimeout
 	}
 	extra := max(time.Duration(indexerCount-1)*PerIndexerSearchTimeout, 0)
-	timeout := DefaultSearchTimeout + extra
+	timeout := defaultSearchTimeout + extra
 	if timeout > MaxSearchTimeout {
 		return MaxSearchTimeout
 	}
@@ -34,7 +44,7 @@ func AdaptiveSearchTimeout(indexerCount int) time.Duration {
 // WithSearchTimeout enforces a timeout only when the parent context lacks a deadline.
 func WithSearchTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if timeout <= 0 {
-		timeout = DefaultSearchTimeout
+		timeout = defaultSearchTimeout
 	}
 	if ctx == nil {
 		return context.WithTimeout(context.Background(), timeout)

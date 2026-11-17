@@ -4,6 +4,7 @@
  */
 
 import { Outlet } from "@tanstack/react-router"
+import { CommandPalette } from "@/components/command-palette/CommandPalette"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
@@ -16,7 +17,9 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { BulkActionProvider } from "@/components/torrents/bulk-actions/BulkActionProvider"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { DatabaseShrinkProvider } from "@/components/database/DatabaseShrinkProvider"
 
 function AppLayoutContent() {
   const { t } = useTranslation("common")
@@ -60,7 +63,7 @@ function AppLayoutContent() {
           </Tooltip>
         </Header>
         <main className={cn(
-          "flex-1 overflow-y-auto transition-[padding] duration-300",
+          "flex-1 overflow-y-auto",
           isFooterVisible ? "pb-[calc(4rem+env(safe-area-inset-bottom))]" : "pb-0",
           "lg:pb-0"
         )}>
@@ -70,6 +73,8 @@ function AppLayoutContent() {
 
       {/* Mobile Footer Navigation */}
       <MobileFooterNav />
+
+      <CommandPalette />
     </div>
   )
 }
@@ -80,9 +85,13 @@ export function AppLayout() {
   return (
     <LayoutRouteProvider>
       <TorrentSelectionProvider>
-        <MobileScrollProvider>
-          <AppLayoutContent />
-        </MobileScrollProvider>
+        <BulkActionProvider>
+          <MobileScrollProvider>
+            <DatabaseShrinkProvider>
+              <AppLayoutContent />
+            </DatabaseShrinkProvider>
+          </MobileScrollProvider>
+        </BulkActionProvider>
       </TorrentSelectionProvider>
     </LayoutRouteProvider>
   )

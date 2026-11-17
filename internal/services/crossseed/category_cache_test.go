@@ -227,3 +227,7 @@ func TestShouldWarnOnCategorySavePathMismatch(t *testing.T) {
 		})
 	}
 }
+
+func (*categoryCacheSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

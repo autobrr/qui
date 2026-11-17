@@ -18,6 +18,7 @@ import {
   SPEED_COLUMNS,
   STRING_OPERATIONS
 } from "@/lib/column-constants"
+import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type { CrossInstanceTorrent, Torrent, TorznabSearchResult } from "@/types"
 
 export interface ColumnFilter {
@@ -78,12 +79,14 @@ const COLUMN_TO_QB_FIELD: Partial<Record<keyof (Torrent & CrossInstanceTorrent),
 }
 
 // State categories: maps filter value to all qBittorrent states in that category
-// Must match the backend's torrentStateCategories in sync_manager.go
+// Must match namedStatuses in internal/qbittorrent/torrent_list_query.go
 const STATE_CATEGORY_MAP: Record<string, string[]> = {
   // Seeding states (uploading category)
   uploading: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"],
   // Downloading states
-  downloading: ["downloading", "stalledDL", "metaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  downloading: ["downloading", "stalledDL", "metaDL", "forcedMetaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
+  // Completed states, also during a recheck
+  completed: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP", "pausedUP", "stoppedUP"],
   // Stalled states
   stalled: ["stalledDL", "stalledUP"],
   stalled_uploading: ["stalledUP"],
@@ -94,7 +97,7 @@ const STATE_CATEGORY_MAP: Record<string, string[]> = {
   errored: ["error", "missingFiles"],
   // Paused/stopped states
   paused: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
-  stopped: ["stoppedDL", "stoppedUP"],
+  stopped: ["pausedDL", "pausedUP", "stoppedDL", "stoppedUP"],
   // Active states (downloading or uploading actively)
   active: ["downloading", "uploading", "forcedDL", "forcedUP"],
   // Moving state
@@ -137,21 +140,27 @@ function escapeExprValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
+// Saved filters store these values, so only the labels are translated: a translated value would
+// miss FILTER_UNIT_BYTES and send NaN to the backend. PiB is left out; nobody filters at that size.
+const FILTER_UNIT_LADDER: SizeUnit[] = ["B", "KiB", "MiB", "GiB", "TiB"]
+
+// Built per call, not at import, so the labels follow a language switch.
+export function getSizeUnitOptions(): { value: SizeUnit; label: string }[] {
+  return FILTER_UNIT_LADDER.map((unit) => ({ value: unit, label: unitLabel(unit) }))
+}
+
+export function getSpeedUnitOptions(): { value: SpeedUnit; label: string }[] {
+  return FILTER_UNIT_LADDER.map((unit) => ({ value: `${unit}/s`, label: unitLabel(unit, true) }))
+}
+
+// A speed filter is its size filter per second, so both spellings resolve to the same
+// magnitude. The "/s" is part of the stored SpeedUnit value, not something this layer chooses.
+const FILTER_UNIT_BYTES: Record<SizeUnit | SpeedUnit, number> = Object.fromEntries(
+  FILTER_UNIT_LADDER.flatMap((unit) => [[unit, BYTES_PER_UNIT[unit]], [`${unit}/s`, BYTES_PER_UNIT[unit]]])
+) as Record<SizeUnit | SpeedUnit, number>
+
 export function convertSizeToBytes(value: number, unit: SizeUnit | SpeedUnit): number {
-  const k = 1024
-  const unitMultipliers: Record<SizeUnit | SpeedUnit, number> = {
-    B: 1,
-    KiB: k,
-    MiB: k ** 2,
-    GiB: k ** 3,
-    TiB: k ** 4,
-    "B/s": 1,
-    "KiB/s": k,
-    "MiB/s": k ** 2,
-    "GiB/s": k ** 3,
-    "TiB/s": k ** 4,
-  }
-  return Math.floor(value * unitMultipliers[unit])
+  return Math.floor(value * FILTER_UNIT_BYTES[unit])
 }
 
 function convertDateToTimestamp(dateStr: string): number {
@@ -180,15 +189,14 @@ function convertDurationToSeconds(value: number, unit: DurationUnit): number {
  *
  * State filters use category expansion (matching FilterSidebar behavior):
  * - "uploading" (Seeding) expands to: uploading, stalledUP, queuedUP, checkingUP, forcedUP
- * - "downloading" expands to: downloading, stalledDL, metaDL, queuedDL, allocating, checkingDL, forcedDL
- * - "completed" uses progress-based filtering: Progress == 1
+ * - "downloading" expands to: downloading, stalledDL, metaDL, forcedMetaDL, queuedDL, allocating, checkingDL, forcedDL
+ * - "completed" expands to the upload states, paused and stopped ones included
  *
  * Example expansions:
  * - { columnId: "state", operation: "eq", value: "uploading" } =>
  *   "(string(State) == \"uploading\" || string(State) == \"stalledUP\" || ...)"
  * - { columnId: "state", operation: "ne", value: "uploading" } =>
  *   "(string(State) != \"uploading\" && string(State) != \"stalledUP\" && ...)"
- * - { columnId: "state", operation: "eq", value: "completed" } => "Progress == 1"
  */
 export function columnFilterToExpr(filter: ColumnFilter): string | null {
   // Apply column remapping for filtering (use total counts instead of connected)
@@ -339,15 +347,6 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
   // When filtering by a state category (e.g., "uploading" which means "Seeding"),
   // expand it to match all qBittorrent states in that category
   if (filter.columnId === "state" && (filter.operation === "eq" || filter.operation === "ne")) {
-    // Special case: "completed" uses progress-based filtering, not state
-    if (filter.value === "completed") {
-      if (filter.operation === "eq") {
-        return "Progress == 1"
-      } else {
-        return "Progress != 1"
-      }
-    }
-
     const stateCategory = STATE_CATEGORY_MAP[filter.value]
     if (stateCategory && stateCategory.length >= 1) {
       // Generate combined expression for all states in the category
