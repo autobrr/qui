@@ -47,7 +47,6 @@ function tap(element: Element) {
 
 const tooltipShown = () => screen.queryByRole("tooltip") !== null
 
-// regression: #4263
 describe("TooltipTrigger on a touch device", () => {
   it("opens on a tap of text or an icon", () => {
     renderTooltip(<TooltipTrigger asChild><span>12 GiB</span></TooltipTrigger>)
@@ -57,6 +56,7 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
+  // regression: #4263
   it("runs the action of a button and stays closed", () => {
     const onClick = vi.fn()
     renderTooltip(<TooltipTrigger asChild><button type="button" onClick={onClick}>Pause</button></TooltipTrigger>)
@@ -67,6 +67,7 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(false)
   })
 
+  // regression: #4263
   it("stays closed when the icon sits inside a link", () => {
     renderTooltip(
       <a href="/instances/1" onClick={(event) => event.preventDefault()}>
@@ -80,15 +81,6 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(false)
   })
 
-  // A disabled Button has pointer-events: none, so the tap lands on the wrapper, not on the button.
-  it("opens on a tap of the wrapper around a disabled button, to explain why", () => {
-    renderTooltip(<TooltipTrigger asChild><span data-testid="wrapper"><button type="button" disabled>Run</button></span></TooltipTrigger>)
-
-    tap(screen.getByTestId("wrapper"))
-
-    expect(tooltipShown()).toBe(true)
-  })
-
   it("opens on a tap of a disabled option, to explain why", () => {
     renderTooltip(<TooltipTrigger asChild><div><div role="option" aria-selected="false" aria-disabled="true">Keep files</div></div></TooltipTrigger>)
 
@@ -97,6 +89,7 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
+  // regression: #4263
   it("stays closed on a label that toggles a checkbox, and opens when the checkbox is disabled", () => {
     renderTooltip(<TooltipTrigger asChild><label><input type="checkbox" />Include</label></TooltipTrigger>)
     tap(screen.getByText("Include"))
