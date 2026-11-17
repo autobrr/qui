@@ -78,10 +78,9 @@ func (l *torznabLog) searched() []string {
 // scheduledRunFixture runs scheduled runs over torrents, with one fake Torznab
 // indexer for each torznabLog.
 type scheduledRunFixture struct {
-	t     *testing.T
-	env   *searchHistoryTestEnv
-	svc   *Service
-	movie func(n int, name string, days int) qbt.Torrent
+	t   *testing.T
+	env *searchHistoryTestEnv
+	svc *Service
 }
 
 func movieAddedDaysAgo(n int, name string, days int) qbt.Torrent {
