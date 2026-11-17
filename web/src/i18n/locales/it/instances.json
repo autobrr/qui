@@ -555,6 +555,7 @@
         "externalProgram": "Programma esterno",
         "dryRun": "Dry run",
         "exportToInstance": "Esporta nell'istanza",
+        "transferToInstance": "Trasferisci a un'istanza",
         "ruleSkipped": "Regola non eseguita"
       },
       "shareLimit": {
@@ -608,7 +609,9 @@
         "exportedDryRun_one": "{{count}} torrent verrebbe esportato",
         "exportedDryRun_other": "{{count}} torrent verrebbero esportati",
         "exportFailed_one": "Esportazione di {{count}} torrent non riuscita",
-        "exportFailed_other": "Esportazione di {{count}} torrent non riuscita"
+        "exportFailed_other": "Esportazione di {{count}} torrent non riuscita",
+        "transferredDryRun_one": "{{count}} torrent verrebbe trasferito",
+        "transferredDryRun_other": "{{count}} torrent verrebbero trasferiti"
       },
       "deleteDialog": {
         "title": "Elimina regola",
@@ -668,6 +671,7 @@
         "deleteActivityFailed": "Eliminazione dell'attività non riuscita"
       },
       "exported": "Esportato",
+      "transferStarted": "Avviato",
       "skipped": "Saltata"
     },
     "runWorkflowNow": {
@@ -967,6 +971,7 @@
         "auto_managed": "Gestito automaticamente",
         "dry_run_no_match": "Simulazione (nessuna corrispondenza)",
         "exported_to_instance": "Esporta verso l'istanza",
+        "transferred_to_instance": "Trasferisci a un'istanza",
         "rule_skipped": "Regola non eseguita"
       }
     },
@@ -1144,6 +1149,11 @@
         "skipChecking": "Ignora la verifica",
         "addPaused": "Aggiungi in pausa"
       },
+      "transfer": {
+        "title": "Trasferisci a un'istanza",
+        "description": "Sposta ogni torrent corrispondente con i suoi file nell'istanza di destinazione e verifica la copia prima di rimuovere qualcosa. La pagina Trasferimenti mostra ogni trasferimento.",
+        "remove": "Rimuovi «Trasferisci a un'istanza»"
+      },
       "priority": {
         "title": "Priorità del torrent",
         "description": "Controlla l'ordine in cui i torrent vengono elaborati.",
@@ -1186,7 +1196,8 @@
         "category": "Categoria",
         "move": "Sposta",
         "externalProgram": "Esegui programma esterno",
-        "exportToInstance": "Esporta nell'istanza"
+        "exportToInstance": "Esporta nell'istanza",
+        "transferToInstance": "Trasferisci a un'istanza"
       },
       "option": {
         "noChange": "Nessuna modifica",
@@ -1442,6 +1453,7 @@
           "externalProgram": "Programma esterno",
           "noMatches": "Nessuna corrispondenza",
           "exportedToInstance": "Esporta verso istanza",
+          "transferredToInstance": "Trasferisci a un'istanza",
           "ruleSkipped": "Regola non eseguita"
         },
         "actionFallback": "Azione sconosciuta ({{action}})",

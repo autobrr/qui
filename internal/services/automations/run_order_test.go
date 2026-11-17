@@ -61,6 +61,7 @@ var activityActionKeys = map[string]string{
 	externalprograms.ActivityActionExternalProgram: "externalProgram",
 	models.ActivityActionExportedToInstance:        "exportToInstance",
 	models.ActivityActionDeletedCondition:          "delete",
+	models.ActivityActionTransferredToInstance:     "transferToInstance",
 }
 
 // collapse drops consecutive repeats, so several requests or rows from one step count once.
@@ -83,8 +84,9 @@ func nameIs(name string) *models.RuleCondition {
 }
 
 // everyActionRules gives one run every action. Delete sits in its own rule because validation keeps it
-// standalone. The export targets a missing instance and no external program service is set, so both
-// record their rows synchronously when dispatched.
+// standalone. A Transfer waits for a torrent that the run moves, so only the running torrent moves. The export
+// targets a missing instance and no external program service is set, so both record their rows
+// synchronously when dispatched.
 func everyActionRules() []*models.Automation {
 	upload := int64(100)
 	download := int64(200)
@@ -101,7 +103,7 @@ func everyActionRules() []*models.Automation {
 				AutoManagement:   &models.AutoManagementAction{Enabled: true},
 				Tags:             []*models.TagAction{{Enabled: true, Tags: []string{"ordered"}, Mode: models.TagModeAdd}},
 				Category:         &models.CategoryAction{Enabled: true, Category: "sorted"},
-				Move:             &models.MoveAction{Enabled: true, Path: "/moved"},
+				Move:             &models.MoveAction{Enabled: true, Path: "/moved", Condition: nameIs("running")},
 				ExternalProgram:  &models.ExternalProgramAction{Enabled: true, ProgramID: 1},
 				ExportToInstance: &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: missingTargetInstanceID},
 			},
@@ -113,6 +115,12 @@ func everyActionRules() []*models.Automation {
 		{
 			ID: 3, Name: "delete", TrackerPattern: "*", Enabled: true, SortOrder: 2,
 			Conditions: &models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Mode: DeleteModeKeepFiles, Condition: nameIs("doomed")}},
+		},
+		{
+			ID: 4, Name: "transfer", TrackerPattern: "*", Enabled: true, SortOrder: 3,
+			Conditions: &models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{
+				Enabled: true, TargetInstanceID: missingTargetInstanceID, SavePath: "/archive", Condition: nameIs("stopped"),
+			}},
 		},
 	}
 }
@@ -141,6 +149,7 @@ func activityKeysByID(t *testing.T, db *database.DB, instanceID int) []string {
 func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
 	svc, db, instanceIDs := newStubService(t, nil, stub)
+	svc.SetTransferRunner(&transfers{})
 
 	_, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), false)
 	require.NoError(t, err)
@@ -153,7 +162,7 @@ func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 		requestKeys = append(requestKeys, key)
 	}
 	synchronous := slices.DeleteFunc(slices.Clone(actionRunOrder), func(key string) bool {
-		return key == "externalProgram" || key == "exportToInstance"
+		return key == "externalProgram" || key == "exportToInstance" || key == "transferToInstance"
 	})
 	require.Equal(t, synchronous, collapse(requestKeys), "write requests out of run order")
 
@@ -164,6 +173,7 @@ func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
 	svc, _, instanceIDs := newStubService(t, nil, stub)
+	svc.SetTransferRunner(&transfers{})
 
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, everyActionRules(), true)
 	require.NoError(t, err)

@@ -175,6 +175,7 @@ function formatAction(action: AutomationActivity["action"]): string {
     moved: "move",
     external_program: "externalProgram",
     exported_to_instance: "exportToInstance",
+    transferred_to_instance: "transferToInstance",
     dry_run_no_match: "dryRun",
     rule_skipped: "ruleSkipped",
   }
@@ -189,6 +190,7 @@ function getOutcomeBadgeText(event: AutomationActivity): string {
   if (event.outcome === "skipped") return i18n.t(`${s}.skipped`, { ns })
   if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "failed"}`, { ns })
   if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "failed"}`, { ns })
+  if (event.action === "transferred_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "transferStarted" : "failed"}`, { ns })
   return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "failed"}`, { ns })
 }
 
@@ -307,6 +309,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "auto_managed",
   "moved",
   "exported_to_instance",
+  "transferred_to_instance",
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
@@ -843,6 +846,7 @@ export function WorkflowsOverview() {
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    transferred_to_instance: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
     rule_skipped: "bg-amber-500/10 text-amber-500 border-amber-500/20",
   }
@@ -1277,6 +1281,10 @@ export function WorkflowsOverview() {
                                         ) : event.action === "exported_to_instance" ? (
                                           <span className="font-medium text-sm block">
                                             {formatExportedToInstanceSummary(event.details, event.outcome)}
+                                          </span>
+                                        ) : event.action === "transferred_to_instance" && event.hash === "" ? (
+                                          <span className="font-medium text-sm block">
+                                            {t("preferences.workflowsOverview.summary.transferredDryRun", { count: event.details?.count ?? 0 })}
                                           </span>
                                         ) : event.action === "dry_run_no_match" ? (
                                           <span className="font-medium text-sm block">

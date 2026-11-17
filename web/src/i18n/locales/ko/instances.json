@@ -554,6 +554,7 @@
         "externalProgram": "외부 프로그램",
         "dryRun": "모의 실행",
         "exportToInstance": "인스턴스로 내보내기",
+        "transferToInstance": "인스턴스로 전송",
         "ruleSkipped": "규칙 실행 안 됨"
       },
       "shareLimit": {
@@ -590,7 +591,8 @@
         "deleteLabelCondition": "조건",
         "exported_other": "토렌트 {{count}}개 내보냄",
         "exportedDryRun_other": "토렌트 {{count}}개 내보낼 예정",
-        "exportFailed_other": "토렌트 {{count}}개 내보내기 실패"
+        "exportFailed_other": "토렌트 {{count}}개 내보내기 실패",
+        "transferredDryRun_other": "토렌트 {{count}}개 전송 예정"
       },
       "deleteDialog": {
         "title": "규칙 삭제",
@@ -650,6 +652,7 @@
         "deleteActivityFailed": "활동을 삭제하지 못했습니다"
       },
       "exported": "내보냄",
+      "transferStarted": "시작됨",
       "skipped": "건너뜀"
     },
     "runWorkflowNow": {
@@ -939,6 +942,7 @@
         "auto_managed": "자동 관리됨",
         "dry_run_no_match": "모의 실행(일치 없음)",
         "exported_to_instance": "인스턴스로 내보내기",
+        "transferred_to_instance": "인스턴스로 전송",
         "rule_skipped": "규칙 실행 안 됨"
       }
     },
@@ -1115,6 +1119,11 @@
         "skipChecking": "확인 건너뛰기",
         "addPaused": "일시 정지 상태로 추가"
       },
+      "transfer": {
+        "title": "인스턴스로 전송",
+        "description": "일치하는 각 토렌트를 파일과 함께 대상 인스턴스로 옮기고, 무엇이든 제거하기 전에 복사본을 확인합니다. 전송 페이지에 각 전송이 표시됩니다.",
+        "remove": "인스턴스로 전송 제거"
+      },
       "priority": {
         "title": "토렌트 우선순위",
         "description": "토렌트가 처리되는 순서를 제어합니다.",
@@ -1157,7 +1166,8 @@
         "category": "카테고리",
         "move": "이동",
         "externalProgram": "외부 프로그램 실행",
-        "exportToInstance": "인스턴스로 내보내기"
+        "exportToInstance": "인스턴스로 내보내기",
+        "transferToInstance": "인스턴스로 전송"
       },
       "option": {
         "noChange": "변경 없음",
@@ -1413,6 +1423,7 @@
           "externalProgram": "외부 프로그램",
           "noMatches": "일치 없음",
           "exportedToInstance": "인스턴스로 내보내기",
+          "transferredToInstance": "인스턴스로 전송",
           "ruleSkipped": "규칙 실행 안 됨"
         },
         "actionFallback": "알 수 없는 작업 ({{action}})",

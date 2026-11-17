@@ -26,7 +26,7 @@ interface TransferFormProps {
   targets: InstanceResponse[] | undefined
 }
 
-/** The fields of a Transfer. The Transfer dialog shows it; the Transfer action of a rule will show it too. */
+/** The fields of a Transfer. The Transfer dialog and the Transfer action of a rule show it. */
 export function TransferForm({ value, onChange, targets }: TransferFormProps) {
   const { t } = useTranslation("transfers")
   const id = useId()

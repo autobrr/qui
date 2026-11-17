@@ -1677,6 +1677,7 @@ var actionRunOrder = []string{
 	"externalProgram",
 	"exportToInstance",
 	"delete",
+	"transferToInstance",
 }
 
 func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) ([]*models.AutomationActivity, error) {
