@@ -30,9 +30,9 @@ export function canCancel(row: TransferRow): boolean {
   return row.finishedAt === null
 }
 
-/** A failed or cancelled run runs again, also a failure that waits for its retry. */
+/** A failed run runs again, also a failure that waits for its retry. A cancelled run runs again once its cleanup ended. */
 export function canRetry(row: TransferRow): boolean {
-  return row.state === "failed" || row.state === "cancelled"
+  return row.state === "failed" || (row.state === "cancelled" && row.finishedAt !== null)
 }
 
 /** A temporary failure that waits: the time of its retry. */

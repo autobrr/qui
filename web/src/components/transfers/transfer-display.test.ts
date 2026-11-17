@@ -5,7 +5,27 @@
 
 import { describe, expect, it } from "vitest"
 
-import { percentOf, timeLeftMs } from "./transfer-display"
+import type { TransferRow } from "@/lib/transfers-api"
+
+import { canRetry, percentOf, timeLeftMs } from "./transfer-display"
+
+function row(edit: Partial<TransferRow>): TransferRow {
+  return {
+    id: 1, kind: "transfer", way: "sftp", state: "waiting", startedBy: "user", ruleId: null, ruleName: "",
+    sourceInstanceId: 1, targetInstanceId: 2, hash: "aaaa", name: "Show.S01.1080p-GRP", torrents: 1,
+    after: "removeWithFiles", leaveStopped: false, retryAt: null, failureClass: "", failureReason: "",
+    createdAt: "2026-11-17T10:00:00Z", finishedAt: null, hints: [], progress: null,
+    ...edit,
+  }
+}
+
+describe("the Retry of a row", () => {
+  // regression: #4242
+  it("waits for the end of the cleanup of a cancelled run", () => {
+    expect(canRetry(row({ state: "cancelled", finishedAt: null }))).toBe(false)
+    expect(canRetry(row({ state: "cancelled", finishedAt: "2026-11-17T11:00:00Z" }))).toBe(true)
+  })
+})
 
 describe("the progress of a row", () => {
   it("rounds the share down and keeps it at most 100", () => {
