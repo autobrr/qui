@@ -752,7 +752,39 @@ func (j *job) keepReason(ctx context.Context) string {
 	case read:
 		return "another torrent reads them"
 	}
+	if j.srcFiles != nil {
+		switch renamed, known := j.renamedOnSource(ctx); {
+		case !known:
+			return "qui cannot read the names of the files on " + j.source.Name
+		case renamed:
+			return "a file was renamed on " + j.source.Name
+		}
+	}
 	return ""
+}
+
+// renamedOnSource reports whether a member on the source names its files
+// otherwise than the files that qui copied. qui removes the files on the
+// source by these names, so a file of someone else may now have one.
+func (j *job) renamedOnSource(ctx context.Context) (renamed, known bool) {
+	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	if err != nil {
+		return false, false
+	}
+	for _, p := range j.parts {
+		if !slices.ContainsFunc(present, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) }) {
+			continue
+		}
+		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash)
+		if err != nil || files == nil {
+			return false, false
+		}
+		plan, err := planFiles(p.src.info, *files)
+		if err != nil || !slices.Equal(names(plan), names(p.plan)) {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 func (j *job) hostKeyPin(inst *models.Instance) []byte {

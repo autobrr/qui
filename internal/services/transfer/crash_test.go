@@ -347,6 +347,62 @@ func TestTransferCleanupUsesTheRecordedNames(t *testing.T) {
 	}
 }
 
+// A rename on the source after the copy, with a file of someone else of the
+// same size at the old name, keeps the files on the source: the removal
+// would take the file of someone else for the file that qui copied.
+// regression: #4231
+func TestTransferKeepsTheSourceFilesAfterARename(t *testing.T) {
+	const renamed = "Show.S01E05.mkv"
+	theirs := bytes.Repeat([]byte("x"), 40)
+	swap := func(r *rig, s show) {
+		r.renameOnSource(s, episode1, renamed)
+		write(t, filepath.Join(r.srcDir, showName), map[string][]byte{episode1: theirs})
+	}
+	for _, tc := range []struct {
+		name string
+		run  func(r *rig, s show)
+	}{
+		{
+			name: "a removal that resumes after a stop",
+			run: func(r *rig, s show) {
+				runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: "after:remove from source"}, make(chan *os.Process, 1), false)
+				swap(r, s)
+				r.restart()
+				r.svc.Wait()
+			},
+		},
+		{
+			name: "a removal in the run of the copy",
+			run: func(r *rig, s show) {
+				r.dst.OnAdd = func(string) { swap(r, s) }
+				r.run(r.request(s))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			s := newShow(t, showName)
+			r.seed(s)
+			require.Len(t, s.files[episode1], len(theirs))
+
+			tc.run(r, s)
+
+			var id int64
+			require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+			record := r.get(id)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.False(t, r.src.Has(s.hash))
+			require.Equal(t, map[string]string{
+				showName + "/" + episode1: string(theirs),
+				showName + "/" + renamed:  string(s.files[episode1]),
+				showName + "/" + episode2: string(s.files[episode2]),
+			}, tree(t, r.srcDir))
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+			require.Contains(t, logOf(record), "kept its files, because a file was renamed on seedbox")
+		})
+	}
+}
+
 // A file that lands at a path of the copy during the copy stops the
 // Transfer at the rename into place, and the cleanup keeps it. A crash after
 // the cleanup, before qui recorded the end, keeps it too: the cleanup that
