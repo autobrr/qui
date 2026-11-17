@@ -4,8 +4,9 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
+import { Profiler } from "react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -24,6 +25,7 @@ let summary: TransferSummary
 let refusal: string | null
 let summaries: TransferRequest[]
 let starts: TransferRequest[]
+let commits: number
 
 beforeAll(() => {
   // Radix Select asks for pointer capture and scrolls its options into view; jsdom has neither.
@@ -42,6 +44,7 @@ beforeEach(() => {
   refusal = null
   summaries = []
   starts = []
+  commits = 0
   server.use(
     http.get("*/api/instances", () => HttpResponse.json([{ id: 1, name: "seedbox" }, { id: 2, name: "homelab" }, { id: 3, name: "crossbox" }])),
     http.get("*/api/instances/:id/categories", () => HttpResponse.json({ tv: { name: "tv", savePath: "" } })),
@@ -67,7 +70,9 @@ function renderDialog() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
-        <TransferDialog open onOpenChange={onOpenChange} sourceInstanceId={1} hash="aaaa" name="Show.S01.1080p-GRP" />
+        <Profiler id="dialog" onRender={() => { commits++ }}>
+          <TransferDialog open onOpenChange={onOpenChange} sourceInstanceId={1} hash="aaaa" name="Show.S01.1080p-GRP" />
+        </Profiler>
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -161,5 +166,15 @@ describe("the Transfer dialog", () => {
 
     await waitFor(() => expect(summaryText()).toContain("qui does not start this Transfer: The torrent is already moving to homelab."))
     expect(startButton().disabled).toBe(true)
+  })
+
+  // regression: #4242
+  it("renders nothing more while the form stays as it is", async () => {
+    renderDialog()
+    await pickTarget("homelab")
+    await waitFor(() => expect(summaryText()).toContain("2 torrents, 4 GiB"))
+    const settled = commits
+    await act(() => new Promise(resolve => setTimeout(resolve, 500)))
+    expect(commits).toBe(settled)
   })
 })

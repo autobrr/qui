@@ -34,7 +34,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
   const { instances } = useInstances()
   const targets = useMemo(() => instances?.filter(instance => instance.id !== sourceInstanceId), [instances, sourceInstanceId])
   const [value, setValue] = useState<TransferFormValue>(emptyTransferForm)
-  const request = transferRequestOf(value, sourceInstanceId, hash)
+  const request = useMemo(() => transferRequestOf(value, sourceInstanceId, hash), [value, sourceInstanceId, hash])
   // The summary follows the form after the user stops typing in the save path.
   const debounced = useDebounce(request, 400)
 
