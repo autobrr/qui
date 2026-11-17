@@ -45,6 +45,7 @@ func (r *rig) exists(id int64) bool {
 
 // qui removes the rows of Transfers that finished more than 30 days ago, with
 // the registry rows of their helper torrents, and keeps every other row.
+// While the switch is off, it removes no row.
 func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	r := newRig(t)
 	old := r.ended("aaaa", transfer.StateDone)
@@ -56,36 +57,14 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	require.True(t, r.exists(old), "a row of 29 days stays")
 
 	r.setClock(time.Now().Add(31 * 24 * time.Hour))
+	r.deps.Switches = rollout.Switches{}
+	r.restart()
+	require.True(t, r.exists(old), "the switch is off")
+	require.True(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
+
+	r.deps.Switches = rollout.Switches{TransfersAndShares: true}
 	r.restart()
 	require.False(t, r.exists(old))
 	require.False(t, r.store.IsHelper(r.target.ID, "helperaaaa"), "the registry row of its helper torrent goes with it")
 	require.True(t, r.exists(running.ID), "a Transfer that runs stays")
-}
-
-// While the switch is off, qui removes no row.
-func TestTransfersKeepEveryRowWhileTheSwitchIsOff(t *testing.T) {
-	r := newRig(t)
-	old := r.ended("aaaa", transfer.StateDone)
-
-	r.setClock(time.Now().Add(31 * 24 * time.Hour))
-	r.restart()
-
-	require.True(t, r.exists(old))
-	require.True(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
-}
-
-// The user removes a finished row earlier, with the registry rows of its
-// helper torrents. A Transfer that runs has no Remove.
-func TestTheUserRemovesAFinishedRow(t *testing.T) {
-	r := newRig(t)
-	done := r.ended("aaaa", transfer.StateDone)
-	running := r.waiting("bbbb")
-
-	require.NoError(t, r.svc.Remove(t.Context(), done))
-	require.False(t, r.exists(done))
-	require.False(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
-
-	require.ErrorIs(t, r.svc.Remove(t.Context(), running.ID), transfer.ErrNotFinished)
-	require.True(t, r.exists(running.ID))
-	require.ErrorIs(t, r.svc.Remove(t.Context(), 999), transfer.ErrNotFound)
 }

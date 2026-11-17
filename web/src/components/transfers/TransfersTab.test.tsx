@@ -111,7 +111,7 @@ async function rowOf(name: string): Promise<HTMLElement> {
 const buttonNames = (tr: HTMLElement) => within(tr).queryAllByRole("button").map(button => button.textContent)
 
 describe("the Transfers tab", () => {
-  it("shows a row with its cross-seeds, route, way, progress, speed, time left, state, and starter", async () => {
+  it("shows each row with what it allows, and lists the rows of a chip, with the count of each chip", async () => {
     renderTab()
     const tr = await rowOf("Show.S01.1080p-GRP")
     const text = tr.textContent ?? ""
@@ -124,40 +124,23 @@ describe("the Transfers tab", () => {
     expect(text).toContain("8m")
     expect(text).toContain("Copying")
     expect(text).toContain("By you")
-  })
+    expect(buttonNames(tr)).toEqual(["Details", "Cancel"])
 
-  it("shows the reason of a failure, the rule that started it, and the TCP and μTP hint", async () => {
-    renderTab()
-    const text = (await rowOf("Film.2019.2160p-ABC")).textContent ?? ""
-    expect(text).toContain("A file on the target does not match.")
-    expect(text).toContain("By rule Move old seeds")
-    expect(text).toContain("homelab uses qBittorrent's default \"TCP and μTP\"")
-  })
+    const failedRow = await rowOf("Film.2019.2160p-ABC")
+    expect(failedRow.textContent).toContain("A file on the target does not match.")
+    expect(failedRow.textContent).toContain("By rule Move old seeds")
+    expect(failedRow.textContent).toContain("homelab uses qBittorrent's default \"TCP and μTP\"")
+    expect(buttonNames(failedRow)).toEqual(["Details", "Retry", "Remove"])
 
-  it("marks an Export run, and names a rule that is gone", async () => {
-    renderTab()
-    const text = (await rowOf("Album.2020.FLAC-XYZ")).textContent ?? ""
-    expect(text).toContain("Export")
-    expect(text).toContain("By a rule that is gone")
-  })
+    const exportRow = await rowOf("Album.2020.FLAC-XYZ")
+    expect(exportRow.textContent).toContain("Export")
+    expect(exportRow.textContent).toContain("By a rule that is gone")
+    expect(buttonNames(exportRow)).toEqual(["Details", "Remove"])
 
-  it("shows when a failure that waits runs again", async () => {
-    renderTab()
-    const text = (await rowOf("Doc.2018.720p-QRS")).textContent ?? ""
-    expect(text).toMatch(/Retry in \d+ years?/)
-  })
+    const retryRow = await rowOf("Doc.2018.720p-QRS")
+    expect(retryRow.textContent).toMatch(/Retry in \d+ years?/)
+    expect(buttonNames(retryRow)).toEqual(["Details", "Retry", "Cancel"])
 
-  it("offers the actions that each row allows", async () => {
-    renderTab()
-    expect(buttonNames(await rowOf("Show.S01.1080p-GRP"))).toEqual(["Details", "Cancel"])
-    expect(buttonNames(await rowOf("Film.2019.2160p-ABC"))).toEqual(["Details", "Retry", "Remove"])
-    expect(buttonNames(await rowOf("Album.2020.FLAC-XYZ"))).toEqual(["Details", "Remove"])
-    expect(buttonNames(await rowOf("Doc.2018.720p-QRS"))).toEqual(["Details", "Retry", "Cancel"])
-  })
-
-  it("lists the rows of a chip, with the count of each chip", async () => {
-    renderTab()
-    await rowOf("Show.S01.1080p-GRP")
     const chips = within(screen.getByRole("group", { name: "Show" })).getAllByRole("button").map(chip => chip.textContent)
     expect(chips).toEqual(["All", "Active (1)", "Waiting (0)", "Finished (1)", "Failed (2)"])
 

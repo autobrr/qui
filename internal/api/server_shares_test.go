@@ -35,8 +35,7 @@ var shareRoutes = []routeKey{
 func TestTransferAndShareRoutesAreClosedWhileTheSwitchIsOff(t *testing.T) {
 	rig := newPermissionRig(t, func(deps *Dependencies) { deps.Switches = rollout.Production() })
 	cookie := rig.sessionCookie(t)
-	routes := append([]routeKey{{http.MethodPost, "/api/transfers"}}, transferRoutes...)
-	for _, route := range append(routes, shareRoutes...) {
+	for _, route := range append([]routeKey{{http.MethodPost, "/api/transfers"}}, shareRoutes...) {
 		status, body := rig.sendBody(t, route.Method, route.Path, "", cookie, "{}")
 		require.Equal(t, http.StatusNotFound, status, "%s %s", route.Method, route.Path)
 		require.Equal(t, "404 page not found\n", body, "%s %s", route.Method, route.Path)

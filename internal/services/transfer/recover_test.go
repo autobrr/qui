@@ -152,7 +152,7 @@ func TestTransferResumesAfterADroppedConnection(t *testing.T) {
 
 // A Transfer that qui stops at several points of the copy resumes after each
 // restart, and copies only the pieces that were not Proven pieces at the
-// stop.
+// stop. Its progress counts the Proven pieces as passed.
 func TestTransferResumesAfterARestart(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	s := newBigShow(t)
@@ -164,10 +164,18 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 		count int
 		stops []int
 		at    [][]byte
+		// resumed is set for the first write after the first restart.
+		resumed  bool
+		progress transfer.Progress
+		tracked  bool
 	)
 	r.disk.onWrite = func(string) {
 		once.Do(func() { id = <-ids })
 		count++
+		if resumed {
+			resumed = false
+			progress, tracked = r.svc.Progress(id)
+		}
 		if count == 10 || count == 30 || count == 50 {
 			record, err := r.store.Get(t.Context(), id)
 			require.NoError(t, err)
@@ -181,8 +189,9 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 	started, err := r.svc.Start(t.Context(), r.request(s))
 	require.NoError(t, err)
 	ids <- started
-	for range 3 {
+	for i := range 3 {
 		r.svc.Wait()
+		resumed = i == 0
 		r.restart()
 	}
 	r.svc.Wait()
@@ -192,6 +201,8 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 	require.Len(t, stops, 3)
+	require.True(t, tracked)
+	require.Positive(t, progress.Done, "the Proven pieces count as passed at the first write after the restart")
 	require.Equal(t, 1, r.dst.Writes("torrents/add"))
 
 	writes, creates := r.disk.log()
