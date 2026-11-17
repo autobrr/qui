@@ -264,6 +264,7 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		}
 	}
 	expandTagStatesForCrossSeeds(states, in.ruleByID, in.crossSeeds)
+	failedTransferTargets := map[int]bool{}
 	for hash, state := range states {
 		// A delete trigger gets no other action, even when its delete was skipped or blocked.
 		if deletions.isClaimed(hash) {
@@ -307,7 +308,7 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 		}
 
 		if state.transferToInstance != nil && s.transferRunner != nil {
-			if pending, ok := s.planTransfer(ctx, in.instanceID, hash, torrent, state, evalCtx); ok {
+			if pending, ok := s.planTransfer(ctx, in.instanceID, hash, torrent, state, evalCtx, failedTransferTargets); ok {
 				pending.trackerDomain = in.scope.tracker(&torrent)
 				plan.transfers = append(plan.transfers, pending)
 			}

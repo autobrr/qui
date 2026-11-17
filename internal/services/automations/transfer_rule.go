@@ -63,8 +63,9 @@ func transferHoldKey(instanceID int, hash string) string {
 
 // planTransfer renders the save path of a Transfer. It leaves out a torrent
 // that the target has, and a torrent whose Transfer the module refused less
-// than an hour ago.
-func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext) (pendingTransfer, bool) {
+// than an hour ago. It adds a target whose check fails to failedTargets, and
+// does not check that target again in the run.
+func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, failedTargets map[int]bool) (pendingTransfer, bool) {
 	action := state.transferToInstance
 	s.mu.RLock()
 	until, held := s.transferHolds[transferHoldKey(instanceID, hash)]
@@ -72,12 +73,16 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 	if held && s.now().Before(until) {
 		return pendingTransfer{}, false
 	}
-	// A bounded timeout keeps a slow or unreachable target from stalling the whole run.
-	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, []string{hash})
-	cancel()
-	if err == nil && exists {
-		return pendingTransfer{}, false
+	if !failedTargets[action.TargetInstanceID] {
+		// A bounded timeout keeps a slow or unreachable target from stalling the whole run.
+		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, []string{hash})
+		cancel()
+		if err != nil {
+			failedTargets[action.TargetInstanceID] = true
+		} else if exists {
+			return pendingTransfer{}, false
+		}
 	}
 
 	pending := pendingTransfer{hash: hash, torrent: torrent, action: action, rule: state.transferToInstanceRule}

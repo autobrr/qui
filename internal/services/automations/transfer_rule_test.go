@@ -11,8 +11,10 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
@@ -346,6 +348,43 @@ func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T
 	hashes := runner.hashes()
 	require.Len(t, hashes, 4, "the next run starts each torrent")
 	require.Subset(t, hashes, []string{runningHash, stoppedHash, doomedHash})
+}
+
+// regression: #4242
+// A target that answers no check before the timeout costs the plan of a run
+// one wait, and not one for each torrent, so the other actions of the run keep
+// their time. Each torrent still goes to the Transfer module, which decides.
+// A target that answers is asked for each torrent, and the torrents that it
+// has stay out.
+func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
+	torrents := []qbt.Torrent{{Hash: "a", Tags: "x"}, {Hash: "b", Tags: "x"}, {Hash: "c", Tags: "x"}}
+	rule := planTestRule(1, &models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{
+		Enabled: true, TargetInstanceID: 2, Condition: tagsContain("x"),
+	}})
+	for _, tc := range []struct {
+		name    string
+		target  fakeTargetLookup
+		wait    time.Duration
+		planned []string
+	}{
+		{name: "slow target", target: fakeTargetLookup{slow: true}, wait: 10 * time.Second, planned: []string{"a", "b", "c"}},
+		{name: "target answers", target: fakeTargetLookup{onTarget: map[string]bool{"b": true, "c": true}}, planned: []string{"a"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				svc := &Service{targetLookup: tc.target, transferRunner: &transfers{}}
+				start := time.Now()
+				plan := planTestRunWith(t, svc, torrents, []*models.Automation{rule}, nil, nil)
+				require.Equal(t, tc.wait, time.Since(start))
+				planned := make([]string, 0, len(plan.transfers))
+				for _, pending := range plan.transfers {
+					planned = append(planned, pending.hash)
+				}
+				slices.Sort(planned)
+				require.Equal(t, tc.planned, planned)
+			})
+		})
+	}
 }
 
 func count(hashes []string, hash string) int {
