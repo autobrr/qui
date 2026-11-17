@@ -459,8 +459,7 @@ func (j *job) rename(ctx context.Context, p *part) error {
 			if f.Name == want[i] {
 				continue
 			}
-			// On a target that ignores case, the old name of a rename in case is the copy.
-			if old := path.Join(p.dir, f.Name); !j.blind && !strings.EqualFold(f.Name, want[i]) && !j.absent(ctx, old) {
+			if old := path.Join(p.dir, f.Name); !j.blind && !j.absent(ctx, old) && !j.oneFile(ctx, old, path.Join(p.dir, want[i])) {
 				return j.inTheWay(old)
 			}
 			if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
@@ -473,6 +472,30 @@ func (j *job) rename(ctx context.Context, p *part) error {
 		}
 	}
 	return temporary("The file names of the torrent on %s differ from the source.", j.target.Name)
+}
+
+// oneFile reports whether two names that differ only in case lead to one
+// file on the target, as in a folder that ignores case: no folder on the way
+// holds both names. It reads the folders, because a target over SFTP has no
+// file identities.
+func (j *job) oneFile(ctx context.Context, a, b string) bool {
+	if !strings.EqualFold(a, b) {
+		return false
+	}
+	as, bs := strings.Split(a, "/"), strings.Split(b, "/")
+	for k := range as {
+		if as[k] == bs[k] {
+			continue
+		}
+		entries, err := j.dstFiles.ReadDir(ctx, j.targetPath(path.Join(bs[:k]...)))
+		has := func(name string) bool {
+			return slices.ContainsFunc(entries, func(e fsops.DirEntry) bool { return e.Name == name })
+		}
+		if err != nil || has(as[k]) && has(bs[k]) {
+			return false
+		}
+	}
+	return true
 }
 
 // after stops the source, starts the target, and then removes or keeps the

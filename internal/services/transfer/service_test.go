@@ -729,6 +729,46 @@ func TestTransferKeepsTheFileNamesOfTheSource(t *testing.T) {
 		[]string{(*files)[0].Name, (*files)[1].Name})
 }
 
+// A file that the source renamed in case only keeps its new name on the
+// target. On a target that ignores case, the old name finds the copy, which
+// is no conflict, also on a target without file identities.
+// regression: #4231
+func TestTransferKeepsARenameInCase(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		target side
+	}{
+		{name: "on disk", target: onDisk},
+		{name: "over SFTP", target: overSFTP},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, tc.target)
+			s := newShow(t, showName)
+			r.seed(s)
+			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01e01.mkv")
+
+			record := r.run(r.request(s))
+
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Equal(t, map[string]string{
+				showName + "/Show.S01e01.mkv": string(s.files["Show.S01E01.mkv"]),
+				showName + "/Show.S01E02.mkv": string(s.files["Show.S01E02.mkv"]),
+			}, tree(t, r.dstDir))
+		})
+	}
+}
+
+// ignoresCase reports whether the filesystem of dir finds a file under
+// another case of its name.
+func ignoresCase(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "case-probe")
+	require.NoError(t, os.WriteFile(probe, nil, 0o600))
+	defer func() { require.NoError(t, os.Remove(probe)) }()
+	_, err := os.Lstat(filepath.Join(dir, "CASE-PROBE"))
+	return err == nil
+}
+
 // seedEpisode seeds a torrent of one file that is a file of s, as a
 // cross-seed of one episode does.
 func (r *rig) seedEpisode(s show) string {
@@ -801,14 +841,23 @@ func TestTransferStopsAtAConflict(t *testing.T) {
 		// sameSize gives the file in the way the size of the file of the
 		// torrent at its name.
 		sameSize bool
+		// inCase needs a target that tells case apart, to hold a second file
+		// at the old name.
+		inCase bool
 	}{
 		{name: "a file at a name that the copy writes", theirs: "Show.S01E02.mkv"},
 		// regression: #4231
 		{name: "a file at the original name of a renamed file", rename: []string{"Show.S01E01.mkv", "Show.S01E00.mkv"},
 			theirs: "Show.S01E01.mkv", sameSize: true},
+		// regression: #4231
+		{name: "a file at the original name of a file renamed in case", rename: []string{"Show.S01E01.mkv", "Show.S01e01.mkv"},
+			theirs: "Show.S01E01.mkv", sameSize: true, inCase: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t)
+			if tc.inCase && ignoresCase(t, r.dstDir) {
+				t.Skip("the target ignores case, so it cannot hold a second file at the old name")
+			}
 			s := newShow(t, showName)
 			r.seed(s)
 			r.renameOnSource(s, tc.rename...)
