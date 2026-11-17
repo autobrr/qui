@@ -25,6 +25,7 @@ import { RowActions, type RowAction } from "./RowActions"
 import { canCancel, canRemove, canRetry, percentOf, timeLeftMs, waitsForRetry } from "./transfer-display"
 import { TransferDetailsSheet } from "./TransferDetailsSheet"
 import { TransferHints } from "./TransferHints"
+import { useIncognitoDisplay } from "./use-incognito-display"
 import { useInstanceName } from "./use-instance-name"
 
 const chips: readonly TransferFilter[] = ["all", "active", "waiting", "finished", "failed"]
@@ -62,7 +63,8 @@ export function TransfersTab() {
   })
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["transfers"] })
-  const onError = (error: Error) => toast.error(t("actions.failed", { message: error.message }))
+  const display = useIncognitoDisplay()
+  const onError = (error: Error) => toast.error(t("actions.failed", { message: display.text(error.message) }))
   const retry = useMutation({
     mutationKey: retryKey,
     mutationFn: transfersApi.retry,
@@ -149,7 +151,7 @@ export function TransfersTab() {
           open={cancelling.open}
           onOpenChange={open => setCancelling(prev => prev && { ...prev, open })}
           title={t("cancelDialog.title")}
-          description={t("cancelDialog.description", { name: cancelling.row.name })}
+          description={t("cancelDialog.description", { name: display.name(cancelling.row) })}
           confirmLabel={t("cancelDialog.confirm")}
           cancelLabel={t("cancelDialog.keep")}
           onConfirm={() => cancel.mutate(cancelling.row.id)}
@@ -172,6 +174,7 @@ interface TransferTableRowProps {
 function TransferTableRow({ row, retrying, onDetails, onRetry, onCancel, onRemove }: TransferTableRowProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
+  const display = useIncognitoDisplay()
   const nameId = useId()
   const startedBy = row.startedBy === "user"
     ? t("row.byUser")
@@ -190,7 +193,7 @@ function TransferTableRow({ row, retrying, onDetails, onRetry, onCancel, onRemov
     <TableRow data-transfer-id={row.id}>
       <TableCell className="w-full max-w-0 pl-6 align-top whitespace-normal max-sm:pl-4">
         {/* The name wraps in full on touch, where no pointer shows its title. */}
-        <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={row.name} /></div>
+        <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={display.name(row)} /></div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
           <span>{t("row.route", { source: instanceName(row.sourceInstanceId), target: instanceName(row.targetInstanceId) })}</span>
           {row.way !== "" && (
@@ -215,7 +218,7 @@ function TransferTableRow({ row, retrying, onDetails, onRetry, onCancel, onRemov
         <div className="@lg:hidden">
           <StateDetail row={row} />
         </div>
-        {row.failureReason && <p className="mt-1 text-xs text-destructive [overflow-wrap:anywhere]">{row.failureReason}</p>}
+        {row.failureReason && <p className="mt-1 text-xs text-destructive [overflow-wrap:anywhere]">{display.text(row.failureReason)}</p>}
         {row.way === "bittorrent" && row.hints.length > 0 && <div className="mt-1"><TransferHints hints={row.hints} /></div>}
       </TableCell>
       <TableCell className="hidden align-top @lg:table-cell">

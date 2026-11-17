@@ -107,6 +107,7 @@
     "removePlaced": "已移除放置的文件"
   },
   "stepFallback": "其他步骤",
+  "incognitoHidden": "隐身模式下已隐藏",
   "form": {
     "target": "目标实例",
     "targetPlaceholder": "选择实例",

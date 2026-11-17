@@ -110,6 +110,7 @@
     "removePlaced": "Розміщені файли вилучено"
   },
   "stepFallback": "Інший крок",
+  "incognitoHidden": "Приховано в режимі інкогніто",
   "form": {
     "target": "Цільовий екземпляр",
     "targetPlaceholder": "Виберіть екземпляр",

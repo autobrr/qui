@@ -108,6 +108,7 @@
     "removePlaced": "Removeu os arquivos colocados"
   },
   "stepFallback": "Outra etapa",
+  "incognitoHidden": "Oculto no modo anônimo",
   "form": {
     "target": "Instância de destino",
     "targetPlaceholder": "Selecione uma instância",

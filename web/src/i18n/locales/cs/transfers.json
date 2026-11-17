@@ -109,6 +109,7 @@
     "removePlaced": "Umístěné soubory odstraněny"
   },
   "stepFallback": "Jiný krok",
+  "incognitoHidden": "V režimu Incognito skryto",
   "form": {
     "target": "Cílová instance",
     "targetPlaceholder": "Vyberte instanci",

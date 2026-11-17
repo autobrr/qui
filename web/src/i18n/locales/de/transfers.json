@@ -108,6 +108,7 @@
     "removePlaced": "Abgelegte Dateien entfernt"
   },
   "stepFallback": "Anderer Schritt",
+  "incognitoHidden": "Im Incognito-Modus ausgeblendet",
   "form": {
     "target": "Ziel-Instanz",
     "targetPlaceholder": "Instanz auswählen",

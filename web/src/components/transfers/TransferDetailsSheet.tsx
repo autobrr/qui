@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { shownSteps, stepKey } from "./transfer-display"
 import { TransferHints } from "./TransferHints"
+import { useIncognitoDisplay } from "./use-incognito-display"
 import { useInstanceName } from "./use-instance-name"
 
 interface TransferDetailsSheetProps {
@@ -22,6 +23,7 @@ interface TransferDetailsSheetProps {
 export function TransferDetailsSheet({ transferId, onClose }: TransferDetailsSheetProps) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
+  const display = useIncognitoDisplay()
   const detail = useQuery({
     queryKey: ["transfers", "detail", transferId],
     queryFn: () => transfersApi.get(transferId!),
@@ -35,7 +37,7 @@ export function TransferDetailsSheet({ transferId, onClose }: TransferDetailsShe
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle className="break-all pr-6">
-            {data ? t(data.kind === "export" ? "details.exportTitle" : "details.title", { name: data.name }) : t("details.loading")}
+            {data ? t(data.kind === "export" ? "details.exportTitle" : "details.title", { name: display.name(data) }) : t("details.loading")}
           </SheetTitle>
           {data && (
             <SheetDescription>
@@ -53,7 +55,7 @@ export function TransferDetailsSheet({ transferId, onClose }: TransferDetailsShe
               {data.failureReason && (
                 <section className="space-y-1">
                   <h3 className="font-medium">{t("details.failure")}</h3>
-                  <p className="text-destructive">{data.failureReason}</p>
+                  <p className="text-destructive">{display.text(data.failureReason)}</p>
                 </section>
               )}
               <TransferHints hints={data.hints} />
@@ -63,9 +65,9 @@ export function TransferDetailsSheet({ transferId, onClose }: TransferDetailsShe
                 <ul className="space-y-1">
                   {data.members.map(member => (
                     <li key={member.hash}>
-                      <div className="break-all">{member.name}</div>
+                      <div className="break-all">{display.name(member)}</div>
                       <div className="break-all text-xs text-muted-foreground">
-                        {t("details.torrentOn", { instance: instanceName(member.targetInstanceId), path: member.savePath })}
+                        {t("details.torrentOn", { instance: instanceName(member.targetInstanceId), path: display.savePath(member.hash, member.savePath) })}
                       </div>
                     </li>
                   ))}
@@ -82,7 +84,7 @@ export function TransferDetailsSheet({ transferId, onClose }: TransferDetailsShe
                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatISOTimestamp(step.at)}</span>
                         <span>
                           {t(key ?? "stepFallback")}
-                          {step.detail && <span className="text-muted-foreground"> · {step.detail}</span>}
+                          {step.detail && !display.incognito && <span className="text-muted-foreground"> · {step.detail}</span>}
                         </span>
                       </li>
                     )
@@ -94,6 +96,8 @@ export function TransferDetailsSheet({ transferId, onClose }: TransferDetailsShe
                 <h3 className="font-medium">{t("details.log")}</h3>
                 {data.log.length === 0 ? (
                   <p className="text-muted-foreground">{t("details.noLog")}</p>
+                ) : display.incognito ? (
+                  <p className="text-muted-foreground">{t("incognitoHidden")}</p>
                 ) : (
                   <ol className="space-y-1 font-mono text-xs">
                     {data.log.map((line, index) => (

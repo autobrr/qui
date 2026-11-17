@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ShareDialog } from "@/components/shares/ShareDialog"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
+import { getLinuxIsoName } from "@/lib/incognito"
 import type { Share, ShareSettings, StartSharesRequest } from "@/lib/shares-api"
 import { server } from "@/test/msw/server"
 
@@ -28,6 +29,13 @@ vi.mock("@/lib/utils", async (importOriginal) => ({
     clipboard.copied.push(text)
   },
 }))
+
+const incognito = vi.hoisted(() => ({ on: false }))
+vi.mock("@/lib/incognito", async importOriginal => {
+  const off: [boolean, (value: boolean) => void] = [false, () => {}]
+  const on: [boolean, (value: boolean) => void] = [true, () => {}]
+  return { ...await importOriginal<typeof import("@/lib/incognito")>(), useIncognitoMode: () => incognito.on ? on : off }
+})
 
 const ownTracker: ShareSettings = {
   port: 6969,
@@ -97,7 +105,10 @@ beforeEach(() => {
   )
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  incognito.on = false
+  cleanup()
+})
 
 describe("ShareDialog", () => {
   it("fills the fields from the defaults, names the tracker, creates the Share, and shows the .torrent download and the message to copy", async () => {
@@ -234,5 +245,52 @@ describe("ShareDialog", () => {
     expect(started[0].hashes).toEqual(["aaaa1111", "bbbb2222"])
     const refused = screen.getByRole("list", { name: "Not shared" })
     expect(within(refused).getByText(/Example\.Show\.S01\.1080p\.WEB-DL-GRP/).textContent).toContain("Torrents with skipped files are unsupported")
+  })
+
+  // regression: #4242
+  it("shows made-up names, hides the tracker address, and hides the reasons of a refusal in incognito mode", async () => {
+    incognito.on = true
+    const other = { hash: "bbbb2222", name: "Example.Show.S01.1080p.WEB-DL-GRP" }
+    server.use(
+      http.post("*/api/shares", async ({ request }) => {
+        const body = (await request.json()) as StartSharesRequest
+        return HttpResponse.json(
+          { shares: [startedShare(body)], refused: [{ hash: other.hash, reason: "Only a complete torrent can be shared, and Example.Show.S01.1080p.WEB-DL-GRP is not complete." }] },
+          { status: 201 }
+        )
+      })
+    )
+    renderDialog([torrent, other])
+    const dialog = await screen.findByRole("dialog")
+    await within(dialog).findByRole("button", { name: "Create" })
+    expect(dialog.textContent).not.toContain("share.example.com")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }))
+
+    await screen.findByRole("link", { name: ".torrent" })
+    const text = dialog.textContent ?? ""
+    expect(text).toContain(getLinuxIsoName("aaaa1111"))
+    expect(text).toContain(`${getLinuxIsoName("bbbb2222")}: Hidden in incognito mode`)
+    expect(text).not.toContain("Example.Movie")
+    expect(text).not.toContain("Example.Show")
+  })
+
+  // regression: #4242
+  it("names one torrent with a made-up name in incognito mode", async () => {
+    incognito.on = true
+    renderDialog()
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog.textContent).toContain(`Give the files of ${getLinuxIsoName("aaaa1111")} to someone`)
+    expect(dialog.textContent).not.toContain("Example.Movie")
+  })
+
+  // regression: #4242
+  it("copies the message with the real name in incognito mode, because the friend gets the real .torrent", async () => {
+    incognito.on = true
+    renderDialog()
+    fireEvent.click(await screen.findByRole("button", { name: "Create" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Copy message" }))
+
+    await waitFor(() => expect(clipboard.copied).toHaveLength(1))
+    expect(clipboard.copied[0]).toContain("Example.Movie.2024.1080p.WEB-DL-GRP")
   })
 })

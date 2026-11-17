@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
+import { getLinuxIsoName, getLinuxSavePath } from "@/lib/incognito"
 import type { TransferDetail, TransferList, TransferRow } from "@/lib/transfers-api"
 import { server } from "@/test/msw/server"
 
@@ -20,6 +21,13 @@ vi.mock("sonner", () => ({ toast }))
 
 const screenSize = vi.hoisted(() => ({ phone: false }))
 vi.mock("@/hooks/useMediaQuery", () => ({ useIsPhone: () => screenSize.phone }))
+
+const incognito = vi.hoisted(() => ({ on: false }))
+vi.mock("@/lib/incognito", async importOriginal => {
+  const off: [boolean, (value: boolean) => void] = [false, () => {}]
+  const on: [boolean, (value: boolean) => void] = [true, () => {}]
+  return { ...await importOriginal<typeof import("@/lib/incognito")>(), useIncognitoMode: () => incognito.on ? on : off }
+})
 
 const finished = "2026-11-17T11:00:00Z"
 
@@ -59,7 +67,7 @@ const detail: TransferDetail = {
   ...failed,
   steps: [
     { name: "start", at: "2026-11-17T10:00:00Z", detail: "" },
-    { name: "names", at: "2026-11-17T10:00:04Z", detail: '[["Film.2019.2160p-ABC.mkv"]]' },
+    { name: "names", at: "2026-11-17T10:00:04Z", detail: "[[\"Film.2019.2160p-ABC.mkv\"]]" },
     { name: "pass by BitTorrent", at: "2026-11-17T10:00:05Z", detail: "" },
     { name: "teleport", at: "2026-11-17T10:00:06Z", detail: "" },
     { name: "failed", at: "2026-11-17T10:00:07Z", detail: "" },
@@ -101,6 +109,7 @@ beforeEach(() => {
 
 afterEach(() => {
   screenSize.phone = false
+  incognito.on = false
   cleanup()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
@@ -254,5 +263,42 @@ describe("the Transfers tab", () => {
     const steps = (await within(panel).findByRole("heading", { name: "Steps" })).nextElementSibling as HTMLElement
     const labels = within(steps).getAllByRole("listitem").map(item => item.lastElementChild?.textContent)
     expect(labels).toEqual(["Started", "Passing by a Transfer torrent", "Another step", "Failed"])
+  })
+
+  // regression: #4242
+  it("shows made-up names in incognito mode, and hides the failure reason", async () => {
+    incognito.on = true
+    renderTab()
+    await screen.findAllByText(getLinuxIsoName("aaaa"))
+    const table = screen.getByRole("table").textContent ?? ""
+    for (const name of ["Show.S01.1080p-GRP", "Film.2019.2160p-ABC", "Album.2020.FLAC-XYZ", "Doc.2018.720p-QRS"]) {
+      expect(table).not.toContain(name)
+    }
+    expect(table).not.toContain("A file on the target does not match.")
+    expect(table).not.toContain("homelab does not answer.")
+    expect(table).toContain("Hidden in incognito mode")
+  })
+
+  // regression: #4242
+  it("shows made-up names and save paths in the Details panel in incognito mode, and hides the log and the step data", async () => {
+    incognito.on = true
+    server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({
+      ...detail,
+      steps: [...detail.steps, { name: "place", at: "2026-11-17T10:00:06Z", detail: "[\"Film.2019.2160p-ABC/film.mkv\"]" }],
+    })))
+    renderTab()
+    await screen.findAllByText(getLinuxIsoName("aaaa"))
+    const tr = document.querySelector<HTMLElement>("[data-transfer-id='2']")!
+    fireEvent.click(within(tr).getByRole("button", { name: "Details" }))
+    const panel = await screen.findByRole("dialog")
+    await within(panel).findByText(`Transfer of ${getLinuxIsoName("aaaa")}`)
+    const text = panel.textContent ?? ""
+    expect(text).toContain(getLinuxIsoName("bbbb"))
+    expect(text).toContain(`On homelab, in ${getLinuxSavePath("bbbb")}`)
+    expect(text).toContain("Placed the files")
+    expect(text).toContain("Hidden in incognito mode")
+    for (const real of ["Film.2019.2160p-ABC", "/srv/movies", "A file on the target does not match.", "Passing 70 B"]) {
+      expect(text).not.toContain(real)
+    }
   })
 })

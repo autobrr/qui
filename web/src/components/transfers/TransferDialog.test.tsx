@@ -11,6 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
+import { getLinuxIsoName } from "@/lib/incognito"
 import type { TransferRequest, TransferSummary } from "@/lib/transfers-api"
 import { server } from "@/test/msw/server"
 
@@ -18,6 +19,13 @@ import { TransferDialog } from "./TransferDialog"
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
+
+const incognito = vi.hoisted(() => ({ on: false }))
+vi.mock("@/lib/incognito", async importOriginal => {
+  const off: [boolean, (value: boolean) => void] = [false, () => {}]
+  const on: [boolean, (value: boolean) => void] = [true, () => {}]
+  return { ...await importOriginal<typeof import("@/lib/incognito")>(), useIncognitoMode: () => incognito.on ? on : off }
+})
 
 const GiB = 1024 * 1024 * 1024
 
@@ -61,6 +69,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  incognito.on = false
   cleanup()
   vi.clearAllMocks()
 })
@@ -196,5 +205,26 @@ describe("the Transfer dialog", () => {
     const settled = commits
     await act(() => new Promise(resolve => setTimeout(resolve, 500)))
     expect(commits).toBe(settled)
+  })
+
+  // regression: #4242
+  it("shows made-up names in incognito mode, and hides the reason of a refusal", async () => {
+    incognito.on = true
+    const onOpenChange = renderDialog()
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog.textContent).toContain(getLinuxIsoName("aaaa"))
+    await pickTarget("homelab")
+    await waitFor(() => expect(summaryText()).toContain("Copy over SFTP"))
+    expect(summaryText()).toContain(getLinuxIsoName("bbbb"))
+    expect(dialog.textContent).not.toContain("Show.S01")
+
+    fireEvent.click(startButton())
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(toast.success.mock.calls[0][0]).toContain(getLinuxIsoName("aaaa"))
+
+    refusal = "Only complete torrents can move, and Show.S01.1080p-GRP is not complete."
+    await pickTarget("crossbox")
+    await waitFor(() => expect(summaryText()).toContain("Hidden in incognito mode"))
+    expect(summaryText()).not.toContain("Show.S01")
   })
 })

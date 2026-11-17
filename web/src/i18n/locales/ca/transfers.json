@@ -108,6 +108,7 @@
     "removePlaced": "Fitxers col·locats eliminats"
   },
   "stepFallback": "Un altre pas",
+  "incognitoHidden": "Ocult en mode incògnit",
   "form": {
     "target": "Instància de destinació",
     "targetPlaceholder": "Selecciona una instància",

@@ -108,6 +108,7 @@
     "removePlaced": "File posizionati rimossi"
   },
   "stepFallback": "Altro passaggio",
+  "incognitoHidden": "Nascosto in modalità incognito",
   "form": {
     "target": "Istanza di destinazione",
     "targetPlaceholder": "Seleziona un'istanza",

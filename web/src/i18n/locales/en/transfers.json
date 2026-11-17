@@ -108,6 +108,7 @@
     "removePlaced": "Removed the placed files"
   },
   "stepFallback": "Another step",
+  "incognitoHidden": "Hidden in incognito mode",
   "form": {
     "target": "Target instance",
     "targetPlaceholder": "Select an instance",

@@ -107,6 +107,7 @@
     "removePlaced": "배치한 파일 제거 완료"
   },
   "stepFallback": "기타 단계",
+  "incognitoHidden": "시크릿 모드에서 숨겨짐",
   "form": {
     "target": "대상 인스턴스",
     "targetPlaceholder": "인스턴스 선택",

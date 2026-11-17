@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { TransferForm } from "./TransferForm"
 import { emptyTransferForm, transferRequestOf, type TransferFormValue } from "./transfer-form-value"
 import { TransferHints } from "./TransferHints"
+import { useIncognitoDisplay } from "./use-incognito-display"
 import { useInstanceName } from "./use-instance-name"
 
 interface TransferDialogProps {
@@ -30,6 +31,8 @@ interface TransferDialogProps {
 /** The Transfer dialog: the fields of the Transfer, and the summary of what Start does. */
 export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, name }: TransferDialogProps) {
   const { t } = useTranslation("transfers")
+  const display = useIncognitoDisplay()
+  const shownName = display.name({ hash, name })
   const queryClient = useQueryClient()
   const { instances } = useInstances()
   const targets = useMemo(() => instances?.filter(instance => instance.id !== sourceInstanceId), [instances, sourceInstanceId])
@@ -48,12 +51,12 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
   const start = useMutation({
     mutationFn: (req: TransferRequest) => transfersApi.start(req),
     onSuccess: () => {
-      toast.success(t("dialog.started", { name }))
+      toast.success(t("dialog.started", { name: shownName }))
       void queryClient.invalidateQueries({ queryKey: ["transfers", "list"] })
       onOpenChange(false)
       setValue(emptyTransferForm)
     },
-    onError: (error: Error) => toast.error(t("actions.failed", { message: error.message })),
+    onError: (error: Error) => toast.error(t("actions.failed", { message: display.text(error.message) })),
   })
 
   // Start sends the request that the summary shows, once that summary is in.
@@ -64,7 +67,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="break-all">{t("dialog.title", { name })}</DialogTitle>
+          <DialogTitle className="break-all">{t("dialog.title", { name: shownName })}</DialogTitle>
           <DialogDescription>{t("dialog.description")}</DialogDescription>
         </DialogHeader>
 
@@ -75,7 +78,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
           {request === null ? (
             <p className="text-sm text-muted-foreground">{t("summary.pickTarget")}</p>
           ) : summary.isError ? (
-            <p role="alert" className="text-sm text-destructive">{t("summary.refused", { message: summary.error.message })}</p>
+            <p role="alert" className="text-sm text-destructive">{t("summary.refused", { message: display.text(summary.error.message) })}</p>
           ) : summary.data && settled && !summary.isFetching ? (
             <SummaryView summary={summary.data} targetInstanceId={request.targetInstanceId} />
           ) : (
@@ -98,6 +101,7 @@ export function TransferDialog({ open, onOpenChange, sourceInstanceId, hash, nam
 export function SummaryView({ summary, targetInstanceId }: { summary: TransferSummary; targetInstanceId: number }) {
   const { t } = useTranslation("transfers")
   const instanceName = useInstanceName()
+  const display = useIncognitoDisplay()
   const notEnoughSpace = summary.freeKnown && summary.free < summary.bytes
   // A cross-seed of another target goes to its Cross-seed instance.
   const elsewhere = summary.members.filter(member => member.targetInstanceId !== targetInstanceId)
@@ -108,7 +112,7 @@ export function SummaryView({ summary, targetInstanceId }: { summary: TransferSu
       <ul className="list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
         {summary.members.map(member => (
           <li key={member.hash} className="break-all">
-            {member.name}
+            {display.name(member)}
             {elsewhere.includes(member) && <> ({t("summary.crossSeedInstance", { instance: instanceName(member.targetInstanceId) })})</>}
           </li>
         ))}

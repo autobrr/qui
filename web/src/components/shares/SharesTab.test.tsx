@@ -11,11 +11,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { SharesTab } from "@/components/shares/SharesTab"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
+import { getLinuxIsoName } from "@/lib/incognito"
 import type { Share } from "@/lib/shares-api"
 import { server } from "@/test/msw/server"
 
 const screenSize = vi.hoisted(() => ({ phone: false }))
 vi.mock("@/hooks/useMediaQuery", () => ({ useIsPhone: () => screenSize.phone }))
+
+const incognito = vi.hoisted(() => ({ on: false }))
+vi.mock("@/lib/incognito", async importOriginal => {
+  const off: [boolean, (value: boolean) => void] = [false, () => {}]
+  const on: [boolean, (value: boolean) => void] = [true, () => {}]
+  return { ...await importOriginal<typeof import("@/lib/incognito")>(), useIncognitoMode: () => incognito.on ? on : off }
+})
 
 const active: Share = {
   id: 41,
@@ -84,6 +92,7 @@ beforeEach(() => {
 
 afterEach(() => {
   screenSize.phone = false
+  incognito.on = false
   cleanup()
   vi.unstubAllGlobals()
 })
@@ -167,5 +176,17 @@ describe("SharesTab", () => {
 
     fireEvent.click(within(row).getByRole("button", { name: "Remove" }))
     await waitFor(() => expect(writes).toEqual(["DELETE /api/shares/41"]))
+  })
+
+  // regression: #4242
+  it("shows a made-up name and hides the addresses in incognito mode", async () => {
+    incognito.on = true
+    shares = [active]
+    renderTab()
+    const row = await findRow(getLinuxIsoName("aaaa1111"))
+    const text = row.textContent ?? ""
+    expect(text).not.toContain("Example.Movie.2024.1080p.WEB-DL-GRP")
+    expect(text).not.toContain("198.51.100.7")
+    expect(text).toContain("192.168.x.x:xxxxx")
   })
 })

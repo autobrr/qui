@@ -4,6 +4,7 @@
  */
 
 import { ShareOptionFields } from "@/components/shares/ShareOptionFields"
+import { useIncognitoDisplay } from "@/components/transfers/use-incognito-display"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -47,6 +48,7 @@ interface ShareDialogProps {
  */
 export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareDialogProps) {
   const { t } = useTranslation("shares")
+  const display = useIncognitoDisplay()
   const settingsQuery = useQuery({ queryKey: shareSettingsQueryKey, queryFn: getShareSettings, enabled: open })
 
   return (
@@ -54,7 +56,7 @@ export function ShareDialog({ open, onOpenChange, instanceId, torrents }: ShareD
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("dialog.title")}</DialogTitle>
-          <DialogDescription>{t("dialog.description", { count: torrents.length, name: torrents[0]?.name ?? "" })}</DialogDescription>
+          <DialogDescription>{t("dialog.description", { count: torrents.length, name: torrents[0] ? display.name(torrents[0]) : "" })}</DialogDescription>
         </DialogHeader>
         {settingsQuery.isPending && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
         {settingsQuery.isError && <p className="text-sm text-destructive">{t("settings.loadFailed")}</p>}
@@ -81,6 +83,7 @@ interface ShareFlowProps {
 
 function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) {
   const { t } = useTranslation("shares")
+  const display = useIncognitoDisplay()
   const queryClient = useQueryClient()
   const [days, setDays] = useState(String(settings.defaults.days))
   const [endAtFirstDownload, setEndAtFirstDownload] = useState(settings.defaults.endAtFirstDownload)
@@ -130,7 +133,7 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
         {mutation.isError && (
           <Alert variant="destructive">
             <AlertDescription>
-              {mutation.error.message}
+              {display.text(mutation.error.message)}
               {Array.isArray(refused) && refused.length > 1 && <RefusedList refused={refused} torrents={torrents} />}
             </AlertDescription>
           </Alert>
@@ -153,13 +156,14 @@ function ShareFlow({ settings, instanceId, torrents, onClose }: ShareFlowProps) 
 /** The tracker of a new Share, with a link to Settings → Shares, where the user sets it. */
 function TrackerInUse({ settings, onClose }: { settings: ShareSettings; onClose: () => void }) {
   const { t } = useTranslation("shares")
+  const display = useIncognitoDisplay()
   let text: string
   switch (settings.trackerInUse) {
     case "own":
-      text = t("dialog.tracker.own", { address: settings.publicAddress })
+      text = t("dialog.tracker.own", { address: display.tracker(settings.publicAddress) })
       break
     case "outside":
-      text = t("dialog.tracker.outside", { url: settings.trackerUrl })
+      text = t("dialog.tracker.outside", { url: display.tracker(settings.trackerUrl) })
       break
     default:
       text = t("settings.inUse.none")
@@ -179,12 +183,13 @@ function TrackerInUse({ settings, onClose }: { settings: ShareSettings; onClose:
 
 function RefusedList({ refused, torrents }: { refused: StartSharesResponse["refused"]; torrents: ShareDialogTorrent[] }) {
   const { t } = useTranslation("shares")
-  const nameOf = (hash: string) => torrents.find((torrent) => torrent.hash === hash)?.name ?? hash
+  const display = useIncognitoDisplay()
+  const nameOf = (hash: string) => display.name(torrents.find((torrent) => torrent.hash === hash) ?? { hash, name: hash })
   return (
     <ul aria-label={t("dialog.refused")} className="mt-2 list-disc space-y-1 pl-5">
       {refused.map((entry) => (
         <li key={entry.hash} className="break-words">
-          {t("dialog.refusedEntry", { name: nameOf(entry.hash), reason: entry.reason })}
+          {t("dialog.refusedEntry", { name: nameOf(entry.hash), reason: display.text(entry.reason) })}
         </li>
       ))}
     </ul>
@@ -217,6 +222,7 @@ function ShareResult({ response, torrents, onClose }: { response: StartSharesRes
 function ShareResultRow({ share }: { share: Share }) {
   const { t } = useTranslation("shares")
   const { formatDate } = useDateTimeFormatters()
+  const display = useIncognitoDisplay()
 
   const copyMessage = async () => {
     try {
@@ -230,7 +236,7 @@ function ShareResultRow({ share }: { share: Share }) {
 
   return (
     <li className="space-y-2 rounded-md border p-3">
-      <p className="text-sm font-medium break-all">{share.name}</p>
+      <p className="text-sm font-medium break-all">{display.name(share)}</p>
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
           <a href={shareTorrentUrl(share.id)} download>

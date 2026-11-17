@@ -6,6 +6,7 @@
 import { EmptyTile } from "@/components/kit/EmptyTile"
 import { Section } from "@/components/kit/Section"
 import { RowActions, type RowAction } from "@/components/transfers/RowActions"
+import { useIncognitoDisplay } from "@/components/transfers/use-incognito-display"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TorrentName } from "@/components/ui/torrent-name"
@@ -71,11 +72,12 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
   const { t, i18n } = useTranslation("shares")
   const { formatDate } = useDateTimeFormatters()
   const queryClient = useQueryClient()
+  const display = useIncognitoDisplay()
   const nameId = useId()
   const action = useMutation({
     mutationFn: (run: (id: number) => Promise<void>) => run(share.id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: sharesQueryKey }),
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(display.text(error.message)),
   })
   const percent = new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language, { style: "percent", maximumFractionDigits: 0 })
   const outside = share.tracker === "outside"
@@ -114,7 +116,7 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
     <TableRow data-share-id={share.id}>
       <TableCell className="w-full max-w-0 pl-6 align-top whitespace-normal max-sm:pl-4">
         {/* The name wraps in full on touch, where no pointer shows its title. */}
-        <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={share.name} /></div>
+        <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={display.name(share)} /></div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
           <span>{instanceName}</span>
           <span aria-hidden="true">·</span>
@@ -134,7 +136,7 @@ function ShareRow({ share, instanceName }: { share: Share; instanceName: string 
             <ul className="mt-0.5 space-y-0.5">
               {share.peers.map((peer) => (
                 <li key={peer.address} className="flex gap-3 font-mono">
-                  <span className="[overflow-wrap:anywhere]">{peer.address}</span>
+                  <span className="[overflow-wrap:anywhere]">{display.peerAddress(peer.address)}</span>
                   <span className="text-muted-foreground tabular-nums">{percent.format(peer.progress)}</span>
                 </li>
               ))}

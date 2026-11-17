@@ -108,6 +108,7 @@
     "removePlaced": "Fichiers placés supprimés"
   },
   "stepFallback": "Autre étape",
+  "incognitoHidden": "Masqué en mode incognito",
   "form": {
     "target": "Instance cible",
     "targetPlaceholder": "Sélectionner une instance",
