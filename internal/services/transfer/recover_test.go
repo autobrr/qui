@@ -7,6 +7,7 @@ import (
 	"context"
 	"math/rand/v2"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -205,6 +206,49 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 			require.False(t, proven(at[d], piece), "write %d copies piece %d again after stop %d", i, piece, d+1)
 		}
 	}
+}
+
+// A target that did not confirm one flush gets no Proven pieces, also from a
+// later run in which it confirms its flushes. A resume after that run checks
+// the pieces of that run, and copies a piece that the target lost again.
+// regression: #4231
+func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
+	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
+	s := newBigShow(t)
+	r.seed(s)
+	r.disk.unconfirmed = true
+	count := 0
+	r.disk.onWrite = func(string) {
+		if count++; count == 10 || count == 30 {
+			r.cancel()
+		}
+	}
+
+	id, err := r.svc.Start(t.Context(), r.request(s))
+	require.NoError(t, err)
+	r.svc.Wait()
+	first, _ := r.disk.log()
+	r.disk.unconfirmed = false
+	r.restart()
+	r.svc.Wait()
+	require.Equal(t, transfer.FlushUnconfirmed, r.get(id).FlushState)
+	// The target lost bytes of the first piece that the second run wrote
+	// and flushed.
+	writes, _ := r.disk.log()
+	require.Greater(t, len(writes), len(first)+10, "the second run flushed pieces")
+	at := spans(t, s, id, writes)[len(first)].start + 50
+	name, size := "Show.S01E01.mkv", int64(len(s.files["Show.S01E01.mkv"]))
+	if at >= size {
+		name, at = "Show.S01E02.mkv", at-size
+	}
+	lose(t, filepath.Join(r.dstDir, showName, name+".qui-transfer-"+strconv.FormatInt(id, 10)), at, 100)
+
+	r.restart()
+	r.svc.Wait()
+
+	record := r.get(id)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 }
 
 // requests counts the requests that both stubs answered.

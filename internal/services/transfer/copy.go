@@ -295,7 +295,8 @@ func (j *job) createTemp(ctx context.Context, f *groupFile) error {
 }
 
 // prove records whether the target confirmed the flushes of a checkpoint,
-// and the pieces that the checkpoint flushed as Proven pieces when it did.
+// and the pieces that the checkpoint flushed as Proven pieces when the target
+// confirmed each flush of the Transfer.
 func (c *copier) prove(ctx context.Context, pending []copied, confirmed bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -306,7 +307,7 @@ func (c *copier) prove(ctx context.Context, pending []copied, confirmed bool) er
 		return err
 	}
 	c.j.flushedPieces += len(pending)
-	if !confirmed {
+	if c.j.rec.FlushState == FlushUnconfirmed {
 		return nil
 	}
 	var parts []*part
