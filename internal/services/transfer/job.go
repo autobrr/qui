@@ -476,7 +476,8 @@ func (j *job) rollBack(ctx context.Context) {
 	j.cleanUp(ctx, StateCancelled)
 }
 
-// cleanUpAgain finishes a cleanup that a stop interrupted.
+// cleanUpAgain finishes a cleanup that a stop interrupted, and sends the
+// failure that the stop held back.
 func (j *job) cleanUpAgain(ctx context.Context) {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
@@ -484,6 +485,9 @@ func (j *job) cleanUpAgain(ctx context.Context) {
 	_ = j.checkInstances(ctx)
 	j.cleanup(ctx)
 	j.finish(ctx, j.rec.State)
+	if j.rec.State == StateFailed {
+		j.notify(ctx, notifications.EventTransferFailed)
+	}
 }
 
 // end records how the run ended. A temporary failure keeps the partial data

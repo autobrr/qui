@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
@@ -42,6 +44,8 @@ type crash struct {
 	At          string
 	Unconfirmed bool
 	Damage      map[string]int64
+	// Cancel cancels the Transfer at the first write of the copy.
+	Cancel bool
 }
 
 // qui ends at each step that it records, and at the adds that it cannot
@@ -61,6 +65,7 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		// killAtRemoval kills qui once the source removed the torrent, before
 		// qui removes the files there.
 		killAtRemoval bool
+		cancel        bool
 		want          string
 	}{
 		{at: "before:prepare", want: "done"},
@@ -79,7 +84,10 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		{at: "after:check the files on the target", headStart: true, want: "done"},
 		{killAtAdd: 1, headStart: true, want: "done"},
 		{at: "after:copy the missing files", headStart: true, want: "done"},
+		// regression: #4242
 		{at: "after:clean up", unconfirmed: true, damage: true, want: "cleaned up"},
+		// regression: #4242
+		{at: "after:clean up", cancel: true, want: "cancelled"},
 		{at: "after:added", group: true, want: "done"},
 		// The adds are the check of the episode, the season, and the episode.
 		{killAtAdd: 3, group: true, want: "ownership unknown"},
@@ -100,6 +108,9 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 		if tc.group {
 			name += ", group"
 		}
+		if tc.cancel {
+			name += ", cancelled"
+		}
 		t.Run(name, func(t *testing.T) {
 			r := newRig(t)
 			s := newShow(t, showName)
@@ -113,7 +124,7 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 				write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode1: s.files[episode1]})
 				srcLeft[showName+"/"+episode1] = string(s.files[episode1])
 			}
-			plan := crash{DB: r.dbPath, Request: r.request(s), At: tc.at, Unconfirmed: tc.unconfirmed}
+			plan := crash{DB: r.dbPath, Request: r.request(s), At: tc.at, Unconfirmed: tc.unconfirmed, Cancel: tc.cancel}
 			if tc.damage {
 				plan.Damage = map[string]int64{showName + "/" + episode2: 20}
 			}
@@ -135,6 +146,8 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 			}
 			runCrashChild(t, plan, child, tc.killAtAdd > 0 || tc.killAtRemoval)
 
+			sent := &events{}
+			r.deps.Notifier = sent
 			r.restart()
 			r.svc.Wait()
 
@@ -177,6 +190,10 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 				require.Equal(t, 1, countSteps(record, "clean up"))
 				require.Empty(t, tree(t, r.dstDir))
 				require.False(t, r.dst.Has(s.hash))
+			case "cancelled":
+				require.Equal(t, transfer.StateCancelled, record.State)
+				require.Equal(t, 1, countSteps(record, "clean up"))
+				require.Empty(t, tree(t, r.dstDir))
 			}
 			if tc.want != "done" {
 				for _, hash := range members {
@@ -186,11 +203,23 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 				require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 			}
 
-			src, dst := r.src.Requests(), r.dst.Requests()
+			switch tc.want {
+			case "cancelled":
+				require.Empty(t, sent.events, "a cancel sends no event")
+			case "done":
+				require.Len(t, sent.events, 1, "the restart sends the end of the Transfer once")
+				require.Equal(t, notifications.EventTransferFinished, sent.events[0].Type)
+			default:
+				require.Len(t, sent.events, 1, "the restart sends the end of the Transfer once")
+				require.Equal(t, notifications.EventTransferFailed, sent.events[0].Type)
+			}
+
+			src, dst, sends := r.src.Requests(), r.dst.Requests(), len(sent.events)
 			r.restart()
 			r.svc.Wait()
 			require.Equal(t, src, r.src.Requests())
 			require.Equal(t, dst, r.dst.Requests())
+			require.Len(t, sent.events, sends)
 		})
 	}
 }
@@ -256,10 +285,17 @@ func TestTransferCrashChild(t *testing.T) {
 
 	svc := transfer.NewService(t.Context(), deps)
 	t.Cleanup(svc.Close)
+	ids := make(chan int64, 1)
+	if plan.Cancel {
+		cancel := sync.OnceFunc(func() { require.NoError(t, svc.Cancel(t.Context(), <-ids)) })
+		d.onWrite = func(string) { cancel() }
+	}
 	if plan.Export != nil {
 		_, _, err = svc.Export(t.Context(), *plan.Export)
 	} else {
-		_, err = svc.Start(t.Context(), plan.Request)
+		var id int64
+		id, err = svc.Start(t.Context(), plan.Request)
+		ids <- id
 	}
 	require.NoError(t, err)
 	svc.Wait()
