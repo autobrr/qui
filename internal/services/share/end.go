@@ -214,7 +214,13 @@ func (s *Service) saveActivity(ctx context.Context, id int64) error {
 	l.dirty = false
 	activity := l.activity()
 	s.mu.Unlock()
-	return s.deps.Store.SaveActivity(ctx, id, activity)
+	if err := s.deps.Store.SaveActivity(ctx, id, activity); err != nil {
+		s.mu.Lock()
+		l.dirty = true
+		s.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // removeOld removes the Shares that ended more than 30 days ago.

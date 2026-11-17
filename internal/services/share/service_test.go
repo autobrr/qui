@@ -487,6 +487,43 @@ func TestAShareStaysEndingWhileTheClientKeepsTheShareTorrent(t *testing.T) {
 	r.requireEnded(sh.ID, "Stopped by the user.")
 }
 
+// failActivityWrites makes each write of the activity of a Share fail until
+// the returned func runs.
+func (r *rig) failActivityWrites() (stop func()) {
+	r.t.Helper()
+	_, err := r.db.ExecContext(r.t.Context(), `
+		CREATE TRIGGER fail_share_activity BEFORE UPDATE OF peers_json ON shares
+		BEGIN SELECT RAISE(ABORT, 'activity write failed'); END`)
+	require.NoError(r.t, err)
+	return func() {
+		_, err := r.db.ExecContext(r.t.Context(), `DROP TRIGGER fail_share_activity`)
+		require.NoError(r.t, err)
+	}
+}
+
+// stored reads a Share from the database, as qui does after a restart.
+func (r *rig) stored(id int64) *share.Share {
+	r.t.Helper()
+	sh, err := share.NewStore(r.db).Get(r.t.Context(), id)
+	require.NoError(r.t, err)
+	return sh
+}
+
+// regression: #4231
+func TestTheCheckWritesTheActivityAgainAfterAFailedWrite(t *testing.T) {
+	r := newRig(t)
+	sh := r.start(share.Request{})
+	recipientURL, _, _ := torrentOf(t, sh.TorrentFile)
+	r.announce(recipientURL, sh.HelperHash, 6881, 70, "started")
+	stop := r.failActivityWrites()
+
+	require.ErrorContains(t, r.svc.Check(t.Context()), "activity write failed")
+	stop()
+	r.check()
+
+	require.Len(t, r.stored(sh.ID).Peers, 1, "the activity of the Share is saved")
+}
+
 func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	r := newRig(t)
 	sh := r.start(share.Request{})
