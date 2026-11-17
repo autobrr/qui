@@ -27,6 +27,10 @@ const (
 	// libraryScheduleIdleDelay is the longest wait while the schedule is off.
 	// A save of the Library settings also wakes the loop.
 	libraryScheduleIdleDelay = time.Hour
+	// The schedule interval and age window stop at 100 years, because a
+	// larger value overflows a time.Duration.
+	maxScheduleIntervalHours = 100 * 365 * 24
+	maxScheduleMaxAgeDays    = 100 * 365
 )
 
 // errScheduleNoInstance is the answer when the saved Library settings name no

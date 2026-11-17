@@ -149,9 +149,9 @@ func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettin
 	settings.IndexerIDs = uniquePositiveInts(settings.IndexerIDs)
 	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, !settings.TorznabEnabled)
 	settings.MaxAddedAgeDays = max(settings.MaxAddedAgeDays, 0)
-	settings.ScheduleIntervalHours = max(settings.ScheduleIntervalHours, 1)
+	settings.ScheduleIntervalHours = min(max(settings.ScheduleIntervalHours, 1), maxScheduleIntervalHours)
 	settings.ScheduleMaxSearches = max(settings.ScheduleMaxSearches, 1)
-	settings.ScheduleMaxAgeDays = max(settings.ScheduleMaxAgeDays, 1)
+	settings.ScheduleMaxAgeDays = min(max(settings.ScheduleMaxAgeDays, 1), maxScheduleMaxAgeDays)
 }
 
 // GetSearchSettings returns stored defaults for seeded torrent searches.

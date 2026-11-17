@@ -756,3 +756,43 @@ func TestNotifySearchRun_ScheduledRunWithError(t *testing.T) {
 	}}, false)
 	require.Len(t, notifier.Events(), 1)
 }
+
+// regression: #4246
+// An interval or an age window too large for a time.Duration still waits the
+// interval and keeps the recent torrents.
+func TestLibrarySchedule_HugeValues(t *testing.T) {
+	searched := make(chan struct{}, 1)
+	tracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") != "caps" {
+			select {
+			case searched <- struct{}{}:
+			default:
+			}
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(emptyTorznabFeed))
+	}))
+	t.Cleanup(tracker.Close)
+	f := newScheduleFixture(t, "crossseed-library-schedule-huge", tracker.URL, movieAddedDaysAgo(1, "Azure.Compass.2024.1080p.WEB-DL.H.264-KIRI", 1))
+	ctx := t.Context()
+
+	_, err := f.svc.PatchSearchSettings(ctx, SearchSettingsPatch{
+		InstanceIDSet:         true,
+		InstanceID:            &f.instanceID,
+		ScheduleEnabled:       new(true),
+		ScheduleIntervalHours: new(3_000_000),
+		ScheduleMaxAgeDays:    new(1_000_000),
+	})
+	require.NoError(t, err)
+	f.drainWake()
+	require.Greater(t, f.svc.libraryScheduleTick(ctx), 365*24*time.Hour)
+	select {
+	case <-searched:
+	case <-f.svc.scheduleWake:
+		t.Fatal("the run ended without a search of the recent torrent")
+	case <-time.After(10 * time.Second):
+		t.Fatal("the torrent was not searched")
+	}
+	f.svc.CancelSearchRun()
+	f.waitRunEnd(t)
+}
