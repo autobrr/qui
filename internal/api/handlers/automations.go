@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
 type AutomationHandler struct {
@@ -30,6 +31,7 @@ type AutomationHandler struct {
 	externalProgramStore *models.ExternalProgramStore
 	service              *automations.Service
 	switches             rollout.Switches
+	routes               *models.CrossSeedRouteStore
 }
 
 func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service, switches rollout.Switches) *AutomationHandler {
@@ -40,6 +42,14 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 		externalProgramStore: externalProgramStore,
 		service:              service,
 		switches:             switches,
+	}
+}
+
+// SetCrossSeedRoutes lets the Instance limit check of a Transfer rule read
+// the Cross-seed instance of its target.
+func (h *AutomationHandler) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	if routes != nil {
+		h.routes = routes.CrossSeedRouteStore
 	}
 }
 
@@ -248,7 +258,7 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 	}
 	// The run skips a disabled rule.
 	rules = slices.DeleteFunc(rules, func(rule *models.Automation) bool { return !rule.Enabled })
-	if !canReachExportTargets(w, r, rules...) {
+	if !h.canReachExportTargets(w, r, rules...) {
 		return
 	}
 
@@ -294,7 +304,7 @@ func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
 		return
 	}
-	if !canReachExportTargets(w, r, rule) {
+	if !h.canReachExportTargets(w, r, rule) {
 		return
 	}
 
@@ -362,16 +372,38 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 
 // canReachExportTargets refuses the request when a rule exports or transfers to
 // an instance outside the Instance limit of the API key.
-func canReachExportTargets(w http.ResponseWriter, r *http.Request, rules ...*models.Automation) bool {
+func (h *AutomationHandler) canReachExportTargets(w http.ResponseWriter, r *http.Request, rules ...*models.Automation) bool {
 	for _, rule := range rules {
-		for _, target := range targetInstances(rule.Conditions) {
-			if !middleware.ReachesInstance(r, target) {
-				RespondError(w, http.StatusForbidden, middleware.CannotReachInstance(target))
-				return false
-			}
+		if status, message := h.reachTargets(r, rule.Conditions); status != 0 {
+			RespondError(w, status, message)
+			return false
 		}
 	}
 	return true
+}
+
+// reachTargets checks each instance that the running Export and Transfer
+// actions of a rule add torrents to against the Instance limit of the API key:
+// each target, and the Cross-seed instance of a Transfer target. It returns
+// the status and the message of the refusal, or 0.
+func (h *AutomationHandler) reachTargets(r *http.Request, conditions *models.ActionConditions) (int, string) {
+	targets := targetInstances(conditions)
+	if transfer := conditions.TransferToInstance; transfer != nil && transfer.Enabled && h.routes != nil {
+		route, err := h.routes.Get(r.Context(), transfer.TargetInstanceID)
+		if err != nil {
+			log.Error().Err(err).Int("targetInstanceID", transfer.TargetInstanceID).Msg("automations: failed to read the cross-seed route of the Transfer target")
+			return http.StatusInternalServerError, "Failed to validate target instance"
+		}
+		if route != nil {
+			targets = append(targets, route.CrossSeedInstanceID)
+		}
+	}
+	for _, target := range targets {
+		if !middleware.ReachesInstance(r, target) {
+			return http.StatusForbidden, middleware.CannotReachInstance(target)
+		}
+	}
+	return 0, ""
 }
 
 // targetInstances returns the instances that the running Export and Transfer
@@ -431,10 +463,10 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 		return nil, http.StatusBadRequest, err.Error()
 	}
 
+	if status, message := h.reachTargets(r, payload.Conditions); status != 0 {
+		return nil, status, message
+	}
 	for _, target := range targetInstances(payload.Conditions) {
-		if !middleware.ReachesInstance(r, target) {
-			return nil, http.StatusForbidden, middleware.CannotReachInstance(target)
-		}
 		if h.instanceStore == nil {
 			return nil, http.StatusInternalServerError, "Instance store not configured"
 		}

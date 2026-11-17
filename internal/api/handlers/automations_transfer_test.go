@@ -16,9 +16,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -94,4 +96,56 @@ func TestAutomationRuleWithATransferSavesOnlyWithTheSwitch(t *testing.T) {
 			require.Equal(t, tc.want, body.Error)
 		})
 	}
+}
+
+// regression: #4242
+// A Transfer adds the cross-seeds of a torrent to the Cross-seed instance of
+// its target, so an API key with an Instance limit must reach that instance
+// too, to save or run a Transfer rule (ADR 0040).
+func TestATransferRuleNeedsTheCrossSeedInstanceOfItsTargetInTheKeyLimit(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "automation-transfer-route")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	add := func(name, url string) int {
+		inst, err := instances.Create(t.Context(), name, url, "", "", nil, nil, false, nil)
+		require.NoError(t, err)
+		return inst.ID
+	}
+	source, target, crossSeed := add("seedbox", "http://example.invalid:8080"), add("homelab", "http://example.invalid:8081"), add("archive", "http://example.invalid:8082")
+	routes := models.NewCrossSeedRouteStore(db)
+	require.NoError(t, routes.Upsert(t.Context(), &models.CrossSeedRoute{SourceInstanceID: target, CrossSeedInstanceID: crossSeed}))
+	store := models.NewAutomationStore(db)
+	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{}, rollout.Switches{TransfersAndShares: true})
+	handler.SetCrossSeedRoutes(crossseedroute.NewService(routes, instances, nil, nil))
+	serve := func(serve http.HandlerFunc, ruleID string, key *models.APIKey, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(body))
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("instanceID", strconv.Itoa(source))
+		rctx.URLParams.Add("ruleID", ruleID)
+		ctx := context.WithValue(context.WithValue(req.Context(), chi.RouteCtxKey, rctx), ctxkeys.APIKey, key)
+		rec := httptest.NewRecorder()
+		serve(rec, req.WithContext(ctx))
+		return rec
+	}
+	rule := fmt.Sprintf(`{"name":"move old seeds","trackerPattern":"*","conditions":{"schemaVersion":"1",`+
+		`"transferToInstance":{"enabled":true,"targetInstanceId":%d}}}`, target)
+	limited := &models.APIKey{Permissions: models.AllPermissions(), InstanceIDs: []int{source, target}}
+	refused := `{"error":"API key cannot reach instance ` + strconv.Itoa(crossSeed) + `"}`
+
+	rec := serve(handler.Create, "", limited, rule)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.JSONEq(t, refused, rec.Body.String())
+
+	stored, err := store.Create(t.Context(), &models.Automation{
+		InstanceID: source, Name: "saved Transfer", TrackerPattern: "*", Enabled: true,
+		Conditions: &models.ActionConditions{SchemaVersion: "1", TransferToInstance: &models.TransferToInstanceAction{Enabled: true, TargetInstanceID: target}},
+	})
+	require.NoError(t, err)
+	rec = serve(handler.ApplyRuleNow, strconv.Itoa(stored.ID), limited, "{}")
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.JSONEq(t, refused, rec.Body.String())
+
+	limited.InstanceIDs = append(limited.InstanceIDs, crossSeed)
+	rec = serve(handler.Create, "", limited, rule)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }

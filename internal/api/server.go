@@ -482,6 +482,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		s.syncManager,
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService, s.switches)
+	automationsHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	transferHistoryHandler := handlers.NewTransferHistoryHandler(s.transferHistory)
