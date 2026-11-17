@@ -2377,6 +2377,13 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 		return nil, readinessErr
 	}
 
+	// The folders come before the torrents: a Transfer adds its torrents
+	// before it ends, so a Transfer that ends between the two reads leaves
+	// its files covered by its folder or by its torrents.
+	transferFolders, err := s.runningTransferFolders(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
 	torrents, err := s.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
@@ -2393,9 +2400,7 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 	if err != nil {
 		return nil, err
 	}
-	if result.transferFolders, err = s.runningTransferFolders(ctx, instanceID); err != nil {
-		return nil, err
-	}
+	result.transferFolders = transferFolders
 	result.scanRoots = dedupeCaseVariantRoots(ctx, result.scanRoots, backend, scanned)
 	return result, nil
 }
