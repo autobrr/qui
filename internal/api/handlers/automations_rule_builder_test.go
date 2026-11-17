@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -64,7 +63,7 @@ func TestAutomationCheckAcceptsEveryRuleBuilderCondition(t *testing.T) {
 	localAccess := true // the hardlink and missing files fields need it
 	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, &localAccess)
 	require.NoError(t, err)
-	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, instances, nil, &automations.Service{}, rollout.Production())
+	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, instances, nil, &automations.Service{})
 
 	for _, layout := range layouts {
 		body, err := json.Marshal(map[string]any{

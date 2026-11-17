@@ -59,6 +59,7 @@
   },
   "actions": {
     "details": "세부 정보",
+    "menu": "{{name}} 작업",
     "retry": "다시 시도",
     "cancel": "취소",
     "remove": "제거",

@@ -57,6 +57,7 @@
     "refusedEntry": "{{name}}: {{reason}}",
     "tracker": {
       "label": "공유 트래커",
+      "settings": "공유 설정",
       "own": "{{address}}의 qui 트래커",
       "outside": "외부 트래커 {{url}}"
     },

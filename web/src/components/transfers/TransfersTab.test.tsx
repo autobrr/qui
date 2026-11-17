@@ -17,6 +17,9 @@ import { TransfersTab } from "./TransfersTab"
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
 
+const screenSize = vi.hoisted(() => ({ phone: false }))
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsPhone: () => screenSize.phone }))
+
 const finished = "2026-11-17T11:00:00Z"
 
 function row(edit: Partial<TransferRow>): TransferRow {
@@ -89,6 +92,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  screenSize.phone = false
   cleanup()
   vi.clearAllMocks()
 })
@@ -149,6 +153,20 @@ describe("the Transfers tab", () => {
     expect(screen.getByText("Film.2019.2160p-ABC")).toBeTruthy()
     expect(requests).toContain("GET /api/transfers?filter=failed")
     expect(screen.getByRole("button", { name: "Failed (2)" }).getAttribute("aria-pressed")).toBe("true")
+  })
+
+  it("puts the actions of a row in one menu on a phone", async () => {
+    screenSize.phone = true
+    renderTab()
+    const tr = await rowOf("Film.2019.2160p-ABC")
+    const menu = within(tr).getByRole("button", { name: "Actions for Film.2019.2160p-ABC" })
+    expect(within(tr).getAllByRole("button")).toEqual([menu])
+
+    fireEvent.pointerDown(menu, { button: 0, ctrlKey: false })
+    const items = (await screen.findAllByRole("menuitem")).map(item => item.textContent)
+    expect(items).toEqual(["Details", "Retry", "Remove"])
+    fireEvent.click(screen.getByRole("menuitem", { name: "Retry" }))
+    await waitFor(() => expect(requests).toContain("POST /api/transfers/2/retry"))
   })
 
   it("retries and removes a row", async () => {

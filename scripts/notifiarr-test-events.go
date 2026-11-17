@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
@@ -122,7 +121,7 @@ func filterFixtures(fixtures []fixture, filter map[string]struct{}) []fixture {
 
 func printAvailableEvents() {
 	fmt.Fprintln(os.Stderr, "available events:")
-	for _, def := range notifications.EventDefinitions(rollout.Production()) {
+	for _, def := range notifications.EventDefinitions() {
 		fmt.Fprintf(os.Stderr, "- %s\n", def.Type)
 	}
 }

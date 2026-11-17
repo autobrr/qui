@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
@@ -45,24 +44,16 @@ func (r *rig) exists(id int64) bool {
 
 // qui removes the rows of Transfers that finished more than 30 days ago, with
 // the registry rows of their helper torrents, and keeps every other row.
-// While the switch is off, it removes no row.
 func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	r := newRig(t)
 	old := r.ended("aaaa", transfer.StateDone)
 	running := r.waiting("bbbb")
 
 	r.setClock(time.Now().Add(29 * 24 * time.Hour))
-	r.deps.Switches = rollout.Switches{TransfersAndShares: true}
 	r.restart()
 	require.True(t, r.exists(old), "a row of 29 days stays")
 
 	r.setClock(time.Now().Add(31 * 24 * time.Hour))
-	r.deps.Switches = rollout.Switches{}
-	r.restart()
-	require.True(t, r.exists(old), "the switch is off")
-	require.True(t, r.store.IsHelper(r.target.ID, "helperaaaa"))
-
-	r.deps.Switches = rollout.Switches{TransfersAndShares: true}
 	r.restart()
 	require.False(t, r.exists(old))
 	require.False(t, r.store.IsHelper(r.target.ID, "helperaaaa"), "the registry row of its helper torrent goes with it")

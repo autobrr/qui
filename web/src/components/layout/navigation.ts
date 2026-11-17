@@ -5,6 +5,7 @@
 
 import {
   Archive,
+  ArrowRightLeft,
   ChartColumn,
   FileText,
   GitBranch,
@@ -60,6 +61,12 @@ export const NAV_ITEMS: NavItem[] = [
     titleKey: "nav.automations",
     href: "/automations",
     icon: Zap,
+  },
+  {
+    id: "transfers",
+    titleKey: "nav.transfers",
+    href: "/transfers",
+    icon: ArrowRightLeft,
   },
   {
     id: "backups",

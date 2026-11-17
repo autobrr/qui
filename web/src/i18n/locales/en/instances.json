@@ -555,6 +555,7 @@
         "externalProgram": "External program",
         "dryRun": "Dry-run",
         "exportToInstance": "Export to instance",
+        "transferToInstance": "Transfer to instance",
         "ruleSkipped": "Rule not run"
       },
       "shareLimit": {
@@ -608,7 +609,9 @@
         "exportedDryRun_one": "{{count}} torrent would be exported",
         "exportedDryRun_other": "{{count}} torrents would be exported",
         "exportFailed_one": "{{count}} torrent failed to export",
-        "exportFailed_other": "{{count}} torrents failed to export"
+        "exportFailed_other": "{{count}} torrents failed to export",
+        "transferredDryRun_one": "{{count}} torrent would be transferred",
+        "transferredDryRun_other": "{{count}} torrents would be transferred"
       },
       "deleteDialog": {
         "title": "Delete Rule",
@@ -668,6 +671,7 @@
         "deleteActivityFailed": "Failed to delete activity"
       },
       "exported": "Exported",
+      "transferStarted": "Started",
       "skipped": "Skipped"
     },
     "runWorkflowNow": {
@@ -967,6 +971,7 @@
         "auto_managed": "Auto managed",
         "dry_run_no_match": "Dry-run (no match)",
         "exported_to_instance": "Export to instance",
+        "transferred_to_instance": "Transfer to instance",
         "rule_skipped": "Rule not run"
       }
     },
@@ -1144,6 +1149,11 @@
         "skipChecking": "Skip checking",
         "addPaused": "Add paused"
       },
+      "transfer": {
+        "title": "Transfer to instance",
+        "description": "Moves each matching torrent with its files to the target instance, and proves the copy before it removes anything. The Transfers page shows each Transfer.",
+        "remove": "Remove Transfer to instance"
+      },
       "priority": {
         "title": "Torrent Priority",
         "description": "Controls the order in which torrents are processed.",
@@ -1186,7 +1196,8 @@
         "category": "Category",
         "move": "Move",
         "externalProgram": "Run external program",
-        "exportToInstance": "Export to instance"
+        "exportToInstance": "Export to instance",
+        "transferToInstance": "Transfer to instance"
       },
       "option": {
         "noChange": "No change",
@@ -1442,6 +1453,7 @@
           "externalProgram": "External program",
           "noMatches": "No matches",
           "exportedToInstance": "Export to instance",
+          "transferredToInstance": "Transfer to instance",
           "ruleSkipped": "Rule not run"
         },
         "actionFallback": "Unknown action ({{action}})",

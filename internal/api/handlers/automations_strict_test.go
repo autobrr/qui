@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -28,7 +27,7 @@ func TestAutomationStrictDecode(t *testing.T) {
 	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, nil)
 	require.NoError(t, err)
 	store := models.NewAutomationStore(db)
-	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{}, rollout.Production())
+	handler := NewAutomationHandler(store, nil, instances, nil, &automations.Service{})
 	instanceID := strconv.Itoa(instance.ID)
 
 	existing, err := store.Create(t.Context(), &models.Automation{

@@ -58,6 +58,7 @@
     "refusedEntry": "{{name}}: {{reason}}",
     "tracker": {
       "label": "Share tracker",
+      "settings": "Share settings",
       "own": "qui's tracker at {{address}}",
       "outside": "Outside tracker {{url}}"
     },

@@ -91,6 +91,8 @@ type Server struct {
 	rid        int
 	torrents   map[string]*Torrent
 	categories map[string]string
+	// addedTags holds the tags that each torrents/add gave a torrent.
+	addedTags map[string][]string
 	// downloadPaths holds each category's download path option, with no
 	// entry when the category inherits it.
 	downloadPaths map[string]*qbt.CategoryDownloadPath
@@ -191,7 +193,7 @@ type Server struct {
 
 // New starts a stub whose default save path is savePath.
 func New(t *testing.T, savePath string) *Server {
-	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
+	s := &Server{t: t, torrents: map[string]*Torrent{}, categories: map[string]string{}, addedTags: map[string][]string{}, downloadPaths: map[string]*qbt.CategoryDownloadPath{},
 		savePath: savePath, calls: map[string]int{}, writes: map[string]int{}, conflicts: map[string]int{}, bodies: map[string]string{},
 		params: map[string]url.Values{}, synced: map[int]chan struct{}{}}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
@@ -369,6 +371,14 @@ func (s *Server) Tags(hash string) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Sorted(slices.Values(s.torrents[hash].Tags))
+}
+
+// AddedTags returns the sorted tags that torrents/add gave a torrent, also
+// after the torrent left the stub.
+func (s *Server) AddedTags(hash string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Sorted(slices.Values(s.addedTags[hash]))
 }
 
 // LastBody is the raw body of the last write to an endpoint.

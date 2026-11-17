@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peeraddress"
@@ -98,11 +97,8 @@ type Deps struct {
 	// Notifier gets the event of each end of a Transfer. Nil sends none.
 	Notifier notifications.Notifier
 	// Now is the clock of the steps and the log. Nil is time.Now.
-	Now func() time.Time
-	// Switches: while TransfersAndShares and ExportOnTransfer are off, qui
-	// removes no old row.
-	Switches rollout.Switches
-	Config   Config
+	Now    func() time.Time
+	Config Config
 }
 
 // Service runs Transfers: one at a time for each Transfer source, in the

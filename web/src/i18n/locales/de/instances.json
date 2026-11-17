@@ -555,6 +555,7 @@
         "externalProgram": "Externes Programm",
         "dryRun": "Probelauf",
         "exportToInstance": "In Instanz exportieren",
+        "transferToInstance": "An Instanz übertragen",
         "ruleSkipped": "Regel nicht ausgeführt"
       },
       "shareLimit": {
@@ -608,7 +609,9 @@
         "exportedDryRun_one": "{{count}} Torrent würde exportiert",
         "exportedDryRun_other": "{{count}} Torrents würden exportiert",
         "exportFailed_one": "{{count}} Torrent konnte nicht exportiert werden",
-        "exportFailed_other": "{{count}} Torrents konnten nicht exportiert werden"
+        "exportFailed_other": "{{count}} Torrents konnten nicht exportiert werden",
+        "transferredDryRun_one": "{{count}} Torrent würde übertragen",
+        "transferredDryRun_other": "{{count}} Torrents würden übertragen"
       },
       "deleteDialog": {
         "title": "Regel löschen",
@@ -668,6 +671,7 @@
         "deleteActivityFailed": "Aktivität konnte nicht gelöscht werden"
       },
       "exported": "Exportiert",
+      "transferStarted": "Gestartet",
       "skipped": "Übersprungen"
     },
     "runWorkflowNow": {
@@ -967,6 +971,7 @@
         "auto_managed": "Automatisch verwaltet",
         "dry_run_no_match": "Probelauf (keine Übereinstimmung)",
         "exported_to_instance": "Export zur Instanz",
+        "transferred_to_instance": "An Instanz übertragen",
         "rule_skipped": "Regel nicht ausgeführt"
       }
     },
@@ -1144,6 +1149,11 @@
         "skipChecking": "Prüfung überspringen",
         "addPaused": "Pausiert hinzufügen"
       },
+      "transfer": {
+        "title": "An Instanz übertragen",
+        "description": "Verschiebt jeden passenden Torrent mit seinen Dateien in die Zielinstanz und prüft die Kopie, bevor etwas entfernt wird. Die Seite Transfers zeigt jeden Transfer.",
+        "remove": "„An Instanz übertragen“ entfernen"
+      },
       "priority": {
         "title": "Torrent-Priorität",
         "description": "Steuert die Reihenfolge, in der Torrents verarbeitet werden.",
@@ -1186,7 +1196,8 @@
         "category": "Kategorie",
         "move": "Verschieben",
         "externalProgram": "Externes Programm ausführen",
-        "exportToInstance": "In Instanz exportieren"
+        "exportToInstance": "In Instanz exportieren",
+        "transferToInstance": "An Instanz übertragen"
       },
       "option": {
         "noChange": "Keine Änderung",
@@ -1442,6 +1453,7 @@
           "externalProgram": "Externes Programm",
           "noMatches": "Keine Treffer",
           "exportedToInstance": "In Instanz exportieren",
+          "transferredToInstance": "An Instanz übertragen",
           "ruleSkipped": "Regel nicht ausgeführt"
         },
         "actionFallback": "Unbekannte Aktion ({{action}})",

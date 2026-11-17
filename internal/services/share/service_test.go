@@ -29,7 +29,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/services/sharetracker"
@@ -123,7 +122,7 @@ func newRig(t *testing.T) *rig {
 		Port: r.port, PublicAddress: "http://127.0.0.1:" + strconv.Itoa(r.port),
 	}))
 	r.peers = &slowPeers{PeerAddresses: peeraddress.New(r.instances, r.sync)}
-	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	r.svc = r.newService()
 	return r
 }
 
@@ -148,7 +147,7 @@ func (r *rig) seed(name string) string {
 
 // newService builds a Share service on the database of the rig, as qui does
 // at each start.
-func (r *rig) newService(switches rollout.Switches) *share.Service {
+func (r *rig) newService() *share.Service {
 	svc := share.NewService(share.Deps{
 		Store:           share.NewStore(r.db),
 		Settings:        share.NewSettingsStore(r.db),
@@ -157,7 +156,6 @@ func (r *rig) newService(switches rollout.Switches) *share.Service {
 		Instances:       r.instances,
 		Sync:            r.sync,
 		Peers:           r.peers,
-		Switches:        switches,
 		TrackerHost:     "127.0.0.1",
 		Now:             r.clock.Now,
 		Config:          share.Config{Polls: 20, PollInterval: time.Millisecond, Tick: time.Hour},
@@ -319,6 +317,7 @@ func TestAShareSeedsAShareTorrentThatQuisTrackerAnnounces(t *testing.T) {
 	require.Equal(t, "true", add.Get("seedMode"))
 	require.Equal(t, "true", add.Get("forced"))
 	require.Equal(t, "false", add.Get("autoTMM"))
+	require.Equal(t, []string{"qui-share"}, r.stub.Tags(sh.HelperHash), "a script of qBittorrent skips the Share torrent by its tag")
 	require.Equal(t, r.dir, add.Get("savepath"))
 	require.Equal(t, r.clock.Now().Add(7*24*time.Hour), sh.ExpiresAt)
 	require.True(t, listening(r.port), "the Share tracker listens while a Share runs")
@@ -576,7 +575,7 @@ func TestASharesRunsOnAfterARestartOfQui(t *testing.T) {
 	r.svc.Close()
 	require.False(t, listening(r.port))
 
-	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	r.svc = r.newService()
 	require.NoError(t, r.svc.Resume(t.Context()))
 
 	require.True(t, listening(r.port), "the tracker starts again for the active Share")
@@ -602,7 +601,7 @@ func TestTheShareTrackerStartsAtTheNextCheckOnceItsPortIsFree(t *testing.T) {
 	busy, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:"+strconv.Itoa(r.port))
 	require.NoError(t, err)
 
-	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	r.svc = r.newService()
 	require.ErrorIs(t, r.svc.Resume(t.Context()), sharetracker.ErrPortBusy)
 	require.NoError(t, busy.Close())
 	r.check()
@@ -690,33 +689,6 @@ func TestAShareIsRefused(t *testing.T) {
 			require.Equal(t, adds, r.stub.Writes("torrents/add"), "a refused Share adds no torrent")
 		})
 	}
-}
-
-func TestSharesStayClosedWhileTheSwitchIsOff(t *testing.T) {
-	r := newRig(t)
-	sh := r.start(share.Request{})
-	r.svc.Close()
-	writes := len(r.stub.WriteLog())
-
-	off := r.newService(rollout.Switches{})
-	r.clock.advance(60 * 24 * time.Hour)
-	off.Run(t.Context())
-	require.NoError(t, off.Resume(t.Context()))
-	require.NoError(t, off.Check(t.Context()))
-	off.BeforeTorrentChange(t.Context(), r.instance.ID, []string{r.hash}, qbittorrent.TorrentChangeDelete)
-
-	require.False(t, listening(r.port), "the tracker stays off")
-	require.Len(t, r.stub.WriteLog(), writes, "the Share service changes nothing in qBittorrent")
-	stored, err := share.NewStore(r.db).Get(t.Context(), sh.ID)
-	require.NoError(t, err)
-	require.Equal(t, share.StateActive, stored.State)
-	_, err = off.Start(t.Context(), share.Request{InstanceID: r.instance.ID, Hash: r.hash})
-	require.ErrorIs(t, err, share.ErrOff)
-	_, err = off.List(t.Context())
-	require.ErrorIs(t, err, share.ErrOff)
-	_, err = off.Settings(t.Context())
-	require.ErrorIs(t, err, share.ErrOff)
-	require.ErrorIs(t, off.Stop(t.Context(), sh.ID), share.ErrOff)
 }
 
 func TestWithNoSharesAndDefaultSettingsQuiWorksAsBefore(t *testing.T) {
@@ -882,7 +854,7 @@ func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers)
 
 	r.svc.Close()
-	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	r.svc = r.newService()
 	require.NoError(t, r.svc.Resume(t.Context()))
 
 	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
@@ -892,7 +864,7 @@ func TestTheFirstDownloaderHoldsTheShareAfterARestartOfQui(t *testing.T) {
 	require.Equal(t, []netip.AddrPort{ownerAddress}, peers, "the first downloader goes on from a new port")
 
 	r.svc.Close()
-	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	r.svc = r.newService()
 	require.NoError(t, r.svc.Resume(t.Context()))
 	// qui cannot read the Share settings from now on.
 	_, err := r.db.ExecContext(t.Context(), `ALTER TABLE share_settings RENAME TO share_settings_gone`)
@@ -943,7 +915,7 @@ func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing
 	<-answered
 
 	r.svc.Close()
-	r.svc = r.newService(rollout.Switches{TransfersAndShares: true})
+	r.svc = r.newService()
 	require.NoError(t, r.svc.Resume(t.Context()))
 
 	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")

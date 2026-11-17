@@ -37,7 +37,7 @@ describe("resolvePick", () => {
   })
 
   it("opens the dialog of a Bulk action with values", () => {
-    for (const action of ["setTags", "setCategory", "setShareLimit", "setSpeedLimits", "setComment", "renameTorrent"] as const) {
+    for (const action of ["setTags", "setCategory", "setShareLimit", "setSpeedLimits", "setComment", "renameTorrent", "transfer", "share"] as const) {
       expect(resolvePick({ action } as BulkActionPick, 1)).toEqual({ kind: "open", dialog: { name: action } })
     }
   })

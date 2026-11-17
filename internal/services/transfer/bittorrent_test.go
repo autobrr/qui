@@ -50,6 +50,23 @@ func (r *rig) requireNoHelpers(record *transfer.Record) {
 	}
 }
 
+// requireHelperTag fails unless qui added each helper torrent of the
+// Transfer with the tag qui-transfer, the tag that lets a script of
+// qBittorrent skip it.
+func (r *rig) requireHelperTag(record *transfer.Record) {
+	r.t.Helper()
+	helpers, err := r.store.HelpersOf(r.t.Context(), transfer.OwnerTransfer, record.ID)
+	require.NoError(r.t, err)
+	require.NotEmpty(r.t, helpers)
+	for _, h := range helpers {
+		client := r.dst
+		if h.InstanceID == r.source.ID {
+			client = r.src
+		}
+		require.Equal(r.t, []string{"qui-transfer"}, client.AddedTags(h.Hash))
+	}
+}
+
 // A Transfer to a target without file access passes the files by a Transfer
 // torrent. When no byte arrives on the target from the source, qui asks the
 // source to connect to the target.
@@ -407,6 +424,7 @@ func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 		require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 		require.Equal(t, map[string]string{showName + "/Show.S01E01.mkv": string(s.files["Show.S01E01.mkv"])}, tree(t, r.srcDir),
 			"the file that the target had stays on the source")
+		r.requireHelperTag(record)
 	})
 	t.Run("fails the check", func(t *testing.T) {
 		r := newRigOn(t, overSFTP, overSFTP)

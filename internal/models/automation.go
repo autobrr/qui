@@ -856,25 +856,23 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion    string                  `json:"schemaVersion" doc:"Must be '1'."`
-	Grouping         *GroupingConfig         `json:"grouping,omitempty" doc:"Group definitions for group-aware actions and conditions."`
-	SpeedLimits      *SpeedLimitAction       `json:"speedLimits,omitempty" doc:"Set upload and download speed limits."`
-	ShareLimits      *ShareLimitsAction      `json:"shareLimits,omitempty" doc:"Set ratio and seeding time limits."`
-	Pause            *PauseAction            `json:"pause,omitempty" doc:"Pause matching torrents."`
-	Resume           *ResumeAction           `json:"resume,omitempty" doc:"Resume matching torrents."`
-	Recheck          *RecheckAction          `json:"recheck,omitempty" doc:"Force a recheck of matching torrents."`
-	Reannounce       *ReannounceAction       `json:"reannounce,omitempty" doc:"Force a reannounce of matching torrents."`
-	Delete           *DeleteAction           `json:"delete,omitempty" doc:"Delete matching torrents. A rule with 'delete' has no other action."`
-	Tag              *TagAction              `json:"tag,omitempty" doc:"-"` // Legacy single-tag action (backward compatible alias for first entry in Tags)
-	Tags             []*TagAction            `json:"tags,omitempty" doc:"Tag actions. Each entry manages its own set of tags."`
-	Category         *CategoryAction         `json:"category,omitempty" doc:"Set the category of matching torrents."`
-	Move             *MoveAction             `json:"move,omitempty" doc:"Move matching torrents to a different save path."`
-	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty" doc:"Run an external program for each matching torrent."`
-	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty" doc:"Turn automatic torrent management on or off."`
-	ExportToInstance *ExportToInstanceAction `json:"exportToInstance,omitempty" doc:"Add matching torrents to a different qBittorrent instance."`
-	// The docs leave out the Transfer action until Transfers and Shares
-	// ship. Its fields keep their doc tags for that day.
-	TransferToInstance *TransferToInstanceAction `json:"transferToInstance,omitempty" doc:"-"`
+	SchemaVersion      string                    `json:"schemaVersion" doc:"Must be '1'."`
+	Grouping           *GroupingConfig           `json:"grouping,omitempty" doc:"Group definitions for group-aware actions and conditions."`
+	SpeedLimits        *SpeedLimitAction         `json:"speedLimits,omitempty" doc:"Set upload and download speed limits."`
+	ShareLimits        *ShareLimitsAction        `json:"shareLimits,omitempty" doc:"Set ratio and seeding time limits."`
+	Pause              *PauseAction              `json:"pause,omitempty" doc:"Pause matching torrents."`
+	Resume             *ResumeAction             `json:"resume,omitempty" doc:"Resume matching torrents."`
+	Recheck            *RecheckAction            `json:"recheck,omitempty" doc:"Force a recheck of matching torrents."`
+	Reannounce         *ReannounceAction         `json:"reannounce,omitempty" doc:"Force a reannounce of matching torrents."`
+	Delete             *DeleteAction             `json:"delete,omitempty" doc:"Delete matching torrents. A rule with 'delete' has no other action."`
+	Tag                *TagAction                `json:"tag,omitempty" doc:"-"` // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tags               []*TagAction              `json:"tags,omitempty" doc:"Tag actions. Each entry manages its own set of tags."`
+	Category           *CategoryAction           `json:"category,omitempty" doc:"Set the category of matching torrents."`
+	Move               *MoveAction               `json:"move,omitempty" doc:"Move matching torrents to a different save path."`
+	ExternalProgram    *ExternalProgramAction    `json:"externalProgram,omitempty" doc:"Run an external program for each matching torrent."`
+	AutoManagement     *AutoManagementAction     `json:"autoManagement,omitempty" doc:"Turn automatic torrent management on or off."`
+	ExportToInstance   *ExportToInstanceAction   `json:"exportToInstance,omitempty" doc:"Add matching torrents to a different qBittorrent instance."`
+	TransferToInstance *TransferToInstanceAction `json:"transferToInstance,omitempty" doc:"Move matching torrents with their files to a different qBittorrent instance. Needs qBittorrent 5.1 or newer on both instances."`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.

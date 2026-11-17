@@ -59,6 +59,7 @@
   },
   "actions": {
     "details": "詳細資料",
+    "menu": "{{name}} 的操作",
     "retry": "重試",
     "cancel": "取消",
     "remove": "移除",

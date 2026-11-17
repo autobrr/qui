@@ -31,7 +31,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
@@ -123,7 +122,6 @@ type Server struct {
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
-	switches                         rollout.Switches
 	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
 	shuttingDown <-chan struct{}
 }
@@ -185,13 +183,10 @@ type Dependencies struct {
 	ActivityHub                      *activity.Hub
 	// Transfers holds the Transfer records and the helper registry.
 	Transfers *transfer.Store
-	// TransferService runs Transfers. The router uses it only while the
-	// switch for Transfers and Shares is on.
+	// TransferService runs Transfers.
 	TransferService *transfer.Service
-	// ShareService runs Shares. The router uses it only while the switch for
-	// Transfers and Shares is on.
+	// ShareService runs Shares.
 	ShareService *share.Service
-	Switches     rollout.Switches
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -278,7 +273,6 @@ func NewServer(deps *Dependencies) *Server {
 		transfers:                        deps.Transfers,
 		transferService:                  deps.TransferService,
 		shareService:                     deps.ShareService,
-		switches:                         deps.Switches,
 		shuttingDown:                     streamsCtx.Done(),
 	}
 	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
@@ -287,17 +281,8 @@ func NewServer(deps *Dependencies) *Server {
 	return &s
 }
 
-// Switches returns the server-side switches that the router was built with.
-func (s *Server) Switches() rollout.Switches {
-	return s.switches
-}
-
-// transferRoutes adds the Transfer and Share routes while the switch for
-// Transfers and Shares is on.
+// transferRoutes adds the Transfer and Share routes.
 func (s *Server) transferRoutes(r chi.Router) {
-	if !s.switches.TransfersAndShares {
-		return
-	}
 	r.Route("/transfers", handlers.NewTransfersHandler(s.transferService, s.transfers, s.automationStore).Routes)
 	r.Route("/shares", handlers.NewSharesHandler(s.shareService).Routes)
 }
@@ -480,7 +465,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		s.crossSeedRoutes,
 		s.syncManager,
 	)
-	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService, s.switches)
+	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	automationsHandler.SetCrossSeedRoutes(s.crossSeedRoutes)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
@@ -501,7 +486,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config, s.shuttingDown)
-	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService, s.switches)
+	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler

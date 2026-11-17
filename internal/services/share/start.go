@@ -50,9 +50,6 @@ func refuse(format string, args ...any) error {
 // on the same files, and returns the Share with the .torrent of the
 // recipient. A *RefusalError says why qui does not start it.
 func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
-	if !s.on() {
-		return nil, ErrOff
-	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 
@@ -75,6 +72,7 @@ func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
 		Hash:       sh.HelperHash,
 		Settings: torrentadd.Settings{
 			SavePath:        sh.SavePath,
+			Tags:            []string{transfer.ShareHelperTag},
 			ContentLayout:   qbt.ContentLayout(sh.layout),
 			Stopped:         new(false),
 			Forced:          true,

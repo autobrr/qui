@@ -25,6 +25,7 @@ import { copyTextToClipboard } from "@/lib/utils"
 import type { ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import {
+  ArrowRightLeft,
   Blocks,
   CheckCircle,
   Copy,
@@ -41,6 +42,7 @@ import {
   Radio,
   Search,
   Settings2,
+  Share2,
   Sparkles,
   Sprout,
   Tag,
@@ -55,6 +57,7 @@ import type { BulkActionPick } from "./bulk-actions/bulk-action-state"
 import { useBulkActionCategories } from "./bulk-actions/bulk-actions-context"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
+import { transferShareOffer } from "./transfer-share-offer"
 
 export interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -300,6 +303,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   }, [onPick])
 
   const supportsInstanceScopedActions = _instanceId > 0
+  const offer = transferShareOffer(torrents, count, targetInstanceIds)
 
   return (
     <ContextMenu>
@@ -558,6 +562,18 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 {count > 1 ? t("contextMenu.exportTorrents", { count }) : t("contextMenu.exportTorrent")}
               </ContextMenuItem>
             </WhenSupported>
+            {offer.transfer && (
+              <ContextMenuItem onClick={() => onPick({ action: "transfer" })}>
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                {t("contextMenu.transferToInstance")}
+              </ContextMenuItem>
+            )}
+            {offer.share && (
+              <ContextMenuItem onClick={() => onPick({ action: "share" })}>
+                <Share2 className="mr-2 h-4 w-4" />
+                {t("contextMenu.shareWithSomeone")}
+              </ContextMenuItem>
+            )}
             <ContextMenuSub>
               <ContextMenuSubTrigger>
                 <Copy className="mr-4 h-4 w-4" />

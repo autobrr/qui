@@ -113,6 +113,7 @@ func (j *job) checkOnTarget(ctx context.Context, p *part) ([]qbt.PieceState, err
 		Hash:       helper.InfoHash,
 		Settings: torrentadd.Settings{
 			SavePath:             p.Placement.SavePath,
+			Tags:                 []string{TransferHelperTag},
 			ContentLayout:        qbt.ContentLayout(helper.ContentLayout),
 			Stopped:              new(false),
 			Forced:               true,

@@ -1196,6 +1196,10 @@ paths:
                 fallbackToRegularMode:
                   type: boolean
                   description: Fall back to regular mode if reflink/hardlink fails (e.g., cross-filesystem).
+                publicPeerAddress:
+                  type: string
+                  example: 203.0.113.7:51413
+                  description: The host and port at which other BitTorrent clients reach this qBittorrent, for Transfers and Shares. Leave the field out to keep the stored value. An empty string clears it, and qui then works out the address from qBittorrent.
       responses:
         '200':
           description: Instance updated
@@ -9559,6 +9563,13 @@ components:
           description: How qui reaches this instance's torrent data. `remote` requires SSH credentials and a confirmed host-key pin.
         capabilities:
           $ref: '#/components/schemas/FilesystemCapabilities'
+        publicPeerAddress:
+          type: string
+          description: The host and port that the user set for other BitTorrent clients to reach this qBittorrent. Empty when the user set none.
+        resolvedPublicPeerAddress:
+          type: string
+          example: 203.0.113.7:51413
+          description: The address that qui uses for Transfers and Shares. It is `publicPeerAddress` when set, or else the external address and the listen port that a connected qBittorrent reports. Empty when qui has no address, and in the answer of a create or an update.
 
 
     FilesystemCapabilities:

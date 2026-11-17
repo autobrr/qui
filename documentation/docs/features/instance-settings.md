@@ -27,6 +27,7 @@ To open the instance settings dialog, go to **Settings → Instances** and click
 | **URL** | Full URL to the qBittorrent WebUI (for example, `http://localhost:8080`). |
 | **Skip TLS Verification** (**Skip TLS certificate check** in the Add instance form) | Accept self-signed or otherwise untrusted certificates. |
 | **Local Filesystem Access** | Enable for features that read files directly. See [Local Filesystem Access](#local-filesystem-access). |
+| **Public peer address** | The address and port at which other BitTorrent clients reach this qBittorrent. See [Public peer address](#public-peer-address). |
 
 ### Authentication
 
@@ -71,6 +72,16 @@ If qBittorrent runs on another machine and qui cannot mount its files, set up SS
 The Add instance form has no SSH tab. Add the instance first, then edit it.
 
 See [SSH Access](./ssh-access.md) for the setup and for the list of features that work over SSH.
+
+## Public peer address
+
+[Transfers](./transfers.md) and [Shares](./shares.md) give the address of a qBittorrent client to another BitTorrent client. The public peer address is a host and a port, for example `203.0.113.7:51413` or `seedbox.example.org:6881`.
+
+If you leave the field empty, qui gets the address from qBittorrent each time it needs it. qui uses the external IP address and the listen port that qBittorrent reports. The field shows this address as its placeholder. qui does not save it.
+
+Set the field when the address that qBittorrent reports is not the address that other clients connect to. For example, set it when qBittorrent runs in Docker or behind NAT with another port on the router.
+
+The Add instance form does not have this field. Add the instance first, then edit it. To clear the value, empty the field and save.
 
 ## Incognito mode
 

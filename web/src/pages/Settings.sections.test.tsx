@@ -39,6 +39,7 @@ vi.mock("@/components/settings/TimeLanguageSettings", () => ({ TimeLanguageSetti
 vi.mock("@/components/settings/SecuritySettings", () => ({ SecuritySettings: () => <div data-testid="section-security" /> }))
 vi.mock("@/components/display-profiles/DisplayProfilesSettings", () => ({ DisplayProfilesSettings: () => <div data-testid="section-display-profiles" /> }))
 vi.mock("@/components/settings/LogSettingsPanel", () => ({ LogSettingsPanel: () => <div data-testid="section-logs" /> }))
+vi.mock("@/components/shares/ShareSettingsForm", () => ({ ShareSettingsForm: () => <div data-testid="section-shares" /> }))
 vi.mock("@/components/settings/StatisticsSettingsCard", () => ({ StatisticsSettingsCard: () => <div data-testid="section-statistics" /> }))
 vi.mock("@/components/settings/TrackerCustomizationsManager", () => ({ TrackerCustomizationsManager: () => <div data-testid="section-trackers" /> }))
 vi.mock("@/components/themes/ThemeSelector", () => ({ ThemeSelector: () => <div data-testid="section-themes" /> }))

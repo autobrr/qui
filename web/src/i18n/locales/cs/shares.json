@@ -60,6 +60,7 @@
     "refusedEntry": "{{name}}: {{reason}}",
     "tracker": {
       "label": "Tracker Sdílení",
+      "settings": "Nastavení sdílení",
       "own": "Tracker qui na {{address}}",
       "outside": "Externí tracker {{url}}"
     },

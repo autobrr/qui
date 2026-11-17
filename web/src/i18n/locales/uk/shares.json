@@ -60,6 +60,7 @@
     "refusedEntry": "{{name}}: {{reason}}",
     "tracker": {
       "label": "Трекер Поширення",
+      "settings": "Налаштування поширення",
       "own": "Трекер qui за адресою {{address}}",
       "outside": "Зовнішній трекер {{url}}"
     },

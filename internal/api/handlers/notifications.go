@@ -17,22 +17,19 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/redact"
 )
 
 type NotificationsHandler struct {
-	store    *models.NotificationTargetStore
-	service  *notifications.Service
-	switches rollout.Switches
+	store   *models.NotificationTargetStore
+	service *notifications.Service
 }
 
-func NewNotificationsHandler(store *models.NotificationTargetStore, service *notifications.Service, switches rollout.Switches) *NotificationsHandler {
+func NewNotificationsHandler(store *models.NotificationTargetStore, service *notifications.Service) *NotificationsHandler {
 	return &NotificationsHandler{
-		store:    store,
-		service:  service,
-		switches: switches,
+		store:   store,
+		service: service,
 	}
 }
 
@@ -52,7 +49,7 @@ const maxNotificationBodySize = 1 << 20
 
 // ListEvents handles GET /api/notifications/events
 func (h *NotificationsHandler) ListEvents(w http.ResponseWriter, _ *http.Request) {
-	RespondJSON(w, http.StatusOK, notifications.EventDefinitions(h.switches))
+	RespondJSON(w, http.StatusOK, notifications.EventDefinitions())
 }
 
 // ListTargets handles GET /api/notifications/targets
@@ -114,13 +111,13 @@ func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Reque
 	if req.EventTypes != nil {
 		eventTypeInput = *req.EventTypes
 	}
-	eventTypes, err := notifications.NormalizeEventTypes(eventTypeInput, h.switches)
+	eventTypes, err := notifications.NormalizeEventTypes(eventTypeInput)
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if len(eventTypes) == 0 {
-		eventTypes = notifications.AllEventTypeStrings(h.switches)
+		eventTypes = notifications.AllEventTypeStrings()
 	}
 
 	created, err := h.store.Create(r.Context(), &models.NotificationTargetCreate{
@@ -196,13 +193,13 @@ func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Reque
 
 	eventTypes := existing.EventTypes
 	if req.EventTypes != nil {
-		eventTypes, err = notifications.NormalizeEventTypes(*req.EventTypes, h.switches)
+		eventTypes, err = notifications.NormalizeEventTypes(*req.EventTypes)
 		if err != nil {
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if len(eventTypes) == 0 {
-			eventTypes = notifications.AllEventTypeStrings(h.switches)
+			eventTypes = notifications.AllEventTypeStrings()
 		}
 	}
 

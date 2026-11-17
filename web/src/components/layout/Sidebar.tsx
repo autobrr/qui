@@ -21,6 +21,7 @@ import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { useRunningTransfers } from "@/hooks/useRunningTransfers"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
@@ -54,6 +55,7 @@ export function Sidebar() {
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
   const { theme } = useTheme()
+  const runningTransfers = useRunningTransfers()
 
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -145,6 +147,14 @@ export function Sidebar() {
               >
                 <Icon className="h-4 w-4" />
                 {t(item.titleKey)}
+                {item.id === "transfers" && runningTransfers > 0 && (
+                  <span
+                    className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-xs text-primary-foreground"
+                    aria-label={t("nav.transfersRunning", { count: runningTransfers })}
+                  >
+                    {runningTransfers}
+                  </span>
+                )}
               </Link>
             )
           })}

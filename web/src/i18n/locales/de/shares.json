@@ -58,6 +58,7 @@
     "refusedEntry": "{{name}}: {{reason}}",
     "tracker": {
       "label": "Freigabe-Tracker",
+      "settings": "Freigabe-Einstellungen",
       "own": "Tracker von qui unter {{address}}",
       "outside": "Externer Tracker {{url}}"
     },

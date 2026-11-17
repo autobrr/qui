@@ -22,7 +22,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/pkg/redact"
 )
 
@@ -80,13 +79,12 @@ type Event struct {
 type Service struct {
 	store         *models.NotificationTargetStore
 	instanceStore *models.InstanceStore
-	switches      rollout.Switches
 	logger        zerolog.Logger
 	queue         chan Event
 	startOnce     sync.Once
 }
 
-func NewService(store *models.NotificationTargetStore, instanceStore *models.InstanceStore, switches rollout.Switches, logger zerolog.Logger) *Service {
+func NewService(store *models.NotificationTargetStore, instanceStore *models.InstanceStore, logger zerolog.Logger) *Service {
 	if store == nil {
 		return nil
 	}
@@ -94,7 +92,6 @@ func NewService(store *models.NotificationTargetStore, instanceStore *models.Ins
 	return &Service{
 		store:         store,
 		instanceStore: instanceStore,
-		switches:      switches,
 		logger:        logger,
 		queue:         make(chan Event, defaultQueueSize),
 	}
@@ -131,7 +128,7 @@ func (s *Service) Start(ctx context.Context) {
 func (s *Service) Listens(ctx context.Context, eventType EventType) bool {
 	targets, err := s.store.ListEnabled(ctx)
 	return err != nil || slices.ContainsFunc(targets, func(target *models.NotificationTarget) bool {
-		return s.allowsEvent(target.EventTypes, eventType)
+		return allowsEvent(target.EventTypes, eventType)
 	})
 }
 
@@ -204,7 +201,7 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 	}
 
 	for _, target := range targets {
-		if !s.allowsEvent(target.EventTypes, event.Type) {
+		if !allowsEvent(target.EventTypes, event.Type) {
 			continue
 		}
 
@@ -489,11 +486,10 @@ func (s *Service) resolveInstanceLabel(ctx context.Context, event Event) string 
 }
 
 // allowsEvent reports whether a target with eventTypes gets eventType. An
-// empty list means each event type that qui offers, except the ones a target
-// must pick.
-func (s *Service) allowsEvent(eventTypes []string, eventType EventType) bool {
+// empty list means each event type, except the ones a target must pick.
+func allowsEvent(eventTypes []string, eventType EventType) bool {
 	if len(eventTypes) == 0 {
-		return registered(eventType, s.switches) && !optIn(eventType)
+		return !optIn(eventType)
 	}
 
 	return slices.Contains(eventTypes, string(eventType))

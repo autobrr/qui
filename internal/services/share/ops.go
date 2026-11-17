@@ -16,9 +16,6 @@ import (
 // List returns every Share, the newest first, with the latest reports of the
 // tracker.
 func (s *Service) List(ctx context.Context) ([]Share, error) {
-	if !s.on() {
-		return nil, ErrOff
-	}
 	list, err := s.deps.Store.List(ctx)
 	if err != nil {
 		return nil, err
@@ -36,9 +33,6 @@ func (s *Service) List(ctx context.Context) ([]Share, error) {
 // TorrentFile returns the .torrent of the recipient of a Share and its file
 // name.
 func (s *Service) TorrentFile(ctx context.Context, id int64) ([]byte, string, error) {
-	if !s.on() {
-		return nil, "", ErrOff
-	}
 	sh, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		return nil, "", err
@@ -48,9 +42,6 @@ func (s *Service) TorrentFile(ctx context.Context, id int64) ([]byte, string, er
 
 // Stop ends an active Share. A Share that ends already stays as it is.
 func (s *Service) Stop(ctx context.Context, id int64) error {
-	if !s.on() {
-		return ErrOff
-	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	sh, err := s.deps.Store.Get(ctx, id)
@@ -66,9 +57,6 @@ func (s *Service) Stop(ctx context.Context, id int64) error {
 // Unlock lets the next downloader of an active Share with "Only the first
 // downloader" in, also after a restart of qui.
 func (s *Service) Unlock(ctx context.Context, id int64) error {
-	if !s.on() {
-		return ErrOff
-	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	sh, err := s.deps.Store.Get(ctx, id)
@@ -94,9 +82,6 @@ func (s *Service) Unlock(ctx context.Context, id int64) error {
 
 // Remove removes the row of an ended Share, or returns ErrNotEnded.
 func (s *Service) Remove(ctx context.Context, id int64) error {
-	if !s.on() {
-		return ErrOff
-	}
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	return s.removeRow(ctx, id)
@@ -121,9 +106,6 @@ func (s Settings) TrackerInUse() TrackerKind {
 
 // Settings returns the settings of Settings → Shares.
 func (s *Service) Settings(ctx context.Context) (Settings, error) {
-	if !s.on() {
-		return Settings{}, ErrOff
-	}
 	trackerSettings, err := s.deps.TrackerSettings.Settings(ctx)
 	if err != nil {
 		return Settings{}, err
@@ -142,9 +124,6 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 // Share on it is active, and sharetracker.ErrPortBusy when another program
 // listens on the port of the tracker. Then it saves nothing.
 func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
-	if !s.on() {
-		return ErrOff
-	}
 	if err := settings.Options.validate(); err != nil {
 		return err
 	}

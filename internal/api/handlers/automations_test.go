@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -26,7 +25,7 @@ func TestAutomationDecodePayload_Category(t *testing.T) {
 		t.Run("target="+category, func(t *testing.T) {
 			body := `{"name":"Category rule","trackerPattern":"*","conditions":{"category":{"enabled":true,"category":"` + category + `"}}}`
 
-			payload, err := decodeAutomationPayload(strings.NewReader(body), 1, nil, nil, true, rollout.Production())
+			payload, err := decodeAutomationPayload(strings.NewReader(body), 1, nil, nil, true)
 			require.NoError(t, err)
 			require.Equal(t, category, payload.Conditions.Category.Category)
 		})
@@ -48,7 +47,7 @@ func TestAutomationDryRunNow(t *testing.T) {
 	}`
 
 	t.Run("returns 503 when service is unavailable", func(t *testing.T) {
-		handler := NewAutomationHandler(nil, nil, nil, nil, nil, rollout.Production())
+		handler := NewAutomationHandler(nil, nil, nil, nil, nil)
 		rec := httptest.NewRecorder()
 
 		handler.DryRunNow(rec, newRequest(validPayload))
@@ -57,7 +56,7 @@ func TestAutomationDryRunNow(t *testing.T) {
 	})
 
 	t.Run("returns 400 on invalid JSON payload", func(t *testing.T) {
-		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{}, rollout.Production())
+		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{})
 		rec := httptest.NewRecorder()
 
 		handler.DryRunNow(rec, newRequest("{"))
@@ -66,7 +65,7 @@ func TestAutomationDryRunNow(t *testing.T) {
 	})
 
 	t.Run("runs dry-run and returns accepted status", func(t *testing.T) {
-		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{}, rollout.Production())
+		handler := NewAutomationHandler(nil, nil, nil, nil, &automations.Service{})
 		rec := httptest.NewRecorder()
 
 		handler.DryRunNow(rec, newRequest(validPayload))
@@ -102,10 +101,10 @@ func TestAutomationApplyRuleNow(t *testing.T) {
 		handler.ApplyRuleNow(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
 		return rec
 	}
-	handler := NewAutomationHandler(store, nil, nil, nil, &automations.Service{}, rollout.Production())
+	handler := NewAutomationHandler(store, nil, nil, nil, &automations.Service{})
 
 	t.Run("returns 503 when service is unavailable", func(t *testing.T) {
-		rec := serve(NewAutomationHandler(store, nil, nil, nil, nil, rollout.Production()), strconv.Itoa(rule.ID))
+		rec := serve(NewAutomationHandler(store, nil, nil, nil, nil), strconv.Itoa(rule.ID))
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	})
 
@@ -133,7 +132,7 @@ func TestAutomationTrackerPattern(t *testing.T) {
 	require.NoError(t, err)
 	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, nil)
 	require.NoError(t, err)
-	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, nil, nil, nil, rollout.Production())
+	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, nil, nil, nil)
 	instanceID := strconv.Itoa(instance.ID)
 
 	serve := func(method, ruleID, body string, fn http.HandlerFunc) *httptest.ResponseRecorder {
