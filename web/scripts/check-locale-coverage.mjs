@@ -35,6 +35,7 @@ const namespaces = [
   "search",
   "instances",
   "automations",
+  "transfers",
   "shares",
 ]
 

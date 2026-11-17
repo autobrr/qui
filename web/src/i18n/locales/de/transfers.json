@@ -1,0 +1,165 @@
+{
+  "page": {
+    "title": "Transfers",
+    "description": "Torrents, die qui auf eine andere Instanz verschiebt, und die Läufe der Regeln „In Instanz exportieren“."
+  },
+  "tabs": {
+    "transfers": "Transfers",
+    "shares": "Freigaben"
+  },
+  "chips": {
+    "label": "Anzeigen",
+    "all": "Alle",
+    "active": "Aktiv ({{count}})",
+    "waiting": "Wartend ({{count}})",
+    "finished": "Beendet ({{count}})",
+    "failed": "Fehlgeschlagen ({{count}})"
+  },
+  "columns": {
+    "torrent": "Torrent",
+    "route": "Von → nach",
+    "way": "Methode",
+    "progress": "Fortschritt",
+    "speed": "Geschwindigkeit",
+    "timeLeft": "Restzeit",
+    "state": "Status",
+    "started": "Gestartet",
+    "actions": "Aktionen"
+  },
+  "row": {
+    "crossSeeds_one": "+{{count}} Cross-Seed",
+    "crossSeeds_other": "+{{count}} Cross-Seeds",
+    "export": "Export",
+    "route": "{{source}} → {{target}}",
+    "byUser": "Von dir",
+    "byRule": "Durch Regel {{name}}",
+    "byDeletedRule": "Durch eine gelöschte Regel",
+    "retryAt": "Neuer Versuch {{time}}",
+    "unknownInstance": "Instanz {{id}}",
+    "noSpeed": "—"
+  },
+  "ways": {
+    "sftp": "Kopie über SFTP",
+    "local": "Kopie auf dem Datenträger von qui",
+    "none": "Keine Kopie",
+    "bittorrent": "BitTorrent",
+    "fallback": "Unbekannte Methode"
+  },
+  "states": {
+    "waiting": "Wartend",
+    "copying": "Kopiert",
+    "checking": "Prüft",
+    "finishing": "Wird abgeschlossen",
+    "done": "Fertig",
+    "failed": "Fehlgeschlagen",
+    "cancelled": "Abgebrochen",
+    "fallback": "Unbekannter Status"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} nutzt die qBittorrent-Standardeinstellung „TCP und μTP“. In den Tests von qui war „nur TCP“ etwa dreimal schneller. Ändere das in den BitTorrent-Einstellungen von {{instance}}."
+  },
+  "actions": {
+    "details": "Details",
+    "retry": "Erneut versuchen",
+    "cancel": "Abbrechen",
+    "remove": "Entfernen",
+    "retried": "Der Transfer läuft erneut.",
+    "cancelled": "qui bricht den Transfer ab und macht seine Schritte rückgängig.",
+    "removed": "Die Zeile ist entfernt.",
+    "failed": "Fehlgeschlagen: {{message}}"
+  },
+  "cancelDialog": {
+    "title": "Diesen Transfer abbrechen?",
+    "description": "qui stoppt den Transfer von {{name}}, entfernt die Dateien, die er geschrieben hat, und die Torrents, die er auf dem Ziel hinzugefügt hat, und startet den Torrent auf der Quelle wieder.",
+    "keep": "Weiterlaufen lassen",
+    "confirm": "Transfer abbrechen"
+  },
+  "list": {
+    "loading": "Transfers werden geladen…",
+    "error": "qui kann die Transfers nicht laden: {{message}}",
+    "empty": "Hier gibt es noch keinen Transfer.",
+    "limit": "Die Liste zeigt die neuesten 500 Zeilen."
+  },
+  "details": {
+    "title": "Transfer von {{name}}",
+    "exportTitle": "Export-Lauf von {{name}}",
+    "failure": "Grund des Fehlers",
+    "torrents": "Torrents",
+    "torrentOn": "Auf {{instance}}, in {{path}}",
+    "steps": "Schritte",
+    "log": "Log",
+    "noLog": "Noch keine Log-Zeilen.",
+    "loading": "Transfer wird geladen…",
+    "error": "qui kann den Transfer nicht laden: {{message}}"
+  },
+  "steps": {
+    "start": "Gestartet",
+    "prepare": "Beide Seiten vorbereitet",
+    "passByBitTorrent": "Übergabe per Transfer-Torrent",
+    "passedByBitTorrent": "Per Transfer-Torrent übergeben",
+    "fallBackToSftp": "Auf eine Kopie über SFTP ausgewichen",
+    "copyHardlink": "Hardlink kopiert",
+    "check": "Auf dem Ziel geprüft",
+    "checkFiles": "Dateien auf dem Ziel geprüft",
+    "copyMissing": "Fehlende Dateien werden kopiert",
+    "checkPartials": "Unvollständige Dateien auf dem Ziel geprüft",
+    "copyFailedPieces": "Bei der Prüfung fehlgeschlagene Teile werden kopiert",
+    "place": "Dateien abgelegt",
+    "add": "Wird zum Ziel hinzugefügt",
+    "added": "Zum Ziel hinzugefügt",
+    "after": "Quelle bearbeitet",
+    "removeFromSource": "Wird von der Quelle entfernt",
+    "cleanUp": "Wird aufgeräumt",
+    "removePlaced": "Abgelegte Dateien entfernt"
+  },
+  "stepFallback": "Anderer Schritt",
+  "form": {
+    "target": "Ziel-Instanz",
+    "targetPlaceholder": "Instanz auswählen",
+    "noTargets": "Füge eine weitere Instanz hinzu, um Torrents dorthin zu übertragen.",
+    "savePath": "Speicherpfad",
+    "savePathHelp": "Der Ordner auf dem Ziel. qui behält die Ordner des Torrents und seiner Cross-Seeds darunter bei. Leer nutzt den Standard-Speicherpfad des Ziels.",
+    "savePathPlaceholder": "Standard-Speicherpfad des Ziels",
+    "category": "Kategorie",
+    "noCategory": "Keine Kategorie",
+    "tags": "Tags",
+    "tagsPlaceholder": "tag1, tag2",
+    "after": "Nach dem Transfer",
+    "afterHelp": "Was qui mit dem Torrent auf der Quelle macht, sobald das Ziel ihn seedet.",
+    "afterOptions": {
+      "removeWithFiles": "Torrent und seine Dateien von der Quelle entfernen",
+      "keepFiles": "Torrent von der Quelle entfernen und seine Dateien behalten",
+      "keepSeeding": "Auf der Quelle weiter seeden"
+    },
+    "leaveStopped": "Torrent auf dem Ziel gestoppt lassen",
+    "way": "Methode",
+    "wayHelp": "Auto kopiert über qui, wenn qui die Dateien einer Seite auf dem eigenen Datenträger erreicht, und übergibt die Dateien sonst per Transfer-Torrent zwischen den beiden qBittorrents.",
+    "wayOptions": {
+      "auto": "Auto",
+      "copy": "Über qui kopieren",
+      "bittorrent": "Transfer-Torrent"
+    }
+  },
+  "dialog": {
+    "title": "{{name}} übertragen",
+    "description": "Verschiebe den Torrent und seine Cross-Seeds auf eine andere Instanz. qui prüft jedes Piece auf dem Ziel, bevor es die Quelle ändert.",
+    "start": "Transfer starten",
+    "starting": "Wird gestartet…",
+    "started": "Der Transfer von {{name}} wartet, bis er an der Reihe ist.",
+    "cancel": "Schließen"
+  },
+  "summary": {
+    "title": "Zusammenfassung",
+    "pickTarget": "Wähle eine Ziel-Instanz aus, um die Zusammenfassung zu sehen.",
+    "loading": "Transfer wird geplant…",
+    "refused": "qui startet diesen Transfer nicht: {{message}}",
+    "torrents_one": "{{count}} Torrent, {{size}}",
+    "torrents_other": "{{count}} Torrents, {{size}}",
+    "way": "Methode: {{way}}",
+    "free": "Frei auf dem Ziel: {{size}}",
+    "freeUnknown": "Freier Speicher unbekannt: Vor qBittorrent 5.3 meldet qBittorrent ihn nur für seinen Standard-Speicherpfad.",
+    "notEnoughSpace": "Das Ziel hat weniger freien Speicher, als der Transfer braucht.",
+    "noFileAccess": "qui sieht die Dateien auf {{instance}} nicht, daher kann eine Datei mit anderem Inhalt am selben Pfad ersetzt werden.",
+    "crossSeedInstance": "Auf {{instance}}"
+  }
+}

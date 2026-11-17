@@ -6829,57 +6829,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - sourceInstanceId
-                - hash
-                - targetInstanceId
-              properties:
-                sourceInstanceId:
-                  type: integer
-                  description: The instance that has the torrent
-                hash:
-                  type: string
-                  description: The infohash of the torrent on the source
-                targetInstanceId:
-                  type: integer
-                  description: The instance that gets the torrent
-                savePath:
-                  type: string
-                  description: The save path on the target. Empty is the default save path of the target.
-                category:
-                  type: string
-                  description: The category of the torrent on the target
-                tags:
-                  type: array
-                  items:
-                    type: string
-                  description: The tags of the torrent on the target
-                after:
-                  type: string
-                  enum:
-                    - removeWithFiles
-                    - keepFiles
-                    - keepSeeding
-                  default: removeWithFiles
-                  description: >-
-                    What happens to the torrent on the source after the Transfer. removeWithFiles keeps a file that
-                    another torrent reads.
-                leaveStopped:
-                  type: boolean
-                  description: Keep the torrent stopped on the target
-                way:
-                  type: string
-                  enum:
-                    - auto
-                    - copy
-                    - bittorrent
-                  default: auto
-                  description: >-
-                    How the files move. auto lets qui pick: a copy through qui when qui reaches the files of a side on
-                    its own disk, and else a Transfer torrent between the two qBittorrents, which falls back to a copy
-                    over SSH when the clients do not connect. copy forces a copy through qui, which needs file access
-                    to both instances. bittorrent forces a Transfer torrent.
+              $ref: '#/components/schemas/TransferRequest'
       responses:
         '202':
           description: The Transfer is recorded and waits for its turn
@@ -6911,6 +6861,281 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - Transfers
+      summary: List Transfers
+      description: >-
+        Lists the newest Transfers and Export to Instance runs, at most 500, behind a filter chip of the Transfers
+        page, with the counts of every chip. Active is copying, checking, and finishing; Waiting is waiting; Finished
+        is done and cancelled; Failed is failed, also a failure that waits for its retry. Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - active
+              - waiting
+              - finished
+              - failed
+          description: The filter chip. Without it the list has every row.
+      responses:
+        '200':
+          description: The rows and the counts of the chips
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - rows
+                  - counts
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransferRow'
+                  counts:
+                    type: object
+                    required:
+                      - active
+                      - waiting
+                      - finished
+                      - failed
+                    properties:
+                      active:
+                        type: integer
+                      waiting:
+                        type: integer
+                      finished:
+                        type: integer
+                      failed:
+                        type: integer
+        '400':
+          description: Unknown filter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to list the Transfers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/summary:
+    post:
+      tags:
+        - Transfers
+      summary: Plan a Transfer
+      description: >-
+        Plans the Transfer of the Transfer dialog with the checks of a start, and records, claims, and starts nothing.
+        The answer names the torrents of the group, their size, the way, the free space on the target, and warnings.
+        Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '200':
+          description: The plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferSummary'
+        '400':
+          description: The body is invalid, it does not name the source, the torrent, and the target, or it names an unknown way
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: qui refuses the Transfer, or another Transfer holds the torrent. The message says why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to plan the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/{transferID}:
+    get:
+      tags:
+        - Transfers
+      summary: Get a Transfer
+      description: Returns one Transfer or Export to Instance run with its steps, its log, and its torrents. Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '200':
+          description: The Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferDetail'
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to read the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Transfers
+      summary: Remove a finished Transfer
+      description: >-
+        Removes the row of a finished Transfer or Export to Instance run before the 30 days are over, with the registry
+        rows of its helper torrents. Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '204':
+          description: The row is removed
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Transfer has not ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to remove the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/{transferID}/retry:
+    post:
+      tags:
+        - Transfers
+      summary: Retry a Transfer
+      description: >-
+        Runs a failed or cancelled Transfer or Export to Instance run again. A Transfer that waits for its retry runs
+        at once as the same Transfer. Any other starts again as a new Transfer or Export run with the same target and
+        choices, and the old row stays. Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '202':
+          description: The run is recorded and waits for its turn
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                    description: The ID of the run, the same ID for a Transfer that waited for its retry
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Transfer did not fail and was not cancelled, or qui refuses the new Transfer. The message says why.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to retry the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/transfers/{transferID}/cancel:
+    post:
+      tags:
+        - Transfers
+      summary: Cancel a Transfer
+      description: >-
+        Stops a Transfer or Export to Instance run and takes back what it did: qui removes the files that it wrote and
+        the torrents that it added, and starts the source again. The cleanup runs in the background. Only a signed-in browser can use this route. The route is not available yet.
+      security:
+        - SessionAuth: []
+      parameters:
+        - $ref: '#/components/parameters/transferID'
+      responses:
+        '202':
+          description: The cancel runs
+        '400':
+          description: Invalid Transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The Transfer has ended, or the removal from the source has started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to cancel the Transfer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 
   /api/shares:
     post:
@@ -8338,6 +8563,15 @@ components:
         header. Other clients should use an API key.
 
   parameters:
+    transferID:
+      name: transferID
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      description: The ID of the Transfer or Export to Instance run
     shareID:
       name: shareID
       in: path
@@ -8408,6 +8642,300 @@ components:
         error:
           type: string
 
+    TransferRequest:
+      type: object
+      required:
+        - sourceInstanceId
+        - hash
+        - targetInstanceId
+      properties:
+        sourceInstanceId:
+          type: integer
+          description: The instance that has the torrent
+        hash:
+          type: string
+          description: The infohash of the torrent on the source
+        targetInstanceId:
+          type: integer
+          description: The instance that gets the torrent
+        savePath:
+          type: string
+          description: The save path on the target. Empty is the default save path of the target.
+        category:
+          type: string
+          description: The category of the torrent on the target
+        tags:
+          type: array
+          items:
+            type: string
+          description: The tags of the torrent on the target
+        after:
+          type: string
+          enum:
+            - removeWithFiles
+            - keepFiles
+            - keepSeeding
+          default: removeWithFiles
+          description: >-
+            What happens to the torrent on the source after the Transfer. removeWithFiles keeps a file that
+            another torrent reads.
+        leaveStopped:
+          type: boolean
+          description: Keep the torrent stopped on the target
+        way:
+          type: string
+          enum:
+            - auto
+            - copy
+            - bittorrent
+          default: auto
+          description: >-
+            How the files move. auto lets qui pick: a copy through qui when qui reaches the files of a side on
+            its own disk, and else a Transfer torrent between the two qBittorrents, which falls back to a copy
+            over SSH when the clients do not connect. copy forces a copy through qui, which needs file access
+            to both instances. bittorrent forces a Transfer torrent.
+    TransferHint:
+      type: object
+      required:
+        - kind
+        - instanceId
+      properties:
+        kind:
+          type: string
+          enum:
+            - tcpAndUtp
+          description: tcpAndUtp is a client on "TCP and μTP"; "TCP only" passed a Transfer torrent about three times faster.
+        instanceId:
+          type: integer
+    TransferMember:
+      type: object
+      required:
+        - hash
+        - name
+        - targetInstanceId
+        - savePath
+        - category
+        - tags
+      properties:
+        hash:
+          type: string
+        name:
+          type: string
+        targetInstanceId:
+          type: integer
+          description: The Transfer target, or the Cross-seed instance of the target
+        savePath:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    TransferSummary:
+      type: object
+      required:
+        - way
+        - bytes
+        - members
+        - free
+        - freeKnown
+        - noFileAccess
+        - hints
+      properties:
+        way:
+          type: string
+          enum:
+            - sftp
+            - local
+            - none
+            - bittorrent
+        bytes:
+          type: integer
+          format: int64
+          description: The size of the files of the group
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferMember'
+        free:
+          type: integer
+          format: int64
+          description: The free space at the target folder, when freeKnown
+        freeKnown:
+          type: boolean
+          description: False when qui cannot read the free space, as before qBittorrent 5.3 away from the default save path
+        noFileAccess:
+          type: boolean
+          description: qui cannot see the files on the target, so a file with other content at the same path can be replaced
+        hints:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferHint'
+    TransferRow:
+      type: object
+      required:
+        - id
+        - kind
+        - way
+        - state
+        - startedBy
+        - ruleId
+        - ruleName
+        - sourceInstanceId
+        - targetInstanceId
+        - hash
+        - name
+        - torrents
+        - after
+        - leaveStopped
+        - retryAt
+        - failureClass
+        - failureReason
+        - createdAt
+        - finishedAt
+        - hints
+        - progress
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          enum:
+            - transfer
+            - export
+        way:
+          type: string
+          enum:
+            - sftp
+            - local
+            - none
+            - bittorrent
+        state:
+          type: string
+          enum:
+            - waiting
+            - copying
+            - checking
+            - finishing
+            - done
+            - failed
+            - cancelled
+        startedBy:
+          type: string
+          enum:
+            - user
+            - rule
+        ruleId:
+          type: integer
+          nullable: true
+        ruleName:
+          type: string
+          description: The name of the rule that started the run, empty when no rule did or the rule is gone
+        sourceInstanceId:
+          type: integer
+        targetInstanceId:
+          type: integer
+        hash:
+          type: string
+          description: The torrent of the request
+        name:
+          type: string
+        torrents:
+          type: integer
+          description: The torrents of the Transfer, the torrent of the request with its cross-seeds
+        after:
+          type: string
+        leaveStopped:
+          type: boolean
+        retryAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When a failure that waits for its retry runs again
+        failureClass:
+          type: string
+          enum:
+            - ''
+            - temporary
+            - permanent
+        failureReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        hints:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferHint'
+        progress:
+          type: object
+          nullable: true
+          description: The bytes that reached the target while the files pass, null at any other time
+          required:
+            - done
+            - total
+            - speed
+          properties:
+            done:
+              type: integer
+              format: int64
+            total:
+              type: integer
+              format: int64
+            speed:
+              type: integer
+              format: int64
+              description: Bytes a second over the last 10 seconds
+    TransferDetail:
+      allOf:
+        - $ref: '#/components/schemas/TransferRow'
+        - type: object
+          required:
+            - steps
+            - log
+            - members
+          properties:
+            steps:
+              type: array
+              items:
+                type: object
+                required:
+                  - name
+                  - at
+                  - detail
+                properties:
+                  name:
+                    type: string
+                  at:
+                    type: string
+                    format: date-time
+                  detail:
+                    type: string
+            log:
+              type: array
+              items:
+                type: object
+                required:
+                  - at
+                  - message
+                properties:
+                  at:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+                  hint:
+                    $ref: '#/components/schemas/TransferHint'
+            members:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransferMember'
     Share:
       type: object
       properties:

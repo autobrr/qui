@@ -1,0 +1,165 @@
+{
+  "page": {
+    "title": "Trasferimenti",
+    "description": "I torrent che qui sposta su un'altra istanza e le esecuzioni delle regole «Esporta verso l'istanza»."
+  },
+  "tabs": {
+    "transfers": "Trasferimenti",
+    "shares": "Condivisioni"
+  },
+  "chips": {
+    "label": "Mostra",
+    "all": "Tutti",
+    "active": "Attivi ({{count}})",
+    "waiting": "In attesa ({{count}})",
+    "finished": "Terminati ({{count}})",
+    "failed": "Non riusciti ({{count}})"
+  },
+  "columns": {
+    "torrent": "Torrent",
+    "route": "Da → a",
+    "way": "Metodo",
+    "progress": "Avanzamento",
+    "speed": "Velocità",
+    "timeLeft": "Tempo rimanente",
+    "state": "Stato",
+    "started": "Avviato",
+    "actions": "Azioni"
+  },
+  "row": {
+    "crossSeeds_one": "+{{count}} cross-seed",
+    "crossSeeds_other": "+{{count}} cross-seed",
+    "export": "Esportazione",
+    "route": "{{source}} → {{target}}",
+    "byUser": "Da te",
+    "byRule": "Dalla regola {{name}}",
+    "byDeletedRule": "Da una regola eliminata",
+    "retryAt": "Nuovo tentativo {{time}}",
+    "unknownInstance": "Istanza {{id}}",
+    "noSpeed": "—"
+  },
+  "ways": {
+    "sftp": "Copia via SFTP",
+    "local": "Copia sul disco di qui",
+    "none": "Nessuna copia",
+    "bittorrent": "BitTorrent",
+    "fallback": "Metodo sconosciuto"
+  },
+  "states": {
+    "waiting": "In attesa",
+    "copying": "Copia in corso",
+    "checking": "Verifica in corso",
+    "finishing": "Completamento",
+    "done": "Completato",
+    "failed": "Non riuscito",
+    "cancelled": "Annullato",
+    "fallback": "Stato sconosciuto"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} usa l'impostazione predefinita di qBittorrent «TCP e μTP». Nei test di qui, «Solo TCP» è risultato circa tre volte più veloce. Cambiala nelle impostazioni BitTorrent di {{instance}}."
+  },
+  "actions": {
+    "details": "Dettagli",
+    "retry": "Riprova",
+    "cancel": "Annulla",
+    "remove": "Rimuovi",
+    "retried": "Il trasferimento riparte.",
+    "cancelled": "qui annulla il trasferimento e ripristina ciò che ha fatto.",
+    "removed": "La riga è stata rimossa.",
+    "failed": "Non riuscito: {{message}}"
+  },
+  "cancelDialog": {
+    "title": "Annullare questo trasferimento?",
+    "description": "qui ferma il trasferimento di {{name}}, rimuove i file che ha scritto e i torrent che ha aggiunto sulla destinazione, e riavvia il torrent sulla sorgente.",
+    "keep": "Continua",
+    "confirm": "Annulla il trasferimento"
+  },
+  "list": {
+    "loading": "Caricamento dei trasferimenti…",
+    "error": "qui non riesce a caricare i trasferimenti: {{message}}",
+    "empty": "Ancora nessun trasferimento.",
+    "limit": "L'elenco mostra le 500 righe più recenti."
+  },
+  "details": {
+    "title": "Trasferimento di {{name}}",
+    "exportTitle": "Esecuzione dell'esportazione di {{name}}",
+    "failure": "Motivo dell'errore",
+    "torrents": "Torrent",
+    "torrentOn": "Su {{instance}}, in {{path}}",
+    "steps": "Passaggi",
+    "log": "Log",
+    "noLog": "Ancora nessuna riga di log.",
+    "loading": "Caricamento del trasferimento…",
+    "error": "qui non riesce a caricare il trasferimento: {{message}}"
+  },
+  "steps": {
+    "start": "Avviato",
+    "prepare": "Entrambi i lati preparati",
+    "passByBitTorrent": "Passaggio tramite un torrent di trasferimento",
+    "passedByBitTorrent": "Passato tramite un torrent di trasferimento",
+    "fallBackToSftp": "Ripiegato su una copia via SFTP",
+    "copyHardlink": "Hardlink copiato",
+    "check": "Verificato sulla destinazione",
+    "checkFiles": "File verificati sulla destinazione",
+    "copyMissing": "Copia dei file mancanti",
+    "checkPartials": "File parziali verificati sulla destinazione",
+    "copyFailedPieces": "Copia dei pezzi che non hanno superato la verifica",
+    "place": "File posizionati",
+    "add": "Aggiunta alla destinazione",
+    "added": "Aggiunto alla destinazione",
+    "after": "Sorgente gestita",
+    "removeFromSource": "Rimozione dalla sorgente",
+    "cleanUp": "Pulizia",
+    "removePlaced": "File posizionati rimossi"
+  },
+  "stepFallback": "Altro passaggio",
+  "form": {
+    "target": "Istanza di destinazione",
+    "targetPlaceholder": "Seleziona un'istanza",
+    "noTargets": "Aggiungi un'altra istanza per trasferirvi i torrent.",
+    "savePath": "Percorso di salvataggio",
+    "savePathHelp": "La cartella sulla destinazione. qui mantiene al suo interno le cartelle del torrent e dei suoi cross-seed. Se vuoto, usa il percorso di salvataggio predefinito della destinazione.",
+    "savePathPlaceholder": "Percorso di salvataggio predefinito della destinazione",
+    "category": "Categoria",
+    "noCategory": "Nessuna categoria",
+    "tags": "Tag",
+    "tagsPlaceholder": "tag1, tag2",
+    "after": "Dopo il trasferimento",
+    "afterHelp": "Cosa fa qui con il torrent sulla sorgente quando la destinazione lo distribuisce.",
+    "afterOptions": {
+      "removeWithFiles": "Rimuovi il torrent e i suoi file dalla sorgente",
+      "keepFiles": "Rimuovi il torrent dalla sorgente e mantieni i suoi file",
+      "keepSeeding": "Continua la distribuzione sulla sorgente"
+    },
+    "leaveStopped": "Lascia il torrent fermo sulla destinazione",
+    "way": "Metodo",
+    "wayHelp": "Auto copia tramite qui quando qui raggiunge i file di un lato sul proprio disco, altrimenti passa i file tramite un torrent di trasferimento tra i due qBittorrent.",
+    "wayOptions": {
+      "auto": "Auto",
+      "copy": "Copia tramite qui",
+      "bittorrent": "Torrent di trasferimento"
+    }
+  },
+  "dialog": {
+    "title": "Trasferisci {{name}}",
+    "description": "Sposta il torrent e i suoi cross-seed su un'altra istanza. qui verifica ogni pezzo sulla destinazione prima di modificare la sorgente.",
+    "start": "Avvia il trasferimento",
+    "starting": "Avvio…",
+    "started": "Il trasferimento di {{name}} attende il suo turno.",
+    "cancel": "Chiudi"
+  },
+  "summary": {
+    "title": "Riepilogo",
+    "pickTarget": "Seleziona un'istanza di destinazione per vedere il riepilogo.",
+    "loading": "Pianificazione del trasferimento…",
+    "refused": "qui non avvia questo trasferimento: {{message}}",
+    "torrents_one": "{{count}} torrent, {{size}}",
+    "torrents_other": "{{count}} torrent, {{size}}",
+    "way": "Metodo: {{way}}",
+    "free": "Spazio libero sulla destinazione: {{size}}",
+    "freeUnknown": "Spazio libero sconosciuto: prima di qBittorrent 5.3, qBittorrent lo riporta solo per il suo percorso di salvataggio predefinito.",
+    "notEnoughSpace": "La destinazione ha meno spazio libero di quanto serve al trasferimento.",
+    "noFileAccess": "qui non vede i file su {{instance}}, quindi un file con contenuto diverso nello stesso percorso può essere sostituito.",
+    "crossSeedInstance": "Su {{instance}}"
+  }
+}

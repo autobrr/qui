@@ -128,6 +128,7 @@ export const namespaces = [
   "search",
   "instances",
   "automations",
+  "transfers",
   "shares",
 ] as const
 

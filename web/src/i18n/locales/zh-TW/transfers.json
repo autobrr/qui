@@ -1,0 +1,163 @@
+{
+  "page": {
+    "title": "傳輸",
+    "description": "qui 移到其他實例的種子，以及「匯出到實例」規則的執行紀錄。"
+  },
+  "tabs": {
+    "transfers": "傳輸",
+    "shares": "共享"
+  },
+  "chips": {
+    "label": "顯示",
+    "all": "全部",
+    "active": "進行中（{{count}}）",
+    "waiting": "等待中（{{count}}）",
+    "finished": "已完成（{{count}}）",
+    "failed": "失敗（{{count}}）"
+  },
+  "columns": {
+    "torrent": "種子",
+    "route": "來源 → 目標",
+    "way": "方式",
+    "progress": "進度",
+    "speed": "速度",
+    "timeLeft": "剩餘時間",
+    "state": "狀態",
+    "started": "開始時間",
+    "actions": "操作"
+  },
+  "row": {
+    "crossSeeds_other": "+{{count}} 個輔種",
+    "export": "匯出",
+    "route": "{{source}} → {{target}}",
+    "byUser": "由你啟動",
+    "byRule": "由規則 {{name}} 啟動",
+    "byDeletedRule": "由已刪除的規則啟動",
+    "retryAt": "{{time}}重試",
+    "unknownInstance": "實例 {{id}}",
+    "noSpeed": "—"
+  },
+  "ways": {
+    "sftp": "透過 SFTP 複製",
+    "local": "在 qui 的磁碟上複製",
+    "none": "不複製",
+    "bittorrent": "BitTorrent",
+    "fallback": "未知方式"
+  },
+  "states": {
+    "waiting": "等待中",
+    "copying": "複製中",
+    "checking": "檢查中",
+    "finishing": "收尾中",
+    "done": "完成",
+    "failed": "失敗",
+    "cancelled": "已取消",
+    "fallback": "未知狀態"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} 使用 qBittorrent 的預設設定「TCP 與 μTP」。在 qui 的測試中，「僅 TCP」快約三倍。請在 {{instance}} 的 BitTorrent 設定中變更。"
+  },
+  "actions": {
+    "details": "詳細資料",
+    "retry": "重試",
+    "cancel": "取消",
+    "remove": "移除",
+    "retried": "傳輸將重新執行。",
+    "cancelled": "qui 取消此傳輸並復原已完成的操作。",
+    "removed": "該列已移除。",
+    "failed": "失敗：{{message}}"
+  },
+  "cancelDialog": {
+    "title": "取消此傳輸？",
+    "description": "qui 將停止 {{name}} 的傳輸，移除它在目標上寫入的檔案和新增的種子，並在來源上重新啟動該種子。",
+    "keep": "繼續執行",
+    "confirm": "取消傳輸"
+  },
+  "list": {
+    "loading": "正在載入傳輸…",
+    "error": "qui 無法載入傳輸清單：{{message}}",
+    "empty": "尚無傳輸。",
+    "limit": "清單僅顯示最新的 500 列。"
+  },
+  "details": {
+    "title": "{{name}} 的傳輸",
+    "exportTitle": "{{name}} 的匯出執行",
+    "failure": "失敗原因",
+    "torrents": "種子",
+    "torrentOn": "位於 {{instance}}，路徑 {{path}}",
+    "steps": "步驟",
+    "log": "日誌",
+    "noLog": "尚無日誌。",
+    "loading": "正在載入傳輸…",
+    "error": "qui 無法載入此傳輸：{{message}}"
+  },
+  "steps": {
+    "start": "已開始",
+    "prepare": "已準備兩端",
+    "passByBitTorrent": "正在透過傳輸種子傳遞",
+    "passedByBitTorrent": "已透過傳輸種子傳遞",
+    "fallBackToSftp": "已改為透過 SFTP 複製",
+    "copyHardlink": "已複製硬連結",
+    "check": "已在目標上檢查",
+    "checkFiles": "已在目標上檢查檔案",
+    "copyMissing": "正在複製缺少的檔案",
+    "checkPartials": "已在目標上檢查不完整的檔案",
+    "copyFailedPieces": "正在複製未通過檢查的區塊",
+    "place": "已放置檔案",
+    "add": "正在新增到目標",
+    "added": "已新增到目標",
+    "after": "已處理來源",
+    "removeFromSource": "正在從來源移除",
+    "cleanUp": "正在清理",
+    "removePlaced": "已移除放置的檔案"
+  },
+  "stepFallback": "其他步驟",
+  "form": {
+    "target": "目標實例",
+    "targetPlaceholder": "選擇實例",
+    "noTargets": "新增另一個實例後才能將種子傳輸過去。",
+    "savePath": "儲存路徑",
+    "savePathHelp": "目標上的資料夾。qui 會在其下保留種子及其輔種的資料夾結構。留空則使用目標的預設儲存路徑。",
+    "savePathPlaceholder": "目標的預設儲存路徑",
+    "category": "分類",
+    "noCategory": "無分類",
+    "tags": "標籤",
+    "tagsPlaceholder": "標籤1, 標籤2",
+    "after": "傳輸完成後",
+    "afterHelp": "目標開始做種後，qui 如何處理來源上的種子。",
+    "afterOptions": {
+      "removeWithFiles": "從來源移除種子及其檔案",
+      "keepFiles": "從來源移除種子但保留檔案",
+      "keepSeeding": "在來源上繼續做種"
+    },
+    "leaveStopped": "在目標上保持種子停止",
+    "way": "方式",
+    "wayHelp": "自動：當 qui 能在自己的磁碟上存取某一端的檔案時，透過 qui 複製；否則透過兩個 qBittorrent 之間的傳輸種子傳遞檔案。",
+    "wayOptions": {
+      "auto": "自動",
+      "copy": "透過 qui 複製",
+      "bittorrent": "傳輸種子"
+    }
+  },
+  "dialog": {
+    "title": "傳輸 {{name}}",
+    "description": "將種子及其輔種移到另一個實例。qui 會在變更來源之前檢查目標上的每個區塊。",
+    "start": "開始傳輸",
+    "starting": "正在開始…",
+    "started": "{{name}} 的傳輸正在排隊等候。",
+    "cancel": "關閉"
+  },
+  "summary": {
+    "title": "摘要",
+    "pickTarget": "選擇目標實例以檢視摘要。",
+    "loading": "正在規劃傳輸…",
+    "refused": "qui 不會啟動此傳輸：{{message}}",
+    "torrents_other": "{{count}} 個種子，{{size}}",
+    "way": "方式：{{way}}",
+    "free": "目標可用空間：{{size}}",
+    "freeUnknown": "可用空間未知：在 qBittorrent 5.3 之前，qBittorrent 僅回報其預設儲存路徑的可用空間。",
+    "notEnoughSpace": "目標的可用空間少於此傳輸所需的空間。",
+    "noFileAccess": "qui 無法檢視 {{instance}} 上的檔案，因此同一路徑下內容不同的檔案可能會被取代。",
+    "crossSeedInstance": "新增到 {{instance}}"
+  }
+}

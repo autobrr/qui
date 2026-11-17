@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
+	"github.com/autobrr/qui/internal/rollout"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peeraddress"
@@ -97,8 +98,11 @@ type Deps struct {
 	// Notifier gets the event of each end of a Transfer. Nil sends none.
 	Notifier notifications.Notifier
 	// Now is the clock of the steps and the log. Nil is time.Now.
-	Now    func() time.Time
-	Config Config
+	Now func() time.Time
+	// Switches: while TransfersAndShares and ExportOnTransfer are off, qui
+	// removes no old row.
+	Switches rollout.Switches
+	Config   Config
 }
 
 // Service runs Transfers: one at a time for each Transfer source, in the
@@ -125,6 +129,9 @@ type Service struct {
 	reserved, freed map[int]int64
 	// exports holds a place for each Export run that runs.
 	exports chan struct{}
+	// purged is when qui last removed the rows that finished more than
+	// keepFinished ago.
+	purged time.Time
 }
 
 // run is a Transfer that the Service holds.
@@ -134,6 +141,8 @@ type run struct {
 	cancelled bool
 	// committed is set once a cancel no longer rolls the Transfer back.
 	committed bool
+	// meter counts the bytes of a Transfer that runs.
+	meter *meter
 }
 
 // NewService returns a Service whose Transfers stop when ctx ends or at
@@ -160,6 +169,7 @@ func NewService(ctx context.Context, deps Deps) *Service {
 		freed:    map[int]int64{},
 		exports:  make(chan struct{}, exportsAtATime),
 	}
+	s.purge()                           //nolint:contextcheck // the Service runs on its own context, s.ctx
 	s.wake(true)                        //nolint:contextcheck // the Service runs on its own context, s.ctx
 	go s.tick(deps.Config.WakeInterval) //nolint:contextcheck // the Service runs on its own context, s.ctx
 	return s
@@ -178,6 +188,9 @@ func (s *Service) tick(interval time.Duration) {
 		case <-ticks:
 			if s.deps.Store.HasClaims() {
 				s.Wake()
+			}
+			if s.deps.Now().Sub(s.purged) >= purgeInterval {
+				s.purge()
 			}
 		}
 	}
@@ -325,10 +338,11 @@ func (s *Service) drain(sourceID int) {
 		}
 		id := queue[0]
 		ctx, cancel := context.WithCancel(s.ctx)
-		s.runs[id].cancel = cancel
+		m := &meter{now: s.deps.Now}
+		s.runs[id].cancel, s.runs[id].meter = cancel, m
 		s.mu.Unlock()
 
-		s.runOne(ctx, id)
+		s.runOne(ctx, id, m)
 		cancel()
 
 		s.mu.Lock()
@@ -345,7 +359,7 @@ func (s *Service) drain(sourceID int) {
 	}
 }
 
-func (s *Service) runOne(ctx context.Context, id int64) {
+func (s *Service) runOne(ctx context.Context, id int64, m *meter) {
 	record, err := s.deps.Store.Get(ctx, id)
 	if err != nil {
 		log.Error().Err(err).Int64("transfer", id).Msg("transfer: cannot read the Transfer")
@@ -355,6 +369,7 @@ func (s *Service) runOne(ctx context.Context, id int64) {
 		return
 	}
 	j := s.newJob(record)
+	j.meter = m
 	if j.reached(stepCleanUp) {
 		j.cleanUpAgain(ctx)
 		return
@@ -392,6 +407,15 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 	}
 	r, held := s.runs[id]
 	switch {
+	case !held && record.Kind == KindExport:
+		s.runs[id] = &run{cancelled: true}
+		s.wg.Go(func() {
+			(&exportJob{job: s.newJob(record), ruleName: record.Steps[0].Detail}).cancel(context.WithoutCancel(ctx))
+			s.mu.Lock()
+			delete(s.runs, id)
+			s.mu.Unlock()
+		})
+		return nil
 	case !held:
 		s.runs[id] = &run{cancelled: true}
 	case r.committed:
