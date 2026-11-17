@@ -37,7 +37,7 @@ func (s Settings) Validate() error {
 	}
 	if s.PublicAddress != "" {
 		u, err := url.Parse(s.PublicAddress)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || strings.ContainsAny(s.PublicAddress, "?#") {
 			return fmt.Errorf("%w: the public address is not an http or https URL", ErrInvalidSettings)
 		}
 	}
