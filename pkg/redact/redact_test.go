@@ -426,6 +426,26 @@ func TestText(t *testing.T) {
 			want:  "authorization: REDACTED",
 		},
 		{
+			name:  "escaped json field with an escaped newline or quote in its value",
+			input: `{"message":"body {\"password\":\"abc\\ndef\\\"gh\",\"name\":\"x\"}"}`,
+			want:  `{"message":"body {\"password\":\"REDACTED\",\"name\":\"x\"}"}`,
+		},
+		{
+			name:  "authorization header with quoted parameters",
+			input: `Authorization: Digest username="alice", realm="test", response="abcdef123456"`,
+			want:  "Authorization: REDACTED",
+		},
+		{
+			name:  "authorization header with a quoted value",
+			input: `Authorization: "Bearer abcdef123456"`,
+			want:  "Authorization: REDACTED",
+		},
+		{
+			name:  "authorization header with quoted parameters inside a json log line",
+			input: `{"message":"request Authorization: Digest username=\"alice\", response=\"abcdef123456\"","level":"warn"}`,
+			want:  `{"message":"request Authorization: REDACTED","level":"warn"}`,
+		},
+		{
 			name:  "plain text stays",
 			input: "cross-seed search found 3 results for Some.Show.S01E01",
 			want:  "cross-seed search found 3 results for Some.Show.S01E01",

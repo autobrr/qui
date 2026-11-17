@@ -167,8 +167,8 @@ const sensitiveFieldName = `[A-Za-z0-9_.-]*(?i:key|pass|token|secret|auth)[A-Za-
 var (
 	jsonSecretStringRegex  = regexp.MustCompile(`("` + sensitiveFieldName + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
 	jsonSecretScalarRegex  = regexp.MustCompile(`(\\?"` + sensitiveFieldName + `\\?"\s*:\s*)[^\s,}\]"{\[\\]+`)
-	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveFieldName + `\\"\s*:\s*)\\"(?:[^"\\]|\\\\\\\\)*\\"`)
-	authorizationRegex     = regexp.MustCompile(`(?i)(authorization:[ \t]*)[^\r\n"]+`)
+	escapedJSONSecretRegex = regexp.MustCompile(`(\\"` + sensitiveFieldName + `\\"\s*:\s*)\\"(?:[^"\\]|\\[^"\\]|\\\\(?:\\\\|\\"|[^"\\]))*\\"`)
+	authorizationRegex     = regexp.MustCompile(`(?i)(authorization:[ \t]*)(?:[^\s"\\]|\\.)(?:="[^"\r\n]*"|[^\r\n"\\]|\\.)*`)
 	keyValueSecretRegex    = regexp.MustCompile(`(^|[^A-Za-z0-9_.\-/@])(` + sensitiveFieldName + `:[ \t]*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;"'&}\]]+)`)
 )
 
