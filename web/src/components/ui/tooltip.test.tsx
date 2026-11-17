@@ -120,6 +120,22 @@ describe("TooltipTrigger on a touch device", () => {
     expect(tooltipShown()).toBe(true)
   })
 
+  it("opens on a pen tap of a trigger marked openOnTap only, and keeps the tap from the row", () => {
+    const openRow = vi.fn()
+    renderTooltip(
+      <div role="button" tabIndex={0} onClick={openRow}>
+        <TooltipTrigger asChild openOnTap="only"><span>Files over SSH</span></TooltipTrigger>
+      </div>
+    )
+
+    const fact = screen.getByText("Files over SSH")
+    fireEvent.pointerDown(fact, { pointerType: "pen" })
+    fireEvent(fact, new PointerEvent("click", { bubbles: true, pointerType: "mouse" }))
+
+    expect(tooltipShown()).toBe(true)
+    expect(openRow).not.toHaveBeenCalled()
+  })
+
   it("opens on a bare trigger, which renders its own button", () => {
     renderTooltip(<TooltipTrigger aria-label="More information">i</TooltipTrigger>)
 

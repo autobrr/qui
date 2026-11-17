@@ -94,12 +94,12 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
 
 type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger> & {
   /**
-   * Whether a tap on a touch device opens the tooltip. Without it, a tap opens the tooltip unless the tap also acts: it
-   * reaches an enabled link, button, form field, or menu item at the trigger or around it. A bare trigger (no asChild)
-   * opens on every tap. Set it on a button that only explains, or on a trigger whose tooltip must open even when the
-   * tap also reaches a control around it.
+   * What a tap on a touch device does. Without it, a tap opens the tooltip unless the tap also acts: it reaches an
+   * enabled link, button, form field, label of an enabled field, option, or menu item at the trigger or around it. A
+   * bare trigger (no asChild) opens on every tap. true opens it, also when the tap reaches a control around the trigger.
+   * "only" opens it and keeps the tap from that control, for a row whose action would cover the tooltip.
    */
-  openOnTap?: boolean
+  openOnTap?: boolean | "only"
 }
 type TriggerPointerEvent = Parameters<NonNullable<TooltipTriggerProps["onPointerDown"]>>[0]
 type TriggerKeyEvent = Parameters<NonNullable<TooltipTriggerProps["onKeyDown"]>>[0]
@@ -144,7 +144,6 @@ const TooltipTrigger = React.forwardRef<
   const triggerProps = props.asChild ? props : { type: "button" as const, ...props }
 
   if (context.isTouchDevice) {
-    // On touch devices, a click toggles the tooltip by the rule of openOnTap.
     return (
       <TooltipPrimitive.Trigger
         ref={ref}
@@ -152,11 +151,14 @@ const TooltipTrigger = React.forwardRef<
         onPointerEnter={handlePointerEnter}
         onKeyDown={handleKeyDown}
         onClick={(e) => {
-          // A mouse click, for example from an iPad trackpad, always toggles. Only a tap follows openOnTap.
+          // A click from a mouse (for example an iPad trackpad) or a key toggles as before. Only a tap follows openOnTap.
           // A bare trigger renders its own button, which does nothing but show the tooltip.
-          const mouse = pressPointerTypeRef.current === "mouse"
-          if (mouse || (openOnTap ?? (!props.asChild || !tapActs(e.target)))) {
+          const tap = pressPointerTypeRef.current === "touch" || pressPointerTypeRef.current === "pen"
+          if (!tap || (openOnTap ?? (!props.asChild || !tapActs(e.target)))) {
             context.setOpen?.(!context.isOpen)
+          }
+          if (tap && openOnTap === "only") {
+            e.stopPropagation()
           }
           onClick?.(e)
         }}
