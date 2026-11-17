@@ -624,6 +624,11 @@ func TestTransferRefuses(t *testing.T) {
 			return r.request(s)
 		}, reason: showName + "/Show.S01E01.mkv has the original name of another file of " + showName + "."},
 		// regression: #4231
+		{name: "a source that moved a file to the original name of another in other case", setup: func(r *rig, s show) transfer.Request {
+			r.renameOnSource(s, "Show.S01E01.mkv", "Show.S01E00.mkv", "Show.S01E02.mkv", "show.s01e01.mkv")
+			return r.request(s)
+		}, reason: showName + "/show.s01e01.mkv has the original name of another file of " + showName + "."},
+		// regression: #4231
 		{name: "a source without a common folder that moved a file to the original name of another", setup: func(r *rig, s show) transfer.Request {
 			for _, rename := range [][2]string{{"Show.S01E01.mkv", "Show.S01E02.mkv"}, {"Show.S01E02.mkv", "Extras/Show.S01E02.mkv"}} {
 				require.NoError(t, r.sync.RenameTorrentFile(t.Context(), r.source.ID, s.hash, showName+"/"+rename[0], rename[1]))
