@@ -114,7 +114,7 @@ type SearchTableRowProps = {
   onViewDetails: (result: TorznabSearchResult) => void
 }
 
-const SearchTableRow = memo(function SearchTableRow({
+export const SearchTableRow = memo(function SearchTableRow({
   result,
   isSelected,
   isEven,
