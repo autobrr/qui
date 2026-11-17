@@ -605,9 +605,21 @@ func (j *job) keepReason(ctx context.Context) string {
 	if j.rec.Way == WayNone {
 		return j.target.Name + " reads the same files"
 	}
-	if j.blind && j.downloaded() == 0 {
-		// The target may see the files of the source.
-		return j.target.Name + " had the files before the Transfer"
+	if j.blind {
+		// Only a download of every byte proves that the target had no file
+		// of its own, which may be a file of the source. A resumed download
+		// counts only the bytes of its last run.
+		var size int64
+		for _, f := range j.files {
+			size += f.size
+		}
+		switch got := j.downloaded(); {
+		case got == 0:
+			return j.target.Name + " had the files before the Transfer"
+		case got < size:
+			return fmt.Sprintf("qui saw only %s of %s arrive on %s by BitTorrent, and %s may read the rest on %s",
+				formatBytes(got), formatBytes(size), j.target.Name, j.target.Name, j.source.Name)
+		}
 	}
 	if j.srcFiles == nil && slices.ContainsFunc(j.files, func(f *groupFile) bool { return f.onTarget }) {
 		return "qui cannot reach the files on " + j.source.Name + " to remove only the files that it copied"

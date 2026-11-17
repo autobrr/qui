@@ -5,8 +5,12 @@ package transfer_test
 
 import (
 	"bytes"
+	"errors"
 	"net/netip"
+	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"testing"
 	"time"
 
@@ -261,23 +265,46 @@ func TestTransferTorrentReadsTheFreeSpaceInQBittorrent(t *testing.T) {
 	}
 }
 
-// On a target without file access, a Transfer torrent that downloaded no
-// byte found the files there before the Transfer. The target may read the
-// files of the source, so qui keeps them.
+// On a target without file access, a Transfer torrent that downloaded less
+// than the whole torrent found files there before the Transfer. The target
+// may read them on the source, so qui keeps the files of the source.
 func TestTransferTorrentKeepsTheFilesThatTheTargetHad(t *testing.T) {
-	r := newRigOn(t, overSFTP, noAccess)
-	r.connect()
-	s := newShow(t, showName)
-	r.seed(s)
-	write(t, filepath.Join(r.dstDir, showName), s.files)
+	for _, tc := range []struct {
+		name  string
+		place func(t *testing.T, r *rig, s show)
+		// seeds is how many Transfer torrents the source seeds.
+		seeds  int
+		reason string
+	}{
+		{name: "every file", place: func(t *testing.T, r *rig, s show) { write(t, filepath.Join(r.dstDir, showName), s.files) },
+			reason: "homelab had the files before the Transfer"},
+		// regression: #4231
+		{name: "a link to a file of the source", place: func(t *testing.T, r *rig, _ show) {
+			require.NoError(t, os.MkdirAll(filepath.Join(r.dstDir, showName), 0o755))
+			err := os.Symlink(filepath.Join(r.srcDir, showName, "Show.S01E01.mkv"), filepath.Join(r.dstDir, showName, "Show.S01E01.mkv"))
+			if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+				t.Skip("this Windows user cannot make a symlink")
+			}
+			require.NoError(t, err)
+		}, seeds: 1, reason: "qui saw only 30 B of 70 B arrive on homelab by BitTorrent, and homelab may read the rest on seedbox"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRigOn(t, overSFTP, noAccess)
+			r.connect()
+			s := newShow(t, showName)
+			r.seed(s)
+			tc.place(t, r, s)
 
-	record := r.run(r.request(s))
+			record := r.run(r.request(s))
 
-	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-	require.Contains(t, logOf(record), "Removed the torrent from seedbox and kept its files, because homelab had the files before the Transfer")
-	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
-	require.Zero(t, r.src.Writes("torrents/add"), "the target needed no seed")
-	r.requireNoHelpers(record)
+			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+			require.Contains(t, logOf(record), "Removed the torrent from seedbox and kept its files, because "+tc.reason)
+			require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+			require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+			require.Equal(t, tc.seeds, r.src.Writes("torrents/add"))
+			r.requireNoHelpers(record)
+		})
+	}
 }
 
 // On a source without file access, qBittorrent removes the files with the
@@ -354,7 +381,8 @@ func TestTransferTorrentStartsAfterTheHeadStart(t *testing.T) {
 }
 
 // A Transfer torrent that failed for a retry runs again from the start: qui
-// removed its Transfer torrents, and adds new ones.
+// removed its Transfer torrents, and adds new ones. The retry downloads
+// every byte, so qui removes the files of the source.
 func TestTransferTorrentRetries(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
@@ -373,6 +401,8 @@ func TestTransferTorrentRetries(t *testing.T) {
 	record := r.get(first.ID)
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	// regression: #4231
+	require.Empty(t, tree(t, r.srcDir))
 	r.requireNoHelpers(record)
 	helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
 	require.NoError(t, err)
