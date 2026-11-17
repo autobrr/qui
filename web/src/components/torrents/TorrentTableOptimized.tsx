@@ -853,7 +853,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     virtualizer.scrollToOffset(0)
   }, [listKey, parentRef, virtualizer])
 
-  useRevealRow({ target: revealTorrent, rows, safeLoadedRows, isLoading, loadMore: reportNearEnd, virtualizer, getSelectionIdentity, onDone: onRevealDone })
+  useRevealRow({ target: revealTorrent, rows, totalCount, safeLoadedRows, isLoading, loadMore: reportNearEnd, virtualizer, getSelectionIdentity, onDone: onRevealDone })
 
   useTorrentTableArrowNavigation({
     rows,
