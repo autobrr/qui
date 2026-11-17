@@ -321,21 +321,20 @@ function TransferTableRow({ row, picked, onTick, running, onDetails, onRetry, on
       <TableCell className="w-full max-w-0 align-top whitespace-normal">
         {/* The name wraps in full on touch, where no pointer shows its title. */}
         <div id={nameId} className="font-medium pointer-fine:line-clamp-2"><TorrentName name={display.name(row)} /></div>
+        {/* The dot stays with the fact before it, so a wrapped line does not start with a dot. */}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-          <span>{t("row.route", { source: instanceName(row.sourceInstanceId), target: instanceName(row.targetInstanceId) })}</span>
-          {row.way !== "" && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{t([`ways.${row.way}`, "ways.fallback"])}</span>
-            </>
-          )}
-          {/* A narrow table has no Size column, so the route names the size. */}
+          {/* A narrow table has no Size column, so the route line starts with the size. */}
           {row.size > 0 && (
             <span className="flex items-center gap-x-1.5 @xl:hidden">
-              <span aria-hidden="true">·</span>
               <span className="tabular-nums">{formatBytes(row.size)}</span>
+              <span aria-hidden="true">·</span>
             </span>
           )}
+          <span className="flex items-center gap-x-1.5">
+            <span>{t("row.route", { source: instanceName(row.sourceInstanceId), target: instanceName(row.targetInstanceId) })}</span>
+            {row.way !== "" && <span aria-hidden="true">·</span>}
+          </span>
+          {row.way !== "" && <span>{t([`ways.${row.way}`, "ways.fallback"])}</span>}
           {row.torrents > 1 && <Mark>{t("row.crossSeeds", { count: row.torrents - 1 })}</Mark>}
           {row.kind === "export" && <Mark>{t("row.export")}</Mark>}
         </div>
