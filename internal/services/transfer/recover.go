@@ -296,13 +296,16 @@ func (j *job) cleanTarget(ctx context.Context) {
 	if !j.cleanupRoot(ctx) {
 		return
 	}
+	// The record names the head start. A resume that failed before it read
+	// the target again did not mark it on the files.
+	headStart, _ := j.headStartFiles()
 	folders := map[string]struct{}{}
 	for _, f := range j.files {
 		// A file whose temporary file was still there, or may be, never moved
 		// into place.
 		placed := j.remove(ctx, j.tempName(f.rel), j.tempName(f.rel)+incompleteExt)
 		j.remove(ctx, j.linkName(f.rel), j.linkName(f.rel)+incompleteExt)
-		if j.reached(stepPlace) && !f.onTarget && !keepPlaced && placed {
+		if j.reached(stepPlace) && !slices.Contains(headStart, f.rel) && !keepPlaced && placed {
 			j.remove(ctx, f.rel)
 		}
 		// A link or a create that failed leaves the folders that it made,

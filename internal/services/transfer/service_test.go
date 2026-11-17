@@ -79,6 +79,8 @@ type disk struct {
 	// failRemove fails the removal of each name below the root that it
 	// reports.
 	failRemove func(name string) bool
+	// failOpenRoots is how many of the next OpenRoot calls fail.
+	failOpenRoots int
 
 	mu      sync.Mutex
 	writes  []diskWrite
@@ -112,6 +114,10 @@ func (d *disk) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) 
 }
 
 func (d *disk) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
+	if d.failOpenRoots > 0 {
+		d.failOpenRoots--
+		return nil, &fs.PathError{Op: "openat", Path: dir, Err: fs.ErrPermission}
+	}
 	root, err := d.Backend.OpenRoot(ctx, dir)
 	if err != nil {
 		return nil, err

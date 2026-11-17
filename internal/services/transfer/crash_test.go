@@ -195,6 +195,31 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 	}
 }
 
+// A Transfer that qui stopped after the step place, and whose resume fails
+// before it reads the target again, keeps the file that was on the target
+// before the Transfer when it cleans up.
+// regression: #4231
+func TestTransferCleanupKeepsTheHeadStartWhenTheResumeFails(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), map[string][]byte{episode1: s.files[episode1]})
+	runCrashChild(t, crash{DB: r.dbPath, Request: r.request(s), At: "after:place"}, make(chan *os.Process, 1), false)
+	r.disk.failOpenRoots = 1
+
+	r.restart()
+	r.svc.Wait()
+
+	var id int64
+	require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
+	record := r.get(id)
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Contains(t, record.FailureReason, "qui cannot open the save path")
+	require.Equal(t, map[string]string{showName + "/" + episode1: string(s.files[episode1])}, tree(t, r.dstDir),
+		"the file that was on the target stays, and the files of qui go")
+	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
+}
+
 // runCrashChild runs qui in a child process on the database of the rig, and
 // waits until it ends at its crash point, or until the parent kills it. The
 // parent takes the process from child to kill it.
