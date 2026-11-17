@@ -240,6 +240,30 @@ func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
 }
 
+// regression: #4242
+// A cancel that comes while an Export run records its end leaves the run as
+// it ends, with its torrent on the target, and answers that the run ended.
+func TestCancelLeavesAnExportRunThatRecordsItsEnd(t *testing.T) {
+	r := newRig(t, exportPolls)
+	hold := newHoldAt(r.db, "done")
+	r.restartOn(hold)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+
+	id, done, err := r.svc.Export(t.Context(), r.exportRequest(s))
+	require.NoError(t, err)
+	<-hold.held
+	err = r.svc.Cancel(t.Context(), id)
+	close(hold.release)
+	require.ErrorIs(t, err, transfer.ErrFinished)
+	require.Empty(t, (<-done).Failure)
+	r.svc.Wait()
+
+	require.Equal(t, transfer.StateDone, r.get(id).State)
+	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
+}
+
 // Retry keeps the category and tags of the torrent on the target, also when
 // the torrent of the request went to the Cross-seed instance. A cancelled
 // Transfer starts again as a new Transfer by the user, with the same choices,

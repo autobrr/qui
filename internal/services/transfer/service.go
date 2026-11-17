@@ -389,7 +389,8 @@ func (s *Service) runOne(ctx context.Context, id int64, m *meter) {
 // Cancel stops a Transfer and takes back what it did: it removes the files
 // that qui wrote and the torrents that qui added, and starts the source
 // again. The cleanup runs in the background. Once the removal of the
-// torrent from the source started, Cancel returns ErrCancelTooLate.
+// torrent from the source started, Cancel returns ErrCancelTooLate, and once
+// an Export run records its end, ErrFinished.
 func (s *Service) Cancel(ctx context.Context, id int64) error {
 	record, err := s.deps.Store.Get(ctx, id)
 	switch {
@@ -426,6 +427,8 @@ func (s *Service) Cancel(ctx context.Context, id int64) error {
 		return nil
 	case !held:
 		s.runs[id] = &run{cancelled: true}
+	case r.committed && record.Kind == KindExport:
+		return ErrFinished
 	case r.committed:
 		return ErrCancelTooLate
 	case r.cancelled:

@@ -257,7 +257,7 @@ func (e *exportJob) mark(ctx context.Context, state State, name string) error {
 // off the target and keeps its files there, so that the next run of the
 // rule tries again.
 func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportResult {
-	if e.svc.cancelled(e.rec.ID) {
+	if !e.svc.commit(e.rec.ID) {
 		return e.cancel(ctx)
 	}
 	ctx, cancel := cleanupContext(ctx)
