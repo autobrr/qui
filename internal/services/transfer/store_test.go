@@ -256,9 +256,7 @@ func TestTheChecksOfAnInstanceNameWhatQuiKeepsThere(t *testing.T) {
 	require.Nil(t, store.HelperKinds(source), "a claim is no helper torrent")
 	require.Nil(t, store.HelperCheck(source))
 
-	kinds := store.HelperKinds(target)
-	require.Equal(t, "share", kinds("FFFF"), "a hash in upper case names the same torrent")
-	require.Empty(t, kinds("aaaa"))
+	require.Equal(t, map[string]string{"ffff": "share"}, store.HelperKinds(target))
 	isHelper := store.HelperCheck(target)
 	require.True(t, isHelper("ffff"))
 	require.False(t, isHelper("aaaa"))

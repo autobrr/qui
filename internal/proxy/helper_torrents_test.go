@@ -13,11 +13,11 @@ import (
 // helperRegistry names the helper torrents of the rig's instance.
 type helperRegistry map[string]string
 
-func (h helperRegistry) HelperKinds(int) func(hash string) string {
+func (h helperRegistry) HelperKinds(int) map[string]string {
 	if len(h) == 0 {
 		return nil
 	}
-	return func(hash string) string { return h[hash] }
+	return h
 }
 
 // newHelperProxyRig has a helper torrent (proxyHashA) and a torrent of the

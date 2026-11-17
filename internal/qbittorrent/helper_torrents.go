@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
+
+	qbt "github.com/autobrr/go-qbittorrent"
 )
 
 // ErrHelperTorrentFiles refuses a delete with files of a helper torrent: its
@@ -19,9 +22,9 @@ var ErrHelperTorrentFiles = errors.New("qui added this torrent for a Transfer or
 // proves nothing.
 type HelperTorrents interface {
 	// HelperKinds returns the owner kind of each helper torrent of the
-	// instance, and "" for a torrent that is no helper. It reads the registry
-	// one time, and returns nil when the instance has no helper torrent.
-	HelperKinds(instanceID int) func(hash string) string
+	// instance, by its hash in lower case. It reads the registry one time, and
+	// returns nil when the instance has no helper torrent.
+	HelperKinds(instanceID int) map[string]string
 }
 
 func (sm *SyncManager) SetHelperTorrents(helpers HelperTorrents) {
@@ -56,12 +59,56 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 		}
 	}
 	// The fresh read can hold a helper registered since the check above.
-	helperKind := helpers.HelperKinds(instanceID)
-	if helperKind == nil {
+	kinds := helpers.HelperKinds(instanceID)
+	if kinds == nil {
 		return nil
 	}
-	if i := slices.IndexFunc(hashes, func(hash string) bool { return helperKind(hash) != "" }); i >= 0 {
+	if i := slices.IndexFunc(hashes, func(hash string) bool { return kinds[strings.ToLower(hash)] != "" }); i >= 0 {
 		return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, hashes[i])
 	}
 	return nil
+}
+
+// snapshotHelpers are the helper torrents of one Sync snapshot, and at the
+// same index the kind of their owner.
+type snapshotHelpers struct {
+	torrents []*qbt.Torrent
+	kinds    []string
+}
+
+// helpersOf returns the helper torrents of the instance in snapshot. It looks
+// up the few helper hashes in the index of the snapshot, so that a pass over
+// the torrents compares pointers and reads no torrent.
+func helpersOf(snapshot *qbt.SyncSnapshot, helpers HelperTorrents, instanceID int) snapshotHelpers {
+	if snapshot == nil || helpers == nil {
+		return snapshotHelpers{}
+	}
+	kinds := helpers.HelperKinds(instanceID)
+	found := snapshotHelpers{torrents: make([]*qbt.Torrent, 0, len(kinds)), kinds: make([]string, 0, len(kinds))}
+	for hash, kind := range kinds {
+		if t, ok := snapshot.Torrent(hash); ok {
+			found.torrents = append(found.torrents, t)
+			found.kinds = append(found.kinds, kind)
+		}
+	}
+	return found
+}
+
+// kind returns the owner kind of t, a torrent of the snapshot, and "" when t
+// is no helper torrent.
+func (h snapshotHelpers) kind(t *qbt.Torrent) string {
+	if i := slices.Index(h.torrents, t); i >= 0 {
+		return h.kinds[i]
+	}
+	return ""
+}
+
+// WithoutHelpers returns the torrents of snapshot in its order, without the
+// helper torrents of the instance. The caller owns the slice.
+func WithoutHelpers(snapshot *qbt.SyncSnapshot, helpers HelperTorrents, instanceID int) []*qbt.Torrent {
+	torrents := snapshot.Torrents()
+	if found := helpersOf(snapshot, helpers, instanceID).torrents; len(found) > 0 {
+		torrents = slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return slices.Contains(found, t) })
+	}
+	return torrents
 }

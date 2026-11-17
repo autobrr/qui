@@ -493,17 +493,23 @@ func (s *Store) Hold(instanceID int, hash string) error {
 	return nil
 }
 
-// HelperKinds is HelperKind for a pass over the torrents of one instance: it
-// reads the registry one time. It returns nil when the instance has no helper
-// torrent.
-func (s *Store) HelperKinds(instanceID int) func(hash string) string {
+// HelperKinds returns the owner kind of each helper torrent of one instance,
+// by its hash in lower case. It reads the registry one time, and returns nil
+// when the instance has no helper torrent.
+func (s *Store) HelperKinds(instanceID int) map[string]string {
 	s.mu.RLock()
-	kinds := hashesOn(s.helpers, instanceID)
-	s.mu.RUnlock()
-	if kinds == nil {
-		return nil
+	defer s.mu.RUnlock()
+	var kinds map[string]string
+	for key, kind := range s.helpers {
+		if key.instanceID != instanceID {
+			continue
+		}
+		if kinds == nil {
+			kinds = make(map[string]string)
+		}
+		kinds[key.hash] = string(kind)
 	}
-	return func(hash string) string { return string(kinds[lowerHash(hash)]) }
+	return kinds
 }
 
 // HelperCheck is IsHelper for a pass over the torrents of one instance: it
