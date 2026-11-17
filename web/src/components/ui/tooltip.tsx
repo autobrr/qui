@@ -94,9 +94,10 @@ const Tooltip = ({ children, ...props }: React.ComponentProps<typeof TooltipPrim
 
 type TooltipTriggerProps = React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger> & {
   /**
-   * Whether a tap on a touch device opens the tooltip. By default a tap opens it unless the tap also acts: it reaches
-   * an enabled control (CONTROL_SELECTOR) at the trigger or around it. A bare trigger (no asChild) always opens. Set it on a button that only explains, or on a trigger whose tooltip must
-   * open even when the tap also reaches a control around it.
+   * Whether a tap on a touch device opens the tooltip. Without it, a tap opens the tooltip unless the tap also acts: it
+   * reaches an enabled link, button, form field, or menu item at the trigger or around it. A bare trigger (no asChild)
+   * opens on every tap. Set it on a button that only explains, or on a trigger whose tooltip must open even when the
+   * tap also reaches a control around it.
    */
   openOnTap?: boolean
 }
@@ -118,7 +119,7 @@ const TooltipTrigger = React.forwardRef<
   const context = React.useContext(TooltipContext)
 
   const registerPointerType = context.registerPointerType
-  // Pointer down reports the pointer type in every browser; a click event does not.
+  // iOS Safari reports a tap as a mouse click, so the type comes from pointer down.
   const pressPointerTypeRef = React.useRef<string | null>(null)
 
   const handlePointerDown = React.useCallback((event: TriggerPointerEvent) => {
@@ -143,7 +144,7 @@ const TooltipTrigger = React.forwardRef<
   const triggerProps = props.asChild ? props : { type: "button" as const, ...props }
 
   if (context.isTouchDevice) {
-    // On touch devices, handle click to toggle tooltip
+    // On touch devices, a click toggles the tooltip by the rule of openOnTap.
     return (
       <TooltipPrimitive.Trigger
         ref={ref}

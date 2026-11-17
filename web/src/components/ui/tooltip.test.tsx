@@ -39,10 +39,11 @@ function renderTooltip(trigger: ReactNode) {
   )
 }
 
+// iOS Safari sends the click of a tap with the mouse pointer type.
 function tap(element: Element) {
   fireEvent.pointerDown(element, { pointerType: "touch" })
   fireEvent.pointerUp(element, { pointerType: "touch" })
-  fireEvent.click(element)
+  fireEvent(element, new PointerEvent("click", { bubbles: true, cancelable: true, pointerType: "mouse" }))
 }
 
 const tooltipShown = () => screen.queryByRole("tooltip") !== null

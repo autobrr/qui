@@ -32,6 +32,7 @@ afterEach(() => {
   cleanup()
 })
 
+// regression: #4263
 it("shows the full cut-off name on a tap inside a filter row, and the tap still toggles the filter", () => {
   const onCheckedChange = vi.fn()
   render(

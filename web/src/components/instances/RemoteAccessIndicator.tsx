@@ -8,6 +8,7 @@ import { remoteAccessLimits, type RemoteAccessLimit } from "@/lib/remote-access"
 import { cn } from "@/lib/utils"
 import type { Instance } from "@/types"
 import { HardDrive, KeyRound } from "lucide-react"
+import { useRef } from "react"
 import { useTranslation } from "react-i18next"
 
 interface RemoteAccessIndicatorProps {
@@ -22,6 +23,8 @@ interface RemoteAccessIndicatorProps {
 // leaves off: the degraded mode the design doc wants visible, not silent.
 export function RemoteAccessIndicator({ instance, variant, className }: RemoteAccessIndicatorProps) {
   const { t } = useTranslation("instances")
+  // iOS Safari reports a tap as a mouse click, so the type comes from pointer down.
+  const pressPointerTypeRef = useRef<string | null>(null)
   const limits = remoteAccessLimits(instance)
 
   if (variant === "inline") {
@@ -48,7 +51,12 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
   return (
     <Tooltip>
       {/* A tap opens the tooltip, not the row: the row opens the editor, which would cover the tooltip. A mouse click still opens the row. */}
-      <TooltipTrigger asChild openOnTap onClick={(event) => (event.nativeEvent as PointerEvent).pointerType === "touch" && event.stopPropagation()}>
+      <TooltipTrigger
+        asChild
+        openOnTap
+        onPointerDown={(event) => { pressPointerTypeRef.current = event.pointerType }}
+        onClick={(event) => pressPointerTypeRef.current === "touch" && event.stopPropagation()}
+      >
         {fact}
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">
